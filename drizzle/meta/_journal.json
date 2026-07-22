@@ -8,6 +8,13 @@
       "when": 1784701361099,
       "tag": "0000_phase_2_core_memory_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784707758461,
+      "tag": "0001_phase_3_diary_audit_schema",
+      "breakpoints": true
     }
   ]
 }
