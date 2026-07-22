@@ -72,11 +72,7 @@ const productionReadMemoryDependencies: ReadMemoryToolDependencies = {
     readMemory: (input) => getDefaultMemoryService().readMemory(input),
   },
   getAuthenticatedUserId: () => {
-    if (!env.MCP_AUTH_TOKEN || !env.MCP_USER_ID) {
-      throw new ReadMemoryAuthenticationError();
-    }
-
-    return env.MCP_USER_ID;
+    throw new ReadMemoryAuthenticationError();
   },
 };
 
@@ -86,11 +82,7 @@ const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
       getDefaultDiaryService().createDiary(context, input),
   },
   getAuthenticatedUserId: () => {
-    if (!env.MCP_AUTH_TOKEN || !env.MCP_USER_ID) {
-      throw new WriteDiaryAuthenticationError();
-    }
-
-    return env.MCP_USER_ID;
+    throw new WriteDiaryAuthenticationError();
   },
 };
 
@@ -100,11 +92,7 @@ const productionCreateTaskDependencies: CreateTaskToolDependencies = {
       getDefaultTaskService().createTask(context, input),
   },
   getAuthenticatedUserId: () => {
-    if (!env.MCP_AUTH_TOKEN || !env.MCP_USER_ID) {
-      throw new CreateTaskAuthenticationError();
-    }
-
-    return env.MCP_USER_ID;
+    throw new CreateTaskAuthenticationError();
   },
 };
 
@@ -116,6 +104,7 @@ export type McpServerDependencies = {
 
 export function createMcpServer(
   dependencies: McpServerDependencies = {},
+  authenticatedUserId?: string,
 ): McpServer {
   const server = new McpServer({
     name: "leilei-os",
@@ -125,15 +114,33 @@ export function createMcpServer(
   registerHelloTool(server);
   registerReadMemoryTool(
     server,
-    dependencies.readMemory ?? productionReadMemoryDependencies,
+    dependencies.readMemory ?? {
+      ...productionReadMemoryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
   );
   registerWriteDiaryTool(
     server,
-    dependencies.writeDiary ?? productionWriteDiaryDependencies,
+    dependencies.writeDiary ?? {
+      ...productionWriteDiaryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new WriteDiaryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
   );
   registerCreateTaskTool(
     server,
-    dependencies.createTask ?? productionCreateTaskDependencies,
+    dependencies.createTask ?? {
+      ...productionCreateTaskDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new CreateTaskAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
   );
   return server;
 }

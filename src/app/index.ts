@@ -5,14 +5,9 @@ const app = createApp();
 
 const httpServer = app.listen(env.PORT, env.HOST, () => {
   console.log(`Leilei OS listening on http://${env.HOST}:${env.PORT}`);
-  console.log(`MCP endpoint: http://${env.HOST}:${env.PORT}/mcp`);
-  if (!env.MCP_AUTH_TOKEN) {
-    console.warn("MCP_AUTH_TOKEN is not set; /mcp is unauthenticated for Phase 1 testing.");
-  }
-  if (env.MCP_DEV_ALLOW_UNAUTHENTICATED) {
-    console.warn(
-      "MCP developer test mode is enabled; /mcp temporarily accepts requests without a bearer token.",
-    );
+  console.log("Public OAuth MCP endpoint enabled at /mcp.");
+  if (env.MCP_AUTH_TOKEN) {
+    console.log("Internal MCP endpoint enabled at /internal/mcp.");
   }
 });
 
