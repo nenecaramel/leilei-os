@@ -9,6 +9,11 @@ const httpServer = app.listen(env.PORT, env.HOST, () => {
   if (!env.MCP_AUTH_TOKEN) {
     console.warn("MCP_AUTH_TOKEN is not set; /mcp is unauthenticated for Phase 1 testing.");
   }
+  if (env.MCP_DEV_ALLOW_UNAUTHENTICATED) {
+    console.warn(
+      "MCP developer test mode is enabled; /mcp temporarily accepts requests without a bearer token.",
+    );
+  }
 });
 
 function shutdown(signal: string): void {

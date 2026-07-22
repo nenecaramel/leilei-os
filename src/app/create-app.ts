@@ -19,7 +19,14 @@ export function createApp(): express.Express {
     });
   });
 
-  app.use("/mcp", optionalBearerAuth(env.MCP_AUTH_TOKEN), createMcpRouter());
+  app.use(
+    "/mcp",
+    optionalBearerAuth(
+      env.MCP_AUTH_TOKEN,
+      env.MCP_DEV_ALLOW_UNAUTHENTICATED,
+    ),
+    createMcpRouter(),
+  );
 
   app.use((_request, response) => {
     response.status(404).json({

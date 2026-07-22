@@ -6,6 +6,10 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   DATABASE_URL: z.string().url().optional(),
   MCP_AUTH_TOKEN: z.string().min(16).optional(),
+  MCP_DEV_ALLOW_UNAUTHENTICATED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   MCP_USER_ID: z.string().uuid().optional(),
   MCP_SERVER_URL: z.string().url().optional(),
 });

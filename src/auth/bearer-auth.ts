@@ -1,8 +1,11 @@
 import type { RequestHandler } from "express";
 
-export function optionalBearerAuth(expectedToken?: string): RequestHandler {
+export function optionalBearerAuth(
+  expectedToken?: string,
+  allowUnauthenticated = false,
+): RequestHandler {
   return (request, response, next) => {
-    if (!expectedToken) {
+    if (allowUnauthenticated || !expectedToken) {
       next();
       return;
     }
