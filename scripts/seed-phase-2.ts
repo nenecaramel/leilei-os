@@ -1,0 +1,103 @@
+import "dotenv/config";
+import postgres from "postgres";
+import { z } from "zod";
+
+const seedEnvSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  MCP_USER_ID: z.string().uuid(),
+  SEED_USER_EMAIL: z
+    .string()
+    .email()
+    .default("leilei-mcp@example.invalid"),
+  SEED_USER_DISPLAY_NAME: z.string().trim().min(1).max(120).default("Leilei"),
+});
+
+const seedEnv = seedEnvSchema.parse(process.env);
+const sql = postgres(seedEnv.DATABASE_URL, { max: 1, prepare: false });
+
+const testMemories = [
+  {
+    category: "profile",
+    key: "preferred_name",
+    content: "Leilei",
+    visibility: "assistant",
+    sortOrder: 10,
+  },
+  {
+    category: "preference",
+    key: "response_style",
+    content: "Prefers concise, structured responses.",
+    visibility: "assistant",
+    sortOrder: 20,
+  },
+  {
+    category: "goal",
+    key: "phase_2_validation_goal",
+    content: "Validate that Leilei OS reads real PostgreSQL memory through MCP.",
+    visibility: "assistant",
+    sortOrder: 30,
+  },
+  {
+    category: "profile",
+    key: "private_visibility_test",
+    content: "This low-sensitivity test record must never be returned by read_memory.",
+    visibility: "private",
+    sortOrder: 40,
+  },
+] as const;
+
+try {
+  await sql.begin(async (transaction) => {
+    await transaction`
+      insert into users (id, email, display_name, status)
+      values (
+        ${seedEnv.MCP_USER_ID}::uuid,
+        ${seedEnv.SEED_USER_EMAIL},
+        ${seedEnv.SEED_USER_DISPLAY_NAME},
+        'active'
+      )
+      on conflict (id) do update set
+        email = excluded.email,
+        display_name = excluded.display_name,
+        status = 'active',
+        updated_at = now()
+    `;
+
+    for (const memory of testMemories) {
+      await transaction`
+        insert into core_memories (
+          user_id,
+          category,
+          key,
+          content,
+          visibility,
+          source,
+          status,
+          sort_order
+        )
+        values (
+          ${seedEnv.MCP_USER_ID}::uuid,
+          ${memory.category}::memory_category,
+          ${memory.key},
+          ${memory.content},
+          ${memory.visibility}::memory_visibility,
+          'phase_2_validation',
+          'active',
+          ${memory.sortOrder}
+        )
+        on conflict (user_id, key) do update set
+          category = excluded.category,
+          content = excluded.content,
+          visibility = excluded.visibility,
+          source = excluded.source,
+          status = 'active',
+          sort_order = excluded.sort_order,
+          updated_at = now()
+      `;
+    }
+  });
+
+  console.log("Phase 2 validation data initialized successfully.");
+} finally {
+  await sql.end();
+}
