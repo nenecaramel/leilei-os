@@ -80,7 +80,7 @@ async function connectTestClient(dependencies: ReturnType<typeof createTestDepen
   return { client, server };
 }
 
-test("tools/list includes hello, read_memory, and write_diary", async (t) => {
+test("tools/list includes all registered Phase 4 tools", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService),
@@ -93,7 +93,7 @@ test("tools/list includes hello, read_memory, and write_diary", async (t) => {
   const response = await client.listTools();
   assert.deepEqual(
     response.tools.map((tool) => tool.name).sort(),
-    ["hello", "read_memory", "write_diary"],
+    ["create_task", "hello", "read_memory", "write_diary"],
   );
 
   const writeDiary = response.tools.find((tool) => tool.name === "write_diary");

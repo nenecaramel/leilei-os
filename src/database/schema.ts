@@ -42,6 +42,20 @@ export const toolCallStatusEnum = pgEnum("tool_call_status", [
   "error",
 ]);
 
+export const taskStatusEnum = pgEnum("task_status", [
+  "pending",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
+
+export const taskPriorityEnum = pgEnum("task_priority", [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+]);
+
 export const users = pgTable(
   "users",
   {
@@ -259,6 +273,69 @@ export const toolCalls = pgTable(
     check(
       "tool_calls_success_has_no_error",
       sql`${table.status} <> 'success' OR ${table.errorCode} IS NULL`,
+    ),
+  ],
+);
+
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description").notNull(),
+    status: taskStatusEnum("status").default("pending").notNull(),
+    priority: taskPriorityEnum("priority").default("normal").notNull(),
+    dueTime: timestamp("due_time", { withTimezone: true }).notNull(),
+    timezone: varchar("timezone", { length: 64 }).notNull(),
+    tags: varchar("tags", { length: 50 })
+      .array()
+      .default(sql`ARRAY[]::varchar(50)[]`)
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("tasks_user_status_due_idx").on(
+      table.userId,
+      table.status,
+      table.dueTime,
+    ),
+    index("tasks_user_due_idx").on(table.userId, table.dueTime),
+    index("tasks_user_created_idx").on(
+      table.userId,
+      table.createdAt.desc(),
+    ),
+    check(
+      "tasks_title_not_blank",
+      sql`char_length(btrim(${table.title})) > 0`,
+    ),
+    check(
+      "tasks_description_not_blank",
+      sql`char_length(btrim(${table.description})) > 0`,
+    ),
+    check(
+      "tasks_timezone_not_blank",
+      sql`char_length(btrim(${table.timezone})) > 0`,
+    ),
+    check(
+      "tasks_timezone_format",
+      sql`${table.timezone} ~ '^[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+)*$'`,
+    ),
+    check("tasks_tags_limit", sql`cardinality(${table.tags}) <= 20`),
+    check(
+      "tasks_completed_at_consistency",
+      sql`(${table.status} = 'completed' AND ${table.completedAt} IS NOT NULL) OR (${table.status} <> 'completed' AND ${table.completedAt} IS NULL)`,
     ),
   ],
 );
