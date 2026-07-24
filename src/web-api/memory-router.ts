@@ -53,7 +53,7 @@ export function createReadMemoryApiHandler(
 
       console.error(
         "Web Memory API failed",
-        error instanceof Error ? error.name : "UnknownError",
+        error,
       );
       response.status(503).json({
         success: false,
