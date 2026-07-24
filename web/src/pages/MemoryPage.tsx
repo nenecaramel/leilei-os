@@ -48,6 +48,7 @@ function formatUpdatedAt(value: string): string {
 
 export function MemoryPage() {
   const api = useWebApiClient();
+
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<LoadState>({
     status: "loading",
@@ -61,6 +62,7 @@ export function MemoryPage() {
 
   const [editingId, setEditingId] = useState("");
   const [editingContent, setEditingContent] = useState("");
+  const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -117,6 +119,36 @@ export function MemoryPage() {
     setReloadKey((value) => value + 1);
   }
 
+  async function handleDelete(id: string, memoryKey: string) {
+    const confirmed = window.confirm(
+      `确定删除“${memoryKey.replaceAll("_", " ")}”吗？`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(id);
+
+    try {
+      await api.request("/memory", {
+        method: "DELETE",
+        body: JSON.stringify({
+          id,
+        }),
+      });
+
+      if (editingId === id) {
+        setEditingId("");
+        setEditingContent("");
+      }
+
+      setReloadKey((value) => value + 1);
+    } finally {
+      setDeletingId("");
+    }
+  }
+
   return (
     <div className="page memory-page">
       <PageHeader
@@ -139,8 +171,8 @@ export function MemoryPage() {
 
           <select
             value={category}
-            onChange={(e) =>
-              setCategory(e.target.value as MemoryCategory)
+            onChange={(event) =>
+              setCategory(event.target.value as MemoryCategory)
             }
           >
             <option value="profile">Profile</option>
@@ -152,13 +184,13 @@ export function MemoryPage() {
           <input
             placeholder="Key"
             value={key}
-            onChange={(e) => setKey(e.target.value)}
+            onChange={(event) => setKey(event.target.value)}
           />
 
           <textarea
             placeholder="Content"
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(event) => setContent(event.target.value)}
           />
 
           <button
@@ -174,6 +206,7 @@ export function MemoryPage() {
         <section className="memory-grid">
           {state.result.memories.map((memory) => {
             const editing = editingId === memory.id;
+            const deleting = deletingId === memory.id;
 
             return (
               <article
@@ -200,16 +233,28 @@ export function MemoryPage() {
                   <>
                     <textarea
                       value={editingContent}
-                      onChange={(e) =>
-                        setEditingContent(e.target.value)
+                      onChange={(event) =>
+                        setEditingContent(event.target.value)
                       }
                     />
 
                     <button
                       className="secondary-button"
                       onClick={() => handleUpdate(memory.id)}
+                      disabled={deleting}
                     >
                       保存修改
+                    </button>
+
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        setEditingId("");
+                        setEditingContent("");
+                      }}
+                      disabled={deleting}
+                    >
+                      取消
                     </button>
                   </>
                 ) : (
@@ -222,8 +267,19 @@ export function MemoryPage() {
                         setEditingId(memory.id);
                         setEditingContent(memory.content);
                       }}
+                      disabled={deleting}
                     >
                       编辑
+                    </button>
+
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        handleDelete(memory.id, memory.key)
+                      }
+                      disabled={deleting}
+                    >
+                      {deleting ? "删除中…" : "删除"}
                     </button>
                   </>
                 )}

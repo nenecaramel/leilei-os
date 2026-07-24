@@ -36,6 +36,7 @@ export function createMemoryApiRouter(
   router.get("/", createReadMemoryApiHandler(dependencies));
   router.post("/", createCreateMemoryApiHandler(dependencies));
   router.patch("/", createUpdateMemoryApiHandler(dependencies));
+  router.delete("/", createArchiveMemoryApiHandler(dependencies));
 
   return router;
 }
@@ -165,6 +166,42 @@ export function createUpdateMemoryApiHandler(
         error: {
           code: "UPDATE_MEMORY_FAILED",
           message: "Unable to update memory.",
+        },
+      });
+    }
+  };
+}
+
+export function createArchiveMemoryApiHandler(
+  dependencies: MemoryApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!request.webUserId) {
+      response.status(401).json({
+        success: false,
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Web API authentication is required.",
+        },
+      });
+      return;
+    }
+
+    try {
+      await dependencies.memoryService.archiveMemory({
+        userId: request.webUserId,
+        id: request.body.id,
+      });
+
+      response.json({
+        success: true,
+      });
+    } catch {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "ARCHIVE_MEMORY_FAILED",
+          message: "Unable to archive memory.",
         },
       });
     }
