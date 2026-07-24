@@ -1,4 +1,9 @@
-import { eq } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+} from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   tasks,
@@ -7,8 +12,11 @@ import {
   type taskStatusEnum,
 } from "../../database/schema.js";
 
-export type TaskPriority = (typeof taskPriorityEnum.enumValues)[number];
-export type TaskStatus = (typeof taskStatusEnum.enumValues)[number];
+export type TaskPriority =
+  (typeof taskPriorityEnum.enumValues)[number];
+
+export type TaskStatus =
+  (typeof taskStatusEnum.enumValues)[number];
 
 export type TaskUserRecord = {
   status: "active" | "disabled";
@@ -40,19 +48,53 @@ export type TaskRecord = {
   completedAt: Date | null;
 };
 
+export type UpdateTaskStatusInput = {
+  userId: string;
+  id: string;
+  status: TaskStatus;
+  completedAt: Date | null;
+};
+
 export interface TaskRepository {
-  findUserById(userId: string): Promise<TaskUserRecord | null>;
-  createTask(input: NormalizedTaskCreate): Promise<TaskRecord>;
+  findUserById(
+    userId: string,
+  ): Promise<TaskUserRecord | null>;
+
+  findTasks(
+    userId: string,
+    limit: number,
+  ): Promise<TaskRecord[]>;
+
+  findTaskById(
+    userId: string,
+    id: string,
+  ): Promise<TaskRecord | null>;
+
+  createTask(
+    input: NormalizedTaskCreate,
+  ): Promise<TaskRecord>;
+
+  updateTaskStatus(
+    input: UpdateTaskStatusInput,
+  ): Promise<TaskRecord | null>;
 }
 
-type Database = ReturnType<typeof createDatabase>["db"];
+type Database = ReturnType<
+  typeof createDatabase
+>["db"];
 
-export class DrizzleTaskRepository implements TaskRepository {
+export class DrizzleTaskRepository
+  implements TaskRepository
+{
   constructor(private readonly db: Database) {}
 
-  async findUserById(userId: string): Promise<TaskUserRecord | null> {
+  async findUserById(
+    userId: string,
+  ): Promise<TaskUserRecord | null> {
     const [user] = await this.db
-      .select({ status: users.status })
+      .select({
+        status: users.status,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -60,7 +102,66 @@ export class DrizzleTaskRepository implements TaskRepository {
     return user ?? null;
   }
 
-  async createTask(input: NormalizedTaskCreate): Promise<TaskRecord> {
+  async findTasks(
+    userId: string,
+    limit: number,
+  ): Promise<TaskRecord[]> {
+    return this.db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueTime: tasks.dueTime,
+        timezone: tasks.timezone,
+        tags: tasks.tags,
+        createdAt: tasks.createdAt,
+        updatedAt: tasks.updatedAt,
+        completedAt: tasks.completedAt,
+      })
+      .from(tasks)
+      .where(eq(tasks.userId, userId))
+      .orderBy(
+        asc(tasks.dueTime),
+        desc(tasks.createdAt),
+      )
+      .limit(limit);
+  }
+
+  async findTaskById(
+    userId: string,
+    id: string,
+  ): Promise<TaskRecord | null> {
+    const [task] = await this.db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueTime: tasks.dueTime,
+        timezone: tasks.timezone,
+        tags: tasks.tags,
+        createdAt: tasks.createdAt,
+        updatedAt: tasks.updatedAt,
+        completedAt: tasks.completedAt,
+      })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.userId, userId),
+          eq(tasks.id, id),
+        ),
+      )
+      .limit(1);
+
+    return task ?? null;
+  }
+
+  async createTask(
+    input: NormalizedTaskCreate,
+  ): Promise<TaskRecord> {
     const [task] = await this.db
       .insert(tasks)
       .values({
@@ -89,9 +190,44 @@ export class DrizzleTaskRepository implements TaskRepository {
       });
 
     if (!task) {
-      throw new Error("Task insert did not return a record.");
+      throw new Error(
+        "Task insert did not return a record.",
+      );
     }
 
     return task;
+  }
+
+  async updateTaskStatus(
+    input: UpdateTaskStatusInput,
+  ): Promise<TaskRecord | null> {
+    const [task] = await this.db
+      .update(tasks)
+      .set({
+        status: input.status,
+        completedAt: input.completedAt,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(tasks.userId, input.userId),
+          eq(tasks.id, input.id),
+        ),
+      )
+      .returning({
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueTime: tasks.dueTime,
+        timezone: tasks.timezone,
+        tags: tasks.tags,
+        createdAt: tasks.createdAt,
+        updatedAt: tasks.updatedAt,
+        completedAt: tasks.completedAt,
+      });
+
+    return task ?? null;
   }
 }

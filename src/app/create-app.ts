@@ -22,6 +22,10 @@ import { DrizzleDiaryRepository } from "../domains/diary/diary-repository.js";
 import { DiaryService } from "../domains/diary/diary-service.js";
 import type { DiaryApiDependencies } from "../web-api/diary-router.js";
 
+import { DrizzleTaskRepository } from "../domains/task/task-repository.js";
+import { TaskService } from "../domains/task/task-service.js";
+import type { TaskApiDependencies } from "../web-api/task-router.js";
+
 import { DrizzleHealthRepository } from "../domains/health/health-repository.js";
 import { HealthService } from "../domains/health/health-service.js";
 import type { HealthApiDependencies } from "../web-api/health-router.js";
@@ -31,6 +35,7 @@ export type AppDependencies = {
   verifyWebAccessToken?: AccessTokenVerifier;
   webMemoryService?: MemoryApiDependencies["memoryService"];
   webDiaryService?: DiaryApiDependencies["diaryService"];
+  webTaskService?: TaskApiDependencies["taskService"];
   webHealthService?: HealthApiDependencies["healthService"];
 };
 
@@ -102,12 +107,16 @@ export function createApp(
     let webDiaryService =
       dependencies.webDiaryService;
 
+    let webTaskService =
+      dependencies.webTaskService;
+
     let webHealthService =
       dependencies.webHealthService;
 
     if (
       !webMemoryService ||
       !webDiaryService ||
+      !webTaskService ||
       !webHealthService
     ) {
       if (!env.DATABASE_URL) {
@@ -130,6 +139,12 @@ export function createApp(
         );
       }
 
+      if (!webTaskService) {
+        webTaskService = new TaskService(
+          new DrizzleTaskRepository(db),
+        );
+      }
+
       if (!webHealthService) {
         webHealthService = new HealthService(
           new DrizzleHealthRepository(db),
@@ -140,6 +155,7 @@ export function createApp(
     if (
       !webMemoryService ||
       !webDiaryService ||
+      !webTaskService ||
       !webHealthService
     ) {
       throw new Error(
@@ -162,6 +178,9 @@ export function createApp(
         },
         diary: {
           diaryService: webDiaryService,
+        },
+        task: {
+          taskService: webTaskService,
         },
         health: {
           healthService: webHealthService,

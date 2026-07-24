@@ -8,6 +8,10 @@ import {
   type DiaryApiDependencies,
 } from "./diary-router.js";
 import {
+  createTaskApiRouter,
+  type TaskApiDependencies,
+} from "./task-router.js";
+import {
   createHealthApiRouter,
   type HealthApiDependencies,
 } from "./health-router.js";
@@ -15,6 +19,7 @@ import {
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
   diary: DiaryApiDependencies;
+  task: TaskApiDependencies;
   health: HealthApiDependencies;
 };
 
@@ -51,6 +56,11 @@ export function createWebApiRouter(
   router.use(
     "/diary",
     createDiaryApiRouter(dependencies.diary),
+  );
+
+  router.use(
+    "/task",
+    createTaskApiRouter(dependencies.task),
   );
 
   router.use(

@@ -2,7 +2,6 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { ProtectedApp } from "./auth/ProtectedApp";
 import {
   ArchiveIcon,
-  TaskIcon,
   UniverseIcon,
 } from "./components/icons";
 import { AppShell } from "./layout/AppShell";
@@ -10,6 +9,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { DiaryPage } from "./pages/DiaryPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { TaskPage } from "./pages/TaskPage";
 
 export default function App() {
   return (
@@ -31,15 +31,7 @@ export default function App() {
 
             <Route
               path="task"
-              element={
-                <PlaceholderPage
-                  eyebrow="Focus & execution"
-                  title="Task"
-                  description="组织任务状态、时间与优先级的未来入口。"
-                  note="本阶段不读取、创建或更新 tasks。"
-                  icon={<TaskIcon />}
-                />
-              }
+              element={<TaskPage />}
             />
 
             <Route

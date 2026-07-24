@@ -3,6 +3,7 @@ import type {
   TaskPriority,
   TaskRecord,
   TaskRepository,
+  TaskStatus,
 } from "./task-repository.js";
 
 const ALLOWED_PRIORITIES = [
@@ -12,11 +13,21 @@ const ALLOWED_PRIORITIES = [
   "urgent",
 ] as const satisfies readonly TaskPriority[];
 
+const ALLOWED_STATUSES = [
+  "pending",
+  "in_progress",
+  "completed",
+  "cancelled",
+] as const satisfies readonly TaskStatus[];
+
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 5_000;
 const MAX_TAGS = 20;
 const MAX_TAG_LENGTH = 50;
 const MAX_TIMEZONE_LENGTH = 64;
+const DEFAULT_TASK_LIMIT = 100;
+const MAX_TASK_LIMIT = 100;
+
 const ISO_INSTANT_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
 
@@ -33,29 +44,67 @@ export type CreateTaskInput = {
   tags: readonly string[];
 };
 
+export type TaskEntryResult = {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_time: string;
+  timezone: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
 export type CreateTaskResult = {
-  task: {
-    id: string;
-    title: string;
-    description: string;
-    status: "pending" | "in_progress" | "completed" | "cancelled";
-    priority: TaskPriority;
-    due_time: string;
-    timezone: string;
-    tags: string[];
-    created_at: string;
-    updated_at: string;
-    completed_at: string | null;
+  task: TaskEntryResult;
+};
+
+export type ListTasksInput = {
+  userId: string;
+  limit?: number;
+};
+
+export type ListTasksResult = {
+  tasks: TaskEntryResult[];
+  metadata: {
+    count: number;
   };
+};
+
+export type ReadTaskInput = {
+  userId: string;
+  id: string;
+};
+
+export type CreateWebTaskInput = {
+  userId: string;
+  title: string;
+  description: string;
+  priority: string;
+  dueTime: string;
+  timezone: string;
+  tags?: readonly string[];
+};
+
+export type UpdateWebTaskStatusInput = {
+  userId: string;
+  id: string;
+  status: string;
 };
 
 export type TaskDomainErrorCode =
   | "INVALID_AUTHENTICATED_USER"
   | "USER_NOT_FOUND"
   | "USER_DISABLED"
+  | "TASK_NOT_FOUND"
+  | "INVALID_TASK_LIMIT"
   | "INVALID_TITLE"
   | "INVALID_DESCRIPTION"
   | "INVALID_PRIORITY"
+  | "INVALID_TASK_STATUS"
   | "INVALID_DUE_TIME"
   | "INVALID_TIMEZONE"
   | "INVALID_TAGS";
@@ -77,24 +126,149 @@ export class TaskService {
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
   ): Promise<CreateTaskResult> {
-    const userId = this.requireAuthenticatedUserId(context.userId);
-    const user = await this.repository.findUserById(userId);
-
-    if (!user) {
-      throw new TaskDomainError("USER_NOT_FOUND", "User was not found.");
-    }
-
-    if (user.status !== "active") {
-      throw new TaskDomainError("USER_DISABLED", "User is disabled.");
-    }
-
+    const userId = await this.requireActiveUser(context.userId);
     const normalized = this.normalizeInput(userId, input);
     const task = await this.repository.createTask(normalized);
 
-    return this.toResult(task);
+    return {
+      task: this.toTaskResult(task),
+    };
   }
 
-  private requireAuthenticatedUserId(userId: string): string {
+  async listTasks(
+    input: ListTasksInput,
+  ): Promise<ListTasksResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const limit = this.resolveLimit(input.limit);
+
+    const tasks = await this.repository.findTasks(
+      userId,
+      limit,
+    );
+
+    return {
+      tasks: tasks.map((task) =>
+        this.toTaskResult(task),
+      ),
+      metadata: {
+        count: tasks.length,
+      },
+    };
+  }
+
+  async readTask(
+    input: ReadTaskInput,
+  ): Promise<TaskEntryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new TaskDomainError(
+        "TASK_NOT_FOUND",
+        "Task was not found.",
+      );
+    }
+
+    const task = await this.repository.findTaskById(
+      userId,
+      id,
+    );
+
+    if (!task) {
+      throw new TaskDomainError(
+        "TASK_NOT_FOUND",
+        "Task was not found.",
+      );
+    }
+
+    return this.toTaskResult(task);
+  }
+
+  async createWebTask(
+    input: CreateWebTaskInput,
+  ): Promise<TaskEntryResult> {
+    const result = await this.createTask(
+      {
+        userId: input.userId,
+      },
+      {
+        title: input.title,
+        description: input.description,
+        priority: input.priority,
+        dueTime: input.dueTime,
+        timezone: input.timezone,
+        tags: input.tags ?? [],
+      },
+    );
+
+    return result.task;
+  }
+
+  async updateWebTaskStatus(
+    input: UpdateWebTaskStatusInput,
+  ): Promise<TaskEntryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new TaskDomainError(
+        "TASK_NOT_FOUND",
+        "Task was not found.",
+      );
+    }
+
+    const status = this.normalizeStatus(input.status);
+
+    const task = await this.repository.updateTaskStatus({
+      userId,
+      id,
+      status,
+      completedAt:
+        status === "completed"
+          ? new Date()
+          : null,
+    });
+
+    if (!task) {
+      throw new TaskDomainError(
+        "TASK_NOT_FOUND",
+        "Task was not found.",
+      );
+    }
+
+    return this.toTaskResult(task);
+  }
+
+  private async requireActiveUser(
+    userId: string,
+  ): Promise<string> {
+    const normalized =
+      this.requireAuthenticatedUserId(userId);
+
+    const user = await this.repository.findUserById(
+      normalized,
+    );
+
+    if (!user) {
+      throw new TaskDomainError(
+        "USER_NOT_FOUND",
+        "User was not found.",
+      );
+    }
+
+    if (user.status !== "active") {
+      throw new TaskDomainError(
+        "USER_DISABLED",
+        "User is disabled.",
+      );
+    }
+
+    return normalized;
+  }
+
+  private requireAuthenticatedUserId(
+    userId: string,
+  ): string {
     const normalized = userId.trim();
 
     if (normalized.length === 0) {
@@ -142,7 +316,10 @@ export class TaskService {
   ): string {
     const normalized = value.normalize("NFC").trim();
 
-    if (normalized.length === 0 || normalized.length > maxLength) {
+    if (
+      normalized.length === 0 ||
+      normalized.length > maxLength
+    ) {
       throw new TaskDomainError(
         code,
         `${label} must contain between 1 and ${maxLength} characters.`,
@@ -152,7 +329,9 @@ export class TaskService {
     return normalized;
   }
 
-  private normalizePriority(priority: string): TaskPriority {
+  private normalizePriority(
+    priority: string,
+  ): TaskPriority {
     const normalized = priority.trim().toLowerCase();
     const allowed = new Set<string>(ALLOWED_PRIORITIES);
 
@@ -164,6 +343,22 @@ export class TaskService {
     }
 
     return normalized as TaskPriority;
+  }
+
+  private normalizeStatus(
+    status: string,
+  ): TaskStatus {
+    const normalized = status.trim().toLowerCase();
+    const allowed = new Set<string>(ALLOWED_STATUSES);
+
+    if (!allowed.has(normalized)) {
+      throw new TaskDomainError(
+        "INVALID_TASK_STATUS",
+        "Task status must be pending, in_progress, completed, or cancelled.",
+      );
+    }
+
+    return normalized as TaskStatus;
   }
 
   private normalizeDueTime(dueTime: string): Date {
@@ -183,9 +378,20 @@ export class TaskService {
     const hour = Number(match[4]);
     const minute = Number(match[5]);
     const second = Number(match[6]);
-    const offsetHour = match[10] === undefined ? 0 : Number(match[10]);
-    const offsetMinute = match[11] === undefined ? 0 : Number(match[11]);
-    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+    const offsetHour =
+      match[10] === undefined
+        ? 0
+        : Number(match[10]);
+
+    const offsetMinute =
+      match[11] === undefined
+        ? 0
+        : Number(match[11]);
+
+    const daysInMonth = new Date(
+      Date.UTC(year, month, 0),
+    ).getUTCDate();
 
     if (
       month < 1 ||
@@ -217,10 +423,15 @@ export class TaskService {
     return parsed;
   }
 
-  private normalizeTimezone(timezone: string): string {
+  private normalizeTimezone(
+    timezone: string,
+  ): string {
     const normalized = timezone.normalize("NFC").trim();
 
-    if (normalized.length === 0 || normalized.length > MAX_TIMEZONE_LENGTH) {
+    if (
+      normalized.length === 0 ||
+      normalized.length > MAX_TIMEZONE_LENGTH
+    ) {
       throw new TaskDomainError(
         "INVALID_TIMEZONE",
         "Task timezone is required and is too long.",
@@ -228,7 +439,9 @@ export class TaskService {
     }
 
     try {
-      new Intl.DateTimeFormat("en-US", { timeZone: normalized }).format();
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: normalized,
+      }).format();
     } catch {
       throw new TaskDomainError(
         "INVALID_TIMEZONE",
@@ -239,9 +452,14 @@ export class TaskService {
     return normalized;
   }
 
-  private normalizeTags(tags: readonly string[]): string[] {
+  private normalizeTags(
+    tags: readonly string[],
+  ): string[] {
     if (!Array.isArray(tags)) {
-      throw new TaskDomainError("INVALID_TAGS", "Task tags must be an array.");
+      throw new TaskDomainError(
+        "INVALID_TAGS",
+        "Task tags must be an array.",
+      );
     }
 
     const normalized = [
@@ -249,7 +467,10 @@ export class TaskService {
         tags.map((tag) => {
           const value = tag.normalize("NFC").trim();
 
-          if (value.length === 0 || value.length > MAX_TAG_LENGTH) {
+          if (
+            value.length === 0 ||
+            value.length > MAX_TAG_LENGTH
+          ) {
             throw new TaskDomainError(
               "INVALID_TAGS",
               `Each task tag must contain between 1 and ${MAX_TAG_LENGTH} characters.`,
@@ -271,21 +492,37 @@ export class TaskService {
     return normalized;
   }
 
-  private toResult(task: TaskRecord): CreateTaskResult {
+  private resolveLimit(limit?: number): number {
+    if (limit === undefined) {
+      return DEFAULT_TASK_LIMIT;
+    }
+
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new TaskDomainError(
+        "INVALID_TASK_LIMIT",
+        "Task limit must be a positive integer.",
+      );
+    }
+
+    return Math.min(limit, MAX_TASK_LIMIT);
+  }
+
+  private toTaskResult(
+    task: TaskRecord,
+  ): TaskEntryResult {
     return {
-      task: {
-        id: task.id,
-        title: task.title,
-        description: task.description,
-        status: task.status,
-        priority: task.priority,
-        due_time: task.dueTime.toISOString(),
-        timezone: task.timezone,
-        tags: task.tags,
-        created_at: task.createdAt.toISOString(),
-        updated_at: task.updatedAt.toISOString(),
-        completed_at: task.completedAt?.toISOString() ?? null,
-      },
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      due_time: task.dueTime.toISOString(),
+      timezone: task.timezone,
+      tags: task.tags,
+      created_at: task.createdAt.toISOString(),
+      updated_at: task.updatedAt.toISOString(),
+      completed_at:
+        task.completedAt?.toISOString() ?? null,
     };
   }
 }
