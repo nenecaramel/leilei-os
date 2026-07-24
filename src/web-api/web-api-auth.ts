@@ -8,7 +8,11 @@ function challenge(config: WebApiConfig, error?: AccessTokenError): string {
     'realm="leilei-os-web-api"',
     `scope="${config.WEB_AUTH0_REQUIRED_SCOPE}"`,
   ];
-  if (error) parts.push(`error="${error.kind}"`);
+
+  if (error) {
+    parts.push(`error="${error.kind}"`);
+  }
+
   return `Bearer ${parts.join(", ")}`;
 }
 
@@ -17,7 +21,13 @@ export function createWebApiAuthMiddleware(
   verifyAccessToken: AccessTokenVerifier,
 ): RequestHandler {
   return async (request, response, next) => {
+    if (request.method === "OPTIONS") {
+      next();
+      return;
+    }
+
     const authorization = request.header("authorization");
+
     const token = authorization?.startsWith("Bearer ")
       ? authorization.slice("Bearer ".length)
       : undefined;
@@ -26,27 +36,45 @@ export function createWebApiAuthMiddleware(
       response.setHeader("WWW-Authenticate", challenge(config));
       response.status(401).json({
         success: false,
-        error: { code: "UNAUTHORIZED", message: "Web API authentication is required." },
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Web API authentication is required.",
+        },
       });
       return;
     }
 
     try {
       const principal = await verifyAccessToken(token);
+
       request.oauthPrincipal = principal;
       request.webUserId = mapWebPrincipalToUserId(config, principal);
+
       next();
     } catch (error) {
       const accessTokenError =
         error instanceof AccessTokenError
           ? error
-          : new AccessTokenError("The access token is invalid.", "invalid_token");
-      const status = accessTokenError.kind === "insufficient_scope" ? 403 : 401;
-      response.setHeader("WWW-Authenticate", challenge(config, accessTokenError));
+          : new AccessTokenError(
+              "The access token is invalid.",
+              "invalid_token",
+            );
+
+      const status =
+        accessTokenError.kind === "insufficient_scope" ? 403 : 401;
+
+      response.setHeader(
+        "WWW-Authenticate",
+        challenge(config, accessTokenError),
+      );
+
       response.status(status).json({
         success: false,
         error: {
-          code: status === 403 ? "INSUFFICIENT_SCOPE" : "UNAUTHORIZED",
+          code:
+            status === 403
+              ? "INSUFFICIENT_SCOPE"
+              : "UNAUTHORIZED",
           message: accessTokenError.message,
         },
       });
