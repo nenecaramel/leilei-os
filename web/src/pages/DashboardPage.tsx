@@ -1,52 +1,242 @@
-import { ArchiveIcon, DiaryIcon, MemoryIcon, TaskIcon } from "../components/icons";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { useWebApiClient } from "../api/useWebApiClient";
+import {
+  ArchiveIcon,
+  DiaryIcon,
+  MemoryIcon,
+  TaskIcon,
+} from "../components/icons";
 import { PageHeader } from "./PageHeader";
 
-const spaces = [
-  {
-    title: "Memory",
-    note: "稳定偏好、目标和项目",
-    icon: MemoryIcon,
-    tone: "sage",
-  },
-  {
-    title: "Diary",
-    note: "个人记录与生活切片",
-    icon: DiaryIcon,
-    tone: "peach",
-  },
-  {
-    title: "Task",
-    note: "清晰、可执行的下一步",
-    icon: TaskIcon,
-    tone: "blue",
-  },
-  {
-    title: "Archive",
-    note: "未来的对话归档空间",
-    icon: ArchiveIcon,
-    tone: "lilac",
-  },
-];
+type DiaryEntry = {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+};
+
+type TaskStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+type TaskEntry = {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  due_time: string;
+  timezone: string;
+};
+
+type MemoryResponse = {
+  success: true;
+  data: {
+    metadata: {
+      count: number;
+    };
+  };
+};
+
+type DiaryResponse = {
+  success: true;
+  data: {
+    diaries: DiaryEntry[];
+    metadata: {
+      count: number;
+    };
+  };
+};
+
+type TaskResponse = {
+  success: true;
+  data: {
+    tasks: TaskEntry[];
+    metadata: {
+      count: number;
+    };
+  };
+};
+
+type DashboardState =
+  | { status: "loading" }
+  | {
+      status: "ready";
+      memoryCount: number;
+      diaryCount: number;
+      taskCount: number;
+      openTaskCount: number;
+      completedTaskCount: number;
+      latestDiary: DiaryEntry | null;
+      nextTask: TaskEntry | null;
+    }
+  | { status: "error" };
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+
+  if (hour < 6) {
+    return "夜深了";
+  }
+
+  if (hour < 12) {
+    return "早上好";
+  }
+
+  if (hour < 18) {
+    return "下午好";
+  }
+
+  return "晚上好";
+}
+
+function formatDiaryDate(value: string): string {
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(date);
+}
+
+function formatTaskDueTime(
+  value: string,
+  timezone: string,
+): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  try {
+    return new Intl.DateTimeFormat("zh-CN", {
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: timezone,
+    }).format(date);
+  } catch {
+    return date.toLocaleString("zh-CN");
+  }
+}
+
+function truncate(value: string, length: number): string {
+  return value.length > length
+    ? `${value.slice(0, length)}…`
+    : value;
+}
 
 export function DashboardPage() {
+  const api = useWebApiClient();
+
+  const [reloadKey, setReloadKey] = useState(0);
+  const [state, setState] = useState<DashboardState>({
+    status: "loading",
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    setState({
+      status: "loading",
+    });
+
+    Promise.all([
+      api.request<MemoryResponse>("/memory"),
+      api.request<DiaryResponse>("/diary"),
+      api.request<TaskResponse>("/task"),
+    ])
+      .then(([memoryResponse, diaryResponse, taskResponse]) => {
+        if (!active) {
+          return;
+        }
+
+        const tasks = taskResponse.data.tasks;
+
+        const openTasks = tasks.filter(
+          (task) =>
+            task.status === "pending" ||
+            task.status === "in_progress",
+        );
+
+        const completedTasks = tasks.filter(
+          (task) => task.status === "completed",
+        );
+
+        setState({
+          status: "ready",
+          memoryCount: memoryResponse.data.metadata.count,
+          diaryCount: diaryResponse.data.metadata.count,
+          taskCount: taskResponse.data.metadata.count,
+          openTaskCount: openTasks.length,
+          completedTaskCount: completedTasks.length,
+          latestDiary:
+            diaryResponse.data.diaries[0] ?? null,
+          nextTask: openTasks[0] ?? null,
+        });
+      })
+      .catch(() => {
+        if (active) {
+          setState({
+            status: "error",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [api, reloadKey]);
+
+  const totalItems =
+    state.status === "ready"
+      ? state.memoryCount +
+        state.diaryCount +
+        state.taskCount
+      : null;
+
   return (
     <div className="page dashboard-page">
       <PageHeader
         eyebrow="Personal command center"
-        title="早上好，蕾蕾"
-        description="这里会成为记忆、日记、任务与长期思考的安静入口。"
-        action={<span className="live-badge">OAuth connected</span>}
+        title={`${getGreeting()}，蕾蕾`}
+        description="记忆、日记和任务都汇集在这里。"
+        action={
+          <span className="live-badge">
+            {state.status === "ready"
+              ? "3 modules connected"
+              : "Loading"}
+          </span>
+        }
       />
 
       <section className="hero-panel">
         <div>
-          <span className="status-pill">Phase 6 · Foundation</span>
-          <h2>一个属于你的操作界面，正在长出来。</h2>
+          <span className="status-pill">
+            Phase 6 · Daily usable
+          </span>
+
+          <h2>
+            {state.status === "ready"
+              ? `${totalItems} 条个人数据，正在 Leilei OS 中运行。`
+              : "正在读取你的个人系统。"}
+          </h2>
+
           <p>
-            当前阶段只建立安全登录、信息架构与基础导航。数据仍由现有 Leilei OS
-            后端可靠保管。
+            Memory、Diary 与 Task 已经接入真实数据，
+            可以创建、查看和管理。
           </p>
         </div>
+
         <div className="orbit" aria-hidden="true">
           <span />
           <span />
@@ -54,45 +244,191 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="section-block">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Spaces</p>
-            <h2>你的个人系统</h2>
-          </div>
-          <span>4 foundations</span>
-        </div>
-        <div className="space-grid">
-          {spaces.map(({ icon: Icon, note, title, tone }) => (
-            <article className="space-card" key={title}>
-              <div className={`space-icon ${tone}`}>
-                <Icon />
-              </div>
-              <div>
-                <h3>{title}</h3>
-                <p>{note}</p>
-              </div>
-              <span className="card-state">Ready</span>
+      {state.status === "loading" && (
+        <section className="space-grid">
+          {[0, 1, 2].map((item) => (
+            <article
+              className="space-card memory-card-loading"
+              key={item}
+            >
+              <span />
+              <strong />
+              <p />
             </article>
           ))}
-        </div>
-      </section>
+        </section>
+      )}
 
-      <section className="quiet-panel">
-        <p className="eyebrow">System status</p>
-        <div className="status-row">
-          <div>
-            <span className="status-dot" />
-            <strong>身份边界已建立</strong>
-            <p>Web 使用独立 Auth0 Application，与现有用户身份保持一致。</p>
-          </div>
-          <div>
-            <span className="status-dot" />
-            <strong>业务数据保持隔离</strong>
-            <p>本阶段没有读取、写入或调用 MCP。</p>
-          </div>
-        </div>
-      </section>
+      {state.status === "error" && (
+        <section className="quiet-panel">
+          <p className="eyebrow">System status</p>
+          <h2>暂时无法读取 Dashboard</h2>
+          <p>Memory、Diary 或 Task 的连接没有完成。</p>
+
+          <button
+            className="secondary-button"
+            onClick={() =>
+              setReloadKey((value) => value + 1)
+            }
+          >
+            重新加载
+          </button>
+        </section>
+      )}
+
+      {state.status === "ready" && (
+        <>
+          <section className="section-block">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Spaces</p>
+                <h2>你的个人系统</h2>
+              </div>
+
+              <span>3 live modules</span>
+            </div>
+
+            <div className="space-grid">
+              <article className="space-card">
+                <div className="space-icon sage">
+                  <MemoryIcon />
+                </div>
+
+                <div>
+                  <h3>Memory</h3>
+                  <p>稳定偏好、目标和项目</p>
+                </div>
+
+                <span className="card-state">
+                  {state.memoryCount} 条
+                </span>
+
+                <Link
+                  className="secondary-button"
+                  to="/memory"
+                >
+                  打开
+                </Link>
+              </article>
+
+              <article className="space-card">
+                <div className="space-icon peach">
+                  <DiaryIcon />
+                </div>
+
+                <div>
+                  <h3>Diary</h3>
+                  <p>个人记录与生活切片</p>
+                </div>
+
+                <span className="card-state">
+                  {state.diaryCount} 篇
+                </span>
+
+                <Link
+                  className="secondary-button"
+                  to="/diary"
+                >
+                  打开
+                </Link>
+              </article>
+
+              <article className="space-card">
+                <div className="space-icon blue">
+                  <TaskIcon />
+                </div>
+
+                <div>
+                  <h3>Task</h3>
+                  <p>
+                    {state.openTaskCount} 项进行中，
+                    {state.completedTaskCount} 项已完成
+                  </p>
+                </div>
+
+                <span className="card-state">
+                  {state.taskCount} 项
+                </span>
+
+                <Link
+                  className="secondary-button"
+                  to="/task"
+                >
+                  打开
+                </Link>
+              </article>
+
+              <article className="space-card">
+                <div className="space-icon lilac">
+                  <ArchiveIcon />
+                </div>
+
+                <div>
+                  <h3>Archive</h3>
+                  <p>未来的对话归档空间</p>
+                </div>
+
+                <span className="card-state">
+                  Later
+                </span>
+              </article>
+            </div>
+          </section>
+
+          <section className="quiet-panel">
+            <p className="eyebrow">Today at a glance</p>
+
+            <div className="status-row">
+              <div>
+                <span className="status-dot" />
+                <strong>最近一篇日记</strong>
+
+                {state.latestDiary ? (
+                  <>
+                    <p>
+                      {formatDiaryDate(
+                        state.latestDiary.date,
+                      )}
+                      {" · "}
+                      {state.latestDiary.title}
+                    </p>
+
+                    <p>
+                      {truncate(
+                        state.latestDiary.content,
+                        100,
+                      )}
+                    </p>
+                  </>
+                ) : (
+                  <p>还没有日记。</p>
+                )}
+              </div>
+
+              <div>
+                <span className="status-dot" />
+                <strong>下一项任务</strong>
+
+                {state.nextTask ? (
+                  <>
+                    <p>{state.nextTask.title}</p>
+
+                    <p>
+                      截止于{" "}
+                      {formatTaskDueTime(
+                        state.nextTask.due_time,
+                        state.nextTask.timezone,
+                      )}
+                    </p>
+                  </>
+                ) : (
+                  <p>目前没有待处理任务。</p>
+                )}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }
