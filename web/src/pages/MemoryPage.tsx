@@ -48,8 +48,13 @@ function formatUpdatedAt(value: string): string {
   }).format(date);
 }
 
-function matchesSearch(memory: MemoryRecord, searchQuery: string): boolean {
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+function matchesSearch(
+  memory: MemoryRecord,
+  searchQuery: string,
+): boolean {
+  const normalizedQuery = searchQuery
+    .trim()
+    .toLocaleLowerCase();
 
   if (!normalizedQuery) {
     return true;
@@ -77,19 +82,24 @@ export function MemoryPage() {
   });
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [actionError, setActionError] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
   const [category, setCategory] =
     useState<MemoryCategory>("profile");
   const [key, setKey] = useState("");
   const [content, setContent] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const [editingId, setEditingId] = useState("");
   const [editingContent, setEditingContent] = useState("");
+  const [updatingId, setUpdatingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
     let active = true;
+
+    setState({ status: "loading" });
 
     api.request<MemoryResponse>("/memory")
       .then((response) => {
@@ -113,37 +123,85 @@ export function MemoryPage() {
     };
   }, [api, reloadKey]);
 
-  async function handleCreate() {
-    await api.request("/memory", {
-      method: "POST",
-      body: JSON.stringify({
-        category,
-        key,
-        content,
-      }),
-    });
+  const busy =
+    creating ||
+    updatingId.length > 0 ||
+    deletingId.length > 0;
 
-    setKey("");
-    setContent("");
-    setShowCreate(false);
-    setReloadKey((value) => value + 1);
+  const createInvalid =
+    key.trim().length === 0 ||
+    content.trim().length === 0;
+
+  async function handleCreate() {
+    if (createInvalid || busy) {
+      setActionError("Key 和 Content 都不能为空。");
+      return;
+    }
+
+    setCreating(true);
+    setActionError("");
+
+    try {
+      await api.request("/memory", {
+        method: "POST",
+        body: JSON.stringify({
+          category,
+          key: key.trim(),
+          content: content.trim(),
+        }),
+      });
+
+      setKey("");
+      setContent("");
+      setShowCreate(false);
+      setReloadKey((value) => value + 1);
+    } catch {
+      setActionError("创建记忆失败，请稍后重试。");
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function handleUpdate(id: string) {
-    await api.request("/memory", {
-      method: "PATCH",
-      body: JSON.stringify({
-        id,
-        content: editingContent,
-      }),
-    });
+    if (!editingContent.trim()) {
+      setActionError("记忆内容不能为空。");
+      return;
+    }
 
-    setEditingId("");
-    setEditingContent("");
-    setReloadKey((value) => value + 1);
+    if (busy) {
+      return;
+    }
+
+    setUpdatingId(id);
+    setActionError("");
+
+    try {
+      await api.request("/memory", {
+        method: "PATCH",
+        body: JSON.stringify({
+          id,
+          content: editingContent.trim(),
+        }),
+      });
+
+      setEditingId("");
+      setEditingContent("");
+      setReloadKey((value) => value + 1);
+    } catch {
+      setActionError("修改记忆失败，请稍后重试。");
+    } finally {
+      setUpdatingId("");
+    }
   }
 
-  async function handleDelete(id: string, memoryKey: string) {
+  async function handleDelete(
+    id: string,
+    memoryKey: string,
+  ) {
+    if (busy) {
+      return;
+    }
+
     const confirmed = window.confirm(
       `确定删除“${memoryKey.replaceAll("_", " ")}”吗？`,
     );
@@ -153,6 +211,7 @@ export function MemoryPage() {
     }
 
     setDeletingId(id);
+    setActionError("");
 
     try {
       await api.request("/memory", {
@@ -168,6 +227,8 @@ export function MemoryPage() {
       }
 
       setReloadKey((value) => value + 1);
+    } catch {
+      setActionError("删除记忆失败，请稍后重试。");
     } finally {
       setDeletingId("");
     }
@@ -189,12 +250,23 @@ export function MemoryPage() {
         action={
           <button
             className="secondary-button"
-            onClick={() => setShowCreate((value) => !value)}
+            disabled={busy}
+            onClick={() => {
+              setShowCreate((value) => !value);
+              setActionError("");
+            }}
           >
             {showCreate ? "取消新增" : "新增记忆"}
           </button>
         }
       />
+
+      {actionError && (
+        <section className="memory-message">
+          <h2>操作没有完成</h2>
+          <p>{actionError}</p>
+        </section>
+      )}
 
       {showCreate && (
         <section className="memory-message">
@@ -202,9 +274,13 @@ export function MemoryPage() {
 
           <select
             value={category}
-            onChange={(event) =>
-              setCategory(event.target.value as MemoryCategory)
-            }
+            disabled={creating}
+            onChange={(event) => {
+              setCategory(
+                event.target.value as MemoryCategory,
+              );
+              setActionError("");
+            }}
           >
             <option value="profile">Profile</option>
             <option value="preference">Preference</option>
@@ -215,20 +291,29 @@ export function MemoryPage() {
           <input
             placeholder="Key"
             value={key}
-            onChange={(event) => setKey(event.target.value)}
+            disabled={creating}
+            onChange={(event) => {
+              setKey(event.target.value);
+              setActionError("");
+            }}
           />
 
           <textarea
             placeholder="Content"
             value={content}
-            onChange={(event) => setContent(event.target.value)}
+            disabled={creating}
+            onChange={(event) => {
+              setContent(event.target.value);
+              setActionError("");
+            }}
           />
 
           <button
             className="secondary-button"
+            disabled={creating || createInvalid}
             onClick={handleCreate}
           >
-            保存
+            {creating ? "保存中…" : "保存"}
           </button>
         </section>
       )}
@@ -256,8 +341,12 @@ export function MemoryPage() {
           {filteredMemories.length > 0 ? (
             <section className="memory-grid">
               {filteredMemories.map((memory) => {
-                const editing = editingId === memory.id;
-                const deleting = deletingId === memory.id;
+                const editing =
+                  editingId === memory.id;
+                const updating =
+                  updatingId === memory.id;
+                const deleting =
+                  deletingId === memory.id;
 
                 return (
                   <article
@@ -272,7 +361,9 @@ export function MemoryPage() {
                       </span>
 
                       <span>
-                        {formatUpdatedAt(memory.updated_at)}
+                        {formatUpdatedAt(
+                          memory.updated_at,
+                        )}
                       </span>
                     </div>
 
@@ -284,28 +375,39 @@ export function MemoryPage() {
                       <>
                         <textarea
                           value={editingContent}
-                          onChange={(event) =>
-                            setEditingContent(event.target.value)
-                          }
+                          disabled={updating || deleting}
+                          onChange={(event) => {
+                            setEditingContent(
+                              event.target.value,
+                            );
+                            setActionError("");
+                          }}
                         />
 
                         <button
                           className="secondary-button"
+                          disabled={
+                            updating ||
+                            deleting ||
+                            !editingContent.trim()
+                          }
                           onClick={() =>
                             handleUpdate(memory.id)
                           }
-                          disabled={deleting}
                         >
-                          保存修改
+                          {updating
+                            ? "保存中…"
+                            : "保存修改"}
                         </button>
 
                         <button
                           className="secondary-button"
+                          disabled={updating || deleting}
                           onClick={() => {
                             setEditingId("");
                             setEditingContent("");
+                            setActionError("");
                           }}
-                          disabled={deleting}
                         >
                           取消
                         </button>
@@ -316,23 +418,31 @@ export function MemoryPage() {
 
                         <button
                           className="secondary-button"
+                          disabled={busy}
                           onClick={() => {
                             setEditingId(memory.id);
-                            setEditingContent(memory.content);
+                            setEditingContent(
+                              memory.content,
+                            );
+                            setActionError("");
                           }}
-                          disabled={deleting}
                         >
                           编辑
                         </button>
 
                         <button
                           className="secondary-button"
+                          disabled={busy}
                           onClick={() =>
-                            handleDelete(memory.id, memory.key)
+                            handleDelete(
+                              memory.id,
+                              memory.key,
+                            )
                           }
-                          disabled={deleting}
                         >
-                          {deleting ? "删除中…" : "删除"}
+                          {deleting
+                            ? "删除中…"
+                            : "删除"}
                         </button>
                       </>
                     )}
@@ -359,6 +469,16 @@ export function MemoryPage() {
         <MemoryMessage
           title="暂时无法读取记忆"
           description="连接没有完成，请稍后重试。"
+          action={
+            <button
+              className="secondary-button"
+              onClick={() =>
+                setReloadKey((value) => value + 1)
+              }
+            >
+              重新加载
+            </button>
+          }
         />
       )}
     </div>
