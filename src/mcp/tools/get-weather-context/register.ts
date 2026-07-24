@@ -1,12 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { getWeather } from "../../../domains/weather/weather-service.js";
 
 const getWeatherContextOutputSchema = {
   success: z.boolean(),
   data: z.object({
     location: z.string(),
-    province: z.string(),
-    country: z.string(),
     temperature: z.number(),
     condition: z.string(),
     humidity: z.number(),
@@ -31,28 +30,26 @@ export function registerGetWeatherContextTool(server: McpServer): void {
       },
     },
     async () => {
-      const result = {
-        success: true,
-        data: {
-          location: "临沂",
-          province: "山东",
-          country: "中国",
-          temperature: 25,
-          condition: "clear",
-          humidity: 50,
-          wind_speed: 10,
-        },
-      };
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result.data),
-          },
-        ],
-        structuredContent: result,
-      };
-    },
+        const weather = await getWeather(
+          35.1046,
+          118.3564,
+          "山东临沂",
+        );
+      
+        const result = {
+          success: true,
+          data: weather,
+        };
+      
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result),
+            },
+          ],
+          structuredContent: result,
+        };
+      },
   );
 }
