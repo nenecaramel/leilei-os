@@ -21,6 +21,8 @@ export function createWebApiAuthMiddleware(
   verifyAccessToken: AccessTokenVerifier,
 ): RequestHandler {
   return async (request, response, next) => {
+
+    // CORS preflight 不需要 token
     if (request.method === "OPTIONS") {
       next();
       return;
@@ -61,7 +63,9 @@ export function createWebApiAuthMiddleware(
             );
 
       const status =
-        accessTokenError.kind === "insufficient_scope" ? 403 : 401;
+        accessTokenError.kind === "insufficient_scope"
+          ? 403
+          : 401;
 
       response.setHeader(
         "WWW-Authenticate",
