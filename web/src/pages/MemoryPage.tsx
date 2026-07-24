@@ -5,17 +5,19 @@ import { PageHeader } from "./PageHeader";
 
 type MemoryCategory = "profile" | "preference" | "goal" | "project";
 
+type MemoryRecord = {
+  id: string;
+  category: MemoryCategory;
+  key: string;
+  content: string;
+  updated_at: string;
+};
+
 type MemoryResponse = {
   success: true;
   data: {
     user: { display_name: string };
-    memories: Array<{
-      id: string;
-      category: MemoryCategory;
-      key: string;
-      content: string;
-      updated_at: string;
-    }>;
+    memories: MemoryRecord[];
     metadata: { count: number };
   };
 };
@@ -46,6 +48,26 @@ function formatUpdatedAt(value: string): string {
   }).format(date);
 }
 
+function matchesSearch(memory: MemoryRecord, searchQuery: string): boolean {
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const searchableText = [
+    memory.key,
+    memory.key.replaceAll("_", " "),
+    memory.content,
+    memory.category,
+    categoryLabels[memory.category],
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+
+  return searchableText.includes(normalizedQuery);
+}
+
 export function MemoryPage() {
   const api = useWebApiClient();
 
@@ -53,6 +75,8 @@ export function MemoryPage() {
   const [state, setState] = useState<LoadState>({
     status: "loading",
   });
+
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
   const [category, setCategory] =
@@ -149,6 +173,13 @@ export function MemoryPage() {
     }
   }
 
+  const filteredMemories =
+    state.status === "ready"
+      ? state.result.memories.filter((memory) =>
+          matchesSearch(memory, searchQuery),
+        )
+      : [];
+
   return (
     <div className="page memory-page">
       <PageHeader
@@ -160,7 +191,7 @@ export function MemoryPage() {
             className="secondary-button"
             onClick={() => setShowCreate((value) => !value)}
           >
-            新增记忆
+            {showCreate ? "取消新增" : "新增记忆"}
           </button>
         }
       />
@@ -203,90 +234,123 @@ export function MemoryPage() {
       )}
 
       {state.status === "ready" && (
-        <section className="memory-grid">
-          {state.result.memories.map((memory) => {
-            const editing = editingId === memory.id;
-            const deleting = deletingId === memory.id;
+        <>
+          <section className="memory-message">
+            <h2>搜索记忆</h2>
 
-            return (
-              <article
-                className="memory-card"
-                key={memory.id}
-              >
-                <div className="memory-card-topline">
-                  <span
-                    className={`memory-category memory-category-${memory.category}`}
+            <input
+              type="search"
+              placeholder="搜索 Key 或内容"
+              value={searchQuery}
+              onChange={(event) =>
+                setSearchQuery(event.target.value)
+              }
+            />
+
+            <p>
+              显示 {filteredMemories.length} 条，共{" "}
+              {state.result.metadata.count} 条
+            </p>
+          </section>
+
+          {filteredMemories.length > 0 ? (
+            <section className="memory-grid">
+              {filteredMemories.map((memory) => {
+                const editing = editingId === memory.id;
+                const deleting = deletingId === memory.id;
+
+                return (
+                  <article
+                    className="memory-card"
+                    key={memory.id}
                   >
-                    {categoryLabels[memory.category]}
-                  </span>
+                    <div className="memory-card-topline">
+                      <span
+                        className={`memory-category memory-category-${memory.category}`}
+                      >
+                        {categoryLabels[memory.category]}
+                      </span>
 
-                  <span>
-                    {formatUpdatedAt(memory.updated_at)}
-                  </span>
-                </div>
+                      <span>
+                        {formatUpdatedAt(memory.updated_at)}
+                      </span>
+                    </div>
 
-                <h2>
-                  {memory.key.replaceAll("_", " ")}
-                </h2>
+                    <h2>
+                      {memory.key.replaceAll("_", " ")}
+                    </h2>
 
-                {editing ? (
-                  <>
-                    <textarea
-                      value={editingContent}
-                      onChange={(event) =>
-                        setEditingContent(event.target.value)
-                      }
-                    />
+                    {editing ? (
+                      <>
+                        <textarea
+                          value={editingContent}
+                          onChange={(event) =>
+                            setEditingContent(event.target.value)
+                          }
+                        />
 
-                    <button
-                      className="secondary-button"
-                      onClick={() => handleUpdate(memory.id)}
-                      disabled={deleting}
-                    >
-                      保存修改
-                    </button>
+                        <button
+                          className="secondary-button"
+                          onClick={() =>
+                            handleUpdate(memory.id)
+                          }
+                          disabled={deleting}
+                        >
+                          保存修改
+                        </button>
 
-                    <button
-                      className="secondary-button"
-                      onClick={() => {
-                        setEditingId("");
-                        setEditingContent("");
-                      }}
-                      disabled={deleting}
-                    >
-                      取消
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p>{memory.content}</p>
+                        <button
+                          className="secondary-button"
+                          onClick={() => {
+                            setEditingId("");
+                            setEditingContent("");
+                          }}
+                          disabled={deleting}
+                        >
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p>{memory.content}</p>
 
-                    <button
-                      className="secondary-button"
-                      onClick={() => {
-                        setEditingId(memory.id);
-                        setEditingContent(memory.content);
-                      }}
-                      disabled={deleting}
-                    >
-                      编辑
-                    </button>
+                        <button
+                          className="secondary-button"
+                          onClick={() => {
+                            setEditingId(memory.id);
+                            setEditingContent(memory.content);
+                          }}
+                          disabled={deleting}
+                        >
+                          编辑
+                        </button>
 
-                    <button
-                      className="secondary-button"
-                      onClick={() =>
-                        handleDelete(memory.id, memory.key)
-                      }
-                      disabled={deleting}
-                    >
-                      {deleting ? "删除中…" : "删除"}
-                    </button>
-                  </>
-                )}
-              </article>
-            );
-          })}
-        </section>
+                        <button
+                          className="secondary-button"
+                          onClick={() =>
+                            handleDelete(memory.id, memory.key)
+                          }
+                          disabled={deleting}
+                        >
+                          {deleting ? "删除中…" : "删除"}
+                        </button>
+                      </>
+                    )}
+                  </article>
+                );
+              })}
+            </section>
+          ) : (
+            <MemoryMessage
+              title="没有找到记忆"
+              description={
+                searchQuery.trim()
+                  ? "没有与当前搜索内容匹配的记忆。"
+                  : "目前还没有可显示的记忆。"
+              }
+            />
+          )}
+        </>
       )}
 
       {state.status === "loading" && <MemoryLoading />}
