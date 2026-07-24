@@ -52,10 +52,11 @@ export function MemoryPage() {
   const [key, setKey] = useState("");
   const [content, setContent] = useState("");
 
+  const [editingKey, setEditingKey] = useState("");
+  const [editingContent, setEditingContent] = useState("");
+
   useEffect(() => {
     let active = true;
-
-    setState({ status: "loading" });
 
     api.request<MemoryResponse>("/memory")
       .then((response) => {
@@ -66,9 +67,7 @@ export function MemoryPage() {
           });
         }
       })
-      .catch((error) => {
-        console.error("Memory load failed:", error);
-
+      .catch(() => {
         if (active) {
           setState({ status: "error" });
         }
@@ -95,6 +94,20 @@ export function MemoryPage() {
     setReloadKey((value) => value + 1);
   }
 
+  async function handleUpdate(id: string) {
+    await api.request("/memory", {
+      method: "PATCH",
+      body: JSON.stringify({
+        id,
+        content: editingContent,
+      }),
+    });
+
+    setEditingKey("");
+    setEditingContent("");
+    setReloadKey((value) => value + 1);
+  }
+
   const count =
     state.status === "ready"
       ? state.result.metadata.count
@@ -107,20 +120,12 @@ export function MemoryPage() {
         title="Memory"
         description="由 Leilei OS 安全保存的核心信息、稳定偏好、长期目标与当前项目。"
         action={
-          <div>
-            {count !== null && (
-              <span className="memory-count">
-                {count} 条记忆
-              </span>
-            )}
-
-            <button
-              className="secondary-button"
-              onClick={() => setShowCreate((v) => !v)}
-            >
-              新增记忆
-            </button>
-          </div>
+          <button
+            className="secondary-button"
+            onClick={() => setShowCreate((v) => !v)}
+          >
+            新增记忆
+          </button>
         }
       />
 
@@ -152,38 +157,18 @@ export function MemoryPage() {
             onChange={(e) => setContent(e.target.value)}
           />
 
-          <button
-            className="secondary-button"
-            onClick={handleCreate}
-          >
+          <button className="secondary-button" onClick={handleCreate}>
             保存
           </button>
         </section>
       )}
 
-      {state.status === "loading" && <MemoryLoading />}
+      {state.status === "ready" && (
+        <section className="memory-grid">
+          {state.result.memories.map((memory) => {
+            const editing = editingKey === memory.key;
 
-      {state.status === "error" && (
-        <MemoryMessage
-          title="暂时无法读取记忆"
-          description="连接没有完成，请稍后重试。"
-          action={
-            <button
-              className="secondary-button"
-              onClick={() =>
-                setReloadKey((value) => value + 1)
-              }
-            >
-              重新加载
-            </button>
-          }
-        />
-      )}
-
-      {state.status === "ready" &&
-        state.result.memories.length > 0 && (
-          <section className="memory-grid">
-            {state.result.memories.map((memory) => (
+            return (
               <article
                 className="memory-card"
                 key={`${memory.category}:${memory.key}`}
@@ -204,11 +189,51 @@ export function MemoryPage() {
                   {memory.key.replaceAll("_", " ")}
                 </h2>
 
-                <p>{memory.content}</p>
+                {editing ? (
+                  <>
+                    <textarea
+                      value={editingContent}
+                      onChange={(e) =>
+                        setEditingContent(e.target.value)
+                      }
+                    />
+
+                    <button
+                      className="secondary-button"
+                      onClick={() => handleUpdate(memory.key)}
+                    >
+                      保存修改
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p>{memory.content}</p>
+
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        setEditingKey(memory.key);
+                        setEditingContent(memory.content);
+                      }}
+                    >
+                      编辑
+                    </button>
+                  </>
+                )}
               </article>
-            ))}
-          </section>
-        )}
+            );
+          })}
+        </section>
+      )}
+
+      {state.status === "loading" && <MemoryLoading />}
+
+      {state.status === "error" && (
+        <MemoryMessage
+          title="暂时无法读取记忆"
+          description="连接没有完成，请稍后重试。"
+        />
+      )}
     </div>
   );
 }
@@ -241,10 +266,8 @@ function MemoryMessage({
       <div className="placeholder-icon">
         <MemoryIcon />
       </div>
-
       <h2>{title}</h2>
       <p>{description}</p>
-
       {action}
     </section>
   );
