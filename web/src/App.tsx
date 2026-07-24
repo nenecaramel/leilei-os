@@ -2,13 +2,12 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { ProtectedApp } from "./auth/ProtectedApp";
 import {
   ArchiveIcon,
-  DiaryIcon,
-  MemoryIcon,
   TaskIcon,
   UniverseIcon,
 } from "./components/icons";
 import { AppShell } from "./layout/AppShell";
 import { DashboardPage } from "./pages/DashboardPage";
+import { DiaryPage } from "./pages/DiaryPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 
@@ -19,22 +18,17 @@ export default function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<DashboardPage />} />
+
             <Route
               path="memory"
               element={<MemoryPage />}
             />
+
             <Route
               path="diary"
-              element={
-                <PlaceholderPage
-                  eyebrow="Personal journal"
-                  title="Diary"
-                  description="查看和整理个人日记的未来空间。"
-                  note="本阶段不读取、创建或修改 diary_entries。"
-                  icon={<DiaryIcon />}
-                />
-              }
+              element={<DiaryPage />}
             />
+
             <Route
               path="task"
               element={
@@ -47,6 +41,7 @@ export default function App() {
                 />
               }
             />
+
             <Route
               path="chat-archive"
               element={
@@ -59,6 +54,7 @@ export default function App() {
                 />
               }
             />
+
             <Route
               path="universe"
               element={

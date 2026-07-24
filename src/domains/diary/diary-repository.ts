@@ -1,6 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { diaryEntries, toolCalls, users } from "../../database/schema.js";
+import {
+  diaryEntries,
+  toolCalls,
+  users,
+} from "../../database/schema.js";
 
 export type DiaryUserRecord = {
   status: "active" | "disabled";
@@ -35,6 +39,27 @@ export type DiaryRecord = {
   requestHash: string;
 };
 
+export type DiaryEntryRecord = {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  tags: string[];
+  mood: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type UpdateDiaryInput = {
+  userId: string;
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  tags: string[];
+  mood: string | null;
+};
+
 export type PersistDiaryResult =
   | { outcome: "created"; diary: DiaryRecord }
   | { outcome: "replayed"; diary: DiaryRecord }
@@ -42,10 +67,25 @@ export type PersistDiaryResult =
 
 export interface DiaryRepository {
   findUserById(userId: string): Promise<DiaryUserRecord | null>;
+
+  findDiaryEntries(
+    userId: string,
+    limit: number,
+  ): Promise<DiaryEntryRecord[]>;
+
+  findDiaryById(
+    userId: string,
+    id: string,
+  ): Promise<DiaryEntryRecord | null>;
+
   createDiaryWithAudit(
     diary: NormalizedDiaryCreate,
     requestSummary: DiaryAuditRequestSummary,
   ): Promise<PersistDiaryResult>;
+
+  updateDiary(
+    input: UpdateDiaryInput,
+  ): Promise<DiaryEntryRecord | null>;
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -53,14 +93,69 @@ type Database = ReturnType<typeof createDatabase>["db"];
 export class DrizzleDiaryRepository implements DiaryRepository {
   constructor(private readonly db: Database) {}
 
-  async findUserById(userId: string): Promise<DiaryUserRecord | null> {
+  async findUserById(
+    userId: string,
+  ): Promise<DiaryUserRecord | null> {
     const [user] = await this.db
-      .select({ status: users.status })
+      .select({
+        status: users.status,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
 
     return user ?? null;
+  }
+
+  async findDiaryEntries(
+    userId: string,
+    limit: number,
+  ): Promise<DiaryEntryRecord[]> {
+    return this.db
+      .select({
+        id: diaryEntries.id,
+        title: diaryEntries.title,
+        content: diaryEntries.content,
+        date: diaryEntries.date,
+        tags: diaryEntries.tags,
+        mood: diaryEntries.mood,
+        createdAt: diaryEntries.createdAt,
+        updatedAt: diaryEntries.updatedAt,
+      })
+      .from(diaryEntries)
+      .where(eq(diaryEntries.userId, userId))
+      .orderBy(
+        desc(diaryEntries.date),
+        desc(diaryEntries.createdAt),
+      )
+      .limit(limit);
+  }
+
+  async findDiaryById(
+    userId: string,
+    id: string,
+  ): Promise<DiaryEntryRecord | null> {
+    const [diary] = await this.db
+      .select({
+        id: diaryEntries.id,
+        title: diaryEntries.title,
+        content: diaryEntries.content,
+        date: diaryEntries.date,
+        tags: diaryEntries.tags,
+        mood: diaryEntries.mood,
+        createdAt: diaryEntries.createdAt,
+        updatedAt: diaryEntries.updatedAt,
+      })
+      .from(diaryEntries)
+      .where(
+        and(
+          eq(diaryEntries.userId, userId),
+          eq(diaryEntries.id, id),
+        ),
+      )
+      .limit(1);
+
+    return diary ?? null;
   }
 
   async createDiaryWithAudit(
@@ -84,7 +179,10 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           requestHash: diary.requestHash,
         })
         .onConflictDoNothing({
-          target: [diaryEntries.userId, diaryEntries.idempotencyKey],
+          target: [
+            diaryEntries.userId,
+            diaryEntries.idempotencyKey,
+          ],
         })
         .returning({
           id: diaryEntries.id,
@@ -102,11 +200,17 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           requestSummary,
           resourceId: inserted.id,
           status: "success",
-          resultSummary: { created: true, idempotent_replay: false },
+          resultSummary: {
+            created: true,
+            idempotent_replay: false,
+          },
           durationMs: this.elapsedMilliseconds(startedAt),
         });
 
-        return { outcome: "created", diary: inserted };
+        return {
+          outcome: "created",
+          diary: inserted,
+        };
       }
 
       const [existing] = await transaction
@@ -123,13 +227,18 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         .where(
           and(
             eq(diaryEntries.userId, diary.userId),
-            eq(diaryEntries.idempotencyKey, diary.idempotencyKey),
+            eq(
+              diaryEntries.idempotencyKey,
+              diary.idempotencyKey,
+            ),
           ),
         )
         .limit(1);
 
       if (!existing) {
-        throw new Error("Idempotent diary record was not found after conflict.");
+        throw new Error(
+          "Idempotent diary record was not found after conflict.",
+        );
       }
 
       if (existing.requestHash !== diary.requestHash) {
@@ -139,11 +248,16 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           resourceId: null,
           status: "rejected",
           errorCode: "IDEMPOTENCY_CONFLICT",
-          resultSummary: { created: false, idempotent_replay: false },
+          resultSummary: {
+            created: false,
+            idempotent_replay: false,
+          },
           durationMs: this.elapsedMilliseconds(startedAt),
         });
 
-        return { outcome: "conflict" };
+        return {
+          outcome: "conflict",
+        };
       }
 
       await this.insertAudit(transaction, {
@@ -151,16 +265,57 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         requestSummary,
         resourceId: existing.id,
         status: "success",
-        resultSummary: { created: false, idempotent_replay: true },
+        resultSummary: {
+          created: false,
+          idempotent_replay: true,
+        },
         durationMs: this.elapsedMilliseconds(startedAt),
       });
 
-      return { outcome: "replayed", diary: existing };
+      return {
+        outcome: "replayed",
+        diary: existing,
+      };
     });
   }
 
+  async updateDiary(
+    input: UpdateDiaryInput,
+  ): Promise<DiaryEntryRecord | null> {
+    const [updated] = await this.db
+      .update(diaryEntries)
+      .set({
+        title: input.title,
+        content: input.content,
+        date: input.date,
+        tags: input.tags,
+        mood: input.mood,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(diaryEntries.userId, input.userId),
+          eq(diaryEntries.id, input.id),
+        ),
+      )
+      .returning({
+        id: diaryEntries.id,
+        title: diaryEntries.title,
+        content: diaryEntries.content,
+        date: diaryEntries.date,
+        tags: diaryEntries.tags,
+        mood: diaryEntries.mood,
+        createdAt: diaryEntries.createdAt,
+        updatedAt: diaryEntries.updatedAt,
+      });
+
+    return updated ?? null;
+  }
+
   private async insertAudit(
-    transaction: Parameters<Parameters<Database["transaction"]>[0]>[0],
+    transaction: Parameters<
+      Parameters<Database["transaction"]>[0]
+    >[0],
     input: {
       diary: NormalizedDiaryCreate;
       requestSummary: DiaryAuditRequestSummary;
@@ -187,6 +342,9 @@ export class DrizzleDiaryRepository implements DiaryRepository {
   }
 
   private elapsedMilliseconds(startedAt: number): number {
-    return Math.max(0, Math.round(performance.now() - startedAt));
+    return Math.max(
+      0,
+      Math.round(performance.now() - startedAt),
+    );
   }
 }

@@ -4,12 +4,17 @@ import {
   type MemoryApiDependencies,
 } from "./memory-router.js";
 import {
+  createDiaryApiRouter,
+  type DiaryApiDependencies,
+} from "./diary-router.js";
+import {
   createHealthApiRouter,
   type HealthApiDependencies,
 } from "./health-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
+  diary: DiaryApiDependencies;
   health: HealthApiDependencies;
 };
 
@@ -32,13 +37,26 @@ export function createWebApiRouter(
 
     response.json({
       success: true,
-      data: { authenticated: true },
+      data: {
+        authenticated: true,
+      },
     });
   });
 
-  router.use("/memory", createMemoryApiRouter(dependencies.memory));
+  router.use(
+    "/memory",
+    createMemoryApiRouter(dependencies.memory),
+  );
 
-  router.use("/health", createHealthApiRouter(dependencies.health));
+  router.use(
+    "/diary",
+    createDiaryApiRouter(dependencies.diary),
+  );
+
+  router.use(
+    "/health",
+    createHealthApiRouter(dependencies.health),
+  );
 
   return router;
 }

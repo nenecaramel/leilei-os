@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   DiaryAuditRequestSummary,
+  DiaryEntryRecord,
   DiaryRecord,
   DiaryRepository,
   NormalizedDiaryCreate,
@@ -13,6 +14,9 @@ const MAX_TAG_LENGTH = 50;
 const MAX_MOOD_LENGTH = 50;
 const MIN_IDEMPOTENCY_KEY_LENGTH = 16;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+const DEFAULT_DIARY_LIMIT = 50;
+const MAX_DIARY_LIMIT = 100;
+
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -44,10 +48,59 @@ export type CreateDiaryResult = {
   };
 };
 
+export type DiaryEntryResult = {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  tags: string[];
+  mood: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ListDiariesInput = {
+  userId: string;
+  limit?: number;
+};
+
+export type ListDiariesResult = {
+  diaries: DiaryEntryResult[];
+  metadata: {
+    count: number;
+  };
+};
+
+export type ReadDiaryInput = {
+  userId: string;
+  id: string;
+};
+
+export type CreateWebDiaryInput = {
+  userId: string;
+  title: string;
+  content: string;
+  date: string;
+  tags?: readonly string[];
+  mood?: string | null;
+};
+
+export type UpdateWebDiaryInput = {
+  userId: string;
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  tags?: readonly string[];
+  mood?: string | null;
+};
+
 export type DiaryDomainErrorCode =
   | "INVALID_AUTHENTICATED_USER"
   | "USER_NOT_FOUND"
   | "USER_DISABLED"
+  | "DIARY_NOT_FOUND"
+  | "INVALID_DIARY_LIMIT"
   | "INVALID_TITLE"
   | "INVALID_CONTENT"
   | "INVALID_DATE"
@@ -73,19 +126,10 @@ export class DiaryService {
     context: AuthenticatedDiaryContext,
     input: CreateDiaryInput,
   ): Promise<CreateDiaryResult> {
-    const userId = this.requireAuthenticatedUserId(context.userId);
-    const user = await this.repository.findUserById(userId);
-
-    if (!user) {
-      throw new DiaryDomainError("USER_NOT_FOUND", "User was not found.");
-    }
-
-    if (user.status !== "active") {
-      throw new DiaryDomainError("USER_DISABLED", "User is disabled.");
-    }
-
+    const userId = await this.requireActiveUser(context.userId);
     const normalized = this.normalizeInput(userId, input);
     const requestSummary = this.createAuditSummary(normalized);
+
     const persisted = await this.repository.createDiaryWithAudit(
       normalized,
       requestSummary,
@@ -98,11 +142,156 @@ export class DiaryService {
       );
     }
 
-    return this.toResult(
+    return this.toCreateResult(
       persisted.diary,
       persisted.outcome === "created",
       persisted.outcome === "replayed",
     );
+  }
+
+  async listDiaries(
+    input: ListDiariesInput,
+  ): Promise<ListDiariesResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const limit = this.resolveLimit(input.limit);
+
+    const diaries = await this.repository.findDiaryEntries(
+      userId,
+      limit,
+    );
+
+    return {
+      diaries: diaries.map((diary) =>
+        this.toEntryResult(diary),
+      ),
+      metadata: {
+        count: diaries.length,
+      },
+    };
+  }
+
+  async readDiary(
+    input: ReadDiaryInput,
+  ): Promise<DiaryEntryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    const diary = await this.repository.findDiaryById(
+      userId,
+      id,
+    );
+
+    if (!diary) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    return this.toEntryResult(diary);
+  }
+
+  async createWebDiary(
+    input: CreateWebDiaryInput,
+  ): Promise<DiaryEntryResult> {
+    const created = await this.createDiary(
+      {
+        userId: input.userId,
+      },
+      {
+        title: input.title,
+        content: input.content,
+        date: input.date,
+        tags: input.tags ?? [],
+        mood: input.mood,
+        idempotencyKey: `web:${randomUUID()}`,
+      },
+    );
+
+    const diary = await this.repository.findDiaryById(
+      input.userId.trim(),
+      created.diary.id,
+    );
+
+    if (!diary) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Created diary entry could not be read.",
+      );
+    }
+
+    return this.toEntryResult(diary);
+  }
+
+  async updateWebDiary(
+    input: UpdateWebDiaryInput,
+  ): Promise<DiaryEntryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    const normalized = this.normalizeDiaryFields({
+      title: input.title,
+      content: input.content,
+      date: input.date,
+      tags: input.tags ?? [],
+      mood: input.mood,
+    });
+
+    const updated = await this.repository.updateDiary({
+      userId,
+      id,
+      title: normalized.title,
+      content: normalized.content,
+      date: normalized.date,
+      tags: normalized.tags,
+      mood: normalized.mood,
+    });
+
+    if (!updated) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    return this.toEntryResult(updated);
+  }
+
+  private async requireActiveUser(
+    userId: string,
+  ): Promise<string> {
+    const normalized = this.requireAuthenticatedUserId(userId);
+    const user = await this.repository.findUserById(normalized);
+
+    if (!user) {
+      throw new DiaryDomainError(
+        "USER_NOT_FOUND",
+        "User was not found.",
+      );
+    }
+
+    if (user.status !== "active") {
+      throw new DiaryDomainError(
+        "USER_DISABLED",
+        "User is disabled.",
+      );
+    }
+
+    return normalized;
   }
 
   private requireAuthenticatedUserId(userId: string): string {
@@ -122,36 +311,64 @@ export class DiaryService {
     userId: string,
     input: CreateDiaryInput,
   ): NormalizedDiaryCreate {
-    const title = this.normalizeRequiredText(
-      input.title,
-      MAX_TITLE_LENGTH,
-      "INVALID_TITLE",
-      "Diary title",
+    const normalized = this.normalizeDiaryFields(input);
+    const idempotencyKey = this.normalizeIdempotencyKey(
+      input.idempotencyKey,
     );
-    const content = this.normalizeRequiredText(
-      input.content,
-      MAX_CONTENT_LENGTH,
-      "INVALID_CONTENT",
-      "Diary content",
-    );
-    const date = this.normalizeDate(input.date);
-    const tags = this.normalizeTags(input.tags);
-    const mood = this.normalizeMood(input.mood);
-    const idempotencyKey = this.normalizeIdempotencyKey(input.idempotencyKey);
-    const hashPayload = { title, content, date, tags, mood };
+
+    const hashPayload = {
+      title: normalized.title,
+      content: normalized.content,
+      date: normalized.date,
+      tags: normalized.tags,
+      mood: normalized.mood,
+    };
+
     const requestHash = createHash("sha256")
       .update(JSON.stringify(hashPayload), "utf8")
       .digest("hex");
 
     return {
       userId,
-      title,
-      content,
-      date,
-      tags,
-      mood,
+      title: normalized.title,
+      content: normalized.content,
+      date: normalized.date,
+      tags: normalized.tags,
+      mood: normalized.mood,
       idempotencyKey,
       requestHash,
+    };
+  }
+
+  private normalizeDiaryFields(input: {
+    title: string;
+    content: string;
+    date: string;
+    tags: readonly string[];
+    mood?: string | null;
+  }): {
+    title: string;
+    content: string;
+    date: string;
+    tags: string[];
+    mood: string | null;
+  } {
+    return {
+      title: this.normalizeRequiredText(
+        input.title,
+        MAX_TITLE_LENGTH,
+        "INVALID_TITLE",
+        "Diary title",
+      ),
+      content: this.normalizeRequiredText(
+        input.content,
+        MAX_CONTENT_LENGTH,
+        "INVALID_CONTENT",
+        "Diary content",
+      ),
+      date: this.normalizeDate(input.date),
+      tags: this.normalizeTags(input.tags),
+      mood: this.normalizeMood(input.mood),
     };
   }
 
@@ -163,7 +380,10 @@ export class DiaryService {
   ): string {
     const normalized = value.normalize("NFC").trim();
 
-    if (normalized.length === 0 || normalized.length > maxLength) {
+    if (
+      normalized.length === 0 ||
+      normalized.length > maxLength
+    ) {
       throw new DiaryDomainError(
         code,
         `${label} must contain between 1 and ${maxLength} characters.`,
@@ -183,15 +403,23 @@ export class DiaryService {
       );
     }
 
-    const [year, month, day] = normalized.split("-").map(Number);
-    const parsed = new Date(Date.UTC(year!, month! - 1, day!));
+    const [year, month, day] = normalized
+      .split("-")
+      .map(Number);
+
+    const parsed = new Date(
+      Date.UTC(year!, month! - 1, day!),
+    );
 
     if (
       parsed.getUTCFullYear() !== year ||
       parsed.getUTCMonth() + 1 !== month ||
       parsed.getUTCDate() !== day
     ) {
-      throw new DiaryDomainError("INVALID_DATE", "Diary date is not valid.");
+      throw new DiaryDomainError(
+        "INVALID_DATE",
+        "Diary date is not valid.",
+      );
     }
 
     return normalized;
@@ -199,7 +427,10 @@ export class DiaryService {
 
   private normalizeTags(tags: readonly string[]): string[] {
     if (!Array.isArray(tags)) {
-      throw new DiaryDomainError("INVALID_TAGS", "Diary tags must be an array.");
+      throw new DiaryDomainError(
+        "INVALID_TAGS",
+        "Diary tags must be an array.",
+      );
     }
 
     const normalized = [
@@ -207,7 +438,10 @@ export class DiaryService {
         tags.map((tag) => {
           const value = tag.normalize("NFC").trim();
 
-          if (value.length === 0 || value.length > MAX_TAG_LENGTH) {
+          if (
+            value.length === 0 ||
+            value.length > MAX_TAG_LENGTH
+          ) {
             throw new DiaryDomainError(
               "INVALID_TAGS",
               `Each diary tag must contain between 1 and ${MAX_TAG_LENGTH} characters.`,
@@ -229,14 +463,19 @@ export class DiaryService {
     return normalized;
   }
 
-  private normalizeMood(mood?: string | null): string | null {
+  private normalizeMood(
+    mood?: string | null,
+  ): string | null {
     if (mood === undefined || mood === null) {
       return null;
     }
 
     const normalized = mood.normalize("NFC").trim();
 
-    if (normalized.length === 0 || normalized.length > MAX_MOOD_LENGTH) {
+    if (
+      normalized.length === 0 ||
+      normalized.length > MAX_MOOD_LENGTH
+    ) {
       throw new DiaryDomainError(
         "INVALID_MOOD",
         `Diary mood must contain between 1 and ${MAX_MOOD_LENGTH} characters.`,
@@ -263,6 +502,21 @@ export class DiaryService {
     return normalized;
   }
 
+  private resolveLimit(limit?: number): number {
+    if (limit === undefined) {
+      return DEFAULT_DIARY_LIMIT;
+    }
+
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_LIMIT",
+        "Diary limit must be a positive integer.",
+      );
+    }
+
+    return Math.min(limit, MAX_DIARY_LIMIT);
+  }
+
   private createAuditSummary(
     diary: NormalizedDiaryCreate,
   ): DiaryAuditRequestSummary {
@@ -275,7 +529,7 @@ export class DiaryService {
     };
   }
 
-  private toResult(
+  private toCreateResult(
     diary: DiaryRecord,
     created: boolean,
     idempotentReplay: boolean,
@@ -293,6 +547,21 @@ export class DiaryService {
         created,
         idempotent_replay: idempotentReplay,
       },
+    };
+  }
+
+  private toEntryResult(
+    diary: DiaryEntryRecord,
+  ): DiaryEntryResult {
+    return {
+      id: diary.id,
+      title: diary.title,
+      content: diary.content,
+      date: diary.date,
+      tags: diary.tags,
+      mood: diary.mood,
+      created_at: diary.createdAt.toISOString(),
+      updated_at: diary.updatedAt.toISOString(),
     };
   }
 }
