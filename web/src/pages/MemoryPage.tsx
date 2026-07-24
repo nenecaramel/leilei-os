@@ -34,6 +34,7 @@ const categoryLabels: Record<MemoryCategory, string> = {
 function formatUpdatedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "更新时间未知";
+
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "short",
@@ -46,17 +47,31 @@ export function MemoryPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
+  const [showCreate, setShowCreate] = useState(false);
+  const [category, setCategory] = useState<MemoryCategory>("profile");
+  const [key, setKey] = useState("");
+  const [content, setContent] = useState("");
+
   useEffect(() => {
     let active = true;
+
     setState({ status: "loading" });
 
     api.request<MemoryResponse>("/memory")
       .then((response) => {
-        if (active) setState({ status: "ready", result: response.data });
+        if (active) {
+          setState({
+            status: "ready",
+            result: response.data,
+          });
+        }
       })
       .catch((error) => {
         console.error("Memory load failed:", error);
-        if (active) setState({ status: "error" });
+
+        if (active) {
+          setState({ status: "error" });
+        }
       });
 
     return () => {
@@ -64,7 +79,26 @@ export function MemoryPage() {
     };
   }, [api, reloadKey]);
 
-  const count = state.status === "ready" ? state.result.metadata.count : null;
+  async function handleCreate() {
+    await api.request("/memory", {
+      method: "POST",
+      body: JSON.stringify({
+        category,
+        key,
+        content,
+      }),
+    });
+
+    setKey("");
+    setContent("");
+    setShowCreate(false);
+    setReloadKey((value) => value + 1);
+  }
+
+  const count =
+    state.status === "ready"
+      ? state.result.metadata.count
+      : null;
 
   return (
     <div className="page memory-page">
@@ -72,55 +106,120 @@ export function MemoryPage() {
         eyebrow="Long-term context"
         title="Memory"
         description="由 Leilei OS 安全保存的核心信息、稳定偏好、长期目标与当前项目。"
-        action={count !== null ? <span className="memory-count">{count} 条记忆</span> : undefined}
+        action={
+          <div>
+            {count !== null && (
+              <span className="memory-count">
+                {count} 条记忆
+              </span>
+            )}
+
+            <button
+              className="secondary-button"
+              onClick={() => setShowCreate((v) => !v)}
+            >
+              新增记忆
+            </button>
+          </div>
+        }
       />
 
+      {showCreate && (
+        <section className="memory-message">
+          <h2>创建记忆</h2>
+
+          <select
+            value={category}
+            onChange={(e) =>
+              setCategory(e.target.value as MemoryCategory)
+            }
+          >
+            <option value="profile">Profile</option>
+            <option value="preference">Preference</option>
+            <option value="goal">Goal</option>
+            <option value="project">Project</option>
+          </select>
+
+          <input
+            placeholder="Key"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+          />
+
+          <textarea
+            placeholder="Content"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
+
+          <button
+            className="secondary-button"
+            onClick={handleCreate}
+          >
+            保存
+          </button>
+        </section>
+      )}
+
       {state.status === "loading" && <MemoryLoading />}
+
       {state.status === "error" && (
         <MemoryMessage
           title="暂时无法读取记忆"
-          description="连接没有完成，请稍后重试。现有记忆不会受到影响。"
+          description="连接没有完成，请稍后重试。"
           action={
-            <button className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>
+            <button
+              className="secondary-button"
+              onClick={() =>
+                setReloadKey((value) => value + 1)
+              }
+            >
               重新加载
             </button>
           }
         />
       )}
-      {state.status === "ready" && state.result.memories.length === 0 && (
-        <MemoryMessage
-          title="这里还很安静"
-          description="当前没有可供助手读取的核心记忆。"
-        />
-      )}
-      {state.status === "ready" && state.result.memories.length > 0 && (
-        <section className="memory-grid" aria-live="polite">
-          {state.result.memories.map((memory) => (
-            <article className="memory-card" key={`${memory.category}:${memory.key}`}>
-              <div className="memory-card-topline">
-                <span className={`memory-category memory-category-${memory.category}`}>
-                  {categoryLabels[memory.category]}
-                </span>
-                <span>{formatUpdatedAt(memory.updated_at)}</span>
-              </div>
-              <h2>{memory.key.replaceAll("_", " ")}</h2>
-              <p>{memory.content}</p>
-            </article>
-          ))}
-        </section>
-      )}
+
+      {state.status === "ready" &&
+        state.result.memories.length > 0 && (
+          <section className="memory-grid">
+            {state.result.memories.map((memory) => (
+              <article
+                className="memory-card"
+                key={`${memory.category}:${memory.key}`}
+              >
+                <div className="memory-card-topline">
+                  <span
+                    className={`memory-category memory-category-${memory.category}`}
+                  >
+                    {categoryLabels[memory.category]}
+                  </span>
+
+                  <span>
+                    {formatUpdatedAt(memory.updated_at)}
+                  </span>
+                </div>
+
+                <h2>
+                  {memory.key.replaceAll("_", " ")}
+                </h2>
+
+                <p>{memory.content}</p>
+              </article>
+            ))}
+          </section>
+        )}
     </div>
   );
 }
 
 function MemoryLoading() {
   return (
-    <section className="memory-grid" aria-label="正在加载记忆" aria-live="polite">
+    <section className="memory-grid">
       {[0, 1, 2].map((item) => (
         <div className="memory-card memory-card-loading" key={item}>
           <span />
           <strong />
-          <p />
           <p />
         </div>
       ))}
@@ -138,10 +237,14 @@ function MemoryMessage({
   title: string;
 }) {
   return (
-    <section className="memory-message" aria-live="polite">
-      <div className="placeholder-icon"><MemoryIcon /></div>
+    <section className="memory-message">
+      <div className="placeholder-icon">
+        <MemoryIcon />
+      </div>
+
       <h2>{title}</h2>
       <p>{description}</p>
+
       {action}
     </section>
   );

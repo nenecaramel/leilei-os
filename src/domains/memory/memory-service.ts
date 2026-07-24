@@ -1,4 +1,6 @@
 import type {
+  CreateMemoryInput,
+  UpdateMemoryInput,
   MemoryCategory,
   MemoryRepository,
 } from "./memory-repository.js";
@@ -93,6 +95,27 @@ export class MemoryService {
     };
   }
 
+  async createMemory(input: CreateMemoryInput): Promise<void> {
+    await this.repository.createMemory({
+      userId: input.userId,
+      category: input.category,
+      key: input.key.trim(),
+      content: input.content.trim(),
+      source: "web",
+    });
+  }
+
+  async updateMemory(input: UpdateMemoryInput): Promise<void> {
+    await this.repository.updateMemory(input);
+  }
+
+  async archiveMemory(input: {
+    userId: string;
+    id: string;
+  }): Promise<void> {
+    await this.repository.archiveMemory(input);
+  }
+
   private validateCategories(
     categories?: readonly string[],
   ): MemoryCategory[] | undefined {
@@ -102,6 +125,7 @@ export class MemoryService {
 
     const allowedCategories = new Set<string>(ALLOWED_CATEGORIES);
     const normalized = [...new Set(categories)];
+
     const invalidCategory = normalized.find(
       (category) => !allowedCategories.has(category),
     );

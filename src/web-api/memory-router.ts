@@ -7,6 +7,13 @@ import {
 export type MemoryApiDependencies = {
   memoryService: {
     readMemory(input: { userId: string }): Promise<ReadMemoryResult>;
+
+    createMemory(input: {
+      userId: string;
+      category: "profile" | "preference" | "goal" | "project";
+      key: string;
+      content: string;
+    }): Promise<void>;
   };
 };
 
@@ -15,6 +22,7 @@ export function createMemoryApiRouter(
 ): Router {
   const router = Router();
   router.get("/", createReadMemoryApiHandler(dependencies));
+  router.post("/", createCreateMemoryApiHandler(dependencies));
   return router;
 }
 
@@ -60,6 +68,45 @@ export function createReadMemoryApiHandler(
         error: {
           code: "MEMORY_UNAVAILABLE",
           message: "Memory is temporarily unavailable.",
+        },
+      });
+    }
+  };
+}
+export function createCreateMemoryApiHandler(
+  dependencies: MemoryApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!request.webUserId) {
+      response.status(401).json({
+        success: false,
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Web API authentication is required.",
+        },
+      });
+      return;
+    }
+
+    try {
+      await dependencies.memoryService.createMemory({
+        userId: request.webUserId,
+        category: request.body.category,
+        key: request.body.key,
+        content: request.body.content,
+      });
+
+      response.json({
+        success: true,
+      });
+    } catch (error) {
+      console.error("Create memory failed", error);
+
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "CREATE_MEMORY_FAILED",
+          message: "Unable to create memory.",
         },
       });
     }
