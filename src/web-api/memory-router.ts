@@ -20,6 +20,11 @@ export type MemoryApiDependencies = {
       id: string;
       content: string;
     }): Promise<void>;
+
+    archiveMemory(input: {
+      userId: string;
+      id: string;
+    }): Promise<void>;
   };
 };
 
@@ -80,8 +85,6 @@ export function createReadMemoryApiHandler(
         return;
       }
 
-      console.error("Web Memory API failed", error);
-
       response.status(503).json({
         success: false,
         error: {
@@ -119,9 +122,7 @@ export function createCreateMemoryApiHandler(
       response.json({
         success: true,
       });
-    } catch (error) {
-      console.error("Create memory failed", error);
-
+    } catch {
       response.status(400).json({
         success: false,
         error: {
@@ -158,9 +159,7 @@ export function createUpdateMemoryApiHandler(
       response.json({
         success: true,
       });
-    } catch (error) {
-      console.error("Update memory failed", error);
-
+    } catch {
       response.status(400).json({
         success: false,
         error: {
