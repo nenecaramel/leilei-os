@@ -14,6 +14,7 @@ export type MemoryUserRecord = {
 };
 
 export type ActiveAssistantMemoryRecord = {
+  id: string;
   category: MemoryCategory;
   key: string;
   content: string;
@@ -91,6 +92,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
 
     return this.db
       .select({
+        id: coreMemories.id,
         category: coreMemories.category,
         key: coreMemories.key,
         content: coreMemories.content,

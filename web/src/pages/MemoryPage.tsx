@@ -10,6 +10,7 @@ type MemoryResponse = {
   data: {
     user: { display_name: string };
     memories: Array<{
+      id: string;
       category: MemoryCategory;
       key: string;
       content: string;
@@ -33,7 +34,10 @@ const categoryLabels: Record<MemoryCategory, string> = {
 
 function formatUpdatedAt(value: string): string {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "更新时间未知";
+
+  if (Number.isNaN(date.getTime())) {
+    return "更新时间未知";
+  }
 
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
@@ -45,14 +49,17 @@ function formatUpdatedAt(value: string): string {
 export function MemoryPage() {
   const api = useWebApiClient();
   const [reloadKey, setReloadKey] = useState(0);
-  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [state, setState] = useState<LoadState>({
+    status: "loading",
+  });
 
   const [showCreate, setShowCreate] = useState(false);
-  const [category, setCategory] = useState<MemoryCategory>("profile");
+  const [category, setCategory] =
+    useState<MemoryCategory>("profile");
   const [key, setKey] = useState("");
   const [content, setContent] = useState("");
 
-  const [editingKey, setEditingKey] = useState("");
+  const [editingId, setEditingId] = useState("");
   const [editingContent, setEditingContent] = useState("");
 
   useEffect(() => {
@@ -69,7 +76,9 @@ export function MemoryPage() {
       })
       .catch(() => {
         if (active) {
-          setState({ status: "error" });
+          setState({
+            status: "error",
+          });
         }
       });
 
@@ -103,15 +112,10 @@ export function MemoryPage() {
       }),
     });
 
-    setEditingKey("");
+    setEditingId("");
     setEditingContent("");
     setReloadKey((value) => value + 1);
   }
-
-  const count =
-    state.status === "ready"
-      ? state.result.metadata.count
-      : null;
 
   return (
     <div className="page memory-page">
@@ -122,7 +126,7 @@ export function MemoryPage() {
         action={
           <button
             className="secondary-button"
-            onClick={() => setShowCreate((v) => !v)}
+            onClick={() => setShowCreate((value) => !value)}
           >
             新增记忆
           </button>
@@ -157,7 +161,10 @@ export function MemoryPage() {
             onChange={(e) => setContent(e.target.value)}
           />
 
-          <button className="secondary-button" onClick={handleCreate}>
+          <button
+            className="secondary-button"
+            onClick={handleCreate}
+          >
             保存
           </button>
         </section>
@@ -166,12 +173,12 @@ export function MemoryPage() {
       {state.status === "ready" && (
         <section className="memory-grid">
           {state.result.memories.map((memory) => {
-            const editing = editingKey === memory.key;
+            const editing = editingId === memory.id;
 
             return (
               <article
                 className="memory-card"
-                key={`${memory.category}:${memory.key}`}
+                key={memory.id}
               >
                 <div className="memory-card-topline">
                   <span
@@ -200,7 +207,7 @@ export function MemoryPage() {
 
                     <button
                       className="secondary-button"
-                      onClick={() => handleUpdate(memory.key)}
+                      onClick={() => handleUpdate(memory.id)}
                     >
                       保存修改
                     </button>
@@ -212,7 +219,7 @@ export function MemoryPage() {
                     <button
                       className="secondary-button"
                       onClick={() => {
-                        setEditingKey(memory.key);
+                        setEditingId(memory.id);
                         setEditingContent(memory.content);
                       }}
                     >
@@ -242,7 +249,10 @@ function MemoryLoading() {
   return (
     <section className="memory-grid">
       {[0, 1, 2].map((item) => (
-        <div className="memory-card memory-card-loading" key={item}>
+        <div
+          className="memory-card memory-card-loading"
+          key={item}
+        >
           <span />
           <strong />
           <p />
@@ -266,8 +276,10 @@ function MemoryMessage({
       <div className="placeholder-icon">
         <MemoryIcon />
       </div>
+
       <h2>{title}</h2>
       <p>{description}</p>
+
       {action}
     </section>
   );

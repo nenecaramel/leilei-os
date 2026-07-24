@@ -1,6 +1,4 @@
 import type {
-  CreateMemoryInput,
-  UpdateMemoryInput,
   MemoryCategory,
   MemoryRepository,
 } from "./memory-repository.js";
@@ -23,11 +21,25 @@ export type ReadMemoryInput = {
   limit?: number;
 };
 
+export type CreateMemoryInput = {
+  userId: string;
+  category: MemoryCategory;
+  key: string;
+  content: string;
+};
+
+export type UpdateMemoryInput = {
+  userId: string;
+  id: string;
+  content: string;
+};
+
 export type ReadMemoryResult = {
   user: {
     display_name: string;
   };
   memories: Array<{
+    id: string;
     category: MemoryCategory;
     key: string;
     content: string;
@@ -84,6 +96,7 @@ export class MemoryService {
         display_name: user.displayName,
       },
       memories: memories.map((memory) => ({
+        id: memory.id,
         category: memory.category,
         key: memory.key,
         content: this.limitContent(memory.content),
@@ -106,7 +119,11 @@ export class MemoryService {
   }
 
   async updateMemory(input: UpdateMemoryInput): Promise<void> {
-    await this.repository.updateMemory(input);
+    await this.repository.updateMemory({
+      userId: input.userId,
+      id: input.id,
+      content: input.content.trim(),
+    });
   }
 
   async archiveMemory(input: {
@@ -146,7 +163,11 @@ export class MemoryService {
     }
 
     const normalized = [
-      ...new Set(keys.map((key) => key.trim()).filter((key) => key.length > 0)),
+      ...new Set(
+        keys
+          .map((key) => key.trim())
+          .filter((key) => key.length > 0),
+      ),
     ];
 
     return normalized.length > 0 ? normalized : undefined;
