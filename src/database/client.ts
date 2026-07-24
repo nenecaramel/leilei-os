@@ -6,6 +6,7 @@ export function createDatabase(databaseUrl: string) {
   const client = postgres(databaseUrl, {
     max: 10,
     prepare: false,
+    ssl: "require",
   });
 
   return {
