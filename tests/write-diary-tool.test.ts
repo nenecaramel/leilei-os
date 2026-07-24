@@ -93,7 +93,8 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
   const response = await client.listTools();
   assert.deepEqual(
     response.tools.map((tool) => tool.name).sort(),
-    ["create_task", "hello", "read_memory", "write_diary"],
+    ["create_task","get_local_context", "hello", "read_memory", "write_diary" ,
+    ],
   );
 
   const writeDiary = response.tools.find((tool) => tool.name === "write_diary");

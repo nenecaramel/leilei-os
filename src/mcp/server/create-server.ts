@@ -8,6 +8,7 @@ import { DrizzleTaskRepository } from "../../domains/task/task-repository.js";
 import { createDatabase } from "../../database/client.js";
 import { env } from "../../config/env.js";
 import { registerHelloTool } from "../tools/hello/register.js";
+import { registerGetLocalContextTool } from "../tools/get-local-context/register.js";
 import {
   ReadMemoryAuthenticationError,
   registerReadMemoryTool,
@@ -112,6 +113,7 @@ export function createMcpServer(
   });
 
   registerHelloTool(server);
+  registerGetLocalContextTool(server);
   registerReadMemoryTool(
     server,
     dependencies.readMemory ?? {
