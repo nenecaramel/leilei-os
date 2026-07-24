@@ -9,6 +9,7 @@ import { createDatabase } from "../../database/client.js";
 import { env } from "../../config/env.js";
 import { registerHelloTool } from "../tools/hello/register.js";
 import { registerGetLocalContextTool } from "../tools/get-local-context/register.js";
+import { registerGetWeatherContextTool } from "../tools/get-weather-context/register.js";
 import {
   ReadMemoryAuthenticationError,
   registerReadMemoryTool,
@@ -114,6 +115,7 @@ export function createMcpServer(
 
   registerHelloTool(server);
   registerGetLocalContextTool(server);
+  registerGetWeatherContextTool(server)
   registerReadMemoryTool(
     server,
     dependencies.readMemory ?? {
