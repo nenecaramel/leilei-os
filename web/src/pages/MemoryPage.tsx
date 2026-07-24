@@ -54,7 +54,8 @@ export function MemoryPage() {
       .then((response) => {
         if (active) setState({ status: "ready", result: response.data });
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("Memory load failed:", error);
         if (active) setState({ status: "error" });
       });
 
