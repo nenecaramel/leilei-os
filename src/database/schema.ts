@@ -339,3 +339,36 @@ export const tasks = pgTable(
     ),
   ],
 );
+export const healthRecords = pgTable(
+  "health_records",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+
+    date: date("date", { mode: "string" }).notNull(),
+
+    steps: integer("steps"),
+
+    periodStartDate: date("period_start_date", {
+      mode: "string",
+    }),
+
+    cycleDay: integer("cycle_day"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("health_records_user_date_idx").on(
+      table.userId,
+      table.date.desc(),
+    ),
+  ],
+);

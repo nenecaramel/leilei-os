@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { z } from "zod";
 
 const httpsUrl = z.string().url().refine((value) => value.startsWith("https://"), {
@@ -17,7 +18,31 @@ const baseEnvSchema = z.object({
   AUTH0_JWKS_URI: httpsUrl.optional(),
   AUTH0_REQUIRED_SCOPE: z.string().trim().min(1).optional(),
   AUTH0_ALLOWED_SUBJECT: z.string().trim().min(1).optional(),
+  WEB_APP_ORIGIN: httpsUrl.optional(),
+  WEB_AUTH0_AUDIENCE: httpsUrl.optional(),
+  WEB_AUTH0_REQUIRED_SCOPE: z.string().trim().min(1).optional(),
 });
+
+const webApiEnvSchema = baseEnvSchema
+  .pick({
+    MCP_USER_ID: true,
+    AUTH0_ISSUER: true,
+    AUTH0_JWKS_URI: true,
+    AUTH0_ALLOWED_SUBJECT: true,
+    WEB_APP_ORIGIN: true,
+    WEB_AUTH0_AUDIENCE: true,
+    WEB_AUTH0_REQUIRED_SCOPE: true,
+  })
+  .required()
+  .superRefine((config, context) => {
+    if (!config.AUTH0_ISSUER.endsWith("/")) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH0_ISSUER"],
+        message: "AUTH0_ISSUER must end with a slash.",
+      });
+    }
+  });
 
 const oauthEnvSchema = baseEnvSchema
   .extend({
@@ -51,7 +76,21 @@ const oauthEnvSchema = baseEnvSchema
 export const env = baseEnvSchema.parse(process.env);
 export type RuntimeEnv = z.infer<typeof baseEnvSchema>;
 export type AppConfig = z.infer<typeof oauthEnvSchema>;
+export type WebApiConfig = z.infer<typeof webApiEnvSchema>;
 
 export function requireOAuthConfig(environment: RuntimeEnv): AppConfig {
   return oauthEnvSchema.parse(environment);
+}
+
+export function getWebApiConfig(
+  environment: RuntimeEnv,
+): WebApiConfig | undefined {
+  const values = [
+    environment.WEB_APP_ORIGIN,
+    environment.WEB_AUTH0_AUDIENCE,
+    environment.WEB_AUTH0_REQUIRED_SCOPE,
+  ];
+
+  if (values.every((value) => value === undefined)) return undefined;
+  return webApiEnvSchema.parse(environment);
 }
