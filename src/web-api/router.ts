@@ -15,12 +15,17 @@ import {
   createHealthApiRouter,
   type HealthApiDependencies,
 } from "./health-router.js";
+import {
+  createSettingsApiRouter,
+  type SettingsApiDependencies,
+} from "./settings-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
   diary: DiaryApiDependencies;
   task: TaskApiDependencies;
   health: HealthApiDependencies;
+  settings: SettingsApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -66,6 +71,11 @@ export function createWebApiRouter(
   router.use(
     "/health",
     createHealthApiRouter(dependencies.health),
+  );
+
+  router.use(
+    "/settings",
+    createSettingsApiRouter(dependencies.settings),
   );
 
   return router;

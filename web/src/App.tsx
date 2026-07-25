@@ -9,6 +9,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { DiaryPage } from "./pages/DiaryPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { TaskPage } from "./pages/TaskPage";
 
 export default function App() {
@@ -32,6 +33,11 @@ export default function App() {
             <Route
               path="task"
               element={<TaskPage />}
+            />
+
+            <Route
+              path="settings"
+              element={<SettingsPage />}
             />
 
             <Route

@@ -7,6 +7,7 @@ import {
   MemoryIcon,
   TaskIcon,
 } from "../components/icons";
+import { useSettings } from "../settings/SettingsProvider";
 import { PageHeader } from "./PageHeader";
 
 type DiaryEntry = {
@@ -137,6 +138,7 @@ function truncate(value: string, length: number): string {
 
 export function DashboardPage() {
   const api = useWebApiClient();
+  const { settings } = useSettings();
 
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<DashboardState>({
@@ -204,12 +206,23 @@ export function DashboardPage() {
         state.taskCount
       : null;
 
+  const preferredName =
+    settings.preferred_name ?? "蕾蕾";
+
+  const pageTitle =
+    settings.home_title ??
+    `${getGreeting()}，${preferredName}`;
+
+  const pageDescription =
+    settings.home_subtitle ??
+    "记忆、日记和任务都汇集在这里。";
+
   return (
     <div className="page dashboard-page">
       <PageHeader
         eyebrow="Personal command center"
-        title={`${getGreeting()}，蕾蕾`}
-        description="记忆、日记和任务都汇集在这里。"
+        title={pageTitle}
+        description={pageDescription}
         action={
           <span className="live-badge">
             {state.status === "ready"

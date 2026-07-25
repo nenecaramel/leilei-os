@@ -30,6 +30,10 @@ import { DrizzleHealthRepository } from "../domains/health/health-repository.js"
 import { HealthService } from "../domains/health/health-service.js";
 import type { HealthApiDependencies } from "../web-api/health-router.js";
 
+import { DrizzleSettingsRepository } from "../domains/settings/settings-repository.js";
+import { SettingsService } from "../domains/settings/settings-service.js";
+import type { SettingsApiDependencies } from "../web-api/settings-router.js";
+
 export type AppDependencies = {
   verifyAccessToken?: AccessTokenVerifier;
   verifyWebAccessToken?: AccessTokenVerifier;
@@ -37,6 +41,7 @@ export type AppDependencies = {
   webDiaryService?: DiaryApiDependencies["diaryService"];
   webTaskService?: TaskApiDependencies["taskService"];
   webHealthService?: HealthApiDependencies["healthService"];
+  webSettingsService?: SettingsApiDependencies["settingsService"];
 };
 
 export function createApp(
@@ -113,11 +118,15 @@ export function createApp(
     let webHealthService =
       dependencies.webHealthService;
 
+    let webSettingsService =
+      dependencies.webSettingsService;
+
     if (
       !webMemoryService ||
       !webDiaryService ||
       !webTaskService ||
-      !webHealthService
+      !webHealthService ||
+      !webSettingsService
     ) {
       if (!env.DATABASE_URL) {
         throw new Error(
@@ -150,13 +159,20 @@ export function createApp(
           new DrizzleHealthRepository(db),
         );
       }
+
+      if (!webSettingsService) {
+        webSettingsService = new SettingsService(
+          new DrizzleSettingsRepository(db),
+        );
+      }
     }
 
     if (
       !webMemoryService ||
       !webDiaryService ||
       !webTaskService ||
-      !webHealthService
+      !webHealthService ||
+      !webSettingsService
     ) {
       throw new Error(
         "Web API services are not configured.",
@@ -184,6 +200,9 @@ export function createApp(
         },
         health: {
           healthService: webHealthService,
+        },
+        settings: {
+          settingsService: webSettingsService,
         },
       }),
     );
