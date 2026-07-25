@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useWebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
+import { useSettings } from "../settings/SettingsProvider";
 import { PageHeader } from "./PageHeader";
 
 type MemoryCategory = "profile" | "preference" | "goal" | "project";
@@ -75,6 +76,7 @@ function matchesSearch(
 
 export function MemoryPage() {
   const api = useWebApiClient();
+  const { settings } = useSettings();
 
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<LoadState>({
@@ -246,7 +248,7 @@ export function MemoryPage() {
       <PageHeader
         eyebrow="Long-term context"
         title="Memory"
-        description="由 Leilei OS 安全保存的核心信息、稳定偏好、长期目标与当前项目。"
+        description={settings.page_copy.memory_subtitle ?? "由 Leilei OS 安全保存的核心信息、稳定偏好、长期目标与当前项目。"}
         action={
           <button
             className="secondary-button"

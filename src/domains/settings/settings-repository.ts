@@ -1,12 +1,16 @@
 import { eq } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { userSettings } from "../../database/schema.js";
+import {
+  userSettings,
+  type UserPageCopy,
+} from "../../database/schema.js";
 
 export type UserSettingsRecord = {
   accentColor: string;
   homeTitle: string | null;
   homeSubtitle: string | null;
   preferredName: string | null;
+  pageCopy: UserPageCopy;
   updatedAt: Date;
 };
 
@@ -16,28 +20,38 @@ export type SaveUserSettingsInput = {
   homeTitle: string | null;
   homeSubtitle: string | null;
   preferredName: string | null;
+  pageCopy: UserPageCopy;
 };
 
 export interface SettingsRepository {
-  findByUserId(userId: string): Promise<UserSettingsRecord | null>;
+  findByUserId(
+    userId: string,
+  ): Promise<UserSettingsRecord | null>;
 
-  save(input: SaveUserSettingsInput): Promise<UserSettingsRecord>;
+  save(
+    input: SaveUserSettingsInput,
+  ): Promise<UserSettingsRecord>;
 
   reset(userId: string): Promise<void>;
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
-export class DrizzleSettingsRepository implements SettingsRepository {
+export class DrizzleSettingsRepository
+  implements SettingsRepository
+{
   constructor(private readonly db: Database) {}
 
-  async findByUserId(userId: string): Promise<UserSettingsRecord | null> {
+  async findByUserId(
+    userId: string,
+  ): Promise<UserSettingsRecord | null> {
     const [settings] = await this.db
       .select({
         accentColor: userSettings.accentColor,
         homeTitle: userSettings.homeTitle,
         homeSubtitle: userSettings.homeSubtitle,
         preferredName: userSettings.preferredName,
+        pageCopy: userSettings.pageCopy,
         updatedAt: userSettings.updatedAt,
       })
       .from(userSettings)
@@ -60,6 +74,7 @@ export class DrizzleSettingsRepository implements SettingsRepository {
         homeTitle: input.homeTitle,
         homeSubtitle: input.homeSubtitle,
         preferredName: input.preferredName,
+        pageCopy: input.pageCopy,
         updatedAt: now,
       })
       .onConflictDoUpdate({
@@ -69,6 +84,7 @@ export class DrizzleSettingsRepository implements SettingsRepository {
           homeTitle: input.homeTitle,
           homeSubtitle: input.homeSubtitle,
           preferredName: input.preferredName,
+          pageCopy: input.pageCopy,
           updatedAt: now,
         },
       })
@@ -77,6 +93,7 @@ export class DrizzleSettingsRepository implements SettingsRepository {
         homeTitle: userSettings.homeTitle,
         homeSubtitle: userSettings.homeSubtitle,
         preferredName: userSettings.preferredName,
+        pageCopy: userSettings.pageCopy,
         updatedAt: userSettings.updatedAt,
       });
 

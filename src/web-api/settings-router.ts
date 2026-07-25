@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from "express";
 import {
   SettingsDomainError,
+  type PageCopyInput,
   type SettingsResult,
 } from "../domains/settings/settings-service.js";
 
@@ -16,9 +17,12 @@ export type SettingsApiDependencies = {
       homeTitle?: string | null;
       homeSubtitle?: string | null;
       preferredName?: string | null;
+      pageCopy?: PageCopyInput;
     }): Promise<SettingsResult>;
 
-    resetSettings(userId: string): Promise<SettingsResult>;
+    resetSettings(
+      userId: string,
+    ): Promise<SettingsResult>;
   };
 };
 
@@ -27,9 +31,20 @@ export function createSettingsApiRouter(
 ): Router {
   const router = Router();
 
-  router.get("/", createReadSettingsApiHandler(dependencies));
-  router.patch("/", createSaveSettingsApiHandler(dependencies));
-  router.delete("/", createResetSettingsApiHandler(dependencies));
+  router.get(
+    "/",
+    createReadSettingsApiHandler(dependencies),
+  );
+
+  router.patch(
+    "/",
+    createSaveSettingsApiHandler(dependencies),
+  );
+
+  router.delete(
+    "/",
+    createResetSettingsApiHandler(dependencies),
+  );
 
   return router;
 }
@@ -43,16 +58,18 @@ export function createReadSettingsApiHandler(
         success: false,
         error: {
           code: "UNAUTHORIZED",
-          message: "Web API authentication is required.",
+          message:
+            "Web API authentication is required.",
         },
       });
       return;
     }
 
     try {
-      const data = await dependencies.settingsService.readSettings({
-        userId: request.webUserId,
-      });
+      const data =
+        await dependencies.settingsService.readSettings({
+          userId: request.webUserId,
+        });
 
       response.json({
         success: true,
@@ -63,7 +80,8 @@ export function createReadSettingsApiHandler(
         success: false,
         error: {
           code: "SETTINGS_UNAVAILABLE",
-          message: "Settings are temporarily unavailable.",
+          message:
+            "Settings are temporarily unavailable.",
         },
       });
     }
@@ -79,20 +97,44 @@ export function createSaveSettingsApiHandler(
         success: false,
         error: {
           code: "UNAUTHORIZED",
-          message: "Web API authentication is required.",
+          message:
+            "Web API authentication is required.",
         },
       });
       return;
     }
 
     try {
-      const data = await dependencies.settingsService.saveSettings({
-        userId: request.webUserId,
-        accentColor: request.body.accent_color,
-        homeTitle: request.body.home_title,
-        homeSubtitle: request.body.home_subtitle,
-        preferredName: request.body.preferred_name,
-      });
+      const pageCopy = request.body.page_copy;
+
+      const data =
+        await dependencies.settingsService.saveSettings({
+          userId: request.webUserId,
+          accentColor: request.body.accent_color,
+          homeTitle: request.body.home_title,
+          homeSubtitle: request.body.home_subtitle,
+          preferredName: request.body.preferred_name,
+          ...(pageCopy
+            ? {
+                pageCopy: {
+                  memorySubtitle:
+                    pageCopy.memory_subtitle,
+                  diarySubtitle:
+                    pageCopy.diary_subtitle,
+                  taskSubtitle:
+                    pageCopy.task_subtitle,
+                  settingsSubtitle:
+                    pageCopy.settings_subtitle,
+                  homeHeroEyebrow:
+                    pageCopy.home_hero_eyebrow,
+                  homeHeroDescriptionMode:
+                    pageCopy.home_hero_description_mode,
+                  homeHeroDescription:
+                    pageCopy.home_hero_description,
+                },
+              }
+            : {}),
+        });
 
       response.json({
         success: true,
@@ -130,16 +172,18 @@ export function createResetSettingsApiHandler(
         success: false,
         error: {
           code: "UNAUTHORIZED",
-          message: "Web API authentication is required.",
+          message:
+            "Web API authentication is required.",
         },
       });
       return;
     }
 
     try {
-      const data = await dependencies.settingsService.resetSettings(
-        request.webUserId,
-      );
+      const data =
+        await dependencies.settingsService.resetSettings(
+          request.webUserId,
+        );
 
       response.json({
         success: true,

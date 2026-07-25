@@ -25,6 +25,13 @@ export function SettingsPage() {
   const [homeTitle, setHomeTitle] = useState("");
   const [homeSubtitle, setHomeSubtitle] = useState("");
   const [preferredName, setPreferredName] = useState("");
+  const [memorySubtitle, setMemorySubtitle] = useState("");
+  const [diarySubtitle, setDiarySubtitle] = useState("");
+  const [taskSubtitle, setTaskSubtitle] = useState("");
+  const [settingsSubtitle, setSettingsSubtitle] = useState("");
+  const [homeHeroEyebrow, setHomeHeroEyebrow] = useState("");
+  const [homeHeroDescriptionMode, setHomeHeroDescriptionMode] = useState<"auto" | "custom">("auto");
+  const [homeHeroDescription, setHomeHeroDescription] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -36,6 +43,13 @@ export function SettingsPage() {
     setHomeTitle(settings.home_title ?? "");
     setHomeSubtitle(settings.home_subtitle ?? "");
     setPreferredName(settings.preferred_name ?? "");
+    setMemorySubtitle(settings.page_copy.memory_subtitle ?? "");
+    setDiarySubtitle(settings.page_copy.diary_subtitle ?? "");
+    setTaskSubtitle(settings.page_copy.task_subtitle ?? "");
+    setSettingsSubtitle(settings.page_copy.settings_subtitle ?? "");
+    setHomeHeroEyebrow(settings.page_copy.home_hero_eyebrow ?? "");
+    setHomeHeroDescriptionMode(settings.page_copy.home_hero_description_mode);
+    setHomeHeroDescription(settings.page_copy.home_hero_description ?? "");
   }, [settings]);
 
   useEffect(() => {
@@ -71,7 +85,7 @@ export function SettingsPage() {
 
     if (!accentColorValid) {
       setActionError(
-        "强调色必须使用完整的六位十六进制格式，例如 #405f4d。",
+        "主题色必须使用完整的六位十六进制格式，例如 #405f4d。",
       );
       return;
     }
@@ -85,6 +99,15 @@ export function SettingsPage() {
         home_title: homeTitle.trim() || null,
         home_subtitle: homeSubtitle.trim() || null,
         preferred_name: preferredName.trim() || null,
+        page_copy: {
+          memory_subtitle: memorySubtitle.trim() || null,
+          diary_subtitle: diarySubtitle.trim() || null,
+          task_subtitle: taskSubtitle.trim() || null,
+          settings_subtitle: settingsSubtitle.trim() || null,
+          home_hero_eyebrow: homeHeroEyebrow.trim() || null,
+          home_hero_description_mode: homeHeroDescriptionMode,
+          home_hero_description: homeHeroDescription.trim() || null,
+        },
       });
 
       setMessage("个性化设置已保存。");
@@ -127,7 +150,7 @@ export function SettingsPage() {
         <PageHeader
           eyebrow="Personal preferences"
           title="Settings"
-          description="调整 Leilei OS 的颜色、首页文字与个人称呼。"
+          description={settings.page_copy.settings_subtitle ?? "调整 Leilei OS 的主题、页面文案与个人称呼。"}
         />
 
         <SettingsMessage
@@ -144,7 +167,7 @@ export function SettingsPage() {
         <PageHeader
           eyebrow="Personal preferences"
           title="Settings"
-          description="调整 Leilei OS 的颜色、首页文字与个人称呼。"
+          description={settings.page_copy.settings_subtitle ?? "调整 Leilei OS 的主题、页面文案与个人称呼。"}
         />
 
         <SettingsMessage
@@ -168,7 +191,7 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="Personal preferences"
         title="Settings"
-        description="调整 Leilei OS 的颜色、首页文字与个人称呼，并在不同设备之间同步。"
+        description={settings.page_copy.settings_subtitle ?? "调整 Leilei OS 的主题、页面文案与个人称呼，并在不同设备之间同步。"}
       />
 
       {actionError && (
@@ -189,7 +212,7 @@ export function SettingsPage() {
         <div className="settings-section-heading">
           <div>
             <p className="eyebrow">Appearance</p>
-            <h2>界面颜色</h2>
+            <h2>整套界面主题</h2>
           </div>
 
           <div
@@ -204,9 +227,9 @@ export function SettingsPage() {
         </div>
 
         <label className="settings-field">
-          <span>强调色</span>
+          <span>主题色</span>
           <small>
-            用于按钮、选中状态与主要视觉元素。
+            系统会根据这个颜色生成页面背景、侧栏、卡片、按钮和状态元素。
           </small>
 
           <div className="settings-color-control">
@@ -294,6 +317,128 @@ export function SettingsPage() {
             placeholder="例如：蕾蕾"
             onChange={(event) => {
               setPreferredName(event.target.value);
+              clearMessages();
+            }}
+          />
+        </label>
+
+        <label className="settings-field">
+          <span>首页大框小标题</span>
+          <small>显示在首页主标题上方，留空时不显示。</small>
+
+          <input
+            type="text"
+            value={homeHeroEyebrow}
+            maxLength={120}
+            disabled={busy}
+            placeholder="例如：Personal command center"
+            onChange={(event) => {
+              setHomeHeroEyebrow(event.target.value);
+              clearMessages();
+            }}
+          />
+        </label>
+
+        <label className="settings-field">
+          <span>首页大框描述</span>
+          <small>选择自动生成或固定显示自定义文字。</small>
+
+          <select
+            value={homeHeroDescriptionMode}
+            disabled={busy}
+            onChange={(event) => {
+              setHomeHeroDescriptionMode(
+                event.target.value as "auto" | "custom",
+              );
+              clearMessages();
+            }}
+          >
+            <option value="auto">跟随系统自动更新</option>
+            <option value="custom">使用自定义描述</option>
+          </select>
+
+          {homeHeroDescriptionMode === "custom" && (
+            <textarea
+              value={homeHeroDescription}
+              maxLength={240}
+              disabled={busy}
+              placeholder="例如：记录记忆、整理任务、连接未来。"
+              onChange={(event) => {
+                setHomeHeroDescription(event.target.value);
+                clearMessages();
+              }}
+            />
+          )}
+        </label>
+
+        <div className="settings-divider" />
+
+        <div className="settings-section-heading">
+          <div>
+            <p className="eyebrow">Page copy</p>
+            <h2>页面文案</h2>
+          </div>
+        </div>
+
+        <label className="settings-field">
+          <span>Memory 页副标题</span>
+          <small>留空时使用系统默认文案。</small>
+
+          <textarea
+            value={memorySubtitle}
+            maxLength={240}
+            disabled={busy}
+            placeholder="由 Leilei OS 安全保存的核心信息、稳定偏好、长期目标与当前项目。"
+            onChange={(event) => {
+              setMemorySubtitle(event.target.value);
+              clearMessages();
+            }}
+          />
+        </label>
+
+        <label className="settings-field">
+          <span>Diary 页副标题</span>
+          <small>留空时使用系统默认文案。</small>
+
+          <textarea
+            value={diarySubtitle}
+            maxLength={240}
+            disabled={busy}
+            placeholder="按时间记录、查看和整理属于蕾蕾的日常。"
+            onChange={(event) => {
+              setDiarySubtitle(event.target.value);
+              clearMessages();
+            }}
+          />
+        </label>
+
+        <label className="settings-field">
+          <span>Task 页副标题</span>
+          <small>留空时使用系统默认文案。</small>
+
+          <textarea
+            value={taskSubtitle}
+            maxLength={240}
+            disabled={busy}
+            placeholder="管理待办事项、截止时间、优先级与完成状态。"
+            onChange={(event) => {
+              setTaskSubtitle(event.target.value);
+              clearMessages();
+            }}
+          />
+        </label>
+
+        <label className="settings-field">
+          <span>Settings 页副标题</span>
+          <small>留空时使用系统默认文案。</small>
+
+          <textarea
+            value={settingsSubtitle}
+            maxLength={240}
+            disabled={busy}
+            placeholder="调整 Leilei OS 的主题、页面文案与个人称呼。"
+            onChange={(event) => {
+              setSettingsSubtitle(event.target.value);
               clearMessages();
             }}
           />

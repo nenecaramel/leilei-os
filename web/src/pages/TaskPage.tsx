@@ -6,6 +6,7 @@ import {
   } from "react";
   import { useWebApiClient } from "../api/useWebApiClient";
   import { TaskIcon } from "../components/icons";
+  import { useSettings } from "../settings/SettingsProvider";
   import { PageHeader } from "./PageHeader";
   
   type TaskStatus =
@@ -140,6 +141,7 @@ import {
   
   export function TaskPage() {
     const api = useWebApiClient();
+    const { settings } = useSettings();
     const listScrollPosition = useRef(0);
   
     const [reloadKey, setReloadKey] = useState(0);
@@ -347,7 +349,7 @@ import {
         <PageHeader
           eyebrow="Focus & execution"
           title="Task"
-          description="管理待办事项、截止时间、优先级与完成状态。"
+          description={settings.page_copy.task_subtitle ?? "管理待办事项、截止时间、优先级与完成状态。"}
           action={
             selectedTask ? (
               <button

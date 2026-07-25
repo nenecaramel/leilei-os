@@ -136,6 +136,29 @@ function truncate(value: string, length: number): string {
     : value;
 }
 
+const CORE_MODULES = [
+  {
+    name: "Memory",
+    capabilities: "创建、编辑、搜索与归档",
+  },
+  {
+    name: "Diary",
+    capabilities: "创建、查看与编辑",
+  },
+  {
+    name: "Task",
+    capabilities: "创建、状态管理与完成",
+  },
+] as const;
+
+const AUTOMATIC_HERO_DESCRIPTION =
+  `${CORE_MODULES.length} 个核心模块已连接：` +
+  CORE_MODULES.map(
+    (module) =>
+      `${module.name} 支持${module.capabilities}`,
+  ).join("；") +
+  "。";
+
 export function DashboardPage() {
   const api = useWebApiClient();
   const { settings } = useSettings();
@@ -217,6 +240,15 @@ export function DashboardPage() {
     settings.home_subtitle ??
     "记忆、日记和任务都汇集在这里。";
 
+  const heroEyebrow =
+    settings.page_copy.home_hero_eyebrow;
+
+  const heroDescription =
+    settings.page_copy.home_hero_description_mode === "custom"
+      ? settings.page_copy.home_hero_description ??
+        AUTOMATIC_HERO_DESCRIPTION
+      : AUTOMATIC_HERO_DESCRIPTION;
+
   return (
     <div className="page dashboard-page">
       <PageHeader
@@ -226,7 +258,7 @@ export function DashboardPage() {
         action={
           <span className="live-badge">
             {state.status === "ready"
-              ? "3 modules connected"
+              ? ` modules connected`
               : "Loading"}
           </span>
         }
@@ -234,9 +266,11 @@ export function DashboardPage() {
 
       <section className="hero-panel">
         <div>
-          <span className="status-pill">
-            Phase 6 · Daily usable
-          </span>
+          {heroEyebrow && (
+            <span className="status-pill">
+              {heroEyebrow}
+            </span>
+          )}
 
           <h2>
             {state.status === "ready"
@@ -244,10 +278,7 @@ export function DashboardPage() {
               : "正在读取你的个人系统。"}
           </h2>
 
-          <p>
-            Memory、Diary 与 Task 已经接入真实数据，
-            可以创建、查看和管理。
-          </p>
+          <p>{heroDescription}</p>
         </div>
 
         <div className="orbit" aria-hidden="true">

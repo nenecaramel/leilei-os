@@ -5,6 +5,7 @@ import {
   } from "react";
   import { useWebApiClient } from "../api/useWebApiClient";
   import { DiaryIcon } from "../components/icons";
+  import { useSettings } from "../settings/SettingsProvider";
   import { PageHeader } from "./PageHeader";
   
   type DiaryEntry = {
@@ -78,6 +79,7 @@ import {
   
   export function DiaryPage() {
     const api = useWebApiClient();
+    const { settings } = useSettings();
     const listScrollPosition = useRef(0);
   
     const [reloadKey, setReloadKey] = useState(0);
@@ -287,7 +289,7 @@ import {
         <PageHeader
           eyebrow="Personal journal"
           title="Diary"
-          description="按时间记录、查看和整理属于蕾蕾的日常。"
+          description={settings.page_copy.diary_subtitle ?? "按时间记录、查看和整理属于蕾蕾的日常。"}
           action={
             selectedDiary ? (
               <button

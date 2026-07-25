@@ -372,6 +372,16 @@ export const healthRecords = pgTable(
     ),
   ],
 );
+export type UserPageCopy = {
+  memorySubtitle?: string;
+  diarySubtitle?: string;
+  taskSubtitle?: string;
+  settingsSubtitle?: string;
+  homeHeroEyebrow?: string | null;
+  homeHeroDescriptionMode?: "auto" | "custom";
+  homeHeroDescription?: string | null;
+};
+
 export const userSettings = pgTable(
   "user_settings",
   {
@@ -393,6 +403,11 @@ export const userSettings = pgTable(
     homeSubtitle: varchar("home_subtitle", { length: 240 }),
 
     preferredName: varchar("preferred_name", { length: 80 }),
+
+    pageCopy: jsonb("page_copy")
+      .$type<UserPageCopy>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

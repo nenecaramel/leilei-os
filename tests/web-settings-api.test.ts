@@ -39,6 +39,15 @@ test("settings api reads settings for authenticated user", async () => {
           home_title: "蕾蕾的生活系统",
           home_subtitle: "记录、整理与前进",
           preferred_name: "蕾蕾",
+      page_copy: {
+        memory_subtitle: "保存重要记忆。",
+        diary_subtitle: "记录每天的生活。",
+        task_subtitle: "管理正在推进的事情。",
+        settings_subtitle: "调整属于蕾蕾的系统。",
+        home_hero_eyebrow: "Leilei OS · Live",
+        home_hero_description_mode: "custom",
+        home_hero_description: "三个核心模块正在运行。",
+      },
           updated_at: "2026-07-25T08:00:00.000Z",
         };
       },
@@ -74,6 +83,15 @@ test("settings api reads settings for authenticated user", async () => {
       home_title: "蕾蕾的生活系统",
       home_subtitle: "记录、整理与前进",
       preferred_name: "蕾蕾",
+      page_copy: {
+        memory_subtitle: "保存重要记忆。",
+        diary_subtitle: "记录每天的生活。",
+        task_subtitle: "管理正在推进的事情。",
+        settings_subtitle: "调整属于蕾蕾的系统。",
+        home_hero_eyebrow: "Leilei OS · Live",
+        home_hero_description_mode: "custom",
+        home_hero_description: "三个核心模块正在运行。",
+      },
       updated_at: "2026-07-25T08:00:00.000Z",
     },
   });
@@ -96,6 +114,17 @@ test("settings api saves settings for authenticated user", async () => {
           home_title: input.homeTitle ?? null,
           home_subtitle: input.homeSubtitle ?? null,
           preferred_name: input.preferredName ?? null,
+          page_copy: {
+            memory_subtitle: input.pageCopy?.memorySubtitle ?? null,
+            diary_subtitle: input.pageCopy?.diarySubtitle ?? null,
+            task_subtitle: input.pageCopy?.taskSubtitle ?? null,
+            settings_subtitle: input.pageCopy?.settingsSubtitle ?? null,
+            home_hero_eyebrow: input.pageCopy?.homeHeroEyebrow ?? null,
+            home_hero_description_mode:
+              input.pageCopy?.homeHeroDescriptionMode ?? "auto",
+            home_hero_description:
+              input.pageCopy?.homeHeroDescription ?? null,
+          },
           updated_at: "2026-07-25T08:30:00.000Z",
         };
       },
@@ -113,6 +142,15 @@ test("settings api saves settings for authenticated user", async () => {
       home_title: "欢迎回家",
       home_subtitle: "这里保存蕾蕾的生活",
       preferred_name: "蕾蕾",
+      page_copy: {
+        memory_subtitle: "保存重要记忆。",
+        diary_subtitle: "记录每天的生活。",
+        task_subtitle: "管理正在推进的事情。",
+        settings_subtitle: "调整属于蕾蕾的系统。",
+        home_hero_eyebrow: "Leilei OS · Live",
+        home_hero_description_mode: "custom",
+        home_hero_description: "三个核心模块正在运行。",
+      },
     },
   } as Request;
 
@@ -127,6 +165,15 @@ test("settings api saves settings for authenticated user", async () => {
       homeTitle: "欢迎回家",
       homeSubtitle: "这里保存蕾蕾的生活",
       preferredName: "蕾蕾",
+      pageCopy: {
+        memorySubtitle: "保存重要记忆。",
+        diarySubtitle: "记录每天的生活。",
+        taskSubtitle: "管理正在推进的事情。",
+        settingsSubtitle: "调整属于蕾蕾的系统。",
+        homeHeroEyebrow: "Leilei OS · Live",
+        homeHeroDescriptionMode: "custom",
+        homeHeroDescription: "三个核心模块正在运行。",
+      },
     },
   ]);
 
@@ -137,6 +184,15 @@ test("settings api saves settings for authenticated user", async () => {
       home_title: "欢迎回家",
       home_subtitle: "这里保存蕾蕾的生活",
       preferred_name: "蕾蕾",
+      page_copy: {
+        memory_subtitle: "保存重要记忆。",
+        diary_subtitle: "记录每天的生活。",
+        task_subtitle: "管理正在推进的事情。",
+        settings_subtitle: "调整属于蕾蕾的系统。",
+        home_hero_eyebrow: "Leilei OS · Live",
+        home_hero_description_mode: "custom",
+        home_hero_description: "三个核心模块正在运行。",
+      },
       updated_at: "2026-07-25T08:30:00.000Z",
     },
   });
