@@ -5,6 +5,8 @@ import { DiaryService } from "../../domains/diary/diary-service.js";
 import { DrizzleDiaryRepository } from "../../domains/diary/diary-repository.js";
 import { TaskService } from "../../domains/task/task-service.js";
 import { DrizzleTaskRepository } from "../../domains/task/task-repository.js";
+import { ToyCommandService } from "../../domains/toy/toy-command-service.js";
+import { DrizzleToyCommandRepository } from "../../domains/toy/toy-command-repository.js";
 import { createDatabase } from "../../database/client.js";
 import { env } from "../../config/env.js";
 import { registerHelloTool } from "../tools/hello/register.js";
@@ -25,10 +27,16 @@ import {
   registerCreateTaskTool,
   type CreateTaskToolDependencies,
 } from "../tools/create-task/register.js";
+import {
+  registerToyCommandTools,
+  ToyCommandAuthenticationError,
+  type ToyCommandToolDependencies,
+} from "../tools/toy-command/register.js";
 
 let defaultMemoryService: MemoryService | undefined;
 let defaultDiaryService: DiaryService | undefined;
 let defaultTaskService: TaskService | undefined;
+let defaultToyCommandService: ToyCommandService | undefined;
 
 function getDefaultMemoryService(): MemoryService {
   if (!defaultMemoryService) {
@@ -69,6 +77,22 @@ function getDefaultTaskService(): TaskService {
   return defaultTaskService;
 }
 
+function getDefaultToyCommandService(): ToyCommandService {
+  if (!defaultToyCommandService) {
+    if (!env.DATABASE_URL) {
+      throw new Error("Toy database is not configured.");
+    }
+
+    const { db } = createDatabase(env.DATABASE_URL);
+    defaultToyCommandService = new ToyCommandService(
+      new DrizzleToyCommandRepository(db),
+      env.LEILEI_TOY_BRIDGE_USER_ID,
+    );
+  }
+
+  return defaultToyCommandService;
+}
+
 const productionReadMemoryDependencies: ReadMemoryToolDependencies = {
   memoryService: {
     readMemory: (input) => getDefaultMemoryService().readMemory(input),
@@ -98,10 +122,21 @@ const productionCreateTaskDependencies: CreateTaskToolDependencies = {
   },
 };
 
+const productionToyCommandDependencies: ToyCommandToolDependencies = {
+  toyCommandService: {
+    create: (userId, input) =>
+      getDefaultToyCommandService().create(userId, input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new ToyCommandAuthenticationError();
+  },
+};
+
 export type McpServerDependencies = {
   readMemory?: ReadMemoryToolDependencies;
   writeDiary?: WriteDiaryToolDependencies;
   createTask?: CreateTaskToolDependencies;
+  toyCommand?: ToyCommandToolDependencies;
 };
 
 export function createMcpServer(
@@ -142,6 +177,16 @@ export function createMcpServer(
       ...productionCreateTaskDependencies,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new CreateTaskAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerToyCommandTools(
+    server,
+    dependencies.toyCommand ?? {
+      ...productionToyCommandDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new ToyCommandAuthenticationError();
         return authenticatedUserId;
       },
     },
