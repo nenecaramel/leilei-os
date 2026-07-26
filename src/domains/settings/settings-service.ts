@@ -11,6 +11,7 @@ const MAX_HOME_SUBTITLE_LENGTH = 240;
 const MAX_PREFERRED_NAME_LENGTH = 80;
 const MAX_PAGE_SUBTITLE_LENGTH = 240;
 const MAX_HOME_HERO_EYEBROW_LENGTH = 120;
+const MAX_HOME_HERO_TITLE_LENGTH = 240;
 const MAX_HOME_HERO_DESCRIPTION_LENGTH = 500;
 
 const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
@@ -25,6 +26,8 @@ export type PageCopyInput = {
   taskSubtitle?: string | null;
   settingsSubtitle?: string | null;
   homeHeroEyebrow?: string | null;
+  homeHeroTitleMode?: "auto" | "custom";
+  homeHeroTitle?: string | null;
   homeHeroDescriptionMode?: "auto" | "custom";
   homeHeroDescription?: string | null;
 };
@@ -44,6 +47,8 @@ export type PageCopyResult = {
   task_subtitle: string | null;
   settings_subtitle: string | null;
   home_hero_eyebrow: string | null;
+  home_hero_title_mode: "auto" | "custom";
+  home_hero_title: string | null;
   home_hero_description_mode: "auto" | "custom";
   home_hero_description: string | null;
 };
@@ -63,6 +68,8 @@ export type SettingsDomainErrorCode =
   | "HOME_SUBTITLE_TOO_LONG"
   | "PREFERRED_NAME_TOO_LONG"
   | "PAGE_COPY_TOO_LONG"
+  | "INVALID_HOME_HERO_TITLE_MODE"
+  | "CUSTOM_HOME_HERO_TITLE_REQUIRED"
   | "INVALID_HOME_HERO_DESCRIPTION_MODE";
 
 export class SettingsDomainError extends Error {
@@ -216,6 +223,35 @@ export class SettingsService {
         "Home hero eyebrow",
       );
 
+    const titleMode =
+      input.homeHeroTitleMode ??
+      existing.homeHeroTitleMode ??
+      "auto";
+
+    if (titleMode !== "auto" && titleMode !== "custom") {
+      throw new SettingsDomainError(
+        "INVALID_HOME_HERO_TITLE_MODE",
+        "Home hero title mode must be auto or custom.",
+      );
+    }
+
+    const homeHeroTitle = this.normalizeNullablePageText(
+      input.homeHeroTitle,
+      existing.homeHeroTitle,
+      MAX_HOME_HERO_TITLE_LENGTH,
+      "Home hero title",
+    );
+
+    if (titleMode === "custom" && !homeHeroTitle) {
+      throw new SettingsDomainError(
+        "CUSTOM_HOME_HERO_TITLE_REQUIRED",
+        "A custom home hero title is required when custom mode is selected.",
+      );
+    }
+
+    pageCopy.homeHeroTitleMode = titleMode;
+    pageCopy.homeHeroTitle = homeHeroTitle;
+
     const descriptionMode =
       input.homeHeroDescriptionMode ??
       existing.homeHeroDescriptionMode ??
@@ -352,6 +388,11 @@ export class SettingsService {
           settings.pageCopy.settingsSubtitle ?? null,
         home_hero_eyebrow:
           settings.pageCopy.homeHeroEyebrow ?? null,
+        home_hero_title_mode:
+          settings.pageCopy.homeHeroTitleMode ??
+          "auto",
+        home_hero_title:
+          settings.pageCopy.homeHeroTitle ?? null,
         home_hero_description_mode:
           settings.pageCopy.homeHeroDescriptionMode ??
           "auto",
@@ -374,6 +415,8 @@ export class SettingsService {
         task_subtitle: null,
         settings_subtitle: null,
         home_hero_eyebrow: null,
+        home_hero_title_mode: "auto",
+        home_hero_title: null,
         home_hero_description_mode: "auto",
         home_hero_description: null,
       },

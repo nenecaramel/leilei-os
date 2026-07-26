@@ -171,6 +171,8 @@ test("settings api saves settings for authenticated user", async () => {
         taskSubtitle: "管理正在推进的事情。",
         settingsSubtitle: "调整属于蕾蕾的系统。",
         homeHeroEyebrow: "Leilei OS · Live",
+        homeHeroTitleMode: undefined,
+        homeHeroTitle: undefined,
         homeHeroDescriptionMode: "custom",
         homeHeroDescription: "三个核心模块正在运行。",
       },
@@ -276,6 +278,93 @@ test("settings api rejects unauthenticated requests", async () => {
     error: {
       code: "UNAUTHORIZED",
       message: "Web API authentication is required.",
+    },
+  });
+});
+
+test("settings api maps home hero title mode and title fields", async () => {
+  let captured: unknown;
+  const handler = createSaveSettingsApiHandler({
+    settingsService: {
+      async readSettings() {
+        throw new Error("Not used in this test.");
+      },
+      async saveSettings(input) {
+        captured = input;
+        return {
+          accent_color: input.accentColor,
+          home_title: null,
+          home_subtitle: null,
+          preferred_name: null,
+          page_copy: {
+            memory_subtitle: null,
+            diary_subtitle: null,
+            task_subtitle: null,
+            settings_subtitle: null,
+            home_hero_eyebrow: null,
+            home_hero_title_mode: input.pageCopy?.homeHeroTitleMode ?? "auto",
+            home_hero_title: input.pageCopy?.homeHeroTitle ?? null,
+            home_hero_description_mode: "auto",
+            home_hero_description: null,
+          },
+          updated_at: "2026-07-26T00:00:00.000Z",
+        };
+      },
+      async resetSettings() {
+        throw new Error("Not used in this test.");
+      },
+    },
+  });
+  const { result, response } = responseRecorder();
+
+  await handler({
+    webUserId: USER_ID,
+    body: {
+      accent_color: "#405f4d",
+      page_copy: {
+        home_hero_title_mode: "custom",
+        home_hero_title: "我的系统正在开花。",
+      },
+    },
+  } as Request, response, () => {});
+
+  assert.deepEqual(captured, {
+    userId: USER_ID,
+    accentColor: "#405f4d",
+    homeTitle: undefined,
+    homeSubtitle: undefined,
+    preferredName: undefined,
+    pageCopy: {
+      memorySubtitle: undefined,
+      diarySubtitle: undefined,
+      taskSubtitle: undefined,
+      settingsSubtitle: undefined,
+      homeHeroEyebrow: undefined,
+      homeHeroTitleMode: "custom",
+      homeHeroTitle: "我的系统正在开花。",
+      homeHeroDescriptionMode: undefined,
+      homeHeroDescription: undefined,
+    },
+  });
+  assert.deepEqual(result.body, {
+    success: true,
+    data: {
+      accent_color: "#405f4d",
+      home_title: null,
+      home_subtitle: null,
+      preferred_name: null,
+      page_copy: {
+        memory_subtitle: null,
+        diary_subtitle: null,
+        task_subtitle: null,
+        settings_subtitle: null,
+        home_hero_eyebrow: null,
+        home_hero_title_mode: "custom",
+        home_hero_title: "我的系统正在开花。",
+        home_hero_description_mode: "auto",
+        home_hero_description: null,
+      },
+      updated_at: "2026-07-26T00:00:00.000Z",
     },
   });
 });
