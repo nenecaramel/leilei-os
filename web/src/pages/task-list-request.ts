@@ -47,7 +47,9 @@ export function buildTaskListRequest(
     setInstantParameter(parameters, "due_from", filters.dueFrom);
     setInstantParameter(parameters, "due_to", filters.dueTo);
   } else {
-    const range = getPresetRange(filters.due, now);
+    const range =
+      getStoredPresetRange(filters) ??
+      getPresetRange(filters.due, now);
     if (range) {
       parameters.set("due_from", range.from);
       parameters.set("due_to", range.to);
@@ -61,6 +63,32 @@ export function buildTaskListRequest(
   return {
     search,
     url: `/task${search}`,
+  };
+}
+
+function getStoredPresetRange(
+  filters: TaskFilters,
+): { from: string; to: string } | null {
+  if (
+    filters.due !== "today" &&
+    filters.due !== "next_7_days"
+  ) {
+    return null;
+  }
+
+  const from = new Date(filters.dueFrom);
+  const to = new Date(filters.dueTo);
+  if (
+    Number.isNaN(from.getTime()) ||
+    Number.isNaN(to.getTime()) ||
+    from >= to
+  ) {
+    return null;
+  }
+
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
   };
 }
 
