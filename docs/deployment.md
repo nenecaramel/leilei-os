@@ -77,6 +77,8 @@ After changing tool definitions, refresh the app's tool list before testing.
 | `MCP_AUTH_TOKEN` | Recommended for protected data | Bearer token used by the MCP authentication middleware. |
 | `DATABASE_URL` | Future database phases | PostgreSQL connection string supplied by Railway or the database provider. |
 | `MCP_USER_ID` | Future single-user phase | Server-controlled user UUID associated with authenticated MCP requests. |
+| `LEILEI_TOY_BRIDGE_KEY` | No | Mac bridge credential; Toy routes remain disabled unless both Toy variables exist. |
+| `LEILEI_TOY_BRIDGE_USER_ID` | No | Server-controlled UUID of the only user whose Toy commands the bridge may claim. |
 
 Rules:
 
@@ -86,6 +88,11 @@ Rules:
 - Use placeholders in examples.
 - Rotate a credential if it is exposed in a terminal recording, screenshot,
   commit, issue, or chat.
+
+For `LEILEI_TOY_BRIDGE_KEY`, use at least 32 bytes from a cryptographically
+secure random source. Do not use names, birthdays, ordinary passwords, or
+readable short phrases. Missing Toy variables disable only the Toy routes and
+do not prevent existing MCP or Web API modules from starting.
 
 ## Deployment verification
 

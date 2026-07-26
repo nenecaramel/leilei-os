@@ -56,6 +56,19 @@ export const taskPriorityEnum = pgEnum("task_priority", [
   "urgent",
 ]);
 
+export const toyCommandActionEnum = pgEnum("toy_command_action", [
+  "set",
+  "stop",
+]);
+
+export const toyCommandStatusEnum = pgEnum("toy_command_status", [
+  "pending",
+  "claimed",
+  "completed",
+  "failed",
+  "expired",
+]);
+
 export const users = pgTable(
   "users",
   {
@@ -336,6 +349,60 @@ export const tasks = pgTable(
     check(
       "tasks_completed_at_consistency",
       sql`(${table.status} = 'completed' AND ${table.completedAt} IS NOT NULL) OR (${table.status} <> 'completed' AND ${table.completedAt} IS NULL)`,
+    ),
+  ],
+);
+
+export const toyCommands = pgTable(
+  "toy_commands",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    action: toyCommandActionEnum("action").notNull(),
+    percent: integer("percent"),
+    status: toyCommandStatusEnum("status").default("pending").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    expiredAt: timestamp("expired_at", { withTimezone: true }),
+    error: varchar("error", { length: 500 }),
+  },
+  (table) => [
+    index("toy_commands_claim_queue_idx").on(
+      table.userId,
+      table.status,
+      table.expiresAt,
+      table.action,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "toy_commands_action_allowed",
+      sql`${table.action} IN ('set', 'stop')`,
+    ),
+    check(
+      "toy_commands_status_allowed",
+      sql`${table.status} IN ('pending', 'claimed', 'completed', 'failed', 'expired')`,
+    ),
+    check(
+      "toy_commands_action_percent_consistency",
+      sql`(${table.action} = 'set' AND ${table.percent} IS NOT NULL AND ${table.percent} BETWEEN 1 AND 40) OR (${table.action} = 'stop' AND ${table.percent} IS NULL)`,
+    ),
+    check(
+      "toy_commands_error_length",
+      sql`${table.error} IS NULL OR char_length(${table.error}) <= 500`,
+    ),
+    check(
+      "toy_commands_expiry_after_creation",
+      sql`${table.expiresAt} > ${table.createdAt}`,
     ),
   ],
 );

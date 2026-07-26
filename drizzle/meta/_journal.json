@@ -43,6 +43,13 @@
       "when": 1784959004277,
       "tag": "0005_clean_blue_shield",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785061096117,
+      "tag": "0006_large_chat",
+      "breakpoints": true
     }
   ]
 }
