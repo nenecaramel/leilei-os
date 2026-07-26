@@ -10,6 +10,13 @@ import {
   import { useSettings } from "../settings/SettingsProvider";
   import { PageHeader } from "./PageHeader";
   import { getTaskActionControls } from "./task-actions";
+  import {
+    EMPTY_TASK_FILTERS,
+    createTaskDetailLocation,
+    getTaskDetailLocation,
+    readTaskFilters,
+    type TaskDueFilter,
+  } from "./task-location";
   
   type TaskStatus =
     | "pending"
@@ -172,6 +179,15 @@ import {
       ),
     ];
   }
+  function initialFilters() {
+    return readTaskFilters(window.location.search);
+  }
+  function presetRange(due: TaskDueFilter) {
+    const start = new Date(); const end = new Date();
+    if (due === "today") { start.setHours(0,0,0,0); end.setHours(0,0,0,0); end.setDate(end.getDate()+1); }
+    if (due === "next_7_days") end.setDate(end.getDate()+7);
+    return due === "today" || due === "next_7_days" ? { from: start.toISOString(), to: end.toISOString() } : null;
+  }
   
   export function TaskPage() {
     const api = useWebApiClient();
@@ -179,6 +195,8 @@ import {
     const listScrollPosition = useRef(0);
   
     const [reloadKey, setReloadKey] = useState(0);
+    const [filters, setFilters] = useState(initialFilters);
+    const [locationVersion, setLocationVersion] = useState(0);
     const [state, setState] = useState<LoadState>({
       status: "loading",
     });
@@ -215,15 +233,34 @@ import {
     const [editingTags, setEditingTags] = useState("");
   
     const [actionError, setActionError] = useState("");
+
+    useEffect(() => {
+      const onPopState = () => {
+        setFilters(initialFilters());
+        setLocationVersion((value) => value + 1);
+      };
+      window.addEventListener("popstate", onPopState);
+      return () => window.removeEventListener("popstate", onPopState);
+    }, []);
   
     useEffect(() => {
       let active = true;
-  
+      const timeout = window.setTimeout(() => {
+      const params = new URLSearchParams();
+      if (filters.q.trim()) params.set("q", filters.q.trim());
+      if (filters.status) params.set("status", filters.status);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.tag.trim()) params.set("tag", filters.tag.trim());
+      if (filters.due) params.set("due", filters.due);
+      if (filters.due === "custom") { if (filters.dueFrom) params.set("due_from", toIsoInstant(filters.dueFrom)); if (filters.dueTo) params.set("due_to", toIsoInstant(filters.dueTo)); }
+      else { const range = presetRange(filters.due); if (range) { params.set("due_from", range.from); params.set("due_to", range.to); } }
+      if (!getTaskDetailLocation(window.location.search).taskId) {
+        window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+      }
       setState({
         status: "loading",
       });
-  
-      api.request<TaskListResponse>("/task")
+      api.request<TaskListResponse>(`/task${params.size ? `?${params}` : ""}`)
         .then((response) => {
           if (!active) {
             return;
@@ -243,10 +280,49 @@ import {
           }
         });
   
+      }, filters.q ? 300 : 0);
+      return () => {
+        active = false;
+        window.clearTimeout(timeout);
+      };
+    }, [api, reloadKey, filters]);
+
+    useEffect(() => {
+      const { taskId } = getTaskDetailLocation(window.location.search);
+      if (!taskId) {
+        setSelectedTask(null);
+        setEditing(false);
+        return;
+      }
+
+      let active = true;
+      setLoadingTaskId(taskId);
+      setActionError("");
+
+      api.request<TaskEntryResponse>(`/task/${taskId}`)
+        .then((response) => {
+          if (!active) return;
+          setSelectedTask(response.data);
+          setEditing(false);
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          });
+        })
+        .catch(() => {
+          if (!active) return;
+          setSelectedTask(null);
+          setActionError("读取任务详情失败，请稍后重试。");
+        })
+        .finally(() => {
+          if (active) setLoadingTaskId("");
+        });
+
       return () => {
         active = false;
       };
-    }, [api, reloadKey]);
+    }, [api, locationVersion]);
+
+    function clearFilters() { setFilters(EMPTY_TASK_FILTERS); }
   
     const createInvalid =
       title.trim().length === 0 ||
@@ -293,8 +369,8 @@ import {
         setTags("");
         setShowCreate(false);
   
-        setSelectedTask(response.data);
         setReloadKey((value) => value + 1);
+        openTaskDetail(response.data.id);
   
         requestAnimationFrame(() => {
           window.scrollTo({
@@ -313,36 +389,31 @@ import {
       if (loadingTaskId) {
         return;
       }
-  
+
       listScrollPosition.current = window.scrollY;
-      setLoadingTaskId(id);
       setActionError("");
-  
-      try {
-        const response = await api.request<TaskEntryResponse>(
-          `/task/${id}`,
-        );
-  
-        setSelectedTask(response.data);
-        setEditing(false);
-  
-        requestAnimationFrame(() => {
-          window.scrollTo({
-            top: 0,
-            behavior: "smooth",
-          });
-        });
-      } catch {
-        setActionError("读取任务详情失败，请稍后重试。");
-      } finally {
-        setLoadingTaskId("");
-      }
+      openTaskDetail(id);
+    }
+
+    function openTaskDetail(id: string) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      window.history.pushState(
+        null,
+        "",
+        createTaskDetailLocation(id, returnTo),
+      );
+      setSelectedTask(null);
+      setLocationVersion((value) => value + 1);
     }
   
     function handleCloseTask() {
+      const { returnTo } = getTaskDetailLocation(window.location.search);
+      window.history.pushState(null, "", returnTo);
       setSelectedTask(null);
       setEditing(false);
       setActionError("");
+      setFilters(initialFilters());
+      setLocationVersion((value) => value + 1);
   
       requestAnimationFrame(() => {
         window.scrollTo({
@@ -470,6 +541,23 @@ import {
             )
           }
         />
+        {!selectedTask && (
+          <section className="memory-message task-filters">
+            <input aria-label="搜索任务" placeholder="搜索任务标题或内容" value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} />
+            <select aria-label="状态筛选" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+              <option value="">全部状态</option><option value="pending">待处理</option><option value="in_progress">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option>
+            </select>
+            <select aria-label="优先级筛选" value={filters.priority} onChange={(event) => setFilters({ ...filters, priority: event.target.value })}>
+              <option value="">全部优先级</option><option value="low">低</option><option value="normal">普通</option><option value="high">高</option><option value="urgent">紧急</option>
+            </select>
+            <input aria-label="标签筛选" placeholder="筛选标签" value={filters.tag} onChange={(event) => setFilters({ ...filters, tag: event.target.value })} />
+            <select aria-label="截止时间筛选" value={filters.due} onChange={(event) => setFilters({ ...filters, due: event.target.value as TaskDueFilter })}>
+              <option value="">全部时间</option><option value="overdue">已逾期</option><option value="today">今天</option><option value="next_7_days">未来七天</option><option value="custom">自定义范围</option>
+            </select>
+            {filters.due === "custom" && <><NativeDateInput aria-label="开始日期" type="datetime-local" value={filters.dueFrom} onChange={(event) => setFilters({ ...filters, dueFrom: event.target.value })} /><NativeDateInput aria-label="结束日期" type="datetime-local" value={filters.dueTo} onChange={(event) => setFilters({ ...filters, dueTo: event.target.value })} /></>}
+            <button className="secondary-button" onClick={clearFilters}>清除全部</button>
+          </section>
+        )}
   
         {actionError && (
           <section className="memory-message">
@@ -808,8 +896,9 @@ import {
             {state.status === "ready" &&
               state.tasks.length === 0 && (
                 <TaskMessage
-                  title="还没有任务"
-                  description="创建第一个任务后，它会显示在这里。"
+                  title={filters.q || filters.status || filters.priority || filters.tag || filters.due ? "没有符合条件的任务" : "还没有任务"}
+                  description={filters.q || filters.status || filters.priority || filters.tag || filters.due ? "试试清除搜索或筛选条件。" : "创建第一个任务后，它会显示在这里。"}
+                  action={filters.q || filters.status || filters.priority || filters.tag || filters.due ? <button className="secondary-button" onClick={clearFilters}>清除筛选</button> : undefined}
                 />
               )}
   

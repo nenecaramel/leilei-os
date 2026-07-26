@@ -1,8 +1,14 @@
 import {
   and,
+  arrayContains,
   asc,
   desc,
   eq,
+  gte,
+  ilike,
+  lt,
+  or,
+  sql,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
@@ -48,6 +54,16 @@ export type TaskRecord = {
   completedAt: Date | null;
 };
 
+export type TaskListQuery = {
+  q?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  tag?: string;
+  dueFrom?: Date;
+  dueTo?: Date;
+  overdueBefore?: Date;
+};
+
 export type UpdateTaskStatusInput = {
   userId: string;
   id: string;
@@ -74,6 +90,7 @@ export interface TaskRepository {
   findTasks(
     userId: string,
     limit: number,
+    query?: TaskListQuery,
   ): Promise<TaskRecord[]>;
 
   findTaskById(
@@ -120,7 +137,30 @@ export class DrizzleTaskRepository
   async findTasks(
     userId: string,
     limit: number,
+    query: TaskListQuery = {},
   ): Promise<TaskRecord[]> {
+    const conditions = [eq(tasks.userId, userId)];
+
+    if (query.q) {
+      const escaped = query.q.replace(/[\\%_]/g, "\\$&");
+      const pattern = `%${escaped}%`;
+      conditions.push(
+        or(
+          ilike(tasks.title, pattern),
+          ilike(tasks.description, pattern),
+        )!,
+      );
+    }
+    if (query.status) conditions.push(eq(tasks.status, query.status));
+    if (query.priority) conditions.push(eq(tasks.priority, query.priority));
+    if (query.tag) conditions.push(arrayContains(tasks.tags, [query.tag]));
+    if (query.dueFrom) conditions.push(gte(tasks.dueTime, query.dueFrom));
+    if (query.dueTo) conditions.push(lt(tasks.dueTime, query.dueTo));
+    if (query.overdueBefore) {
+      conditions.push(lt(tasks.dueTime, query.overdueBefore));
+      conditions.push(sql`${tasks.status} in ('pending', 'in_progress')`);
+    }
+
     return this.db
       .select({
         id: tasks.id,
@@ -136,7 +176,7 @@ export class DrizzleTaskRepository
         completedAt: tasks.completedAt,
       })
       .from(tasks)
-      .where(eq(tasks.userId, userId))
+      .where(and(...conditions))
       .orderBy(
         asc(tasks.dueTime),
         desc(tasks.createdAt),

@@ -14,6 +14,7 @@ import {
       listTasks(input: {
         userId: string;
         limit?: number;
+        query?: import("../domains/task/task-service.js").RawTaskListQuery;
       }): Promise<ListTasksResult>;
   
       readTask(input: {
@@ -79,6 +80,15 @@ import {
       try {
         const data = await dependencies.taskService.listTasks({
           userId: request.webUserId,
+          query: {
+            q: getQueryParam(request.query.q),
+            status: getQueryParam(request.query.status),
+            priority: getQueryParam(request.query.priority),
+            tag: getQueryParam(request.query.tag),
+            due: getQueryParam(request.query.due),
+            dueFrom: getQueryParam(request.query.due_from),
+            dueTo: getQueryParam(request.query.due_to),
+          },
         });
   
         response.json({
@@ -281,4 +291,8 @@ import {
     return Array.isArray(value)
       ? value[0] ?? ""
       : value ?? "";
+  }
+
+  function getQueryParam(value: unknown): string | undefined {
+    return typeof value === "string" ? value : undefined;
   }

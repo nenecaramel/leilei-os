@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Request, Response } from "express";
 import {
+  createListTasksApiHandler,
   createUpdateTaskApiHandler,
   createUpdateTaskStatusApiHandler,
 } from "../src/web-api/task-router.js";
@@ -37,6 +38,74 @@ const task = {
   completed_at: null,
   allowed_actions: ["start", "cancel"] as const,
 };
+
+test("task list api forwards raw query parameters with the authenticated user", async () => {
+  const calls: unknown[] = [];
+  const handler = createListTasksApiHandler({
+    taskService: {
+      async listTasks(input) {
+        calls.push(input);
+        return { tasks: [], metadata: { count: 0 } };
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+
+  await handler({
+    webUserId: "user-1",
+    query: {
+      q: "report",
+      status: "pending",
+      priority: "high",
+      tag: "work",
+      due: "custom",
+      due_from: "2026-07-22T00:00:00Z",
+      due_to: "2026-07-23T00:00:00Z",
+    },
+  } as unknown as Request, response, () => {});
+
+  assert.deepEqual(calls, [{
+    userId: "user-1",
+    query: {
+      q: "report",
+      status: "pending",
+      priority: "high",
+      tag: "work",
+      due: "custom",
+      dueFrom: "2026-07-22T00:00:00Z",
+      dueTo: "2026-07-23T00:00:00Z",
+    },
+  }]);
+  assert.deepEqual(result.body, {
+    success: true,
+    data: { tasks: [], metadata: { count: 0 } },
+  });
+});
+
+test("task list api returns a generic bad request without task content", async () => {
+  const handler = createListTasksApiHandler({
+    taskService: {
+      async listTasks() {
+        throw new TaskDomainError(
+          "INVALID_TASK_QUERY",
+          "Search query contains private task title.",
+        );
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+
+  await handler({ webUserId: "user-1", query: { q: "private" } } as unknown as Request, response, () => {});
+
+  assert.equal(result.status, 400);
+  assert.deepEqual(result.body, {
+    success: false,
+    error: {
+      code: "INVALID_TASK_REQUEST",
+      message: "The task request is invalid.",
+    },
+  });
+});
 
 test("task status api delegates status changes with only the authenticated user", async () => {
   const calls: unknown[] = [];
