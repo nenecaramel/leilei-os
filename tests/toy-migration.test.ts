@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 
 const migrationUrl = new URL("../drizzle/0006_large_chat.sql", import.meta.url);
 
@@ -18,4 +19,15 @@ test("Toy migration defines the constrained short-lived user queue", async () =>
   assert.match(sql, /"toy_commands_claim_queue_idx".*"user_id","status","expires_at","action","created_at","id"/u);
   assert.match(sql, /toy_commands_action_allowed.*IN \('set', 'stop'\)/u);
   assert.match(sql, /toy_commands_status_allowed.*'pending'.*'claimed'.*'completed'.*'failed'.*'expired'/u);
+});
+
+test("the Drizzle migration runner discovers migration 0006 from its journal", () => {
+  const migrations = readMigrationFiles({ migrationsFolder: "drizzle" });
+  const toyMigration = migrations.find(({ sql }) =>
+    sql.some((statement) => statement.includes('CREATE TABLE "toy_commands"'))
+  );
+  assert.ok(toyMigration);
+  assert.ok(toyMigration.sql.some((statement) =>
+    statement.includes('CREATE INDEX "toy_commands_claim_queue_idx"')
+  ));
 });

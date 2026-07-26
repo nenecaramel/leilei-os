@@ -79,13 +79,14 @@ test("ack forwards only route id and body and returns no private command data", 
   const { result, response } = recorder();
   await handler({ params: { id: command.id }, body: { status: "completed" } } as unknown as Request, response, () => {});
   assert.deepEqual(calls, [{ id: command.id, input: { status: "completed" } }]);
+  assert.equal(result.headers["cache-control"], "no-store");
   assert.ok(!JSON.stringify(result.body).includes(command.userId));
 });
 
 test("bridge auth is generic, fail-closed and uses the dedicated header", () => {
   const key = "a".repeat(64);
   const middleware = createToyBridgeAuthMiddleware(key);
-  for (const supplied of [undefined, "b".repeat(64)]) {
+  for (const supplied of [undefined, "b".repeat(64), "c".repeat(4096)]) {
     const { result, response } = recorder();
     let next = false;
     middleware({ header: () => supplied } as unknown as Request, response, (() => { next = true; }) as NextFunction);

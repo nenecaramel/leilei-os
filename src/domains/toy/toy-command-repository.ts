@@ -39,6 +39,11 @@ export class DrizzleToyCommandRepository implements ToyCommandRepository {
 
   async create(userId: string, input: ToyCreateInput): Promise<ToyCommandRecord> {
     return this.db.transaction(async (transaction) => {
+      // Serialize command creation for one bound user so concurrent set/stop
+      // transactions have one deterministic predecessor to replace.
+      await transaction.execute(sql`
+        SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))
+      `);
       await this.expireElapsed(transaction, userId);
 
       await transaction

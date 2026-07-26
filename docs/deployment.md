@@ -78,7 +78,7 @@ After changing tool definitions, refresh the app's tool list before testing.
 | `DATABASE_URL` | Future database phases | PostgreSQL connection string supplied by Railway or the database provider. |
 | `MCP_USER_ID` | Future single-user phase | Server-controlled user UUID associated with authenticated MCP requests. |
 | `LEILEI_TOY_BRIDGE_KEY` | No | Mac bridge credential; Toy routes remain disabled unless both Toy variables exist. |
-| `LEILEI_TOY_BRIDGE_USER_ID` | No | Server-controlled UUID of the only user whose Toy commands the bridge may claim. |
+| `LEILEI_TOY_BRIDGE_USER_ID` | No | PostgreSQL `users.id` UUID of the only user whose Toy commands the bridge may claim; never use the Auth0 `sub`. |
 
 Rules:
 
@@ -93,6 +93,17 @@ For `LEILEI_TOY_BRIDGE_KEY`, use at least 32 bytes from a cryptographically
 secure random source. Do not use names, birthdays, ordinary passwords, or
 readable short phrases. Missing Toy variables disable only the Toy routes and
 do not prevent existing MCP or Web API modules from starting.
+
+`LEILEI_TOY_BRIDGE_USER_ID` must contain the same PostgreSQL UUID already used
+as `MCP_USER_ID` for the single mapped user. Obtain it from the existing
+`users.id` record through an authorized database administration session; do
+not copy the Auth0 `sub` (`auth0|...`) into this variable. The Web JWT subject
+is first mapped server-side to `MCP_USER_ID`, and Toy creation then compares
+that database UUID with `LEILEI_TOY_BRIDGE_USER_ID`.
+
+For Toy acknowledgements, `completed_at` is the terminal acknowledgement time
+for both `completed` and `failed` states. The existing column name is retained
+for schema compatibility.
 
 ## Deployment verification
 
