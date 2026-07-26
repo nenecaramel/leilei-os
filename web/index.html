@@ -9,15 +9,18 @@
     />
     <script>
       (() => {
-        const cacheKey = "leilei-os.theme.v1";
+        const settingsCacheKey = "leilei-os.settings.v1";
+        const legacyThemeCacheKey = "leilei-os.theme.v1";
         const version = 1;
         const accentPattern = /^#[0-9A-Fa-f]{6}$/;
         const allowedPrefix = /^(--theme|--green|--line|--cream|--focus|--shadow)/;
 
         try {
-          const raw = window.localStorage.getItem(cacheKey);
-          if (!raw) return;
-          const cached = JSON.parse(raw);
+          const raw = window.localStorage.getItem(settingsCacheKey);
+          const legacyRaw = raw ? null : window.localStorage.getItem(legacyThemeCacheKey);
+          if (!raw && !legacyRaw) return;
+          const parsed = JSON.parse(raw ?? legacyRaw);
+          const cached = raw ? parsed?.theme : parsed;
           if (
             cached?.version !== version ||
             !accentPattern.test(cached?.accentColor ?? "") ||

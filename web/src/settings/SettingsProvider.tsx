@@ -8,34 +8,21 @@ import {
   type PropsWithChildren,
 } from "react";
 import { useWebApiClient } from "../api/useWebApiClient";
+import { applyThemeColor } from "./theme";
 import {
-  applyThemeColor,
-  readThemeCache,
-  writeThemeCache,
-} from "./theme";
+  getInitialSettings,
+  writeSettingsCache,
+} from "./cache";
+import {
+  DEFAULT_PAGE_COPY,
+  DEFAULT_SETTINGS,
+  type PageCopyData,
+  type SettingsData,
+} from "./types";
 
 const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
-export type PageCopyData = {
-  memory_subtitle: string | null;
-  diary_subtitle: string | null;
-  task_subtitle: string | null;
-  settings_subtitle: string | null;
-  home_hero_eyebrow: string | null;
-  home_hero_title_mode: "auto" | "custom";
-  home_hero_title: string | null;
-  home_hero_description_mode: "auto" | "custom";
-  home_hero_description: string | null;
-};
-
-export type SettingsData = {
-  accent_color: string;
-  home_title: string | null;
-  home_subtitle: string | null;
-  preferred_name: string | null;
-  page_copy: PageCopyData;
-  updated_at: string | null;
-};
+export type { PageCopyData, SettingsData } from "./types";
 
 export type SaveSettingsInput = {
   accent_color: string;
@@ -45,26 +32,7 @@ export type SaveSettingsInput = {
   page_copy: PageCopyData;
 };
 
-export const DEFAULT_PAGE_COPY: PageCopyData = {
-  memory_subtitle: null,
-  diary_subtitle: null,
-  task_subtitle: null,
-  settings_subtitle: null,
-  home_hero_eyebrow: null,
-  home_hero_title_mode: "auto",
-  home_hero_title: null,
-  home_hero_description_mode: "auto",
-  home_hero_description: null,
-};
-
-export const DEFAULT_SETTINGS: SettingsData = {
-  accent_color: "#405f4d",
-  home_title: null,
-  home_subtitle: null,
-  preferred_name: null,
-  page_copy: DEFAULT_PAGE_COPY,
-  updated_at: null,
-};
+export { DEFAULT_PAGE_COPY, DEFAULT_SETTINGS } from "./types";
 
 type SettingsPayload = Omit<SettingsData, "page_copy"> & {
   page_copy?: Partial<PageCopyData>;
@@ -85,22 +53,12 @@ type SettingsContextValue = {
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
-function getInitialSettings(): SettingsData {
-  const cachedTheme =
-    typeof window === "undefined"
-      ? null
-      : readThemeCache(window.localStorage);
+export { getInitialSettings } from "./cache";
 
-  return {
-    ...DEFAULT_SETTINGS,
-    accent_color: cachedTheme?.accentColor ?? DEFAULT_SETTINGS.accent_color,
-  };
-}
-
-function applyAndCacheTheme(color: string): void {
-  applyThemeColor(color);
+function applyAndCacheSettings(settings: SettingsData): void {
+  applyThemeColor(settings.accent_color);
   if (typeof window !== "undefined") {
-    writeThemeCache(window.localStorage, color);
+    writeSettingsCache(window.localStorage, settings);
   }
 }
 
@@ -108,7 +66,11 @@ export function SettingsProvider({ children }: PropsWithChildren) {
   const api = useWebApiClient();
   const [reloadKey, setReloadKey] = useState(0);
   const [status, setStatus] = useState<SettingsStatus>("loading");
-  const [settings, setSettings] = useState<SettingsData>(getInitialSettings);
+  const [settings, setSettings] = useState<SettingsData>(() =>
+    getInitialSettings(
+      typeof window === "undefined" ? undefined : window.localStorage,
+    ),
+  );
   const [accentPreview, setAccentPreview] = useState<string | null>(null);
 
   useEffect(() => {
@@ -119,7 +81,7 @@ export function SettingsProvider({ children }: PropsWithChildren) {
       .then((response) => {
         if (!active) return;
         const nextSettings = normalizeSettings(response.data);
-        applyAndCacheTheme(nextSettings.accent_color);
+        applyAndCacheSettings(nextSettings);
         setSettings(nextSettings);
         setAccentPreview(null);
         setStatus("ready");
@@ -148,7 +110,7 @@ export function SettingsProvider({ children }: PropsWithChildren) {
         body: JSON.stringify(input),
       });
       const nextSettings = normalizeSettings(response.data);
-      applyAndCacheTheme(nextSettings.accent_color);
+      applyAndCacheSettings(nextSettings);
       setSettings(nextSettings);
       setAccentPreview(null);
       setStatus("ready");
@@ -162,7 +124,7 @@ export function SettingsProvider({ children }: PropsWithChildren) {
       method: "DELETE",
     });
     const nextSettings = normalizeSettings(response.data);
-    applyAndCacheTheme(nextSettings.accent_color);
+    applyAndCacheSettings(nextSettings);
     setSettings(nextSettings);
     setAccentPreview(null);
     setStatus("ready");
