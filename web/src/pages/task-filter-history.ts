@@ -8,7 +8,7 @@ type TaskHistoryTarget = Pick<Window, "history" | "location">;
 type TaskHistoryListenerTarget = TaskHistoryTarget &
   Pick<Window, "addEventListener" | "removeEventListener">;
 
-type TaskSearchDebouncerOptions = {
+type TaskFilterDebouncerOptions = {
   delayMs: number;
   commit: (query: string) => void;
   setTimeout: (callback: () => void, delayMs: number) => number;
@@ -20,7 +20,11 @@ export function pushTaskFilterHistory(
   filters: TaskFilters,
 ): boolean {
   const request = buildTaskListRequest(filters);
-  const currentLocation = `${target.location.pathname}${target.location.search}`;
+  const currentRequest = buildTaskListRequest(
+    readTaskFilters(target.location.search),
+  );
+  const currentLocation =
+    `${target.location.pathname}${currentRequest.search}`;
   const nextLocation = `${target.location.pathname}${request.search}`;
 
   if (currentLocation === nextLocation) {
@@ -41,7 +45,24 @@ export function createTaskFilterHistorySnapshot(
     return filters;
   }
 
-  return readTaskFilters(buildTaskListRequest(filters).search);
+  return readTaskFilterHistorySnapshot(
+    buildTaskListRequest(filters).search,
+  );
+}
+
+export function readTaskFilterHistorySnapshot(
+  search: string,
+): TaskFilters {
+  const filters = readTaskFilters(search);
+  if (!filters.dueFrom && !filters.dueTo) {
+    return filters;
+  }
+
+  return {
+    ...filters,
+    dueFrom: toDateTimeLocalValue(filters.dueFrom),
+    dueTo: toDateTimeLocalValue(filters.dueTo),
+  };
 }
 
 export function subscribeToTaskFilterHistory(
@@ -49,19 +70,33 @@ export function subscribeToTaskFilterHistory(
   restore: (filters: TaskFilters) => void,
 ): () => void {
   const onPopState = () => {
-    restore(readTaskFilters(target.location.search));
+    restore(readTaskFilterHistorySnapshot(target.location.search));
   };
 
   target.addEventListener("popstate", onPopState);
   return () => target.removeEventListener("popstate", onPopState);
 }
 
-export function createTaskSearchDebouncer({
+function toDateTimeLocalValue(value: string): string {
+  if (!value) return "";
+
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) {
+    return value;
+  }
+
+  const localTime = new Date(
+    instant.getTime() - instant.getTimezoneOffset() * 60_000,
+  );
+  return localTime.toISOString().slice(0, 16);
+}
+
+export function createTaskFilterDebouncer({
   delayMs,
   commit,
   setTimeout,
   clearTimeout,
-}: TaskSearchDebouncerOptions) {
+}: TaskFilterDebouncerOptions) {
   let timerId: number | null = null;
 
   return {

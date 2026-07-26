@@ -9,6 +9,11 @@ export type TaskRequestTicket = {
   isCurrent(): boolean;
 };
 
+export type TaskRequestTracker = {
+  begin(): TaskRequestTicket;
+  invalidate(): void;
+};
+
 export async function settleLatestTaskRequest<T>(input: {
   request: Promise<T>;
   ticket: TaskRequestTicket;
@@ -92,10 +97,7 @@ function getStoredPresetRange(
   };
 }
 
-export function createLatestTaskRequestTracker(): {
-  begin(): TaskRequestTicket;
-  invalidate(): void;
-} {
+export function createLatestTaskRequestTracker(): TaskRequestTracker {
   let latestRequest = 0;
 
   return {
@@ -109,6 +111,14 @@ export function createLatestTaskRequestTracker(): {
       latestRequest += 1;
     },
   };
+}
+
+export function cancelLatestTaskRequest(
+  tracker: TaskRequestTracker,
+  controller: AbortController | null,
+): void {
+  tracker.invalidate();
+  controller?.abort();
 }
 
 function setTrimmedParameter(
