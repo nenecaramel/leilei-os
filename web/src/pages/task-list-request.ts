@@ -9,6 +9,28 @@ export type TaskRequestTicket = {
   isCurrent(): boolean;
 };
 
+export async function settleLatestTaskRequest<T>(input: {
+  request: Promise<T>;
+  ticket: TaskRequestTicket;
+  signal: AbortSignal;
+  onSuccess(value: T): void;
+  onError(): void;
+}): Promise<void> {
+  try {
+    const value = await input.request;
+    if (input.ticket.isCurrent()) {
+      input.onSuccess(value);
+    }
+  } catch {
+    if (
+      input.ticket.isCurrent() &&
+      !input.signal.aborted
+    ) {
+      input.onError();
+    }
+  }
+}
+
 export function buildTaskListRequest(
   filters: TaskFilters,
   now = new Date(),

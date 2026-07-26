@@ -20,6 +20,7 @@ import {
   import {
     buildTaskListRequest,
     createLatestTaskRequestTracker,
+    settleLatestTaskRequest,
   } from "./task-list-request";
   
   type TaskStatus =
@@ -260,30 +261,23 @@ import {
       setState({
         status: "loading",
       });
-      api.request<TaskListResponse>(request.url, {
+      void settleLatestTaskRequest({
+        request: api.request<TaskListResponse>(request.url, {
+          signal: controller.signal,
+        }),
+        ticket: requestTicket,
         signal: controller.signal,
-      })
-        .then((response) => {
-          if (!requestTicket.isCurrent()) {
-            return;
-          }
-  
+        onSuccess: (response) => {
           setState({
             status: "ready",
             tasks: response.data.tasks,
             count: response.data.metadata.count,
           });
-        })
-        .catch(() => {
-          if (
-            requestTicket.isCurrent() &&
-            !controller.signal.aborted
-          ) {
-            setState({
-              status: "error",
-            });
-          }
-        });
+        },
+        onError: () => {
+          setState({ status: "error" });
+        },
+      });
   
       }, filters.q ? 300 : 0);
       return () => {
@@ -332,6 +326,15 @@ import {
       listRequestTracker.current.invalidate();
       setState({ status: "loading" });
       setFilters(nextFilters);
+
+      if (!getTaskDetailLocation(window.location.search).taskId) {
+        const request = buildTaskListRequest(nextFilters);
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${request.search}`,
+        );
+      }
     }
 
     function clearFilters() {

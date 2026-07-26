@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildTaskListRequest,
   createLatestTaskRequestTracker,
+  settleLatestTaskRequest,
 } from "../web/src/pages/task-list-request.js";
 import {
   EMPTY_TASK_FILTERS,
@@ -57,4 +58,72 @@ test("older task requests cannot become current after a newer tag request starts
 
   tracker.invalidate();
   assert.equal(filterRequest.isCurrent(), false);
+});
+
+test("an older tag response cannot replace the newer request loading state", async () => {
+  const tracker = createLatestTaskRequestTracker();
+  const oldTicket = tracker.begin();
+  const oldController = new AbortController();
+  let visibleState = "loading-filter";
+
+  tracker.invalidate();
+  const currentTicket = tracker.begin();
+
+  await settleLatestTaskRequest({
+    request: Promise.resolve(["filter-test-task"]),
+    ticket: oldTicket,
+    signal: oldController.signal,
+    onSuccess: () => {
+      visibleState = "old-results";
+    },
+    onError: () => {
+      visibleState = "old-error";
+    },
+  });
+
+  assert.equal(visibleState, "loading-filter");
+  assert.equal(currentTicket.isCurrent(), true);
+});
+
+test("an aborted task request does not surface an error", async () => {
+  const tracker = createLatestTaskRequestTracker();
+  const ticket = tracker.begin();
+  const controller = new AbortController();
+  let errorVisible = false;
+
+  controller.abort();
+  await settleLatestTaskRequest({
+    request: Promise.reject(
+      new DOMException("The operation was aborted.", "AbortError"),
+    ),
+    ticket,
+    signal: controller.signal,
+    onSuccess: () => {},
+    onError: () => {
+      errorVisible = true;
+    },
+  });
+
+  assert.equal(errorVisible, false);
+});
+
+test("the latest real task request failure remains visible and retryable", async () => {
+  const tracker = createLatestTaskRequestTracker();
+  const ticket = tracker.begin();
+  const controller = new AbortController();
+  let visibleState = "loading";
+
+  await settleLatestTaskRequest({
+    request: Promise.reject(new Error("Network unavailable")),
+    ticket,
+    signal: controller.signal,
+    onSuccess: () => {
+      visibleState = "ready";
+    },
+    onError: () => {
+      visibleState = "error";
+    },
+  });
+
+  assert.equal(visibleState, "error");
 });

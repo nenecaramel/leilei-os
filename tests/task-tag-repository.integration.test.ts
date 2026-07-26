@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import "dotenv/config";
 import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { tasks } from "../src/database/schema.js";
+import { tasks, users } from "../src/database/schema.js";
 import {
   DrizzleTaskRepository,
 } from "../src/domains/task/task-repository.js";
@@ -23,23 +22,26 @@ test(
     const database = createDatabase(process.env.DATABASE_URL!);
 
     try {
-      const [existingTask] = await database.db
-        .select({ userId: tasks.userId })
-        .from(tasks)
-        .limit(1);
-
-      assert.ok(existingTask, "an existing authenticated user fixture is required");
-
       await assert.rejects(
         database.db.transaction(async (transaction) => {
+          const testUserId = randomUUID();
           const filterTestId = randomUUID();
           const filterId = randomUUID();
           const now = new Date("2026-07-26T06:00:00.000Z");
 
+          await transaction.insert(users).values({
+            id: testUserId,
+            email: `task-tag-${testUserId}@example.invalid`,
+            displayName: "Task tag integration user",
+            status: "active",
+            createdAt: now,
+            updatedAt: now,
+          });
+
           await transaction.insert(tasks).values([
             {
               id: filterTestId,
-              userId: existingTask.userId,
+              userId: testUserId,
               title: "Exact Filter Integration Alpha",
               description: "Repository integration fixture.",
               status: "pending",
@@ -53,7 +55,7 @@ test(
             },
             {
               id: filterId,
-              userId: existingTask.userId,
+              userId: testUserId,
               title: "Exact Filter Integration Beta",
               description: "Repository integration fixture.",
               status: "pending",
@@ -73,7 +75,7 @@ test(
           const service = new TaskService(repository);
           const list = async (
             query: Parameters<TaskService["listTasks"]>[0]["query"],
-            userId = existingTask.userId,
+            userId = testUserId,
           ) => (
             await service.listTasks({ userId, query })
           ).tasks;
