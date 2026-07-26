@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import test from "node:test";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { toyCommands } from "../src/database/schema.js";
 import { DrizzleToyCommandRepository } from "../src/domains/toy/toy-command-repository.js";
@@ -136,12 +137,36 @@ test(
         );
         assert.equal(liveConcurrentSets.length, 1);
 
-        const otherCommand = await repositoryA.create(other, { action: "set", percent: 30 });
+        const otherCommandId = randomUUID();
+        const otherFixtureNow = Date.now();
+        await dbA.insert(toyCommands).values({
+          id: otherCommandId,
+          userId: other,
+          action: "set",
+          percent: 30,
+          status: "pending",
+          createdAt: new Date(otherFixtureNow),
+          expiresAt: new Date(otherFixtureNow + 300_000),
+        });
         const stop = await repositoryA.create(owner, { action: "stop" });
         const rowsAfterStop = await dbA.select().from(toyCommands);
         assert.equal(rowsAfterStop.find(({ id }) => id === replacement.id)?.status, "expired");
-        assert.equal(rowsAfterStop.find(({ id }) => id === otherCommand.id)?.status, "pending");
+        assert.equal(rowsAfterStop.find(({ id }) => id === otherCommandId)?.status, "pending");
 
+        await dbA
+          .update(toyCommands)
+          .set({ status: "expired", expiredAt: new Date() })
+          .where(eq(toyCommands.id, stop.id));
+        const priorityStopId = randomUUID();
+        const priorityFixtureNow = Date.now();
+        await dbA.insert(toyCommands).values({
+          id: priorityStopId,
+          userId: owner,
+          action: "stop",
+          status: "pending",
+          createdAt: new Date(priorityFixtureNow),
+          expiresAt: new Date(priorityFixtureNow + 300_000),
+        });
         const setAfterStop = await repositoryA.create(owner, { action: "set", percent: 25 });
         const expiredPendingId = randomUUID();
         await dbA.insert(toyCommands).values({
@@ -153,11 +178,11 @@ test(
           expiresAt: new Date(Date.now() - 10_000),
         });
         assert.equal(
-          (await dbA.select().from(toyCommands)).find(({ id }) => id === stop.id)?.status,
+          (await dbA.select().from(toyCommands)).find(({ id }) => id === priorityStopId)?.status,
           "pending",
         );
         const claimedStop = await repositoryA.claim(owner);
-        assert.equal(claimedStop?.id, stop.id);
+        assert.equal(claimedStop?.id, priorityStopId);
         assert.equal(claimedStop?.claimedAt instanceof Date, true);
         assert.equal(
           (await dbA.select().from(toyCommands))
@@ -224,16 +249,25 @@ test(
           [claimA?.id, claimB?.id].filter(Boolean),
           [concurrent.id],
         );
-        assert.equal((await repositoryB.claim(other))?.id, otherCommand.id);
+        assert.equal((await repositoryB.claim(other))?.id, otherCommandId);
 
-        const claimed = claimA ?? claimB;
-        assert.ok(claimed);
-        const completed = await repositoryA.ack(owner, claimed.id, { status: "completed" });
+        const completedCommandId = randomUUID();
+        await dbA.insert(toyCommands).values({
+          id: completedCommandId,
+          userId: owner,
+          action: "set",
+          percent: 32,
+          status: "pending",
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 300_000),
+        });
+        assert.equal((await repositoryA.claim(owner))?.id, completedCommandId);
+        const completed = await repositoryA.ack(owner, completedCommandId, { status: "completed" });
         assert.equal(completed.kind, "updated");
         const completedAt = completed.kind === "updated"
           ? completed.command.completedAt?.toISOString()
           : undefined;
-        const repeated = await repositoryA.ack(owner, claimed.id, { status: "completed" });
+        const repeated = await repositoryA.ack(owner, completedCommandId, { status: "completed" });
         assert.equal(repeated.kind, "idempotent");
         assert.equal(
           repeated.kind === "idempotent"
@@ -242,17 +276,26 @@ test(
           completedAt,
         );
         assert.equal(
-          (await repositoryA.ack(owner, claimed.id, {
+          (await repositoryA.ack(owner, completedCommandId, {
             status: "failed",
             error: "safe bridge failure",
           })).kind,
           "conflict",
         );
 
-        const failedCommand = await repositoryA.create(owner, { action: "set", percent: 35 });
+        const failedCommandId = randomUUID();
+        await dbA.insert(toyCommands).values({
+          id: failedCommandId,
+          userId: owner,
+          action: "set",
+          percent: 35,
+          status: "pending",
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 300_000),
+        });
         const claimedFailed = await repositoryA.claim(owner);
-        assert.equal(claimedFailed?.id, failedCommand.id);
-        const failed = await repositoryA.ack(owner, failedCommand.id, {
+        assert.equal(claimedFailed?.id, failedCommandId);
+        const failed = await repositoryA.ack(owner, failedCommandId, {
           status: "failed",
           error: "safe bridge failure",
         });
@@ -260,7 +303,7 @@ test(
         const failedAt = failed.kind === "updated"
           ? failed.command.completedAt?.toISOString()
           : undefined;
-        const failedReplay = await repositoryA.ack(owner, failedCommand.id, {
+        const failedReplay = await repositoryA.ack(owner, failedCommandId, {
           status: "failed",
           error: "safe bridge failure",
         });
@@ -272,14 +315,14 @@ test(
           failedAt,
         );
         assert.equal(
-          (await repositoryA.ack(owner, failedCommand.id, {
+          (await repositoryA.ack(owner, failedCommandId, {
             status: "failed",
             error: "different safe failure",
           })).kind,
           "conflict",
         );
         assert.equal(
-          (await repositoryA.ack(owner, failedCommand.id, {
+          (await repositoryA.ack(owner, failedCommandId, {
             status: "completed",
           })).kind,
           "conflict",
