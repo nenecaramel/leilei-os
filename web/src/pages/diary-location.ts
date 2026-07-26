@@ -56,12 +56,12 @@ export function getSafeDiaryReturnTo(value: string | null): string {
     const parsed = new URL(value, "https://leilei-os.invalid");
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
-      parsed.pathname !== "/diary"
+      parsed.pathname !== "/diary" ||
+      parsed.searchParams.has("diary") ||
+      parsed.searchParams.has("returnTo")
     ) {
       return "/diary";
     }
-    parsed.searchParams.delete("diary");
-    parsed.searchParams.delete("returnTo");
     return `${parsed.pathname}${parsed.search}`;
   } catch {
     return "/diary";

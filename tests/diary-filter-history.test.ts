@@ -87,6 +87,40 @@ test("search and tag debounce commit only final stable values", async () => {
   assert.equal(readDiaryFilters(window.location.search).q, "旅行日记");
 });
 
+test("tag and free-text mood each debounce to one reversible push", async () => {
+  const window = createWindow();
+  const commitField = (
+    field: "tag" | "mood",
+    values: string[],
+  ) => {
+    const debouncer = createDiaryFilterDebouncer({
+      delayMs: 10,
+      commit(value) {
+        pushDiaryFilterHistory(window, {
+          ...readDiaryFilters(window.location.search),
+          [field]: value,
+        });
+      },
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+    });
+    values.forEach((value) => debouncer.schedule(value));
+  };
+
+  const initialLength = window.history.length;
+  commitField("tag", ["Ja", "Japan"]);
+  await new Promise((resolve) => window.setTimeout(resolve, 25));
+  commitField("mood", ["ha", "happy"]);
+  await new Promise((resolve) => window.setTimeout(resolve, 25));
+
+  assert.equal(window.history.length, initialLength + 2);
+  assert.deepEqual(readDiaryFilters(window.location.search), {
+    ...EMPTY_DIARY_FILTERS,
+    tag: "Japan",
+    mood: "happy",
+  });
+});
+
 test("older and aborted diary requests cannot replace current state", async () => {
   const tracker = createLatestDiaryRequestTracker();
   const old = tracker.begin();
@@ -125,8 +159,10 @@ test("diary detail returnTo is refresh-safe and restricted to the diary list", (
   assert.equal(getSafeDiaryReturnTo("https://example.com/"), "/diary");
   assert.equal(getSafeDiaryReturnTo("//example.com/diary"), "/diary");
   assert.equal(getSafeDiaryReturnTo("/task"), "/diary");
+  assert.equal(getSafeDiaryReturnTo("/diary?diary=nested"), "/diary");
+  assert.equal(getSafeDiaryReturnTo("/diary?returnTo=%2Fdiary"), "/diary");
   assert.equal(
     getSafeDiaryReturnTo("/diary?q=x&diary=bad&returnTo=%2Ftask"),
-    "/diary?q=x",
+    "/diary",
   );
 });

@@ -100,6 +100,11 @@ test(
           ) => (await service.listDiaries({ userId, query })).diaries;
 
           assert.deepEqual(
+            (await list({})).map(({ id }) => id),
+            [exactId, partialId],
+          );
+
+          assert.deepEqual(
             (await list({ tag: "filter-test" })).map(({ id }) => id),
             [exactId],
           );

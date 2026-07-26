@@ -138,6 +138,21 @@ test("diary date filters include both selected boundaries and allow one side", a
   );
 });
 
+test("diary date normalization preserves month-end and year-end calendar dates", async () => {
+  const repository = new SearchRepository();
+  await new DiaryService(repository).listDiaries({
+    userId: "user-1",
+    query: {
+      dateFrom: "2026-12-31",
+      dateTo: "2027-01-01",
+    },
+  });
+  assert.deepEqual(repository.calls[0]?.query, {
+    dateFrom: "2026-12-31",
+    dateTo: "2027-01-01",
+  });
+});
+
 test("diary filters combine with AND and are passed before repository limit", async () => {
   const repository = new SearchRepository();
   const result = await new DiaryService(repository).listDiaries({

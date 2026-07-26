@@ -27,6 +27,11 @@ import {
   readDiaryFilters,
   type DiaryFilters,
 } from "./diary-location";
+import {
+  getDiaryScrollStorage,
+  readDiaryScrollPosition,
+  saveDiaryScrollPosition,
+} from "./diary-scroll-restoration";
 
 type DiaryEntry = {
   id: string;
@@ -84,10 +89,6 @@ function initialLocation() {
 function hasFilters(filters: DiaryFilters): boolean {
   return Object.values(filters).some((value) => value.trim() !== "");
 }
-function scrollKey(url: string): string {
-  return `leilei-os:diary-scroll:${url}`;
-}
-
 export function DiaryPageContent({
   api,
   settings,
@@ -116,6 +117,7 @@ export function DiaryPageContent({
   const [reloadKey, setReloadKey] = useState(0);
   const tracker = useRef(createLatestDiaryRequestTracker());
   const listController = useRef<AbortController | null>(null);
+  const pendingScrollRestore = useRef<number | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -163,6 +165,7 @@ export function DiaryPageContent({
       return;
     }
     setFilterError("");
+    pendingScrollRestore.current = null;
     invalidateList();
     setState({ status: "loading" });
     pushDiaryFilterHistory(window, next);
@@ -234,7 +237,16 @@ export function DiaryPageContent({
     setEditing(false);
     setLocation(restoredLocation);
     setDetailState(restoredLocation.diaryId ? "loading" : "idle");
-    if (!restoredLocation.diaryId) setState({ status: "loading" });
+    if (!restoredLocation.diaryId) {
+      const listUrl =
+        `/diary${buildDiaryListRequest(restored).search}`;
+      pendingScrollRestore.current =
+        readDiaryScrollPosition(
+          getDiaryScrollStorage(window),
+          listUrl,
+        );
+      setState({ status: "loading" });
+    }
   }), []);
 
   useEffect(() => () => {
@@ -260,11 +272,20 @@ export function DiaryPageContent({
       ),
       ticket,
       signal: controller.signal,
-      onSuccess: (response) => setState({
-        status: "ready",
-        diaries: response.data.diaries,
-        count: response.data.metadata.count,
-      }),
+      onSuccess: (response) => {
+        setState({
+          status: "ready",
+          diaries: response.data.diaries,
+          count: response.data.metadata.count,
+        });
+        const position = pendingScrollRestore.current;
+        pendingScrollRestore.current = null;
+        if (position !== null) {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: position });
+          });
+        }
+      },
       onError: () => setState({ status: "error" }),
     }).finally(() => {
       if (listController.current === controller) listController.current = null;
@@ -326,9 +347,11 @@ export function DiaryPageContent({
   }
   function openDiary(id: string): void {
     const returnTo = `/diary${buildDiaryListRequest(filters).search}`;
-    try {
-      sessionStorage.setItem(scrollKey(returnTo), String(window.scrollY));
-    } catch {}
+    saveDiaryScrollPosition(
+      getDiaryScrollStorage(window),
+      returnTo,
+      window.scrollY,
+    );
     const next = createDiaryDetailLocation(id, returnTo);
     window.history.pushState(null, "", next);
     setLocation(getDiaryDetailLocation(window.location.search));
@@ -338,6 +361,11 @@ export function DiaryPageContent({
     const returnTo = getSafeDiaryReturnTo(location.returnTo);
     window.history.pushState(null, "", returnTo);
     const restored = readDiaryFilters(new URL(returnTo, window.location.origin).search);
+    pendingScrollRestore.current =
+      readDiaryScrollPosition(
+        getDiaryScrollStorage(window),
+        returnTo,
+      );
     setFilters(restored);
     setSearchDraft(restored.q);
     setTagDraft(restored.tag);
@@ -346,11 +374,6 @@ export function DiaryPageContent({
     setSelectedDiary(null);
     setEditing(false);
     setState({ status: "loading" });
-    requestAnimationFrame(() => {
-      let top = 0;
-      try { top = Number(sessionStorage.getItem(scrollKey(returnTo))) || 0; } catch {}
-      window.scrollTo({ top });
-    });
   }
 
   const createInvalid = !title.trim() || !content.trim() || !date.trim();
