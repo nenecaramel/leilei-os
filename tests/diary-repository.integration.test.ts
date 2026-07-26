@@ -104,6 +104,25 @@ test(
             [exactId, partialId],
           );
 
+          await transaction.insert(diaryEntries).values(
+            Array.from({ length: 51 }, (_, index) =>
+              record({
+                id: randomUUID(),
+                userId: owner,
+                title: `Limit noise ${index}`,
+                content: "Does not contain the target phrase.",
+                date: "2026-07-08",
+                tags: ["noise"],
+                mood: "neutral",
+              }),
+            ),
+          );
+          assert.deepEqual(
+            (await list({ q: "Japan private journal" }))
+              .map(({ id }) => id),
+            [exactId],
+          );
+
           assert.deepEqual(
             (await list({ tag: "filter-test" })).map(({ id }) => id),
             [exactId],
