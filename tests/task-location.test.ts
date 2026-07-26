@@ -47,3 +47,14 @@ test("task detail return targets are limited to the internal task list", () => {
     "/task?q=report",
   );
 });
+
+test("unsafe task path parameters do not enter detail mode", () => {
+  assert.equal(
+    getTaskDetailLocation("?task=%2Fprivate%2Ftask").taskId,
+    null,
+  );
+  assert.equal(
+    getTaskDetailLocation("?task=task-123").taskId,
+    "task-123",
+  );
+});

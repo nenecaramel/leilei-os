@@ -10,7 +10,7 @@ import { DiaryPage } from "./pages/DiaryPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { TaskPage } from "./pages/TaskPage";
+import { TaskPage } from "./pages/TaskPageContainer";
 
 export default function App() {
   return (

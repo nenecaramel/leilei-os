@@ -22,6 +22,7 @@ const ALLOWED_DUE_FILTERS = new Set<TaskDueFilter>([
   "next_7_days",
   "custom",
 ]);
+const TASK_ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
 
 export const EMPTY_TASK_FILTERS: TaskFilters = {
   q: "",
@@ -56,7 +57,10 @@ export function getTaskDetailLocation(search: string): {
   returnTo: string;
 } {
   const parameters = new URLSearchParams(search);
-  const taskId = parameters.get("task")?.trim() || null;
+  const taskCandidate = parameters.get("task")?.trim() ?? "";
+  const taskId = TASK_ID_PATTERN.test(taskCandidate)
+    ? taskCandidate
+    : null;
 
   return {
     taskId,
