@@ -4,10 +4,10 @@ import {
     useState,
     type ReactNode,
   } from "react";
-  import { useWebApiClient } from "../api/useWebApiClient";
+  import type { WebApiClient } from "../api/useWebApiClient";
   import { TaskIcon } from "../components/icons";
   import { NativeDateInput } from "../components/NativeDateInput";
-  import { useSettings } from "../settings/SettingsProvider";
+  import type { SettingsData } from "../settings/types";
   import { PageHeader } from "./PageHeader";
   import { getTaskActionControls } from "./task-actions";
   import {
@@ -82,6 +82,8 @@ import {
         count: number;
       }
     | { status: "error" };
+
+  type DetailLoadState = "idle" | "loading" | "ready" | "error";
   
   const statusLabels: Record<TaskStatus, string> = {
     pending: "待处理",
@@ -194,9 +196,18 @@ import {
   function initialFilters() {
     return readTaskFilterHistorySnapshot(window.location.search);
   }
-  export function TaskPage() {
-    const api = useWebApiClient();
-    const { settings } = useSettings();
+
+  function initialTaskLocation() {
+    return getTaskDetailLocation(window.location.search);
+  }
+
+  export function TaskPageContent({
+    api,
+    settings,
+  }: {
+    api: WebApiClient;
+    settings: SettingsData;
+  }) {
     const listScrollPosition = useRef(0);
     const listRequestTracker = useRef(
       createLatestTaskRequestTracker(),
@@ -213,7 +224,14 @@ import {
     const [tagDraft, setTagDraft] = useState(
       () => initialFilters().tag,
     );
-    const [locationVersion, setLocationVersion] = useState(0);
+    const [taskLocation, setTaskLocation] = useState(
+      initialTaskLocation,
+    );
+    const isDetailMode = taskLocation.taskId !== null;
+    const [detailLoadState, setDetailLoadState] =
+      useState<DetailLoadState>(() =>
+        initialTaskLocation().taskId ? "loading" : "idle",
+      );
     const [state, setState] = useState<LoadState>({
       status: "loading",
     });
@@ -305,6 +323,7 @@ import {
 
     useEffect(() => {
       return subscribeToTaskFilterHistory(window, (restoredFilters) => {
+        const restoredLocation = initialTaskLocation();
         searchDebouncerRef.current?.cancel();
         tagDebouncerRef.current?.cancel();
         invalidateListRequest();
@@ -312,7 +331,13 @@ import {
         setFilters(restoredFilters);
         setSearchDraft(restoredFilters.q);
         setTagDraft(restoredFilters.tag);
-        setLocationVersion((value) => value + 1);
+        setSelectedTask(null);
+        setEditing(false);
+        setActionError("");
+        setTaskLocation(restoredLocation);
+        setDetailLoadState(
+          restoredLocation.taskId ? "loading" : "idle",
+        );
       });
     }, []);
 
@@ -325,6 +350,11 @@ import {
     );
   
     useEffect(() => {
+      if (isDetailMode) {
+        invalidateListRequest();
+        return;
+      }
+
       const controller = new AbortController();
       listAbortController.current = controller;
       const requestTicket = listRequestTracker.current.begin();
@@ -361,25 +391,31 @@ import {
           listAbortController.current = null;
         }
       };
-    }, [api, reloadKey, filters]);
+    }, [api, reloadKey, filters, isDetailMode]);
 
     useEffect(() => {
-      const { taskId } = getTaskDetailLocation(window.location.search);
+      const { taskId } = taskLocation;
       if (!taskId) {
         setSelectedTask(null);
         setEditing(false);
+        setDetailLoadState("idle");
         return;
       }
 
       let active = true;
+      setSelectedTask(null);
+      setDetailLoadState("loading");
       setLoadingTaskId(taskId);
       setActionError("");
 
-      api.request<TaskEntryResponse>(`/task/${taskId}`)
+      api.request<TaskEntryResponse>(
+        `/task/${encodeURIComponent(taskId)}`,
+      )
         .then((response) => {
           if (!active) return;
           setSelectedTask(response.data);
           setEditing(false);
+          setDetailLoadState("ready");
           requestAnimationFrame(() => {
             window.scrollTo({ top: 0, behavior: "smooth" });
           });
@@ -387,6 +423,7 @@ import {
         .catch(() => {
           if (!active) return;
           setSelectedTask(null);
+          setDetailLoadState("error");
           setActionError("读取任务详情失败，请稍后重试。");
         })
         .finally(() => {
@@ -396,7 +433,7 @@ import {
       return () => {
         active = false;
       };
-    }, [api, locationVersion]);
+    }, [api, taskLocation]);
 
     function commitFilters(
       nextFilters: typeof filters,
@@ -519,18 +556,15 @@ import {
 
     function openTaskDetail(id: string) {
       const returnTo = `${window.location.pathname}${window.location.search}`;
-      window.history.pushState(
-        null,
-        "",
-        createTaskDetailLocation(id, returnTo),
-      );
+      const detailLocation = createTaskDetailLocation(id, returnTo);
+      window.history.pushState(null, "", detailLocation);
       setSelectedTask(null);
-      setLocationVersion((value) => value + 1);
+      setTaskLocation(initialTaskLocation());
+      setDetailLoadState("loading");
     }
   
     function handleCloseTask() {
-      const { returnTo } = getTaskDetailLocation(window.location.search);
-      window.history.pushState(null, "", returnTo);
+      window.history.pushState(null, "", taskLocation.returnTo);
       setSelectedTask(null);
       setEditing(false);
       setActionError("");
@@ -538,7 +572,8 @@ import {
       setFilters(restoredFilters);
       setSearchDraft(restoredFilters.q);
       setTagDraft(restoredFilters.tag);
-      setLocationVersion((value) => value + 1);
+      setTaskLocation(initialTaskLocation());
+      setDetailLoadState("idle");
   
       requestAnimationFrame(() => {
         window.scrollTo({
@@ -644,7 +679,7 @@ import {
           title="Task"
           description={settings.page_copy.task_subtitle ?? "管理待办事项、截止时间、优先级与完成状态。"}
           action={
-            selectedTask ? (
+            isDetailMode ? (
               <button
                 className="secondary-button"
                 disabled={updatingStatus || updating}
@@ -666,7 +701,7 @@ import {
             )
           }
         />
-        {!selectedTask && (
+        {!isDetailMode && (
           <section className="memory-message task-filters">
             <input aria-label="搜索任务" placeholder="搜索任务标题或内容" value={searchDraft} onChange={(event) => updateSearchDraft(event.target.value)} />
             <select aria-label="状态筛选" value={filters.status} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, status: event.target.value })}>
@@ -691,7 +726,8 @@ import {
           </section>
         )}
   
-        {selectedTask ? (
+        {isDetailMode ? (
+          selectedTask ? (
           <section className="memory-message">
             {editing ? (
               <>
@@ -868,6 +904,9 @@ import {
               </>
             )}
           </section>
+          ) : detailLoadState === "loading" ? (
+            <TaskDetailLoading />
+          ) : null
         ) : (
           <>
             {showCreate && (
@@ -1064,6 +1103,18 @@ import {
             <p />
           </div>
         ))}
+      </section>
+    );
+  }
+
+  function TaskDetailLoading() {
+    return (
+      <section
+        aria-label="任务详情加载中"
+        className="memory-message"
+      >
+        <h2>正在读取任务详情…</h2>
+        <p>任务内容准备好后会显示在这里。</p>
       </section>
     );
   }
