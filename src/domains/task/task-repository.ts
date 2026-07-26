@@ -1,6 +1,5 @@
 import {
   and,
-  arrayContains,
   asc,
   desc,
   eq,
@@ -153,7 +152,11 @@ export class DrizzleTaskRepository
     }
     if (query.status) conditions.push(eq(tasks.status, query.status));
     if (query.priority) conditions.push(eq(tasks.priority, query.priority));
-    if (query.tag) conditions.push(arrayContains(tasks.tags, [query.tag]));
+    if (query.tag) {
+      conditions.push(
+        sql`${query.tag}::varchar(50) = any(${tasks.tags})`,
+      );
+    }
     if (query.dueFrom) conditions.push(gte(tasks.dueTime, query.dueFrom));
     if (query.dueTo) conditions.push(lt(tasks.dueTime, query.dueTo));
     if (query.overdueBefore) {
