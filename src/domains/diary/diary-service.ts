@@ -4,6 +4,7 @@ import type {
   DiaryEntryRecord,
   DiaryRecord,
   DiaryRepository,
+  DiaryListQuery,
   NormalizedDiaryCreate,
 } from "./diary-repository.js";
 
@@ -16,6 +17,7 @@ const MIN_IDEMPOTENCY_KEY_LENGTH = 16;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 const DEFAULT_DIARY_LIMIT = 50;
 const MAX_DIARY_LIMIT = 100;
+const MAX_SEARCH_LENGTH = 200;
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -62,6 +64,15 @@ export type DiaryEntryResult = {
 export type ListDiariesInput = {
   userId: string;
   limit?: number;
+  query?: RawDiaryListQuery;
+};
+
+export type RawDiaryListQuery = {
+  q?: string;
+  tag?: string;
+  mood?: string;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export type ListDiariesResult = {
@@ -101,6 +112,7 @@ export type DiaryDomainErrorCode =
   | "USER_DISABLED"
   | "DIARY_NOT_FOUND"
   | "INVALID_DIARY_LIMIT"
+  | "INVALID_DIARY_QUERY"
   | "INVALID_TITLE"
   | "INVALID_CONTENT"
   | "INVALID_DATE"
@@ -154,10 +166,12 @@ export class DiaryService {
   ): Promise<ListDiariesResult> {
     const userId = await this.requireActiveUser(input.userId);
     const limit = this.resolveLimit(input.limit);
+    const query = this.normalizeListQuery(input.query ?? {});
 
     const diaries = await this.repository.findDiaryEntries(
       userId,
       limit,
+      query,
     );
 
     return {
@@ -483,6 +497,88 @@ export class DiaryService {
     }
 
     return normalized;
+  }
+
+  private normalizeListQuery(
+    input: RawDiaryListQuery,
+  ): DiaryListQuery {
+    const q = this.normalizeOptionalQueryText(
+      input.q,
+      MAX_SEARCH_LENGTH,
+      "search query",
+    );
+    const tag = this.normalizeOptionalQueryText(
+      input.tag,
+      MAX_TAG_LENGTH,
+      "tag",
+    );
+    const mood = this.normalizeOptionalQueryText(
+      input.mood,
+      MAX_MOOD_LENGTH,
+      "mood",
+    );
+    const dateFrom = this.normalizeOptionalQueryDate(
+      input.dateFrom,
+      "date_from",
+    );
+    const dateTo = this.normalizeOptionalQueryDate(
+      input.dateTo,
+      "date_to",
+    );
+
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_QUERY",
+        "date_from cannot be later than date_to.",
+      );
+    }
+
+    return {
+      ...(q ? { q } : {}),
+      ...(tag ? { tag } : {}),
+      ...(mood ? { mood } : {}),
+      ...(dateFrom ? { dateFrom } : {}),
+      ...(dateTo ? { dateTo } : {}),
+    };
+  }
+
+  private normalizeOptionalQueryText(
+    value: string | undefined,
+    maxLength: number,
+    label: string,
+  ): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_QUERY",
+        `Diary ${label} is invalid.`,
+      );
+    }
+
+    const normalized = value.normalize("NFC").trim();
+    if (!normalized) return undefined;
+    if (normalized.length > maxLength) {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_QUERY",
+        `Diary ${label} is too long.`,
+      );
+    }
+    return normalized;
+  }
+
+  private normalizeOptionalQueryDate(
+    value: string | undefined,
+    label: string,
+  ): string | undefined {
+    if (value === undefined || value.trim() === "") return undefined;
+    try {
+      return this.normalizeDate(value);
+    } catch {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_QUERY",
+        `Diary ${label} is invalid.`,
+      );
+    }
   }
 
   private normalizeIdempotencyKey(value: string): string {

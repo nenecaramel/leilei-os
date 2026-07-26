@@ -14,6 +14,7 @@ import {
       listDiaries(input: {
         userId: string;
         limit?: number;
+        query?: import("../domains/diary/diary-service.js").RawDiaryListQuery;
       }): Promise<ListDiariesResult>;
   
       readDiary(input: {
@@ -67,6 +68,13 @@ import {
       try {
         const data = await dependencies.diaryService.listDiaries({
           userId: request.webUserId,
+          query: {
+            q: getQueryParam(request.query.q),
+            tag: getQueryParam(request.query.tag),
+            mood: getQueryParam(request.query.mood),
+            dateFrom: getQueryParam(request.query.date_from),
+            dateTo: getQueryParam(request.query.date_to),
+          },
         });
   
         response.json({
@@ -227,4 +235,10 @@ import {
     return Array.isArray(value)
       ? value[0] ?? ""
       : value ?? "";
+  }
+
+  function getQueryParam(
+    value: unknown,
+  ): string | undefined {
+    return typeof value === "string" ? value : undefined;
   }

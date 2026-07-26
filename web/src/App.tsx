@@ -6,7 +6,7 @@ import {
 } from "./components/icons";
 import { AppShell } from "./layout/AppShell";
 import { DashboardPage } from "./pages/DashboardPage";
-import { DiaryPage } from "./pages/DiaryPage";
+import { DiaryPage } from "./pages/DiaryPageContainer";
 import { MemoryPage } from "./pages/MemoryPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SettingsPage } from "./pages/SettingsPage";

@@ -1,4 +1,13 @@
-import { and, desc, eq } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   diaryEntries,
@@ -50,6 +59,14 @@ export type DiaryEntryRecord = {
   updatedAt: Date;
 };
 
+export type DiaryListQuery = {
+  q?: string;
+  tag?: string;
+  mood?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 export type UpdateDiaryInput = {
   userId: string;
   id: string;
@@ -71,6 +88,7 @@ export interface DiaryRepository {
   findDiaryEntries(
     userId: string,
     limit: number,
+    query?: DiaryListQuery,
   ): Promise<DiaryEntryRecord[]>;
 
   findDiaryById(
@@ -110,7 +128,35 @@ export class DrizzleDiaryRepository implements DiaryRepository {
   async findDiaryEntries(
     userId: string,
     limit: number,
+    query: DiaryListQuery = {},
   ): Promise<DiaryEntryRecord[]> {
+    const conditions = [eq(diaryEntries.userId, userId)];
+
+    if (query.q) {
+      const escaped = query.q.replace(/[\\%_]/g, "\\$&");
+      const pattern = `%${escaped}%`;
+      conditions.push(
+        or(
+          ilike(diaryEntries.title, pattern),
+          ilike(diaryEntries.content, pattern),
+        )!,
+      );
+    }
+    if (query.tag) {
+      conditions.push(
+        sql`${query.tag}::text = any(${diaryEntries.tags})`,
+      );
+    }
+    if (query.mood) {
+      conditions.push(eq(diaryEntries.mood, query.mood));
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(diaryEntries.date, query.dateFrom));
+    }
+    if (query.dateTo) {
+      conditions.push(lte(diaryEntries.date, query.dateTo));
+    }
+
     return this.db
       .select({
         id: diaryEntries.id,
@@ -123,7 +169,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         updatedAt: diaryEntries.updatedAt,
       })
       .from(diaryEntries)
-      .where(eq(diaryEntries.userId, userId))
+      .where(and(...conditions))
       .orderBy(
         desc(diaryEntries.date),
         desc(diaryEntries.createdAt),
