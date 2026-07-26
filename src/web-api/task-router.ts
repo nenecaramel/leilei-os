@@ -36,6 +36,17 @@ import {
         id: string;
         status: string;
       }): Promise<TaskEntryResult>;
+
+      updateWebTask(input: {
+        userId: string;
+        id: string;
+        title: string;
+        description: string;
+        priority: string;
+        dueTime: string;
+        timezone: string;
+        tags?: readonly string[];
+      }): Promise<TaskEntryResult>;
     };
   };
   
@@ -47,6 +58,7 @@ import {
     router.get("/", createListTasksApiHandler(dependencies));
     router.get("/:id", createReadTaskApiHandler(dependencies));
     router.post("/", createCreateTaskApiHandler(dependencies));
+    router.patch("/:id", createUpdateTaskApiHandler(dependencies));
     router.patch(
       "/:id/status",
       createUpdateTaskStatusApiHandler(dependencies),
@@ -160,6 +172,37 @@ import {
       }
     };
   }
+
+  export function createUpdateTaskApiHandler(
+    dependencies: TaskApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+
+      try {
+        const data = await dependencies.taskService.updateWebTask({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.id),
+          title: request.body.title,
+          description: request.body.description,
+          priority: request.body.priority,
+          dueTime: request.body.dueTime,
+          timezone: request.body.timezone,
+          tags: request.body.tags,
+        });
+
+        response.json({
+          success: true,
+          data,
+        });
+      } catch (error) {
+        sendTaskError(response, error);
+      }
+    };
+  }
   
   function sendUnauthorized(response: Response): void {
     response.status(401).json({
@@ -197,6 +240,17 @@ import {
           error: {
             code: "TASK_NOT_FOUND",
             message: "Task was not found.",
+          },
+        });
+        return;
+      }
+
+      if (error.code === "INVALID_TASK_STATUS_TRANSITION") {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: "INVALID_TASK_STATUS_TRANSITION",
+            message: error.message,
           },
         });
         return;

@@ -55,6 +55,17 @@ export type UpdateTaskStatusInput = {
   completedAt: Date | null;
 };
 
+export type NormalizedTaskUpdate = {
+  userId: string;
+  id: string;
+  title: string;
+  description: string;
+  priority: TaskPriority;
+  dueTime: Date;
+  timezone: string;
+  tags: string[];
+};
+
 export interface TaskRepository {
   findUserById(
     userId: string,
@@ -76,6 +87,10 @@ export interface TaskRepository {
 
   updateTaskStatus(
     input: UpdateTaskStatusInput,
+  ): Promise<TaskRecord | null>;
+
+  updateTask(
+    input: NormalizedTaskUpdate,
   ): Promise<TaskRecord | null>;
 }
 
@@ -206,6 +221,43 @@ export class DrizzleTaskRepository
       .set({
         status: input.status,
         completedAt: input.completedAt,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(tasks.userId, input.userId),
+          eq(tasks.id, input.id),
+        ),
+      )
+      .returning({
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueTime: tasks.dueTime,
+        timezone: tasks.timezone,
+        tags: tasks.tags,
+        createdAt: tasks.createdAt,
+        updatedAt: tasks.updatedAt,
+        completedAt: tasks.completedAt,
+      });
+
+    return task ?? null;
+  }
+
+  async updateTask(
+    input: NormalizedTaskUpdate,
+  ): Promise<TaskRecord | null> {
+    const [task] = await this.db
+      .update(tasks)
+      .set({
+        title: input.title,
+        description: input.description,
+        priority: input.priority,
+        dueTime: input.dueTime,
+        timezone: input.timezone,
+        tags: input.tags,
         updatedAt: new Date(),
       })
       .where(
