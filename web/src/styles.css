@@ -456,16 +456,29 @@ textarea:disabled {
   background: rgba(235, 233, 226, 0.72);
 }
 
-input[type="date"],
-input[type="datetime-local"],
-input[type="time"] {
+.native-date-field {
+  display: block;
+  width: min(100%, 760px);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.native-date-input {
+  display: block;
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  inline-size: 100%;
+  max-inline-size: 100%;
   min-inline-size: 0;
   box-sizing: border-box;
-  -webkit-min-logical-width: 0;
   color-scheme: light;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .native-date-input {
+    inline-size: -webkit-fill-available;
+  }
 }
 
 /* Dashboard */
@@ -1234,6 +1247,7 @@ input[type="time"] {
   .memory-message > input,
   .memory-message > select,
   .memory-message > textarea,
+  .native-date-field,
   .memory-message > .secondary-button {
     width: 100%;
     max-width: 100%;

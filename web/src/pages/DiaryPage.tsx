@@ -5,6 +5,7 @@ import {
   } from "react";
   import { useWebApiClient } from "../api/useWebApiClient";
   import { DiaryIcon } from "../components/icons";
+  import { NativeDateInput } from "../components/NativeDateInput";
   import { useSettings } from "../settings/SettingsProvider";
   import { PageHeader } from "./PageHeader";
   
@@ -336,7 +337,7 @@ import {
                   }}
                 />
   
-                <input
+                <NativeDateInput
                   type="date"
                   value={editingDate}
                   disabled={updating}
@@ -449,7 +450,7 @@ import {
                   }}
                 />
   
-                <input
+                <NativeDateInput
                   type="date"
                   value={date}
                   disabled={creating}
