@@ -1,10 +1,17 @@
 import type {
   NormalizedTaskCreate,
+  NormalizedTaskUpdate,
   TaskPriority,
   TaskRecord,
   TaskRepository,
   TaskStatus,
 } from "./task-repository.js";
+import {
+  TaskStateTransitionError,
+  assertTaskStatusTransition,
+  getAllowedTaskActions,
+  type TaskAction,
+} from "./task-state-machine.js";
 
 const ALLOWED_PRIORITIES = [
   "low",
@@ -56,6 +63,7 @@ export type TaskEntryResult = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  allowed_actions: TaskAction[];
 };
 
 export type CreateTaskResult = {
@@ -95,6 +103,17 @@ export type UpdateWebTaskStatusInput = {
   status: string;
 };
 
+export type UpdateWebTaskInput = {
+  userId: string;
+  id: string;
+  title: string;
+  description: string;
+  priority: string;
+  dueTime: string;
+  timezone: string;
+  tags?: readonly string[];
+};
+
 export type TaskDomainErrorCode =
   | "INVALID_AUTHENTICATED_USER"
   | "USER_NOT_FOUND"
@@ -105,6 +124,7 @@ export type TaskDomainErrorCode =
   | "INVALID_DESCRIPTION"
   | "INVALID_PRIORITY"
   | "INVALID_TASK_STATUS"
+  | "INVALID_TASK_STATUS_TRANSITION"
   | "INVALID_DUE_TIME"
   | "INVALID_TIMEZONE"
   | "INVALID_TAGS";
@@ -219,6 +239,34 @@ export class TaskService {
 
     const status = this.normalizeStatus(input.status);
 
+    const existing = await this.repository.findTaskById(
+      userId,
+      id,
+    );
+
+    if (!existing) {
+      throw new TaskDomainError(
+        "TASK_NOT_FOUND",
+        "Task was not found.",
+      );
+    }
+
+    try {
+      assertTaskStatusTransition(existing.status, status);
+    } catch (error) {
+      if (error instanceof TaskStateTransitionError) {
+        throw new TaskDomainError(
+          "INVALID_TASK_STATUS_TRANSITION",
+          error.message,
+        );
+      }
+      throw error;
+    }
+
+    if (existing.status === status) {
+      return this.toTaskResult(existing);
+    }
+
     const task = await this.repository.updateTaskStatus({
       userId,
       id,
@@ -227,6 +275,56 @@ export class TaskService {
         status === "completed"
           ? new Date()
           : null,
+    });
+
+    if (!task) {
+      throw new TaskDomainError(
+        "TASK_NOT_FOUND",
+        "Task was not found.",
+      );
+    }
+
+    return this.toTaskResult(task);
+  }
+
+  async updateWebTask(
+    input: UpdateWebTaskInput,
+  ): Promise<TaskEntryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new TaskDomainError(
+        "TASK_NOT_FOUND",
+        "Task was not found.",
+      );
+    }
+
+    const existing = await this.repository.findTaskById(
+      userId,
+      id,
+    );
+
+    if (!existing) {
+      throw new TaskDomainError(
+        "TASK_NOT_FOUND",
+        "Task was not found.",
+      );
+    }
+
+    const normalized = this.normalizeTaskFields({
+      title: input.title,
+      description: input.description,
+      priority: input.priority,
+      dueTime: input.dueTime,
+      timezone: input.timezone,
+      tags: input.tags ?? [],
+    });
+
+    const task = await this.repository.updateTask({
+      userId,
+      id,
+      ...normalized,
     });
 
     if (!task) {
@@ -287,6 +385,21 @@ export class TaskService {
   ): NormalizedTaskCreate {
     return {
       userId,
+      ...this.normalizeTaskFields(input),
+      status: "pending",
+      completedAt: null,
+    };
+  }
+
+  private normalizeTaskFields(input: {
+    title: string;
+    description: string;
+    priority: string;
+    dueTime: string;
+    timezone: string;
+    tags: readonly string[];
+  }): Omit<NormalizedTaskUpdate, "userId" | "id"> {
+    return {
       title: this.normalizeRequiredText(
         input.title,
         MAX_TITLE_LENGTH,
@@ -299,12 +412,10 @@ export class TaskService {
         "INVALID_DESCRIPTION",
         "Task description",
       ),
-      status: "pending",
       priority: this.normalizePriority(input.priority),
       dueTime: this.normalizeDueTime(input.dueTime),
       timezone: this.normalizeTimezone(input.timezone),
       tags: this.normalizeTags(input.tags),
-      completedAt: null,
     };
   }
 
@@ -523,6 +634,7 @@ export class TaskService {
       updated_at: task.updatedAt.toISOString(),
       completed_at:
         task.completedAt?.toISOString() ?? null,
+      allowed_actions: getAllowedTaskActions(task.status),
     };
   }
 }

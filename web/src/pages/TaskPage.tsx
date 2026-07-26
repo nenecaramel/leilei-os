@@ -8,6 +8,7 @@ import {
   import { TaskIcon } from "../components/icons";
   import { useSettings } from "../settings/SettingsProvider";
   import { PageHeader } from "./PageHeader";
+  import { getTaskActionControls } from "./task-actions";
   
   type TaskStatus =
     | "pending"
@@ -20,6 +21,8 @@ import {
     | "normal"
     | "high"
     | "urgent";
+
+  type TaskAction = "start" | "complete" | "cancel";
   
   type TaskEntry = {
     id: string;
@@ -33,6 +36,7 @@ import {
     created_at: string;
     updated_at: string;
     completed_at: string | null;
+    allowed_actions: TaskAction[];
   };
   
   type TaskListResponse = {
@@ -103,6 +107,35 @@ import {
   
     return parsed.toISOString();
   }
+
+  function toDateTimeLocal(
+    value: string,
+    timezone: string,
+  ): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+        timeZone: timezone,
+      }).formatToParts(date);
+      const values = Object.fromEntries(
+        parts
+          .filter((part) => part.type !== "literal")
+          .map((part) => [part.type, part.value]),
+      );
+
+      return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+    } catch {
+      return "";
+    }
+  }
   
   function formatDueTime(
     value: string,
@@ -170,8 +203,15 @@ import {
       useState("");
     const [updatingStatus, setUpdatingStatus] =
       useState(false);
-    const [nextStatus, setNextStatus] =
-      useState<TaskStatus>("pending");
+    const [editing, setEditing] = useState(false);
+    const [updating, setUpdating] = useState(false);
+    const [editingTitle, setEditingTitle] = useState("");
+    const [editingDescription, setEditingDescription] = useState("");
+    const [editingPriority, setEditingPriority] =
+      useState<TaskPriority>("normal");
+    const [editingDueTime, setEditingDueTime] = useState("");
+    const [editingTimezone, setEditingTimezone] = useState("");
+    const [editingTags, setEditingTags] = useState("");
   
     const [actionError, setActionError] = useState("");
   
@@ -253,7 +293,6 @@ import {
         setShowCreate(false);
   
         setSelectedTask(response.data);
-        setNextStatus(response.data.status);
         setReloadKey((value) => value + 1);
   
         requestAnimationFrame(() => {
@@ -284,7 +323,7 @@ import {
         );
   
         setSelectedTask(response.data);
-        setNextStatus(response.data.status);
+        setEditing(false);
   
         requestAnimationFrame(() => {
           window.scrollTo({
@@ -301,6 +340,7 @@ import {
   
     function handleCloseTask() {
       setSelectedTask(null);
+      setEditing(false);
       setActionError("");
   
       requestAnimationFrame(() => {
@@ -311,14 +351,31 @@ import {
       });
     }
   
-    async function handleUpdateStatus(
-      statusOverride?: TaskStatus,
-    ) {
+    function beginEditing(task: TaskEntry) {
+      setEditing(true);
+      setEditingTitle(task.title);
+      setEditingDescription(task.description);
+      setEditingPriority(task.priority);
+      setEditingDueTime(toDateTimeLocal(task.due_time, task.timezone));
+      setEditingTimezone(task.timezone);
+      setEditingTags(task.tags.join(", "));
+      setActionError("");
+    }
+
+    const updateInvalid =
+      editingTitle.trim().length === 0 ||
+      editingDescription.trim().length === 0 ||
+      editingDueTime.trim().length === 0 ||
+      editingTimezone.trim().length === 0;
+
+    const taskActions = selectedTask
+      ? getTaskActionControls(selectedTask.allowed_actions)
+      : [];
+
+    async function handleUpdateStatus(status: TaskStatus) {
       if (!selectedTask || updatingStatus) {
         return;
       }
-  
-      const status = statusOverride ?? nextStatus;
   
       setUpdatingStatus(true);
       setActionError("");
@@ -333,14 +390,53 @@ import {
             }),
           },
         );
-  
+
         setSelectedTask(response.data);
-        setNextStatus(response.data.status);
         setReloadKey((value) => value + 1);
       } catch {
-        setActionError("修改任务状态失败，请稍后重试。");
+        setActionError("任务状态无法这样变更，请刷新后重试。");
       } finally {
         setUpdatingStatus(false);
+      }
+    }
+
+    async function handleUpdate() {
+      if (!selectedTask || updateInvalid || updating) {
+        return;
+      }
+
+      const dueTimeIso = toIsoInstant(editingDueTime);
+      if (!dueTimeIso) {
+        setActionError("截止时间无效。");
+        return;
+      }
+
+      setUpdating(true);
+      setActionError("");
+
+      try {
+        const response = await api.request<TaskEntryResponse>(
+          `/task/${selectedTask.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              title: editingTitle.trim(),
+              description: editingDescription.trim(),
+              priority: editingPriority,
+              dueTime: dueTimeIso,
+              timezone: editingTimezone.trim(),
+              tags: parseTags(editingTags),
+            }),
+          },
+        );
+
+        setSelectedTask(response.data);
+        setEditing(false);
+        setReloadKey((value) => value + 1);
+      } catch {
+        setActionError("保存任务修改失败，请检查输入后重试。");
+      } finally {
+        setUpdating(false);
       }
     }
   
@@ -354,7 +450,7 @@ import {
             selectedTask ? (
               <button
                 className="secondary-button"
-                disabled={updatingStatus}
+                disabled={updatingStatus || updating}
                 onClick={handleCloseTask}
               >
                 返回任务列表
@@ -362,7 +458,7 @@ import {
             ) : (
               <button
                 className="secondary-button"
-                disabled={creating}
+                disabled={creating || updating}
                 onClick={() => {
                   setShowCreate((value) => !value);
                   setActionError("");
@@ -383,7 +479,93 @@ import {
   
         {selectedTask ? (
           <section className="memory-message">
-            <div className="memory-card-topline">
+            {editing ? (
+              <>
+                <h2>编辑任务</h2>
+
+                <input
+                  value={editingTitle}
+                  disabled={updating}
+                  onChange={(event) => {
+                    setEditingTitle(event.target.value);
+                    setActionError("");
+                  }}
+                />
+
+                <textarea
+                  value={editingDescription}
+                  disabled={updating}
+                  onChange={(event) => {
+                    setEditingDescription(event.target.value);
+                    setActionError("");
+                  }}
+                />
+
+                <select
+                  value={editingPriority}
+                  disabled={updating}
+                  onChange={(event) =>
+                    setEditingPriority(event.target.value as TaskPriority)
+                  }
+                >
+                  <option value="low">低优先级</option>
+                  <option value="normal">普通优先级</option>
+                  <option value="high">高优先级</option>
+                  <option value="urgent">紧急</option>
+                </select>
+
+                <input
+                  type="datetime-local"
+                  value={editingDueTime}
+                  disabled={updating}
+                  onChange={(event) => {
+                    setEditingDueTime(event.target.value);
+                    setActionError("");
+                  }}
+                />
+
+                <input
+                  placeholder="时区"
+                  value={editingTimezone}
+                  disabled={updating}
+                  onChange={(event) => {
+                    setEditingTimezone(event.target.value);
+                    setActionError("");
+                  }}
+                />
+
+                <input
+                  placeholder="标签，用逗号分隔（可选）"
+                  value={editingTags}
+                  disabled={updating}
+                  onChange={(event) => {
+                    setEditingTags(event.target.value);
+                    setActionError("");
+                  }}
+                />
+
+                <button
+                  className="secondary-button"
+                  disabled={updating || updateInvalid}
+                  onClick={handleUpdate}
+                >
+                  {updating ? "保存中…" : "保存修改"}
+                </button>
+
+                <button
+                  className="secondary-button"
+                  disabled={updating}
+                  onClick={() => {
+                    setEditing(false);
+                    setActionError("");
+                  }}
+                >
+                  取消
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="memory-card-topline">
               <span>
                 {statusLabels[selectedTask.status]}
               </span>
@@ -391,30 +573,30 @@ import {
               <span>
                 优先级：{priorityLabels[selectedTask.priority]}
               </span>
-            </div>
+                </div>
   
-            <h2>{selectedTask.title}</h2>
-            <p>{selectedTask.description}</p>
+                <h2>{selectedTask.title}</h2>
+                <p>{selectedTask.description}</p>
   
-            <p>
+                <p>
               截止时间：
               {formatDueTime(
                 selectedTask.due_time,
                 selectedTask.timezone,
               )}
-            </p>
+                </p>
   
-            <p>时区：{selectedTask.timezone}</p>
+                <p>时区：{selectedTask.timezone}</p>
   
-            {selectedTask.tags.length > 0 && (
+                {selectedTask.tags.length > 0 && (
               <p>
                 {selectedTask.tags
                   .map((tag) => `#${tag}`)
                   .join(" ")}
               </p>
-            )}
+                )}
   
-            {selectedTask.completed_at && (
+                {selectedTask.completed_at && (
               <p>
                 完成时间：
                 {formatDueTime(
@@ -422,53 +604,55 @@ import {
                   selectedTask.timezone,
                 )}
               </p>
-            )}
-  
-            <select
-              value={nextStatus}
-              disabled={updatingStatus}
-              onChange={(event) =>
-                setNextStatus(
-                  event.target.value as TaskStatus,
-                )
-              }
-            >
-              <option value="pending">待处理</option>
-              <option value="in_progress">进行中</option>
-              <option value="completed">已完成</option>
-              <option value="cancelled">已取消</option>
-            </select>
-  
-            <button
-              className="secondary-button"
-              disabled={
-                updatingStatus ||
-                nextStatus === selectedTask.status
-              }
-              onClick={() => handleUpdateStatus()}
-            >
-              {updatingStatus ? "保存中…" : "保存状态"}
-            </button>
-  
-            {selectedTask.status !== "completed" && (
+                )}
+
+                <button
+                  className="secondary-button"
+                  disabled={updatingStatus}
+                  onClick={() => beginEditing(selectedTask)}
+                >
+                  编辑任务
+                </button>
+
+                {taskActions.includes("start") && (
+                  <button
+                    className="secondary-button"
+                    disabled={updatingStatus}
+                    onClick={() => handleUpdateStatus("in_progress")}
+                  >
+                    {updatingStatus ? "处理中…" : "开始任务"}
+                  </button>
+                )}
+
+                {taskActions.includes("complete") && (
+                  <button
+                    className="secondary-button"
+                    disabled={updatingStatus}
+                    onClick={() => handleUpdateStatus("completed")}
+                  >
+                    {updatingStatus ? "处理中…" : "完成任务"}
+                  </button>
+                )}
+
+                {taskActions.includes("cancel") && (
+                  <button
+                    className="secondary-button"
+                    disabled={updatingStatus}
+                    onClick={() => handleUpdateStatus("cancelled")}
+                  >
+                    {updatingStatus ? "处理中…" : "取消任务"}
+                  </button>
+                )}
+
               <button
                 className="secondary-button"
                 disabled={updatingStatus}
-                onClick={() =>
-                  handleUpdateStatus("completed")
-                }
+                onClick={handleCloseTask}
               >
-                {updatingStatus ? "完成中…" : "完成任务"}
+                返回任务列表
               </button>
+              </>
             )}
-  
-            <button
-              className="secondary-button"
-              disabled={updatingStatus}
-              onClick={handleCloseTask}
-            >
-              返回任务列表
-            </button>
           </section>
         ) : (
           <>
