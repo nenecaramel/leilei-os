@@ -13,6 +13,7 @@
     "start": "node dist/app/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:layout": "RUN_SAFARI_LAYOUT_TEST=1 tsx --test tests/native-date-layout.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",

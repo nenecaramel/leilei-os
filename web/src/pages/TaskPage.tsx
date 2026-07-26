@@ -6,6 +6,7 @@ import {
   } from "react";
   import { useWebApiClient } from "../api/useWebApiClient";
   import { TaskIcon } from "../components/icons";
+  import { NativeDateInput } from "../components/NativeDateInput";
   import { useSettings } from "../settings/SettingsProvider";
   import { PageHeader } from "./PageHeader";
   import { getTaskActionControls } from "./task-actions";
@@ -514,7 +515,7 @@ import {
                   <option value="urgent">紧急</option>
                 </select>
 
-                <input
+                <NativeDateInput
                   type="datetime-local"
                   value={editingDueTime}
                   disabled={updating}
@@ -695,7 +696,7 @@ import {
                   <option value="urgent">紧急</option>
                 </select>
   
-                <input
+                <NativeDateInput
                   type="datetime-local"
                   value={dueTime}
                   disabled={creating}
