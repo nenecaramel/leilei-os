@@ -33,6 +33,12 @@ import type { HealthApiDependencies } from "../web-api/health-router.js";
 import { DrizzleSettingsRepository } from "../domains/settings/settings-repository.js";
 import { SettingsService } from "../domains/settings/settings-service.js";
 import type { SettingsApiDependencies } from "../web-api/settings-router.js";
+import { DrizzleToyCommandRepository } from "../domains/toy/toy-command-repository.js";
+import { ToyCommandService } from "../domains/toy/toy-command-service.js";
+import {
+  createToyBridgeRouter,
+  type ToyApiDependencies,
+} from "../web-api/toy-router.js";
 
 export type AppDependencies = {
   verifyAccessToken?: AccessTokenVerifier;
@@ -42,6 +48,7 @@ export type AppDependencies = {
   webTaskService?: TaskApiDependencies["taskService"];
   webHealthService?: HealthApiDependencies["healthService"];
   webSettingsService?: SettingsApiDependencies["settingsService"];
+  toyService?: ToyApiDependencies["toyService"];
 };
 
 export function createApp(
@@ -120,13 +127,15 @@ export function createApp(
 
     let webSettingsService =
       dependencies.webSettingsService;
+    let toyService = dependencies.toyService;
 
     if (
       !webMemoryService ||
       !webDiaryService ||
       !webTaskService ||
       !webHealthService ||
-      !webSettingsService
+      !webSettingsService ||
+      !toyService
     ) {
       if (!env.DATABASE_URL) {
         throw new Error(
@@ -165,6 +174,13 @@ export function createApp(
           new DrizzleSettingsRepository(db),
         );
       }
+
+      if (!toyService) {
+        toyService = new ToyCommandService(
+          new DrizzleToyCommandRepository(db),
+          env.LEILEI_TOY_BRIDGE_USER_ID,
+        );
+      }
     }
 
     if (
@@ -172,12 +188,21 @@ export function createApp(
       !webDiaryService ||
       !webTaskService ||
       !webHealthService ||
-      !webSettingsService
+      !webSettingsService ||
+      !toyService
     ) {
       throw new Error(
         "Web API services are not configured.",
       );
     }
+
+    app.use(
+      "/api/v1/toy/commands",
+      createToyBridgeRouter(
+        { toyService },
+        env.LEILEI_TOY_BRIDGE_KEY,
+      ),
+    );
 
     app.use(
       "/api/v1",
@@ -203,6 +228,9 @@ export function createApp(
         },
         settings: {
           settingsService: webSettingsService,
+        },
+        toy: {
+          toyService,
         },
       }),
     );

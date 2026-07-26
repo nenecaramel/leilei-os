@@ -21,6 +21,8 @@ const baseEnvSchema = z.object({
   WEB_APP_ORIGIN: httpsUrl.optional(),
   WEB_AUTH0_AUDIENCE: httpsUrl.optional(),
   WEB_AUTH0_REQUIRED_SCOPE: z.string().trim().min(1).optional(),
+  LEILEI_TOY_BRIDGE_KEY: z.string().min(32).optional(),
+  LEILEI_TOY_BRIDGE_USER_ID: z.string().uuid().optional(),
 });
 
 const webApiEnvSchema = baseEnvSchema

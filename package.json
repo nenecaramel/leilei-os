@@ -15,6 +15,7 @@
     "test": "tsx --test tests/**/*.test.ts",
     "test:task-tag-integration": "RUN_DATABASE_INTEGRATION_TEST=1 tsx --test tests/task-tag-repository.integration.test.ts",
     "test:diary-search-integration": "RUN_DATABASE_INTEGRATION_TEST=1 tsx --test tests/diary-repository.integration.test.ts",
+    "test:toy-integration": "RUN_TOY_DATABASE_INTEGRATION_TEST=1 tsx --test --test-reporter=spec tests/toy-command-repository.integration.test.ts",
     "test:layout": "RUN_SAFARI_LAYOUT_TEST=1 tsx --test tests/native-date-layout.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

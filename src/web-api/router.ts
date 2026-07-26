@@ -19,6 +19,10 @@ import {
   createSettingsApiRouter,
   type SettingsApiDependencies,
 } from "./settings-router.js";
+import {
+  createToyUserRouter,
+  type ToyApiDependencies,
+} from "./toy-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
@@ -26,6 +30,7 @@ export type WebApiRouterDependencies = {
   task: TaskApiDependencies;
   health: HealthApiDependencies;
   settings: SettingsApiDependencies;
+  toy: ToyApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -77,6 +82,8 @@ export function createWebApiRouter(
     "/settings",
     createSettingsApiRouter(dependencies.settings),
   );
+
+  router.use("/toy", createToyUserRouter(dependencies.toy));
 
   return router;
 }
