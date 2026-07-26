@@ -9,6 +9,11 @@ export type TaskRequestTicket = {
   isCurrent(): boolean;
 };
 
+export type TaskRequestTracker = {
+  begin(): TaskRequestTicket;
+  invalidate(): void;
+};
+
 export async function settleLatestTaskRequest<T>(input: {
   request: Promise<T>;
   ticket: TaskRequestTicket;
@@ -47,7 +52,9 @@ export function buildTaskListRequest(
     setInstantParameter(parameters, "due_from", filters.dueFrom);
     setInstantParameter(parameters, "due_to", filters.dueTo);
   } else {
-    const range = getPresetRange(filters.due, now);
+    const range =
+      getStoredPresetRange(filters) ??
+      getPresetRange(filters.due, now);
     if (range) {
       parameters.set("due_from", range.from);
       parameters.set("due_to", range.to);
@@ -64,10 +71,33 @@ export function buildTaskListRequest(
   };
 }
 
-export function createLatestTaskRequestTracker(): {
-  begin(): TaskRequestTicket;
-  invalidate(): void;
-} {
+function getStoredPresetRange(
+  filters: TaskFilters,
+): { from: string; to: string } | null {
+  if (
+    filters.due !== "today" &&
+    filters.due !== "next_7_days"
+  ) {
+    return null;
+  }
+
+  const from = new Date(filters.dueFrom);
+  const to = new Date(filters.dueTo);
+  if (
+    Number.isNaN(from.getTime()) ||
+    Number.isNaN(to.getTime()) ||
+    from >= to
+  ) {
+    return null;
+  }
+
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+  };
+}
+
+export function createLatestTaskRequestTracker(): TaskRequestTracker {
   let latestRequest = 0;
 
   return {
@@ -81,6 +111,14 @@ export function createLatestTaskRequestTracker(): {
       latestRequest += 1;
     },
   };
+}
+
+export function cancelLatestTaskRequest(
+  tracker: TaskRequestTracker,
+  controller: AbortController | null,
+): void {
+  tracker.invalidate();
+  controller?.abort();
 }
 
 function setTrimmedParameter(

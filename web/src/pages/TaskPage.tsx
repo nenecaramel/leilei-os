@@ -14,14 +14,21 @@ import {
     EMPTY_TASK_FILTERS,
     createTaskDetailLocation,
     getTaskDetailLocation,
-    readTaskFilters,
     type TaskDueFilter,
   } from "./task-location";
   import {
     buildTaskListRequest,
+    cancelLatestTaskRequest,
     createLatestTaskRequestTracker,
     settleLatestTaskRequest,
   } from "./task-list-request";
+  import {
+    createTaskFilterHistorySnapshot,
+    createTaskFilterDebouncer,
+    pushTaskFilterHistory,
+    readTaskFilterHistorySnapshot,
+    subscribeToTaskFilterHistory,
+  } from "./task-filter-history";
   
   type TaskStatus =
     | "pending"
@@ -185,7 +192,7 @@ import {
     ];
   }
   function initialFilters() {
-    return readTaskFilters(window.location.search);
+    return readTaskFilterHistorySnapshot(window.location.search);
   }
   export function TaskPage() {
     const api = useWebApiClient();
@@ -194,9 +201,18 @@ import {
     const listRequestTracker = useRef(
       createLatestTaskRequestTracker(),
     );
+    const listAbortController = useRef<AbortController | null>(
+      null,
+    );
   
     const [reloadKey, setReloadKey] = useState(0);
     const [filters, setFilters] = useState(initialFilters);
+    const [searchDraft, setSearchDraft] = useState(
+      () => initialFilters().q,
+    );
+    const [tagDraft, setTagDraft] = useState(
+      () => initialFilters().tag,
+    );
     const [locationVersion, setLocationVersion] = useState(0);
     const [state, setState] = useState<LoadState>({
       status: "loading",
@@ -234,30 +250,85 @@ import {
     const [editingTags, setEditingTags] = useState("");
   
     const [actionError, setActionError] = useState("");
+    const filtersRef = useRef(filters);
+    filtersRef.current = filters;
+    const searchDraftRef = useRef(searchDraft);
+    searchDraftRef.current = searchDraft;
+    const tagDraftRef = useRef(tagDraft);
+    tagDraftRef.current = tagDraft;
+    const searchDebouncerRef = useRef<
+      ReturnType<typeof createTaskFilterDebouncer> | null
+    >(null);
+    const tagDebouncerRef = useRef<
+      ReturnType<typeof createTaskFilterDebouncer> | null
+    >(null);
+
+    if (!searchDebouncerRef.current) {
+      searchDebouncerRef.current = createTaskFilterDebouncer({
+        delayMs: 300,
+        commit: (query) => {
+          commitFilters(
+            {
+              ...filtersRef.current,
+              q: query,
+              tag: tagDraftRef.current,
+            },
+            {
+              cancelSearch: false,
+            },
+          );
+        },
+        setTimeout: window.setTimeout.bind(window),
+        clearTimeout: window.clearTimeout.bind(window),
+      });
+    }
+
+    if (!tagDebouncerRef.current) {
+      tagDebouncerRef.current = createTaskFilterDebouncer({
+        delayMs: 300,
+        commit: (tag) => {
+          commitFilters(
+            {
+              ...filtersRef.current,
+              q: searchDraftRef.current,
+              tag,
+            },
+            {
+              cancelTag: false,
+            },
+          );
+        },
+        setTimeout: window.setTimeout.bind(window),
+        clearTimeout: window.clearTimeout.bind(window),
+      });
+    }
 
     useEffect(() => {
-      const onPopState = () => {
-        listRequestTracker.current.invalidate();
+      return subscribeToTaskFilterHistory(window, (restoredFilters) => {
+        searchDebouncerRef.current?.cancel();
+        tagDebouncerRef.current?.cancel();
+        invalidateListRequest();
         setState({ status: "loading" });
-        setFilters(initialFilters());
+        setFilters(restoredFilters);
+        setSearchDraft(restoredFilters.q);
+        setTagDraft(restoredFilters.tag);
         setLocationVersion((value) => value + 1);
-      };
-      window.addEventListener("popstate", onPopState);
-      return () => window.removeEventListener("popstate", onPopState);
+      });
     }, []);
+
+    useEffect(
+      () => () => {
+        searchDebouncerRef.current?.cancel();
+        tagDebouncerRef.current?.cancel();
+      },
+      [],
+    );
   
     useEffect(() => {
       const controller = new AbortController();
+      listAbortController.current = controller;
       const requestTicket = listRequestTracker.current.begin();
-      const timeout = window.setTimeout(() => {
       const request = buildTaskListRequest(filters);
-      if (!getTaskDetailLocation(window.location.search).taskId) {
-        window.history.replaceState(
-          null,
-          "",
-          `${window.location.pathname}${request.search}`,
-        );
-      }
       setState({
         status: "loading",
       });
@@ -277,13 +348,18 @@ import {
         onError: () => {
           setState({ status: "error" });
         },
+      }).finally(() => {
+        if (listAbortController.current === controller) {
+          listAbortController.current = null;
+        }
       });
-  
-      }, filters.q ? 300 : 0);
+
       return () => {
         listRequestTracker.current.invalidate();
         controller.abort();
-        window.clearTimeout(timeout);
+        if (listAbortController.current === controller) {
+          listAbortController.current = null;
+        }
       };
     }, [api, reloadKey, filters]);
 
@@ -322,23 +398,52 @@ import {
       };
     }, [api, locationVersion]);
 
-    function updateFilters(nextFilters: typeof filters) {
-      listRequestTracker.current.invalidate();
-      setState({ status: "loading" });
-      setFilters(nextFilters);
-
-      if (!getTaskDetailLocation(window.location.search).taskId) {
-        const request = buildTaskListRequest(nextFilters);
-        window.history.replaceState(
-          null,
-          "",
-          `${window.location.pathname}${request.search}`,
-        );
+    function commitFilters(
+      nextFilters: typeof filters,
+      cancellation: {
+        cancelSearch?: boolean;
+        cancelTag?: boolean;
+      } = {},
+    ) {
+      if (cancellation.cancelSearch !== false) {
+        searchDebouncerRef.current?.cancel();
       }
+      if (cancellation.cancelTag !== false) {
+        tagDebouncerRef.current?.cancel();
+      }
+      invalidateListRequest();
+      setState({ status: "loading" });
+      const snapshot = createTaskFilterHistorySnapshot(nextFilters);
+      pushTaskFilterHistory(window, snapshot);
+      setFilters(snapshot);
+      setSearchDraft(snapshot.q);
+      setTagDraft(snapshot.tag);
+    }
+
+    function updateSearchDraft(query: string) {
+      invalidateListRequest();
+      setState({ status: "loading" });
+      setSearchDraft(query);
+      searchDebouncerRef.current?.schedule(query);
+    }
+
+    function updateTagDraft(tag: string) {
+      invalidateListRequest();
+      setState({ status: "loading" });
+      setTagDraft(tag);
+      tagDebouncerRef.current?.schedule(tag);
+    }
+
+    function invalidateListRequest() {
+      cancelLatestTaskRequest(
+        listRequestTracker.current,
+        listAbortController.current,
+      );
+      listAbortController.current = null;
     }
 
     function clearFilters() {
-      updateFilters(EMPTY_TASK_FILTERS);
+      commitFilters(EMPTY_TASK_FILTERS);
     }
   
     const createInvalid =
@@ -429,7 +534,10 @@ import {
       setSelectedTask(null);
       setEditing(false);
       setActionError("");
-      setFilters(initialFilters());
+      const restoredFilters = initialFilters();
+      setFilters(restoredFilters);
+      setSearchDraft(restoredFilters.q);
+      setTagDraft(restoredFilters.tag);
       setLocationVersion((value) => value + 1);
   
       requestAnimationFrame(() => {
@@ -560,18 +668,18 @@ import {
         />
         {!selectedTask && (
           <section className="memory-message task-filters">
-            <input aria-label="搜索任务" placeholder="搜索任务标题或内容" value={filters.q} onChange={(event) => updateFilters({ ...filters, q: event.target.value })} />
-            <select aria-label="状态筛选" value={filters.status} onChange={(event) => updateFilters({ ...filters, status: event.target.value })}>
+            <input aria-label="搜索任务" placeholder="搜索任务标题或内容" value={searchDraft} onChange={(event) => updateSearchDraft(event.target.value)} />
+            <select aria-label="状态筛选" value={filters.status} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, status: event.target.value })}>
               <option value="">全部状态</option><option value="pending">待处理</option><option value="in_progress">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option>
             </select>
-            <select aria-label="优先级筛选" value={filters.priority} onChange={(event) => updateFilters({ ...filters, priority: event.target.value })}>
+            <select aria-label="优先级筛选" value={filters.priority} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, priority: event.target.value })}>
               <option value="">全部优先级</option><option value="low">低</option><option value="normal">普通</option><option value="high">高</option><option value="urgent">紧急</option>
             </select>
-            <input aria-label="标签筛选" placeholder="筛选标签" value={filters.tag} onChange={(event) => updateFilters({ ...filters, tag: event.target.value })} />
-            <select aria-label="截止时间筛选" value={filters.due} onChange={(event) => updateFilters({ ...filters, due: event.target.value as TaskDueFilter })}>
+            <input aria-label="标签筛选" placeholder="筛选标签" value={tagDraft} onChange={(event) => updateTagDraft(event.target.value)} />
+            <select aria-label="截止时间筛选" value={filters.due} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, due: event.target.value as TaskDueFilter, dueFrom: "", dueTo: "" })}>
               <option value="">全部时间</option><option value="overdue">已逾期</option><option value="today">今天</option><option value="next_7_days">未来七天</option><option value="custom">自定义范围</option>
             </select>
-            {filters.due === "custom" && <><NativeDateInput aria-label="开始日期" type="datetime-local" value={filters.dueFrom} onChange={(event) => updateFilters({ ...filters, dueFrom: event.target.value })} /><NativeDateInput aria-label="结束日期" type="datetime-local" value={filters.dueTo} onChange={(event) => updateFilters({ ...filters, dueTo: event.target.value })} /></>}
+            {filters.due === "custom" && <><NativeDateInput aria-label="开始日期" type="datetime-local" value={filters.dueFrom} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, dueFrom: event.target.value })} /><NativeDateInput aria-label="结束日期" type="datetime-local" value={filters.dueTo} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, dueTo: event.target.value })} /></>}
             <button className="secondary-button" onClick={clearFilters}>清除全部</button>
           </section>
         )}
