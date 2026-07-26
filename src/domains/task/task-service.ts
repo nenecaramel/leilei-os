@@ -492,28 +492,37 @@ export class TaskService {
     const due = input.due?.trim() || undefined;
     const dueFrom = input.dueFrom === undefined || input.dueFrom.trim() === "" ? undefined : this.normalizeDueTime(input.dueFrom);
     const dueTo = input.dueTo === undefined || input.dueTo.trim() === "" ? undefined : this.normalizeDueTime(input.dueTo);
+    const base: TaskListQuery = {
+      ...(q ? { q } : {}),
+      ...(status ? { status } : {}),
+      ...(priority ? { priority } : {}),
+      ...(tag ? { tag } : {}),
+    };
 
     if (dueFrom && dueTo && dueFrom >= dueTo) {
       throw new TaskDomainError("INVALID_TASK_QUERY", "Task due range must have a start before its end.");
     }
     if (!due) {
       if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Task date ranges require a due filter.");
-      return { q, status, priority, tag };
+      return base;
     }
     if (due === "no_due_date") throw new TaskDomainError("INVALID_TASK_QUERY", "Unsupported task due filter.");
     if (due === "custom") {
       if (!dueFrom && !dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Custom task dates require a range boundary.");
-      return { q, status, priority, tag, dueFrom, dueTo };
+      return { ...base, ...(dueFrom ? { dueFrom } : {}), ...(dueTo ? { dueTo } : {}) };
     }
     if (due === "overdue") {
       if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Overdue tasks do not accept a range.");
-      return { q, status, priority, tag, overdueBefore: new Date() };
+      return { ...base, overdueBefore: new Date() };
     }
     if (due === "today" || due === "next_7_days") {
       if (!dueFrom || !dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Task due preset requires range boundaries.");
-      return { q, status, priority, tag, dueFrom, dueTo };
+      return { ...base, dueFrom, dueTo };
     }
-    throw new TaskDomainError("INVALID_TASK_QUERY", "Task due filter must be overdue or custom.");
+    throw new TaskDomainError(
+      "INVALID_TASK_QUERY",
+      "Task due filter must be overdue, today, next_7_days, or custom.",
+    );
   }
 
   private normalizeOptionalText(value: string | undefined, maxLength: number, code: TaskDomainErrorCode, label: string): string | undefined {

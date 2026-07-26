@@ -122,6 +122,136 @@ test("rejects invalid task list date filters safely", async () => {
   }
 });
 
+test("uses the existing default list behavior when no task query is supplied", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+
+  await service.listTasks({ userId: "user-1" });
+
+  assert.deepEqual(repository.findUserCalls, ["user-1"]);
+  assert.deepEqual(repository.listQueries, [{}]);
+});
+
+test("normalizes literal search, status, priority, and exact tag filters", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+
+  await service.listTasks({
+    userId: "user-1",
+    query: {
+      q: "  100%_\\ Report  ",
+      status: "IN_PROGRESS",
+      priority: "URGENT",
+      tag: "  work  ",
+    },
+  });
+
+  assert.deepEqual(repository.listQueries[0], {
+    q: "100%_\\ Report",
+    status: "in_progress",
+    priority: "urgent",
+    tag: "work",
+  });
+});
+
+test("normalizes all supported due presets with explicit absolute boundaries", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+
+  await service.listTasks({
+    userId: "user-1",
+    query: {
+      due: "today",
+      dueFrom: "2026-07-22T00:00:00Z",
+      dueTo: "2026-07-23T00:00:00Z",
+    },
+  });
+  assert.equal(
+    repository.listQueries[0]?.dueFrom?.toISOString(),
+    "2026-07-22T00:00:00.000Z",
+  );
+  assert.equal(
+    repository.listQueries[0]?.dueTo?.toISOString(),
+    "2026-07-23T00:00:00.000Z",
+  );
+
+  await service.listTasks({
+    userId: "user-1",
+    query: {
+      due: "next_7_days",
+      dueFrom: "2026-07-22T08:30:00Z",
+      dueTo: "2026-07-29T08:30:00Z",
+    },
+  });
+  assert.equal(
+    repository.listQueries[1]?.dueFrom?.toISOString(),
+    "2026-07-22T08:30:00.000Z",
+  );
+  assert.equal(
+    repository.listQueries[1]?.dueTo?.toISOString(),
+    "2026-07-29T08:30:00.000Z",
+  );
+
+  await service.listTasks({ userId: "user-1", query: { due: "overdue" } });
+  assert.ok(repository.listQueries[2]?.overdueBefore instanceof Date);
+});
+
+test("rejects invalid task list filter values and ambiguous due ranges", async () => {
+  const service = new TaskService(new MockTaskRepository());
+  const invalidQueries: RawTaskListQuery[] = [
+    { q: "x".repeat(201) },
+    { tag: "x".repeat(51) },
+    { status: "archived" },
+    { priority: "critical" },
+    { due: "tomorrow" },
+    { due: "overdue", dueFrom: "2026-07-22T00:00:00Z" },
+    { due: "today" },
+    { due: "next_7_days", dueTo: "2026-07-29T00:00:00Z" },
+    { due: "custom", dueFrom: "not-an-instant" },
+    { dueFrom: "2026-07-22T00:00:00Z" },
+    { due: "no_due_date" },
+  ];
+
+  for (const query of invalidQueries) {
+    await assert.rejects(
+      service.listTasks({ userId: "user-1", query }),
+      (error: unknown) =>
+        error instanceof TaskDomainError &&
+        [
+          "INVALID_TASK_QUERY",
+          "INVALID_TASK_STATUS",
+          "INVALID_PRIORITY",
+          "INVALID_DUE_TIME",
+        ].includes(error.code),
+    );
+  }
+});
+
+test("accepts one-sided custom task due ranges and keeps inclusive-exclusive bounds", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+
+  await service.listTasks({
+    userId: "user-1",
+    query: { due: "custom", dueFrom: "2026-07-22T00:00:00Z" },
+  });
+  assert.equal(
+    repository.listQueries[0]?.dueFrom?.toISOString(),
+    "2026-07-22T00:00:00.000Z",
+  );
+  assert.equal(repository.listQueries[0]?.dueTo, undefined);
+
+  await service.listTasks({
+    userId: "user-1",
+    query: { due: "custom", dueTo: "2026-07-23T00:00:00Z" },
+  });
+  assert.equal(repository.listQueries[1]?.dueFrom, undefined);
+  assert.equal(
+    repository.listQueries[1]?.dueTo?.toISOString(),
+    "2026-07-23T00:00:00.000Z",
+  );
+});
+
 function seedTask(
   repository: MockTaskRepository,
   status: TaskStatus = "pending",

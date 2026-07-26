@@ -10,6 +10,13 @@ import {
   import { useSettings } from "../settings/SettingsProvider";
   import { PageHeader } from "./PageHeader";
   import { getTaskActionControls } from "./task-actions";
+  import {
+    EMPTY_TASK_FILTERS,
+    createTaskDetailLocation,
+    getTaskDetailLocation,
+    readTaskFilters,
+    type TaskDueFilter,
+  } from "./task-location";
   
   type TaskStatus =
     | "pending"
@@ -24,7 +31,6 @@ import {
     | "urgent";
 
   type TaskAction = "start" | "complete" | "cancel";
-  type TaskDueFilter = "" | "overdue" | "today" | "next_7_days" | "custom";
   
   type TaskEntry = {
     id: string;
@@ -174,8 +180,7 @@ import {
     ];
   }
   function initialFilters() {
-    const p = new URLSearchParams(window.location.search);
-    return { q: p.get("q") ?? "", status: p.get("status") ?? "", priority: p.get("priority") ?? "", tag: p.get("tag") ?? "", due: (p.get("due") ?? "") as TaskDueFilter, dueFrom: p.get("due_from") ?? "", dueTo: p.get("due_to") ?? "" };
+    return readTaskFilters(window.location.search);
   }
   function presetRange(due: TaskDueFilter) {
     const start = new Date(); const end = new Date();
@@ -191,6 +196,7 @@ import {
   
     const [reloadKey, setReloadKey] = useState(0);
     const [filters, setFilters] = useState(initialFilters);
+    const [locationVersion, setLocationVersion] = useState(0);
     const [state, setState] = useState<LoadState>({
       status: "loading",
     });
@@ -229,7 +235,10 @@ import {
     const [actionError, setActionError] = useState("");
 
     useEffect(() => {
-      const onPopState = () => setFilters(initialFilters());
+      const onPopState = () => {
+        setFilters(initialFilters());
+        setLocationVersion((value) => value + 1);
+      };
       window.addEventListener("popstate", onPopState);
       return () => window.removeEventListener("popstate", onPopState);
     }, []);
@@ -245,7 +254,9 @@ import {
       if (filters.due) params.set("due", filters.due);
       if (filters.due === "custom") { if (filters.dueFrom) params.set("due_from", toIsoInstant(filters.dueFrom)); if (filters.dueTo) params.set("due_to", toIsoInstant(filters.dueTo)); }
       else { const range = presetRange(filters.due); if (range) { params.set("due_from", range.from); params.set("due_to", range.to); } }
-      window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+      if (!getTaskDetailLocation(window.location.search).taskId) {
+        window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+      }
       setState({
         status: "loading",
       });
@@ -276,7 +287,42 @@ import {
       };
     }, [api, reloadKey, filters]);
 
-    function clearFilters() { setFilters({ q: "", status: "", priority: "", tag: "", due: "", dueFrom: "", dueTo: "" }); }
+    useEffect(() => {
+      const { taskId } = getTaskDetailLocation(window.location.search);
+      if (!taskId) {
+        setSelectedTask(null);
+        setEditing(false);
+        return;
+      }
+
+      let active = true;
+      setLoadingTaskId(taskId);
+      setActionError("");
+
+      api.request<TaskEntryResponse>(`/task/${taskId}`)
+        .then((response) => {
+          if (!active) return;
+          setSelectedTask(response.data);
+          setEditing(false);
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          });
+        })
+        .catch(() => {
+          if (!active) return;
+          setSelectedTask(null);
+          setActionError("读取任务详情失败，请稍后重试。");
+        })
+        .finally(() => {
+          if (active) setLoadingTaskId("");
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [api, locationVersion]);
+
+    function clearFilters() { setFilters(EMPTY_TASK_FILTERS); }
   
     const createInvalid =
       title.trim().length === 0 ||
@@ -323,8 +369,8 @@ import {
         setTags("");
         setShowCreate(false);
   
-        setSelectedTask(response.data);
         setReloadKey((value) => value + 1);
+        openTaskDetail(response.data.id);
   
         requestAnimationFrame(() => {
           window.scrollTo({
@@ -343,36 +389,31 @@ import {
       if (loadingTaskId) {
         return;
       }
-  
+
       listScrollPosition.current = window.scrollY;
-      setLoadingTaskId(id);
       setActionError("");
-  
-      try {
-        const response = await api.request<TaskEntryResponse>(
-          `/task/${id}`,
-        );
-  
-        setSelectedTask(response.data);
-        setEditing(false);
-  
-        requestAnimationFrame(() => {
-          window.scrollTo({
-            top: 0,
-            behavior: "smooth",
-          });
-        });
-      } catch {
-        setActionError("读取任务详情失败，请稍后重试。");
-      } finally {
-        setLoadingTaskId("");
-      }
+      openTaskDetail(id);
+    }
+
+    function openTaskDetail(id: string) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      window.history.pushState(
+        null,
+        "",
+        createTaskDetailLocation(id, returnTo),
+      );
+      setSelectedTask(null);
+      setLocationVersion((value) => value + 1);
     }
   
     function handleCloseTask() {
+      const { returnTo } = getTaskDetailLocation(window.location.search);
+      window.history.pushState(null, "", returnTo);
       setSelectedTask(null);
       setEditing(false);
       setActionError("");
+      setFilters(initialFilters());
+      setLocationVersion((value) => value + 1);
   
       requestAnimationFrame(() => {
         window.scrollTo({
