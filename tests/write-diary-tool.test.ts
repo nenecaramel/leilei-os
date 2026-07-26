@@ -93,7 +93,15 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
   const response = await client.listTools();
   assert.deepEqual(
     response.tools.map((tool) => tool.name).sort(),
-    ["create_task","get_local_context" ,"get_weather_context", "hello", "read_memory", "write_diary" ,
+    [
+      "create_task",
+      "get_local_context",
+      "get_weather_context",
+      "hello",
+      "read_memory",
+      "toy_set",
+      "toy_stop",
+      "write_diary",
     ],
   );
 
