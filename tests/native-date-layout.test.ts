@@ -51,6 +51,14 @@ type LayoutBounds = {
   controls: ControlBounds[];
   clientWidth: number;
   scrollWidth: number;
+  sidebar: {
+    avatarBackgroundColor: string;
+    avatarBorderColor: string;
+    avatarBorderStyle: string;
+    avatarBorderWidth: string;
+    brandBackgroundColor: string;
+    footerDisplay: string;
+  };
 };
 
 async function webdriver<T>(
@@ -76,82 +84,111 @@ async function webdriver<T>(
 function createLayoutFixture(): string {
   const controls = renderToStaticMarkup(
     createElement(
-      "main",
-      { className: "page memory-page", "data-layout-page": true },
+      "div",
+      { className: "app-shell" },
       createElement(
-        "section",
-        { className: "memory-message", "data-form-card": "task" },
-        createElement("h2", null, "Task"),
-        createElement("input", {
-          type: "text",
-          "data-control": "task-text",
-          value: "Task title",
-          readOnly: true,
-        }),
-        createElement(NativeDateInput, {
-          type: "datetime-local",
-          "data-control": "task-datetime",
-          value: "2026-07-26T10:30",
-          readOnly: true,
-        }),
-        createElement(NativeDateInput, {
-          type: "time",
-          "data-control": "task-time",
-          value: "10:30",
-          readOnly: true,
-        }),
-      ),
-      createElement(
-        "section",
-        { className: "memory-message", "data-form-card": "diary" },
-        createElement("h2", null, "Diary"),
-        createElement("input", {
-          type: "text",
-          "data-control": "diary-text",
-          value: "Diary title",
-          readOnly: true,
-        }),
-        createElement(NativeDateInput, {
-          type: "date",
-          "data-control": "diary-date",
-          value: "2026-07-26",
-          readOnly: true,
-        }),
-      ),
-      createElement(
-        "section",
-        {
-          className: "memory-message diary-filters",
-          "data-form-card": "diary-filters",
-        },
-        createElement("h2", null, "Diary filters"),
-        createElement("input", {
-          type: "text",
-          "data-control": "diary-filter-query",
-          value: "Long diary search filter",
-          readOnly: true,
-        }),
+        "aside",
+        { className: "sidebar" },
         createElement(
-          "label",
-          null,
-          createElement("span", null, "开始日期"),
+          "div",
+          { className: "sidebar-brand" },
+          createElement("div", {
+            className: "brand-mark",
+            "data-brand-mark": true,
+          }, "L"),
+        ),
+        createElement(
+          "nav",
+          { className: "primary-nav" },
+          createElement("a", { className: "nav-item" }, "Dashboard"),
+        ),
+        createElement(
+          "div",
+          { className: "sidebar-footer", "data-sidebar-footer": true },
+          createElement("div", {
+            className: "user-avatar",
+            "data-sidebar-avatar": true,
+          }, "LL"),
+        ),
+      ),
+      createElement(
+        "main",
+        { className: "page memory-page", "data-layout-page": true },
+        createElement(
+          "section",
+          { className: "memory-message", "data-form-card": "task" },
+          createElement("h2", null, "Task"),
+          createElement("input", {
+            type: "text",
+            "data-control": "task-text",
+            value: "Task title",
+            readOnly: true,
+          }),
           createElement(NativeDateInput, {
-            type: "date",
-            "data-control": "diary-filter-from",
-            value: "2026-07-01",
+            type: "datetime-local",
+            "data-control": "task-datetime",
+            value: "2026-07-26T10:30",
+            readOnly: true,
+          }),
+          createElement(NativeDateInput, {
+            type: "time",
+            "data-control": "task-time",
+            value: "10:30",
             readOnly: true,
           }),
         ),
         createElement(
-          "label",
-          null,
-          createElement("span", null, "结束日期"),
-          createElement(NativeDateInput, {
-            type: "date",
-            "data-control": "diary-filter-to",
-            value: "2026-07-31",
+          "section",
+          { className: "memory-message", "data-form-card": "diary" },
+          createElement("h2", null, "Diary"),
+          createElement("input", {
+            type: "text",
+            "data-control": "diary-text",
+            value: "Diary title",
             readOnly: true,
           }),
+          createElement(NativeDateInput, {
+            type: "date",
+            "data-control": "diary-date",
+            value: "2026-07-26",
+            readOnly: true,
+          }),
+        ),
+        createElement(
+          "section",
+          {
+            className: "memory-message diary-filters",
+            "data-form-card": "diary-filters",
+          },
+          createElement("h2", null, "Diary filters"),
+          createElement("input", {
+            type: "text",
+            "data-control": "diary-filter-query",
+            value: "Long diary search filter",
+            readOnly: true,
+          }),
+          createElement(
+            "label",
+            null,
+            createElement("span", null, "开始日期"),
+            createElement(NativeDateInput, {
+              type: "date",
+              "data-control": "diary-filter-from",
+              value: "2026-07-01",
+              readOnly: true,
+            }),
+          ),
+          createElement(
+            "label",
+            null,
+            createElement("span", null, "结束日期"),
+            createElement(NativeDateInput, {
+              type: "date",
+              "data-control": "diary-filter-to",
+              value: "2026-07-31",
+              readOnly: true,
+            }),
+          ),
         ),
       ),
     ),
@@ -180,9 +217,21 @@ async function measureLayout(
   return webdriver<LayoutBounds>(`/session/${sessionId}/execute/sync`, "POST", {
     script: `
       const controls = [...document.querySelectorAll('[data-control]')];
+      const avatar = document.querySelector('[data-sidebar-avatar]');
+      const footer = document.querySelector('[data-sidebar-footer]');
+      const brand = document.querySelector('[data-brand-mark]');
+      const avatarStyle = getComputedStyle(avatar);
       return {
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
+        sidebar: {
+          avatarBackgroundColor: avatarStyle.backgroundColor,
+          avatarBorderColor: avatarStyle.borderColor,
+          avatarBorderStyle: avatarStyle.borderStyle,
+          avatarBorderWidth: avatarStyle.borderWidth,
+          brandBackgroundColor: getComputedStyle(brand).backgroundColor,
+          footerDisplay: getComputedStyle(footer).display,
+        },
         controls: controls.map((control) => {
           const input = control;
           const card = input.closest('[data-form-card]');
@@ -246,6 +295,25 @@ test(
             `${viewport.width}px ${control.name} ends outside its card`,
           );
         }
+
+        assert.equal(
+          layout.sidebar.avatarBackgroundColor,
+          "rgb(235, 235, 235)",
+        );
+        assert.equal(
+          layout.sidebar.avatarBorderColor,
+          "rgb(217, 217, 217)",
+        );
+        assert.equal(layout.sidebar.avatarBorderStyle, "solid");
+        assert.equal(layout.sidebar.avatarBorderWidth, "1px");
+        assert.notEqual(
+          layout.sidebar.brandBackgroundColor,
+          layout.sidebar.avatarBackgroundColor,
+        );
+        assert.equal(
+          layout.sidebar.footerDisplay,
+          viewport.width <= 640 ? "none" : "flex",
+        );
       }
     } finally {
       await webdriver(`/session/${session.sessionId}`, "DELETE");
