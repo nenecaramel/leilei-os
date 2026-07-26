@@ -30,6 +30,8 @@ export function SettingsPage() {
   const [taskSubtitle, setTaskSubtitle] = useState("");
   const [settingsSubtitle, setSettingsSubtitle] = useState("");
   const [homeHeroEyebrow, setHomeHeroEyebrow] = useState("");
+  const [homeHeroTitleMode, setHomeHeroTitleMode] = useState<"auto" | "custom">("auto");
+  const [homeHeroTitle, setHomeHeroTitle] = useState("");
   const [homeHeroDescriptionMode, setHomeHeroDescriptionMode] = useState<"auto" | "custom">("auto");
   const [homeHeroDescription, setHomeHeroDescription] = useState("");
 
@@ -48,6 +50,8 @@ export function SettingsPage() {
     setTaskSubtitle(settings.page_copy.task_subtitle ?? "");
     setSettingsSubtitle(settings.page_copy.settings_subtitle ?? "");
     setHomeHeroEyebrow(settings.page_copy.home_hero_eyebrow ?? "");
+    setHomeHeroTitleMode(settings.page_copy.home_hero_title_mode);
+    setHomeHeroTitle(settings.page_copy.home_hero_title ?? "");
     setHomeHeroDescriptionMode(settings.page_copy.home_hero_description_mode);
     setHomeHeroDescription(settings.page_copy.home_hero_description ?? "");
   }, [settings]);
@@ -90,6 +94,14 @@ export function SettingsPage() {
       return;
     }
 
+    if (
+      homeHeroTitleMode === "custom" &&
+      !homeHeroTitle.trim()
+    ) {
+      setActionError("自定义首页大框标题不能为空。");
+      return;
+    }
+
     setSaving(true);
     clearMessages();
 
@@ -105,6 +117,8 @@ export function SettingsPage() {
           task_subtitle: taskSubtitle.trim() || null,
           settings_subtitle: settingsSubtitle.trim() || null,
           home_hero_eyebrow: homeHeroEyebrow.trim() || null,
+          home_hero_title_mode: homeHeroTitleMode,
+          home_hero_title: homeHeroTitle.trim() || null,
           home_hero_description_mode: homeHeroDescriptionMode,
           home_hero_description: homeHeroDescription.trim() || null,
         },
@@ -365,6 +379,39 @@ export function SettingsPage() {
               placeholder="例如：记录记忆、整理任务、连接未来。"
               onChange={(event) => {
                 setHomeHeroDescription(event.target.value);
+                clearMessages();
+              }}
+            />
+          )}
+        </label>
+
+        <label className="settings-field">
+          <span>首页大框主标题</span>
+          <small>自动模式会跟随系统叙事；切换回自动不会清除自定义标题。</small>
+
+          <select
+            value={homeHeroTitleMode}
+            disabled={busy}
+            onChange={(event) => {
+              setHomeHeroTitleMode(
+                event.target.value as "auto" | "custom",
+              );
+              clearMessages();
+            }}
+          >
+            <option value="auto">跟随系统自动更新</option>
+            <option value="custom">使用自定义标题</option>
+          </select>
+
+          {homeHeroTitleMode === "custom" && (
+            <input
+              type="text"
+              value={homeHeroTitle}
+              maxLength={240}
+              disabled={busy}
+              placeholder="例如：让生活重新回到自己的节奏"
+              onChange={(event) => {
+                setHomeHeroTitle(event.target.value);
                 clearMessages();
               }}
             />

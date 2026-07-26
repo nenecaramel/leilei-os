@@ -159,6 +159,9 @@ const AUTOMATIC_HERO_DESCRIPTION =
   ).join("；") +
   "。";
 
+export const AUTOMATIC_HERO_TITLE =
+  "你的个人系统正在持续运转。";
+
 export function DashboardPage() {
   const api = useWebApiClient();
   const { settings } = useSettings();
@@ -222,13 +225,6 @@ export function DashboardPage() {
     };
   }, [api, reloadKey]);
 
-  const totalItems =
-    state.status === "ready"
-      ? state.memoryCount +
-        state.diaryCount +
-        state.taskCount
-      : null;
-
   const preferredName =
     settings.preferred_name ?? "蕾蕾";
 
@@ -248,6 +244,12 @@ export function DashboardPage() {
       ? settings.page_copy.home_hero_description ??
         AUTOMATIC_HERO_DESCRIPTION
       : AUTOMATIC_HERO_DESCRIPTION;
+
+  const heroTitle =
+    settings.page_copy.home_hero_title_mode === "custom"
+      ? settings.page_copy.home_hero_title ??
+        AUTOMATIC_HERO_TITLE
+      : AUTOMATIC_HERO_TITLE;
 
   return (
     <div className="page dashboard-page">
@@ -272,11 +274,7 @@ export function DashboardPage() {
             </span>
           )}
 
-          <h2>
-            {state.status === "ready"
-              ? `${totalItems} 条个人数据，正在 Leilei OS 中运行。`
-              : "正在读取你的个人系统。"}
-          </h2>
+          <h2>{heroTitle}</h2>
 
           <p>{heroDescription}</p>
         </div>

@@ -127,6 +127,10 @@ export function createSaveSettingsApiHandler(
                     pageCopy.settings_subtitle,
                   homeHeroEyebrow:
                     pageCopy.home_hero_eyebrow,
+                  homeHeroTitleMode:
+                    pageCopy.home_hero_title_mode,
+                  homeHeroTitle:
+                    pageCopy.home_hero_title,
                   homeHeroDescriptionMode:
                     pageCopy.home_hero_description_mode,
                   homeHeroDescription:

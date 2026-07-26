@@ -378,6 +378,8 @@ export type UserPageCopy = {
   taskSubtitle?: string;
   settingsSubtitle?: string;
   homeHeroEyebrow?: string | null;
+  homeHeroTitleMode?: "auto" | "custom";
+  homeHeroTitle?: string | null;
   homeHeroDescriptionMode?: "auto" | "custom";
   homeHeroDescription?: string | null;
 };
