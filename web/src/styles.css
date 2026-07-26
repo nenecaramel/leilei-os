@@ -1006,10 +1006,32 @@ textarea:disabled {
   align-items: stretch;
 }
 
+.diary-filters {
+  align-items: stretch;
+}
+
 .task-filters > input,
 .task-filters > select,
-.task-filters > .native-date-field {
+.task-filters > .native-date-field,
+.diary-filters > input,
+.diary-filters > label {
   width: min(100%, 760px);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.diary-filters > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.diary-filters .native-date-field {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .memory-card-loading span,

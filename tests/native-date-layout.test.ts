@@ -118,6 +118,42 @@ function createLayoutFixture(): string {
           readOnly: true,
         }),
       ),
+      createElement(
+        "section",
+        {
+          className: "memory-message diary-filters",
+          "data-form-card": "diary-filters",
+        },
+        createElement("h2", null, "Diary filters"),
+        createElement("input", {
+          type: "text",
+          "data-control": "diary-filter-query",
+          value: "Long diary search filter",
+          readOnly: true,
+        }),
+        createElement(
+          "label",
+          null,
+          createElement("span", null, "开始日期"),
+          createElement(NativeDateInput, {
+            type: "date",
+            "data-control": "diary-filter-from",
+            value: "2026-07-01",
+            readOnly: true,
+          }),
+        ),
+        createElement(
+          "label",
+          null,
+          createElement("span", null, "结束日期"),
+          createElement(NativeDateInput, {
+            type: "date",
+            "data-control": "diary-filter-to",
+            value: "2026-07-31",
+            readOnly: true,
+          }),
+        ),
+      ),
     ),
   );
 
