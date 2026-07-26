@@ -5,6 +5,7 @@ import type {
   NormalizedTaskUpdate,
   TaskRecord,
   TaskRepository,
+  TaskListQuery,
   TaskStatus,
   TaskUserRecord,
   UpdateTaskStatusInput,
@@ -13,6 +14,7 @@ import {
   TaskDomainError,
   TaskService,
   type CreateTaskInput,
+  type RawTaskListQuery,
 } from "../src/domains/task/task-service.js";
 
 const VALID_INPUT: CreateTaskInput = {
@@ -30,6 +32,7 @@ class MockTaskRepository implements TaskRepository {
   writes: NormalizedTaskCreate[] = [];
   statusWrites: UpdateTaskStatusInput[] = [];
   updateWrites: NormalizedTaskUpdate[] = [];
+  listQueries: TaskListQuery[] = [];
   records = new Map<string, { userId: string; task: TaskRecord }>();
 
   async findUserById(userId: string): Promise<TaskUserRecord | null> {
@@ -58,7 +61,8 @@ class MockTaskRepository implements TaskRepository {
     return task;
   }
 
-  async findTasks(userId: string): Promise<TaskRecord[]> {
+  async findTasks(userId: string, _limit: number, query: TaskListQuery = {}): Promise<TaskRecord[]> {
+    this.listQueries.push(query);
     return [...this.records.values()]
       .filter((record) => record.userId === userId)
       .map((record) => record.task);
@@ -99,6 +103,24 @@ class MockTaskRepository implements TaskRepository {
     return record.task;
   }
 }
+
+test("normalizes Task list search filters before repository access", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+  await service.listTasks({ userId: "user-1", query: { q: "  REPORT  ", status: "pending", priority: "HIGH", tag: " work ", due: "custom", dueFrom: "2026-07-22T00:00:00Z", dueTo: "2026-07-23T00:00:00Z" } satisfies RawTaskListQuery });
+  assert.equal(repository.listQueries[0]?.q, "REPORT");
+  assert.equal(repository.listQueries[0]?.status, "pending");
+  assert.equal(repository.listQueries[0]?.priority, "high");
+  assert.equal(repository.listQueries[0]?.tag, "work");
+  assert.equal(repository.listQueries[0]?.dueFrom?.toISOString(), "2026-07-22T00:00:00.000Z");
+});
+
+test("rejects invalid task list date filters safely", async () => {
+  const service = new TaskService(new MockTaskRepository());
+  for (const query of [{ due: "no_due_date" }, { due: "custom" }, { due: "custom", dueFrom: "2026-07-23T00:00:00Z", dueTo: "2026-07-22T00:00:00Z" }]) {
+    await assert.rejects(service.listTasks({ userId: "user-1", query }), (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_QUERY");
+  }
+});
 
 function seedTask(
   repository: MockTaskRepository,

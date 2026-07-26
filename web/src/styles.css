@@ -1002,6 +1002,16 @@ textarea:disabled {
   margin-top: 2px;
 }
 
+.task-filters {
+  align-items: stretch;
+}
+
+.task-filters > input,
+.task-filters > select,
+.task-filters > .native-date-field {
+  width: min(100%, 760px);
+}
+
 .memory-card-loading span,
 .memory-card-loading strong,
 .memory-card-loading p {
@@ -1252,6 +1262,13 @@ textarea:disabled {
     width: 100%;
     max-width: 100%;
     min-width: 0;
+  }
+
+  .task-filters > input,
+  .task-filters > select,
+  .task-filters > .native-date-field {
+    width: 100%;
+    max-width: 100%;
   }
 
   .memory-card > .secondary-button {

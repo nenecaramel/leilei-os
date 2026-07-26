@@ -4,6 +4,7 @@ import type {
   TaskPriority,
   TaskRecord,
   TaskRepository,
+  TaskListQuery,
   TaskStatus,
 } from "./task-repository.js";
 import {
@@ -34,6 +35,7 @@ const MAX_TAG_LENGTH = 50;
 const MAX_TIMEZONE_LENGTH = 64;
 const DEFAULT_TASK_LIMIT = 100;
 const MAX_TASK_LIMIT = 100;
+const MAX_SEARCH_LENGTH = 200;
 
 const ISO_INSTANT_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
@@ -73,6 +75,17 @@ export type CreateTaskResult = {
 export type ListTasksInput = {
   userId: string;
   limit?: number;
+  query?: RawTaskListQuery;
+};
+
+export type RawTaskListQuery = {
+  q?: string;
+  status?: string;
+  priority?: string;
+  tag?: string;
+  due?: string;
+  dueFrom?: string;
+  dueTo?: string;
 };
 
 export type ListTasksResult = {
@@ -120,6 +133,7 @@ export type TaskDomainErrorCode =
   | "USER_DISABLED"
   | "TASK_NOT_FOUND"
   | "INVALID_TASK_LIMIT"
+  | "INVALID_TASK_QUERY"
   | "INVALID_TITLE"
   | "INVALID_DESCRIPTION"
   | "INVALID_PRIORITY"
@@ -161,10 +175,8 @@ export class TaskService {
     const userId = await this.requireActiveUser(input.userId);
     const limit = this.resolveLimit(input.limit);
 
-    const tasks = await this.repository.findTasks(
-      userId,
-      limit,
-    );
+    const query = this.normalizeListQuery(input.query ?? {});
+    const tasks = await this.repository.findTasks(userId, limit, query);
 
     return {
       tasks: tasks.map((task) =>
@@ -470,6 +482,46 @@ export class TaskService {
     }
 
     return normalized as TaskStatus;
+  }
+
+  private normalizeListQuery(input: RawTaskListQuery): TaskListQuery {
+    const q = this.normalizeOptionalText(input.q, MAX_SEARCH_LENGTH, "INVALID_TASK_QUERY", "Search query");
+    const tag = this.normalizeOptionalText(input.tag, MAX_TAG_LENGTH, "INVALID_TASK_QUERY", "Task tag");
+    const status = input.status === undefined || input.status.trim() === "" ? undefined : this.normalizeStatus(input.status);
+    const priority = input.priority === undefined || input.priority.trim() === "" ? undefined : this.normalizePriority(input.priority);
+    const due = input.due?.trim() || undefined;
+    const dueFrom = input.dueFrom === undefined || input.dueFrom.trim() === "" ? undefined : this.normalizeDueTime(input.dueFrom);
+    const dueTo = input.dueTo === undefined || input.dueTo.trim() === "" ? undefined : this.normalizeDueTime(input.dueTo);
+
+    if (dueFrom && dueTo && dueFrom >= dueTo) {
+      throw new TaskDomainError("INVALID_TASK_QUERY", "Task due range must have a start before its end.");
+    }
+    if (!due) {
+      if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Task date ranges require a due filter.");
+      return { q, status, priority, tag };
+    }
+    if (due === "no_due_date") throw new TaskDomainError("INVALID_TASK_QUERY", "Unsupported task due filter.");
+    if (due === "custom") {
+      if (!dueFrom && !dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Custom task dates require a range boundary.");
+      return { q, status, priority, tag, dueFrom, dueTo };
+    }
+    if (due === "overdue") {
+      if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Overdue tasks do not accept a range.");
+      return { q, status, priority, tag, overdueBefore: new Date() };
+    }
+    if (due === "today" || due === "next_7_days") {
+      if (!dueFrom || !dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Task due preset requires range boundaries.");
+      return { q, status, priority, tag, dueFrom, dueTo };
+    }
+    throw new TaskDomainError("INVALID_TASK_QUERY", "Task due filter must be overdue or custom.");
+  }
+
+  private normalizeOptionalText(value: string | undefined, maxLength: number, code: TaskDomainErrorCode, label: string): string | undefined {
+    if (value === undefined) return undefined;
+    const normalized = value.normalize("NFC").trim();
+    if (!normalized) return undefined;
+    if (normalized.length > maxLength) throw new TaskDomainError(code, `${label} is too long.`);
+    return normalized;
   }
 
   private normalizeDueTime(dueTime: string): Date {

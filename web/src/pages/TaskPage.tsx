@@ -24,6 +24,7 @@ import {
     | "urgent";
 
   type TaskAction = "start" | "complete" | "cancel";
+  type TaskDueFilter = "" | "overdue" | "today" | "next_7_days" | "custom";
   
   type TaskEntry = {
     id: string;
@@ -172,6 +173,16 @@ import {
       ),
     ];
   }
+  function initialFilters() {
+    const p = new URLSearchParams(window.location.search);
+    return { q: p.get("q") ?? "", status: p.get("status") ?? "", priority: p.get("priority") ?? "", tag: p.get("tag") ?? "", due: (p.get("due") ?? "") as TaskDueFilter, dueFrom: p.get("due_from") ?? "", dueTo: p.get("due_to") ?? "" };
+  }
+  function presetRange(due: TaskDueFilter) {
+    const start = new Date(); const end = new Date();
+    if (due === "today") { start.setHours(0,0,0,0); end.setHours(0,0,0,0); end.setDate(end.getDate()+1); }
+    if (due === "next_7_days") end.setDate(end.getDate()+7);
+    return due === "today" || due === "next_7_days" ? { from: start.toISOString(), to: end.toISOString() } : null;
+  }
   
   export function TaskPage() {
     const api = useWebApiClient();
@@ -179,6 +190,7 @@ import {
     const listScrollPosition = useRef(0);
   
     const [reloadKey, setReloadKey] = useState(0);
+    const [filters, setFilters] = useState(initialFilters);
     const [state, setState] = useState<LoadState>({
       status: "loading",
     });
@@ -215,15 +227,29 @@ import {
     const [editingTags, setEditingTags] = useState("");
   
     const [actionError, setActionError] = useState("");
+
+    useEffect(() => {
+      const onPopState = () => setFilters(initialFilters());
+      window.addEventListener("popstate", onPopState);
+      return () => window.removeEventListener("popstate", onPopState);
+    }, []);
   
     useEffect(() => {
       let active = true;
-  
+      const timeout = window.setTimeout(() => {
+      const params = new URLSearchParams();
+      if (filters.q.trim()) params.set("q", filters.q.trim());
+      if (filters.status) params.set("status", filters.status);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.tag.trim()) params.set("tag", filters.tag.trim());
+      if (filters.due) params.set("due", filters.due);
+      if (filters.due === "custom") { if (filters.dueFrom) params.set("due_from", toIsoInstant(filters.dueFrom)); if (filters.dueTo) params.set("due_to", toIsoInstant(filters.dueTo)); }
+      else { const range = presetRange(filters.due); if (range) { params.set("due_from", range.from); params.set("due_to", range.to); } }
+      window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
       setState({
         status: "loading",
       });
-  
-      api.request<TaskListResponse>("/task")
+      api.request<TaskListResponse>(`/task${params.size ? `?${params}` : ""}`)
         .then((response) => {
           if (!active) {
             return;
@@ -243,10 +269,14 @@ import {
           }
         });
   
+      }, filters.q ? 300 : 0);
       return () => {
         active = false;
+        window.clearTimeout(timeout);
       };
-    }, [api, reloadKey]);
+    }, [api, reloadKey, filters]);
+
+    function clearFilters() { setFilters({ q: "", status: "", priority: "", tag: "", due: "", dueFrom: "", dueTo: "" }); }
   
     const createInvalid =
       title.trim().length === 0 ||
@@ -470,6 +500,23 @@ import {
             )
           }
         />
+        {!selectedTask && (
+          <section className="memory-message task-filters">
+            <input aria-label="搜索任务" placeholder="搜索任务标题或内容" value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} />
+            <select aria-label="状态筛选" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+              <option value="">全部状态</option><option value="pending">待处理</option><option value="in_progress">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option>
+            </select>
+            <select aria-label="优先级筛选" value={filters.priority} onChange={(event) => setFilters({ ...filters, priority: event.target.value })}>
+              <option value="">全部优先级</option><option value="low">低</option><option value="normal">普通</option><option value="high">高</option><option value="urgent">紧急</option>
+            </select>
+            <input aria-label="标签筛选" placeholder="筛选标签" value={filters.tag} onChange={(event) => setFilters({ ...filters, tag: event.target.value })} />
+            <select aria-label="截止时间筛选" value={filters.due} onChange={(event) => setFilters({ ...filters, due: event.target.value as TaskDueFilter })}>
+              <option value="">全部时间</option><option value="overdue">已逾期</option><option value="today">今天</option><option value="next_7_days">未来七天</option><option value="custom">自定义范围</option>
+            </select>
+            {filters.due === "custom" && <><NativeDateInput aria-label="开始日期" type="datetime-local" value={filters.dueFrom} onChange={(event) => setFilters({ ...filters, dueFrom: event.target.value })} /><NativeDateInput aria-label="结束日期" type="datetime-local" value={filters.dueTo} onChange={(event) => setFilters({ ...filters, dueTo: event.target.value })} /></>}
+            <button className="secondary-button" onClick={clearFilters}>清除全部</button>
+          </section>
+        )}
   
         {actionError && (
           <section className="memory-message">
@@ -808,8 +855,9 @@ import {
             {state.status === "ready" &&
               state.tasks.length === 0 && (
                 <TaskMessage
-                  title="还没有任务"
-                  description="创建第一个任务后，它会显示在这里。"
+                  title={filters.q || filters.status || filters.priority || filters.tag || filters.due ? "没有符合条件的任务" : "还没有任务"}
+                  description={filters.q || filters.status || filters.priority || filters.tag || filters.due ? "试试清除搜索或筛选条件。" : "创建第一个任务后，它会显示在这里。"}
+                  action={filters.q || filters.status || filters.priority || filters.tag || filters.due ? <button className="secondary-button" onClick={clearFilters}>清除筛选</button> : undefined}
                 />
               )}
   
