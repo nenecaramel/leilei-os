@@ -135,6 +135,7 @@ if ! PGDATABASE="${TEMP_DATABASE_URL}" "${PG_RESTORE_BIN}" \
   --no-owner \
   --no-acl \
   --exit-on-error \
+  --dbname="${TEMP_DATABASE_URL}" \
   "${TEMP_DIR}/database.dump" \
   2>"${TEMP_DIR}/pg_restore.error"; then
   fail "pg_restore failed; the temporary database may be incomplete"
@@ -143,6 +144,7 @@ fi
 TABLE_CHECK="$(
   PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" \
     -X -A -t -v ON_ERROR_STOP=1 \
+    --dbname="${TEMP_DATABASE_URL}" \
     -c "SELECT
       to_regclass('public.users') IS NOT NULL,
       to_regclass('public.core_memories') IS NOT NULL,
@@ -157,6 +159,7 @@ TABLE_CHECK="$(
 RESTORED_COUNTS="$(
   PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" \
     -X -A -t -v ON_ERROR_STOP=1 \
+    --dbname="${TEMP_DATABASE_URL}" \
     -c "SELECT
       (SELECT count(*) FROM users),
       (SELECT count(*) FROM core_memories),
@@ -194,11 +197,13 @@ if [[ "${EXPECTED_MAPPED_USERS}" != "-1" ]]; then
   [[ -n "${MCP_USER_ID:-}" ]] ||
     fail "MCP_USER_ID is required to verify the stored Auth0 user mapping"
   MAPPED_USERS="$(
-    PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" \
-      -X -A -t -v ON_ERROR_STOP=1 \
-      --set=mcp_user_id="${MCP_USER_ID}" \
-      -c "SELECT count(*) FROM users WHERE id = :'mcp_user_id'::uuid;" \
-      2>"${TEMP_DIR}/mapping_check.error"
+    printf '%s\n' \
+      "SELECT count(*) FROM users WHERE id = :'mcp_user_id'::uuid;" | \
+      PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" \
+        -X -A -t -v ON_ERROR_STOP=1 \
+        --set=mcp_user_id="${MCP_USER_ID}" \
+        --dbname="${TEMP_DATABASE_URL}" \
+        2>"${TEMP_DIR}/mapping_check.error"
   )"
   if [[ "${MAPPED_USERS}" != "${EXPECTED_MAPPED_USERS}" ]]; then
     printf 'Auth0 mapped-user count mismatch.\n' >&2

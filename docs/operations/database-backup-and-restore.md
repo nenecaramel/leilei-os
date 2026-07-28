@@ -36,7 +36,6 @@ Not yet confirmed:
 - Exact Railway resource ceilings for CPU, memory, storage, and egress.
 - A private-network `DATABASE_URL` migration plan.
 - A paid-plan backup retention policy, because Railway backups are not enabled.
-- A successful external production backup and temporary restore drill.
 
 ## Platform backups versus external logical backups
 
@@ -196,6 +195,46 @@ Recommended starting schedule for this single-user system:
 
 Adjust retention after measuring database growth and applicable privacy
 requirements.
+
+
+## Verified production backup and restore drill
+
+A real read-only production logical backup and disposable local restore were completed on 2026-07-28 UTC.
+
+- Backup created at: `2026-07-28T04:10:29Z`
+- Production PostgreSQL server: major version 18 (`18.4` during the drill)
+- Backup and restore clients: PostgreSQL `18.4` (Homebrew `libpq`)
+- Schema version: `0006_large_chat`
+- Encrypted artifact: `leilei-os_20260728T041029Z_0006_large_chat.backup.enc`
+- Encrypted size: `13,520` bytes
+- SHA-256: `c2f8eff0dae14a812d828126820d0ed214b4f10156d9b6c8a0b8511c825b80f9`
+- Encryption: AES-256-CBC with PBKDF2; the random passphrase is stored separately in macOS Keychain
+- Checksum verification: passed
+- Restore target: disposable PostgreSQL 18 container bound only to `127.0.0.1` on a random port
+- Temporary container, network, and volume cleanup: verified
+- Plaintext dump and decrypted archive cleanup: verified
+- Railway internal Backups/PITR: unavailable under the current plan and not enabled
+- Next recommended logical backup: 2026-07-29 UTC, then daily per the retention schedule below
+
+Snapshot counts restored and compared without reading private content:
+
+| Table | Source snapshot | Restored | Result |
+| --- | ---: | ---: | --- |
+| `users` | 1 | 1 | match |
+| `core_memories` | 7 | 7 | match |
+| `diary_entries` | 7 | 7 | match |
+| `tasks` | 7 | 7 | match |
+| `user_settings` | 1 | 1 | match |
+| `toy_commands` | 51 | 51 | match |
+
+Additional verification:
+
+- Auth0-to-database mapped user count and SHA-256 identity-set digest matched.
+- Six critical tables, six primary keys, five foreign keys, and eighteen indexes were present after restore.
+- The Drizzle migration journal contained seven applied entries after restore.
+- Memory, Diary, Task, and Settings repository read paths succeeded against the restored database.
+- A random unmapped user returned no records from all four modules, confirming user isolation.
+- No private content, raw identity, connection string, password, or token was recorded during the drill.
 
 ## Backup and restore record template
 

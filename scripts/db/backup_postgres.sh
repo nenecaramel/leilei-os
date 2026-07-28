@@ -155,11 +155,12 @@ done
 MAPPED_USER_COUNT="-1"
 if [[ -n "${MCP_USER_ID:-}" ]]; then
   if ! MAPPED_USER_COUNT="$(
-    PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" \
-      -X -A -t -v ON_ERROR_STOP=1 \
-      --set=mcp_user_id="${MCP_USER_ID}" \
-      -c "SELECT count(*) FROM users WHERE id = :'mcp_user_id'::uuid;" \
-      2>"${TEMP_DIR}/mapping.error"
+    printf '%s\n' \
+      "SELECT count(*) FROM users WHERE id = :'mcp_user_id'::uuid;" | \
+      PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" \
+        -X -A -t -v ON_ERROR_STOP=1 \
+        --set=mcp_user_id="${MCP_USER_ID}" \
+        2>"${TEMP_DIR}/mapping.error"
   )"; then
     fail "Auth0 user mapping verification failed"
   fi

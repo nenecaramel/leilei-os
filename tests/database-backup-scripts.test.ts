@@ -44,6 +44,9 @@ while [[ "$#" -gt 0 ]]; do
   if [[ "$1" == "-c" ]]; then shift; query="$1"; fi
   shift || true
 done
+if [[ -z "$query" && ! -t 0 ]]; then
+  query="$(cat)"
+fi
 if [[ "$query" == *"to_regclass"* ]]; then
   printf 't|t|t|t|t\\n'
 elif [[ "$query" == *"server_version_num"* ]]; then
@@ -62,7 +65,13 @@ fi
 set -euo pipefail
 if [[ "\${1:-}" == "--version" ]]; then
   printf 'pg_restore (PostgreSQL) 18.1\\n'
+  exit 0
 fi
+found_dbname=false
+for arg in "$@"; do
+  [[ "$arg" == --dbname=* ]] && found_dbname=true
+done
+[[ "$found_dbname" == true ]]
 exit 0
 `,
     { mode: 0o700 },
