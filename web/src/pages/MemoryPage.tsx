@@ -1,8 +1,25 @@
-import { useEffect, useState } from "react";
-import { useWebApiClient } from "../api/useWebApiClient";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import type { WebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
-import { useSettings } from "../settings/SettingsProvider";
+import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
+import {
+  createMemoryDetailLocation,
+  createMemoryListLocation,
+  getMemoryDetailLocation,
+  getSafeMemoryReturnTo,
+  readMemorySearch,
+} from "./memory-location";
+import {
+  getMemoryScrollStorage,
+  readMemoryScrollPosition,
+  saveMemoryScrollPosition,
+} from "./memory-scroll-restoration";
 
 type MemoryCategory = "profile" | "preference" | "goal" | "project";
 
@@ -23,9 +40,20 @@ type MemoryResponse = {
   };
 };
 
+type MemoryDetailResponse = {
+  success: true;
+  data: MemoryRecord;
+};
+
 type LoadState =
   | { status: "loading" }
   | { status: "ready"; result: MemoryResponse["data"] }
+  | { status: "error" };
+
+type DetailState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; memory: MemoryRecord }
   | { status: "error" };
 
 const categoryLabels: Record<MemoryCategory, string> = {
@@ -74,16 +102,36 @@ function matchesSearch(
   return searchableText.includes(normalizedQuery);
 }
 
-export function MemoryPage() {
-  const api = useWebApiClient();
-  const { settings } = useSettings();
+function initialLocation() {
+  return getMemoryDetailLocation(window.location.search);
+}
 
+export function MemoryPageContent({
+  api,
+  settings,
+}: {
+  api: WebApiClient;
+  settings: SettingsData;
+}) {
+  const [location, setLocation] = useState(initialLocation);
+  const isDetail = location.memoryId !== null;
   const [reloadKey, setReloadKey] = useState(0);
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
   const [state, setState] = useState<LoadState>({
     status: "loading",
   });
+  const [detailState, setDetailState] = useState<DetailState>(
+    () => initialLocation().memoryId
+      ? { status: "loading" }
+      : { status: "idle" },
+  );
+  const listController = useRef<AbortController | null>(null);
+  const detailController = useRef<AbortController | null>(null);
+  const pendingScrollRestore = useRef<number | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(
+    () => readMemorySearch(window.location.search),
+  );
   const [actionError, setActionError] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
@@ -99,31 +147,127 @@ export function MemoryPage() {
   const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
-    let active = true;
+    const handlePopState = () => {
+      const nextLocation = initialLocation();
+      listController.current?.abort();
+      detailController.current?.abort();
+      setActionError("");
+      setEditingId("");
+      setEditingContent("");
+      setLocation(nextLocation);
 
+      if (nextLocation.memoryId) {
+        setDetailState({ status: "loading" });
+        return;
+      }
+
+      const listUrl = getSafeMemoryReturnTo(
+        `${window.location.pathname}${window.location.search}`,
+      );
+      setSearchQuery(readMemorySearch(window.location.search));
+      pendingScrollRestore.current = readMemoryScrollPosition(
+        getMemoryScrollStorage(window),
+        listUrl,
+      );
+      setState({ status: "loading" });
+      setDetailState({ status: "idle" });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (isDetail) {
+      listController.current?.abort();
+      listController.current = null;
+      return;
+    }
+
+    const controller = new AbortController();
+    listController.current = controller;
     setState({ status: "loading" });
 
-    api.request<MemoryResponse>("/memory")
+    api.request<MemoryResponse>("/memory", {
+      signal: controller.signal,
+    })
       .then((response) => {
-        if (active) {
-          setState({
-            status: "ready",
-            result: response.data,
+        if (controller.signal.aborted) return;
+        setState({
+          status: "ready",
+          result: response.data,
+        });
+        const position = pendingScrollRestore.current;
+        pendingScrollRestore.current = null;
+        if (position !== null) {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: position });
           });
         }
       })
       .catch(() => {
-        if (active) {
-          setState({
-            status: "error",
-          });
+        if (!controller.signal.aborted) {
+          setState({ status: "error" });
+        }
+      })
+      .finally(() => {
+        if (listController.current === controller) {
+          listController.current = null;
         }
       });
 
     return () => {
-      active = false;
+      controller.abort();
+      if (listController.current === controller) {
+        listController.current = null;
+      }
     };
-  }, [api, reloadKey]);
+  }, [api, isDetail, reloadKey]);
+
+  useEffect(() => {
+    const id = location.memoryId;
+    if (!id) {
+      detailController.current?.abort();
+      detailController.current = null;
+      setDetailState({ status: "idle" });
+      return;
+    }
+
+    const controller = new AbortController();
+    detailController.current = controller;
+    setDetailState({ status: "loading" });
+    setActionError("");
+
+    api.request<MemoryDetailResponse>(
+      `/memory/${encodeURIComponent(id)}`,
+      { signal: controller.signal },
+    )
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        setDetailState({
+          status: "ready",
+          memory: response.data,
+        });
+        window.scrollTo({ top: 0 });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setDetailState({ status: "error" });
+        }
+      })
+      .finally(() => {
+        if (detailController.current === controller) {
+          detailController.current = null;
+        }
+      });
+
+    return () => {
+      controller.abort();
+      if (detailController.current === controller) {
+        detailController.current = null;
+      }
+    };
+  }, [api, detailReloadKey, location]);
 
   const busy =
     creating ||
@@ -189,6 +333,9 @@ export function MemoryPage() {
       setEditingId("");
       setEditingContent("");
       setReloadKey((value) => value + 1);
+      if (isDetail) {
+        setDetailReloadKey((value) => value + 1);
+      }
     } catch {
       setActionError("修改记忆失败，请稍后重试。");
     } finally {
@@ -236,6 +383,49 @@ export function MemoryPage() {
     }
   }
 
+  function updateSearch(value: string): void {
+    setSearchQuery(value);
+    const next = createMemoryListLocation(value);
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (next !== current) {
+      window.history.replaceState(null, "", next);
+    }
+  }
+
+  function openMemory(id: string): void {
+    const returnTo = createMemoryListLocation(searchQuery);
+    saveMemoryScrollPosition(
+      getMemoryScrollStorage(window),
+      returnTo,
+      window.scrollY,
+    );
+    const next = createMemoryDetailLocation(id, returnTo);
+    window.history.pushState(null, "", next);
+    setEditingId("");
+    setEditingContent("");
+    setLocation(getMemoryDetailLocation(window.location.search));
+    setDetailState({ status: "loading" });
+  }
+
+  function closeMemory(): void {
+    const returnTo = getSafeMemoryReturnTo(location.returnTo);
+    window.history.pushState(null, "", returnTo);
+    pendingScrollRestore.current = readMemoryScrollPosition(
+      getMemoryScrollStorage(window),
+      returnTo,
+    );
+    setSearchQuery(
+      readMemorySearch(
+        new URL(returnTo, window.location.origin).search,
+      ),
+    );
+    setEditingId("");
+    setEditingContent("");
+    setLocation({ memoryId: null, returnTo: "/memory" });
+    setDetailState({ status: "idle" });
+    setState({ status: "loading" });
+  }
+
   const filteredMemories =
     state.status === "ready"
       ? state.result.memories.filter((memory) =>
@@ -243,13 +433,26 @@ export function MemoryPage() {
         )
       : [];
 
+  const detailMemory =
+    detailState.status === "ready"
+      ? detailState.memory
+      : null;
+
   return (
     <div className="page memory-page">
       <PageHeader
         eyebrow="Long-term context"
         title="Memory"
         description={settings.page_copy.memory_subtitle ?? "由 Leilei OS 安全保存的核心信息、稳定偏好、长期目标与当前项目。"}
-        action={
+        action={isDetail ? (
+          <button
+            className="secondary-button"
+            disabled={updatingId.length > 0}
+            onClick={closeMemory}
+          >
+            返回记忆列表
+          </button>
+        ) : (
           <button
             className="secondary-button"
             disabled={busy}
@@ -260,7 +463,7 @@ export function MemoryPage() {
           >
             {showCreate ? "取消新增" : "新增记忆"}
           </button>
-        }
+        )}
       />
 
       {actionError && (
@@ -270,219 +473,351 @@ export function MemoryPage() {
         </section>
       )}
 
-      {showCreate && (
-        <section className="memory-message">
-          <h2>创建记忆</h2>
-
-          <select
-            value={category}
-            disabled={creating}
-            onChange={(event) => {
-              setCategory(
-                event.target.value as MemoryCategory,
-              );
-              setActionError("");
-            }}
-          >
-            <option value="profile">Profile</option>
-            <option value="preference">Preference</option>
-            <option value="goal">Goal</option>
-            <option value="project">Project</option>
-          </select>
-
-          <input
-            placeholder="Key"
-            value={key}
-            disabled={creating}
-            onChange={(event) => {
-              setKey(event.target.value);
-              setActionError("");
-            }}
-          />
-
-          <textarea
-            placeholder="Content"
-            value={content}
-            disabled={creating}
-            onChange={(event) => {
-              setContent(event.target.value);
-              setActionError("");
-            }}
-          />
-
-          <button
-            className="secondary-button"
-            disabled={creating || createInvalid}
-            onClick={handleCreate}
-          >
-            {creating ? "保存中…" : "保存"}
-          </button>
-        </section>
-      )}
-
-      {state.status === "ready" && (
+      {isDetail ? (
+        <MemoryDetail
+          state={detailState}
+          editing={editingId === detailMemory?.id}
+          editingContent={editingContent}
+          updating={updatingId === detailMemory?.id}
+          onEditingContentChange={(value) => {
+            setEditingContent(value);
+            setActionError("");
+          }}
+          onEdit={(memory) => {
+            setEditingId(memory.id);
+            setEditingContent(memory.content);
+            setActionError("");
+          }}
+          onCancel={() => {
+            setEditingId("");
+            setEditingContent("");
+            setActionError("");
+          }}
+          onSave={() => {
+            if (detailMemory) void handleUpdate(detailMemory.id);
+          }}
+          onBack={closeMemory}
+        />
+      ) : (
         <>
-          <section className="memory-message">
-            <h2>搜索记忆</h2>
+          {showCreate && (
+            <section className="memory-message">
+              <h2>创建记忆</h2>
 
-            <input
-              type="search"
-              placeholder="搜索 Key 或内容"
-              value={searchQuery}
-              onChange={(event) =>
-                setSearchQuery(event.target.value)
-              }
-            />
+              <select
+                value={category}
+                disabled={creating}
+                onChange={(event) => {
+                  setCategory(
+                    event.target.value as MemoryCategory,
+                  );
+                  setActionError("");
+                }}
+              >
+                <option value="profile">Profile</option>
+                <option value="preference">Preference</option>
+                <option value="goal">Goal</option>
+                <option value="project">Project</option>
+              </select>
 
-            <p>
-              显示 {filteredMemories.length} 条，共{" "}
-              {state.result.metadata.count} 条
-            </p>
-          </section>
+              <input
+                placeholder="Key"
+                value={key}
+                disabled={creating}
+                onChange={(event) => {
+                  setKey(event.target.value);
+                  setActionError("");
+                }}
+              />
 
-          {filteredMemories.length > 0 ? (
-            <section className="memory-grid">
-              {filteredMemories.map((memory) => {
-                const editing =
-                  editingId === memory.id;
-                const updating =
-                  updatingId === memory.id;
-                const deleting =
-                  deletingId === memory.id;
+              <textarea
+                placeholder="Content"
+                value={content}
+                disabled={creating}
+                onChange={(event) => {
+                  setContent(event.target.value);
+                  setActionError("");
+                }}
+              />
 
-                return (
-                  <article
-                    className="memory-card"
-                    key={memory.id}
-                  >
-                    <div className="memory-card-topline">
-                      <span
-                        className={`memory-category memory-category-${memory.category}`}
-                      >
-                        {categoryLabels[memory.category]}
-                      </span>
-
-                      <span>
-                        {formatUpdatedAt(
-                          memory.updated_at,
-                        )}
-                      </span>
-                    </div>
-
-                    <h2>
-                      {memory.key.replaceAll("_", " ")}
-                    </h2>
-
-                    {editing ? (
-                      <>
-                        <textarea
-                          value={editingContent}
-                          disabled={updating || deleting}
-                          onChange={(event) => {
-                            setEditingContent(
-                              event.target.value,
-                            );
-                            setActionError("");
-                          }}
-                        />
-
-                        <button
-                          className="secondary-button"
-                          disabled={
-                            updating ||
-                            deleting ||
-                            !editingContent.trim()
-                          }
-                          onClick={() =>
-                            handleUpdate(memory.id)
-                          }
-                        >
-                          {updating
-                            ? "保存中…"
-                            : "保存修改"}
-                        </button>
-
-                        <button
-                          className="secondary-button"
-                          disabled={updating || deleting}
-                          onClick={() => {
-                            setEditingId("");
-                            setEditingContent("");
-                            setActionError("");
-                          }}
-                        >
-                          取消
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <p>{memory.content}</p>
-
-                        <button
-                          className="secondary-button"
-                          disabled={busy}
-                          onClick={() => {
-                            setEditingId(memory.id);
-                            setEditingContent(
-                              memory.content,
-                            );
-                            setActionError("");
-                          }}
-                        >
-                          编辑
-                        </button>
-
-                        <button
-                          className="secondary-button"
-                          disabled={busy}
-                          onClick={() =>
-                            handleDelete(
-                              memory.id,
-                              memory.key,
-                            )
-                          }
-                        >
-                          {deleting
-                            ? "删除中…"
-                            : "删除"}
-                        </button>
-                      </>
-                    )}
-                  </article>
-                );
-              })}
+              <button
+                className="secondary-button"
+                disabled={creating || createInvalid}
+                onClick={handleCreate}
+              >
+                {creating ? "保存中…" : "保存"}
+              </button>
             </section>
-          ) : (
+          )}
+
+          {state.status === "ready" && (
+            <>
+              <section className="memory-message">
+                <h2>搜索记忆</h2>
+
+                <input
+                  aria-label="搜索记忆"
+                  type="search"
+                  placeholder="搜索 Key 或内容"
+                  value={searchQuery}
+                  onChange={(event) =>
+                    updateSearch(event.target.value)
+                  }
+                />
+
+                <p>
+                  显示 {filteredMemories.length} 条，共{" "}
+                  {state.result.metadata.count} 条
+                </p>
+              </section>
+
+              {filteredMemories.length > 0 ? (
+                <section className="memory-grid">
+                  {filteredMemories.map((memory) => {
+                    const editing =
+                      editingId === memory.id;
+                    const updating =
+                      updatingId === memory.id;
+                    const deleting =
+                      deletingId === memory.id;
+
+                    return (
+                      <article
+                        className="memory-card"
+                        key={memory.id}
+                      >
+                        <MemoryMetadata memory={memory} />
+
+                        <h2>
+                          {memory.key.replaceAll("_", " ")}
+                        </h2>
+
+                        {editing ? (
+                          <>
+                            <textarea
+                              value={editingContent}
+                              disabled={updating || deleting}
+                              onChange={(event) => {
+                                setEditingContent(
+                                  event.target.value,
+                                );
+                                setActionError("");
+                              }}
+                            />
+
+                            <button
+                              className="secondary-button"
+                              disabled={
+                                updating ||
+                                deleting ||
+                                !editingContent.trim()
+                              }
+                              onClick={() =>
+                                handleUpdate(memory.id)
+                              }
+                            >
+                              {updating
+                                ? "保存中…"
+                                : "保存修改"}
+                            </button>
+
+                            <button
+                              className="secondary-button"
+                              disabled={updating || deleting}
+                              onClick={() => {
+                                setEditingId("");
+                                setEditingContent("");
+                                setActionError("");
+                              }}
+                            >
+                              取消
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p>{memory.content}</p>
+
+                            <button
+                              className="secondary-button"
+                              disabled={busy}
+                              onClick={() => openMemory(memory.id)}
+                            >
+                              查看详情
+                            </button>
+
+                            <button
+                              className="secondary-button"
+                              disabled={busy}
+                              onClick={() => {
+                                setEditingId(memory.id);
+                                setEditingContent(
+                                  memory.content,
+                                );
+                                setActionError("");
+                              }}
+                            >
+                              编辑
+                            </button>
+
+                            <button
+                              className="secondary-button"
+                              disabled={busy}
+                              onClick={() =>
+                                handleDelete(
+                                  memory.id,
+                                  memory.key,
+                                )
+                              }
+                            >
+                              {deleting
+                                ? "删除中…"
+                                : "删除"}
+                            </button>
+                          </>
+                        )}
+                      </article>
+                    );
+                  })}
+                </section>
+              ) : (
+                <MemoryMessage
+                  title="没有找到记忆"
+                  description={
+                    searchQuery.trim()
+                      ? "没有与当前搜索内容匹配的记忆。"
+                      : "目前还没有可显示的记忆。"
+                  }
+                />
+              )}
+            </>
+          )}
+
+          {state.status === "loading" && <MemoryLoading />}
+
+          {state.status === "error" && (
             <MemoryMessage
-              title="没有找到记忆"
-              description={
-                searchQuery.trim()
-                  ? "没有与当前搜索内容匹配的记忆。"
-                  : "目前还没有可显示的记忆。"
+              title="暂时无法读取记忆"
+              description="连接没有完成，请稍后重试。"
+              action={
+                <button
+                  className="secondary-button"
+                  onClick={() =>
+                    setReloadKey((value) => value + 1)
+                  }
+                >
+                  重新加载
+                </button>
               }
             />
           )}
         </>
       )}
+    </div>
+  );
+}
 
-      {state.status === "loading" && <MemoryLoading />}
+function MemoryDetail({
+  state,
+  editing,
+  editingContent,
+  updating,
+  onEditingContentChange,
+  onEdit,
+  onCancel,
+  onSave,
+  onBack,
+}: {
+  state: DetailState;
+  editing: boolean;
+  editingContent: string;
+  updating: boolean;
+  onEditingContentChange(value: string): void;
+  onEdit(memory: MemoryRecord): void;
+  onCancel(): void;
+  onSave(): void;
+  onBack(): void;
+}) {
+  if (state.status === "loading") {
+    return (
+      <MemoryMessage
+        title="正在读取记忆"
+        description="详情加载中…"
+      />
+    );
+  }
 
-      {state.status === "error" && (
-        <MemoryMessage
-          title="暂时无法读取记忆"
-          description="连接没有完成，请稍后重试。"
-          action={
-            <button
-              className="secondary-button"
-              onClick={() =>
-                setReloadKey((value) => value + 1)
-              }
-            >
-              重新加载
-            </button>
-          }
-        />
+  if (state.status === "error" || state.status === "idle") {
+    return (
+      <MemoryMessage
+        title="无法读取记忆"
+        description="该记忆不存在、无权访问或暂时不可用。"
+        action={
+          <button className="secondary-button" onClick={onBack}>
+            返回记忆列表
+          </button>
+        }
+      />
+    );
+  }
+
+  const memory = state.memory;
+  return (
+    <section className="memory-message memory-detail">
+      <MemoryMetadata memory={memory} />
+      <h2>{memory.key.replaceAll("_", " ")}</h2>
+
+      {editing ? (
+        <>
+          <textarea
+            aria-label="编辑记忆内容"
+            value={editingContent}
+            disabled={updating}
+            onChange={(event) =>
+              onEditingContentChange(event.target.value)
+            }
+          />
+          <button
+            className="secondary-button"
+            disabled={updating || !editingContent.trim()}
+            onClick={onSave}
+          >
+            {updating ? "保存中…" : "保存修改"}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={updating}
+            onClick={onCancel}
+          >
+            取消
+          </button>
+        </>
+      ) : (
+        <>
+          <p>{memory.content}</p>
+          <button
+            className="secondary-button"
+            onClick={() => onEdit(memory)}
+          >
+            编辑
+          </button>
+          <button className="secondary-button" onClick={onBack}>
+            返回记忆列表
+          </button>
+        </>
       )}
+    </section>
+  );
+}
+
+function MemoryMetadata({ memory }: { memory: MemoryRecord }) {
+  return (
+    <div className="memory-card-topline">
+      <span
+        className={`memory-category memory-category-${memory.category}`}
+      >
+        {categoryLabels[memory.category]}
+      </span>
+      <span>{formatUpdatedAt(memory.updated_at)}</span>
     </div>
   );
 }
@@ -509,7 +844,7 @@ function MemoryMessage({
   description,
   title,
 }: {
-  action?: React.ReactNode;
+  action?: ReactNode;
   description: string;
   title: string;
 }) {

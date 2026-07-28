@@ -49,6 +49,11 @@ export interface MemoryRepository {
     input: FindMemoriesInput,
   ): Promise<ActiveAssistantMemoryRecord[]>;
 
+  findActiveAssistantMemoryById(input: {
+    userId: string;
+    id: string;
+  }): Promise<ActiveAssistantMemoryRecord | null>;
+
   createMemory(input: CreateMemoryInput): Promise<void>;
 
   updateMemory(input: UpdateMemoryInput): Promise<void>;
@@ -115,6 +120,32 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         asc(coreMemories.id),
       )
       .limit(input.limit);
+  }
+
+  async findActiveAssistantMemoryById(input: {
+    userId: string;
+    id: string;
+  }): Promise<ActiveAssistantMemoryRecord | null> {
+    const [memory] = await this.db
+      .select({
+        id: coreMemories.id,
+        category: coreMemories.category,
+        key: coreMemories.key,
+        content: coreMemories.content,
+        updatedAt: coreMemories.updatedAt,
+      })
+      .from(coreMemories)
+      .where(
+        and(
+          eq(coreMemories.id, input.id),
+          eq(coreMemories.userId, input.userId),
+          eq(coreMemories.status, "active"),
+          eq(coreMemories.visibility, "assistant"),
+        ),
+      )
+      .limit(1);
+
+    return memory ?? null;
   }
 
   async createMemory(input: CreateMemoryInput): Promise<void> {
