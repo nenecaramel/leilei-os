@@ -5,24 +5,30 @@ import {
   createMemoryListLocation,
   getMemoryDetailLocation,
   getSafeMemoryReturnTo,
-  readMemorySearch,
+  readMemoryFilters,
 } from "../web/src/pages/memory-location.js";
 
-test("Memory detail location preserves a normalized searched list URL", () => {
-  const list = createMemoryListLocation(" long-term goal ");
-  assert.equal(list, "/memory?q=long-term+goal");
+test("Memory detail location preserves normalized search and category filters", () => {
+  const list = createMemoryListLocation({
+    q: " long-term goal ",
+    category: "project",
+  });
+  assert.equal(list, "/memory?q=long-term+goal&category=project");
   const detail = createMemoryDetailLocation("memory-1", list);
   assert.deepEqual(
     getMemoryDetailLocation(new URL(detail, "https://example.test").search),
     { memoryId: "memory-1", returnTo: list },
   );
-  assert.equal(readMemorySearch("?q=long-term+goal"), "long-term goal");
+  assert.deepEqual(
+    readMemoryFilters("?q=long-term+goal&category=project"),
+    { q: "long-term goal", category: "project" },
+  );
 });
 
-test("Memory returnTo accepts only the Memory list and its search parameter", () => {
+test("Memory returnTo accepts only normalized Memory search and category parameters", () => {
   assert.equal(
-    getSafeMemoryReturnTo("/memory?q=goal"),
-    "/memory?q=goal",
+    getSafeMemoryReturnTo("/memory?category=goal&q=100%25_%5C"),
+    "/memory?q=100%25_%5C&category=goal",
   );
   for (const unsafe of [
     "https://evil.test/memory?q=goal",
@@ -31,11 +37,23 @@ test("Memory returnTo accepts only the Memory list and its search parameter", ()
     "/memory?memory=secret",
     "/memory?returnTo=%2Fmemory",
     "/memory?q=one&q=two",
-    "/memory?category=goal",
+    "/memory?category=goal&category=project",
+    "/memory?category=not-a-category",
   ]) {
     assert.equal(getSafeMemoryReturnTo(unsafe), "/memory");
   }
   assert.equal(getSafeMemoryReturnTo(null), "/memory");
+});
+
+test("Memory filters safely discard invalid category and empty conditions", () => {
+  assert.deepEqual(readMemoryFilters("?q=&category=%3Cscript%3E"), {
+    q: "",
+    category: "",
+  });
+  assert.equal(
+    createMemoryListLocation({ q: "", category: "" }),
+    "/memory",
+  );
 });
 
 test("invalid Memory detail ids safely select list mode", () => {

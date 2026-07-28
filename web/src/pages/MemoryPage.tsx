@@ -9,11 +9,24 @@ import { MemoryIcon } from "../components/icons";
 import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
 import {
+  createMemoryFilterDebouncer,
+  pushMemoryFilterHistory,
+  subscribeToMemoryFilterHistory,
+} from "./memory-filter-history";
+import {
+  buildMemoryListRequest,
+  createLatestMemoryRequestTracker,
+  settleLatestMemoryRequest,
+} from "./memory-list-request";
+import {
+  EMPTY_MEMORY_FILTERS,
   createMemoryDetailLocation,
   createMemoryListLocation,
   getMemoryDetailLocation,
   getSafeMemoryReturnTo,
-  readMemorySearch,
+  readMemoryFilters,
+  type MemoryFilterCategory,
+  type MemoryFilters,
 } from "./memory-location";
 import {
   getMemoryScrollStorage,
@@ -36,7 +49,10 @@ type MemoryResponse = {
   data: {
     user: { display_name: string };
     memories: MemoryRecord[];
-    metadata: { count: number };
+    metadata: {
+      count: number;
+      categories: MemoryCategory[];
+    };
   };
 };
 
@@ -77,33 +93,12 @@ function formatUpdatedAt(value: string): string {
   }).format(date);
 }
 
-function matchesSearch(
-  memory: MemoryRecord,
-  searchQuery: string,
-): boolean {
-  const normalizedQuery = searchQuery
-    .trim()
-    .toLocaleLowerCase();
-
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  const searchableText = [
-    memory.key,
-    memory.key.replaceAll("_", " "),
-    memory.content,
-    memory.category,
-    categoryLabels[memory.category],
-  ]
-    .join(" ")
-    .toLocaleLowerCase();
-
-  return searchableText.includes(normalizedQuery);
-}
-
 function initialLocation() {
   return getMemoryDetailLocation(window.location.search);
+}
+
+function initialFilters(): MemoryFilters {
+  return readMemoryFilters(window.location.search);
 }
 
 export function MemoryPageContent({
@@ -128,10 +123,19 @@ export function MemoryPageContent({
   const listController = useRef<AbortController | null>(null);
   const detailController = useRef<AbortController | null>(null);
   const pendingScrollRestore = useRef<number | null>(null);
+  const tracker = useRef(createLatestMemoryRequestTracker());
 
-  const [searchQuery, setSearchQuery] = useState(
-    () => readMemorySearch(window.location.search),
+  const [filters, setFilters] = useState(initialFilters);
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const [searchDraft, setSearchDraft] = useState(
+    () => initialFilters().q,
   );
+  const searchDebouncer = useRef<
+    ReturnType<typeof createMemoryFilterDebouncer> | null
+  >(null);
+  const [availableCategories, setAvailableCategories] =
+    useState<MemoryCategory[]>([]);
   const [actionError, setActionError] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
@@ -146,15 +150,50 @@ export function MemoryPageContent({
   const [updatingId, setUpdatingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
 
-  useEffect(() => {
-    const handlePopState = () => {
+  function invalidateList(): void {
+    tracker.current.invalidate();
+    listController.current?.abort();
+    listController.current = null;
+  }
+
+  function commitFilters(
+    next: MemoryFilters,
+    keepSearchTimer = false,
+  ): void {
+    if (!keepSearchTimer) searchDebouncer.current?.cancel();
+    pendingScrollRestore.current = null;
+    invalidateList();
+    setState({ status: "loading" });
+    pushMemoryFilterHistory(window, next);
+    setFilters(next);
+    setSearchDraft(next.q);
+  }
+
+  if (!searchDebouncer.current) {
+    searchDebouncer.current = createMemoryFilterDebouncer({
+      delayMs: 300,
+      commit: (q) => commitFilters(
+        { ...filtersRef.current, q },
+        true,
+      ),
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+    });
+  }
+
+  useEffect(() => subscribeToMemoryFilterHistory(
+    window,
+    (restoredFilters) => {
+      searchDebouncer.current?.cancel();
+      invalidateList();
       const nextLocation = initialLocation();
-      listController.current?.abort();
       detailController.current?.abort();
       setActionError("");
       setEditingId("");
       setEditingContent("");
       setLocation(nextLocation);
+      setFilters(restoredFilters);
+      setSearchDraft(restoredFilters.q);
 
       if (nextLocation.memoryId) {
         setDetailState({ status: "loading" });
@@ -164,17 +203,19 @@ export function MemoryPageContent({
       const listUrl = getSafeMemoryReturnTo(
         `${window.location.pathname}${window.location.search}`,
       );
-      setSearchQuery(readMemorySearch(window.location.search));
       pendingScrollRestore.current = readMemoryScrollPosition(
         getMemoryScrollStorage(window),
         listUrl,
       );
       setState({ status: "loading" });
       setDetailState({ status: "idle" });
-    };
+    },
+  ), []);
 
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+  useEffect(() => () => {
+    searchDebouncer.current?.cancel();
+    invalidateList();
+    detailController.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -186,17 +227,22 @@ export function MemoryPageContent({
 
     const controller = new AbortController();
     listController.current = controller;
+    const ticket = tracker.current.begin();
     setState({ status: "loading" });
 
-    api.request<MemoryResponse>("/memory", {
+    void settleLatestMemoryRequest({
+      request: api.request<MemoryResponse>(
+        buildMemoryListRequest(filters).url,
+        { signal: controller.signal },
+      ),
+      ticket,
       signal: controller.signal,
-    })
-      .then((response) => {
-        if (controller.signal.aborted) return;
+      onSuccess: (response) => {
         setState({
           status: "ready",
           result: response.data,
         });
+        setAvailableCategories(response.data.metadata.categories);
         const position = pendingScrollRestore.current;
         pendingScrollRestore.current = null;
         if (position !== null) {
@@ -204,25 +250,22 @@ export function MemoryPageContent({
             window.scrollTo({ top: position });
           });
         }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setState({ status: "error" });
-        }
-      })
-      .finally(() => {
+      },
+      onError: () => setState({ status: "error" }),
+    }).finally(() => {
         if (listController.current === controller) {
           listController.current = null;
         }
       });
 
     return () => {
+      tracker.current.invalidate();
       controller.abort();
       if (listController.current === controller) {
         listController.current = null;
       }
     };
-  }, [api, isDetail, reloadKey]);
+  }, [api, filters, isDetail, reloadKey]);
 
   useEffect(() => {
     const id = location.memoryId;
@@ -384,16 +427,14 @@ export function MemoryPageContent({
   }
 
   function updateSearch(value: string): void {
-    setSearchQuery(value);
-    const next = createMemoryListLocation(value);
-    const current = `${window.location.pathname}${window.location.search}`;
-    if (next !== current) {
-      window.history.replaceState(null, "", next);
-    }
+    invalidateList();
+    setState({ status: "loading" });
+    setSearchDraft(value);
+    searchDebouncer.current?.schedule(value);
   }
 
   function openMemory(id: string): void {
-    const returnTo = createMemoryListLocation(searchQuery);
+    const returnTo = createMemoryListLocation(filters);
     saveMemoryScrollPosition(
       getMemoryScrollStorage(window),
       returnTo,
@@ -414,11 +455,11 @@ export function MemoryPageContent({
       getMemoryScrollStorage(window),
       returnTo,
     );
-    setSearchQuery(
-      readMemorySearch(
-        new URL(returnTo, window.location.origin).search,
-      ),
+    const restoredFilters = readMemoryFilters(
+      new URL(returnTo, window.location.origin).search,
     );
+    setFilters(restoredFilters);
+    setSearchDraft(restoredFilters.q);
     setEditingId("");
     setEditingContent("");
     setLocation({ memoryId: null, returnTo: "/memory" });
@@ -426,11 +467,9 @@ export function MemoryPageContent({
     setState({ status: "loading" });
   }
 
-  const filteredMemories =
+  const visibleMemories =
     state.status === "ready"
-      ? state.result.memories.filter((memory) =>
-          matchesSearch(memory, searchQuery),
-        )
+      ? state.result.memories
       : [];
 
   const detailMemory =
@@ -550,30 +589,62 @@ export function MemoryPageContent({
             </section>
           )}
 
+          <section className="memory-message memory-filters">
+            <h2>搜索与筛选</h2>
+
+            <input
+              aria-label="搜索记忆"
+              type="search"
+              maxLength={200}
+              placeholder="搜索 Key 或内容"
+              value={searchDraft}
+              onChange={(event) =>
+                updateSearch(event.target.value)
+              }
+            />
+
+            <select
+              aria-label="按分类筛选"
+              value={filters.category}
+              onChange={(event) => {
+                commitFilters({
+                  ...filters,
+                  category: event.target
+                    .value as MemoryFilterCategory,
+                });
+              }}
+            >
+              <option value="">全部分类</option>
+              {availableCategories.map((value) => (
+                <option key={value} value={value}>
+                  {categoryLabels[value]}
+                </option>
+              ))}
+            </select>
+
+            {(filters.q || filters.category) && (
+              <button
+                className="secondary-button"
+                onClick={() =>
+                  commitFilters(EMPTY_MEMORY_FILTERS)
+                }
+              >
+                清除筛选
+              </button>
+            )}
+
+            {state.status === "ready" && (
+              <p>
+                显示 {visibleMemories.length} 条
+              </p>
+            )}
+          </section>
+
           {state.status === "ready" && (
             <>
-              <section className="memory-message">
-                <h2>搜索记忆</h2>
-
-                <input
-                  aria-label="搜索记忆"
-                  type="search"
-                  placeholder="搜索 Key 或内容"
-                  value={searchQuery}
-                  onChange={(event) =>
-                    updateSearch(event.target.value)
-                  }
-                />
-
-                <p>
-                  显示 {filteredMemories.length} 条，共{" "}
-                  {state.result.metadata.count} 条
-                </p>
-              </section>
-
-              {filteredMemories.length > 0 ? (
+              {visibleMemories.length > 0 ? (
                 <section className="memory-grid">
-                  {filteredMemories.map((memory) => {
+                  {visibleMemories.map((memory) => {
                     const editing =
                       editingId === memory.id;
                     const updating =
@@ -683,8 +754,8 @@ export function MemoryPageContent({
                 <MemoryMessage
                   title="没有找到记忆"
                   description={
-                    searchQuery.trim()
-                      ? "没有与当前搜索内容匹配的记忆。"
+                    filters.q || filters.category
+                      ? "没有与当前搜索或分类匹配的记忆。"
                       : "目前还没有可显示的记忆。"
                   }
                 />

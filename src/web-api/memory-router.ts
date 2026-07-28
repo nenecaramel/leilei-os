@@ -7,7 +7,15 @@ import {
 
 export type MemoryApiDependencies = {
   memoryService: {
-    readMemory(input: { userId: string }): Promise<ReadMemoryResult>;
+    readMemory(input: {
+      userId: string;
+      query?: string;
+      categories?: readonly string[];
+    }): Promise<ReadMemoryResult>;
+
+    listAvailableCategories(
+      userId: string,
+    ): Promise<Array<"profile" | "preference" | "goal" | "project">>;
 
     readMemoryDetail(input: {
       userId: string;
@@ -128,13 +136,27 @@ export function createReadMemoryApiHandler(
     }
 
     try {
-      const data = await dependencies.memoryService.readMemory({
-        userId: request.webUserId,
-      });
+      const category = getQueryParam(request.query.category);
+      const [data, categories] = await Promise.all([
+        dependencies.memoryService.readMemory({
+          userId: request.webUserId,
+          query: getQueryParam(request.query.q),
+          categories: category ? [category] : undefined,
+        }),
+        dependencies.memoryService.listAvailableCategories(
+          request.webUserId,
+        ),
+      ]);
 
       response.json({
         success: true,
-        data,
+        data: {
+          ...data,
+          metadata: {
+            ...data.metadata,
+            categories,
+          },
+        },
       });
     } catch (error) {
       if (error instanceof MemoryDomainError) {
@@ -285,4 +307,17 @@ function getRouteParam(
   return Array.isArray(value)
     ? value[0] ?? ""
     : value ?? "";
+}
+
+function getQueryParam(
+  value: unknown,
+): string | undefined {
+  if (Array.isArray(value)) {
+    return typeof value[0] === "string"
+      ? value[0]
+      : undefined;
+  }
+  return typeof value === "string"
+    ? value
+    : undefined;
 }

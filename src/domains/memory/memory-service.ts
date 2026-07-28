@@ -14,11 +14,13 @@ const ALLOWED_CATEGORIES = [
 const DEFAULT_MEMORY_LIMIT = 50;
 const MAX_MEMORY_LIMIT = 50;
 const MAX_CONTENT_LENGTH = 4_000;
+const MAX_SEARCH_LENGTH = 200;
 
 export type ReadMemoryInput = {
   userId: string;
   categories?: readonly string[];
   keys?: readonly string[];
+  query?: string;
   limit?: number;
 };
 
@@ -57,6 +59,7 @@ export type ReadMemoryDetailResult =
 export type MemoryDomainErrorCode =
   | "INVALID_MEMORY_CATEGORY"
   | "INVALID_MEMORY_LIMIT"
+  | "INVALID_MEMORY_QUERY"
   | "MEMORY_NOT_FOUND"
   | "USER_NOT_FOUND"
   | "USER_DISABLED";
@@ -79,10 +82,12 @@ export class MemoryService {
 
     const categories = this.validateCategories(input.categories);
     const keys = this.normalizeKeys(input.keys);
+    const query = this.normalizeQuery(input.query);
     const limit = this.resolveLimit(input.limit);
 
     const memories = await this.repository.findActiveAssistantMemories({
       userId: input.userId,
+      query,
       categories,
       keys,
       limit,
@@ -103,6 +108,13 @@ export class MemoryService {
         count: memories.length,
       },
     };
+  }
+
+  async listAvailableCategories(
+    userId: string,
+  ): Promise<MemoryCategory[]> {
+    await this.requireActiveUser(userId);
+    return this.repository.findActiveAssistantMemoryCategories(userId);
   }
 
   async readMemoryDetail(input: {
@@ -220,6 +232,19 @@ export class MemoryService {
     ];
 
     return normalized.length > 0 ? normalized : undefined;
+  }
+
+  private normalizeQuery(query?: string): string | undefined {
+    if (query === undefined) return undefined;
+    const normalized = query.trim();
+    if (!normalized) return undefined;
+    if (normalized.length > MAX_SEARCH_LENGTH) {
+      throw new MemoryDomainError(
+        "INVALID_MEMORY_QUERY",
+        "Memory search is too long.",
+      );
+    }
+    return normalized;
   }
 
   private resolveLimit(limit?: number): number {

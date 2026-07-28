@@ -42,17 +42,117 @@ test("reads Memory through the existing service with the Web identity", async ()
         calls.push(input);
         return expected;
       },
+      listAvailableCategories: async (userId) => {
+        calls.push({ categoriesFor: userId });
+        return ["preference"];
+      },
     },
   });
   const request = {
     webUserId: "11111111-1111-4111-8111-111111111111",
+    query: {},
   } as Request;
   const { result, response } = responseRecorder();
 
   await handler(request, response, (() => {}) as NextFunction);
 
-  assert.deepEqual(calls, [{ userId: request.webUserId }]);
-  assert.deepEqual(result.body, { success: true, data: expected });
+  assert.deepEqual(calls, [
+    {
+      userId: request.webUserId,
+      query: undefined,
+      categories: undefined,
+    },
+    { categoriesFor: request.webUserId },
+  ]);
+  assert.deepEqual(result.body, {
+    success: true,
+    data: {
+      ...expected,
+      metadata: {
+        count: 1,
+        categories: ["preference"],
+      },
+    },
+  });
+});
+
+test("passes q and exact category independently to Memory Service", async () => {
+  const calls: unknown[] = [];
+  const handler = createReadMemoryApiHandler({
+    memoryService: {
+      async readMemory(input) {
+        calls.push(input);
+        return {
+          user: { display_name: "Leilei" },
+          memories: [],
+          metadata: { count: 0 },
+        };
+      },
+      async listAvailableCategories(userId) {
+        calls.push({ categoriesFor: userId });
+        return ["goal"];
+      },
+    },
+  } as never);
+  const request = {
+    webUserId: "11111111-1111-4111-8111-111111111111",
+    query: {
+      q: "100%_focused\\plan",
+      category: "goal",
+    },
+  } as unknown as Request;
+  const { result, response } = responseRecorder();
+
+  await handler(request, response, (() => {}) as NextFunction);
+
+  assert.deepEqual(calls, [
+    {
+      userId: request.webUserId,
+      query: "100%_focused\\plan",
+      categories: ["goal"],
+    },
+    { categoriesFor: request.webUserId },
+  ]);
+  assert.equal(result.status, undefined);
+});
+
+test("rejects a category containing special characters with a safe 400", async () => {
+  const handler = createReadMemoryApiHandler({
+    memoryService: {
+      async readMemory() {
+        throw new MemoryDomainError(
+          "INVALID_MEMORY_CATEGORY",
+          "private category detail",
+        );
+      },
+      async listAvailableCategories() {
+        return [];
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+
+  await handler(
+    {
+      webUserId: "11111111-1111-4111-8111-111111111111",
+      query: { category: "goal%_\\<script>" },
+    } as unknown as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+
+  assert.equal(result.status, 400);
+  assert.deepEqual(result.body, {
+    success: false,
+    error: {
+      code: "INVALID_REQUEST",
+      message: "The memory request is invalid.",
+    },
+  });
+  assert.doesNotMatch(
+    JSON.stringify(result.body),
+    /private category detail|script/,
+  );
 });
 
 test("does not call Memory Service without a Web identity", async () => {
@@ -60,6 +160,10 @@ test("does not call Memory Service without a Web identity", async () => {
   const handler = createReadMemoryApiHandler({
     memoryService: {
       readMemory: async () => {
+        called = true;
+        throw new Error("must not be called");
+      },
+      listAvailableCategories: async () => {
         called = true;
         throw new Error("must not be called");
       },
@@ -79,12 +183,16 @@ test("returns a safe error for unavailable authenticated users", async () => {
       readMemory: async () => {
         throw new MemoryDomainError("USER_DISABLED", "internal detail");
       },
+      listAvailableCategories: async () => [],
     },
   });
   const { result, response } = responseRecorder();
 
   await handler(
-    { webUserId: "11111111-1111-4111-8111-111111111111" } as Request,
+    {
+      webUserId: "11111111-1111-4111-8111-111111111111",
+      query: {},
+    } as unknown as Request,
     response,
     (() => {}) as NextFunction,
   );
