@@ -273,13 +273,13 @@ test("a complete history URL contains every normalized request parameter", () =>
     priority: "high",
     tag: "work",
     due: "custom",
-    due_from: new Date("2026-07-26T08:30").toISOString(),
-    due_to: new Date("2026-07-27T18:45").toISOString(),
+    due_from: "2026-07-26T08:30",
+    due_to: "2026-07-27T18:45",
   });
   assert.equal(buildTaskListRequest(EMPTY_TASK_FILTERS).search, "");
 });
 
-test("today and next_7_days boundaries remain stable in history snapshots", () => {
+test("today and next_7_days delegate account-timezone boundaries to the API", () => {
   for (const due of ["today", "next_7_days"] as const) {
     const snapshot = createTaskFilterHistorySnapshot({
       ...EMPTY_TASK_FILTERS,
@@ -289,19 +289,13 @@ test("today and next_7_days boundaries remain stable in history snapshots", () =
     const restored = readTaskFilterHistorySnapshot(firstRequest.search);
     const restoredRequest = buildTaskListRequest(restored);
 
-    assert.match(
-      new URLSearchParams(firstRequest.search).get("due_from") ?? "",
-      /^\d{4}-\d{2}-\d{2}T/,
-    );
-    assert.match(
-      new URLSearchParams(firstRequest.search).get("due_to") ?? "",
-      /^\d{4}-\d{2}-\d{2}T/,
-    );
+    assert.equal(new URLSearchParams(firstRequest.search).has("due_from"), false);
+    assert.equal(new URLSearchParams(firstRequest.search).has("due_to"), false);
     assert.equal(restoredRequest.search, firstRequest.search);
   }
 });
 
-test("custom date controls restore local values for the same absolute request range", () => {
+test("custom date controls preserve account-timezone local values", () => {
   const originalRequest = buildTaskListRequest({
     ...EMPTY_TASK_FILTERS,
     due: "custom",

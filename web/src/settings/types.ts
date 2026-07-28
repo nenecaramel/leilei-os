@@ -15,6 +15,7 @@ export type SettingsData = {
   home_title: string | null;
   home_subtitle: string | null;
   preferred_name: string | null;
+  timezone: string;
   page_copy: PageCopyData;
   updated_at: string | null;
 };
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: SettingsData = {
   home_title: null,
   home_subtitle: null,
   preferred_name: null,
+  timezone: "Asia/Shanghai",
   page_copy: DEFAULT_PAGE_COPY,
   updated_at: null,
 };

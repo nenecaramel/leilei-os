@@ -40,6 +40,10 @@ class MockTaskRepository implements TaskRepository {
     return this.user;
   }
 
+  async findUserTimezone(): Promise<string | null> {
+    return "Asia/Shanghai";
+  }
+
   async createTask(input: NormalizedTaskCreate): Promise<TaskRecord> {
     this.writes.push(input);
 
@@ -117,7 +121,7 @@ test("normalizes Task list search filters before repository access", async () =>
 
 test("rejects invalid task list date filters safely", async () => {
   const service = new TaskService(new MockTaskRepository());
-  for (const query of [{ due: "no_due_date" }, { due: "custom" }, { due: "custom", dueFrom: "2026-07-23T00:00:00Z", dueTo: "2026-07-22T00:00:00Z" }]) {
+  for (const query of [{ due: "custom" }, { due: "custom", dueFrom: "2026-07-23T00:00:00Z", dueTo: "2026-07-22T00:00:00Z" }]) {
     await assert.rejects(service.listTasks({ userId: "user-1", query }), (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_QUERY");
   }
 });
@@ -154,46 +158,55 @@ test("normalizes literal search, status, priority, and exact tag filters", async
   });
 });
 
-test("normalizes all supported due presets with explicit absolute boundaries", async () => {
+test("normalizes all due presets from account-timezone boundaries", async () => {
   const repository = new MockTaskRepository();
-  const service = new TaskService(repository);
+  const service = new TaskService(
+    repository,
+    () => new Date("2026-07-22T12:00:00.000Z"),
+  );
 
   await service.listTasks({
     userId: "user-1",
     query: {
       due: "today",
-      dueFrom: "2026-07-22T00:00:00Z",
-      dueTo: "2026-07-23T00:00:00Z",
     },
   });
   assert.equal(
     repository.listQueries[0]?.dueFrom?.toISOString(),
-    "2026-07-22T00:00:00.000Z",
+    "2026-07-21T16:00:00.000Z",
   );
   assert.equal(
     repository.listQueries[0]?.dueTo?.toISOString(),
-    "2026-07-23T00:00:00.000Z",
+    "2026-07-22T16:00:00.000Z",
   );
 
   await service.listTasks({
     userId: "user-1",
     query: {
       due: "next_7_days",
-      dueFrom: "2026-07-22T08:30:00Z",
-      dueTo: "2026-07-29T08:30:00Z",
     },
   });
   assert.equal(
     repository.listQueries[1]?.dueFrom?.toISOString(),
-    "2026-07-22T08:30:00.000Z",
+    "2026-07-22T16:00:00.000Z",
   );
   assert.equal(
     repository.listQueries[1]?.dueTo?.toISOString(),
-    "2026-07-29T08:30:00.000Z",
+    "2026-07-29T16:00:00.000Z",
   );
 
   await service.listTasks({ userId: "user-1", query: { due: "overdue" } });
   assert.ok(repository.listQueries[2]?.overdueBefore instanceof Date);
+  assert.equal(
+    repository.listQueries[2]?.overdueBefore?.toISOString(),
+    "2026-07-21T16:00:00.000Z",
+  );
+
+  await service.listTasks({
+    userId: "user-1",
+    query: { due: "no_due_date" },
+  });
+  assert.equal(repository.listQueries[3]?.withoutDueTime, true);
 });
 
 test("rejects invalid task list filter values and ambiguous due ranges", async () => {
@@ -205,11 +218,10 @@ test("rejects invalid task list filter values and ambiguous due ranges", async (
     { priority: "critical" },
     { due: "tomorrow" },
     { due: "overdue", dueFrom: "2026-07-22T00:00:00Z" },
-    { due: "today" },
     { due: "next_7_days", dueTo: "2026-07-29T00:00:00Z" },
     { due: "custom", dueFrom: "not-an-instant" },
     { dueFrom: "2026-07-22T00:00:00Z" },
-    { due: "no_due_date" },
+    { due: "no_due_date", dueFrom: "2026-07-22T00:00:00Z" },
   ];
 
   for (const query of invalidQueries) {
@@ -303,6 +315,45 @@ test("creates a normalized pending task for the authenticated user", async () =>
   assert.equal(result.task.due_time, "2026-07-23T08:30:00.000Z");
 });
 
+test("creates a task without a due date in the account timezone", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+
+  const result = await service.createTask(
+    { userId: "user-1" },
+    { ...VALID_INPUT, dueTime: null, timezone: undefined },
+  );
+
+  assert.equal(repository.writes[0]?.dueTime, null);
+  assert.equal(repository.writes[0]?.timezone, "Asia/Shanghai");
+  assert.equal(result.task.due_time, null);
+  assert.equal(result.task.time_bucket, "no_due_date");
+});
+
+test("edits between a UTC due instant and no due date without changing status", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository, "in_progress");
+  const service = new TaskService(repository);
+
+  const withoutDue = await service.updateWebTask({
+    userId: "user-1",
+    id: "task-1",
+    ...VALID_INPUT,
+    dueTime: null,
+  });
+  assert.equal(withoutDue.due_time, null);
+  assert.equal(withoutDue.status, "in_progress");
+
+  const restored = await service.updateWebTask({
+    userId: "user-1",
+    id: "task-1",
+    ...VALID_INPUT,
+    dueTime: "2026-07-25T09:00",
+  });
+  assert.equal(restored.due_time, "2026-07-25T01:00:00.000Z");
+  assert.equal(restored.status, "in_progress");
+});
+
 test("ignores client-shaped user and status fields and uses domain-owned values", async () => {
   const repository = new MockTaskRepository();
   const service = new TaskService(repository);
@@ -341,10 +392,19 @@ test("rejects missing and disabled authenticated users before writing", async ()
   assert.equal(repository.writes.length, 0);
 });
 
-test("rejects relative, offset-free, and invalid calendar times", async () => {
+test("accepts account-local time and rejects relative or invalid calendar times", async () => {
+  const localRepository = new MockTaskRepository();
+  await new TaskService(localRepository).createTask(
+    { userId: "user-1" },
+    { ...VALID_INPUT, dueTime: "2026-07-23T16:30" },
+  );
+  assert.equal(
+    localRepository.writes[0]?.dueTime?.toISOString(),
+    "2026-07-23T08:30:00.000Z",
+  );
+
   const invalidTimes = [
     "明天下午",
-    "2026-07-23T16:30:00",
     "2026-02-30T10:00:00Z",
     "2026-07-23T25:00:00+08:00",
     "2026-07-23T10:00:00+15:00",

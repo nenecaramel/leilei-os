@@ -50,6 +50,13 @@
       "when": 1785061096117,
       "tag": "0006_large_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785218456792,
+      "tag": "0007_perpetual_bedlam",
+      "breakpoints": true
     }
   ]
 }

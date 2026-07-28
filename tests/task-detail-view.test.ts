@@ -34,6 +34,7 @@ const TASK_RESPONSE = {
     priority: "normal" as const,
     due_time: "2026-07-27T08:00:00.000Z",
     timezone: "Asia/Shanghai",
+    time_bucket: "later" as const,
     tags: ["detail"],
     created_at: "2026-07-26T00:00:00.000Z",
     updated_at: "2026-07-26T00:00:00.000Z",
@@ -177,6 +178,42 @@ test("detail success replaces the placeholder with the requested task", async ()
     });
     assert.match(page.container.textContent ?? "", /详情任务/);
     assertNoListView(page.container);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("undated task detail and edit form preserve the no-due state and account timezone", async () => {
+  const response = {
+    ...TASK_RESPONSE,
+    data: {
+      ...TASK_RESPONSE.data,
+      due_time: null,
+      time_bucket: "no_due_date" as const,
+    },
+  };
+  const { api } = createApi(async () => response);
+  const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
+
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.match(page.container.textContent ?? "", /截止时间：无截止时间/);
+    assert.match(page.container.textContent ?? "", /时区：Asia\/Shanghai/);
+
+    const edit = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "编辑任务");
+    assert.ok(edit);
+    await React.act(async () => {
+      edit.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+
+    const noDue = page.container.querySelector<HTMLInputElement>(
+      ".task-no-due-control input[type=checkbox]",
+    );
+    assert.equal(noDue?.checked, true);
+    assert.match(page.container.textContent ?? "", /当前账户时区：Asia\/Shanghai/);
   } finally {
     await page.cleanup();
   }

@@ -1,5 +1,6 @@
 export type TaskDueFilter =
   | ""
+  | "no_due_date"
   | "overdue"
   | "today"
   | "next_7_days"
@@ -17,6 +18,7 @@ export type TaskFilters = {
 
 const ALLOWED_DUE_FILTERS = new Set<TaskDueFilter>([
   "",
+  "no_due_date",
   "overdue",
   "today",
   "next_7_days",

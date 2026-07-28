@@ -13,6 +13,14 @@ import {
   getAllowedTaskActions,
   type TaskAction,
 } from "./task-state-machine.js";
+import {
+  classifyTaskDueTime,
+  DEFAULT_ACCOUNT_TIMEZONE,
+  getTaskTimeBoundaries,
+  normalizeIanaTimezone,
+  parseTaskDueTime,
+  type TaskTimeBucket,
+} from "./task-time.js";
 
 const ALLOWED_PRIORITIES = [
   "low",
@@ -37,9 +45,6 @@ const DEFAULT_TASK_LIMIT = 100;
 const MAX_TASK_LIMIT = 100;
 const MAX_SEARCH_LENGTH = 200;
 
-const ISO_INSTANT_PATTERN =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
-
 export type AuthenticatedTaskContext = {
   userId: string;
 };
@@ -48,8 +53,8 @@ export type CreateTaskInput = {
   title: string;
   description: string;
   priority: string;
-  dueTime: string;
-  timezone: string;
+  dueTime?: string | null;
+  timezone?: string;
   tags: readonly string[];
 };
 
@@ -59,8 +64,9 @@ export type TaskEntryResult = {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
-  due_time: string;
+  due_time: string | null;
   timezone: string;
+  time_bucket: TaskTimeBucket;
   tags: string[];
   created_at: string;
   updated_at: string;
@@ -105,8 +111,8 @@ export type CreateWebTaskInput = {
   title: string;
   description: string;
   priority: string;
-  dueTime: string;
-  timezone: string;
+  dueTime?: string | null;
+  timezone?: string;
   tags?: readonly string[];
 };
 
@@ -122,8 +128,8 @@ export type UpdateWebTaskInput = {
   title: string;
   description: string;
   priority: string;
-  dueTime: string;
-  timezone: string;
+  dueTime?: string | null;
+  timezone?: string;
   tags?: readonly string[];
 };
 
@@ -154,18 +160,22 @@ export class TaskDomainError extends Error {
 }
 
 export class TaskService {
-  constructor(private readonly repository: TaskRepository) {}
+  constructor(
+    private readonly repository: TaskRepository,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async createTask(
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
   ): Promise<CreateTaskResult> {
     const userId = await this.requireActiveUser(context.userId);
-    const normalized = this.normalizeInput(userId, input);
+    const timezone = await this.getAccountTimezone(userId);
+    const normalized = this.normalizeInput(userId, input, timezone);
     const task = await this.repository.createTask(normalized);
 
     return {
-      task: this.toTaskResult(task),
+      task: this.toTaskResult(task, timezone),
     };
   }
 
@@ -174,13 +184,14 @@ export class TaskService {
   ): Promise<ListTasksResult> {
     const userId = await this.requireActiveUser(input.userId);
     const limit = this.resolveLimit(input.limit);
+    const timezone = await this.getAccountTimezone(userId);
 
-    const query = this.normalizeListQuery(input.query ?? {});
+    const query = this.normalizeListQuery(input.query ?? {}, timezone);
     const tasks = await this.repository.findTasks(userId, limit, query);
 
     return {
       tasks: tasks.map((task) =>
-        this.toTaskResult(task),
+        this.toTaskResult(task, timezone),
       ),
       metadata: {
         count: tasks.length,
@@ -213,7 +224,7 @@ export class TaskService {
       );
     }
 
-    return this.toTaskResult(task);
+    return this.toTaskResult(task, await this.getAccountTimezone(userId));
   }
 
   async createWebTask(
@@ -276,7 +287,10 @@ export class TaskService {
     }
 
     if (existing.status === status) {
-      return this.toTaskResult(existing);
+      return this.toTaskResult(
+        existing,
+        await this.getAccountTimezone(userId),
+      );
     }
 
     const task = await this.repository.updateTaskStatus({
@@ -285,7 +299,7 @@ export class TaskService {
       status,
       completedAt:
         status === "completed"
-          ? new Date()
+          ? this.now()
           : null,
     });
 
@@ -296,7 +310,7 @@ export class TaskService {
       );
     }
 
-    return this.toTaskResult(task);
+    return this.toTaskResult(task, await this.getAccountTimezone(userId));
   }
 
   async updateWebTask(
@@ -324,6 +338,7 @@ export class TaskService {
       );
     }
 
+    const accountTimezone = await this.getAccountTimezone(userId);
     const normalized = this.normalizeTaskFields({
       title: input.title,
       description: input.description,
@@ -331,7 +346,7 @@ export class TaskService {
       dueTime: input.dueTime,
       timezone: input.timezone,
       tags: input.tags ?? [],
-    });
+    }, accountTimezone);
 
     const task = await this.repository.updateTask({
       userId,
@@ -346,7 +361,7 @@ export class TaskService {
       );
     }
 
-    return this.toTaskResult(task);
+    return this.toTaskResult(task, accountTimezone);
   }
 
   private async requireActiveUser(
@@ -394,10 +409,11 @@ export class TaskService {
   private normalizeInput(
     userId: string,
     input: CreateTaskInput,
+    accountTimezone: string,
   ): NormalizedTaskCreate {
     return {
       userId,
-      ...this.normalizeTaskFields(input),
+      ...this.normalizeTaskFields(input, accountTimezone),
       status: "pending",
       completedAt: null,
     };
@@ -407,10 +423,30 @@ export class TaskService {
     title: string;
     description: string;
     priority: string;
-    dueTime: string;
-    timezone: string;
+    dueTime?: string | null;
+    timezone?: string;
     tags: readonly string[];
-  }): Omit<NormalizedTaskUpdate, "userId" | "id"> {
+  }, accountTimezone: string): Omit<NormalizedTaskUpdate, "userId" | "id"> {
+    const requestedTimezone = input.timezone
+      ? this.normalizeTimezone(input.timezone)
+      : accountTimezone;
+
+    const hasAbsoluteDueTime =
+      typeof input.dueTime === "string" &&
+      /(?:Z|[+-]\d{2}:\d{2})$/.test(input.dueTime.trim());
+
+    if (
+      requestedTimezone !== accountTimezone &&
+      input.dueTime !== null &&
+      input.dueTime !== undefined &&
+      !hasAbsoluteDueTime
+    ) {
+      throw new TaskDomainError(
+        "INVALID_TIMEZONE",
+        "Task local time must use the account timezone.",
+      );
+    }
+
     return {
       title: this.normalizeRequiredText(
         input.title,
@@ -425,8 +461,8 @@ export class TaskService {
         "Task description",
       ),
       priority: this.normalizePriority(input.priority),
-      dueTime: this.normalizeDueTime(input.dueTime),
-      timezone: this.normalizeTimezone(input.timezone),
+      dueTime: this.normalizeDueTime(input.dueTime, accountTimezone),
+      timezone: accountTimezone,
       tags: this.normalizeTags(input.tags),
     };
   }
@@ -484,14 +520,17 @@ export class TaskService {
     return normalized as TaskStatus;
   }
 
-  private normalizeListQuery(input: RawTaskListQuery): TaskListQuery {
+  private normalizeListQuery(
+    input: RawTaskListQuery,
+    timezone: string,
+  ): TaskListQuery {
     const q = this.normalizeOptionalText(input.q, MAX_SEARCH_LENGTH, "INVALID_TASK_QUERY", "Search query");
     const tag = this.normalizeOptionalText(input.tag, MAX_TAG_LENGTH, "INVALID_TASK_QUERY", "Task tag");
     const status = input.status === undefined || input.status.trim() === "" ? undefined : this.normalizeStatus(input.status);
     const priority = input.priority === undefined || input.priority.trim() === "" ? undefined : this.normalizePriority(input.priority);
     const due = input.due?.trim() || undefined;
-    const dueFrom = input.dueFrom === undefined || input.dueFrom.trim() === "" ? undefined : this.normalizeDueTime(input.dueFrom);
-    const dueTo = input.dueTo === undefined || input.dueTo.trim() === "" ? undefined : this.normalizeDueTime(input.dueTo);
+    const dueFrom = input.dueFrom === undefined || input.dueFrom.trim() === "" ? undefined : this.normalizeDueTime(input.dueFrom, timezone) ?? undefined;
+    const dueTo = input.dueTo === undefined || input.dueTo.trim() === "" ? undefined : this.normalizeDueTime(input.dueTo, timezone) ?? undefined;
     const base: TaskListQuery = {
       ...(q ? { q } : {}),
       ...(status ? { status } : {}),
@@ -506,22 +545,31 @@ export class TaskService {
       if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Task date ranges require a due filter.");
       return base;
     }
-    if (due === "no_due_date") throw new TaskDomainError("INVALID_TASK_QUERY", "Unsupported task due filter.");
+    if (due === "no_due_date") {
+      if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Tasks without due dates do not accept a range.");
+      return { ...base, withoutDueTime: true };
+    }
     if (due === "custom") {
       if (!dueFrom && !dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Custom task dates require a range boundary.");
       return { ...base, ...(dueFrom ? { dueFrom } : {}), ...(dueTo ? { dueTo } : {}) };
     }
     if (due === "overdue") {
       if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Overdue tasks do not accept a range.");
-      return { ...base, overdueBefore: new Date() };
+      return {
+        ...base,
+        overdueBefore: getTaskTimeBoundaries(timezone, this.now()).todayStart,
+      };
     }
     if (due === "today" || due === "next_7_days") {
-      if (!dueFrom || !dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Task due preset requires range boundaries.");
-      return { ...base, dueFrom, dueTo };
+      if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Task due presets use account-timezone boundaries and do not accept a range.");
+      const boundaries = getTaskTimeBoundaries(timezone, this.now());
+      return due === "today"
+        ? { ...base, dueFrom: boundaries.todayStart, dueTo: boundaries.tomorrowStart }
+        : { ...base, dueFrom: boundaries.tomorrowStart, dueTo: boundaries.eighthDayStart };
     }
     throw new TaskDomainError(
       "INVALID_TASK_QUERY",
-      "Task due filter must be overdue, today, next_7_days, or custom.",
+      "Task due filter must be no_due_date, overdue, today, next_7_days, or custom.",
     );
   }
 
@@ -533,66 +581,18 @@ export class TaskService {
     return normalized;
   }
 
-  private normalizeDueTime(dueTime: string): Date {
-    const normalized = dueTime.trim();
-    const match = ISO_INSTANT_PATTERN.exec(normalized);
-
-    if (!match) {
+  private normalizeDueTime(
+    dueTime: string | null | undefined,
+    timezone: string,
+  ): Date | null {
+    try {
+      return parseTaskDueTime(dueTime, timezone);
+    } catch {
       throw new TaskDomainError(
         "INVALID_DUE_TIME",
-        "Task due time must be an ISO 8601 timestamp with Z or an explicit UTC offset.",
+        "Task due time must be null, an exact ISO instant, or a valid local date-time in the account timezone.",
       );
     }
-
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    const hour = Number(match[4]);
-    const minute = Number(match[5]);
-    const second = Number(match[6]);
-
-    const offsetHour =
-      match[10] === undefined
-        ? 0
-        : Number(match[10]);
-
-    const offsetMinute =
-      match[11] === undefined
-        ? 0
-        : Number(match[11]);
-
-    const daysInMonth = new Date(
-      Date.UTC(year, month, 0),
-    ).getUTCDate();
-
-    if (
-      month < 1 ||
-      month > 12 ||
-      day < 1 ||
-      day > daysInMonth ||
-      hour > 23 ||
-      minute > 59 ||
-      second > 59 ||
-      offsetHour > 14 ||
-      offsetMinute > 59 ||
-      (offsetHour === 14 && offsetMinute !== 0)
-    ) {
-      throw new TaskDomainError(
-        "INVALID_DUE_TIME",
-        "Task due time is not a valid timestamp.",
-      );
-    }
-
-    const parsed = new Date(normalized);
-
-    if (Number.isNaN(parsed.getTime())) {
-      throw new TaskDomainError(
-        "INVALID_DUE_TIME",
-        "Task due time is not a valid timestamp.",
-      );
-    }
-
-    return parsed;
   }
 
   private normalizeTimezone(
@@ -611,9 +611,7 @@ export class TaskService {
     }
 
     try {
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: normalized,
-      }).format();
+      return normalizeIanaTimezone(normalized);
     } catch {
       throw new TaskDomainError(
         "INVALID_TIMEZONE",
@@ -621,7 +619,13 @@ export class TaskService {
       );
     }
 
-    return normalized;
+  }
+
+  private async getAccountTimezone(userId: string): Promise<string> {
+    const timezone =
+      (await this.repository.findUserTimezone(userId)) ??
+      DEFAULT_ACCOUNT_TIMEZONE;
+    return this.normalizeTimezone(timezone);
   }
 
   private normalizeTags(
@@ -681,6 +685,7 @@ export class TaskService {
 
   private toTaskResult(
     task: TaskRecord,
+    timezone: string,
   ): TaskEntryResult {
     return {
       id: task.id,
@@ -688,8 +693,9 @@ export class TaskService {
       description: task.description,
       status: task.status,
       priority: task.priority,
-      due_time: task.dueTime.toISOString(),
-      timezone: task.timezone,
+      due_time: task.dueTime?.toISOString() ?? null,
+      timezone,
+      time_bucket: classifyTaskDueTime(task.dueTime, timezone, this.now()),
       tags: task.tags,
       created_at: task.createdAt.toISOString(),
       updated_at: task.updatedAt.toISOString(),

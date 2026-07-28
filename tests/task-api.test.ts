@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Request, Response } from "express";
 import {
+  createCreateTaskApiHandler,
   createListTasksApiHandler,
   createUpdateTaskApiHandler,
   createUpdateTaskStatusApiHandler,
@@ -32,6 +33,7 @@ const task = {
   priority: "normal" as const,
   due_time: "2026-07-23T08:30:00.000Z",
   timezone: "Asia/Shanghai",
+  time_bucket: "later" as const,
   tags: [],
   created_at: "2026-07-22T09:00:00.000Z",
   updated_at: "2026-07-22T09:00:00.000Z",
@@ -80,6 +82,46 @@ test("task list api forwards raw query parameters with the authenticated user", 
     success: true,
     data: { tasks: [], metadata: { count: 0 } },
   });
+});
+
+test("task create api forwards a null due time through the authenticated service", async () => {
+  const calls: unknown[] = [];
+  const handler = createCreateTaskApiHandler({
+    taskService: {
+      async createWebTask(input) {
+        calls.push(input);
+        return { ...task, due_time: null, time_bucket: "no_due_date" };
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+
+  await handler({
+    webUserId: "user-1",
+    body: {
+      title: "无截止时间",
+      description: "保持开放",
+      priority: "normal",
+      dueTime: null,
+      timezone: "Asia/Shanghai",
+      tags: [],
+    },
+  } as unknown as Request, response, () => {});
+
+  assert.deepEqual(calls, [{
+    userId: "user-1",
+    title: "无截止时间",
+    description: "保持开放",
+    priority: "normal",
+    dueTime: null,
+    timezone: "Asia/Shanghai",
+    tags: [],
+  }]);
+  assert.equal(result.status, 201);
+  assert.deepEqual(
+    (result.body as { data: { due_time: string | null } }).data.due_time,
+    null,
+  );
 });
 
 test("task list api returns a generic bad request without task content", async () => {

@@ -304,7 +304,7 @@ export const tasks = pgTable(
     description: text("description").notNull(),
     status: taskStatusEnum("status").default("pending").notNull(),
     priority: taskPriorityEnum("priority").default("normal").notNull(),
-    dueTime: timestamp("due_time", { withTimezone: true }).notNull(),
+    dueTime: timestamp("due_time", { withTimezone: true }),
     timezone: varchar("timezone", { length: 64 }).notNull(),
     tags: varchar("tags", { length: 50 })
       .array()
@@ -473,6 +473,10 @@ export const userSettings = pgTable(
 
     preferredName: varchar("preferred_name", { length: 80 }),
 
+    timezone: varchar("timezone", { length: 64 })
+      .default("Asia/Shanghai")
+      .notNull(),
+
     pageCopy: jsonb("page_copy")
       .$type<UserPageCopy>()
       .default(sql`'{}'::jsonb`)
@@ -507,6 +511,11 @@ export const userSettings = pgTable(
     check(
       "user_settings_preferred_name_not_blank",
       sql`${table.preferredName} IS NULL OR char_length(btrim(${table.preferredName})) > 0`,
+    ),
+
+    check(
+      "user_settings_timezone_not_blank",
+      sql`char_length(btrim(${table.timezone})) > 0`,
     ),
   ],
 );

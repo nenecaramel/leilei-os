@@ -27,8 +27,8 @@ import {
         title: string;
         description: string;
         priority: string;
-        dueTime: string;
-        timezone: string;
+        dueTime?: string | null;
+        timezone?: string;
         tags?: readonly string[];
       }): Promise<TaskEntryResult>;
   
@@ -44,8 +44,8 @@ import {
         title: string;
         description: string;
         priority: string;
-        dueTime: string;
-        timezone: string;
+        dueTime?: string | null;
+        timezone?: string;
         tags?: readonly string[];
       }): Promise<TaskEntryResult>;
     };

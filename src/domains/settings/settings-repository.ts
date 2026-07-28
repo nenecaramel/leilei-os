@@ -10,6 +10,7 @@ export type UserSettingsRecord = {
   homeTitle: string | null;
   homeSubtitle: string | null;
   preferredName: string | null;
+  timezone: string;
   pageCopy: UserPageCopy;
   updatedAt: Date;
 };
@@ -20,6 +21,7 @@ export type SaveUserSettingsInput = {
   homeTitle: string | null;
   homeSubtitle: string | null;
   preferredName: string | null;
+  timezone: string;
   pageCopy: UserPageCopy;
 };
 
@@ -51,6 +53,7 @@ export class DrizzleSettingsRepository
         homeTitle: userSettings.homeTitle,
         homeSubtitle: userSettings.homeSubtitle,
         preferredName: userSettings.preferredName,
+        timezone: userSettings.timezone,
         pageCopy: userSettings.pageCopy,
         updatedAt: userSettings.updatedAt,
       })
@@ -74,6 +77,7 @@ export class DrizzleSettingsRepository
         homeTitle: input.homeTitle,
         homeSubtitle: input.homeSubtitle,
         preferredName: input.preferredName,
+        timezone: input.timezone,
         pageCopy: input.pageCopy,
         updatedAt: now,
       })
@@ -84,6 +88,7 @@ export class DrizzleSettingsRepository
           homeTitle: input.homeTitle,
           homeSubtitle: input.homeSubtitle,
           preferredName: input.preferredName,
+          timezone: input.timezone,
           pageCopy: input.pageCopy,
           updatedAt: now,
         },
@@ -93,6 +98,7 @@ export class DrizzleSettingsRepository
         homeTitle: userSettings.homeTitle,
         homeSubtitle: userSettings.homeSubtitle,
         preferredName: userSettings.preferredName,
+        timezone: userSettings.timezone,
         pageCopy: userSettings.pageCopy,
         updatedAt: userSettings.updatedAt,
       });

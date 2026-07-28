@@ -29,6 +29,7 @@ export type SaveSettingsInput = {
   home_title: string | null;
   home_subtitle: string | null;
   preferred_name: string | null;
+  timezone: string;
   page_copy: PageCopyData;
 };
 
@@ -177,6 +178,7 @@ function normalizeSettings(payload: SettingsPayload): SettingsData {
     home_title: payload.home_title ?? null,
     home_subtitle: payload.home_subtitle ?? null,
     preferred_name: payload.preferred_name ?? null,
+    timezone: payload.timezone || DEFAULT_SETTINGS.timezone,
     page_copy: {
       ...DEFAULT_PAGE_COPY,
       ...(payload.page_copy ?? {}),
