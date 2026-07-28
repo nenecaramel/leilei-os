@@ -41,6 +41,7 @@ type MemoryRecord = {
   category: MemoryCategory;
   key: string;
   content: string;
+  tags: string[];
   updated_at: string;
 };
 
@@ -52,6 +53,7 @@ type MemoryResponse = {
     metadata: {
       count: number;
       categories: MemoryCategory[];
+      tags: string[];
     };
   };
 };
@@ -101,6 +103,17 @@ function initialFilters(): MemoryFilters {
   return readMemoryFilters(window.location.search);
 }
 
+function parseTags(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(/[,，]/)
+        .map((tag) => tag.normalize("NFC").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 export function MemoryPageContent({
   api,
   settings,
@@ -136,6 +149,7 @@ export function MemoryPageContent({
   >(null);
   const [availableCategories, setAvailableCategories] =
     useState<MemoryCategory[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [actionError, setActionError] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
@@ -143,10 +157,12 @@ export function MemoryPageContent({
     useState<MemoryCategory>("profile");
   const [key, setKey] = useState("");
   const [content, setContent] = useState("");
+  const [tags, setTags] = useState("");
   const [creating, setCreating] = useState(false);
 
   const [editingId, setEditingId] = useState("");
   const [editingContent, setEditingContent] = useState("");
+  const [editingTags, setEditingTags] = useState("");
   const [updatingId, setUpdatingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
 
@@ -158,9 +174,13 @@ export function MemoryPageContent({
 
   function commitFilters(
     next: MemoryFilters,
-    keepSearchTimer = false,
+    options: {
+      keepSearchTimer?: boolean;
+    } = {},
   ): void {
-    if (!keepSearchTimer) searchDebouncer.current?.cancel();
+    if (!options.keepSearchTimer) {
+      searchDebouncer.current?.cancel();
+    }
     pendingScrollRestore.current = null;
     invalidateList();
     setState({ status: "loading" });
@@ -173,8 +193,11 @@ export function MemoryPageContent({
     searchDebouncer.current = createMemoryFilterDebouncer({
       delayMs: 300,
       commit: (q) => commitFilters(
-        { ...filtersRef.current, q },
-        true,
+        {
+          ...filtersRef.current,
+          q,
+        },
+        { keepSearchTimer: true },
       ),
       setTimeout: window.setTimeout.bind(window),
       clearTimeout: window.clearTimeout.bind(window),
@@ -191,6 +214,7 @@ export function MemoryPageContent({
       setActionError("");
       setEditingId("");
       setEditingContent("");
+      setEditingTags("");
       setLocation(nextLocation);
       setFilters(restoredFilters);
       setSearchDraft(restoredFilters.q);
@@ -243,6 +267,7 @@ export function MemoryPageContent({
           result: response.data,
         });
         setAvailableCategories(response.data.metadata.categories);
+        setAvailableTags(response.data.metadata.tags);
         const position = pendingScrollRestore.current;
         pendingScrollRestore.current = null;
         if (position !== null) {
@@ -337,11 +362,13 @@ export function MemoryPageContent({
           category,
           key: key.trim(),
           content: content.trim(),
+          tags: parseTags(tags),
         }),
       });
 
       setKey("");
       setContent("");
+      setTags("");
       setShowCreate(false);
       setReloadKey((value) => value + 1);
     } catch {
@@ -370,11 +397,13 @@ export function MemoryPageContent({
         body: JSON.stringify({
           id,
           content: editingContent.trim(),
+          tags: parseTags(editingTags),
         }),
       });
 
       setEditingId("");
       setEditingContent("");
+      setEditingTags("");
       setReloadKey((value) => value + 1);
       if (isDetail) {
         setDetailReloadKey((value) => value + 1);
@@ -416,6 +445,7 @@ export function MemoryPageContent({
       if (editingId === id) {
         setEditingId("");
         setEditingContent("");
+        setEditingTags("");
       }
 
       setReloadKey((value) => value + 1);
@@ -444,6 +474,7 @@ export function MemoryPageContent({
     window.history.pushState(null, "", next);
     setEditingId("");
     setEditingContent("");
+    setEditingTags("");
     setLocation(getMemoryDetailLocation(window.location.search));
     setDetailState({ status: "loading" });
   }
@@ -462,6 +493,7 @@ export function MemoryPageContent({
     setSearchDraft(restoredFilters.q);
     setEditingId("");
     setEditingContent("");
+    setEditingTags("");
     setLocation({ memoryId: null, returnTo: "/memory" });
     setDetailState({ status: "idle" });
     setState({ status: "loading" });
@@ -517,19 +549,26 @@ export function MemoryPageContent({
           state={detailState}
           editing={editingId === detailMemory?.id}
           editingContent={editingContent}
+          editingTags={editingTags}
           updating={updatingId === detailMemory?.id}
           onEditingContentChange={(value) => {
             setEditingContent(value);
             setActionError("");
           }}
+          onEditingTagsChange={(value) => {
+            setEditingTags(value);
+            setActionError("");
+          }}
           onEdit={(memory) => {
             setEditingId(memory.id);
             setEditingContent(memory.content);
+            setEditingTags(memory.tags.join(", "));
             setActionError("");
           }}
           onCancel={() => {
             setEditingId("");
             setEditingContent("");
+            setEditingTags("");
             setActionError("");
           }}
           onSave={() => {
@@ -579,6 +618,17 @@ export function MemoryPageContent({
                 }}
               />
 
+              <input
+                aria-label="记忆标签"
+                placeholder="标签，用逗号分隔（可选）"
+                value={tags}
+                disabled={creating}
+                onChange={(event) => {
+                  setTags(event.target.value);
+                  setActionError("");
+                }}
+              />
+
               <button
                 className="secondary-button"
                 disabled={creating || createInvalid}
@@ -609,6 +659,7 @@ export function MemoryPageContent({
               onChange={(event) => {
                 commitFilters({
                   ...filters,
+                  q: searchDraft,
                   category: event.target
                     .value as MemoryFilterCategory,
                 });
@@ -622,7 +673,26 @@ export function MemoryPageContent({
               ))}
             </select>
 
-            {(filters.q || filters.category) && (
+            <select
+              aria-label="按标签筛选"
+              value={filters.tag}
+              onChange={(event) => {
+                commitFilters({
+                  ...filters,
+                  q: searchDraft,
+                  tag: event.target.value,
+                });
+              }}
+            >
+              <option value="">全部标签</option>
+              {availableTags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+
+            {(filters.q || filters.category || filters.tag) && (
               <button
                 className="secondary-button"
                 onClick={() =>
@@ -662,6 +732,7 @@ export function MemoryPageContent({
                         <h2>
                           {memory.key.replaceAll("_", " ")}
                         </h2>
+                        <MemoryTags tags={memory.tags} />
 
                         {editing ? (
                           <>
@@ -672,6 +743,15 @@ export function MemoryPageContent({
                                 setEditingContent(
                                   event.target.value,
                                 );
+                                setActionError("");
+                              }}
+                            />
+                            <input
+                              aria-label="编辑记忆标签"
+                              value={editingTags}
+                              disabled={updating || deleting}
+                              onChange={(event) => {
+                                setEditingTags(event.target.value);
                                 setActionError("");
                               }}
                             />
@@ -698,6 +778,7 @@ export function MemoryPageContent({
                               onClick={() => {
                                 setEditingId("");
                                 setEditingContent("");
+                                setEditingTags("");
                                 setActionError("");
                               }}
                             >
@@ -723,6 +804,9 @@ export function MemoryPageContent({
                                 setEditingId(memory.id);
                                 setEditingContent(
                                   memory.content,
+                                );
+                                setEditingTags(
+                                  memory.tags.join(", "),
                                 );
                                 setActionError("");
                               }}
@@ -754,8 +838,8 @@ export function MemoryPageContent({
                 <MemoryMessage
                   title="没有找到记忆"
                   description={
-                    filters.q || filters.category
-                      ? "没有与当前搜索或分类匹配的记忆。"
+                    filters.q || filters.category || filters.tag
+                      ? "没有与当前搜索、分类或标签匹配的记忆。"
                       : "目前还没有可显示的记忆。"
                   }
                 />
@@ -791,8 +875,10 @@ function MemoryDetail({
   state,
   editing,
   editingContent,
+  editingTags,
   updating,
   onEditingContentChange,
+  onEditingTagsChange,
   onEdit,
   onCancel,
   onSave,
@@ -801,8 +887,10 @@ function MemoryDetail({
   state: DetailState;
   editing: boolean;
   editingContent: string;
+  editingTags: string;
   updating: boolean;
   onEditingContentChange(value: string): void;
+  onEditingTagsChange(value: string): void;
   onEdit(memory: MemoryRecord): void;
   onCancel(): void;
   onSave(): void;
@@ -836,6 +924,7 @@ function MemoryDetail({
     <section className="memory-message memory-detail">
       <MemoryMetadata memory={memory} />
       <h2>{memory.key.replaceAll("_", " ")}</h2>
+      <MemoryTags tags={memory.tags} />
 
       {editing ? (
         <>
@@ -845,6 +934,14 @@ function MemoryDetail({
             disabled={updating}
             onChange={(event) =>
               onEditingContentChange(event.target.value)
+            }
+          />
+          <input
+            aria-label="编辑记忆标签"
+            value={editingTags}
+            disabled={updating}
+            onChange={(event) =>
+              onEditingTagsChange(event.target.value)
             }
           />
           <button
@@ -877,6 +974,17 @@ function MemoryDetail({
         </>
       )}
     </section>
+  );
+}
+
+function MemoryTags({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null;
+  return (
+    <div className="memory-tags" aria-label="记忆标签">
+      {tags.map((tag) => (
+        <span key={tag}>#{tag}</span>
+      ))}
+    </div>
   );
 }
 

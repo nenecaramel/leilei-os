@@ -15,6 +15,8 @@ export function buildMemoryListRequest(
   if (filters.category) {
     parameters.set("category", filters.category);
   }
+  const tag = filters.tag.normalize("NFC").trim();
+  if (tag) parameters.set("tag", tag);
   const search = parameters.size
     ? `?${parameters.toString()}`
     : "";

@@ -57,6 +57,13 @@
       "when": 1785218456792,
       "tag": "0007_perpetual_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785234575537,
+      "tag": "0008_massive_azazel",
+      "breakpoints": true
     }
   ]
 }

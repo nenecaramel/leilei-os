@@ -3,8 +3,10 @@ import { test } from "node:test";
 import type { NextFunction, Request, Response } from "express";
 import { MemoryDomainError } from "../src/domains/memory/memory-service.js";
 import {
+  createCreateMemoryApiHandler,
   createReadMemoryApiHandler,
   createReadMemoryDetailApiHandler,
+  createUpdateMemoryApiHandler,
 } from "../src/web-api/memory-router.js";
 
 function responseRecorder() {
@@ -31,6 +33,7 @@ test("reads Memory through the existing service with the Web identity", async ()
         category: "preference" as const,
         key: "working_style",
         content: "Prefer calm, structured plans.",
+        tags: ["focus"],
         updated_at: "2026-07-22T00:00:00.000Z",
       },
     ],
@@ -45,6 +48,10 @@ test("reads Memory through the existing service with the Web identity", async ()
       listAvailableCategories: async (userId) => {
         calls.push({ categoriesFor: userId });
         return ["preference"];
+      },
+      listAvailableTags: async (userId) => {
+        calls.push({ tagsFor: userId });
+        return ["focus"];
       },
     },
   });
@@ -61,8 +68,10 @@ test("reads Memory through the existing service with the Web identity", async ()
       userId: request.webUserId,
       query: undefined,
       categories: undefined,
+      tag: undefined,
     },
     { categoriesFor: request.webUserId },
+    { tagsFor: request.webUserId },
   ]);
   assert.deepEqual(result.body, {
     success: true,
@@ -71,6 +80,7 @@ test("reads Memory through the existing service with the Web identity", async ()
       metadata: {
         count: 1,
         categories: ["preference"],
+        tags: ["focus"],
       },
     },
   });
@@ -92,6 +102,10 @@ test("passes q and exact category independently to Memory Service", async () => 
         calls.push({ categoriesFor: userId });
         return ["goal"];
       },
+      async listAvailableTags(userId) {
+        calls.push({ tagsFor: userId });
+        return ["MCP"];
+      },
     },
   } as never);
   const request = {
@@ -99,6 +113,7 @@ test("passes q and exact category independently to Memory Service", async () => 
     query: {
       q: "100%_focused\\plan",
       category: "goal",
+      tag: "MCP",
     },
   } as unknown as Request;
   const { result, response } = responseRecorder();
@@ -110,8 +125,10 @@ test("passes q and exact category independently to Memory Service", async () => 
       userId: request.webUserId,
       query: "100%_focused\\plan",
       categories: ["goal"],
+      tag: "MCP",
     },
     { categoriesFor: request.webUserId },
+    { tagsFor: request.webUserId },
   ]);
   assert.equal(result.status, undefined);
 });
@@ -126,6 +143,9 @@ test("rejects a category containing special characters with a safe 400", async (
         );
       },
       async listAvailableCategories() {
+        return [];
+      },
+      async listAvailableTags() {
         return [];
       },
     },
@@ -167,6 +187,10 @@ test("does not call Memory Service without a Web identity", async () => {
         called = true;
         throw new Error("must not be called");
       },
+      listAvailableTags: async () => {
+        called = true;
+        throw new Error("must not be called");
+      },
     },
   });
   const { result, response } = responseRecorder();
@@ -184,6 +208,7 @@ test("returns a safe error for unavailable authenticated users", async () => {
         throw new MemoryDomainError("USER_DISABLED", "internal detail");
       },
       listAvailableCategories: async () => [],
+      listAvailableTags: async () => [],
     },
   });
   const { result, response } = responseRecorder();
@@ -214,6 +239,7 @@ test("reads one Memory with only the authenticated Web user identity", async () 
     category: "goal" as const,
     key: "current_goal",
     content: "Ship the next focused milestone.",
+    tags: ["goal"],
     updated_at: "2026-07-28T00:00:00.000Z",
   };
   const handler = createReadMemoryDetailApiHandler({
@@ -292,4 +318,70 @@ test("Memory detail rejects unauthenticated requests before the service", async 
 
   assert.equal(called, false);
   assert.equal(result.status, 401);
+});
+
+test("Memory create and update forward tags with only the authenticated user identity", async () => {
+  const calls: unknown[] = [];
+  const dependencies = {
+    memoryService: {
+      async createMemory(input: unknown) {
+        calls.push({ create: input });
+      },
+      async updateMemory(input: unknown) {
+        calls.push({ update: input });
+      },
+    },
+  } as never;
+  const create = createCreateMemoryApiHandler(dependencies);
+  const update = createUpdateMemoryApiHandler(dependencies);
+  const { response: createResponse } = responseRecorder();
+  const { response: updateResponse } = responseRecorder();
+
+  await create(
+    {
+      webUserId: "user-a",
+      body: {
+        category: "goal",
+        key: "memory_key",
+        content: "Content",
+        tags: ["计划", "MCP"],
+        userId: "attacker",
+      },
+    } as unknown as Request,
+    createResponse,
+    (() => {}) as NextFunction,
+  );
+  await update(
+    {
+      webUserId: "user-a",
+      body: {
+        id: "memory-1",
+        content: "Updated",
+        tags: ["MCP"],
+        userId: "attacker",
+      },
+    } as unknown as Request,
+    updateResponse,
+    (() => {}) as NextFunction,
+  );
+
+  assert.deepEqual(calls, [
+    {
+      create: {
+        userId: "user-a",
+        category: "goal",
+        key: "memory_key",
+        content: "Content",
+        tags: ["计划", "MCP"],
+      },
+    },
+    {
+      update: {
+        userId: "user-a",
+        id: "memory-1",
+        content: "Updated",
+        tags: ["MCP"],
+      },
+    },
+  ]);
 });

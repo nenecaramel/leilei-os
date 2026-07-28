@@ -25,10 +25,11 @@ test("Memory filter history pushes exact category and restores it through back a
   pushMemoryFilterHistory(dom.window, {
     q: "focus",
     category: "goal",
+    tag: "MCP",
   });
   assert.equal(
     dom.window.location.search,
-    "?q=focus&category=goal",
+    "?q=focus&category=goal&tag=MCP",
   );
 
   dom.window.history.back();
@@ -36,6 +37,7 @@ test("Memory filter history pushes exact category and restores it through back a
   assert.deepEqual(restored.at(-1), {
     q: "focus",
     category: "",
+    tag: "",
   });
 
   dom.window.history.forward();
@@ -43,6 +45,7 @@ test("Memory filter history pushes exact category and restores it through back a
   assert.deepEqual(restored.at(-1), {
     q: "focus",
     category: "goal",
+    tag: "MCP",
   });
 
   unsubscribe();
@@ -54,10 +57,11 @@ test("Memory request URL safely encodes q and keeps category independent", () =>
     buildMemoryListRequest({
       q: "100%_focused\\plan",
       category: "project",
+      tag: "road/map",
     }),
     {
-      search: "?q=100%25_focused%5Cplan&category=project",
-      url: "/memory?q=100%25_focused%5Cplan&category=project",
+      search: "?q=100%25_focused%5Cplan&category=project&tag=road%2Fmap",
+      url: "/memory?q=100%25_focused%5Cplan&category=project&tag=road%2Fmap",
     },
   );
 });

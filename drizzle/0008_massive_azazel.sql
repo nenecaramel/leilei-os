@@ -1,0 +1,2 @@
+ALTER TABLE "core_memories" ADD COLUMN "tags" varchar(50)[] DEFAULT ARRAY[]::varchar(50)[] NOT NULL;--> statement-breakpoint
+ALTER TABLE "core_memories" ADD CONSTRAINT "core_memories_tags_limit" CHECK (cardinality("core_memories"."tags") <= 20);

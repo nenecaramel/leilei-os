@@ -36,6 +36,9 @@ test("missing or partial Toy configuration fails closed without affecting existi
         async listAvailableCategories() {
           return [];
         },
+        async listAvailableTags() {
+          return [];
+        },
       },
     },
     diary: {

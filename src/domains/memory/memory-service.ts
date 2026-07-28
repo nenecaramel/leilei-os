@@ -15,12 +15,15 @@ const DEFAULT_MEMORY_LIMIT = 50;
 const MAX_MEMORY_LIMIT = 50;
 const MAX_CONTENT_LENGTH = 4_000;
 const MAX_SEARCH_LENGTH = 200;
+const MAX_TAGS = 20;
+const MAX_TAG_LENGTH = 50;
 
 export type ReadMemoryInput = {
   userId: string;
   categories?: readonly string[];
   keys?: readonly string[];
   query?: string;
+  tag?: string;
   limit?: number;
 };
 
@@ -29,12 +32,14 @@ export type CreateMemoryInput = {
   category: MemoryCategory;
   key: string;
   content: string;
+  tags?: readonly string[];
 };
 
 export type UpdateMemoryInput = {
   userId: string;
   id: string;
   content: string;
+  tags?: readonly string[];
 };
 
 export type ReadMemoryResult = {
@@ -46,6 +51,7 @@ export type ReadMemoryResult = {
     category: MemoryCategory;
     key: string;
     content: string;
+    tags: string[];
     updated_at: string;
   }>;
   metadata: {
@@ -60,6 +66,7 @@ export type MemoryDomainErrorCode =
   | "INVALID_MEMORY_CATEGORY"
   | "INVALID_MEMORY_LIMIT"
   | "INVALID_MEMORY_QUERY"
+  | "INVALID_MEMORY_TAGS"
   | "MEMORY_NOT_FOUND"
   | "USER_NOT_FOUND"
   | "USER_DISABLED";
@@ -83,6 +90,7 @@ export class MemoryService {
     const categories = this.validateCategories(input.categories);
     const keys = this.normalizeKeys(input.keys);
     const query = this.normalizeQuery(input.query);
+    const tag = this.normalizeTagFilter(input.tag);
     const limit = this.resolveLimit(input.limit);
 
     const memories = await this.repository.findActiveAssistantMemories({
@@ -90,6 +98,7 @@ export class MemoryService {
       query,
       categories,
       keys,
+      tag,
       limit,
     });
 
@@ -102,6 +111,7 @@ export class MemoryService {
         category: memory.category,
         key: memory.key,
         content: this.limitContent(memory.content),
+        tags: memory.tags,
         updated_at: memory.updatedAt.toISOString(),
       })),
       metadata: {
@@ -115,6 +125,11 @@ export class MemoryService {
   ): Promise<MemoryCategory[]> {
     await this.requireActiveUser(userId);
     return this.repository.findActiveAssistantMemoryCategories(userId);
+  }
+
+  async listAvailableTags(userId: string): Promise<string[]> {
+    await this.requireActiveUser(userId);
+    return this.repository.findActiveAssistantMemoryTags(userId);
   }
 
   async readMemoryDetail(input: {
@@ -149,6 +164,7 @@ export class MemoryService {
       category: memory.category,
       key: memory.key,
       content: this.limitContent(memory.content),
+      tags: memory.tags,
       updated_at: memory.updatedAt.toISOString(),
     };
   }
@@ -159,6 +175,7 @@ export class MemoryService {
       category: input.category,
       key: input.key.trim(),
       content: input.content.trim(),
+      tags: this.normalizeTags(input.tags ?? []),
       source: "web",
     });
   }
@@ -168,6 +185,9 @@ export class MemoryService {
       userId: input.userId,
       id: input.id,
       content: input.content.trim(),
+      ...(input.tags === undefined
+        ? {}
+        : { tags: this.normalizeTags(input.tags) }),
     });
   }
 
@@ -244,6 +264,55 @@ export class MemoryService {
         "Memory search is too long.",
       );
     }
+    return normalized;
+  }
+
+  private normalizeTagFilter(tag?: string): string | undefined {
+    if (tag === undefined) return undefined;
+    const normalized = tag.normalize("NFC").trim();
+    if (!normalized) return undefined;
+    if (normalized.length > MAX_TAG_LENGTH) {
+      throw new MemoryDomainError(
+        "INVALID_MEMORY_TAGS",
+        `Memory tag filters may contain at most ${MAX_TAG_LENGTH} characters.`,
+      );
+    }
+    return normalized;
+  }
+
+  private normalizeTags(tags: readonly string[]): string[] {
+    if (!Array.isArray(tags)) {
+      throw new MemoryDomainError(
+        "INVALID_MEMORY_TAGS",
+        "Memory tags must be an array.",
+      );
+    }
+
+    const normalized = [
+      ...new Set(
+        tags.map((tag) => {
+          const value = tag.normalize("NFC").trim();
+          if (
+            value.length === 0 ||
+            value.length > MAX_TAG_LENGTH
+          ) {
+            throw new MemoryDomainError(
+              "INVALID_MEMORY_TAGS",
+              `Each memory tag must contain between 1 and ${MAX_TAG_LENGTH} characters.`,
+            );
+          }
+          return value;
+        }),
+      ),
+    ];
+
+    if (normalized.length > MAX_TAGS) {
+      throw new MemoryDomainError(
+        "INVALID_MEMORY_TAGS",
+        `Memories may contain at most ${MAX_TAGS} tags.`,
+      );
+    }
+
     return normalized;
   }
 

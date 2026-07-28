@@ -12,23 +12,29 @@ test("Memory detail location preserves normalized search and category filters", 
   const list = createMemoryListLocation({
     q: " long-term goal ",
     category: "project",
+    tag: "road map",
   });
-  assert.equal(list, "/memory?q=long-term+goal&category=project");
+  assert.equal(
+    list,
+    "/memory?q=long-term+goal&category=project&tag=road+map",
+  );
   const detail = createMemoryDetailLocation("memory-1", list);
   assert.deepEqual(
     getMemoryDetailLocation(new URL(detail, "https://example.test").search),
     { memoryId: "memory-1", returnTo: list },
   );
   assert.deepEqual(
-    readMemoryFilters("?q=long-term+goal&category=project"),
-    { q: "long-term goal", category: "project" },
+    readMemoryFilters("?q=long-term+goal&category=project&tag=road+map"),
+    { q: "long-term goal", category: "project", tag: "road map" },
   );
 });
 
 test("Memory returnTo accepts only normalized Memory search and category parameters", () => {
   assert.equal(
-    getSafeMemoryReturnTo("/memory?category=goal&q=100%25_%5C"),
-    "/memory?q=100%25_%5C&category=goal",
+    getSafeMemoryReturnTo(
+      "/memory?tag=%E8%AE%A1%E5%88%92%2F%25&category=goal&q=100%25_%5C",
+    ),
+    "/memory?q=100%25_%5C&category=goal&tag=%E8%AE%A1%E5%88%92%2F%25",
   );
   for (const unsafe of [
     "https://evil.test/memory?q=goal",
@@ -38,6 +44,7 @@ test("Memory returnTo accepts only normalized Memory search and category paramet
     "/memory?returnTo=%2Fmemory",
     "/memory?q=one&q=two",
     "/memory?category=goal&category=project",
+    "/memory?tag=one&tag=two",
     "/memory?category=not-a-category",
   ]) {
     assert.equal(getSafeMemoryReturnTo(unsafe), "/memory");
@@ -49,9 +56,10 @@ test("Memory filters safely discard invalid category and empty conditions", () =
   assert.deepEqual(readMemoryFilters("?q=&category=%3Cscript%3E"), {
     q: "",
     category: "",
+    tag: "",
   });
   assert.equal(
-    createMemoryListLocation({ q: "", category: "" }),
+    createMemoryListLocation({ q: "", category: "", tag: "" }),
     "/memory",
   );
 });

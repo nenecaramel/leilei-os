@@ -5,7 +5,7 @@ const MEMORY_CATEGORIES = new Set([
   "goal",
   "project",
 ]);
-const ALLOWED_LIST_PARAMETERS = new Set(["q", "category"]);
+const ALLOWED_LIST_PARAMETERS = new Set(["q", "category", "tag"]);
 
 export type MemoryFilterCategory =
   | ""
@@ -17,11 +17,13 @@ export type MemoryFilterCategory =
 export type MemoryFilters = {
   q: string;
   category: MemoryFilterCategory;
+  tag: string;
 };
 
 export const EMPTY_MEMORY_FILTERS: MemoryFilters = {
   q: "",
   category: "",
+  tag: "",
 };
 
 export function readMemoryFilters(search: string): MemoryFilters {
@@ -32,6 +34,7 @@ export function readMemoryFilters(search: string): MemoryFilters {
     category: MEMORY_CATEGORIES.has(category)
       ? category as Exclude<MemoryFilterCategory, "">
       : "",
+    tag: parameters.get("tag") ?? "",
   };
 }
 
@@ -44,6 +47,8 @@ export function createMemoryListLocation(
   if (filters.category) {
     parameters.set("category", filters.category);
   }
+  const tag = filters.tag.normalize("NFC").trim();
+  if (tag) parameters.set("tag", tag);
   const search = parameters.toString();
   return search ? `/memory?${search}` : "/memory";
 }
@@ -81,7 +86,8 @@ export function getSafeMemoryReturnTo(value: string | null): string {
       parsed.pathname !== "/memory" ||
       keys.some((key) => !ALLOWED_LIST_PARAMETERS.has(key)) ||
       parsed.searchParams.getAll("q").length > 1 ||
-      parsed.searchParams.getAll("category").length > 1
+      parsed.searchParams.getAll("category").length > 1 ||
+      parsed.searchParams.getAll("tag").length > 1
     ) {
       return "/memory";
     }

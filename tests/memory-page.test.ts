@@ -20,6 +20,7 @@ const memory = {
   category: "goal" as const,
   key: "current_goal",
   content: "Complete the focused milestone without losing context.",
+  tags: ["MCP", "focus"],
   updated_at: "2026-07-28T00:00:00.000Z",
 };
 
@@ -32,6 +33,7 @@ function listResponse(memories = [memory]) {
       metadata: {
         count: memories.length,
         categories: ["goal" as const],
+        tags: ["MCP", "focus"],
       },
     },
   };
@@ -334,8 +336,8 @@ test("Memory category filter initializes from URL, requests AND filters, and cle
   }
 });
 
-test("Memory filtered detail return restores q, category, and scroll position", async () => {
-  const returnTo = "/memory?q=focus&category=goal";
+test("Memory filtered detail return restores q, category, tag, and scroll position", async () => {
+  const returnTo = "/memory?q=focus&category=goal&tag=MCP";
   const api: WebApiClient = {
     async request<T>(path: string) {
       if (path === "/memory/memory-1") {
@@ -380,7 +382,107 @@ test("Memory filtered detail return restores q, category, and scroll position", 
       )?.value,
       "goal",
     );
+    assert.equal(
+      page.container.querySelector<HTMLSelectElement>(
+        "select[aria-label=\"按标签筛选\"]",
+      )?.value,
+      "MCP",
+    );
     assert.ok(scrolls.includes(420));
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory exact tag filter restores from URL and clearing it preserves q and category", async () => {
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      return listResponse() as T;
+    },
+  };
+  const page = await render(
+    "/memory?q=focus&category=goal&tag=MCP",
+    api,
+  );
+  try {
+    const tag = page.container.querySelector<HTMLSelectElement>(
+      "select[aria-label=\"按标签筛选\"]",
+    );
+    assert.equal(tag?.value, "MCP");
+    assert.equal(
+      requests[0]?.path,
+      "/memory?q=focus&category=goal&tag=MCP",
+    );
+    assert.match(page.container.textContent ?? "", /#MCP/);
+    assert.match(page.container.textContent ?? "", /#focus/);
+
+    assert.ok(tag);
+    await React.act(async () => {
+      tag.value = "";
+      tag.dispatchEvent(new page.window.Event("change", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+
+    assert.equal(
+      page.window.location.search,
+      "?q=focus&category=goal",
+    );
+    assert.equal(
+      requests.at(-1)?.path,
+      "/memory?q=focus&category=goal",
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory detail edit loads and submits existing tags", async () => {
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory/memory-1") {
+        return { success: true, data: memory } as T;
+      }
+      return listResponse() as T;
+    },
+  };
+  const page = await render("/memory?memory=memory-1", api);
+  try {
+    const edit = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "编辑");
+    assert.ok(edit);
+    await React.act(async () => {
+      edit.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+    });
+
+    const tags = page.container.querySelector<HTMLInputElement>(
+      "input[aria-label=\"编辑记忆标签\"]",
+    );
+    assert.equal(tags?.value, "MCP, focus");
+    const save = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "保存修改");
+    assert.ok(save);
+    await React.act(async () => {
+      save.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+
+    const update = requests.find(({ init }) => init?.method === "PATCH");
+    assert.ok(update?.init?.body);
+    assert.deepEqual(JSON.parse(String(update.init.body)), {
+      id: "memory-1",
+      content: memory.content,
+      tags: ["MCP", "focus"],
+    });
   } finally {
     await page.cleanup();
   }

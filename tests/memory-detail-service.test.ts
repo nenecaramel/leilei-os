@@ -21,12 +21,16 @@ function repository(
     async findActiveAssistantMemoryCategories() {
       return [];
     },
+    async findActiveAssistantMemoryTags() {
+      return [];
+    },
     async findActiveAssistantMemoryById() {
       return {
         id: "memory-1",
         category: "preference",
         key: "focus_style",
         content: "One milestone at a time.",
+        tags: [],
         updatedAt: new Date("2026-07-28T00:00:00.000Z"),
       };
     },
@@ -47,6 +51,7 @@ test("Memory detail uses the authenticated user for an active assistant-visible 
         category: "preference",
         key: "focus_style",
         content: "One milestone at a time.",
+        tags: ["focus"],
         updatedAt: new Date("2026-07-28T00:00:00.000Z"),
       };
     },
@@ -75,6 +80,7 @@ test("Memory search and category filters are normalized and combined for the aut
     userId: "user-a",
     query: "  focused plan  ",
     categories: ["goal"],
+    tag: " focus ",
   });
 
   assert.deepEqual(calls, [{
@@ -82,6 +88,7 @@ test("Memory search and category filters are normalized and combined for the aut
     query: "focused plan",
     categories: ["goal"],
     keys: undefined,
+    tag: "focus",
     limit: 50,
   }]);
 });
@@ -110,6 +117,7 @@ test("Memory supports search-only and exact-category-only repository queries", a
       query: "literal %_\\ text",
       categories: undefined,
       keys: undefined,
+      tag: undefined,
       limit: 50,
     },
     {
@@ -117,6 +125,7 @@ test("Memory supports search-only and exact-category-only repository queries", a
       query: undefined,
       categories: ["project"],
       keys: undefined,
+      tag: undefined,
       limit: 50,
     },
   ]);
@@ -157,6 +166,91 @@ test("Memory category options reject a disabled user before querying visible cat
       error.code === "USER_DISABLED",
   );
   assert.equal(queried, false);
+});
+
+test("Memory creates and edits normalized tags using the shared tag rules", async () => {
+  const writes: unknown[] = [];
+  const service = new MemoryService(repository({
+    async createMemory(input) {
+      writes.push({ create: input });
+    },
+    async updateMemory(input) {
+      writes.push({ update: input });
+    },
+  }));
+
+  await service.createMemory({
+    userId: "user-a",
+    category: "goal",
+    key: "tagged_memory",
+    content: "Tagged content",
+    tags: [" 计划 ", "MCP", "计划"],
+  });
+  await service.updateMemory({
+    userId: "user-a",
+    id: "memory-1",
+    content: "Updated",
+    tags: ["MCP", "完成"],
+  });
+
+  assert.deepEqual(writes, [
+    {
+      create: {
+        userId: "user-a",
+        category: "goal",
+        key: "tagged_memory",
+        content: "Tagged content",
+        tags: ["计划", "MCP"],
+        source: "web",
+      },
+    },
+    {
+      update: {
+        userId: "user-a",
+        id: "memory-1",
+        content: "Updated",
+        tags: ["MCP", "完成"],
+      },
+    },
+  ]);
+});
+
+test("Memory tag validation rejects blank, oversized, and excessive tags", async () => {
+  const service = new MemoryService(repository());
+  for (const tags of [
+    ["   "],
+    ["x".repeat(51)],
+    Array.from({ length: 21 }, (_, index) => `tag-${index}`),
+  ]) {
+    await assert.rejects(
+      service.createMemory({
+        userId: "user-a",
+        category: "goal",
+        key: "tagged_memory",
+        content: "Tagged content",
+        tags,
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code === "INVALID_MEMORY_TAGS",
+    );
+  }
+});
+
+test("Memory tag options use only the authenticated active user's repository scope", async () => {
+  const users: string[] = [];
+  const service = new MemoryService(repository({
+    async findActiveAssistantMemoryTags(userId) {
+      users.push(userId);
+      return ["MCP", "计划"];
+    },
+  }));
+
+  assert.deepEqual(
+    await service.listAvailableTags("user-a"),
+    ["MCP", "计划"],
+  );
+  assert.deepEqual(users, ["user-a"]);
 });
 
 test("Memory search rejects oversized input before querying records", async () => {
