@@ -1,4 +1,12 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  ilike,
+  inArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   coreMemories,
@@ -23,6 +31,7 @@ export type ActiveAssistantMemoryRecord = {
 
 export type FindMemoriesInput = {
   userId: string;
+  query?: string;
   categories?: readonly MemoryCategory[];
   keys?: readonly string[];
   limit: number;
@@ -48,6 +57,10 @@ export interface MemoryRepository {
   findActiveAssistantMemories(
     input: FindMemoriesInput,
   ): Promise<ActiveAssistantMemoryRecord[]>;
+
+  findActiveAssistantMemoryCategories(
+    userId: string,
+  ): Promise<MemoryCategory[]>;
 
   findActiveAssistantMemoryById(input: {
     userId: string;
@@ -85,6 +98,25 @@ export class DrizzleMemoryRepository implements MemoryRepository {
   async findActiveAssistantMemories(
     input: FindMemoriesInput,
   ): Promise<ActiveAssistantMemoryRecord[]> {
+    const queryFilter = input.query
+      ? (() => {
+          const escaped = input.query.replace(/[\\%_]/g, "\\$&");
+          const pattern = `%${escaped}%`;
+          return or(
+            ilike(coreMemories.key, pattern),
+            ilike(
+              sql<string>`replace(${coreMemories.key}, '_', ' ')`,
+              pattern,
+            ),
+            ilike(coreMemories.content, pattern),
+            ilike(
+              sql<string>`${coreMemories.category}::text`,
+              pattern,
+            ),
+          );
+        })()
+      : undefined;
+
     const categoryFilter =
       input.categories && input.categories.length > 0
         ? inArray(coreMemories.category, [...input.categories])
@@ -109,6 +141,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
           eq(coreMemories.userId, input.userId),
           eq(coreMemories.status, "active"),
           eq(coreMemories.visibility, "assistant"),
+          queryFilter,
           categoryFilter,
           keyFilter,
         ),
@@ -120,6 +153,26 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         asc(coreMemories.id),
       )
       .limit(input.limit);
+  }
+
+  async findActiveAssistantMemoryCategories(
+    userId: string,
+  ): Promise<MemoryCategory[]> {
+    const rows = await this.db
+      .selectDistinct({
+        category: coreMemories.category,
+      })
+      .from(coreMemories)
+      .where(
+        and(
+          eq(coreMemories.userId, userId),
+          eq(coreMemories.status, "active"),
+          eq(coreMemories.visibility, "assistant"),
+        ),
+      )
+      .orderBy(asc(coreMemories.category));
+
+    return rows.map(({ category }) => category);
   }
 
   async findActiveAssistantMemoryById(input: {

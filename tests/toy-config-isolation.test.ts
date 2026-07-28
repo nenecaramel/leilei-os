@@ -33,6 +33,9 @@ test("missing or partial Toy configuration fails closed without affecting existi
         async readMemory() {
           return { user: { display_name: "Leilei" }, memories: [], metadata: { count: 0 } };
         },
+        async listAvailableCategories() {
+          return [];
+        },
       },
     },
     diary: {
