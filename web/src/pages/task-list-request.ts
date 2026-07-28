@@ -38,7 +38,6 @@ export async function settleLatestTaskRequest<T>(input: {
 
 export function buildTaskListRequest(
   filters: TaskFilters,
-  now = new Date(),
 ): TaskListRequest {
   const parameters = new URLSearchParams();
   setTrimmedParameter(parameters, "q", filters.q);
@@ -49,16 +48,8 @@ export function buildTaskListRequest(
   if (filters.due) parameters.set("due", filters.due);
 
   if (filters.due === "custom") {
-    setInstantParameter(parameters, "due_from", filters.dueFrom);
-    setInstantParameter(parameters, "due_to", filters.dueTo);
-  } else {
-    const range =
-      getStoredPresetRange(filters) ??
-      getPresetRange(filters.due, now);
-    if (range) {
-      parameters.set("due_from", range.from);
-      parameters.set("due_to", range.to);
-    }
+    setLocalDateTimeParameter(parameters, "due_from", filters.dueFrom);
+    setLocalDateTimeParameter(parameters, "due_to", filters.dueTo);
   }
 
   const search = parameters.size > 0
@@ -68,32 +59,6 @@ export function buildTaskListRequest(
   return {
     search,
     url: `/task${search}`,
-  };
-}
-
-function getStoredPresetRange(
-  filters: TaskFilters,
-): { from: string; to: string } | null {
-  if (
-    filters.due !== "today" &&
-    filters.due !== "next_7_days"
-  ) {
-    return null;
-  }
-
-  const from = new Date(filters.dueFrom);
-  const to = new Date(filters.dueTo);
-  if (
-    Number.isNaN(from.getTime()) ||
-    Number.isNaN(to.getTime()) ||
-    from >= to
-  ) {
-    return null;
-  }
-
-  return {
-    from: from.toISOString(),
-    to: to.toISOString(),
   };
 }
 
@@ -130,37 +95,11 @@ function setTrimmedParameter(
   if (normalized) parameters.set(name, normalized);
 }
 
-function setInstantParameter(
+function setLocalDateTimeParameter(
   parameters: URLSearchParams,
   name: string,
   value: string,
 ): void {
   if (!value) return;
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) {
-    parameters.set(name, parsed.toISOString());
-  }
-}
-
-function getPresetRange(
-  due: TaskFilters["due"],
-  now: Date,
-): { from: string; to: string } | null {
-  const start = new Date(now);
-  const end = new Date(now);
-
-  if (due === "today") {
-    start.setHours(0, 0, 0, 0);
-    end.setHours(0, 0, 0, 0);
-    end.setDate(end.getDate() + 1);
-  } else if (due === "next_7_days") {
-    end.setDate(end.getDate() + 7);
-  } else {
-    return null;
-  }
-
-  return {
-    from: start.toISOString(),
-    to: end.toISOString(),
-  };
+  parameters.set(name, value.trim());
 }

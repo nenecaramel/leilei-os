@@ -25,6 +25,7 @@ export function SettingsPage() {
   const [homeTitle, setHomeTitle] = useState("");
   const [homeSubtitle, setHomeSubtitle] = useState("");
   const [preferredName, setPreferredName] = useState("");
+  const [timezone, setTimezone] = useState(DEFAULT_SETTINGS.timezone);
   const [memorySubtitle, setMemorySubtitle] = useState("");
   const [diarySubtitle, setDiarySubtitle] = useState("");
   const [taskSubtitle, setTaskSubtitle] = useState("");
@@ -45,6 +46,7 @@ export function SettingsPage() {
     setHomeTitle(settings.home_title ?? "");
     setHomeSubtitle(settings.home_subtitle ?? "");
     setPreferredName(settings.preferred_name ?? "");
+    setTimezone(settings.timezone);
     setMemorySubtitle(settings.page_copy.memory_subtitle ?? "");
     setDiarySubtitle(settings.page_copy.diary_subtitle ?? "");
     setTaskSubtitle(settings.page_copy.task_subtitle ?? "");
@@ -111,6 +113,7 @@ export function SettingsPage() {
         home_title: homeTitle.trim() || null,
         home_subtitle: homeSubtitle.trim() || null,
         preferred_name: preferredName.trim() || null,
+        timezone: timezone.trim(),
         page_copy: {
           memory_subtitle: memorySubtitle.trim() || null,
           diary_subtitle: diarySubtitle.trim() || null,
@@ -331,6 +334,25 @@ export function SettingsPage() {
             placeholder="例如：蕾蕾"
             onChange={(event) => {
               setPreferredName(event.target.value);
+              clearMessages();
+            }}
+          />
+        </label>
+
+        <label className="settings-field">
+          <span>账户时区</span>
+          <small>
+            使用标准 IANA 时区名。修改后只影响显示和时间分组，不会改写已保存的截止时间。
+          </small>
+
+          <input
+            type="text"
+            value={timezone}
+            maxLength={64}
+            disabled={busy}
+            placeholder="Asia/Shanghai"
+            onChange={(event) => {
+              setTimezone(event.target.value);
               clearMessages();
             }}
           />

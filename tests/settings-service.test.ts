@@ -25,6 +25,7 @@ function createRepository(initial: UserSettingsRecord | null = null): SettingsRe
         homeTitle: input.homeTitle,
         homeSubtitle: input.homeSubtitle,
         preferredName: input.preferredName,
+        timezone: input.timezone,
         pageCopy: input.pageCopy,
         updatedAt: new Date("2026-07-26T00:00:00.000Z"),
       };
@@ -42,6 +43,7 @@ test("defaults the home hero title to automatic mode", async () => {
 
   assert.equal(settings.page_copy.home_hero_title_mode, "auto");
   assert.equal(settings.page_copy.home_hero_title, null);
+  assert.equal(settings.timezone, "Asia/Shanghai");
 });
 
 test("saves and re-reads custom home hero titles", async () => {
@@ -68,6 +70,7 @@ test("keeps a custom title when switching back to automatic mode", async () => {
     homeTitle: null,
     homeSubtitle: null,
     preferredName: null,
+    timezone: "Asia/Shanghai",
     pageCopy: {
       homeHeroTitleMode: "custom",
       homeHeroTitle: "我的自定义标题",
@@ -83,6 +86,27 @@ test("keeps a custom title when switching back to automatic mode", async () => {
 
   assert.equal(saved.page_copy.home_hero_title_mode, "auto");
   assert.equal(saved.page_copy.home_hero_title, "我的自定义标题");
+});
+
+test("saves a valid IANA account timezone and rejects invalid values", async () => {
+  const service = new SettingsService(createRepository());
+  const saved = await service.saveSettings({
+    userId: USER_ID,
+    accentColor: "#405f4d",
+    timezone: "America/New_York",
+  });
+  assert.equal(saved.timezone, "America/New_York");
+
+  await assert.rejects(
+    service.saveSettings({
+      userId: USER_ID,
+      accentColor: "#405f4d",
+      timezone: "Tomorrow/Noon",
+    }),
+    (error: unknown) =>
+      error instanceof SettingsDomainError &&
+      error.code === "INVALID_TIMEZONE",
+  );
 });
 
 test("rejects blank custom home hero titles", async () => {

@@ -27,6 +27,8 @@ const createTaskInputSchema = z
       .string()
       .min(1)
       .max(64)
+      .nullable()
+      .optional()
       .describe(
         "An exact ISO 8601 timestamp with Z or an explicit UTC offset. Relative times such as tomorrow afternoon are not allowed.",
       ),
@@ -34,6 +36,7 @@ const createTaskInputSchema = z
       .string()
       .min(1)
       .max(64)
+      .optional()
       .describe("The IANA timezone used to interpret and display the task."),
     priority: taskPrioritySchema.describe(
       "Task priority: low, normal, high, or urgent.",
@@ -54,8 +57,15 @@ const createTaskOutputSchema = z.object({
       description: z.string(),
       status: taskStatusSchema,
       priority: taskPrioritySchema,
-      due_time: z.string().datetime(),
+      due_time: z.string().datetime().nullable(),
       timezone: z.string(),
+      time_bucket: z.enum([
+        "no_due_date",
+        "overdue",
+        "today",
+        "next_7_days",
+        "later",
+      ]),
       tags: z.array(z.string()),
       created_at: z.string().datetime(),
       updated_at: z.string().datetime(),
@@ -85,7 +95,7 @@ export function registerCreateTaskTool(
     {
       title: "Create a personal task",
       description:
-        "Create one personal task in Leilei OS. This is a persistent, non-idempotent write operation. Supply an exact ISO 8601 due time and an IANA timezone. The authenticated user and initial pending status are assigned by the server.",
+        "Create one personal task in Leilei OS. This is a persistent, non-idempotent write operation. The due time may be omitted or null. Exact ISO instants remain supported; local date-times are interpreted only in the authenticated user's account timezone. The authenticated user and initial pending status are assigned by the server.",
       inputSchema: createTaskInputSchema,
       outputSchema: createTaskOutputSchema,
       annotations: {

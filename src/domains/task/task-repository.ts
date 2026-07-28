@@ -12,6 +12,7 @@ import {
 import type { createDatabase } from "../../database/client.js";
 import {
   tasks,
+  userSettings,
   users,
   type taskPriorityEnum,
   type taskStatusEnum,
@@ -33,7 +34,7 @@ export type NormalizedTaskCreate = {
   description: string;
   status: "pending";
   priority: TaskPriority;
-  dueTime: Date;
+  dueTime: Date | null;
   timezone: string;
   tags: string[];
   completedAt: null;
@@ -45,7 +46,7 @@ export type TaskRecord = {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
-  dueTime: Date;
+  dueTime: Date | null;
   timezone: string;
   tags: string[];
   createdAt: Date;
@@ -61,6 +62,7 @@ export type TaskListQuery = {
   dueFrom?: Date;
   dueTo?: Date;
   overdueBefore?: Date;
+  withoutDueTime?: boolean;
 };
 
 export type UpdateTaskStatusInput = {
@@ -76,7 +78,7 @@ export type NormalizedTaskUpdate = {
   title: string;
   description: string;
   priority: TaskPriority;
-  dueTime: Date;
+  dueTime: Date | null;
   timezone: string;
   tags: string[];
 };
@@ -85,6 +87,8 @@ export interface TaskRepository {
   findUserById(
     userId: string,
   ): Promise<TaskUserRecord | null>;
+
+  findUserTimezone(userId: string): Promise<string | null>;
 
   findTasks(
     userId: string,
@@ -133,6 +137,16 @@ export class DrizzleTaskRepository
     return user ?? null;
   }
 
+  async findUserTimezone(userId: string): Promise<string | null> {
+    const [settings] = await this.db
+      .select({ timezone: userSettings.timezone })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+
+    return settings?.timezone ?? null;
+  }
+
   async findTasks(
     userId: string,
     limit: number,
@@ -161,7 +175,9 @@ export class DrizzleTaskRepository
     if (query.dueTo) conditions.push(lt(tasks.dueTime, query.dueTo));
     if (query.overdueBefore) {
       conditions.push(lt(tasks.dueTime, query.overdueBefore));
-      conditions.push(sql`${tasks.status} in ('pending', 'in_progress')`);
+    }
+    if (query.withoutDueTime) {
+      conditions.push(sql`${tasks.dueTime} is null`);
     }
 
     return this.db
@@ -181,8 +197,10 @@ export class DrizzleTaskRepository
       .from(tasks)
       .where(and(...conditions))
       .orderBy(
+        asc(sql`${tasks.dueTime} is null`),
         asc(tasks.dueTime),
         desc(tasks.createdAt),
+        asc(tasks.id),
       )
       .limit(limit);
   }

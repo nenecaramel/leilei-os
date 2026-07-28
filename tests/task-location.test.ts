@@ -24,8 +24,9 @@ test("task filters are restored from the list URL", () => {
   );
 });
 
-test("invalid due filters safely fall back instead of crashing the task page", () => {
-  assert.equal(readTaskFilters("?due=no_due_date").due, "");
+test("no due date is a supported filter and unknown values remain safe", () => {
+  assert.equal(readTaskFilters("?due=no_due_date").due, "no_due_date");
+  assert.equal(readTaskFilters("?due=invalid").due, "");
 });
 
 test("task detail URL preserves the complete list query for refresh-safe return", () => {

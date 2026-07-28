@@ -109,6 +109,8 @@ function normalizeCachedSettings(value: unknown): SettingsData | null {
     !isNullableString(candidate.home_title) ||
     !isNullableString(candidate.home_subtitle) ||
     !isNullableString(candidate.preferred_name) ||
+    typeof candidate.timezone !== "string" ||
+    candidate.timezone.length === 0 ||
     !isNullableString(candidate.updated_at) ||
     !isPageCopy(candidate.page_copy)
   ) return null;
@@ -118,6 +120,7 @@ function normalizeCachedSettings(value: unknown): SettingsData | null {
     home_title: candidate.home_title,
     home_subtitle: candidate.home_subtitle,
     preferred_name: candidate.preferred_name,
+    timezone: candidate.timezone,
     page_copy: { ...candidate.page_copy },
     updated_at: candidate.updated_at,
   };

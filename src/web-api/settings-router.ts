@@ -17,6 +17,7 @@ export type SettingsApiDependencies = {
       homeTitle?: string | null;
       homeSubtitle?: string | null;
       preferredName?: string | null;
+      timezone?: string;
       pageCopy?: PageCopyInput;
     }): Promise<SettingsResult>;
 
@@ -114,6 +115,9 @@ export function createSaveSettingsApiHandler(
           homeTitle: request.body.home_title,
           homeSubtitle: request.body.home_subtitle,
           preferredName: request.body.preferred_name,
+          ...(request.body.timezone !== undefined
+            ? { timezone: request.body.timezone }
+            : {}),
           ...(pageCopy
             ? {
                 pageCopy: {

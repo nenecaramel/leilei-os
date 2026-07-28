@@ -9,6 +9,7 @@ import {
 } from "../components/icons";
 import { useSettings } from "../settings/SettingsProvider";
 import { PageHeader } from "./PageHeader";
+import { summarizeDashboardTasks } from "./dashboard-tasks";
 
 type DiaryEntry = {
   id: string;
@@ -28,8 +29,9 @@ type TaskEntry = {
   title: string;
   description: string;
   status: TaskStatus;
-  due_time: string;
+  due_time: string | null;
   timezone: string;
+  time_bucket: "no_due_date" | "overdue" | "today" | "next_7_days" | "later";
 };
 
 type MemoryResponse = {
@@ -70,6 +72,7 @@ type DashboardState =
       taskCount: number;
       openTaskCount: number;
       completedTaskCount: number;
+      overdueTaskCount: number;
       latestDiary: DiaryEntry | null;
       nextTask: TaskEntry | null;
     }
@@ -108,9 +111,10 @@ function formatDiaryDate(value: string): string {
 }
 
 function formatTaskDueTime(
-  value: string,
+  value: string | null,
   timezone: string,
 ): string {
+  if (!value) return "无截止时间";
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
@@ -190,15 +194,12 @@ export function DashboardPage() {
 
         const tasks = taskResponse.data.tasks;
 
-        const openTasks = tasks.filter(
-          (task) =>
-            task.status === "pending" ||
-            task.status === "in_progress",
-        );
-
-        const completedTasks = tasks.filter(
-          (task) => task.status === "completed",
-        );
+        const {
+          openTasks,
+          completedTasks,
+          overdueTaskCount,
+          nextTask,
+        } = summarizeDashboardTasks(tasks);
 
         setState({
           status: "ready",
@@ -207,9 +208,10 @@ export function DashboardPage() {
           taskCount: taskResponse.data.metadata.count,
           openTaskCount: openTasks.length,
           completedTaskCount: completedTasks.length,
+          overdueTaskCount,
           latestDiary:
             diaryResponse.data.diaries[0] ?? null,
-          nextTask: openTasks[0] ?? null,
+          nextTask,
         });
       })
       .catch(() => {
@@ -384,6 +386,7 @@ export function DashboardPage() {
                   <h3>Task</h3>
                   <p>
                     {state.openTaskCount} 项进行中，
+                    {state.overdueTaskCount} 项逾期，
                     {state.completedTaskCount} 项已完成
                   </p>
                 </div>

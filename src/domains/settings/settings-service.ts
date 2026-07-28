@@ -3,6 +3,10 @@ import type {
   SettingsRepository,
   UserSettingsRecord,
 } from "./settings-repository.js";
+import {
+  DEFAULT_ACCOUNT_TIMEZONE,
+  normalizeIanaTimezone,
+} from "../task/task-time.js";
 
 const DEFAULT_ACCENT_COLOR = "#405f4d";
 
@@ -38,6 +42,7 @@ export type SaveSettingsInput = {
   homeTitle?: string | null;
   homeSubtitle?: string | null;
   preferredName?: string | null;
+  timezone?: string;
   pageCopy?: PageCopyInput;
 };
 
@@ -58,6 +63,7 @@ export type SettingsResult = {
   home_title: string | null;
   home_subtitle: string | null;
   preferred_name: string | null;
+  timezone: string;
   page_copy: PageCopyResult;
   updated_at: string | null;
 };
@@ -67,6 +73,7 @@ export type SettingsDomainErrorCode =
   | "HOME_TITLE_TOO_LONG"
   | "HOME_SUBTITLE_TOO_LONG"
   | "PREFERRED_NAME_TOO_LONG"
+  | "INVALID_TIMEZONE"
   | "PAGE_COPY_TOO_LONG"
   | "INVALID_HOME_HERO_TITLE_MODE"
   | "CUSTOM_HOME_HERO_TITLE_REQUIRED"
@@ -136,6 +143,18 @@ export class SettingsService {
       input.userId,
     );
 
+    let timezone: string;
+    try {
+      timezone = normalizeIanaTimezone(
+        input.timezone ?? existing?.timezone ?? DEFAULT_ACCOUNT_TIMEZONE,
+      );
+    } catch {
+      throw new SettingsDomainError(
+        "INVALID_TIMEZONE",
+        "Timezone must be a valid IANA timezone.",
+      );
+    }
+
     const pageCopy = this.normalizePageCopy(
       input.pageCopy,
       existing?.pageCopy ?? {},
@@ -147,6 +166,7 @@ export class SettingsService {
       homeTitle,
       homeSubtitle,
       preferredName,
+      timezone,
       pageCopy,
     });
 
@@ -377,6 +397,7 @@ export class SettingsService {
       home_title: settings.homeTitle,
       home_subtitle: settings.homeSubtitle,
       preferred_name: settings.preferredName,
+      timezone: settings.timezone,
       page_copy: {
         memory_subtitle:
           settings.pageCopy.memorySubtitle ?? null,
@@ -409,6 +430,7 @@ export class SettingsService {
       home_title: null,
       home_subtitle: null,
       preferred_name: null,
+      timezone: DEFAULT_ACCOUNT_TIMEZONE,
       page_copy: {
         memory_subtitle: null,
         diary_subtitle: null,

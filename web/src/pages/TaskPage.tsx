@@ -10,6 +10,7 @@ import {
   import type { SettingsData } from "../settings/types";
   import { PageHeader } from "./PageHeader";
   import { getTaskActionControls } from "./task-actions";
+  import { createSubmissionGate } from "./submission-gate";
   import {
     EMPTY_TASK_FILTERS,
     createTaskDetailLocation,
@@ -50,8 +51,9 @@ import {
     description: string;
     status: TaskStatus;
     priority: TaskPriority;
-    due_time: string;
+    due_time: string | null;
     timezone: string;
+    time_bucket: "no_due_date" | "overdue" | "today" | "next_7_days" | "later";
     tags: string[];
     created_at: string;
     updated_at: string;
@@ -113,27 +115,11 @@ import {
     return `${year}-${month}-${day}T${hour}:${minute}`;
   }
   
-  function getLocalTimezone(): string {
-    return (
-      Intl.DateTimeFormat().resolvedOptions().timeZone ||
-      "UTC"
-    );
-  }
-  
-  function toIsoInstant(value: string): string {
-    const parsed = new Date(value);
-  
-    if (Number.isNaN(parsed.getTime())) {
-      return "";
-    }
-  
-    return parsed.toISOString();
-  }
-
   function toDateTimeLocal(
-    value: string,
+    value: string | null,
     timezone: string,
   ): string {
+    if (!value) return "";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
 
@@ -160,9 +146,10 @@ import {
   }
   
   function formatDueTime(
-    value: string,
+    value: string | null,
     timezone: string,
   ): string {
+    if (!value) return "无截止时间";
     const date = new Date(value);
   
     if (Number.isNaN(date.getTime())) {
@@ -238,6 +225,7 @@ import {
   
     const [showCreate, setShowCreate] = useState(false);
     const [creating, setCreating] = useState(false);
+    const createGate = useRef(createSubmissionGate());
   
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -246,9 +234,7 @@ import {
     const [dueTime, setDueTime] = useState(
       getDefaultDueTime(),
     );
-    const [timezone, setTimezone] = useState(
-      getLocalTimezone(),
-    );
+    const [withoutDueTime, setWithoutDueTime] = useState(false);
     const [tags, setTags] = useState("");
   
     const [selectedTask, setSelectedTask] =
@@ -257,14 +243,16 @@ import {
       useState("");
     const [updatingStatus, setUpdatingStatus] =
       useState(false);
+    const statusGate = useRef(createSubmissionGate());
     const [editing, setEditing] = useState(false);
     const [updating, setUpdating] = useState(false);
+    const updateGate = useRef(createSubmissionGate());
     const [editingTitle, setEditingTitle] = useState("");
     const [editingDescription, setEditingDescription] = useState("");
     const [editingPriority, setEditingPriority] =
       useState<TaskPriority>("normal");
     const [editingDueTime, setEditingDueTime] = useState("");
-    const [editingTimezone, setEditingTimezone] = useState("");
+    const [editingWithoutDueTime, setEditingWithoutDueTime] = useState(false);
     const [editingTags, setEditingTags] = useState("");
   
     const [actionError, setActionError] = useState("");
@@ -486,18 +474,10 @@ import {
     const createInvalid =
       title.trim().length === 0 ||
       description.trim().length === 0 ||
-      dueTime.trim().length === 0 ||
-      timezone.trim().length === 0;
+      (!withoutDueTime && dueTime.trim().length === 0);
   
     async function handleCreate() {
-      if (createInvalid || creating) {
-        return;
-      }
-  
-      const dueTimeIso = toIsoInstant(dueTime);
-  
-      if (!dueTimeIso) {
-        setActionError("截止时间无效。");
+      if (createInvalid || !createGate.current.enter()) {
         return;
       }
   
@@ -513,8 +493,8 @@ import {
               title: title.trim(),
               description: description.trim(),
               priority,
-              dueTime: dueTimeIso,
-              timezone: timezone.trim(),
+              dueTime: withoutDueTime ? null : dueTime,
+              timezone: settings.timezone,
               tags: parseTags(tags),
             }),
           },
@@ -524,7 +504,7 @@ import {
         setDescription("");
         setPriority("normal");
         setDueTime(getDefaultDueTime());
-        setTimezone(getLocalTimezone());
+        setWithoutDueTime(false);
         setTags("");
         setShowCreate(false);
   
@@ -540,6 +520,7 @@ import {
       } catch {
         setActionError("创建任务失败，请稍后重试。");
       } finally {
+        createGate.current.leave();
         setCreating(false);
       }
     }
@@ -589,7 +570,7 @@ import {
       setEditingDescription(task.description);
       setEditingPriority(task.priority);
       setEditingDueTime(toDateTimeLocal(task.due_time, task.timezone));
-      setEditingTimezone(task.timezone);
+      setEditingWithoutDueTime(task.due_time === null);
       setEditingTags(task.tags.join(", "));
       setActionError("");
     }
@@ -597,15 +578,14 @@ import {
     const updateInvalid =
       editingTitle.trim().length === 0 ||
       editingDescription.trim().length === 0 ||
-      editingDueTime.trim().length === 0 ||
-      editingTimezone.trim().length === 0;
+      (!editingWithoutDueTime && editingDueTime.trim().length === 0);
 
     const taskActions = selectedTask
       ? getTaskActionControls(selectedTask.allowed_actions)
       : [];
 
     async function handleUpdateStatus(status: TaskStatus) {
-      if (!selectedTask || updatingStatus) {
+      if (!selectedTask || !statusGate.current.enter()) {
         return;
       }
   
@@ -628,18 +608,13 @@ import {
       } catch {
         setActionError("任务状态无法这样变更，请刷新后重试。");
       } finally {
+        statusGate.current.leave();
         setUpdatingStatus(false);
       }
     }
 
     async function handleUpdate() {
-      if (!selectedTask || updateInvalid || updating) {
-        return;
-      }
-
-      const dueTimeIso = toIsoInstant(editingDueTime);
-      if (!dueTimeIso) {
-        setActionError("截止时间无效。");
+      if (!selectedTask || updateInvalid || !updateGate.current.enter()) {
         return;
       }
 
@@ -655,8 +630,8 @@ import {
               title: editingTitle.trim(),
               description: editingDescription.trim(),
               priority: editingPriority,
-              dueTime: dueTimeIso,
-              timezone: editingTimezone.trim(),
+              dueTime: editingWithoutDueTime ? null : editingDueTime,
+              timezone: settings.timezone,
               tags: parseTags(editingTags),
             }),
           },
@@ -668,6 +643,7 @@ import {
       } catch {
         setActionError("保存任务修改失败，请检查输入后重试。");
       } finally {
+        updateGate.current.leave();
         setUpdating(false);
       }
     }
@@ -712,7 +688,7 @@ import {
             </select>
             <input aria-label="标签筛选" placeholder="筛选标签" value={tagDraft} onChange={(event) => updateTagDraft(event.target.value)} />
             <select aria-label="截止时间筛选" value={filters.due} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, due: event.target.value as TaskDueFilter, dueFrom: "", dueTo: "" })}>
-              <option value="">全部时间</option><option value="overdue">已逾期</option><option value="today">今天</option><option value="next_7_days">未来七天</option><option value="custom">自定义范围</option>
+              <option value="">全部时间</option><option value="no_due_date">无截止时间</option><option value="overdue">已逾期</option><option value="today">今天</option><option value="next_7_days">未来七天</option><option value="custom">自定义范围</option>
             </select>
             {filters.due === "custom" && <><NativeDateInput aria-label="开始日期" type="datetime-local" value={filters.dueFrom} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, dueFrom: event.target.value })} /><NativeDateInput aria-label="结束日期" type="datetime-local" value={filters.dueTo} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, dueTo: event.target.value })} /></>}
             <button className="secondary-button" onClick={clearFilters}>清除全部</button>
@@ -764,25 +740,34 @@ import {
                   <option value="urgent">紧急</option>
                 </select>
 
-                <NativeDateInput
-                  type="datetime-local"
-                  value={editingDueTime}
-                  disabled={updating}
-                  onChange={(event) => {
-                    setEditingDueTime(event.target.value);
-                    setActionError("");
-                  }}
-                />
+                <div className="task-due-field">
+                  <NativeDateInput
+                    type="datetime-local"
+                    value={editingDueTime}
+                    disabled={updating || editingWithoutDueTime}
+                    onChange={(event) => {
+                      setEditingDueTime(event.target.value);
+                      setActionError("");
+                    }}
+                  />
 
-                <input
-                  placeholder="时区"
-                  value={editingTimezone}
-                  disabled={updating}
-                  onChange={(event) => {
-                    setEditingTimezone(event.target.value);
-                    setActionError("");
-                  }}
-                />
+                  <label className="task-no-due-control">
+                    <input
+                      type="checkbox"
+                      checked={editingWithoutDueTime}
+                      disabled={updating}
+                      onChange={(event) => {
+                        setEditingWithoutDueTime(event.target.checked);
+                        setActionError("");
+                      }}
+                    />
+                    <span>无截止时间</span>
+                  </label>
+                </div>
+
+                <p>
+                  当前账户时区：{settings.timezone}
+                </p>
 
                 <input
                   placeholder="标签，用逗号分隔（可选）"
@@ -948,26 +933,35 @@ import {
                   <option value="urgent">紧急</option>
                 </select>
   
-                <NativeDateInput
-                  type="datetime-local"
-                  value={dueTime}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setDueTime(event.target.value);
-                    setActionError("");
-                  }}
-                />
-  
-                <input
-                  placeholder="时区"
-                  value={timezone}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setTimezone(event.target.value);
-                    setActionError("");
-                  }}
-                />
-  
+                <div className="task-due-field">
+                  <NativeDateInput
+                    type="datetime-local"
+                    value={dueTime}
+                    disabled={creating || withoutDueTime}
+                    onChange={(event) => {
+                      setDueTime(event.target.value);
+                      setActionError("");
+                    }}
+                  />
+
+                  <label className="task-no-due-control">
+                    <input
+                      type="checkbox"
+                      checked={withoutDueTime}
+                      disabled={creating}
+                      onChange={(event) => {
+                        setWithoutDueTime(event.target.checked);
+                        setActionError("");
+                      }}
+                    />
+                    <span>无截止时间</span>
+                  </label>
+                </div>
+
+                <p>
+                  当前账户时区：{settings.timezone}
+                </p>
+
                 <input
                   placeholder="标签，用逗号分隔（可选）"
                   value={tags}

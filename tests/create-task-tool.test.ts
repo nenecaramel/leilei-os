@@ -34,8 +34,15 @@ class MockTaskToolService {
         description: input.description,
         status: "pending",
         priority: input.priority as "low" | "normal" | "high" | "urgent",
-        due_time: "2026-07-23T08:30:00.000Z",
-        timezone: input.timezone,
+        due_time:
+          input.dueTime === null || input.dueTime === undefined
+            ? null
+            : "2026-07-23T08:30:00.000Z",
+        timezone: input.timezone ?? "Asia/Shanghai",
+        time_bucket:
+          input.dueTime === null || input.dueTime === undefined
+            ? "no_due_date"
+            : "later",
         tags: [...input.tags],
         created_at: "2026-07-22T09:00:00.000Z",
         updated_at: "2026-07-22T09:00:00.000Z",
@@ -137,6 +144,43 @@ test("create_task calls the mock service with authenticated context", async (t) 
     (response.structuredContent as { data?: { task?: { status?: string } } })
       .data?.task?.status,
     "pending",
+  );
+});
+
+test("create_task accepts an omitted due time without bypassing Task Service", async (t) => {
+  const taskService = new MockTaskToolService();
+  const { client, server } = await connectTestClient(
+    createTestDependencies(taskService),
+  );
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const response = await client.callTool({
+    name: "create_task",
+    arguments: {
+      title: "开放任务",
+      description: "暂时没有截止时间。",
+      priority: "normal",
+      tags: [],
+    },
+  });
+
+  assert.equal(response.isError, undefined);
+  assert.equal(taskService.calls.length, 1);
+  assert.equal(taskService.calls[0]?.input.dueTime, undefined);
+  assert.equal(
+    (response.structuredContent as {
+      data?: { task?: { due_time?: string | null; time_bucket?: string } };
+    }).data?.task?.due_time,
+    null,
+  );
+  assert.equal(
+    (response.structuredContent as {
+      data?: { task?: { time_bucket?: string } };
+    }).data?.task?.time_bucket,
+    "no_due_date",
   );
 });
 
