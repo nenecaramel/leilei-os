@@ -740,28 +740,30 @@ import {
                   <option value="urgent">紧急</option>
                 </select>
 
-                <NativeDateInput
-                  type="datetime-local"
-                  value={editingDueTime}
-                  disabled={updating || editingWithoutDueTime}
-                  onChange={(event) => {
-                    setEditingDueTime(event.target.value);
-                    setActionError("");
-                  }}
-                />
-
-                <label className="task-no-due-control">
-                  <input
-                    type="checkbox"
-                    checked={editingWithoutDueTime}
-                    disabled={updating}
+                <div className="task-due-field">
+                  <NativeDateInput
+                    type="datetime-local"
+                    value={editingDueTime}
+                    disabled={updating || editingWithoutDueTime}
                     onChange={(event) => {
-                      setEditingWithoutDueTime(event.target.checked);
+                      setEditingDueTime(event.target.value);
                       setActionError("");
                     }}
                   />
-                  无截止时间
-                </label>
+
+                  <label className="task-no-due-control">
+                    <input
+                      type="checkbox"
+                      checked={editingWithoutDueTime}
+                      disabled={updating}
+                      onChange={(event) => {
+                        setEditingWithoutDueTime(event.target.checked);
+                        setActionError("");
+                      }}
+                    />
+                    <span>无截止时间</span>
+                  </label>
+                </div>
 
                 <p>
                   当前账户时区：{settings.timezone}
@@ -931,28 +933,30 @@ import {
                   <option value="urgent">紧急</option>
                 </select>
   
-                <NativeDateInput
-                  type="datetime-local"
-                  value={dueTime}
-                  disabled={creating || withoutDueTime}
-                  onChange={(event) => {
-                    setDueTime(event.target.value);
-                    setActionError("");
-                  }}
-                />
-
-                <label className="task-no-due-control">
-                  <input
-                    type="checkbox"
-                    checked={withoutDueTime}
-                    disabled={creating}
+                <div className="task-due-field">
+                  <NativeDateInput
+                    type="datetime-local"
+                    value={dueTime}
+                    disabled={creating || withoutDueTime}
                     onChange={(event) => {
-                      setWithoutDueTime(event.target.checked);
+                      setDueTime(event.target.value);
                       setActionError("");
                     }}
                   />
-                  无截止时间
-                </label>
+
+                  <label className="task-no-due-control">
+                    <input
+                      type="checkbox"
+                      checked={withoutDueTime}
+                      disabled={creating}
+                      onChange={(event) => {
+                        setWithoutDueTime(event.target.checked);
+                        setActionError("");
+                      }}
+                    />
+                    <span>无截止时间</span>
+                  </label>
+                </div>
 
                 <p>
                   当前账户时区：{settings.timezone}
