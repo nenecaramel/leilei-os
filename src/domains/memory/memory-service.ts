@@ -1,6 +1,7 @@
 import type {
   MemoryCategory,
   MemoryRepository,
+  MemoryUserRecord,
 } from "./memory-repository.js";
 
 const ALLOWED_CATEGORIES = [
@@ -50,9 +51,13 @@ export type ReadMemoryResult = {
   };
 };
 
+export type ReadMemoryDetailResult =
+  ReadMemoryResult["memories"][number];
+
 export type MemoryDomainErrorCode =
   | "INVALID_MEMORY_CATEGORY"
   | "INVALID_MEMORY_LIMIT"
+  | "MEMORY_NOT_FOUND"
   | "USER_NOT_FOUND"
   | "USER_DISABLED";
 
@@ -70,15 +75,7 @@ export class MemoryService {
   constructor(private readonly repository: MemoryRepository) {}
 
   async readMemory(input: ReadMemoryInput): Promise<ReadMemoryResult> {
-    const user = await this.repository.findUserById(input.userId);
-
-    if (!user) {
-      throw new MemoryDomainError("USER_NOT_FOUND", "User was not found.");
-    }
-
-    if (user.status !== "active") {
-      throw new MemoryDomainError("USER_DISABLED", "User is disabled.");
-    }
+    const user = await this.requireActiveUser(input.userId);
 
     const categories = this.validateCategories(input.categories);
     const keys = this.normalizeKeys(input.keys);
@@ -108,6 +105,42 @@ export class MemoryService {
     };
   }
 
+  async readMemoryDetail(input: {
+    userId: string;
+    id: string;
+  }): Promise<ReadMemoryDetailResult> {
+    await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+
+    const memory =
+      await this.repository.findActiveAssistantMemoryById({
+        userId: input.userId,
+        id,
+      });
+
+    if (!memory) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+
+    return {
+      id: memory.id,
+      category: memory.category,
+      key: memory.key,
+      content: this.limitContent(memory.content),
+      updated_at: memory.updatedAt.toISOString(),
+    };
+  }
+
   async createMemory(input: CreateMemoryInput): Promise<void> {
     await this.repository.createMemory({
       userId: input.userId,
@@ -131,6 +164,22 @@ export class MemoryService {
     id: string;
   }): Promise<void> {
     await this.repository.archiveMemory(input);
+  }
+
+  private async requireActiveUser(
+    userId: string,
+  ): Promise<MemoryUserRecord> {
+    const user = await this.repository.findUserById(userId);
+
+    if (!user) {
+      throw new MemoryDomainError("USER_NOT_FOUND", "User was not found.");
+    }
+
+    if (user.status !== "active") {
+      throw new MemoryDomainError("USER_DISABLED", "User is disabled.");
+    }
+
+    return user;
   }
 
   private validateCategories(
