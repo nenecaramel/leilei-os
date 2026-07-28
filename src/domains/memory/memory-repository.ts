@@ -27,8 +27,14 @@ export type ActiveAssistantMemoryRecord = {
   key: string;
   content: string;
   tags: string[];
+  source: string;
   updatedAt: Date;
 };
+
+export type TrustedMemorySource =
+  | "web"
+  | "phase_2_validation"
+  | "integration";
 
 export type FindMemoriesInput = {
   userId: string;
@@ -45,7 +51,7 @@ export type CreateMemoryInput = {
   key: string;
   content: string;
   tags: string[];
-  source: string;
+  source: TrustedMemorySource;
 };
 
 export type UpdateMemoryInput = {
@@ -143,6 +149,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         key: coreMemories.key,
         content: coreMemories.content,
         tags: coreMemories.tags,
+        source: coreMemories.source,
         updatedAt: coreMemories.updatedAt,
       })
       .from(coreMemories)
@@ -216,6 +223,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         key: coreMemories.key,
         content: coreMemories.content,
         tags: coreMemories.tags,
+        source: coreMemories.source,
         updatedAt: coreMemories.updatedAt,
       })
       .from(coreMemories)

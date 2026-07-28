@@ -24,6 +24,7 @@ export type ReadMemoryInput = {
   keys?: readonly string[];
   query?: string;
   tag?: string;
+  includeSource?: boolean;
   limit?: number;
 };
 
@@ -52,6 +53,7 @@ export type ReadMemoryResult = {
     key: string;
     content: string;
     tags: string[];
+    source?: string;
     updated_at: string;
   }>;
   metadata: {
@@ -112,6 +114,7 @@ export class MemoryService {
         key: memory.key,
         content: this.limitContent(memory.content),
         tags: memory.tags,
+        ...(input.includeSource ? { source: memory.source } : {}),
         updated_at: memory.updatedAt.toISOString(),
       })),
       metadata: {
@@ -165,6 +168,7 @@ export class MemoryService {
       key: memory.key,
       content: this.limitContent(memory.content),
       tags: memory.tags,
+      source: memory.source,
       updated_at: memory.updatedAt.toISOString(),
     };
   }

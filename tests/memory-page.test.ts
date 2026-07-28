@@ -4,7 +4,10 @@ import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
-import { MemoryPageContent } from "../web/src/pages/MemoryPage.js";
+import {
+  MemoryPageContent,
+  formatMemorySource,
+} from "../web/src/pages/MemoryPage.js";
 import {
   createMemoryDetailLocation,
 } from "../web/src/pages/memory-location.js";
@@ -21,8 +24,15 @@ const memory = {
   key: "current_goal",
   content: "Complete the focused milestone without losing context.",
   tags: ["MCP", "focus"],
+  source: "web",
   updated_at: "2026-07-28T00:00:00.000Z",
 };
+
+test("Memory source labels keep provenance read-only and legacy-safe", () => {
+  assert.equal(formatMemorySource("web"), "网页创建");
+  assert.equal(formatMemorySource("phase_2_validation"), "初始化数据");
+  assert.equal(formatMemorySource("legacy-import-v0"), "其他来源");
+});
 
 function listResponse(memories = [memory]) {
   return {
@@ -131,21 +141,24 @@ test("Memory detail refresh starts in detail loading and skips list request", as
 });
 
 test("Memory detail success and failure never flash the list", async () => {
-  for (const [api, expected] of [
+  for (const [api, expected, sourceVisible] of [
     [{
       async request<T>() {
         return { success: true, data: memory } as T;
       },
-    } satisfies WebApiClient, /Complete the focused milestone/],
+    } satisfies WebApiClient, /Complete the focused milestone/, true],
     [{
       async request<T>(): Promise<T> {
         throw new Error("private failure");
       },
-    } satisfies WebApiClient, /该记忆不存在、无权访问或暂时不可用/],
+    } satisfies WebApiClient, /该记忆不存在、无权访问或暂时不可用/, false],
   ] as const) {
     const page = await render("/memory?memory=memory-1", api);
     try {
       assert.match(page.container.textContent ?? "", expected);
+      if (sourceVisible) {
+        assert.match(page.container.textContent ?? "", /网页创建/);
+      }
       assertNoList(page.container);
       assert.doesNotMatch(page.container.textContent ?? "", /private failure/);
     } finally {
@@ -168,6 +181,13 @@ test("Memory list search becomes a refresh-safe returnTo without breaking edit",
   };
   const page = await render("/memory?q=goal", api);
   try {
+    assert.match(page.container.textContent ?? "", /网页创建/);
+    assert.equal(
+      page.container.querySelector(
+        "input[aria-label*=\"来源\"], select[aria-label*=\"来源\"]",
+      ),
+      null,
+    );
     const edit = [...page.container.querySelectorAll("button")]
       .find((button) => button.textContent === "编辑");
     assert.ok(edit);

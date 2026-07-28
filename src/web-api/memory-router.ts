@@ -12,6 +12,7 @@ export type MemoryApiDependencies = {
       query?: string;
       categories?: readonly string[];
       tag?: string;
+      includeSource?: boolean;
     }): Promise<ReadMemoryResult>;
 
     listAvailableCategories(
@@ -148,6 +149,7 @@ export function createReadMemoryApiHandler(
           query: getQueryParam(request.query.q),
           categories: category ? [category] : undefined,
           tag: getQueryParam(request.query.tag),
+          includeSource: true,
         }),
         dependencies.memoryService.listAvailableCategories(
           request.webUserId,

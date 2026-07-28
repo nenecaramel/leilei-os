@@ -42,6 +42,7 @@ type MemoryRecord = {
   key: string;
   content: string;
   tags: string[];
+  source: string;
   updated_at: string;
 };
 
@@ -93,6 +94,12 @@ function formatUpdatedAt(value: string): string {
     month: "short",
     day: "numeric",
   }).format(date);
+}
+
+export function formatMemorySource(source: string): string {
+  if (source === "web") return "网页创建";
+  if (source === "phase_2_validation") return "初始化数据";
+  return "其他来源";
 }
 
 function initialLocation() {
@@ -995,6 +1002,9 @@ function MemoryMetadata({ memory }: { memory: MemoryRecord }) {
         className={`memory-category memory-category-${memory.category}`}
       >
         {categoryLabels[memory.category]}
+      </span>
+      <span className="memory-source">
+        {formatMemorySource(memory.source)}
       </span>
       <span>{formatUpdatedAt(memory.updated_at)}</span>
     </div>
