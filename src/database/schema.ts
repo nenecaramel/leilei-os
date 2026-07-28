@@ -109,6 +109,10 @@ export const coreMemories = pgTable(
     category: memoryCategoryEnum("category").notNull(),
     key: varchar("key", { length: 100 }).notNull(),
     content: text("content").notNull(),
+    tags: varchar("tags", { length: 50 })
+      .array()
+      .default(sql`ARRAY[]::varchar(50)[]`)
+      .notNull(),
     visibility: memoryVisibilityEnum("visibility")
       .default("assistant")
       .notNull(),
@@ -148,6 +152,10 @@ export const coreMemories = pgTable(
     check(
       "core_memories_source_not_blank",
       sql`char_length(btrim(${table.source})) > 0`,
+    ),
+    check(
+      "core_memories_tags_limit",
+      sql`cardinality(${table.tags}) <= 20`,
     ),
     check("core_memories_sort_order_nonnegative", sql`${table.sortOrder} >= 0`),
   ],

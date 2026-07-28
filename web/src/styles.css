@@ -979,6 +979,27 @@ textarea:disabled {
   white-space: pre-wrap;
 }
 
+.memory-tags {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
+.memory-tags span {
+  max-width: 100%;
+  padding: 4px 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  color: var(--theme-strong);
+  background: var(--theme-soft);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .memory-card > .secondary-button {
   margin-right: 8px;
 }

@@ -26,6 +26,7 @@ export type ActiveAssistantMemoryRecord = {
   category: MemoryCategory;
   key: string;
   content: string;
+  tags: string[];
   updatedAt: Date;
 };
 
@@ -34,6 +35,7 @@ export type FindMemoriesInput = {
   query?: string;
   categories?: readonly MemoryCategory[];
   keys?: readonly string[];
+  tag?: string;
   limit: number;
 };
 
@@ -42,6 +44,7 @@ export type CreateMemoryInput = {
   category: MemoryCategory;
   key: string;
   content: string;
+  tags: string[];
   source: string;
 };
 
@@ -49,6 +52,7 @@ export type UpdateMemoryInput = {
   id: string;
   userId: string;
   content: string;
+  tags?: string[];
 };
 
 export interface MemoryRepository {
@@ -61,6 +65,8 @@ export interface MemoryRepository {
   findActiveAssistantMemoryCategories(
     userId: string,
   ): Promise<MemoryCategory[]>;
+
+  findActiveAssistantMemoryTags(userId: string): Promise<string[]>;
 
   findActiveAssistantMemoryById(input: {
     userId: string;
@@ -126,6 +132,9 @@ export class DrizzleMemoryRepository implements MemoryRepository {
       input.keys && input.keys.length > 0
         ? inArray(coreMemories.key, [...input.keys])
         : undefined;
+    const tagFilter = input.tag
+      ? sql`${input.tag}::varchar(50) = any(${coreMemories.tags})`
+      : undefined;
 
     return this.db
       .select({
@@ -133,6 +142,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         category: coreMemories.category,
         key: coreMemories.key,
         content: coreMemories.content,
+        tags: coreMemories.tags,
         updatedAt: coreMemories.updatedAt,
       })
       .from(coreMemories)
@@ -144,6 +154,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
           queryFilter,
           categoryFilter,
           keyFilter,
+          tagFilter,
         ),
       )
       .orderBy(
@@ -175,6 +186,25 @@ export class DrizzleMemoryRepository implements MemoryRepository {
     return rows.map(({ category }) => category);
   }
 
+  async findActiveAssistantMemoryTags(
+    userId: string,
+  ): Promise<string[]> {
+    const tag = sql<string>`unnest(${coreMemories.tags})`;
+    const rows = await this.db
+      .selectDistinct({ tag })
+      .from(coreMemories)
+      .where(
+        and(
+          eq(coreMemories.userId, userId),
+          eq(coreMemories.status, "active"),
+          eq(coreMemories.visibility, "assistant"),
+        ),
+      )
+      .orderBy(asc(tag));
+
+    return rows.map((row) => row.tag);
+  }
+
   async findActiveAssistantMemoryById(input: {
     userId: string;
     id: string;
@@ -185,6 +215,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         category: coreMemories.category,
         key: coreMemories.key,
         content: coreMemories.content,
+        tags: coreMemories.tags,
         updatedAt: coreMemories.updatedAt,
       })
       .from(coreMemories)
@@ -207,6 +238,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
       category: input.category,
       key: input.key,
       content: input.content,
+      tags: input.tags,
       source: input.source,
       visibility: "assistant",
       status: "active",
@@ -218,6 +250,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
       .update(coreMemories)
       .set({
         content: input.content,
+        ...(input.tags ? { tags: input.tags } : {}),
         updatedAt: new Date(),
       })
       .where(

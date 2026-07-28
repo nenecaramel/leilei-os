@@ -11,11 +11,14 @@ export type MemoryApiDependencies = {
       userId: string;
       query?: string;
       categories?: readonly string[];
+      tag?: string;
     }): Promise<ReadMemoryResult>;
 
     listAvailableCategories(
       userId: string,
     ): Promise<Array<"profile" | "preference" | "goal" | "project">>;
+
+    listAvailableTags(userId: string): Promise<string[]>;
 
     readMemoryDetail(input: {
       userId: string;
@@ -27,12 +30,14 @@ export type MemoryApiDependencies = {
       category: "profile" | "preference" | "goal" | "project";
       key: string;
       content: string;
+      tags?: readonly string[];
     }): Promise<void>;
 
     updateMemory(input: {
       userId: string;
       id: string;
       content: string;
+      tags?: readonly string[];
     }): Promise<void>;
 
     archiveMemory(input: {
@@ -137,13 +142,17 @@ export function createReadMemoryApiHandler(
 
     try {
       const category = getQueryParam(request.query.category);
-      const [data, categories] = await Promise.all([
+      const [data, categories, tags] = await Promise.all([
         dependencies.memoryService.readMemory({
           userId: request.webUserId,
           query: getQueryParam(request.query.q),
           categories: category ? [category] : undefined,
+          tag: getQueryParam(request.query.tag),
         }),
         dependencies.memoryService.listAvailableCategories(
+          request.webUserId,
+        ),
+        dependencies.memoryService.listAvailableTags(
           request.webUserId,
         ),
       ]);
@@ -155,6 +164,7 @@ export function createReadMemoryApiHandler(
           metadata: {
             ...data.metadata,
             categories,
+            tags,
           },
         },
       });
@@ -211,6 +221,7 @@ export function createCreateMemoryApiHandler(
         category: request.body.category,
         key: request.body.key,
         content: request.body.content,
+        tags: request.body.tags,
       });
 
       response.json({
@@ -248,6 +259,7 @@ export function createUpdateMemoryApiHandler(
         userId: request.webUserId,
         id: request.body.id,
         content: request.body.content,
+        tags: request.body.tags,
       });
 
       response.json({
