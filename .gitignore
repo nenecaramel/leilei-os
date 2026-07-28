@@ -6,3 +6,16 @@ dist/
 !.env.example
 *.log
 .DS_Store
+
+# Database backup artifacts must stay outside the repository. These patterns
+# are defense in depth if a file is copied here accidentally.
+*.dump
+*.dump.*
+*.backup
+*.backup.*
+*.bak
+*.sql.gz
+*.sql.enc
+*.dump.enc
+*.backup.enc
+*.sha256
