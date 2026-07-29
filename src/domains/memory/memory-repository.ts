@@ -33,8 +33,7 @@ export type ActiveAssistantMemoryRecord = {
 
 export type TrustedMemorySource =
   | "web"
-  | "phase_2_validation"
-  | "integration";
+  | "phase_2_validation";
 
 export type FindMemoriesInput = {
   userId: string;
