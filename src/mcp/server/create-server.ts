@@ -31,6 +31,15 @@ import {
   type WriteDiaryToolDependencies,
 } from "../tools/write-diary/register.js";
 import {
+  DiaryReadAuthenticationError,
+  registerSearchDiaryTool,
+  type SearchDiaryToolDependencies,
+} from "../tools/search-diary/register.js";
+import {
+  registerGetDiaryTool,
+  type GetDiaryToolDependencies,
+} from "../tools/get-diary/register.js";
+import {
   CreateTaskAuthenticationError,
   registerCreateTaskTool,
   type CreateTaskToolDependencies,
@@ -139,6 +148,24 @@ const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   },
 };
 
+const productionSearchDiaryDependencies: SearchDiaryToolDependencies = {
+  diaryService: {
+    listDiaries: (input) => getDefaultDiaryService().listDiaries(input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new DiaryReadAuthenticationError();
+  },
+};
+
+const productionGetDiaryDependencies: GetDiaryToolDependencies = {
+  diaryService: {
+    readDiary: (input) => getDefaultDiaryService().readDiary(input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new DiaryReadAuthenticationError();
+  },
+};
+
 const productionCreateTaskDependencies: CreateTaskToolDependencies = {
   taskService: {
     createTask: (context, input) =>
@@ -169,7 +196,15 @@ export type McpServerDependencies = {
   readMemory?: ReadMemoryToolDependencies;
   searchMemory?: SearchMemoryToolDependencies;
   getMemory?: GetMemoryToolDependencies;
+  diaryTools?: {
+    diaryService: WriteDiaryToolDependencies["diaryService"] &
+      SearchDiaryToolDependencies["diaryService"] &
+      GetDiaryToolDependencies["diaryService"];
+    getAuthenticatedUserId: () => string;
+  };
   writeDiary?: WriteDiaryToolDependencies;
+  searchDiary?: SearchDiaryToolDependencies;
+  getDiary?: GetDiaryToolDependencies;
   createTask?: CreateTaskToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
 };
@@ -218,10 +253,30 @@ export function createMcpServer(
   );
   registerWriteDiaryTool(
     server,
-    dependencies.writeDiary ?? {
+    dependencies.writeDiary ?? dependencies.diaryTools ?? {
       ...productionWriteDiaryDependencies,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new WriteDiaryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerSearchDiaryTool(
+    server,
+    dependencies.searchDiary ?? dependencies.diaryTools ?? {
+      ...productionSearchDiaryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new DiaryReadAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerGetDiaryTool(
+    server,
+    dependencies.getDiary ?? dependencies.diaryTools ?? {
+      ...productionGetDiaryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new DiaryReadAuthenticationError();
         return authenticatedUserId;
       },
     },

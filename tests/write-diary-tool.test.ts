@@ -95,11 +95,13 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
     response.tools.map((tool) => tool.name).sort(),
     [
       "create_task",
+      "get_diary",
       "get_local_context",
       "get_memory",
       "get_weather_context",
       "hello",
       "read_memory",
+      "search_diary",
       "search_memory",
       "toy_set",
       "toy_stop",
