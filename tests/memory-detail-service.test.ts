@@ -36,8 +36,12 @@ function repository(
       };
     },
     async createMemory() {},
-    async updateMemory() {},
-    async archiveMemory() {},
+    async updateMemory() {
+      return true;
+    },
+    async archiveMemory() {
+      return true;
+    },
     ...overrides,
   };
 }
@@ -228,6 +232,7 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
     },
     async updateMemory(input) {
       writes.push({ update: input });
+      return true;
     },
   }));
 
@@ -265,6 +270,165 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
       },
     },
   ]);
+});
+
+for (const operation of ["create", "update", "archive"] as const) {
+  test(`Memory ${operation} validates an active user before mutating`, async () => {
+    let mutations = 0;
+    const service = new MemoryService(repository({
+      async createMemory() {
+        mutations += 1;
+      },
+      async updateMemory() {
+        mutations += 1;
+        return true;
+      },
+      async archiveMemory() {
+        mutations += 1;
+        return true;
+      },
+    }));
+
+    if (operation === "create") {
+      await service.createMemory({
+        userId: "user-a",
+        category: "goal",
+        key: "memory-key",
+        content: "Content",
+      });
+    } else if (operation === "update") {
+      await service.updateMemory({
+        userId: "user-a",
+        id: "memory-1",
+        content: "Updated",
+      });
+    } else {
+      await service.archiveMemory({
+        userId: "user-a",
+        id: "memory-1",
+      });
+    }
+
+    assert.equal(mutations, 1);
+  });
+
+  for (const userState of ["missing", "disabled"] as const) {
+    test(`Memory ${operation} rejects a ${userState} user without mutating`, async () => {
+      let mutations = 0;
+      const service = new MemoryService(repository({
+        async findUserById() {
+          return userState === "missing"
+            ? null
+            : { displayName: "Leilei", status: "disabled" };
+        },
+        async createMemory() {
+          mutations += 1;
+        },
+        async updateMemory() {
+          mutations += 1;
+          return true;
+        },
+        async archiveMemory() {
+          mutations += 1;
+          return true;
+        },
+      }));
+
+      const action =
+        operation === "create"
+          ? service.createMemory({
+              userId: "user-a",
+              category: "goal",
+              key: "memory-key",
+              content: "Content",
+            })
+          : operation === "update"
+            ? service.updateMemory({
+                userId: "user-a",
+                id: "memory-1",
+                content: "Updated",
+              })
+            : service.archiveMemory({
+                userId: "user-a",
+                id: "memory-1",
+              });
+
+      await assert.rejects(
+        action,
+        (error) =>
+          error instanceof MemoryDomainError &&
+          error.code ===
+            (userState === "missing"
+              ? "USER_NOT_FOUND"
+              : "USER_DISABLED"),
+      );
+      assert.equal(mutations, 0);
+    });
+  }
+}
+
+for (const reason of [
+  "missing",
+  "cross-user",
+  "archived",
+  "private",
+  "restricted",
+] as const) {
+  test(`Memory update returns MEMORY_NOT_FOUND for a ${reason} record`, async () => {
+    const service = new MemoryService(repository({
+      async updateMemory() {
+        return false;
+      },
+    }));
+
+    await assert.rejects(
+      service.updateMemory({
+        userId: "user-a",
+        id: `memory-${reason}`,
+        content: "Updated",
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code === "MEMORY_NOT_FOUND",
+    );
+  });
+
+  test(`Memory archive returns MEMORY_NOT_FOUND for a ${reason} record`, async () => {
+    const service = new MemoryService(repository({
+      async archiveMemory() {
+        return false;
+      },
+    }));
+
+    await assert.rejects(
+      service.archiveMemory({
+        userId: "user-a",
+        id: `memory-${reason}`,
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code === "MEMORY_NOT_FOUND",
+    );
+  });
+}
+
+test("Memory repeated archive returns MEMORY_NOT_FOUND after the first success", async () => {
+  let attempts = 0;
+  const service = new MemoryService(repository({
+    async archiveMemory() {
+      attempts += 1;
+      return attempts === 1;
+    },
+  }));
+
+  const input = { userId: "user-a", id: "memory-1" };
+  await service.archiveMemory(input);
+  await assert.rejects(
+    service.archiveMemory(input),
+    (error) =>
+      error instanceof MemoryDomainError &&
+      error.code === "MEMORY_NOT_FOUND",
+  );
 });
 
 test("Memory tag validation rejects blank, oversized, and excessive tags", async () => {

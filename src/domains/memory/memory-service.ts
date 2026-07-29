@@ -177,6 +177,7 @@ export class MemoryService {
   }
 
   async createMemory(input: CreateMemoryInput): Promise<void> {
+    await this.requireActiveUser(input.userId);
     await this.repository.createMemory({
       userId: input.userId,
       category: input.category,
@@ -188,7 +189,8 @@ export class MemoryService {
   }
 
   async updateMemory(input: UpdateMemoryInput): Promise<void> {
-    await this.repository.updateMemory({
+    await this.requireActiveUser(input.userId);
+    const updated = await this.repository.updateMemory({
       userId: input.userId,
       id: input.id,
       content: input.content.trim(),
@@ -196,13 +198,28 @@ export class MemoryService {
         ? {}
         : { tags: this.normalizeTags(input.tags) }),
     });
+
+    if (!updated) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
   }
 
   async archiveMemory(input: {
     userId: string;
     id: string;
   }): Promise<void> {
-    await this.repository.archiveMemory(input);
+    await this.requireActiveUser(input.userId);
+    const archived = await this.repository.archiveMemory(input);
+
+    if (!archived) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
   }
 
   private async requireActiveUser(
