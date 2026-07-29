@@ -943,7 +943,7 @@ function ArchivedDiaryList({
     <>
       <section className="memory-message">
         <h2>已归档日记</h2>
-        <p>共 {state.count} 篇，按最近更新时间排列。</p>
+        <p>共 {state.count} 篇，按日期从新到旧排列。</p>
       </section>
       <section className="memory-grid">
         {state.diaries.map((diary) => (

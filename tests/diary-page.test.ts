@@ -183,6 +183,38 @@ test("Diary normal list places archive and create actions in the page header", a
   }
 });
 
+test("Diary normal and archived lists use the same date-order summary", async () => {
+  const summary = "共 1 篇，按日期从新到旧排列。";
+  const api: WebApiClient = {
+    async request<T>(path: string) {
+      if (path === "/diary/archived") {
+        return {
+          success: true,
+          data: { diaries: [diary], metadata: { count: 1 } },
+        } as T;
+      }
+      return {
+        success: true,
+        data: { diaries: [diary], metadata: { count: 1 } },
+      } as T;
+    },
+  };
+  for (const path of [
+    "/diary",
+    createDiaryArchiveLocation("/diary"),
+  ]) {
+    const page = await render(path, api);
+    try {
+      assert.match(
+        page.container.textContent ?? "",
+        new RegExp(summary),
+      );
+    } finally {
+      await page.cleanup();
+    }
+  }
+});
+
 test("Diary default and filtered empty states remain distinct", async () => {
   const api: WebApiClient = {
     async request<T>() {
@@ -417,7 +449,10 @@ test("Diary archive list is read-only and opens full archived detail", async () 
   const page = await render(archiveUrl, api);
   try {
     assert.match(page.container.textContent ?? "", /已归档日记/);
-    assert.match(page.container.textContent ?? "", /共 1 篇/);
+    assert.match(
+      page.container.textContent ?? "",
+      /共 1 篇，按日期从新到旧排列。/,
+    );
     assert.doesNotMatch(
       page.container.textContent ?? "",
       /编辑|再次归档|永久删除/,

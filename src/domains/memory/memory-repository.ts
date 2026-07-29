@@ -378,7 +378,6 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         .update(coreMemories)
         .set({
           status: "archived",
-          updatedAt: new Date(),
         })
         .where(
           and(
@@ -413,7 +412,6 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         .update(coreMemories)
         .set({
           status: "active",
-          updatedAt: new Date(),
         })
         .where(
           and(
