@@ -665,16 +665,25 @@ export function DiaryPageContent({
             返回日记列表
           </button>
         ) : (
-          <button
-            className="secondary-button"
-            disabled={creating || updating}
-            onClick={() => {
-              setShowCreate((value) => !value);
-              setActionError("");
-            }}
-          >
-            {showCreate ? "取消新增" : "新增日记"}
-          </button>
+          <div className="page-header-actions">
+            <button
+              className="secondary-button"
+              disabled={creating || updating}
+              onClick={openArchive}
+            >
+              查看归档
+            </button>
+            <button
+              className="secondary-button"
+              disabled={creating || updating}
+              onClick={() => {
+                setShowCreate((value) => !value);
+                setActionError("");
+              }}
+            >
+              {showCreate ? "取消新增" : "新增日记"}
+            </button>
+          </div>
         )}
       />
 
@@ -796,10 +805,6 @@ export function DiaryPageContent({
               </>
             )}
           </section>
-          <button className="secondary-button" onClick={openArchive}>
-            查看归档
-          </button>
-
           {state.status === "ready" && state.diaries.length > 0 && (
             <>
               <section className="memory-message">

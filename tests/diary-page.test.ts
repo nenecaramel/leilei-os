@@ -154,6 +154,35 @@ test("Diary list initializes all controls from URL and requests that URL", async
   }
 });
 
+test("Diary normal list places archive and create actions in the page header", async () => {
+  const { api, requests } = pendingApi();
+  const page = await render("/diary", api);
+  try {
+    const archiveButtons = [...page.container.querySelectorAll("button")]
+      .filter((button) => button.textContent === "查看归档");
+    const createButtons = [...page.container.querySelectorAll("button")]
+      .filter((button) => button.textContent === "新增日记");
+    assert.equal(archiveButtons.length, 1);
+    assert.equal(createButtons.length, 1);
+    assert.equal(
+      archiveButtons[0]?.parentElement?.className,
+      "page-header-actions",
+    );
+    assert.equal(
+      createButtons[0]?.parentElement?.className,
+      "page-header-actions",
+    );
+    assert.deepEqual(
+      [...page.container.querySelectorAll(".page-header-actions button")]
+        .map((button) => button.textContent),
+      ["查看归档", "新增日记"],
+    );
+    assert.equal(requests[0]?.path, "/diary");
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Diary default and filtered empty states remain distinct", async () => {
   const api: WebApiClient = {
     async request<T>() {
