@@ -1,114 +1,143 @@
 # Leilei OS
 
-Leilei OS is a remote Model Context Protocol (MCP) server for validating the connection between ChatGPT Developer Mode and a privately operated service.
+Leilei OS is a personal assistant service that gives an authenticated Web app
+and ChatGPT MCP access to persistent personal data. The original Phase 1
+connectivity probe is historical; the repository now contains the working
+Memory, Diary, and Task product.
 
-Phase 1 intentionally contains only one read-only, side-effect-free tool: `hello`. It does **not** contain memory, diary, task, OpenAI API, agent orchestration, or chat UI functionality.
+## Current product status
 
-## Phase 1 architecture
+The current implementation includes:
+
+- a React Web UI protected by Auth0;
+- PostgreSQL-backed Memory, Diary, Task, Settings, and Dashboard data;
+- an OAuth-protected remote MCP endpoint using Streamable HTTP;
+- MCP read capabilities including `read_memory`, local-time context, and
+  weather context;
+- MCP writes for creating diary entries and tasks.
+
+Chat Archive and Universe remain visible placeholders in the Web information
+architecture. They are not implemented product modules.
+
+## Implemented modules
+
+- **Memory** — create, read, edit, archive, search, category and tag filters,
+  detail views, and read-only creation-source display.
+- **Diary** — create, read, edit, search, tag, mood, and date filters.
+- **Task** — create, read, edit, search, filtering, controlled status
+  transitions, optional due times, and account-timezone handling.
+- **Web** — authenticated Dashboard, Memory, Diary, Task, and Settings pages.
+- **MCP** — authenticated tools for reading Memory and context, plus the
+  implemented Diary and Task creation tools.
+
+## Architecture
 
 ```text
-ChatGPT Web
+Web / MCP
     ↓
-Developer Mode / Custom App
-    ↓ HTTPS
-Remote MCP endpoint: /mcp
+Service
     ↓
-hello tool
+Repository
+    ↓
+PostgreSQL
 ```
 
-The production MCP transport is Streamable HTTP. Local stdio is not used.
+The Web API and MCP tools share domain services and repositories. Authentication
+establishes the server-owned user identity before domain code accesses data.
 
-## Requirements
+## Local requirements
 
 - Node.js 20 or newer
-- pnpm 10 or newer
+- pnpm 11.9.0 for the root service
+- npm for the Web package
+- PostgreSQL for persistent features and migrations
 
-## Local setup
+Copy the environment templates and provide development values through ignored
+local files:
 
 ```bash
 cp .env.example .env
+cp web/.env.example web/.env.local
 pnpm install
+npm --prefix web install
+```
+
+The root template documents the PostgreSQL, MCP OAuth, Web API OAuth, CORS, and
+optional internal MCP variables. The Web template documents:
+
+- `VITE_AUTH0_DOMAIN`
+- `VITE_AUTH0_CLIENT_ID`
+- `VITE_AUTH0_AUDIENCE`
+- `VITE_AUTH0_SCOPE`
+- `VITE_AUTH0_REDIRECT_URI`
+- `VITE_API_BASE_URL`
+
+The API listens on `http://localhost:3000` by default. Vite serves the Web app
+on `http://localhost:5173` by default. Useful backend routes are:
+
+- `GET /health`
+- `/mcp` — public OAuth-protected MCP endpoint
+- `/internal/mcp` — optional internal bearer-token endpoint
+- `/api/v1` — Auth0-protected Web API
+
+## Root development
+
+```bash
 pnpm dev
-```
-
-The service starts on port `3000` by default:
-
-- Health check: `http://localhost:3000/health`
-- MCP endpoint: `http://localhost:3000/mcp`
-
-Check the health endpoint:
-
-```bash
-curl http://localhost:3000/health
-```
-
-## Build and run
-
-```bash
+pnpm test
+pnpm typecheck
 pnpm build
 pnpm start
 ```
 
-## Optional Phase 1 bearer token
+`pnpm start` runs the compiled server from `dist/app/index.js`; run
+`pnpm build` first.
 
-Set a value of at least 16 characters:
-
-```env
-MCP_AUTH_TOKEN=replace-with-a-long-random-secret
-```
-
-When set, requests to `/mcp` must include:
-
-```http
-Authorization: Bearer replace-with-a-long-random-secret
-```
-
-Leave it unset only while validating connectivity in a controlled development environment. `/health` remains public and never returns secrets.
-
-## Docker
+## Web development
 
 ```bash
-docker build -t leilei-os .
-docker run --rm -p 3000:3000 --env-file .env leilei-os
+npm --prefix web run dev
+npm --prefix web run typecheck
+npm --prefix web run build
 ```
 
-The hosting platform must provide a stable public HTTPS URL and forward requests to the container's `PORT`. After deployment, the MCP URL will look like:
+## Database migrations
 
-```text
-https://your-domain.example/mcp
+Set `DATABASE_URL` for the intended PostgreSQL database, review pending
+migrations, and run:
+
+```bash
+pnpm db:migrate
 ```
 
-Do not expose a local development server directly to the public internet without an appropriate secure tunnel or hosting platform.
+Migrations are defined by the Drizzle schema in `src/database/schema.ts` and
+versioned under `drizzle/`. Never point a local migration command at production
+without an approved backup and deployment procedure.
 
-## Connect from ChatGPT
+## Production deployment
 
-Availability of Developer Mode depends on the ChatGPT account and current rollout.
+Railway builds the API from the root multi-stage `Dockerfile` and runs the
+compiled Node.js service on the platform-provided `PORT` (default `3000`). The
+deployed service exposes the HTTPS health, MCP, and Web API routes.
 
-1. Open ChatGPT on the web.
-2. Open **Settings → Apps → Advanced settings** and enable Developer Mode if the option is present.
-3. Create a custom app.
-4. Enter the public HTTPS MCP endpoint, ending in `/mcp`.
-5. Select the matching authentication option. For the first unauthenticated connectivity test, `MCP_AUTH_TOKEN` must be unset. If the ChatGPT setup supports a static bearer token, configure the same token there.
-6. Scan the tools and confirm that `hello` appears.
-7. Start a new chat with the app enabled and ask: “Call the Leilei OS hello tool.”
+The `web/` React SPA is built separately. Its Vercel configuration runs
+`npm run build`, serves `web/dist`, and rewrites application routes to
+`index.html`.
 
-A successful response contains `Hello from Leilei OS!` and an ISO timestamp.
+Production credentials and database URLs belong in the deployment platforms'
+secret/environment-variable stores, never in source control.
 
-## Validation boundary
+## Security and data boundaries
 
-Phase 1 is complete only when all of the following are true:
-
-- `/health` responds successfully over HTTPS.
-- ChatGPT scans and displays the `hello` tool.
-- ChatGPT invokes `hello` successfully.
-- The response contains no private data and causes no side effects.
-
-Do not implement Memory, Diary, or Task until this connection is proven.
-
-## Security notes
-
-- Never commit `.env`.
-- Never log credentials or authorization headers.
-- `hello` is explicitly marked read-only, non-destructive, and idempotent.
-- Replace the Phase 1 token approach with OAuth/OIDC before supporting multiple users or sensitive personal data.
-- Keep error messages generic at the public boundary.
+- Public MCP access uses Auth0 JWT issuer, audience, scope, and allowed-subject
+  checks.
+- Web access uses its own Auth0 audience and scope plus an explicit allowed
+  origin.
+- Authenticated subjects map server-side to `MCP_USER_ID`; clients do not
+  choose database user IDs.
+- Repositories scope personal records by user, status, and visibility as
+  required by each domain.
+- `DATABASE_URL`, OAuth credentials, internal MCP tokens, and bridge keys are
+  server-side secrets and must not be logged or committed.
+- The optional `/internal/mcp` route is enabled only when
+  `MCP_AUTH_TOKEN` is configured.
