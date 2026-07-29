@@ -84,12 +84,12 @@ export interface MemoryRepository {
 
   createMemory(input: CreateMemoryInput): Promise<void>;
 
-  updateMemory(input: UpdateMemoryInput): Promise<void>;
+  updateMemory(input: UpdateMemoryInput): Promise<boolean>;
 
   archiveMemory(input: {
     id: string;
     userId: string;
-  }): Promise<void>;
+  }): Promise<boolean>;
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -263,8 +263,8 @@ export class DrizzleMemoryRepository implements MemoryRepository {
     });
   }
 
-  async updateMemory(input: UpdateMemoryInput): Promise<void> {
-    await this.db
+  async updateMemory(input: UpdateMemoryInput): Promise<boolean> {
+    const updated = await this.db
       .update(coreMemories)
       .set({
         content: input.content,
@@ -275,15 +275,20 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         and(
           eq(coreMemories.id, input.id),
           eq(coreMemories.userId, input.userId),
+          eq(coreMemories.status, "active"),
+          eq(coreMemories.visibility, "assistant"),
         ),
-      );
+      )
+      .returning({ id: coreMemories.id });
+
+    return updated.length === 1;
   }
 
   async archiveMemory(input: {
     id: string;
     userId: string;
-  }): Promise<void> {
-    await this.db
+  }): Promise<boolean> {
+    const archived = await this.db
       .update(coreMemories)
       .set({
         status: "archived",
@@ -293,7 +298,12 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         and(
           eq(coreMemories.id, input.id),
           eq(coreMemories.userId, input.userId),
+          eq(coreMemories.status, "active"),
+          eq(coreMemories.visibility, "assistant"),
         ),
-      );
+      )
+      .returning({ id: coreMemories.id });
+
+    return archived.length === 1;
   }
 }

@@ -234,7 +234,22 @@ export function createCreateMemoryApiHandler(
       response.json({
         success: true,
       });
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof MemoryDomainError &&
+        (error.code === "USER_NOT_FOUND" ||
+          error.code === "USER_DISABLED")
+      ) {
+        response.status(403).json({
+          success: false,
+          error: {
+            code: "MEMORY_UNAVAILABLE",
+            message: "Memory is unavailable for the authenticated user.",
+          },
+        });
+        return;
+      }
+
       response.status(400).json({
         success: false,
         error: {
@@ -272,7 +287,34 @@ export function createUpdateMemoryApiHandler(
       response.json({
         success: true,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof MemoryDomainError) {
+        if (error.code === "MEMORY_NOT_FOUND") {
+          response.status(404).json({
+            success: false,
+            error: {
+              code: "MEMORY_NOT_FOUND",
+              message: "Memory was not found.",
+            },
+          });
+          return;
+        }
+
+        if (
+          error.code === "USER_NOT_FOUND" ||
+          error.code === "USER_DISABLED"
+        ) {
+          response.status(403).json({
+            success: false,
+            error: {
+              code: "MEMORY_UNAVAILABLE",
+              message: "Memory is unavailable for the authenticated user.",
+            },
+          });
+          return;
+        }
+      }
+
       response.status(400).json({
         success: false,
         error: {
@@ -308,7 +350,34 @@ export function createArchiveMemoryApiHandler(
       response.json({
         success: true,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof MemoryDomainError) {
+        if (error.code === "MEMORY_NOT_FOUND") {
+          response.status(404).json({
+            success: false,
+            error: {
+              code: "MEMORY_NOT_FOUND",
+              message: "Memory was not found.",
+            },
+          });
+          return;
+        }
+
+        if (
+          error.code === "USER_NOT_FOUND" ||
+          error.code === "USER_DISABLED"
+        ) {
+          response.status(403).json({
+            success: false,
+            error: {
+              code: "MEMORY_UNAVAILABLE",
+              message: "Memory is unavailable for the authenticated user.",
+            },
+          });
+          return;
+        }
+      }
+
       response.status(400).json({
         success: false,
         error: {

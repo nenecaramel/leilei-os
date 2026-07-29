@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from "express";
 import { MemoryDomainError } from "../src/domains/memory/memory-service.js";
 import {
   createCreateMemoryApiHandler,
+  createArchiveMemoryApiHandler,
   createReadMemoryApiHandler,
   createReadMemoryDetailApiHandler,
   createUpdateMemoryApiHandler,
@@ -393,3 +394,105 @@ test("Memory create and update ignore client source and use only editable fields
     },
   ]);
 });
+
+for (const operation of ["update", "archive"] as const) {
+  test(`Memory ${operation} returns a safe 404 for missing or inaccessible records`, async () => {
+    const dependencies = {
+      memoryService: {
+        async updateMemory() {
+          throw new MemoryDomainError(
+            "MEMORY_NOT_FOUND",
+            "private repository detail",
+          );
+        },
+        async archiveMemory() {
+          throw new MemoryDomainError(
+            "MEMORY_NOT_FOUND",
+            "private repository detail",
+          );
+        },
+      },
+    } as never;
+    const handler =
+      operation === "update"
+        ? createUpdateMemoryApiHandler(dependencies)
+        : createArchiveMemoryApiHandler(dependencies);
+    const { result, response } = responseRecorder();
+
+    await handler(
+      {
+        webUserId: "user-a",
+        body: {
+          id: "inaccessible-memory",
+          content: "Updated",
+        },
+      } as unknown as Request,
+      response,
+      (() => {}) as NextFunction,
+    );
+
+    assert.equal(result.status, 404);
+    assert.deepEqual(result.body, {
+      success: false,
+      error: {
+        code: "MEMORY_NOT_FOUND",
+        message: "Memory was not found.",
+      },
+    });
+    assert.doesNotMatch(
+      JSON.stringify(result.body),
+      /private repository detail|inaccessible-memory/,
+    );
+  });
+}
+
+for (const operation of ["create", "update", "archive"] as const) {
+  for (const code of ["USER_NOT_FOUND", "USER_DISABLED"] as const) {
+    test(`Memory ${operation} maps ${code} to the existing unavailable response`, async () => {
+      const unavailable = async () => {
+        throw new MemoryDomainError(code, "private user detail");
+      };
+      const dependencies = {
+        memoryService: {
+          createMemory: unavailable,
+          updateMemory: unavailable,
+          archiveMemory: unavailable,
+        },
+      } as never;
+      const handler =
+        operation === "create"
+          ? createCreateMemoryApiHandler(dependencies)
+          : operation === "update"
+            ? createUpdateMemoryApiHandler(dependencies)
+            : createArchiveMemoryApiHandler(dependencies);
+      const { result, response } = responseRecorder();
+
+      await handler(
+        {
+          webUserId: "user-a",
+          body: {
+            id: "memory-1",
+            category: "goal",
+            key: "memory-key",
+            content: "Content",
+          },
+        } as unknown as Request,
+        response,
+        (() => {}) as NextFunction,
+      );
+
+      assert.equal(result.status, 403);
+      assert.deepEqual(result.body, {
+        success: false,
+        error: {
+          code: "MEMORY_UNAVAILABLE",
+          message: "Memory is unavailable for the authenticated user.",
+        },
+      });
+      assert.doesNotMatch(
+        JSON.stringify(result.body),
+        /private user detail/,
+      );
+    });
+  }
+}
