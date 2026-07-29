@@ -212,6 +212,98 @@ export class DiaryService {
     return this.toEntryResult(diary);
   }
 
+  async listArchivedDiaries(input: {
+    userId: string;
+    limit?: number;
+  }): Promise<ListDiariesResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const limit = this.resolveLimit(input.limit);
+    const diaries = await this.repository.findArchivedDiaries(
+      userId,
+      limit,
+    );
+
+    return {
+      diaries: diaries.map((diary) => this.toEntryResult(diary)),
+      metadata: { count: diaries.length },
+    };
+  }
+
+  async readArchivedDiary(
+    input: ReadDiaryInput,
+  ): Promise<DiaryEntryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    const diary = await this.repository.findArchivedDiaryById(
+      userId,
+      id,
+    );
+    if (!diary) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    return this.toEntryResult(diary);
+  }
+
+  async archiveDiary(input: ReadDiaryInput): Promise<void> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+    if (!id) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    const archived = await this.repository.archiveDiary({
+      userId,
+      id,
+      actorType: "user",
+      channel: "web",
+    });
+    if (!archived) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+  }
+
+  async restoreDiary(input: ReadDiaryInput): Promise<void> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+    if (!id) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    const restored = await this.repository.restoreDiary({
+      userId,
+      id,
+      actorType: "user",
+      channel: "web",
+    });
+    if (!restored) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+  }
+
   async createWebDiary(
     input: CreateWebDiaryInput,
   ): Promise<DiaryEntryResult> {

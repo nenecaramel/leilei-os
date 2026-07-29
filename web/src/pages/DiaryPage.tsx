@@ -21,8 +21,13 @@ import {
 } from "./diary-list-request";
 import {
   EMPTY_DIARY_FILTERS,
+  createArchivedDiaryDetailLocation,
+  createDiaryArchiveLocation,
   createDiaryDetailLocation,
+  getArchivedDiaryDetailLocation,
+  getDiaryArchiveLocation,
   getDiaryDetailLocation,
+  getSafeDiaryArchiveReturnTo,
   getSafeDiaryReturnTo,
   readDiaryFilters,
   type DiaryFilters,
@@ -86,6 +91,12 @@ function initialFilters(): DiaryFilters {
 function initialLocation() {
   return getDiaryDetailLocation(window.location.search);
 }
+function initialArchiveLocation() {
+  return getDiaryArchiveLocation(window.location.search);
+}
+function initialArchivedDetailLocation() {
+  return getArchivedDiaryDetailLocation(window.location.search);
+}
 function hasFilters(filters: DiaryFilters): boolean {
   return Object.values(filters).some((value) => value.trim() !== "");
 }
@@ -109,15 +120,36 @@ export function DiaryPageContent({
   const moodDraftRef = useRef(moodDraft);
   moodDraftRef.current = moodDraft;
   const [location, setLocation] = useState(initialLocation);
+  const [archiveLocation, setArchiveLocation] =
+    useState(initialArchiveLocation);
+  const [archivedDetailLocation, setArchivedDetailLocation] =
+    useState(initialArchivedDetailLocation);
+  const isArchived = archiveLocation.archived;
+  const isArchivedDetail = archivedDetailLocation.diaryId !== null;
   const isDetail = location.diaryId !== null;
   const [detailState, setDetailState] = useState<DetailState>(
     () => initialLocation().diaryId ? "loading" : "idle",
   );
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [archivedState, setArchivedState] =
+    useState<LoadState>({ status: "loading" });
+  const [archivedDetailState, setArchivedDetailState] =
+    useState<DetailState>(
+      () => initialArchivedDetailLocation().diaryId
+        ? "loading"
+        : "idle",
+    );
+  const [archivedDiary, setArchivedDiary] =
+    useState<DiaryEntry | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [archiveReloadKey, setArchiveReloadKey] = useState(0);
   const tracker = useRef(createLatestDiaryRequestTracker());
   const listController = useRef<AbortController | null>(null);
   const pendingScrollRestore = useRef<number | null>(null);
+  const archiveInFlight = useRef(false);
+  const restoreInFlight = useRef(false);
+  const [archiving, setArchiving] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -227,6 +259,9 @@ export function DiaryPageContent({
     moodDebouncer.current?.cancel();
     invalidateList();
     const restoredLocation = initialLocation();
+    const restoredArchiveLocation = initialArchiveLocation();
+    const restoredArchivedDetailLocation =
+      initialArchivedDetailLocation();
     setFilters(restored);
     setSearchDraft(restored.q);
     setTagDraft(restored.tag);
@@ -236,8 +271,17 @@ export function DiaryPageContent({
     setSelectedDiary(null);
     setEditing(false);
     setLocation(restoredLocation);
+    setArchiveLocation(restoredArchiveLocation);
+    setArchivedDetailLocation(restoredArchivedDetailLocation);
     setDetailState(restoredLocation.diaryId ? "loading" : "idle");
-    if (!restoredLocation.diaryId) {
+    setArchivedDetailState(
+      restoredArchivedDetailLocation.diaryId ? "loading" : "idle",
+    );
+    if (
+      !restoredLocation.diaryId &&
+      !restoredArchiveLocation.archived &&
+      !restoredArchivedDetailLocation.diaryId
+    ) {
       const listUrl =
         `/diary${buildDiaryListRequest(restored).search}`;
       pendingScrollRestore.current =
@@ -257,7 +301,7 @@ export function DiaryPageContent({
   }, []);
 
   useEffect(() => {
-    if (isDetail) {
+    if (isDetail || isArchived || isArchivedDetail) {
       invalidateList();
       return;
     }
@@ -295,7 +339,57 @@ export function DiaryPageContent({
       controller.abort();
       if (listController.current === controller) listController.current = null;
     };
-  }, [api, filters, isDetail, reloadKey]);
+  }, [api, filters, isArchived, isArchivedDetail, isDetail, reloadKey]);
+
+  useEffect(() => {
+    if (!isArchived) return;
+    const controller = new AbortController();
+    setArchivedState({ status: "loading" });
+    api.request<DiaryListResponse>("/diary/archived", {
+      signal: controller.signal,
+    }).then((response) => {
+      if (controller.signal.aborted) return;
+      setArchivedState({
+        status: "ready",
+        diaries: response.data.diaries,
+        count: response.data.metadata.count,
+      });
+      const position = readDiaryScrollPosition(
+        getDiaryScrollStorage(window),
+        window.location.pathname + window.location.search,
+      );
+      if (position !== null) {
+        requestAnimationFrame(() => window.scrollTo({ top: position }));
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setArchivedState({ status: "error" });
+    });
+    return () => controller.abort();
+  }, [api, archiveReloadKey, isArchived]);
+
+  useEffect(() => {
+    const id = archivedDetailLocation.diaryId;
+    if (!id) {
+      setArchivedDiary(null);
+      setArchivedDetailState("idle");
+      return;
+    }
+    const controller = new AbortController();
+    setArchivedDiary(null);
+    setArchivedDetailState("loading");
+    api.request<DiaryEntryResponse>(
+      `/diary/archived/${encodeURIComponent(id)}`,
+      { signal: controller.signal },
+    ).then((response) => {
+      if (controller.signal.aborted) return;
+      setArchivedDiary(response.data);
+      setArchivedDetailState("ready");
+      window.scrollTo({ top: 0 });
+    }).catch(() => {
+      if (!controller.signal.aborted) setArchivedDetailState("error");
+    });
+    return () => controller.abort();
+  }, [api, archiveReloadKey, archivedDetailLocation]);
 
   useEffect(() => {
     const id = location.diaryId;
@@ -376,6 +470,110 @@ export function DiaryPageContent({
     setState({ status: "loading" });
   }
 
+  function openArchive(): void {
+    const returnTo = `/diary${buildDiaryListRequest(filters).search}`;
+    const next = createDiaryArchiveLocation(returnTo);
+    window.history.pushState(null, "", next);
+    setArchiveLocation(getDiaryArchiveLocation(window.location.search));
+    setLocation({ diaryId: null, returnTo: "/diary" });
+    setArchivedDetailLocation({
+      diaryId: null,
+      returnTo: createDiaryArchiveLocation(returnTo),
+    });
+  }
+
+  function closeArchive(): void {
+    const returnTo = getSafeDiaryReturnTo(archiveLocation.returnTo);
+    window.history.pushState(null, "", returnTo);
+    const restored = readDiaryFilters(
+      new URL(returnTo, window.location.origin).search,
+    );
+    setFilters(restored);
+    setSearchDraft(restored.q);
+    setTagDraft(restored.tag);
+    setMoodDraft(restored.mood);
+    setArchiveLocation({ archived: false, returnTo: "/diary" });
+    setState({ status: "loading" });
+  }
+
+  function openArchivedDiary(id: string): void {
+    const archiveUrl = window.location.pathname + window.location.search;
+    saveDiaryScrollPosition(
+      getDiaryScrollStorage(window),
+      archiveUrl,
+      window.scrollY,
+    );
+    const next = createArchivedDiaryDetailLocation(id, archiveUrl);
+    window.history.pushState(null, "", next);
+    setArchiveLocation({ archived: false, returnTo: "/diary" });
+    setArchivedDetailLocation(
+      getArchivedDiaryDetailLocation(window.location.search),
+    );
+  }
+
+  function closeArchivedDiary(): void {
+    const returnTo = getSafeDiaryArchiveReturnTo(
+      archivedDetailLocation.returnTo,
+    );
+    window.history.pushState(null, "", returnTo);
+    setArchivedDetailLocation({ diaryId: null, returnTo });
+    setArchiveLocation(getDiaryArchiveLocation(window.location.search));
+  }
+
+  async function archiveDiary(id: string): Promise<void> {
+    if (archiveInFlight.current) return;
+    archiveInFlight.current = true;
+    setArchiving(true);
+    setActionError("");
+    try {
+      await api.request(`/diary/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      closeDiary();
+      setReloadKey((value) => value + 1);
+    } catch {
+      setActionError("归档日记失败，请稍后重试。");
+    } finally {
+      archiveInFlight.current = false;
+      setArchiving(false);
+    }
+  }
+
+  async function restoreDiary(id: string): Promise<void> {
+    if (restoreInFlight.current) return;
+    restoreInFlight.current = true;
+    setRestoring(true);
+    setActionError("");
+    try {
+      await api.request(`/diary/archived/${encodeURIComponent(id)}/restore`, {
+        method: "POST",
+      });
+      const activeReturnTo = getDiaryArchiveLocation(
+        new URL(
+          archivedDetailLocation.returnTo,
+          window.location.origin,
+        ).search,
+      ).returnTo;
+      window.history.replaceState(null, "", activeReturnTo);
+      const restored = readDiaryFilters(
+        new URL(activeReturnTo, window.location.origin).search,
+      );
+      setFilters(restored);
+      setSearchDraft(restored.q);
+      setTagDraft(restored.tag);
+      setMoodDraft(restored.mood);
+      setArchivedDetailLocation({ diaryId: null, returnTo: "/diary" });
+      setArchiveLocation({ archived: false, returnTo: "/diary" });
+      setState({ status: "loading" });
+      setReloadKey((value) => value + 1);
+    } catch {
+      setActionError("恢复日记失败，请稍后重试。");
+    } finally {
+      restoreInFlight.current = false;
+      setRestoring(false);
+    }
+  }
+
   const createInvalid = !title.trim() || !content.trim() || !date.trim();
   const updateInvalid =
     !editingTitle.trim() || !editingContent.trim() || !editingDate.trim();
@@ -454,7 +652,15 @@ export function DiaryPageContent({
         eyebrow="Personal journal"
         title="Diary"
         description={settings.page_copy.diary_subtitle ?? "按时间记录、查看和整理属于蕾蕾的日常。"}
-        action={isDetail ? (
+        action={isArchivedDetail ? (
+          <button className="secondary-button" onClick={closeArchivedDiary}>
+            返回归档列表
+          </button>
+        ) : isArchived ? (
+          <button className="secondary-button" onClick={closeArchive}>
+            返回日记列表
+          </button>
+        ) : isDetail ? (
           <button className="secondary-button" disabled={updating} onClick={closeDiary}>
             返回日记列表
           </button>
@@ -479,7 +685,23 @@ export function DiaryPageContent({
         </section>
       )}
 
-      {isDetail ? (
+      {isArchivedDetail ? (
+        <ArchivedDiaryDetail
+          state={archivedDetailState}
+          diary={archivedDiary}
+          restoring={restoring}
+          onBack={closeArchivedDiary}
+          onRestore={(id) => void restoreDiary(id)}
+          onRetry={() => setArchiveReloadKey((value) => value + 1)}
+        />
+      ) : isArchived ? (
+        <ArchivedDiaryList
+          state={archivedState}
+          onBack={closeArchive}
+          onOpen={openArchivedDiary}
+          onRetry={() => setArchiveReloadKey((value) => value + 1)}
+        />
+      ) : isDetail ? (
         <DiaryDetail
           state={detailState}
           diary={selectedDiary}
@@ -502,6 +724,8 @@ export function DiaryPageContent({
           onEdit={beginEditing}
           onCancel={() => setEditing(false)}
           onSave={handleUpdate}
+          onArchive={(id) => void archiveDiary(id)}
+          archiving={archiving}
           onBack={closeDiary}
           invalid={updateInvalid}
         />
@@ -572,6 +796,9 @@ export function DiaryPageContent({
               </>
             )}
           </section>
+          <button className="secondary-button" onClick={openArchive}>
+            查看归档
+          </button>
 
           {state.status === "ready" && state.diaries.length > 0 && (
             <>
@@ -626,6 +853,8 @@ function DiaryDetail(props: {
   onEdit(diary: DiaryEntry): void;
   onCancel(): void;
   onSave(): void;
+  onArchive(id: string): void;
+  archiving: boolean;
   onBack(): void;
   invalid: boolean;
 }) {
@@ -657,9 +886,136 @@ function DiaryDetail(props: {
           <p>{diary.content}</p>
           {diary.tags.length > 0 && <p>{diary.tags.map((tag) => `#${tag}`).join(" ")}</p>}
           <button className="secondary-button" onClick={() => props.onEdit(diary)}>编辑</button>
+          <button
+            className="secondary-button"
+            disabled={props.archiving}
+            onClick={() => {
+              if (window.confirm(`确定归档“${diary.title}”吗？`)) {
+                props.onArchive(diary.id);
+              }
+            }}
+          >
+            {props.archiving ? "归档中…" : "归档"}
+          </button>
           <button className="secondary-button" onClick={props.onBack}>返回日记列表</button>
         </>
       )}
+    </section>
+  );
+}
+
+function ArchivedDiaryList({
+  state,
+  onBack,
+  onOpen,
+  onRetry,
+}: {
+  state: LoadState;
+  onBack(): void;
+  onOpen(id: string): void;
+  onRetry(): void;
+}) {
+  if (state.status === "loading") return <DiaryLoading />;
+  if (state.status === "error") {
+    return (
+      <DiaryMessage
+        title="暂时无法读取归档日记"
+        description="请稍后重试。"
+        action={<button className="secondary-button" onClick={onRetry}>重新加载</button>}
+      />
+    );
+  }
+  if (state.diaries.length === 0) {
+    return (
+      <DiaryMessage
+        title="还没有归档日记"
+        description="归档后的日记会显示在这里。"
+        action={<button className="secondary-button" onClick={onBack}>返回日记列表</button>}
+      />
+    );
+  }
+  return (
+    <>
+      <section className="memory-message">
+        <h2>已归档日记</h2>
+        <p>共 {state.count} 篇，按最近更新时间排列。</p>
+      </section>
+      <section className="memory-grid">
+        {state.diaries.map((diary) => (
+          <article className="memory-card" key={diary.id}>
+            <div className="memory-card-topline">
+              <span>{formatDiaryDate(diary.date)}</span>
+              {diary.mood && <span>{diary.mood}</span>}
+            </div>
+            <h2>{diary.title}</h2>
+            <p>{diary.content.length > 160
+              ? `${diary.content.slice(0, 160)}…`
+              : diary.content}</p>
+            {diary.tags.length > 0 && (
+              <p>{diary.tags.map((tag) => `#${tag}`).join(" ")}</p>
+            )}
+            <button className="secondary-button" onClick={() => onOpen(diary.id)}>
+              查看详情
+            </button>
+          </article>
+        ))}
+      </section>
+    </>
+  );
+}
+
+function ArchivedDiaryDetail({
+  diary,
+  onBack,
+  onRestore,
+  onRetry,
+  restoring,
+  state,
+}: {
+  diary: DiaryEntry | null;
+  onBack(): void;
+  onRestore(id: string): void;
+  onRetry(): void;
+  restoring: boolean;
+  state: DetailState;
+}) {
+  if (state === "loading") {
+    return <DiaryMessage title="正在读取归档日记" description="详情加载中…" />;
+  }
+  if (state === "error" || !diary) {
+    return (
+      <DiaryMessage
+        title="无法读取归档日记"
+        description="该日记不存在、无权访问或暂时不可用。"
+        action={
+          <>
+            <button className="secondary-button" onClick={onRetry}>重新加载</button>
+            <button className="secondary-button" onClick={onBack}>返回归档列表</button>
+          </>
+        }
+      />
+    );
+  }
+  return (
+    <section className="memory-message">
+      <p>已归档日记</p>
+      <div className="memory-card-topline">
+        <span>{formatDiaryDate(diary.date)}</span>
+        {diary.mood && <span>{diary.mood}</span>}
+      </div>
+      <h2>{diary.title}</h2>
+      <p>{diary.content}</p>
+      {diary.tags.length > 0 && (
+        <p>{diary.tags.map((tag) => `#${tag}`).join(" ")}</p>
+      )}
+      <button
+        className="secondary-button"
+        disabled={restoring}
+        onClick={() => onRestore(diary.id)}
+      >
+        {restoring ? "恢复中…" : "恢复"}
+      </button>
+      <button className="secondary-button" onClick={onBack}>返回归档列表</button>
     </section>
   );
 }

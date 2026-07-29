@@ -71,6 +71,13 @@
       "when": 1785320286385,
       "tag": "0009_soft_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785322904338,
+      "tag": "0010_many_nico_minoru",
+      "breakpoints": true
     }
   ]
 }

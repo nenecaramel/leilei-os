@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Request, Response } from "express";
 import { DiaryDomainError } from "../src/domains/diary/diary-service.js";
-import { createListDiariesApiHandler } from "../src/web-api/diary-router.js";
+import {
+  createArchiveDiaryApiHandler,
+  createListArchivedDiariesApiHandler,
+  createListDiariesApiHandler,
+  createReadArchivedDiaryApiHandler,
+  createRestoreDiaryApiHandler,
+} from "../src/web-api/diary-router.js";
 
 function responseRecorder() {
   const result: { status?: number; body?: unknown } = {};
@@ -71,3 +77,87 @@ test("diary API returns a generic 400 without private query content", async () =
     },
   });
 });
+
+test("Diary archived API uses authenticated ownership and safe success payloads", async () => {
+  const calls: unknown[] = [];
+  const service = {
+    async listArchivedDiaries(input: unknown) {
+      calls.push(["list", input]);
+      return { diaries: [], metadata: { count: 0 } };
+    },
+    async readArchivedDiary(input: unknown) {
+      calls.push(["detail", input]);
+      return { id: "diary-1" };
+    },
+    async archiveDiary(input: unknown) {
+      calls.push(["archive", input]);
+    },
+    async restoreDiary(input: unknown) {
+      calls.push(["restore", input]);
+    },
+  };
+  const request = {
+    webUserId: "owner",
+    params: { id: "diary-1" },
+  } as unknown as Request;
+
+  for (const handler of [
+    createListArchivedDiariesApiHandler({ diaryService: service as never }),
+    createReadArchivedDiaryApiHandler({ diaryService: service as never }),
+    createArchiveDiaryApiHandler({ diaryService: service as never }),
+    createRestoreDiaryApiHandler({ diaryService: service as never }),
+  ]) {
+    const { response } = responseRecorder();
+    await handler(request, response, () => {});
+  }
+  assert.deepEqual(calls, [
+    ["list", { userId: "owner" }],
+    ["detail", { userId: "owner", id: "diary-1" }],
+    ["archive", { userId: "owner", id: "diary-1" }],
+    ["restore", { userId: "owner", id: "diary-1" }],
+  ]);
+});
+
+test("Diary lifecycle API hides inaccessible records behind generic 404", async () => {
+  const handler = createArchiveDiaryApiHandler({
+    diaryService: {
+      async archiveDiary() {
+        throw new DiaryDomainError(
+          "DIARY_NOT_FOUND",
+          "Cross-user private diary exists.",
+        );
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+  await handler({
+    webUserId: "owner",
+    params: { id: "secret" },
+  } as unknown as Request, response, () => {});
+  assert.equal(result.status, 404);
+  assert.doesNotMatch(JSON.stringify(result.body), /cross-user|private/i);
+});
+
+for (const code of ["USER_NOT_FOUND", "USER_DISABLED"] as const) {
+  test(`Diary archived API maps ${code} to the existing unavailable response`, async () => {
+    const handler = createListArchivedDiariesApiHandler({
+      diaryService: {
+        async listArchivedDiaries() {
+          throw new DiaryDomainError(code, "private");
+        },
+      } as never,
+    });
+    const { result, response } = responseRecorder();
+    await handler({
+      webUserId: "owner",
+    } as unknown as Request, response, () => {});
+    assert.equal(result.status, 403);
+    assert.deepEqual(result.body, {
+      success: false,
+      error: {
+        code: "DIARY_UNAVAILABLE",
+        message: "Diary is unavailable for the authenticated user.",
+      },
+    });
+  });
+}

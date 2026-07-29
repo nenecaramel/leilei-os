@@ -14,6 +14,12 @@ import {
   toolCalls,
   users,
 } from "../../database/schema.js";
+import {
+  DrizzleLifecycleAuditPersistence,
+  type LifecycleActorType,
+  type LifecycleAuditPersistence,
+  type LifecycleChannel,
+} from "../lifecycle/lifecycle-audit-repository.js";
 
 export type DiaryUserRecord = {
   status: "active" | "disabled";
@@ -77,6 +83,13 @@ export type UpdateDiaryInput = {
   mood: string | null;
 };
 
+export type DiaryLifecycleMutationInput = {
+  id: string;
+  userId: string;
+  actorType: LifecycleActorType;
+  channel: LifecycleChannel;
+};
+
 export type PersistDiaryResult =
   | { outcome: "created"; diary: DiaryRecord }
   | { outcome: "replayed"; diary: DiaryRecord }
@@ -104,12 +117,30 @@ export interface DiaryRepository {
   updateDiary(
     input: UpdateDiaryInput,
   ): Promise<DiaryEntryRecord | null>;
+
+  findArchivedDiaries(
+    userId: string,
+    limit: number,
+  ): Promise<DiaryEntryRecord[]>;
+
+  findArchivedDiaryById(
+    userId: string,
+    id: string,
+  ): Promise<DiaryEntryRecord | null>;
+
+  archiveDiary(input: DiaryLifecycleMutationInput): Promise<boolean>;
+
+  restoreDiary(input: DiaryLifecycleMutationInput): Promise<boolean>;
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export class DrizzleDiaryRepository implements DiaryRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly lifecycleAudit: LifecycleAuditPersistence =
+      new DrizzleLifecycleAuditPersistence(),
+  ) {}
 
   async findUserById(
     userId: string,
@@ -130,7 +161,10 @@ export class DrizzleDiaryRepository implements DiaryRepository {
     limit: number,
     query: DiaryListQuery = {},
   ): Promise<DiaryEntryRecord[]> {
-    const conditions = [eq(diaryEntries.userId, userId)];
+    const conditions = [
+      eq(diaryEntries.userId, userId),
+      eq(diaryEntries.status, "active"),
+    ];
 
     if (query.q) {
       const escaped = query.q.replace(/[\\%_]/g, "\\$&");
@@ -197,6 +231,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         and(
           eq(diaryEntries.userId, userId),
           eq(diaryEntries.id, id),
+          eq(diaryEntries.status, "active"),
         ),
       )
       .limit(1);
@@ -221,6 +256,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           tags: diary.tags,
           mood: diary.mood,
           source: "chatgpt_mcp",
+          status: "active",
           idempotencyKey: diary.idempotencyKey,
           requestHash: diary.requestHash,
         })
@@ -342,6 +378,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         and(
           eq(diaryEntries.userId, input.userId),
           eq(diaryEntries.id, input.id),
+          eq(diaryEntries.status, "active"),
         ),
       )
       .returning({
@@ -356,6 +393,131 @@ export class DrizzleDiaryRepository implements DiaryRepository {
       });
 
     return updated ?? null;
+  }
+
+  async findArchivedDiaries(
+    userId: string,
+    limit: number,
+  ): Promise<DiaryEntryRecord[]> {
+    return this.db
+      .select({
+        id: diaryEntries.id,
+        title: diaryEntries.title,
+        content: diaryEntries.content,
+        date: diaryEntries.date,
+        tags: diaryEntries.tags,
+        mood: diaryEntries.mood,
+        createdAt: diaryEntries.createdAt,
+        updatedAt: diaryEntries.updatedAt,
+      })
+      .from(diaryEntries)
+      .where(
+        and(
+          eq(diaryEntries.userId, userId),
+          eq(diaryEntries.status, "archived"),
+        ),
+      )
+      .orderBy(
+        desc(diaryEntries.updatedAt),
+        desc(diaryEntries.id),
+      )
+      .limit(limit);
+  }
+
+  async findArchivedDiaryById(
+    userId: string,
+    id: string,
+  ): Promise<DiaryEntryRecord | null> {
+    const [diary] = await this.db
+      .select({
+        id: diaryEntries.id,
+        title: diaryEntries.title,
+        content: diaryEntries.content,
+        date: diaryEntries.date,
+        tags: diaryEntries.tags,
+        mood: diaryEntries.mood,
+        createdAt: diaryEntries.createdAt,
+        updatedAt: diaryEntries.updatedAt,
+      })
+      .from(diaryEntries)
+      .where(
+        and(
+          eq(diaryEntries.userId, userId),
+          eq(diaryEntries.id, id),
+          eq(diaryEntries.status, "archived"),
+        ),
+      )
+      .limit(1);
+
+    return diary ?? null;
+  }
+
+  async archiveDiary(
+    input: DiaryLifecycleMutationInput,
+  ): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const archived = await transaction
+        .update(diaryEntries)
+        .set({
+          status: "archived",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(diaryEntries.id, input.id),
+            eq(diaryEntries.userId, input.userId),
+            eq(diaryEntries.status, "active"),
+          ),
+        )
+        .returning({ id: diaryEntries.id });
+
+      if (archived.length !== 1) return false;
+
+      await this.lifecycleAudit.record(transaction, {
+        userId: input.userId,
+        resourceType: "diary",
+        resourceId: archived[0]!.id,
+        action: "archive",
+        actorType: input.actorType,
+        channel: input.channel,
+        metadata: {},
+      });
+      return true;
+    });
+  }
+
+  async restoreDiary(
+    input: DiaryLifecycleMutationInput,
+  ): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const restored = await transaction
+        .update(diaryEntries)
+        .set({
+          status: "active",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(diaryEntries.id, input.id),
+            eq(diaryEntries.userId, input.userId),
+            eq(diaryEntries.status, "archived"),
+          ),
+        )
+        .returning({ id: diaryEntries.id });
+
+      if (restored.length !== 1) return false;
+
+      await this.lifecycleAudit.record(transaction, {
+        userId: input.userId,
+        resourceType: "diary",
+        resourceId: restored[0]!.id,
+        action: "restore",
+        actorType: input.actorType,
+        channel: input.channel,
+        metadata: {},
+      });
+      return true;
+    });
   }
 
   private async insertAudit(

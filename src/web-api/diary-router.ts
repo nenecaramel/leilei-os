@@ -40,6 +40,25 @@ import {
         tags?: readonly string[];
         mood?: string | null;
       }): Promise<DiaryEntryResult>;
+
+      listArchivedDiaries(input: {
+        userId: string;
+      }): Promise<ListDiariesResult>;
+
+      readArchivedDiary(input: {
+        userId: string;
+        id: string;
+      }): Promise<DiaryEntryResult>;
+
+      archiveDiary(input: {
+        userId: string;
+        id: string;
+      }): Promise<void>;
+
+      restoreDiary(input: {
+        userId: string;
+        id: string;
+      }): Promise<void>;
     };
   };
   
@@ -49,11 +68,103 @@ import {
     const router = Router();
   
     router.get("/", createListDiariesApiHandler(dependencies));
+    router.get(
+      "/archived",
+      createListArchivedDiariesApiHandler(dependencies),
+    );
+    router.get(
+      "/archived/:id",
+      createReadArchivedDiaryApiHandler(dependencies),
+    );
+    router.post(
+      "/archived/:id/restore",
+      createRestoreDiaryApiHandler(dependencies),
+    );
     router.get("/:id", createReadDiaryApiHandler(dependencies));
     router.post("/", createCreateDiaryApiHandler(dependencies));
     router.patch("/:id", createUpdateDiaryApiHandler(dependencies));
+    router.delete("/:id", createArchiveDiaryApiHandler(dependencies));
   
     return router;
+  }
+
+  export function createListArchivedDiariesApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      try {
+        const data = await dependencies.diaryService.listArchivedDiaries({
+          userId: request.webUserId,
+        });
+        response.json({ success: true, data });
+      } catch (error) {
+        sendDiaryError(response, error);
+      }
+    };
+  }
+
+  export function createReadArchivedDiaryApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      try {
+        const data = await dependencies.diaryService.readArchivedDiary({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.id),
+        });
+        response.json({ success: true, data });
+      } catch (error) {
+        sendDiaryError(response, error);
+      }
+    };
+  }
+
+  export function createArchiveDiaryApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      try {
+        await dependencies.diaryService.archiveDiary({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.id),
+        });
+        response.json({ success: true });
+      } catch (error) {
+        sendDiaryError(response, error);
+      }
+    };
+  }
+
+  export function createRestoreDiaryApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      try {
+        await dependencies.diaryService.restoreDiary({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.id),
+        });
+        response.json({ success: true });
+      } catch (error) {
+        sendDiaryError(response, error);
+      }
+    };
   }
   
   export function createListDiariesApiHandler(
