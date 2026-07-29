@@ -322,6 +322,107 @@ test(
             .where(eq(diaryEntries.id, rollbackId));
           assert.equal(rolledBack?.status, "active");
 
+          const restoreRollbackId = randomUUID();
+          await transaction.insert(diaryEntries).values(
+            record(
+              restoreRollbackId,
+              owner,
+              "archived",
+              now,
+            ),
+          );
+          const failingRestoreRepository = new DrizzleDiaryRepository(
+            transaction as never,
+            {
+              async record() {
+                throw new Error("audit unavailable");
+              },
+            },
+          );
+          await assert.rejects(
+            failingRestoreRepository.restoreDiary({
+              id: restoreRollbackId,
+              userId: owner,
+              actorType: "user",
+              channel: "web",
+            }),
+            /audit unavailable/,
+          );
+          const [restoreRolledBack] = await transaction
+            .select({ status: diaryEntries.status })
+            .from(diaryEntries)
+            .where(eq(diaryEntries.id, restoreRollbackId));
+          assert.equal(restoreRolledBack?.status, "archived");
+          const restoreEvents = await transaction
+            .select({ id: resourceLifecycleEvents.id })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.resourceId, restoreRollbackId),
+              ),
+            );
+          assert.equal(restoreEvents.length, 0);
+
+          const crossUserActiveId = randomUUID();
+          const crossUserArchivedId = randomUUID();
+          await transaction.insert(diaryEntries).values([
+            record(crossUserActiveId, other, "active", now),
+            record(crossUserArchivedId, other, "archived", now),
+          ]);
+          assert.equal(await repository.archiveDiary({
+            id: crossUserActiveId,
+            userId: owner,
+            actorType: "user",
+            channel: "web",
+          }), false);
+          assert.equal(await repository.restoreDiary({
+            id: crossUserArchivedId,
+            userId: owner,
+            actorType: "user",
+            channel: "web",
+          }), false);
+          const crossUserRows = await transaction
+            .select({
+              id: diaryEntries.id,
+              status: diaryEntries.status,
+            })
+            .from(diaryEntries)
+            .where(
+              and(
+                eq(diaryEntries.id, crossUserActiveId),
+              ),
+            );
+          const crossUserArchivedRows = await transaction
+            .select({
+              id: diaryEntries.id,
+              status: diaryEntries.status,
+            })
+            .from(diaryEntries)
+            .where(eq(diaryEntries.id, crossUserArchivedId));
+          assert.equal(crossUserRows[0]?.status, "active");
+          assert.equal(crossUserArchivedRows[0]?.status, "archived");
+          const crossUserEvents = await transaction
+            .select({ id: resourceLifecycleEvents.id })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.resourceId, crossUserActiveId),
+              ),
+            );
+          const crossUserRestoreEvents = await transaction
+            .select({ id: resourceLifecycleEvents.id })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.resourceId, crossUserArchivedId),
+              ),
+            );
+          assert.equal(crossUserEvents.length, 0);
+          assert.equal(crossUserRestoreEvents.length, 0);
+
           throw new RollbackDiaryLifecycleTest();
         }),
         RollbackDiaryLifecycleTest,
