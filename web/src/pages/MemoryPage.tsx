@@ -1391,6 +1391,13 @@ function MemoryDetail({
           >
             {archiving ? "归档中…" : "归档"}
           </button>
+          <button
+            className="secondary-button"
+            disabled={archiving}
+            onClick={onBack}
+          >
+            返回记忆列表
+          </button>
         </>
       )}
     </section>
