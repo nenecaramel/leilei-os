@@ -192,6 +192,7 @@ export function MemoryPageContent({
   const archiveController = useRef<AbortController | null>(null);
   const archivedDetailController =
     useRef<AbortController | null>(null);
+  const archiveInFlight = useRef(false);
   const restoreInFlight = useRef(false);
   const pendingScrollRestore = useRef<number | null>(null);
   const tracker = useRef(createLatestMemoryRequestTracker());
@@ -607,15 +608,17 @@ export function MemoryPageContent({
     id: string,
     memoryKey: string,
   ) {
-    if (busy) {
+    if (busy || archiveInFlight.current) {
       return;
     }
+    archiveInFlight.current = true;
 
     const confirmed = window.confirm(
       `确定归档“${memoryKey.replaceAll("_", " ")}”吗？`,
     );
 
     if (!confirmed) {
+      archiveInFlight.current = false;
       return;
     }
 
@@ -637,9 +640,13 @@ export function MemoryPageContent({
       }
 
       setReloadKey((value) => value + 1);
+      if (isDetail) {
+        closeMemory();
+      }
     } catch {
       setActionError("归档记忆失败，请稍后重试。");
     } finally {
+      archiveInFlight.current = false;
       setArchivingId("");
     }
   }
@@ -826,7 +833,7 @@ export function MemoryPageContent({
         action={isDetail ? (
           <button
             className="secondary-button"
-            disabled={updatingId.length > 0}
+            disabled={busy}
             onClick={closeMemory}
           >
             返回记忆列表
@@ -883,6 +890,7 @@ export function MemoryPageContent({
           editingContent={editingContent}
           editingTags={editingTags}
           updating={updatingId === detailMemory?.id}
+          archiving={archivingId === detailMemory?.id}
           onEditingContentChange={(value) => {
             setEditingContent(value);
             setActionError("");
@@ -905,6 +913,9 @@ export function MemoryPageContent({
           }}
           onSave={() => {
             if (detailMemory) void handleUpdate(detailMemory.id);
+          }}
+          onArchive={(memory) => {
+            void handleArchive(memory.id, memory.key);
           }}
           onBack={closeMemory}
         />
@@ -1069,13 +1080,6 @@ export function MemoryPageContent({
 
                   <section className="memory-grid">
                   {visibleMemories.map((memory) => {
-                    const editing =
-                      editingId === memory.id;
-                    const updating =
-                      updatingId === memory.id;
-                    const archiving =
-                      archivingId === memory.id;
-
                     return (
                       <article
                         className="memory-card"
@@ -1087,103 +1091,14 @@ export function MemoryPageContent({
                           {memory.key.replaceAll("_", " ")}
                         </h2>
                         <MemoryTags tags={memory.tags} />
-
-                        {editing ? (
-                          <>
-                            <textarea
-                              value={editingContent}
-                              disabled={updating || archiving}
-                              onChange={(event) => {
-                                setEditingContent(
-                                  event.target.value,
-                                );
-                                setActionError("");
-                              }}
-                            />
-                            <input
-                              aria-label="编辑记忆标签"
-                              value={editingTags}
-                              disabled={updating || archiving}
-                              onChange={(event) => {
-                                setEditingTags(event.target.value);
-                                setActionError("");
-                              }}
-                            />
-
-                            <button
-                              className="secondary-button"
-                              disabled={
-                                updating ||
-                                archiving ||
-                                !editingContent.trim()
-                              }
-                              onClick={() =>
-                                handleUpdate(memory.id)
-                              }
-                            >
-                              {updating
-                                ? "保存中…"
-                                : "保存修改"}
-                            </button>
-
-                            <button
-                              className="secondary-button"
-                              disabled={updating || archiving}
-                              onClick={() => {
-                                setEditingId("");
-                                setEditingContent("");
-                                setEditingTags("");
-                                setActionError("");
-                              }}
-                            >
-                              取消
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <p>{memory.content}</p>
-
-                            <button
-                              className="secondary-button"
-                              disabled={busy}
-                              onClick={() => openMemory(memory.id)}
-                            >
-                              查看详情
-                            </button>
-
-                            <button
-                              className="secondary-button"
-                              disabled={busy}
-                              onClick={() => {
-                                setEditingId(memory.id);
-                                setEditingContent(
-                                  memory.content,
-                                );
-                                setEditingTags(
-                                  memory.tags.join(", "),
-                                );
-                                setActionError("");
-                              }}
-                            >
-                              编辑
-                            </button>
-
-                            <button
-                              className="secondary-button"
-                              disabled={busy}
-                              onClick={() =>
-                                handleArchive(
-                                  memory.id,
-                                  memory.key,
-                                )
-                              }
-                            >
-                              {archiving
-                                ? "归档中…"
-                                : "归档"}
-                            </button>
-                          </>
-                        )}
+                        <p>{memory.content}</p>
+                        <button
+                          className="secondary-button"
+                          disabled={busy}
+                          onClick={() => openMemory(memory.id)}
+                        >
+                          查看详情
+                        </button>
                       </article>
                     );
                   })}
@@ -1277,7 +1192,9 @@ function ArchivedMemoryList({
     <>
       <section className="memory-message">
         <h2>已归档记忆</h2>
-        <p>共 {state.result.metadata.count} 条</p>
+        <p>
+          共 {state.result.metadata.count} 条，按更新时间从新到旧排列。
+        </p>
       </section>
       <section className="memory-grid">
         {state.result.memories.map((memory) => (
@@ -1371,11 +1288,13 @@ function MemoryDetail({
   editingContent,
   editingTags,
   updating,
+  archiving,
   onEditingContentChange,
   onEditingTagsChange,
   onEdit,
   onCancel,
   onSave,
+  onArchive,
   onBack,
 }: {
   state: DetailState;
@@ -1383,11 +1302,13 @@ function MemoryDetail({
   editingContent: string;
   editingTags: string;
   updating: boolean;
+  archiving: boolean;
   onEditingContentChange(value: string): void;
   onEditingTagsChange(value: string): void;
   onEdit(memory: MemoryRecord): void;
   onCancel(): void;
   onSave(): void;
+  onArchive(memory: MemoryRecord): void;
   onBack(): void;
 }) {
   if (state.status === "loading") {
@@ -1458,12 +1379,17 @@ function MemoryDetail({
           <p>{memory.content}</p>
           <button
             className="secondary-button"
+            disabled={archiving}
             onClick={() => onEdit(memory)}
           >
             编辑
           </button>
-          <button className="secondary-button" onClick={onBack}>
-            返回记忆列表
+          <button
+            className="secondary-button"
+            disabled={archiving}
+            onClick={() => onArchive(memory)}
+          >
+            {archiving ? "归档中…" : "归档"}
           </button>
         </>
       )}

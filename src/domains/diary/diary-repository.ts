@@ -418,8 +418,8 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         ),
       )
       .orderBy(
-        desc(diaryEntries.updatedAt),
-        desc(diaryEntries.id),
+        desc(diaryEntries.date),
+        desc(diaryEntries.createdAt),
       )
       .limit(limit);
   }
@@ -460,7 +460,6 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         .update(diaryEntries)
         .set({
           status: "archived",
-          updatedAt: new Date(),
         })
         .where(
           and(
@@ -494,7 +493,6 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         .update(diaryEntries)
         .set({
           status: "active",
-          updatedAt: new Date(),
         })
         .where(
           and(

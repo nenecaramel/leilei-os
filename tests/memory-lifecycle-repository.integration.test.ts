@@ -30,7 +30,10 @@ test(
           const ownerId = randomUUID();
           const otherUserId = randomUUID();
           const archiveListUserId = randomUUID();
+          const lifecycleOrderUserId = randomUUID();
           const now = new Date("2026-07-29T00:00:00.000Z");
+          const contentTimestamp =
+            new Date("2026-07-20T00:00:00.000Z");
 
           await transaction.insert(users).values([
             {
@@ -53,6 +56,14 @@ test(
               id: archiveListUserId,
               email: `memory-archive-list-${archiveListUserId}@example.invalid`,
               displayName: "Memory archive list owner",
+              status: "active",
+              createdAt: now,
+              updatedAt: now,
+            },
+            {
+              id: lifecycleOrderUserId,
+              email: `memory-lifecycle-order-${lifecycleOrderUserId}@example.invalid`,
+              displayName: "Memory lifecycle ordering owner",
               status: "active",
               createdAt: now,
               updatedAt: now,
@@ -110,6 +121,8 @@ test(
                 visibility: fixture.visibility,
                 source: "integration",
                 status: fixture.status,
+                createdAt: contentTimestamp,
+                updatedAt: contentTimestamp,
               },
               {
                 id: archiveId,
@@ -121,6 +134,8 @@ test(
                 visibility: fixture.visibility,
                 source: "integration",
                 status: fixture.status,
+                createdAt: contentTimestamp,
+                updatedAt: contentTimestamp,
               },
             ]);
           }
@@ -214,6 +229,175 @@ test(
             transaction as never,
           );
 
+          const newerContentId =
+            "00000000-0000-4000-8000-000000000301";
+          const olderContentId =
+            "00000000-0000-4000-8000-000000000302";
+          const newerContentUpdatedAt =
+            new Date("2026-07-29T00:00:00.000Z");
+          const olderContentUpdatedAt =
+            new Date("2026-07-24T00:00:00.000Z");
+          await transaction.insert(coreMemories).values([
+            {
+              id: newerContentId,
+              userId: lifecycleOrderUserId,
+              category: "goal",
+              key: "newer_content_memory",
+              content: "Newer content timestamp",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "active",
+              updatedAt: newerContentUpdatedAt,
+            },
+            {
+              id: olderContentId,
+              userId: lifecycleOrderUserId,
+              category: "goal",
+              key: "older_content_memory",
+              content: "Older content timestamp",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "active",
+              updatedAt: olderContentUpdatedAt,
+            },
+          ]);
+          assert.equal(await repository.archiveMemory({
+            id: newerContentId,
+            userId: lifecycleOrderUserId,
+            actorType: "user",
+            channel: "web",
+          }), true);
+          assert.equal(await repository.archiveMemory({
+            id: olderContentId,
+            userId: lifecycleOrderUserId,
+            actorType: "user",
+            channel: "web",
+          }), true);
+          assert.deepEqual(
+            (await repository.findArchivedAssistantMemories({
+              userId: lifecycleOrderUserId,
+              limit: 10,
+            })).map(({ id }) => id),
+            [newerContentId, olderContentId],
+            "later archive action cannot override content updated_at ordering",
+          );
+          assert.equal(await repository.restoreMemory({
+            id: newerContentId,
+            userId: lifecycleOrderUserId,
+            actorType: "user",
+            channel: "web",
+          }), true);
+          assert.equal(await repository.restoreMemory({
+            id: olderContentId,
+            userId: lifecycleOrderUserId,
+            actorType: "user",
+            channel: "web",
+          }), true);
+          const lifecycleOrderRows = await transaction
+            .select({
+              id: coreMemories.id,
+              status: coreMemories.status,
+              updatedAt: coreMemories.updatedAt,
+            })
+            .from(coreMemories)
+            .where(eq(coreMemories.userId, lifecycleOrderUserId));
+          assert.deepEqual(
+            new Map(
+              lifecycleOrderRows.map((row) => [
+                row.id,
+                {
+                  status: row.status,
+                  updatedAt: row.updatedAt.toISOString(),
+                },
+              ]),
+            ),
+            new Map([
+              [
+                newerContentId,
+                {
+                  status: "active",
+                  updatedAt: newerContentUpdatedAt.toISOString(),
+                },
+              ],
+              [
+                olderContentId,
+                {
+                  status: "active",
+                  updatedAt: olderContentUpdatedAt.toISOString(),
+                },
+              ],
+            ]),
+            "active -> archive -> restore preserves Memory updated_at",
+          );
+          const lifecycleOrderEvents = await transaction
+            .select({
+              resourceId: resourceLifecycleEvents.resourceId,
+              action: resourceLifecycleEvents.action,
+              actorType: resourceLifecycleEvents.actorType,
+              channel: resourceLifecycleEvents.channel,
+              metadata: resourceLifecycleEvents.metadata,
+              createdAt: resourceLifecycleEvents.createdAt,
+            })
+            .from(resourceLifecycleEvents)
+            .where(
+              inArray(resourceLifecycleEvents.resourceId, [
+                newerContentId,
+                olderContentId,
+              ]),
+            );
+          assert.equal(lifecycleOrderEvents.length, 4);
+          assert.deepEqual(
+            lifecycleOrderEvents
+              .map(({ createdAt: _createdAt, ...event }) => event)
+              .sort((left, right) =>
+                `${left.action}:${left.resourceId}`.localeCompare(
+                  `${right.action}:${right.resourceId}`,
+                )
+              ),
+            [
+              {
+                resourceId: olderContentId,
+                action: "archive",
+                actorType: "user",
+                channel: "web",
+                metadata: {},
+              },
+              {
+                resourceId: newerContentId,
+                action: "archive",
+                actorType: "user",
+                channel: "web",
+                metadata: {},
+              },
+              {
+                resourceId: olderContentId,
+                action: "restore",
+                actorType: "user",
+                channel: "web",
+                metadata: {},
+              },
+              {
+                resourceId: newerContentId,
+                action: "restore",
+                actorType: "user",
+                channel: "web",
+                metadata: {},
+              },
+            ],
+          );
+          assert.ok(
+            lifecycleOrderEvents.every(({ resourceId, createdAt }) =>
+              createdAt.getTime() >
+              (resourceId === newerContentId
+                ? newerContentUpdatedAt
+                : olderContentUpdatedAt
+              ).getTime()
+            ),
+            "lifecycle events keep their own later created_at",
+          );
+
           assert.deepEqual(
             (await repository.findArchivedAssistantMemories({
               userId: archiveListUserId,
@@ -273,6 +457,8 @@ test(
             visibility: "assistant" as const,
             source: "integration",
             status: "archived" as const,
+            createdAt: contentTimestamp,
+            updatedAt: contentTimestamp,
           };
           await transaction.insert(coreMemories).values(restoreFields);
           assert.equal(
@@ -291,6 +477,10 @@ test(
             .limit(1);
           assert.ok(restored);
           assert.equal(restored.status, "active");
+          assert.equal(
+            restored.updatedAt.toISOString(),
+            contentTimestamp.toISOString(),
+          );
           for (const field of [
             "category",
             "key",
@@ -396,6 +586,7 @@ test(
               id: coreMemories.id,
               content: coreMemories.content,
               status: coreMemories.status,
+              updatedAt: coreMemories.updatedAt,
             })
             .from(coreMemories)
             .where(
@@ -422,6 +613,16 @@ test(
                 : fixture.status,
             );
           }
+          assert.notEqual(
+            byId.get(updateIds.get("eligible")!)?.updatedAt.toISOString(),
+            contentTimestamp.toISOString(),
+            "normal Memory content editing changes updated_at",
+          );
+          assert.equal(
+            byId.get(archiveIds.get("eligible")!)?.updatedAt.toISOString(),
+            contentTimestamp.toISOString(),
+            "archive preserves the content updated_at",
+          );
 
           const lifecycleEvents = await transaction
             .select({
@@ -447,6 +648,14 @@ test(
               (event) => event.createdAt instanceof Date,
             ),
             "successful lifecycle events receive a database created_at",
+          );
+          assert.ok(
+            lifecycleEvents.every(
+              (event) =>
+                event.createdAt.getTime() >
+                contentTimestamp.getTime(),
+            ),
+            "lifecycle created_at is independent from content updated_at",
           );
           assert.deepEqual(
             lifecycleEvents
@@ -553,6 +762,20 @@ test(
               [rollbackRestoreId, "archived"],
             ]),
             "audit insert failure rolls back the lifecycle state update",
+          );
+          const rollbackEvents = await transaction
+            .select({ id: resourceLifecycleEvents.id })
+            .from(resourceLifecycleEvents)
+            .where(
+              inArray(resourceLifecycleEvents.resourceId, [
+                rollbackArchiveId,
+                rollbackRestoreId,
+              ]),
+            );
+          assert.equal(
+            rollbackEvents.length,
+            0,
+            "failed audit persistence leaves zero lifecycle events",
           );
 
           throw new RollbackMemoryLifecycleTest();

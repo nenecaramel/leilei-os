@@ -30,6 +30,7 @@ test(
         database.db.transaction(async (transaction) => {
           const owner = randomUUID();
           const other = randomUUID();
+          const orderOwner = randomUUID();
           const exactId = randomUUID();
           const partialId = randomUUID();
           const now = new Date("2026-07-26T08:00:00Z");
@@ -189,37 +190,76 @@ test(
               email: `diary-life-${other}@example.invalid`,
               displayName: "Diary lifecycle other",
             },
+            {
+              id: orderOwner,
+              email: `diary-order-${orderOwner}@example.invalid`,
+              displayName: "Diary ordering owner",
+            },
           ]);
           const record = (
             id: string,
             userId: string,
             status: "active" | "archived",
-            updatedAt: Date,
+            overrides: {
+              date?: string;
+              createdAt?: Date;
+              updatedAt?: Date;
+            } = {},
           ) => ({
             id,
             userId,
             title: `Diary ${id}`,
             content: "Lifecycle integration content",
-            date: "2026-07-29",
+            date: overrides.date ?? "2026-07-29",
             tags: [],
             source: "chatgpt_mcp" as const,
             status,
             idempotencyKey: `integration:${id}`,
             requestHash: createHash("sha256").update(id).digest("hex"),
-            createdAt: now,
-            updatedAt,
+            createdAt: overrides.createdAt ?? now,
+            updatedAt: overrides.updatedAt ?? now,
           });
           await transaction.insert(diaryEntries).values([
-            record(activeId, owner, "active", now),
+            record(activeId, owner, "active", {
+              createdAt: new Date("2020-01-01T00:00:00Z"),
+              updatedAt: new Date("2020-01-01T00:00:00Z"),
+            }),
             record(
               archivedOlder,
-              owner,
-              "archived",
-              new Date("2026-07-28T00:00:00Z"),
+              orderOwner,
+              "active",
+              {
+                date: "2026-07-24",
+                createdAt: new Date("2026-07-24T10:00:00Z"),
+                updatedAt: new Date("2026-07-28T00:00:00Z"),
+              },
             ),
-            record(archivedTieLow, owner, "archived", now),
-            record(archivedTieHigh, owner, "archived", now),
-            record(randomUUID(), other, "archived", now),
+            record(
+              archivedTieLow,
+              orderOwner,
+              "active",
+              {
+                date: "2026-07-29",
+                createdAt: new Date("2026-07-29T07:00:00Z"),
+                updatedAt: new Date("2026-07-21T00:00:00Z"),
+              },
+            ),
+            record(
+              archivedTieHigh,
+              orderOwner,
+              "active",
+              {
+                date: "2026-07-29",
+                createdAt: new Date("2026-07-29T09:00:00Z"),
+                updatedAt: new Date("2026-07-20T00:00:00Z"),
+              },
+            ),
+            record(
+              randomUUID(),
+              other,
+              "archived",
+              { date: "2026-08-01" },
+            ),
           ]);
 
           const repository = new DrizzleDiaryRepository(
@@ -237,15 +277,150 @@ test(
               "code" in error &&
               error.code === "DIARY_NOT_FOUND",
           );
+          for (const id of [
+            archivedTieHigh,
+            archivedTieLow,
+            archivedOlder,
+          ]) {
+            assert.equal(await repository.archiveDiary({
+              id,
+              userId: orderOwner,
+              actorType: "user",
+              channel: "web",
+            }), true);
+          }
           assert.deepEqual(
-            (await repository.findArchivedDiaries(owner, 2))
+            (await repository.findArchivedDiaries(orderOwner, 3))
               .map(({ id }) => id),
-            [archivedTieHigh, archivedTieLow],
+            [archivedTieHigh, archivedTieLow, archivedOlder],
+          );
+          const archivedOrderingRows = await transaction
+            .select({
+              id: diaryEntries.id,
+              updatedAt: diaryEntries.updatedAt,
+            })
+            .from(diaryEntries)
+            .where(
+              eq(diaryEntries.userId, orderOwner),
+            );
+          assert.deepEqual(
+            new Map(
+              archivedOrderingRows.map((row) => [
+                row.id,
+                row.updatedAt.toISOString(),
+              ]),
+            ),
+            new Map([
+              [archivedOlder, "2026-07-28T00:00:00.000Z"],
+              [archivedTieLow, "2026-07-21T00:00:00.000Z"],
+              [archivedTieHigh, "2026-07-20T00:00:00.000Z"],
+            ]),
+            "reverse archive order does not change content updated_at",
+          );
+          for (const id of [
+            archivedTieHigh,
+            archivedTieLow,
+            archivedOlder,
+          ]) {
+            assert.equal(await repository.restoreDiary({
+              id,
+              userId: orderOwner,
+              actorType: "user",
+              channel: "web",
+            }), true);
+          }
+          const restoredOrderingRows = await transaction
+            .select({
+              id: diaryEntries.id,
+              updatedAt: diaryEntries.updatedAt,
+            })
+            .from(diaryEntries)
+            .where(eq(diaryEntries.userId, orderOwner));
+          assert.deepEqual(
+            new Map(
+              restoredOrderingRows.map((row) => [
+                row.id,
+                row.updatedAt.toISOString(),
+              ]),
+            ),
+            new Map([
+              [archivedOlder, "2026-07-28T00:00:00.000Z"],
+              [archivedTieLow, "2026-07-21T00:00:00.000Z"],
+              [archivedTieHigh, "2026-07-20T00:00:00.000Z"],
+            ]),
+            "restore also preserves content updated_at",
+          );
+          const orderingEvents = await transaction
+            .select({
+              resourceId: resourceLifecycleEvents.resourceId,
+              action: resourceLifecycleEvents.action,
+              actorType: resourceLifecycleEvents.actorType,
+              channel: resourceLifecycleEvents.channel,
+              metadata: resourceLifecycleEvents.metadata,
+              createdAt: resourceLifecycleEvents.createdAt,
+            })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.userId, orderOwner),
+              ),
+            );
+          assert.equal(orderingEvents.length, 6);
+          assert.ok(
+            orderingEvents.every(
+              ({ resourceId, createdAt }) =>
+                createdAt.getTime() >
+                new Map([
+                  [archivedOlder, new Date("2026-07-28T00:00:00Z")],
+                  [archivedTieLow, new Date("2026-07-21T00:00:00Z")],
+                  [archivedTieHigh, new Date("2026-07-20T00:00:00Z")],
+                ]).get(resourceId)!.getTime(),
+            ),
+            "Diary lifecycle created_at is independent from content updated_at",
+          );
+          assert.ok(
+            orderingEvents.every(
+              ({ actorType, channel, metadata }) =>
+                actorType === "user" &&
+                channel === "web" &&
+              JSON.stringify(metadata) === "{}",
+            ),
+          );
+          assert.deepEqual(
+            orderingEvents
+              .map(({ resourceId, action }) => `${resourceId}:${action}`)
+              .sort(),
+            [
+              archivedOlder,
+              archivedTieLow,
+              archivedTieHigh,
+            ].flatMap((id) => [
+              `${id}:archive`,
+              `${id}:restore`,
+            ]).sort(),
           );
           assert.equal(
             await repository.findArchivedDiaryById(owner, activeId),
             null,
           );
+
+          const edited = await repository.updateDiary({
+            id: activeId,
+            userId: owner,
+            title: "Edited lifecycle diary",
+            content: "Edited lifecycle content",
+            date: "2026-07-29",
+            tags: ["edited"],
+            mood: "calm",
+          });
+          assert.ok(edited);
+          assert.notEqual(
+            edited.updatedAt.toISOString(),
+            "2020-01-01T00:00:00.000Z",
+            "normal content editing changes updated_at",
+          );
+          const contentUpdatedAt = edited.updatedAt.toISOString();
 
           assert.equal(await repository.archiveDiary({
             id: activeId,
@@ -253,6 +428,15 @@ test(
             actorType: "user",
             channel: "web",
           }), true);
+          const [archivedEdited] = await transaction
+            .select({ updatedAt: diaryEntries.updatedAt })
+            .from(diaryEntries)
+            .where(eq(diaryEntries.id, activeId));
+          assert.equal(
+            archivedEdited?.updatedAt.toISOString(),
+            contentUpdatedAt,
+            "archive preserves Diary content updated_at",
+          );
           assert.equal(await repository.archiveDiary({
             id: activeId,
             userId: owner,
@@ -265,6 +449,40 @@ test(
             actorType: "user",
             channel: "web",
           }), true);
+          assert.equal(await repository.restoreDiary({
+            id: activeId,
+            userId: owner,
+            actorType: "user",
+            channel: "web",
+          }), false);
+          const [roundTripped] = await transaction
+            .select()
+            .from(diaryEntries)
+            .where(eq(diaryEntries.id, activeId));
+          assert.ok(roundTripped);
+          assert.equal(roundTripped.status, "active");
+          assert.equal(roundTripped.updatedAt.toISOString(), contentUpdatedAt);
+          assert.equal(
+            roundTripped.createdAt.toISOString(),
+            "2020-01-01T00:00:00.000Z",
+          );
+          assert.deepEqual(
+            {
+              title: roundTripped.title,
+              content: roundTripped.content,
+              date: roundTripped.date,
+              tags: roundTripped.tags,
+              mood: roundTripped.mood,
+            },
+            {
+              title: "Edited lifecycle diary",
+              content: "Edited lifecycle content",
+              date: "2026-07-29",
+              tags: ["edited"],
+              mood: "calm",
+            },
+            "archive and restore preserve all content fields",
+          );
 
           const events = await transaction
             .select({
@@ -272,6 +490,7 @@ test(
               actorType: resourceLifecycleEvents.actorType,
               channel: resourceLifecycleEvents.channel,
               metadata: resourceLifecycleEvents.metadata,
+              createdAt: resourceLifecycleEvents.createdAt,
             })
             .from(resourceLifecycleEvents)
             .where(
@@ -280,7 +499,16 @@ test(
                 eq(resourceLifecycleEvents.resourceId, activeId),
               ),
             );
-          assert.deepEqual(events, [
+          assert.equal(events.length, 2);
+          assert.ok(
+            events.every(
+              (event) =>
+                event.createdAt.getTime() >=
+                new Date(contentUpdatedAt).getTime(),
+            ),
+            "lifecycle timestamps are recorded independently after the content update",
+          );
+          assert.deepEqual(events.map(({ createdAt: _createdAt, ...event }) => event), [
             {
               action: "archive",
               actorType: "user",
@@ -297,7 +525,7 @@ test(
 
           const rollbackId = randomUUID();
           await transaction.insert(diaryEntries).values(
-            record(rollbackId, owner, "active", now),
+            record(rollbackId, owner, "active"),
           );
           const failingRepository = new DrizzleDiaryRepository(
             transaction as never,
@@ -321,6 +549,16 @@ test(
             .from(diaryEntries)
             .where(eq(diaryEntries.id, rollbackId));
           assert.equal(rolledBack?.status, "active");
+          const archiveRollbackEvents = await transaction
+            .select({ id: resourceLifecycleEvents.id })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.resourceId, rollbackId),
+              ),
+            );
+          assert.equal(archiveRollbackEvents.length, 0);
 
           const restoreRollbackId = randomUUID();
           await transaction.insert(diaryEntries).values(
@@ -328,7 +566,6 @@ test(
               restoreRollbackId,
               owner,
               "archived",
-              now,
             ),
           );
           const failingRestoreRepository = new DrizzleDiaryRepository(
@@ -367,8 +604,8 @@ test(
           const crossUserActiveId = randomUUID();
           const crossUserArchivedId = randomUUID();
           await transaction.insert(diaryEntries).values([
-            record(crossUserActiveId, other, "active", now),
-            record(crossUserArchivedId, other, "archived", now),
+            record(crossUserActiveId, other, "active"),
+            record(crossUserArchivedId, other, "archived"),
           ]);
           assert.equal(await repository.archiveDiary({
             id: crossUserActiveId,
