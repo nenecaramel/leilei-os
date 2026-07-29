@@ -261,6 +261,79 @@ test(
             null,
           );
 
+          const restoreId = randomUUID();
+          const restoreFields = {
+            id: restoreId,
+            userId: archiveListUserId,
+            category: "project" as const,
+            key: `restore_${restoreId}`,
+            content: "Restore fixture",
+            tags: ["keep"],
+            visibility: "assistant" as const,
+            source: "integration",
+            status: "archived" as const,
+          };
+          await transaction.insert(coreMemories).values(restoreFields);
+          assert.equal(
+            await repository.restoreMemory({
+              id: restoreId,
+              userId: archiveListUserId,
+            }),
+            true,
+          );
+          const [restored] = await transaction
+            .select()
+            .from(coreMemories)
+            .where(eq(coreMemories.id, restoreId))
+            .limit(1);
+          assert.ok(restored);
+          assert.equal(restored.status, "active");
+          for (const field of [
+            "category",
+            "key",
+            "content",
+            "tags",
+            "source",
+            "visibility",
+          ] as const) {
+            assert.deepEqual(restored[field], restoreFields[field]);
+          }
+          assert.equal(
+            await repository.restoreMemory({
+              id: restoreId,
+              userId: archiveListUserId,
+            }),
+            false,
+          );
+
+          for (const key of [
+            "active_excluded",
+            "private_excluded",
+            "restricted_excluded",
+            "other_archived_excluded",
+          ]) {
+            const [row] = await transaction
+              .select({ id: coreMemories.id })
+              .from(coreMemories)
+              .where(eq(coreMemories.key, key))
+              .limit(1);
+            assert.ok(row);
+            assert.equal(
+              await repository.restoreMemory({
+                id: row.id,
+                userId: archiveListUserId,
+              }),
+              false,
+            );
+          }
+          assert.equal(
+            await repository.restoreMemory({
+              id: randomUUID(),
+              userId: archiveListUserId,
+            }),
+            false,
+          );
+
           for (const fixture of fixtures) {
             assert.equal(
               await repository.updateMemory({

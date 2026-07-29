@@ -9,8 +9,108 @@ import {
   createReadArchivedMemoryDetailApiHandler,
   createReadMemoryApiHandler,
   createReadMemoryDetailApiHandler,
+  createRestoreMemoryApiHandler,
   createUpdateMemoryApiHandler,
 } from "../src/web-api/memory-router.js";
+
+test("Memory restore API uses authenticated identity and returns success", async () => {
+  const calls: unknown[] = [];
+  const handler = createRestoreMemoryApiHandler({
+    memoryService: {
+      async restoreMemory(input) {
+        calls.push(input);
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+
+  await handler(
+    {
+      webUserId: "user-a",
+      params: { id: "archived-1" },
+    } as unknown as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+
+  assert.deepEqual(calls, [{ userId: "user-a", id: "archived-1" }]);
+  assert.deepEqual(result.body, { success: true });
+});
+
+test("Memory restore API rejects unauthenticated requests before mutation", async () => {
+  let called = false;
+  const handler = createRestoreMemoryApiHandler({
+    memoryService: {
+      async restoreMemory() {
+        called = true;
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+
+  await handler(
+    { params: { id: "archived-1" } } as unknown as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+  assert.equal(called, false);
+  assert.equal(result.status, 401);
+});
+
+for (const code of [
+  "MEMORY_NOT_FOUND",
+  "USER_NOT_FOUND",
+  "USER_DISABLED",
+] as const) {
+  test(`Memory restore API safely maps ${code}`, async () => {
+    const handler = createRestoreMemoryApiHandler({
+      memoryService: {
+        async restoreMemory() {
+          throw new MemoryDomainError(code, "private internal detail");
+        },
+      },
+    } as never);
+    const { result, response } = responseRecorder();
+
+    await handler(
+      {
+        webUserId: "user-a",
+        params: { id: "archived-1" },
+      } as unknown as Request,
+      response,
+      (() => {}) as NextFunction,
+    );
+    assert.equal(result.status, code === "MEMORY_NOT_FOUND" ? 404 : 403);
+    assert.doesNotMatch(
+      JSON.stringify(result.body),
+      /private internal detail/,
+    );
+  });
+}
+
+test("Memory restore API uses a safe 503 for unexpected failures", async () => {
+  const handler = createRestoreMemoryApiHandler({
+    memoryService: {
+      async restoreMemory() {
+        throw new Error("private database detail");
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+  await handler(
+    {
+      webUserId: "user-a",
+      params: { id: "archived-1" },
+    } as unknown as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+  assert.equal(result.status, 503);
+  assert.doesNotMatch(
+    JSON.stringify(result.body),
+    /private database detail/,
+  );
+});
 
 test("Memory archived detail API uses authenticated identity and safe response", async () => {
   const calls: unknown[] = [];
