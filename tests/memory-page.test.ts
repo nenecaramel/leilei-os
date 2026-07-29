@@ -125,6 +125,47 @@ function assertNoList(container: Element) {
   assert.doesNotMatch(container.textContent ?? "", /新增记忆/);
 }
 
+function hasMemoryListHeading(container: Element): boolean {
+  return [...container.querySelectorAll(".memory-message h2")]
+    .some((heading) => heading.textContent === "记忆列表");
+}
+
+test("Memory populated list has a separate heading and empty list does not", async () => {
+  const populated = await render("/memory", {
+    async request<T>() {
+      return listResponse() as T;
+    },
+  });
+  try {
+    assert.equal(hasMemoryListHeading(populated.container), true);
+    assert.match(
+      populated.container.textContent ?? "",
+      /共 1 条，按更新时间从新到旧排列。/,
+    );
+    assert.doesNotMatch(
+      populated.container.textContent ?? "",
+      /显示 1 条/,
+    );
+  } finally {
+    await populated.cleanup();
+  }
+
+  const empty = await render("/memory", {
+    async request<T>() {
+      return listResponse([]) as T;
+    },
+  });
+  try {
+    assert.equal(hasMemoryListHeading(empty.container), false);
+    assert.match(
+      empty.container.textContent ?? "",
+      /没有找到记忆/,
+    );
+  } finally {
+    await empty.cleanup();
+  }
+});
+
 test("Memory detail refresh starts in detail loading and skips list request", async () => {
   const { api, requests } = pendingApi();
   const page = await render(
@@ -134,6 +175,7 @@ test("Memory detail refresh starts in detail loading and skips list request", as
   try {
     assert.match(page.container.textContent ?? "", /正在读取记忆/);
     assertNoList(page.container);
+    assert.equal(hasMemoryListHeading(page.container), false);
     assert.deepEqual(requests.map(({ path }) => path), ["/memory/memory-1"]);
   } finally {
     await page.cleanup();

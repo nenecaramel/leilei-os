@@ -709,18 +709,20 @@ export function MemoryPageContent({
                 清除筛选
               </button>
             )}
-
-            {state.status === "ready" && (
-              <p>
-                显示 {visibleMemories.length} 条
-              </p>
-            )}
           </section>
 
           {state.status === "ready" && (
             <>
               {visibleMemories.length > 0 ? (
-                <section className="memory-grid">
+                <>
+                  <section className="memory-message">
+                    <h2>记忆列表</h2>
+                    <p>
+                      共 {state.result.metadata.count} 条，按更新时间从新到旧排列。
+                    </p>
+                  </section>
+
+                  <section className="memory-grid">
                   {visibleMemories.map((memory) => {
                     const editing =
                       editingId === memory.id;
@@ -840,7 +842,8 @@ export function MemoryPageContent({
                       </article>
                     );
                   })}
-                </section>
+                  </section>
+                </>
               ) : (
                 <MemoryMessage
                   title="没有找到记忆"
