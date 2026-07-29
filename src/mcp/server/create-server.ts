@@ -45,6 +45,15 @@ import {
   type CreateTaskToolDependencies,
 } from "../tools/create-task/register.js";
 import {
+  registerListTasksTool,
+  TaskReadAuthenticationError,
+  type ListTasksToolDependencies,
+} from "../tools/list-tasks/register.js";
+import {
+  registerGetTaskTool,
+  type GetTaskToolDependencies,
+} from "../tools/get-task/register.js";
+import {
   registerToyCommandTools,
   ToyCommandAuthenticationError,
   type ToyCommandToolDependencies,
@@ -176,6 +185,24 @@ const productionCreateTaskDependencies: CreateTaskToolDependencies = {
   },
 };
 
+const productionListTasksDependencies: ListTasksToolDependencies = {
+  taskService: {
+    listTasks: (input) => getDefaultTaskService().listTasks(input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new TaskReadAuthenticationError();
+  },
+};
+
+const productionGetTaskDependencies: GetTaskToolDependencies = {
+  taskService: {
+    readTask: (input) => getDefaultTaskService().readTask(input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new TaskReadAuthenticationError();
+  },
+};
+
 const productionToyCommandDependencies: ToyCommandToolDependencies = {
   toyCommandService: {
     create: (userId, input) =>
@@ -205,7 +232,15 @@ export type McpServerDependencies = {
   writeDiary?: WriteDiaryToolDependencies;
   searchDiary?: SearchDiaryToolDependencies;
   getDiary?: GetDiaryToolDependencies;
+  taskTools?: {
+    taskService: CreateTaskToolDependencies["taskService"] &
+      ListTasksToolDependencies["taskService"] &
+      GetTaskToolDependencies["taskService"];
+    getAuthenticatedUserId: () => string;
+  };
   createTask?: CreateTaskToolDependencies;
+  listTasks?: ListTasksToolDependencies;
+  getTask?: GetTaskToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
 };
 
@@ -283,10 +318,30 @@ export function createMcpServer(
   );
   registerCreateTaskTool(
     server,
-    dependencies.createTask ?? {
+    dependencies.createTask ?? dependencies.taskTools ?? {
       ...productionCreateTaskDependencies,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new CreateTaskAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerListTasksTool(
+    server,
+    dependencies.listTasks ?? dependencies.taskTools ?? {
+      ...productionListTasksDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new TaskReadAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerGetTaskTool(
+    server,
+    dependencies.getTask ?? dependencies.taskTools ?? {
+      ...productionGetTaskDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new TaskReadAuthenticationError();
         return authenticatedUserId;
       },
     },
