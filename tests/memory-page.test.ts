@@ -476,6 +476,91 @@ test("Memory archived entry uses stable History and browser back restores the ac
   }
 });
 
+test("Memory browser history restores archive list then the exact filtered active list", async () => {
+  const activeList = "/memory?q=goal&category=goal&tag=MCP";
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory/archived") {
+        return archivedResponse() as T;
+      }
+      if (path === "/memory/archived/memory-1") {
+        return { success: true, data: memory } as T;
+      }
+      if (path === activeList) {
+        return listResponse() as T;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  };
+  const page = await render(activeList, api);
+
+  const goBack = async () => {
+    await React.act(async () => {
+      const moved = new Promise<void>((resolve) => {
+        page.window.addEventListener(
+          "popstate",
+          () => resolve(),
+          { once: true },
+        );
+      });
+      page.window.history.back();
+      await moved;
+      await new Promise((resolve) =>
+        page.window.setTimeout(resolve, 5),
+      );
+    });
+  };
+
+  try {
+    const archiveEntry = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看归档");
+    assert.ok(archiveEntry);
+    await React.act(async () => {
+      archiveEntry.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+
+    const detailEntry = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看详情");
+    assert.ok(detailEntry);
+    await React.act(async () => {
+      detailEntry.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+    assert.equal(
+      requests.at(-1)?.path,
+      "/memory/archived/memory-1",
+    );
+
+    await goBack();
+    assert.equal(requests.at(-1)?.path, "/memory/archived");
+    assert.match(page.container.textContent ?? "", /已归档记忆/);
+
+    await goBack();
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      activeList,
+    );
+    assert.equal(requests.at(-1)?.path, activeList);
+    const restored = new URLSearchParams(page.window.location.search);
+    assert.equal(restored.get("q"), "goal");
+    assert.equal(restored.get("category"), "goal");
+    assert.equal(restored.get("tag"), "MCP");
+    assert.equal(
+      requests.some(({ path }) => path === "/memory/memory-1"),
+      false,
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Memory archived mode has distinct loading, empty, and error states", async () => {
   const loading = await render(
     createMemoryArchiveLocation("/memory"),

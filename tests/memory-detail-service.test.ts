@@ -86,6 +86,41 @@ test("Memory archived detail validates the user and returns safe fields", async 
   });
 });
 
+test("Memory archived detail returns complete content while archived list remains bounded", async () => {
+  const completeContent = "A".repeat(4_050);
+  const record = {
+    id: "archived-long",
+    category: "project" as const,
+    key: "archived_long",
+    content: completeContent,
+    tags: ["archive"],
+    source: "web",
+    updatedAt: new Date("2026-07-29T03:00:00.000Z"),
+  };
+  const service = new MemoryService(repository({
+    async findArchivedAssistantMemoryById() {
+      return record;
+    },
+    async findArchivedAssistantMemories() {
+      return [record];
+    },
+  }));
+
+  const detail = await service.readArchivedMemoryDetail({
+    userId: "user-a",
+    id: record.id,
+  });
+  const list = await service.readArchivedMemories({
+    userId: "user-a",
+  });
+
+  assert.equal(detail.content, completeContent);
+  assert.equal(detail.content.length, completeContent.length);
+  assert.equal(detail.content.endsWith("…"), false);
+  assert.notEqual(list.memories[0]?.content, completeContent);
+  assert.equal(list.memories[0]?.content.endsWith("…"), true);
+});
+
 for (const recordKind of [
   "missing",
   "active",

@@ -250,7 +250,7 @@ export class MemoryService {
       id: memory.id,
       category: memory.category,
       key: memory.key,
-      content: this.limitContent(memory.content),
+      content: memory.content,
       tags: memory.tags,
       source: memory.source,
       updated_at: memory.updatedAt.toISOString(),
