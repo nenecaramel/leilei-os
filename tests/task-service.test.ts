@@ -106,7 +106,47 @@ class MockTaskRepository implements TaskRepository {
     };
     return record.task;
   }
+
+  async findArchivedTasks(userId: string): Promise<TaskRecord[]> {
+    return [...this.records.values()].filter((record) => record.userId === userId && record.task.lifecycleStatus === "archived").map((record) => record.task);
+  }
+
+  async findArchivedTaskById(userId: string, id: string): Promise<TaskRecord | null> {
+    const record = this.records.get(id);
+    return record?.userId === userId && record.task.lifecycleStatus === "archived" ? record.task : null;
+  }
+
+  async archiveTask(input: { userId: string; id: string }): Promise<boolean> {
+    const record = this.records.get(input.id);
+    if (!record || record.userId !== input.userId || record.task.lifecycleStatus !== "active") return false;
+    record.task = { ...record.task, lifecycleStatus: "archived" };
+    return true;
+  }
+
+  async restoreTask(input: { userId: string; id: string }): Promise<boolean> {
+    const record = this.records.get(input.id);
+    if (!record || record.userId !== input.userId || record.task.lifecycleStatus !== "archived") return false;
+    record.task = { ...record.task, lifecycleStatus: "active" };
+    return true;
+  }
 }
+
+test("Task archive and restore preserve business status and use active user validation", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+  const created = await service.createTask({ userId: "user-1" }, VALID_INPUT);
+  const record = repository.records.get(created.task.id)!;
+  record.task = { ...record.task, status: "completed", completedAt: new Date("2026-07-22T12:00:00.000Z"), lifecycleStatus: "active" };
+  await service.archiveTask({ userId: "user-1", id: created.task.id });
+  assert.equal(record.task.lifecycleStatus, "archived");
+  assert.equal(record.task.status, "completed");
+  assert.equal(record.task.completedAt?.toISOString(), "2026-07-22T12:00:00.000Z");
+  await service.restoreTask({ userId: "user-1", id: created.task.id });
+  assert.equal(record.task.lifecycleStatus, "active");
+  assert.equal(record.task.status, "completed");
+  repository.user = { status: "disabled" };
+  await assert.rejects(service.archiveTask({ userId: "user-1", id: created.task.id }), (error: unknown) => error instanceof TaskDomainError && error.code === "USER_DISABLED");
+});
 
 test("normalizes Task list search filters before repository access", async () => {
   const repository = new MockTaskRepository();

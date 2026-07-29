@@ -72,6 +72,7 @@ export type TaskEntryResult = {
   updated_at: string;
   completed_at: string | null;
   allowed_actions: TaskAction[];
+  lifecycle_status?: "active" | "archived";
 };
 
 export type CreateTaskResult = {
@@ -225,6 +226,41 @@ export class TaskService {
     }
 
     return this.toTaskResult(task, await this.getAccountTimezone(userId));
+  }
+
+  async listArchivedTasks(input: { userId: string; limit?: number }): Promise<ListTasksResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const repository = this.repository.findArchivedTasks;
+    if (!repository) throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    const timezone = await this.getAccountTimezone(userId);
+    const tasks = await repository.call(this.repository, userId, this.resolveLimit(input.limit));
+    return { tasks: tasks.map((task) => this.toTaskResult(task, timezone)), metadata: { count: tasks.length } };
+  }
+
+  async readArchivedTask(input: { userId: string; id: string }): Promise<TaskEntryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+    const repository = this.repository.findArchivedTaskById;
+    if (!id || !repository) throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    const task = await repository.call(this.repository, userId, id);
+    if (!task) throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    return this.toTaskResult(task, await this.getAccountTimezone(userId));
+  }
+
+  async archiveTask(input: { userId: string; id: string }): Promise<void> {
+    const userId = await this.requireActiveUser(input.userId);
+    const repository = this.repository.archiveTask;
+    if (!input.id.trim() || !repository || !(await repository.call(this.repository, { id: input.id.trim(), userId, actorType: "user", channel: "web" }))) {
+      throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    }
+  }
+
+  async restoreTask(input: { userId: string; id: string }): Promise<void> {
+    const userId = await this.requireActiveUser(input.userId);
+    const repository = this.repository.restoreTask;
+    if (!input.id.trim() || !repository || !(await repository.call(this.repository, { id: input.id.trim(), userId, actorType: "user", channel: "web" }))) {
+      throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    }
   }
 
   async createWebTask(
@@ -702,6 +738,7 @@ export class TaskService {
       completed_at:
         task.completedAt?.toISOString() ?? null,
       allowed_actions: getAllowedTaskActions(task.status),
+      lifecycle_status: task.lifecycleStatus ?? "active",
     };
   }
 }

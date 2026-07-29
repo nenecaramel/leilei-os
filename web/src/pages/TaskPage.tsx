@@ -14,6 +14,8 @@ import {
   import {
     EMPTY_TASK_FILTERS,
     createTaskDetailLocation,
+    createTaskArchiveLocation,
+    createArchivedTaskDetailLocation,
     getTaskDetailLocation,
     type TaskDueFilter,
   } from "./task-location";
@@ -215,6 +217,7 @@ import {
       initialTaskLocation,
     );
     const isDetailMode = taskLocation.taskId !== null;
+    const isArchivedMode = taskLocation.archived;
     const [detailLoadState, setDetailLoadState] =
       useState<DetailLoadState>(() =>
         initialTaskLocation().taskId ? "loading" : "idle",
@@ -243,6 +246,8 @@ import {
       useState("");
     const [updatingStatus, setUpdatingStatus] =
       useState(false);
+    const [archiving, setArchiving] = useState(false);
+    const [restoring, setRestoring] = useState(false);
     const statusGate = useRef(createSubmissionGate());
     const [editing, setEditing] = useState(false);
     const [updating, setUpdating] = useState(false);
@@ -346,7 +351,9 @@ import {
       const controller = new AbortController();
       listAbortController.current = controller;
       const requestTicket = listRequestTracker.current.begin();
-      const request = buildTaskListRequest(filters);
+      const request = isArchivedMode
+        ? { url: "/task/archived" }
+        : buildTaskListRequest(filters);
       setState({
         status: "loading",
       });
@@ -379,7 +386,7 @@ import {
           listAbortController.current = null;
         }
       };
-    }, [api, reloadKey, filters, isDetailMode]);
+    }, [api, reloadKey, filters, isDetailMode, isArchivedMode]);
 
     useEffect(() => {
       const { taskId } = taskLocation;
@@ -397,7 +404,7 @@ import {
       setActionError("");
 
       api.request<TaskEntryResponse>(
-        `/task/${encodeURIComponent(taskId)}`,
+        `${isArchivedMode ? "/task/archived/" : "/task/"}${encodeURIComponent(taskId)}`,
       )
         .then((response) => {
           if (!active) return;
@@ -543,6 +550,36 @@ import {
       setTaskLocation(initialTaskLocation());
       setDetailLoadState("loading");
     }
+
+    function openArchivedTaskDetail(id: string) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      window.history.pushState(null, "", createArchivedTaskDetailLocation(id, returnTo));
+      setSelectedTask(null);
+      setTaskLocation(initialTaskLocation());
+      setDetailLoadState("loading");
+    }
+
+    async function handleArchiveTask() {
+      if (!selectedTask || archiving) return;
+      if (!window.confirm(`确定归档“${selectedTask.title}”吗？`)) return;
+      setArchiving(true); setActionError("");
+      try {
+        await api.request(`/task/${selectedTask.id}`, { method: "DELETE" });
+        handleCloseTask();
+      } catch { setActionError("归档任务失败，请稍后重试。"); }
+      finally { setArchiving(false); }
+    }
+
+    async function handleRestoreTask() {
+      if (!selectedTask || restoring) return;
+      setRestoring(true); setActionError("");
+      try {
+        await api.request(`/task/archived/${selectedTask.id}/restore`, { method: "POST" });
+        window.history.pushState(null, "", "/task");
+        setTaskLocation(initialTaskLocation()); setSelectedTask(null); setDetailLoadState("idle");
+      } catch { setActionError("恢复任务失败，请稍后重试。"); }
+      finally { setRestoring(false); }
+    }
   
     function handleCloseTask() {
       window.history.pushState(null, "", taskLocation.returnTo);
@@ -655,7 +692,12 @@ import {
           title="Task"
           description={settings.page_copy.task_subtitle ?? "管理待办事项、截止时间、优先级与完成状态。"}
           action={
-            isDetailMode ? (
+            isDetailMode && isArchivedMode ? (
+              <button className="secondary-button" disabled={restoring} onClick={() => {
+                window.history.pushState(null, "", taskLocation.returnTo);
+                setTaskLocation(initialTaskLocation()); setSelectedTask(null); setDetailLoadState("idle");
+              }}>返回归档列表</button>
+            ) : isDetailMode ? (
               <button
                 className="secondary-button"
                 disabled={updatingStatus || updating}
@@ -663,21 +705,25 @@ import {
               >
                 返回任务列表
               </button>
+            ) : isArchivedMode ? (
+              <button className="secondary-button" onClick={() => {
+                window.history.pushState(null, "", taskLocation.returnTo);
+                setTaskLocation(initialTaskLocation());
+              }}>返回任务列表</button>
             ) : (
-              <button
-                className="secondary-button"
-                disabled={creating || updating}
-                onClick={() => {
-                  setShowCreate((value) => !value);
-                  setActionError("");
-                }}
-              >
-                {showCreate ? "取消新增" : "新增任务"}
-              </button>
+              <div className="page-header-actions">
+                <button className="secondary-button" disabled={creating || updating} onClick={() => {
+                  window.history.pushState(null, "", createTaskArchiveLocation(`${window.location.pathname}${window.location.search}`));
+                  setTaskLocation(initialTaskLocation());
+                }}>查看归档</button>
+                <button className="secondary-button" disabled={creating || updating} onClick={() => {
+                  setShowCreate((value) => !value); setActionError("");
+                }}>{showCreate ? "取消新增" : "新增任务"}</button>
+              </div>
             )
           }
         />
-        {!isDetailMode && (
+        {!isDetailMode && !isArchivedMode && (
           <section className="memory-message task-filters">
             <h2>搜索与筛选</h2>
             <input aria-label="搜索任务" placeholder="搜索任务标题或内容" value={searchDraft} onChange={(event) => updateSearchDraft(event.target.value)} />
@@ -706,7 +752,7 @@ import {
         {isDetailMode ? (
           selectedTask ? (
           <section className="memory-message">
-            {editing ? (
+            {editing && !isArchivedMode ? (
               <>
                 <h2>编辑任务</h2>
 
@@ -842,15 +888,15 @@ import {
               </p>
                 )}
 
-                <button
+                {!isArchivedMode && <button
                   className="secondary-button"
                   disabled={updatingStatus}
                   onClick={() => beginEditing(selectedTask)}
                 >
                   编辑任务
-                </button>
+                </button>}
 
-                {taskActions.includes("start") && (
+                {!isArchivedMode && taskActions.includes("start") && (
                   <button
                     className="secondary-button"
                     disabled={updatingStatus}
@@ -860,7 +906,7 @@ import {
                   </button>
                 )}
 
-                {taskActions.includes("complete") && (
+                {!isArchivedMode && taskActions.includes("complete") && (
                   <button
                     className="secondary-button"
                     disabled={updatingStatus}
@@ -870,7 +916,7 @@ import {
                   </button>
                 )}
 
-                {taskActions.includes("cancel") && (
+                {!isArchivedMode && taskActions.includes("cancel") && (
                   <button
                     className="secondary-button"
                     disabled={updatingStatus}
@@ -880,12 +926,24 @@ import {
                   </button>
                 )}
 
+              {!isArchivedMode && (
+                <button className="secondary-button" disabled={updatingStatus || archiving} onClick={() => void handleArchiveTask()}>
+                  {archiving ? "归档中…" : "归档"}
+                </button>
+              )}
+
+              {isArchivedMode && (
+                <button className="secondary-button" disabled={restoring} onClick={() => void handleRestoreTask()}>
+                  {restoring ? "恢复中…" : "恢复"}
+                </button>
+              )}
+
               <button
                 className="secondary-button"
                 disabled={updatingStatus}
                 onClick={handleCloseTask}
               >
-                返回任务列表
+                {isArchivedMode ? "返回归档列表" : "返回任务列表"}
               </button>
               </>
             )}
@@ -987,7 +1045,7 @@ import {
               state.tasks.length > 0 && (
                 <>
                   <section className="memory-message">
-                    <h2>任务列表</h2>
+                    <h2>{isArchivedMode ? "已归档任务" : "任务列表"}</h2>
                     <p>
                       共 {state.count} 项，按截止时间排列。
                     </p>
@@ -1038,9 +1096,7 @@ import {
                           disabled={
                             loadingTaskId.length > 0
                           }
-                          onClick={() =>
-                            handleReadTask(task.id)
-                          }
+                          onClick={() => isArchivedMode ? openArchivedTaskDetail(task.id) : handleReadTask(task.id)}
                         >
                           {loadingTaskId === task.id
                             ? "读取中…"
@@ -1055,8 +1111,8 @@ import {
             {state.status === "ready" &&
               state.tasks.length === 0 && (
                 <TaskMessage
-                  title={filters.q || filters.status || filters.priority || filters.tag || filters.due ? "没有符合条件的任务" : "还没有任务"}
-                  description={filters.q || filters.status || filters.priority || filters.tag || filters.due ? "试试清除搜索或筛选条件。" : "创建第一个任务后，它会显示在这里。"}
+                  title={isArchivedMode ? "还没有归档任务" : filters.q || filters.status || filters.priority || filters.tag || filters.due ? "没有符合条件的任务" : "还没有任务"}
+                  description={isArchivedMode ? "归档的任务会显示在这里。" : filters.q || filters.status || filters.priority || filters.tag || filters.due ? "试试清除搜索或筛选条件。" : "创建第一个任务后，它会显示在这里。"}
                   action={filters.q || filters.status || filters.priority || filters.tag || filters.due ? <button className="secondary-button" onClick={clearFilters}>清除筛选</button> : undefined}
                 />
               )}

@@ -57,6 +57,7 @@ export function readTaskFilters(search: string): TaskFilters {
 export function getTaskDetailLocation(search: string): {
   taskId: string | null;
   returnTo: string;
+  archived: boolean;
 } {
   const parameters = new URLSearchParams(search);
   const taskCandidate = parameters.get("task")?.trim() ?? "";
@@ -67,7 +68,24 @@ export function getTaskDetailLocation(search: string): {
   return {
     taskId,
     returnTo: getSafeTaskReturnTo(parameters.get("returnTo")),
+    archived: parameters.get("archived") === "1",
   };
+}
+
+export function createTaskArchiveLocation(returnTo = "/task"): string {
+  const parameters = new URLSearchParams();
+  parameters.set("archived", "1");
+  const safe = getSafeTaskReturnTo(returnTo);
+  if (safe !== "/task") parameters.set("returnTo", safe);
+  return `/task?${parameters.toString()}`;
+}
+
+export function createArchivedTaskDetailLocation(taskId: string, returnTo = "/task?archived=1"): string {
+  const parameters = new URLSearchParams();
+  parameters.set("archived", "1");
+  parameters.set("task", taskId);
+  parameters.set("returnTo", getSafeTaskReturnTo(returnTo));
+  return `/task?${parameters.toString()}`;
 }
 
 export function createTaskDetailLocation(

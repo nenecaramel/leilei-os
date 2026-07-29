@@ -17,6 +17,12 @@ import {
   type taskPriorityEnum,
   type taskStatusEnum,
 } from "../../database/schema.js";
+import {
+  DrizzleLifecycleAuditPersistence,
+  type LifecycleAuditPersistence,
+  type LifecycleActorType,
+  type LifecycleChannel,
+} from "../lifecycle/lifecycle-audit-repository.js";
 
 export type TaskPriority =
   (typeof taskPriorityEnum.enumValues)[number];
@@ -52,6 +58,14 @@ export type TaskRecord = {
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
+  lifecycleStatus?: "active" | "archived";
+};
+
+export type TaskLifecycleMutationInput = {
+  id: string;
+  userId: string;
+  actorType: LifecycleActorType;
+  channel: LifecycleChannel;
 };
 
 export type TaskListQuery = {
@@ -112,6 +126,11 @@ export interface TaskRepository {
   updateTask(
     input: NormalizedTaskUpdate,
   ): Promise<TaskRecord | null>;
+
+  findArchivedTasks?(userId: string, limit: number): Promise<TaskRecord[]>;
+  findArchivedTaskById?(userId: string, id: string): Promise<TaskRecord | null>;
+  archiveTask?(input: TaskLifecycleMutationInput): Promise<boolean>;
+  restoreTask?(input: TaskLifecycleMutationInput): Promise<boolean>;
 }
 
 type Database = ReturnType<
@@ -121,7 +140,10 @@ type Database = ReturnType<
 export class DrizzleTaskRepository
   implements TaskRepository
 {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly lifecycleAudit: LifecycleAuditPersistence = new DrizzleLifecycleAuditPersistence(),
+  ) {}
 
   async findUserById(
     userId: string,
@@ -152,7 +174,7 @@ export class DrizzleTaskRepository
     limit: number,
     query: TaskListQuery = {},
   ): Promise<TaskRecord[]> {
-    const conditions = [eq(tasks.userId, userId)];
+    const conditions = [eq(tasks.userId, userId), eq(tasks.lifecycleStatus, "active")];
 
     if (query.q) {
       const escaped = query.q.replace(/[\\%_]/g, "\\$&");
@@ -228,6 +250,7 @@ export class DrizzleTaskRepository
         and(
           eq(tasks.userId, userId),
           eq(tasks.id, id),
+          eq(tasks.lifecycleStatus, "active"),
         ),
       )
       .limit(1);
@@ -245,6 +268,7 @@ export class DrizzleTaskRepository
         title: input.title,
         description: input.description,
         status: input.status,
+        lifecycleStatus: "active",
         priority: input.priority,
         dueTime: input.dueTime,
         timezone: input.timezone,
@@ -288,6 +312,7 @@ export class DrizzleTaskRepository
         and(
           eq(tasks.userId, input.userId),
           eq(tasks.id, input.id),
+          eq(tasks.lifecycleStatus, "active"),
         ),
       )
       .returning({
@@ -325,6 +350,7 @@ export class DrizzleTaskRepository
         and(
           eq(tasks.userId, input.userId),
           eq(tasks.id, input.id),
+          eq(tasks.lifecycleStatus, "active"),
         ),
       )
       .returning({
@@ -342,5 +368,59 @@ export class DrizzleTaskRepository
       });
 
     return task ?? null;
+  }
+
+  async findArchivedTasks(userId: string, limit: number): Promise<TaskRecord[]> {
+    return this.db.select({
+      id: tasks.id, title: tasks.title, description: tasks.description,
+      status: tasks.status, priority: tasks.priority, dueTime: tasks.dueTime,
+      timezone: tasks.timezone, tags: tasks.tags, createdAt: tasks.createdAt,
+      updatedAt: tasks.updatedAt, completedAt: tasks.completedAt,
+      lifecycleStatus: tasks.lifecycleStatus,
+    }).from(tasks)
+      .where(and(eq(tasks.userId, userId), eq(tasks.lifecycleStatus, "archived")))
+      .orderBy(asc(sql`${tasks.dueTime} is null`), asc(tasks.dueTime), desc(tasks.createdAt), asc(tasks.id))
+      .limit(limit);
+  }
+
+  async findArchivedTaskById(userId: string, id: string): Promise<TaskRecord | null> {
+    const [task] = await this.db.select({
+      id: tasks.id, title: tasks.title, description: tasks.description,
+      status: tasks.status, priority: tasks.priority, dueTime: tasks.dueTime,
+      timezone: tasks.timezone, tags: tasks.tags, createdAt: tasks.createdAt,
+      updatedAt: tasks.updatedAt, completedAt: tasks.completedAt,
+      lifecycleStatus: tasks.lifecycleStatus,
+    }).from(tasks)
+      .where(and(eq(tasks.userId, userId), eq(tasks.id, id), eq(tasks.lifecycleStatus, "archived")))
+      .limit(1);
+    return task ?? null;
+  }
+
+  async archiveTask(input: TaskLifecycleMutationInput): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const rows = await transaction.update(tasks).set({ lifecycleStatus: "archived" })
+        .where(and(eq(tasks.id, input.id), eq(tasks.userId, input.userId), eq(tasks.lifecycleStatus, "active")))
+        .returning({ id: tasks.id });
+      if (rows.length !== 1) return false;
+      await this.lifecycleAudit.record(transaction, {
+        userId: input.userId, resourceType: "task", resourceId: input.id,
+        action: "archive", actorType: input.actorType, channel: input.channel, metadata: {},
+      });
+      return true;
+    });
+  }
+
+  async restoreTask(input: TaskLifecycleMutationInput): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const rows = await transaction.update(tasks).set({ lifecycleStatus: "active" })
+        .where(and(eq(tasks.id, input.id), eq(tasks.userId, input.userId), eq(tasks.lifecycleStatus, "archived")))
+        .returning({ id: tasks.id });
+      if (rows.length !== 1) return false;
+      await this.lifecycleAudit.record(transaction, {
+        userId: input.userId, resourceType: "task", resourceId: input.id,
+        action: "restore", actorType: input.actorType, channel: input.channel, metadata: {},
+      });
+      return true;
+    });
   }
 }
