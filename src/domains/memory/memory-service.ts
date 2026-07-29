@@ -293,7 +293,11 @@ export class MemoryService {
     id: string;
   }): Promise<void> {
     await this.requireActiveUser(input.userId);
-    const archived = await this.repository.archiveMemory(input);
+    const archived = await this.repository.archiveMemory({
+      ...input,
+      actorType: "user",
+      channel: "web",
+    });
 
     if (!archived) {
       throw new MemoryDomainError(
@@ -320,6 +324,8 @@ export class MemoryService {
     const restored = await this.repository.restoreMemory({
       userId: input.userId,
       id,
+      actorType: "user",
+      channel: "web",
     });
 
     if (!restored) {

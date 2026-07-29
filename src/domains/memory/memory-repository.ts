@@ -14,6 +14,12 @@ import {
   users,
   type memoryCategoryEnum,
 } from "../../database/schema.js";
+import {
+  DrizzleLifecycleAuditPersistence,
+  type LifecycleActorType,
+  type LifecycleAuditPersistence,
+  type LifecycleChannel,
+} from "../lifecycle/lifecycle-audit-repository.js";
 
 export type MemoryCategory = (typeof memoryCategoryEnum.enumValues)[number];
 
@@ -69,6 +75,13 @@ export type UpdateMemoryInput = {
   tags?: string[];
 };
 
+export type MemoryLifecycleMutationInput = {
+  id: string;
+  userId: string;
+  actorType: LifecycleActorType;
+  channel: LifecycleChannel;
+};
+
 export interface MemoryRepository {
   findUserById(userId: string): Promise<MemoryUserRecord | null>;
 
@@ -100,21 +113,19 @@ export interface MemoryRepository {
 
   updateMemory(input: UpdateMemoryInput): Promise<boolean>;
 
-  archiveMemory(input: {
-    id: string;
-    userId: string;
-  }): Promise<boolean>;
+  archiveMemory(input: MemoryLifecycleMutationInput): Promise<boolean>;
 
-  restoreMemory(input: {
-    id: string;
-    userId: string;
-  }): Promise<boolean>;
+  restoreMemory(input: MemoryLifecycleMutationInput): Promise<boolean>;
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export class DrizzleMemoryRepository implements MemoryRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly lifecycleAudit: LifecycleAuditPersistence =
+      new DrizzleLifecycleAuditPersistence(),
+  ) {}
 
   async findUserById(userId: string): Promise<MemoryUserRecord | null> {
     const [user] = await this.db
@@ -359,49 +370,73 @@ export class DrizzleMemoryRepository implements MemoryRepository {
     return updated.length === 1;
   }
 
-  async archiveMemory(input: {
-    id: string;
-    userId: string;
-  }): Promise<boolean> {
-    const archived = await this.db
-      .update(coreMemories)
-      .set({
-        status: "archived",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(coreMemories.id, input.id),
-          eq(coreMemories.userId, input.userId),
-          eq(coreMemories.status, "active"),
-          eq(coreMemories.visibility, "assistant"),
-        ),
-      )
-      .returning({ id: coreMemories.id });
+  async archiveMemory(
+    input: MemoryLifecycleMutationInput,
+  ): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const archived = await transaction
+        .update(coreMemories)
+        .set({
+          status: "archived",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(coreMemories.id, input.id),
+            eq(coreMemories.userId, input.userId),
+            eq(coreMemories.status, "active"),
+            eq(coreMemories.visibility, "assistant"),
+          ),
+        )
+        .returning({ id: coreMemories.id });
 
-    return archived.length === 1;
+      if (archived.length !== 1) return false;
+
+      await this.lifecycleAudit.record(transaction, {
+        userId: input.userId,
+        resourceType: "memory",
+        resourceId: archived[0]!.id,
+        action: "archive",
+        actorType: input.actorType,
+        channel: input.channel,
+        metadata: {},
+      });
+      return true;
+    });
   }
 
-  async restoreMemory(input: {
-    id: string;
-    userId: string;
-  }): Promise<boolean> {
-    const restored = await this.db
-      .update(coreMemories)
-      .set({
-        status: "active",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(coreMemories.id, input.id),
-          eq(coreMemories.userId, input.userId),
-          eq(coreMemories.status, "archived"),
-          eq(coreMemories.visibility, "assistant"),
-        ),
-      )
-      .returning({ id: coreMemories.id });
+  async restoreMemory(
+    input: MemoryLifecycleMutationInput,
+  ): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const restored = await transaction
+        .update(coreMemories)
+        .set({
+          status: "active",
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(coreMemories.id, input.id),
+            eq(coreMemories.userId, input.userId),
+            eq(coreMemories.status, "archived"),
+            eq(coreMemories.visibility, "assistant"),
+          ),
+        )
+        .returning({ id: coreMemories.id });
 
-    return restored.length === 1;
+      if (restored.length !== 1) return false;
+
+      await this.lifecycleAudit.record(transaction, {
+        userId: input.userId,
+        resourceType: "memory",
+        resourceId: restored[0]!.id,
+        action: "restore",
+        actorType: input.actorType,
+        channel: input.channel,
+        metadata: {},
+      });
+      return true;
+    });
   }
 }

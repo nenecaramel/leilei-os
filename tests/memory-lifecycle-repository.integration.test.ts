@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   coreMemories,
+  resourceLifecycleEvents,
   users,
 } from "../src/database/schema.js";
 import {
@@ -278,6 +279,8 @@ test(
             await repository.restoreMemory({
               id: restoreId,
               userId: archiveListUserId,
+              actorType: "user",
+              channel: "web",
             }),
             true,
           );
@@ -302,6 +305,8 @@ test(
             await repository.restoreMemory({
               id: restoreId,
               userId: archiveListUserId,
+              actorType: "user",
+              channel: "web",
             }),
             false,
           );
@@ -322,6 +327,8 @@ test(
               await repository.restoreMemory({
                 id: row.id,
                 userId: archiveListUserId,
+                actorType: "user",
+                channel: "web",
               }),
               false,
             );
@@ -330,6 +337,8 @@ test(
             await repository.restoreMemory({
               id: randomUUID(),
               userId: archiveListUserId,
+              actorType: "user",
+              channel: "web",
             }),
             false,
           );
@@ -347,6 +356,8 @@ test(
               await repository.archiveMemory({
                 id: archiveIds.get(fixture.name)!,
                 userId: ownerId,
+                actorType: "user",
+                channel: "web",
               }),
               fixture.name === "eligible",
             );
@@ -364,6 +375,8 @@ test(
             await repository.archiveMemory({
               id: randomUUID(),
               userId: ownerId,
+              actorType: "user",
+              channel: "web",
             }),
             false,
           );
@@ -371,6 +384,8 @@ test(
             await repository.archiveMemory({
               id: archiveIds.get("eligible")!,
               userId: ownerId,
+              actorType: "user",
+              channel: "web",
             }),
             false,
             "a repeated archive must not report success",
@@ -407,6 +422,138 @@ test(
                 : fixture.status,
             );
           }
+
+          const lifecycleEvents = await transaction
+            .select({
+              userId: resourceLifecycleEvents.userId,
+              resourceType: resourceLifecycleEvents.resourceType,
+              resourceId: resourceLifecycleEvents.resourceId,
+              action: resourceLifecycleEvents.action,
+              actorType: resourceLifecycleEvents.actorType,
+              channel: resourceLifecycleEvents.channel,
+              metadata: resourceLifecycleEvents.metadata,
+              createdAt: resourceLifecycleEvents.createdAt,
+            })
+            .from(resourceLifecycleEvents)
+            .where(
+              inArray(resourceLifecycleEvents.resourceId, [
+                restoreId,
+                ...archiveIds.values(),
+              ]),
+            );
+          assert.equal(lifecycleEvents.length, 2);
+          assert.ok(
+            lifecycleEvents.every(
+              (event) => event.createdAt instanceof Date,
+            ),
+            "successful lifecycle events receive a database created_at",
+          );
+          assert.deepEqual(
+            lifecycleEvents
+              .map(({ createdAt: _createdAt, ...event }) => event)
+              .sort((left, right) =>
+                left.resourceId.localeCompare(right.resourceId)
+              ),
+            [
+              {
+                userId: ownerId,
+                resourceType: "memory",
+                resourceId: archiveIds.get("eligible")!,
+                action: "archive",
+                actorType: "user",
+                channel: "web",
+                metadata: {},
+              },
+              {
+                userId: archiveListUserId,
+                resourceType: "memory",
+                resourceId: restoreId,
+                action: "restore",
+                actorType: "user",
+                channel: "web",
+                metadata: {},
+              },
+            ].sort((left, right) =>
+              left.resourceId.localeCompare(right.resourceId)
+            ),
+            "only successful lifecycle mutations append one structural audit event",
+          );
+
+          const rollbackArchiveId = randomUUID();
+          const rollbackRestoreId = randomUUID();
+          await transaction.insert(coreMemories).values([
+            {
+              id: rollbackArchiveId,
+              userId: ownerId,
+              category: "goal",
+              key: `rollback_archive_${rollbackArchiveId}`,
+              content: "Rollback archive fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "active",
+            },
+            {
+              id: rollbackRestoreId,
+              userId: ownerId,
+              category: "goal",
+              key: `rollback_restore_${rollbackRestoreId}`,
+              content: "Rollback restore fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "archived",
+            },
+          ]);
+          const failingRepository = new DrizzleMemoryRepository(
+            transaction as never,
+            {
+              async record() {
+                throw new Error("simulated_audit_failure");
+              },
+            },
+          );
+
+          await assert.rejects(
+            failingRepository.archiveMemory({
+              id: rollbackArchiveId,
+              userId: ownerId,
+              actorType: "user",
+              channel: "web",
+            }),
+            /simulated_audit_failure/,
+          );
+          await assert.rejects(
+            failingRepository.restoreMemory({
+              id: rollbackRestoreId,
+              userId: ownerId,
+              actorType: "user",
+              channel: "web",
+            }),
+            /simulated_audit_failure/,
+          );
+          const rollbackRows = await transaction
+            .select({
+              id: coreMemories.id,
+              status: coreMemories.status,
+            })
+            .from(coreMemories)
+            .where(
+              inArray(coreMemories.id, [
+                rollbackArchiveId,
+                rollbackRestoreId,
+              ]),
+            );
+          assert.deepEqual(
+            new Map(
+              rollbackRows.map((row) => [row.id, row.status]),
+            ),
+            new Map([
+              [rollbackArchiveId, "active"],
+              [rollbackRestoreId, "archived"],
+            ]),
+            "audit insert failure rolls back the lifecycle state update",
+          );
 
           throw new RollbackMemoryLifecycleTest();
         }),
