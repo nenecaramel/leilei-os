@@ -1,6 +1,7 @@
 import {
   and,
   asc,
+  desc,
   eq,
   ilike,
   inArray,
@@ -35,12 +36,15 @@ export type TrustedMemorySource =
   | "web"
   | "phase_2_validation";
 
+export type MemoryOrdering = "default" | "updated_desc";
+
 export type FindMemoriesInput = {
   userId: string;
   query?: string;
   categories?: readonly MemoryCategory[];
   keys?: readonly string[];
   tag?: string;
+  ordering?: MemoryOrdering;
   limit: number;
 };
 
@@ -140,6 +144,18 @@ export class DrizzleMemoryRepository implements MemoryRepository {
     const tagFilter = input.tag
       ? sql`${input.tag}::varchar(50) = any(${coreMemories.tags})`
       : undefined;
+    const ordering =
+      input.ordering === "updated_desc"
+        ? [
+            desc(coreMemories.updatedAt),
+            desc(coreMemories.id),
+          ]
+        : [
+            asc(coreMemories.sortOrder),
+            asc(coreMemories.category),
+            asc(coreMemories.key),
+            asc(coreMemories.id),
+          ];
 
     return this.db
       .select({
@@ -163,12 +179,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
           tagFilter,
         ),
       )
-      .orderBy(
-        asc(coreMemories.sortOrder),
-        asc(coreMemories.category),
-        asc(coreMemories.key),
-        asc(coreMemories.id),
-      )
+      .orderBy(...ordering)
       .limit(input.limit);
   }
 

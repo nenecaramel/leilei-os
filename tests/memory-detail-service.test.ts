@@ -117,6 +117,7 @@ test("Memory search and category filters are normalized and combined for the aut
     categories: ["goal"],
     keys: undefined,
     tag: "focus",
+    ordering: "default",
     limit: 50,
   }]);
 });
@@ -146,6 +147,7 @@ test("Memory supports search-only and exact-category-only repository queries", a
       categories: undefined,
       keys: undefined,
       tag: undefined,
+      ordering: "default",
       limit: 50,
     },
     {
@@ -154,9 +156,31 @@ test("Memory supports search-only and exact-category-only repository queries", a
       categories: ["project"],
       keys: undefined,
       tag: undefined,
+      ordering: "default",
       limit: 50,
     },
   ]);
+});
+
+test("Memory Service forwards explicit Web ordering without changing the default", async () => {
+  const calls: unknown[] = [];
+  const service = new MemoryService(repository({
+    async findActiveAssistantMemories(input) {
+      calls.push(input);
+      return [];
+    },
+  }));
+
+  await service.readMemory({ userId: "user-a" });
+  await service.readMemory({
+    userId: "user-a",
+    ordering: "updated_desc",
+  });
+
+  assert.deepEqual(
+    calls.map((call) => (call as { ordering: string }).ordering),
+    ["default", "updated_desc"],
+  );
 });
 
 test("Memory category options use only the authenticated active user's repository scope", async () => {

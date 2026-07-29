@@ -143,7 +143,30 @@ function assertNoListView(container: Element): void {
   );
   assert.equal(container.querySelector(".task-filters"), null);
   assert.equal(container.querySelector(".memory-grid"), null);
+  assert.doesNotMatch(container.textContent ?? "", /搜索与筛选/);
 }
+
+test("Task filter heading appears in list mode and not detail mode", async () => {
+  const list = await renderTaskPage(
+    "/task",
+    createApi(() => new Promise(() => {})).api,
+  );
+  try {
+    assert.match(list.container.textContent ?? "", /搜索与筛选/);
+  } finally {
+    await list.cleanup();
+  }
+
+  const detail = await renderTaskPage(
+    `/task?task=${TASK_ID}`,
+    createApi(() => new Promise(() => {})).api,
+  );
+  try {
+    assertNoListView(detail.container);
+  } finally {
+    await detail.cleanup();
+  }
+});
 
 test("direct detail load renders a detail placeholder first and skips the list request", async () => {
   const detail = deferred<unknown>();

@@ -4,6 +4,9 @@ import {
   type ReadMemoryDetailResult,
   type ReadMemoryResult,
 } from "../domains/memory/memory-service.js";
+import type {
+  MemoryOrdering,
+} from "../domains/memory/memory-repository.js";
 
 export type MemoryApiDependencies = {
   memoryService: {
@@ -12,6 +15,7 @@ export type MemoryApiDependencies = {
       query?: string;
       categories?: readonly string[];
       tag?: string;
+      ordering?: MemoryOrdering;
       includeSource?: boolean;
     }): Promise<ReadMemoryResult>;
 
@@ -149,6 +153,7 @@ export function createReadMemoryApiHandler(
           query: getQueryParam(request.query.q),
           categories: category ? [category] : undefined,
           tag: getQueryParam(request.query.tag),
+          ordering: "updated_desc",
           includeSource: true,
         }),
         dependencies.memoryService.listAvailableCategories(
