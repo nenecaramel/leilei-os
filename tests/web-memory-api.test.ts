@@ -34,6 +34,7 @@ test("reads Memory through the existing service with the Web identity", async ()
         key: "working_style",
         content: "Prefer calm, structured plans.",
         tags: ["focus"],
+        source: "web",
         updated_at: "2026-07-22T00:00:00.000Z",
       },
     ],
@@ -69,6 +70,7 @@ test("reads Memory through the existing service with the Web identity", async ()
       query: undefined,
       categories: undefined,
       tag: undefined,
+      includeSource: true,
     },
     { categoriesFor: request.webUserId },
     { tagsFor: request.webUserId },
@@ -126,6 +128,7 @@ test("passes q and exact category independently to Memory Service", async () => 
       query: "100%_focused\\plan",
       categories: ["goal"],
       tag: "MCP",
+      includeSource: true,
     },
     { categoriesFor: request.webUserId },
     { tagsFor: request.webUserId },
@@ -240,6 +243,7 @@ test("reads one Memory with only the authenticated Web user identity", async () 
     key: "current_goal",
     content: "Ship the next focused milestone.",
     tags: ["goal"],
+    source: "phase_2_validation",
     updated_at: "2026-07-28T00:00:00.000Z",
   };
   const handler = createReadMemoryDetailApiHandler({
@@ -320,7 +324,7 @@ test("Memory detail rejects unauthenticated requests before the service", async 
   assert.equal(result.status, 401);
 });
 
-test("Memory create and update forward tags with only the authenticated user identity", async () => {
+test("Memory create and update ignore client source and use only editable fields", async () => {
   const calls: unknown[] = [];
   const dependencies = {
     memoryService: {
@@ -345,6 +349,7 @@ test("Memory create and update forward tags with only the authenticated user ide
         key: "memory_key",
         content: "Content",
         tags: ["计划", "MCP"],
+        source: "chatgpt_mcp",
         userId: "attacker",
       },
     } as unknown as Request,
@@ -358,6 +363,7 @@ test("Memory create and update forward tags with only the authenticated user ide
         id: "memory-1",
         content: "Updated",
         tags: ["MCP"],
+        source: "system",
         userId: "attacker",
       },
     } as unknown as Request,

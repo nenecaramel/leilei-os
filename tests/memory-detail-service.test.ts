@@ -31,6 +31,7 @@ function repository(
         key: "focus_style",
         content: "One milestone at a time.",
         tags: [],
+        source: "phase_2_validation",
         updatedAt: new Date("2026-07-28T00:00:00.000Z"),
       };
     },
@@ -52,6 +53,7 @@ test("Memory detail uses the authenticated user for an active assistant-visible 
         key: "focus_style",
         content: "One milestone at a time.",
         tags: ["focus"],
+        source: "phase_2_validation",
         updatedAt: new Date("2026-07-28T00:00:00.000Z"),
       };
     },
@@ -65,6 +67,32 @@ test("Memory detail uses the authenticated user for an active assistant-visible 
   assert.deepEqual(calls, [{ userId: "user-a", id: "memory-1" }]);
   assert.equal(result.id, "memory-1");
   assert.equal(result.content, "One milestone at a time.");
+  assert.equal(result.source, "phase_2_validation");
+});
+
+test("Memory list exposes source only for the trusted Web read path", async () => {
+  const service = new MemoryService(repository({
+    async findActiveAssistantMemories() {
+      return [{
+        id: "memory-1",
+        category: "goal",
+        key: "source_rule",
+        content: "Source remains immutable.",
+        tags: [],
+        source: "web",
+        updatedAt: new Date("2026-07-28T00:00:00.000Z"),
+      }];
+    },
+  }));
+
+  const internal = await service.readMemory({ userId: "user-a" });
+  const web = await service.readMemory({
+    userId: "user-a",
+    includeSource: true,
+  });
+
+  assert.equal("source" in internal.memories[0], false);
+  assert.equal(web.memories[0]?.source, "web");
 });
 
 test("Memory search and category filters are normalized and combined for the authenticated user", async () => {
