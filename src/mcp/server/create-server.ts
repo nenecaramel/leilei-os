@@ -18,6 +18,14 @@ import {
   type ReadMemoryToolDependencies,
 } from "../tools/read-memory/register.js";
 import {
+  registerSearchMemoryTool,
+  type SearchMemoryToolDependencies,
+} from "../tools/search-memory/register.js";
+import {
+  registerGetMemoryTool,
+  type GetMemoryToolDependencies,
+} from "../tools/get-memory/register.js";
+import {
   registerWriteDiaryTool,
   WriteDiaryAuthenticationError,
   type WriteDiaryToolDependencies,
@@ -102,6 +110,25 @@ const productionReadMemoryDependencies: ReadMemoryToolDependencies = {
   },
 };
 
+const productionSearchMemoryDependencies: SearchMemoryToolDependencies = {
+  memoryService: {
+    readMemory: (input) => getDefaultMemoryService().readMemory(input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new ReadMemoryAuthenticationError();
+  },
+};
+
+const productionGetMemoryDependencies: GetMemoryToolDependencies = {
+  memoryService: {
+    readMemoryDetail: (input) =>
+      getDefaultMemoryService().readMemoryDetail(input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new ReadMemoryAuthenticationError();
+  },
+};
+
 const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   diaryService: {
     createDiary: (context, input) =>
@@ -133,7 +160,15 @@ const productionToyCommandDependencies: ToyCommandToolDependencies = {
 };
 
 export type McpServerDependencies = {
+  memoryReads?: {
+    memoryService: ReadMemoryToolDependencies["memoryService"] &
+      SearchMemoryToolDependencies["memoryService"] &
+      GetMemoryToolDependencies["memoryService"];
+    getAuthenticatedUserId: () => string;
+  };
   readMemory?: ReadMemoryToolDependencies;
+  searchMemory?: SearchMemoryToolDependencies;
+  getMemory?: GetMemoryToolDependencies;
   writeDiary?: WriteDiaryToolDependencies;
   createTask?: CreateTaskToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
@@ -153,8 +188,28 @@ export function createMcpServer(
   registerGetWeatherContextTool(server)
   registerReadMemoryTool(
     server,
-    dependencies.readMemory ?? {
+    dependencies.readMemory ?? dependencies.memoryReads ?? {
       ...productionReadMemoryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerSearchMemoryTool(
+    server,
+    dependencies.searchMemory ?? dependencies.memoryReads ?? {
+      ...productionSearchMemoryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerGetMemoryTool(
+    server,
+    dependencies.getMemory ?? dependencies.memoryReads ?? {
+      ...productionGetMemoryDependencies,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
         return authenticatedUserId;

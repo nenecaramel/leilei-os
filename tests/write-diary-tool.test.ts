@@ -96,9 +96,11 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
     [
       "create_task",
       "get_local_context",
+      "get_memory",
       "get_weather_context",
       "hello",
       "read_memory",
+      "search_memory",
       "toy_set",
       "toy_stop",
       "write_diary",
