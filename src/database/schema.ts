@@ -36,6 +36,11 @@ export const memoryStatusEnum = pgEnum("memory_status", [
 
 export const diarySourceEnum = pgEnum("diary_source", ["chatgpt_mcp"]);
 
+export const diaryStatusEnum = pgEnum("diary_status", [
+  "active",
+  "archived",
+]);
+
 export const toolCallStatusEnum = pgEnum("tool_call_status", [
   "success",
   "rejected",
@@ -177,6 +182,7 @@ export const diaryEntries = pgTable(
     tags: text("tags").array().default(sql`ARRAY[]::text[]`).notNull(),
     mood: varchar("mood", { length: 50 }),
     source: diarySourceEnum("source").default("chatgpt_mcp").notNull(),
+    status: diaryStatusEnum("status").default("active").notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -199,6 +205,18 @@ export const diaryEntries = pgTable(
     index("diary_entries_user_created_idx").on(
       table.userId,
       table.createdAt.desc(),
+    ),
+    index("diary_entries_user_status_date_created_idx").on(
+      table.userId,
+      table.status,
+      table.date.desc(),
+      table.createdAt.desc(),
+    ),
+    index("diary_entries_user_status_updated_id_idx").on(
+      table.userId,
+      table.status,
+      table.updatedAt.desc(),
+      table.id.desc(),
     ),
     check(
       "diary_entries_title_not_blank",

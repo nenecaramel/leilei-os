@@ -5,7 +5,11 @@ import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
 import { DiaryPageContent } from "../web/src/pages/DiaryPage.js";
-import { createDiaryDetailLocation } from "../web/src/pages/diary-location.js";
+import {
+  createArchivedDiaryDetailLocation,
+  createDiaryArchiveLocation,
+  createDiaryDetailLocation,
+} from "../web/src/pages/diary-location.js";
 import { saveDiaryScrollPosition } from "../web/src/pages/diary-scroll-restoration.js";
 import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
@@ -94,6 +98,17 @@ function assertNoList(container: Element) {
   assert.equal(container.querySelector(".diary-filters"), null);
   assert.equal(container.querySelector(".memory-grid"), null);
 }
+
+const diary = {
+  id: "diary-1",
+  title: "Archived diary",
+  content: "Full archived diary content",
+  date: "2026-07-29",
+  tags: ["archive"],
+  mood: "calm",
+  created_at: "2026-07-29T01:00:00.000Z",
+  updated_at: "2026-07-29T02:00:00.000Z",
+};
 
 test("Diary detail refresh starts in detail loading and skips list request", async () => {
   const { api, requests } = pendingApi();
@@ -348,6 +363,230 @@ test("Diary browser back restores the matching list scroll after loading", async
       "/diary/diary-1",
       "/diary?mood=happy&date_from=2026-07-01",
     ]);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary archive list is read-only and opens full archived detail", async () => {
+  const paths: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string) {
+      paths.push(path);
+      if (path === "/diary/archived") {
+        return {
+          success: true,
+          data: { diaries: [diary], metadata: { count: 1 } },
+        } as T;
+      }
+      return { success: true, data: diary } as T;
+    },
+  };
+  const archiveUrl = createDiaryArchiveLocation(
+    "/diary?q=goal&tag=MCP&mood=calm",
+  );
+  const page = await render(archiveUrl, api);
+  try {
+    assert.match(page.container.textContent ?? "", /已归档日记/);
+    assert.match(page.container.textContent ?? "", /共 1 篇/);
+    assert.doesNotMatch(
+      page.container.textContent ?? "",
+      /编辑|再次归档|永久删除/,
+    );
+    const open = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看详情");
+    assert.ok(open);
+    await React.act(async () => {
+      open.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+    });
+    assert.equal(paths.at(-1), "/diary/archived/diary-1");
+    assert.match(
+      page.container.textContent ?? "",
+      /Full archived diary content/,
+    );
+    assert.match(page.container.textContent ?? "", /恢复/);
+    assert.doesNotMatch(page.container.textContent ?? "", /编辑|归档中/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary archived direct refresh requests only archived detail", async () => {
+  const { api, requests } = pendingApi();
+  const archiveUrl = createDiaryArchiveLocation("/diary?q=goal");
+  const page = await render(
+    createArchivedDiaryDetailLocation("diary-1", archiveUrl),
+    api,
+  );
+  try {
+    assert.match(page.container.textContent ?? "", /正在读取归档日记/);
+    assertNoList(page.container);
+    assert.deepEqual(
+      requests.map(({ path }) => path),
+      ["/diary/archived/diary-1"],
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary active detail archives once with archive wording", async () => {
+  const calls: Request[] = [];
+  const archive = deferred<unknown>();
+  const api: WebApiClient = {
+    request<T>(path: string, init?: RequestInit): Promise<T> {
+      calls.push({ path, init });
+      if (init?.method === "DELETE") return archive.promise as Promise<T>;
+      if (path === "/diary/diary-1") {
+        return Promise.resolve({ success: true, data: diary } as T);
+      }
+      return new Promise<T>(() => {});
+    },
+  };
+  const page = await render(
+    createDiaryDetailLocation("diary-1", "/diary?q=goal"),
+    api,
+  );
+  page.window.confirm = () => true;
+  try {
+    const button = [...page.container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "归档");
+    assert.ok(button);
+    assert.doesNotMatch(page.container.textContent ?? "", /删除/);
+    await React.act(async () => {
+      button.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      button.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+    });
+    assert.equal(
+      calls.filter(({ init }) => init?.method === "DELETE").length,
+      1,
+    );
+    assert.match(page.container.textContent ?? "", /归档中/);
+    await React.act(async () => {
+      archive.resolve({ success: true });
+      await archive.promise;
+    });
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary restore is single-flight and returns to exact active filters", async () => {
+  const calls: Request[] = [];
+  const restore = deferred<unknown>();
+  const api: WebApiClient = {
+    request<T>(path: string, init?: RequestInit): Promise<T> {
+      calls.push({ path, init });
+      if (path.endsWith("/restore")) return restore.promise as Promise<T>;
+      if (path === "/diary/archived/diary-1") {
+        return Promise.resolve({ success: true, data: diary } as T);
+      }
+      return new Promise<T>(() => {});
+    },
+  };
+  const activeUrl = "/diary?q=goal&tag=MCP&mood=calm";
+  const archiveUrl = createDiaryArchiveLocation(activeUrl);
+  const page = await render(
+    createArchivedDiaryDetailLocation("diary-1", archiveUrl),
+    api,
+  );
+  try {
+    const button = [...page.container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "恢复");
+    assert.ok(button);
+    await React.act(async () => {
+      button.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      button.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+    });
+    assert.equal(
+      calls.filter(({ path }) => path.endsWith("/restore")).length,
+      1,
+    );
+    await React.act(async () => {
+      restore.resolve({ success: true });
+      await restore.promise;
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      activeUrl,
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary browser history restores archive list then exact filtered active list", async () => {
+  const requests: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string) {
+      requests.push(path);
+      if (path === "/diary/archived") {
+        return {
+          success: true,
+          data: { diaries: [diary], metadata: { count: 1 } },
+        } as T;
+      }
+      if (path === "/diary/archived/diary-1") {
+        return { success: true, data: diary } as T;
+      }
+      return {
+        success: true,
+        data: { diaries: [], metadata: { count: 0 } },
+      } as T;
+    },
+  };
+  const activeUrl =
+    "/diary?q=goal&tag=MCP&mood=calm&date_from=2026-07-01";
+  const page = await render(activeUrl, api);
+  try {
+    const archive = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看归档");
+    assert.ok(archive);
+    await React.act(async () => {
+      archive.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+    });
+    const archiveUrl =
+      `${page.window.location.pathname}${page.window.location.search}`;
+    const open = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看详情");
+    assert.ok(open);
+    await React.act(async () => {
+      open.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+    });
+
+    await React.act(async () => {
+      page.window.history.pushState(null, "", archiveUrl);
+      page.window.dispatchEvent(new page.window.PopStateEvent("popstate"));
+    });
+    assert.equal(requests.at(-1), "/diary/archived");
+
+    await React.act(async () => {
+      page.window.history.pushState(null, "", activeUrl);
+      page.window.dispatchEvent(new page.window.PopStateEvent("popstate"));
+    });
+    assert.equal(requests.at(-1), activeUrl);
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      activeUrl,
+    );
+    assert.equal(
+      requests.some((path) => path === "/diary/diary-1"),
+      false,
+    );
   } finally {
     await page.cleanup();
   }

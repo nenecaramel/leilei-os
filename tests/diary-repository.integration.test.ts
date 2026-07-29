@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
+import { and, eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { diaryEntries, users } from "../src/database/schema.js";
+import {
+  diaryEntries,
+  resourceLifecycleEvents,
+  users,
+} from "../src/database/schema.js";
 import {
   DrizzleDiaryRepository,
 } from "../src/domains/diary/diary-repository.js";
@@ -13,6 +18,7 @@ const RUN_INTEGRATION =
   Boolean(process.env.DATABASE_URL);
 
 class RollbackDiarySearchTest extends Error {}
+class RollbackDiaryLifecycleTest extends Error {}
 
 test(
   "real Diary repository applies exact tags, literal search, ownership, dates and AND filters before limit",
@@ -150,6 +156,276 @@ test(
           throw new RollbackDiarySearchTest();
         }),
         RollbackDiarySearchTest,
+      );
+    } finally {
+      await database.close();
+    }
+  },
+);
+
+test(
+  "real Diary repository scopes lifecycle rows, orders archives, and records transactional events",
+  { skip: !RUN_INTEGRATION },
+  async () => {
+    const database = createDatabase(process.env.DATABASE_URL!);
+    try {
+      await assert.rejects(
+        database.db.transaction(async (transaction) => {
+          const owner = randomUUID();
+          const other = randomUUID();
+          const activeId = randomUUID();
+          const archivedOlder = randomUUID();
+          const archivedTieLow = "00000000-0000-4000-8000-000000000010";
+          const archivedTieHigh = "00000000-0000-4000-8000-000000000020";
+          const now = new Date("2026-07-29T08:00:00Z");
+          await transaction.insert(users).values([
+            {
+              id: owner,
+              email: `diary-life-${owner}@example.invalid`,
+              displayName: "Diary lifecycle owner",
+            },
+            {
+              id: other,
+              email: `diary-life-${other}@example.invalid`,
+              displayName: "Diary lifecycle other",
+            },
+          ]);
+          const record = (
+            id: string,
+            userId: string,
+            status: "active" | "archived",
+            updatedAt: Date,
+          ) => ({
+            id,
+            userId,
+            title: `Diary ${id}`,
+            content: "Lifecycle integration content",
+            date: "2026-07-29",
+            tags: [],
+            source: "chatgpt_mcp" as const,
+            status,
+            idempotencyKey: `integration:${id}`,
+            requestHash: createHash("sha256").update(id).digest("hex"),
+            createdAt: now,
+            updatedAt,
+          });
+          await transaction.insert(diaryEntries).values([
+            record(activeId, owner, "active", now),
+            record(
+              archivedOlder,
+              owner,
+              "archived",
+              new Date("2026-07-28T00:00:00Z"),
+            ),
+            record(archivedTieLow, owner, "archived", now),
+            record(archivedTieHigh, owner, "archived", now),
+            record(randomUUID(), other, "archived", now),
+          ]);
+
+          const repository = new DrizzleDiaryRepository(
+            transaction as never,
+          );
+          assert.deepEqual(
+            (await repository.findDiaryEntries(owner, 50)).map(({ id }) => id),
+            [activeId],
+          );
+          const service = new DiaryService(repository);
+          await assert.rejects(
+            service.readDiary({ userId: owner, id: archivedTieHigh }),
+            (error: unknown) =>
+              error instanceof Error &&
+              "code" in error &&
+              error.code === "DIARY_NOT_FOUND",
+          );
+          assert.deepEqual(
+            (await repository.findArchivedDiaries(owner, 2))
+              .map(({ id }) => id),
+            [archivedTieHigh, archivedTieLow],
+          );
+          assert.equal(
+            await repository.findArchivedDiaryById(owner, activeId),
+            null,
+          );
+
+          assert.equal(await repository.archiveDiary({
+            id: activeId,
+            userId: owner,
+            actorType: "user",
+            channel: "web",
+          }), true);
+          assert.equal(await repository.archiveDiary({
+            id: activeId,
+            userId: owner,
+            actorType: "user",
+            channel: "web",
+          }), false);
+          assert.equal(await repository.restoreDiary({
+            id: activeId,
+            userId: owner,
+            actorType: "user",
+            channel: "web",
+          }), true);
+
+          const events = await transaction
+            .select({
+              action: resourceLifecycleEvents.action,
+              actorType: resourceLifecycleEvents.actorType,
+              channel: resourceLifecycleEvents.channel,
+              metadata: resourceLifecycleEvents.metadata,
+            })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.resourceId, activeId),
+              ),
+            );
+          assert.deepEqual(events, [
+            {
+              action: "archive",
+              actorType: "user",
+              channel: "web",
+              metadata: {},
+            },
+            {
+              action: "restore",
+              actorType: "user",
+              channel: "web",
+              metadata: {},
+            },
+          ]);
+
+          const rollbackId = randomUUID();
+          await transaction.insert(diaryEntries).values(
+            record(rollbackId, owner, "active", now),
+          );
+          const failingRepository = new DrizzleDiaryRepository(
+            transaction as never,
+            {
+              async record() {
+                throw new Error("audit unavailable");
+              },
+            },
+          );
+          await assert.rejects(
+            failingRepository.archiveDiary({
+              id: rollbackId,
+              userId: owner,
+              actorType: "user",
+              channel: "web",
+            }),
+            /audit unavailable/,
+          );
+          const [rolledBack] = await transaction
+            .select({ status: diaryEntries.status })
+            .from(diaryEntries)
+            .where(eq(diaryEntries.id, rollbackId));
+          assert.equal(rolledBack?.status, "active");
+
+          const restoreRollbackId = randomUUID();
+          await transaction.insert(diaryEntries).values(
+            record(
+              restoreRollbackId,
+              owner,
+              "archived",
+              now,
+            ),
+          );
+          const failingRestoreRepository = new DrizzleDiaryRepository(
+            transaction as never,
+            {
+              async record() {
+                throw new Error("audit unavailable");
+              },
+            },
+          );
+          await assert.rejects(
+            failingRestoreRepository.restoreDiary({
+              id: restoreRollbackId,
+              userId: owner,
+              actorType: "user",
+              channel: "web",
+            }),
+            /audit unavailable/,
+          );
+          const [restoreRolledBack] = await transaction
+            .select({ status: diaryEntries.status })
+            .from(diaryEntries)
+            .where(eq(diaryEntries.id, restoreRollbackId));
+          assert.equal(restoreRolledBack?.status, "archived");
+          const restoreEvents = await transaction
+            .select({ id: resourceLifecycleEvents.id })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.resourceId, restoreRollbackId),
+              ),
+            );
+          assert.equal(restoreEvents.length, 0);
+
+          const crossUserActiveId = randomUUID();
+          const crossUserArchivedId = randomUUID();
+          await transaction.insert(diaryEntries).values([
+            record(crossUserActiveId, other, "active", now),
+            record(crossUserArchivedId, other, "archived", now),
+          ]);
+          assert.equal(await repository.archiveDiary({
+            id: crossUserActiveId,
+            userId: owner,
+            actorType: "user",
+            channel: "web",
+          }), false);
+          assert.equal(await repository.restoreDiary({
+            id: crossUserArchivedId,
+            userId: owner,
+            actorType: "user",
+            channel: "web",
+          }), false);
+          const crossUserRows = await transaction
+            .select({
+              id: diaryEntries.id,
+              status: diaryEntries.status,
+            })
+            .from(diaryEntries)
+            .where(
+              and(
+                eq(diaryEntries.id, crossUserActiveId),
+              ),
+            );
+          const crossUserArchivedRows = await transaction
+            .select({
+              id: diaryEntries.id,
+              status: diaryEntries.status,
+            })
+            .from(diaryEntries)
+            .where(eq(diaryEntries.id, crossUserArchivedId));
+          assert.equal(crossUserRows[0]?.status, "active");
+          assert.equal(crossUserArchivedRows[0]?.status, "archived");
+          const crossUserEvents = await transaction
+            .select({ id: resourceLifecycleEvents.id })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.resourceId, crossUserActiveId),
+              ),
+            );
+          const crossUserRestoreEvents = await transaction
+            .select({ id: resourceLifecycleEvents.id })
+            .from(resourceLifecycleEvents)
+            .where(
+              and(
+                eq(resourceLifecycleEvents.resourceType, "diary"),
+                eq(resourceLifecycleEvents.resourceId, crossUserArchivedId),
+              ),
+            );
+          assert.equal(crossUserEvents.length, 0);
+          assert.equal(crossUserRestoreEvents.length, 0);
+
+          throw new RollbackDiaryLifecycleTest();
+        }),
+        RollbackDiaryLifecycleTest,
       );
     } finally {
       await database.close();
