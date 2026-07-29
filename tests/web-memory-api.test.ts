@@ -5,6 +5,7 @@ import { MemoryDomainError } from "../src/domains/memory/memory-service.js";
 import {
   createCreateMemoryApiHandler,
   createArchiveMemoryApiHandler,
+  createReadArchivedMemoriesApiHandler,
   createReadMemoryApiHandler,
   createReadMemoryDetailApiHandler,
   createUpdateMemoryApiHandler,
@@ -495,4 +496,95 @@ for (const operation of ["create", "update", "archive"] as const) {
       );
     });
   }
+}
+
+test("Memory archived API reads only through the authenticated user service path", async () => {
+  const calls: unknown[] = [];
+  const expected = {
+    memories: [{
+      id: "memory-archived",
+      category: "goal" as const,
+      key: "archived_goal",
+      content: "Archived content",
+      tags: ["archive"],
+      source: "web",
+      updated_at: "2026-07-29T01:00:00.000Z",
+    }],
+    metadata: { count: 1 },
+  };
+  const handler = createReadArchivedMemoriesApiHandler({
+    memoryService: {
+      async readArchivedMemories(input) {
+        calls.push(input);
+        return expected;
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+
+  await handler(
+    { webUserId: "user-a" } as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+
+  assert.deepEqual(calls, [{ userId: "user-a" }]);
+  assert.deepEqual(result.body, {
+    success: true,
+    data: expected,
+  });
+});
+
+test("Memory archived API rejects unauthenticated requests before the service", async () => {
+  let called = false;
+  const handler = createReadArchivedMemoriesApiHandler({
+    memoryService: {
+      async readArchivedMemories() {
+        called = true;
+        throw new Error("must not run");
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+
+  await handler(
+    {} as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+
+  assert.equal(called, false);
+  assert.equal(result.status, 401);
+});
+
+for (const code of ["USER_NOT_FOUND", "USER_DISABLED"] as const) {
+  test(`Memory archived API maps ${code} to the existing unavailable response`, async () => {
+    const handler = createReadArchivedMemoriesApiHandler({
+      memoryService: {
+        async readArchivedMemories() {
+          throw new MemoryDomainError(code, "private user detail");
+        },
+      },
+    } as never);
+    const { result, response } = responseRecorder();
+
+    await handler(
+      { webUserId: "user-a" } as Request,
+      response,
+      (() => {}) as NextFunction,
+    );
+
+    assert.equal(result.status, 403);
+    assert.deepEqual(result.body, {
+      success: false,
+      error: {
+        code: "MEMORY_UNAVAILABLE",
+        message: "Memory is unavailable for the authenticated user.",
+      },
+    });
+    assert.doesNotMatch(
+      JSON.stringify(result.body),
+      /private user detail/,
+    );
+  });
 }

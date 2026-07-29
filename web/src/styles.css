@@ -319,6 +319,12 @@ a {
   margin-top: 0;
 }
 
+.page-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
 .live-badge,
 .status-pill,
 .memory-count {
@@ -1287,6 +1293,10 @@ textarea:disabled {
   .page-header .secondary-button,
   .page-header .live-badge {
     align-self: flex-start;
+  }
+
+  .page-header-actions {
+    flex-wrap: wrap;
   }
 
   .hero-panel,

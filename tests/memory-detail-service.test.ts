@@ -35,6 +35,9 @@ function repository(
         updatedAt: new Date("2026-07-28T00:00:00.000Z"),
       };
     },
+    async findArchivedAssistantMemories() {
+      return [];
+    },
     async createMemory() {},
     async updateMemory() {
       return true;
@@ -532,3 +535,67 @@ test("Memory detail checks active user status before querying the record", async
   );
   assert.equal(queried, false);
 });
+
+test("Memory archived list validates the active user and returns bounded safe records", async () => {
+  const calls: unknown[] = [];
+  const service = new MemoryService(repository({
+    async findArchivedAssistantMemories(input) {
+      calls.push(input);
+      return [{
+        id: "memory-archived",
+        category: "project",
+        key: "completed_project",
+        content: "Archived context",
+        tags: ["archive"],
+        source: "web",
+        updatedAt: new Date("2026-07-29T01:00:00.000Z"),
+      }];
+    },
+  }));
+
+  const result = await service.readArchivedMemories({
+    userId: "user-a",
+  });
+
+  assert.deepEqual(calls, [{ userId: "user-a", limit: 50 }]);
+  assert.deepEqual(result, {
+    memories: [{
+      id: "memory-archived",
+      category: "project",
+      key: "completed_project",
+      content: "Archived context",
+      tags: ["archive"],
+      source: "web",
+      updated_at: "2026-07-29T01:00:00.000Z",
+    }],
+    metadata: { count: 1 },
+  });
+});
+
+for (const userState of ["missing", "disabled"] as const) {
+  test(`Memory archived list rejects a ${userState} user before querying records`, async () => {
+    let queried = false;
+    const service = new MemoryService(repository({
+      async findUserById() {
+        return userState === "missing"
+          ? null
+          : { displayName: "Leilei", status: "disabled" };
+      },
+      async findArchivedAssistantMemories() {
+        queried = true;
+        return [];
+      },
+    }));
+
+    await assert.rejects(
+      service.readArchivedMemories({ userId: "user-a" }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code ===
+          (userState === "missing"
+            ? "USER_NOT_FOUND"
+            : "USER_DISABLED"),
+    );
+    assert.equal(queried, false);
+  });
+}

@@ -1,12 +1,43 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createMemoryArchiveLocation,
   createMemoryDetailLocation,
   createMemoryListLocation,
+  getMemoryArchiveLocation,
   getMemoryDetailLocation,
   getSafeMemoryReturnTo,
   readMemoryFilters,
 } from "../web/src/pages/memory-location.js";
+
+test("Memory archive location keeps a safe list return target", () => {
+  const location = createMemoryArchiveLocation(
+    "/memory?q=focus&category=goal&tag=MCP",
+  );
+  const parsed = new URL(location, "https://leilei-os.test");
+
+  assert.equal(parsed.pathname, "/memory");
+  assert.equal(parsed.searchParams.get("view"), "archived");
+  assert.equal(
+    parsed.searchParams.get("returnTo"),
+    "/memory?q=focus&category=goal&tag=MCP",
+  );
+  assert.deepEqual(getMemoryArchiveLocation(parsed.search), {
+    archived: true,
+    returnTo: "/memory?q=focus&category=goal&tag=MCP",
+  });
+  assert.deepEqual(
+    getMemoryArchiveLocation(
+      "?view=archived&returnTo=https://example.com",
+    ),
+    { archived: true, returnTo: "/memory" },
+  );
+  assert.equal(
+    getMemoryArchiveLocation("?view=archived&memory=memory-1")
+      .archived,
+    false,
+  );
+});
 
 test("Memory detail location preserves normalized search and category filters", () => {
   const list = createMemoryListLocation({

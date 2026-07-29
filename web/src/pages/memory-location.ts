@@ -75,6 +75,28 @@ export function createMemoryDetailLocation(
   return `/memory?${parameters.toString()}`;
 }
 
+export function createMemoryArchiveLocation(
+  returnTo: string,
+): string {
+  const parameters = new URLSearchParams();
+  parameters.set("view", "archived");
+  parameters.set("returnTo", getSafeMemoryReturnTo(returnTo));
+  return `/memory?${parameters.toString()}`;
+}
+
+export function getMemoryArchiveLocation(search: string): {
+  archived: boolean;
+  returnTo: string;
+} {
+  const parameters = new URLSearchParams(search);
+  return {
+    archived:
+      parameters.get("view") === "archived" &&
+      !parameters.has("memory"),
+    returnTo: getSafeMemoryReturnTo(parameters.get("returnTo")),
+  };
+}
+
 export function getSafeMemoryReturnTo(value: string | null): string {
   if (!value) return "/memory";
 

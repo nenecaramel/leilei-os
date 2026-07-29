@@ -20,8 +20,10 @@ import {
 } from "./memory-list-request";
 import {
   EMPTY_MEMORY_FILTERS,
+  createMemoryArchiveLocation,
   createMemoryDetailLocation,
   createMemoryListLocation,
+  getMemoryArchiveLocation,
   getMemoryDetailLocation,
   getSafeMemoryReturnTo,
   readMemoryFilters,
@@ -64,6 +66,16 @@ type MemoryDetailResponse = {
   data: MemoryRecord;
 };
 
+type ArchivedMemoryResponse = {
+  success: true;
+  data: {
+    memories: MemoryRecord[];
+    metadata: {
+      count: number;
+    };
+  };
+};
+
 type LoadState =
   | { status: "loading" }
   | { status: "ready"; result: MemoryResponse["data"] }
@@ -73,6 +85,14 @@ type DetailState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; memory: MemoryRecord }
+  | { status: "error" };
+
+type ArchivedState =
+  | { status: "loading" }
+  | {
+      status: "ready";
+      result: ArchivedMemoryResponse["data"];
+    }
   | { status: "error" };
 
 const categoryLabels: Record<MemoryCategory, string> = {
@@ -110,6 +130,10 @@ function initialFilters(): MemoryFilters {
   return readMemoryFilters(window.location.search);
 }
 
+function initialArchiveLocation() {
+  return getMemoryArchiveLocation(window.location.search);
+}
+
 function parseTags(value: string): string[] {
   return [
     ...new Set(
@@ -130,7 +154,11 @@ export function MemoryPageContent({
 }) {
   const [location, setLocation] = useState(initialLocation);
   const isDetail = location.memoryId !== null;
+  const [archiveLocation, setArchiveLocation] =
+    useState(initialArchiveLocation);
+  const isArchived = archiveLocation.archived;
   const [reloadKey, setReloadKey] = useState(0);
+  const [archiveReloadKey, setArchiveReloadKey] = useState(0);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
   const [state, setState] = useState<LoadState>({
     status: "loading",
@@ -140,8 +168,11 @@ export function MemoryPageContent({
       ? { status: "loading" }
       : { status: "idle" },
   );
+  const [archivedState, setArchivedState] =
+    useState<ArchivedState>({ status: "loading" });
   const listController = useRef<AbortController | null>(null);
   const detailController = useRef<AbortController | null>(null);
+  const archiveController = useRef<AbortController | null>(null);
   const pendingScrollRestore = useRef<number | null>(null);
   const tracker = useRef(createLatestMemoryRequestTracker());
 
@@ -171,7 +202,7 @@ export function MemoryPageContent({
   const [editingContent, setEditingContent] = useState("");
   const [editingTags, setEditingTags] = useState("");
   const [updatingId, setUpdatingId] = useState("");
-  const [deletingId, setDeletingId] = useState("");
+  const [archivingId, setArchivingId] = useState("");
 
   function invalidateList(): void {
     tracker.current.invalidate();
@@ -217,17 +248,27 @@ export function MemoryPageContent({
       searchDebouncer.current?.cancel();
       invalidateList();
       const nextLocation = initialLocation();
+      const nextArchiveLocation = initialArchiveLocation();
       detailController.current?.abort();
+      archiveController.current?.abort();
       setActionError("");
       setEditingId("");
       setEditingContent("");
       setEditingTags("");
       setLocation(nextLocation);
+      setArchiveLocation(nextArchiveLocation);
       setFilters(restoredFilters);
       setSearchDraft(restoredFilters.q);
 
       if (nextLocation.memoryId) {
         setDetailState({ status: "loading" });
+        return;
+      }
+
+      if (nextArchiveLocation.archived) {
+        setArchivedState({ status: "loading" });
+        setDetailState({ status: "idle" });
+        setShowCreate(false);
         return;
       }
 
@@ -247,10 +288,11 @@ export function MemoryPageContent({
     searchDebouncer.current?.cancel();
     invalidateList();
     detailController.current?.abort();
+    archiveController.current?.abort();
   }, []);
 
   useEffect(() => {
-    if (isDetail) {
+    if (isDetail || isArchived) {
       listController.current?.abort();
       listController.current = null;
       return;
@@ -297,7 +339,48 @@ export function MemoryPageContent({
         listController.current = null;
       }
     };
-  }, [api, filters, isDetail, reloadKey]);
+  }, [api, filters, isArchived, isDetail, reloadKey]);
+
+  useEffect(() => {
+    if (!isArchived) {
+      archiveController.current?.abort();
+      archiveController.current = null;
+      return;
+    }
+
+    const controller = new AbortController();
+    archiveController.current = controller;
+    setArchivedState({ status: "loading" });
+
+    api.request<ArchivedMemoryResponse>("/memory/archived", {
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!controller.signal.aborted) {
+          setArchivedState({
+            status: "ready",
+            result: response.data,
+          });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setArchivedState({ status: "error" });
+        }
+      })
+      .finally(() => {
+        if (archiveController.current === controller) {
+          archiveController.current = null;
+        }
+      });
+
+    return () => {
+      controller.abort();
+      if (archiveController.current === controller) {
+        archiveController.current = null;
+      }
+    };
+  }, [api, archiveReloadKey, isArchived]);
 
   useEffect(() => {
     const id = location.memoryId;
@@ -347,7 +430,7 @@ export function MemoryPageContent({
   const busy =
     creating ||
     updatingId.length > 0 ||
-    deletingId.length > 0;
+    archivingId.length > 0;
 
   const createInvalid =
     key.trim().length === 0 ||
@@ -422,7 +505,7 @@ export function MemoryPageContent({
     }
   }
 
-  async function handleDelete(
+  async function handleArchive(
     id: string,
     memoryKey: string,
   ) {
@@ -431,14 +514,14 @@ export function MemoryPageContent({
     }
 
     const confirmed = window.confirm(
-      `确定删除“${memoryKey.replaceAll("_", " ")}”吗？`,
+      `确定归档“${memoryKey.replaceAll("_", " ")}”吗？`,
     );
 
     if (!confirmed) {
       return;
     }
 
-    setDeletingId(id);
+    setArchivingId(id);
     setActionError("");
 
     try {
@@ -457,9 +540,9 @@ export function MemoryPageContent({
 
       setReloadKey((value) => value + 1);
     } catch {
-      setActionError("删除记忆失败，请稍后重试。");
+      setActionError("归档记忆失败，请稍后重试。");
     } finally {
-      setDeletingId("");
+      setArchivingId("");
     }
   }
 
@@ -506,6 +589,43 @@ export function MemoryPageContent({
     setState({ status: "loading" });
   }
 
+  function openArchive(): void {
+    const returnTo = createMemoryListLocation(filters);
+    saveMemoryScrollPosition(
+      getMemoryScrollStorage(window),
+      returnTo,
+      window.scrollY,
+    );
+    const next = createMemoryArchiveLocation(returnTo);
+    searchDebouncer.current?.cancel();
+    invalidateList();
+    window.history.pushState(null, "", next);
+    setShowCreate(false);
+    setActionError("");
+    setArchiveLocation(
+      getMemoryArchiveLocation(window.location.search),
+    );
+    setArchivedState({ status: "loading" });
+  }
+
+  function closeArchive(): void {
+    const returnTo = getSafeMemoryReturnTo(
+      archiveLocation.returnTo,
+    );
+    window.history.pushState(null, "", returnTo);
+    pendingScrollRestore.current = readMemoryScrollPosition(
+      getMemoryScrollStorage(window),
+      returnTo,
+    );
+    const restoredFilters = readMemoryFilters(
+      new URL(returnTo, window.location.origin).search,
+    );
+    setFilters(restoredFilters);
+    setSearchDraft(restoredFilters.q);
+    setArchiveLocation({ archived: false, returnTo: "/memory" });
+    setState({ status: "loading" });
+  }
+
   const visibleMemories =
     state.status === "ready"
       ? state.result.memories
@@ -530,17 +650,33 @@ export function MemoryPageContent({
           >
             返回记忆列表
           </button>
-        ) : (
+        ) : isArchived ? (
           <button
             className="secondary-button"
-            disabled={busy}
-            onClick={() => {
-              setShowCreate((value) => !value);
-              setActionError("");
-            }}
+            onClick={closeArchive}
           >
-            {showCreate ? "取消新增" : "新增记忆"}
+            返回记忆列表
           </button>
+        ) : (
+          <div className="page-header-actions">
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onClick={openArchive}
+            >
+              查看归档
+            </button>
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onClick={() => {
+                setShowCreate((value) => !value);
+                setActionError("");
+              }}
+            >
+              {showCreate ? "取消新增" : "新增记忆"}
+            </button>
+          </div>
         )}
       />
 
@@ -582,6 +718,13 @@ export function MemoryPageContent({
             if (detailMemory) void handleUpdate(detailMemory.id);
           }}
           onBack={closeMemory}
+        />
+      ) : isArchived ? (
+        <ArchivedMemoryList
+          state={archivedState}
+          onRetry={() =>
+            setArchiveReloadKey((value) => value + 1)
+          }
         />
       ) : (
         <>
@@ -728,8 +871,8 @@ export function MemoryPageContent({
                       editingId === memory.id;
                     const updating =
                       updatingId === memory.id;
-                    const deleting =
-                      deletingId === memory.id;
+                    const archiving =
+                      archivingId === memory.id;
 
                     return (
                       <article
@@ -747,7 +890,7 @@ export function MemoryPageContent({
                           <>
                             <textarea
                               value={editingContent}
-                              disabled={updating || deleting}
+                              disabled={updating || archiving}
                               onChange={(event) => {
                                 setEditingContent(
                                   event.target.value,
@@ -758,7 +901,7 @@ export function MemoryPageContent({
                             <input
                               aria-label="编辑记忆标签"
                               value={editingTags}
-                              disabled={updating || deleting}
+                              disabled={updating || archiving}
                               onChange={(event) => {
                                 setEditingTags(event.target.value);
                                 setActionError("");
@@ -769,7 +912,7 @@ export function MemoryPageContent({
                               className="secondary-button"
                               disabled={
                                 updating ||
-                                deleting ||
+                                archiving ||
                                 !editingContent.trim()
                               }
                               onClick={() =>
@@ -783,7 +926,7 @@ export function MemoryPageContent({
 
                             <button
                               className="secondary-button"
-                              disabled={updating || deleting}
+                              disabled={updating || archiving}
                               onClick={() => {
                                 setEditingId("");
                                 setEditingContent("");
@@ -827,15 +970,15 @@ export function MemoryPageContent({
                               className="secondary-button"
                               disabled={busy}
                               onClick={() =>
-                                handleDelete(
+                                handleArchive(
                                   memory.id,
                                   memory.key,
                                 )
                               }
                             >
-                              {deleting
-                                ? "删除中…"
-                                : "删除"}
+                              {archiving
+                                ? "归档中…"
+                                : "归档"}
                             </button>
                           </>
                         )}
@@ -878,6 +1021,71 @@ export function MemoryPageContent({
         </>
       )}
     </div>
+  );
+}
+
+function ArchivedMemoryList({
+  state,
+  onRetry,
+}: {
+  state: ArchivedState;
+  onRetry(): void;
+}) {
+  if (state.status === "loading") {
+    return (
+      <>
+        <MemoryMessage
+          title="已归档记忆"
+          description="正在读取归档…"
+        />
+        <MemoryLoading />
+      </>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <MemoryMessage
+        title="暂时无法读取归档"
+        description="连接没有完成，请稍后重试。"
+        action={
+          <button
+            className="secondary-button"
+            onClick={onRetry}
+          >
+            重新加载
+          </button>
+        }
+      />
+    );
+  }
+
+  if (state.result.memories.length === 0) {
+    return (
+      <MemoryMessage
+        title="已归档记忆"
+        description="还没有归档记忆"
+      />
+    );
+  }
+
+  return (
+    <>
+      <section className="memory-message">
+        <h2>已归档记忆</h2>
+        <p>共 {state.result.metadata.count} 条</p>
+      </section>
+      <section className="memory-grid">
+        {state.result.memories.map((memory) => (
+          <article className="memory-card" key={memory.id}>
+            <MemoryMetadata memory={memory} />
+            <h2>{memory.key.replaceAll("_", " ")}</h2>
+            <MemoryTags tags={memory.tags} />
+            <p>{memory.content}</p>
+          </article>
+        ))}
+      </section>
+    </>
   );
 }
 
