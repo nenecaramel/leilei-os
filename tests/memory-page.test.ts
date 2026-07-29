@@ -224,7 +224,12 @@ test("Memory active detail uses archive wording and calls the existing endpoint 
       .filter((button) => button.textContent === "返回记忆列表");
     assert.ok(edit);
     assert.ok(archive);
-    assert.equal(returns.length, 1);
+    assert.equal(returns.length, 2);
+    assert.deepEqual(
+      [...page.container.querySelectorAll(".memory-detail > button")]
+        .map((button) => button.textContent),
+      ["编辑", "归档", "返回记忆列表"],
+    );
     assert.doesNotMatch(page.container.textContent ?? "", /删除/);
 
     await React.act(async () => {
