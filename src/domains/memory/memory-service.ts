@@ -1,5 +1,6 @@
 import type {
   MemoryCategory,
+  MemoryOrdering,
   MemoryRepository,
   MemoryUserRecord,
 } from "./memory-repository.js";
@@ -24,6 +25,7 @@ export type ReadMemoryInput = {
   keys?: readonly string[];
   query?: string;
   tag?: string;
+  ordering?: MemoryOrdering;
   includeSource?: boolean;
   limit?: number;
 };
@@ -101,6 +103,7 @@ export class MemoryService {
       categories,
       keys,
       tag,
+      ordering: input.ordering ?? "default",
       limit,
     });
 

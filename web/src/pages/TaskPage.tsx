@@ -679,6 +679,7 @@ import {
         />
         {!isDetailMode && (
           <section className="memory-message task-filters">
+            <h2>搜索与筛选</h2>
             <input aria-label="搜索任务" placeholder="搜索任务标题或内容" value={searchDraft} onChange={(event) => updateSearchDraft(event.target.value)} />
             <select aria-label="状态筛选" value={filters.status} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, status: event.target.value })}>
               <option value="">全部状态</option><option value="pending">待处理</option><option value="in_progress">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option>
