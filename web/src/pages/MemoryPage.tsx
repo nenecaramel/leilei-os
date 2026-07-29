@@ -192,6 +192,7 @@ export function MemoryPageContent({
   const archiveController = useRef<AbortController | null>(null);
   const archivedDetailController =
     useRef<AbortController | null>(null);
+  const restoreInFlight = useRef(false);
   const pendingScrollRestore = useRef<number | null>(null);
   const tracker = useRef(createLatestMemoryRequestTracker());
 
@@ -222,6 +223,7 @@ export function MemoryPageContent({
   const [editingTags, setEditingTags] = useState("");
   const [updatingId, setUpdatingId] = useState("");
   const [archivingId, setArchivingId] = useState("");
+  const [restoringId, setRestoringId] = useState("");
 
   function invalidateList(): void {
     tracker.current.invalidate();
@@ -763,6 +765,48 @@ export function MemoryPageContent({
     setArchivedState({ status: "loading" });
   }
 
+  async function restoreArchivedMemory(id: string): Promise<void> {
+    if (restoreInFlight.current) return;
+    restoreInFlight.current = true;
+    setRestoringId(id);
+    setActionError("");
+
+    try {
+      await api.request(
+        `/memory/archived/${encodeURIComponent(id)}/restore`,
+        { method: "POST" },
+      );
+      const archiveReturn = getMemoryArchiveLocation(
+        new URL(
+          archivedDetailLocation.returnTo,
+          window.location.origin,
+        ).search,
+      );
+      const activeList = getSafeMemoryReturnTo(
+        archiveReturn.returnTo,
+      );
+      const restoredFilters = readMemoryFilters(
+        new URL(activeList, window.location.origin).search,
+      );
+      window.history.replaceState(null, "", activeList);
+      setArchivedDetailLocation({
+        memoryId: null,
+        returnTo: createMemoryArchiveLocation("/memory"),
+      });
+      setArchivedDetailState({ status: "idle" });
+      setArchiveLocation({ archived: false, returnTo: "/memory" });
+      setFilters(restoredFilters);
+      setSearchDraft(restoredFilters.q);
+      setState({ status: "loading" });
+      setReloadKey((value) => value + 1);
+    } catch {
+      setActionError("恢复记忆失败，请稍后重试。");
+    } finally {
+      restoreInFlight.current = false;
+      setRestoringId("");
+    }
+  }
+
   const visibleMemories =
     state.status === "ready"
       ? state.result.memories
@@ -790,6 +834,7 @@ export function MemoryPageContent({
         ) : isArchivedDetail ? (
           <button
             className="secondary-button"
+            disabled={restoringId.length > 0}
             onClick={closeArchivedMemory}
           >
             返回归档列表
@@ -870,6 +915,10 @@ export function MemoryPageContent({
             setArchiveReloadKey((value) => value + 1)
           }
           onBack={closeArchivedMemory}
+          restoring={
+            restoringId === archivedDetailLocation.memoryId
+          }
+          onRestore={(id) => void restoreArchivedMemory(id)}
         />
       ) : isArchived ? (
         <ArchivedMemoryList
@@ -1254,10 +1303,14 @@ function ArchivedMemoryDetail({
   state,
   onRetry,
   onBack,
+  restoring,
+  onRestore,
 }: {
   state: DetailState;
   onRetry(): void;
   onBack(): void;
+  restoring: boolean;
+  onRestore(id: string): void;
 }) {
   if (state.status === "loading") {
     return (
@@ -1294,7 +1347,18 @@ function ArchivedMemoryDetail({
       <h2>{state.memory.key.replaceAll("_", " ")}</h2>
       <MemoryTags tags={state.memory.tags} />
       <p>{state.memory.content}</p>
-      <button className="secondary-button" onClick={onBack}>
+      <button
+        className="secondary-button"
+        disabled={restoring}
+        onClick={() => onRestore(state.memory.id)}
+      >
+        {restoring ? "恢复中…" : "恢复"}
+      </button>
+      <button
+        className="secondary-button"
+        disabled={restoring}
+        onClick={onBack}
+      >
         返回归档列表
       </button>
     </section>

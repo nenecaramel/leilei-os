@@ -48,9 +48,79 @@ function repository(
     async archiveMemory() {
       return true;
     },
+    async restoreMemory() {
+      return true;
+    },
     ...overrides,
   };
 }
+
+test("Memory restore validates the active user and trims the id before mutation", async () => {
+  const calls: unknown[] = [];
+  const service = new MemoryService(repository({
+    async restoreMemory(input) {
+      calls.push(input);
+      return true;
+    },
+  }));
+
+  await service.restoreMemory({
+    userId: "user-a",
+    id: " archived-1 ",
+  });
+  assert.deepEqual(calls, [{ userId: "user-a", id: "archived-1" }]);
+});
+
+for (const userState of ["missing", "disabled"] as const) {
+  test(`Memory restore rejects a ${userState} user before mutation`, async () => {
+    let mutated = false;
+    const service = new MemoryService(repository({
+      async findUserById() {
+        return userState === "missing"
+          ? null
+          : { displayName: "Leilei", status: "disabled" };
+      },
+      async restoreMemory() {
+        mutated = true;
+        return true;
+      },
+    }));
+
+    await assert.rejects(
+      service.restoreMemory({
+        userId: "user-a",
+        id: "archived-1",
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code ===
+          (userState === "missing"
+            ? "USER_NOT_FOUND"
+            : "USER_DISABLED"),
+    );
+    assert.equal(mutated, false);
+  });
+}
+
+test("Memory restore and repeated restore hide ineligible records as not found", async () => {
+  let eligible = true;
+  const service = new MemoryService(repository({
+    async restoreMemory() {
+      const result = eligible;
+      eligible = false;
+      return result;
+    },
+  }));
+  const input = { userId: "user-a", id: "archived-1" };
+
+  await service.restoreMemory(input);
+  await assert.rejects(
+    service.restoreMemory(input),
+    (error) =>
+      error instanceof MemoryDomainError &&
+      error.code === "MEMORY_NOT_FOUND",
+  );
+});
 
 test("Memory archived detail validates the user and returns safe fields", async () => {
   const calls: unknown[] = [];

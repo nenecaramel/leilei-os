@@ -303,6 +303,33 @@ export class MemoryService {
     }
   }
 
+  async restoreMemory(input: {
+    userId: string;
+    id: string;
+  }): Promise<void> {
+    await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+
+    const restored = await this.repository.restoreMemory({
+      userId: input.userId,
+      id,
+    });
+
+    if (!restored) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+  }
+
   private async requireActiveUser(
     userId: string,
   ): Promise<MemoryUserRecord> {

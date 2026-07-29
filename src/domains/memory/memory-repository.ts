@@ -104,6 +104,11 @@ export interface MemoryRepository {
     id: string;
     userId: string;
   }): Promise<boolean>;
+
+  restoreMemory(input: {
+    id: string;
+    userId: string;
+  }): Promise<boolean>;
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -375,5 +380,28 @@ export class DrizzleMemoryRepository implements MemoryRepository {
       .returning({ id: coreMemories.id });
 
     return archived.length === 1;
+  }
+
+  async restoreMemory(input: {
+    id: string;
+    userId: string;
+  }): Promise<boolean> {
+    const restored = await this.db
+      .update(coreMemories)
+      .set({
+        status: "active",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(coreMemories.id, input.id),
+          eq(coreMemories.userId, input.userId),
+          eq(coreMemories.status, "archived"),
+          eq(coreMemories.visibility, "assistant"),
+        ),
+      )
+      .returning({ id: coreMemories.id });
+
+    return restored.length === 1;
   }
 }

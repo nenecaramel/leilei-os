@@ -323,7 +323,7 @@ test("Memory archived card opens a read-only archived detail and returns to arch
       page.container.textContent ?? "",
       /Complete the focused milestone/,
     );
-    for (const forbidden of ["编辑", "归档", "恢复", "永久删除"]) {
+    for (const forbidden of ["编辑", "归档", "永久删除"]) {
       assert.equal(
         [...page.container.querySelectorAll("button")]
           .some((button) => button.textContent === forbidden),
@@ -412,6 +412,134 @@ test("Memory archived detail error retries without exposing list actions", async
       await Promise.resolve();
     });
     assert.equal(attempts, 2);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory archived detail restore is single-flight and returns to exact active filters", async () => {
+  const activeList = "/memory?q=goal&category=goal&tag=MCP";
+  const archiveList = createMemoryArchiveLocation(activeList);
+  let finishRestore!: () => void;
+  const restorePending = new Promise<void>((resolve) => {
+    finishRestore = resolve;
+  });
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory/archived/memory-1") {
+        return { success: true, data: memory } as T;
+      }
+      if (path === "/memory/archived/memory-1/restore") {
+        await restorePending;
+        return { success: true } as T;
+      }
+      if (path === activeList) return listResponse() as T;
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  };
+  const page = await render(
+    createArchivedMemoryDetailLocation("memory-1", archiveList),
+    api,
+  );
+
+  try {
+    const restore = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "恢复");
+    assert.ok(restore);
+    await React.act(async () => {
+      restore.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      restore.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+    assert.equal(
+      requests.filter(
+        ({ path }) =>
+          path === "/memory/archived/memory-1/restore",
+      ).length,
+      1,
+    );
+    assert.match(page.container.textContent ?? "", /恢复中…/);
+    const back = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "返回归档列表");
+    assert.ok(back?.disabled);
+
+    await React.act(async () => {
+      finishRestore();
+      await restorePending;
+      await Promise.resolve();
+    });
+
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      activeList,
+    );
+    assert.equal(requests.at(-1)?.path, activeList);
+    const filters = new URLSearchParams(page.window.location.search);
+    assert.equal(filters.get("q"), "goal");
+    assert.equal(filters.get("category"), "goal");
+    assert.equal(filters.get("tag"), "MCP");
+    assert.equal(
+      page.window.history.state,
+      null,
+      "the invalid archived detail entry is replaced",
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory archived detail restore failure stays read-only and safely retryable", async () => {
+  const detailUrl = createArchivedMemoryDetailLocation(
+    "memory-1",
+    createMemoryArchiveLocation("/memory?q=goal"),
+  );
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory/archived/memory-1") {
+        return { success: true, data: memory } as T;
+      }
+      if (path === "/memory/archived/memory-1/restore") {
+        throw new Error("private restore detail");
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  };
+  const page = await render(detailUrl, api);
+
+  try {
+    const restore = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "恢复");
+    assert.ok(restore);
+    await React.act(async () => {
+      restore.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      detailUrl,
+    );
+    assert.match(
+      page.container.textContent ?? "",
+      /恢复记忆失败，请稍后重试。/,
+    );
+    assert.doesNotMatch(
+      page.container.textContent ?? "",
+      /private restore detail/,
+    );
+    assert.ok(
+      [...page.container.querySelectorAll("button")]
+        .some((button) => button.textContent === "恢复"),
+    );
   } finally {
     await page.cleanup();
   }
