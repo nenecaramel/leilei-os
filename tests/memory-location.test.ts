@@ -1,14 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createArchivedMemoryDetailLocation,
   createMemoryArchiveLocation,
   createMemoryDetailLocation,
   createMemoryListLocation,
+  getArchivedMemoryDetailLocation,
   getMemoryArchiveLocation,
   getMemoryDetailLocation,
   getSafeMemoryReturnTo,
   readMemoryFilters,
 } from "../web/src/pages/memory-location.js";
+
+test("Memory archived detail has distinct safe URL state", () => {
+  const archive = createMemoryArchiveLocation(
+    "/memory?q=focus&category=goal&tag=MCP",
+  );
+  const detail = createArchivedMemoryDetailLocation(
+    "archived-1",
+    archive,
+  );
+  const parsed = new URL(detail, "https://leilei-os.test");
+
+  assert.equal(parsed.pathname, "/memory");
+  assert.equal(parsed.searchParams.get("archivedMemory"), "archived-1");
+  assert.deepEqual(getArchivedMemoryDetailLocation(parsed.search), {
+    memoryId: "archived-1",
+    returnTo: archive,
+  });
+  assert.equal(getMemoryArchiveLocation(parsed.search).archived, false);
+  assert.equal(getMemoryDetailLocation(parsed.search).memoryId, null);
+});
 
 test("Memory archive location keeps a safe list return target", () => {
   const location = createMemoryArchiveLocation(

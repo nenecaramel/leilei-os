@@ -20,11 +20,14 @@ import {
 } from "./memory-list-request";
 import {
   EMPTY_MEMORY_FILTERS,
+  createArchivedMemoryDetailLocation,
   createMemoryArchiveLocation,
   createMemoryDetailLocation,
   createMemoryListLocation,
+  getArchivedMemoryDetailLocation,
   getMemoryArchiveLocation,
   getMemoryDetailLocation,
+  getSafeMemoryArchiveReturnTo,
   getSafeMemoryReturnTo,
   readMemoryFilters,
   type MemoryFilterCategory,
@@ -134,6 +137,10 @@ function initialArchiveLocation() {
   return getMemoryArchiveLocation(window.location.search);
 }
 
+function initialArchivedDetailLocation() {
+  return getArchivedMemoryDetailLocation(window.location.search);
+}
+
 function parseTags(value: string): string[] {
   return [
     ...new Set(
@@ -157,6 +164,10 @@ export function MemoryPageContent({
   const [archiveLocation, setArchiveLocation] =
     useState(initialArchiveLocation);
   const isArchived = archiveLocation.archived;
+  const [archivedDetailLocation, setArchivedDetailLocation] =
+    useState(initialArchivedDetailLocation);
+  const isArchivedDetail =
+    archivedDetailLocation.memoryId !== null;
   const [reloadKey, setReloadKey] = useState(0);
   const [archiveReloadKey, setArchiveReloadKey] = useState(0);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
@@ -170,9 +181,17 @@ export function MemoryPageContent({
   );
   const [archivedState, setArchivedState] =
     useState<ArchivedState>({ status: "loading" });
+  const [archivedDetailState, setArchivedDetailState] =
+    useState<DetailState>(
+      () => initialArchivedDetailLocation().memoryId
+        ? { status: "loading" }
+        : { status: "idle" },
+    );
   const listController = useRef<AbortController | null>(null);
   const detailController = useRef<AbortController | null>(null);
   const archiveController = useRef<AbortController | null>(null);
+  const archivedDetailController =
+    useRef<AbortController | null>(null);
   const pendingScrollRestore = useRef<number | null>(null);
   const tracker = useRef(createLatestMemoryRequestTracker());
 
@@ -249,14 +268,18 @@ export function MemoryPageContent({
       invalidateList();
       const nextLocation = initialLocation();
       const nextArchiveLocation = initialArchiveLocation();
+      const nextArchivedDetailLocation =
+        initialArchivedDetailLocation();
       detailController.current?.abort();
       archiveController.current?.abort();
+      archivedDetailController.current?.abort();
       setActionError("");
       setEditingId("");
       setEditingContent("");
       setEditingTags("");
       setLocation(nextLocation);
       setArchiveLocation(nextArchiveLocation);
+      setArchivedDetailLocation(nextArchivedDetailLocation);
       setFilters(restoredFilters);
       setSearchDraft(restoredFilters.q);
 
@@ -265,7 +288,21 @@ export function MemoryPageContent({
         return;
       }
 
+      if (nextArchivedDetailLocation.memoryId) {
+        setArchivedDetailState({ status: "loading" });
+        setDetailState({ status: "idle" });
+        setShowCreate(false);
+        return;
+      }
+
       if (nextArchiveLocation.archived) {
+        const archiveUrl = createMemoryArchiveLocation(
+          nextArchiveLocation.returnTo,
+        );
+        pendingScrollRestore.current = readMemoryScrollPosition(
+          getMemoryScrollStorage(window),
+          archiveUrl,
+        );
         setArchivedState({ status: "loading" });
         setDetailState({ status: "idle" });
         setShowCreate(false);
@@ -289,10 +326,11 @@ export function MemoryPageContent({
     invalidateList();
     detailController.current?.abort();
     archiveController.current?.abort();
+    archivedDetailController.current?.abort();
   }, []);
 
   useEffect(() => {
-    if (isDetail || isArchived) {
+    if (isDetail || isArchived || isArchivedDetail) {
       listController.current?.abort();
       listController.current = null;
       return;
@@ -339,7 +377,14 @@ export function MemoryPageContent({
         listController.current = null;
       }
     };
-  }, [api, filters, isArchived, isDetail, reloadKey]);
+  }, [
+    api,
+    filters,
+    isArchived,
+    isArchivedDetail,
+    isDetail,
+    reloadKey,
+  ]);
 
   useEffect(() => {
     if (!isArchived) {
@@ -361,6 +406,13 @@ export function MemoryPageContent({
             status: "ready",
             result: response.data,
           });
+          const position = pendingScrollRestore.current;
+          pendingScrollRestore.current = null;
+          if (position !== null) {
+            requestAnimationFrame(() => {
+              window.scrollTo({ top: position });
+            });
+          }
         }
       })
       .catch(() => {
@@ -381,6 +433,50 @@ export function MemoryPageContent({
       }
     };
   }, [api, archiveReloadKey, isArchived]);
+
+  useEffect(() => {
+    const id = archivedDetailLocation.memoryId;
+    if (!id) {
+      archivedDetailController.current?.abort();
+      archivedDetailController.current = null;
+      setArchivedDetailState({ status: "idle" });
+      return;
+    }
+
+    const controller = new AbortController();
+    archivedDetailController.current = controller;
+    setArchivedDetailState({ status: "loading" });
+
+    api.request<MemoryDetailResponse>(
+      `/memory/archived/${encodeURIComponent(id)}`,
+      { signal: controller.signal },
+    )
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        setArchivedDetailState({
+          status: "ready",
+          memory: response.data,
+        });
+        window.scrollTo({ top: 0 });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setArchivedDetailState({ status: "error" });
+        }
+      })
+      .finally(() => {
+        if (archivedDetailController.current === controller) {
+          archivedDetailController.current = null;
+        }
+      });
+
+    return () => {
+      controller.abort();
+      if (archivedDetailController.current === controller) {
+        archivedDetailController.current = null;
+      }
+    };
+  }, [api, archiveReloadKey, archivedDetailLocation]);
 
   useEffect(() => {
     const id = location.memoryId;
@@ -626,6 +722,47 @@ export function MemoryPageContent({
     setState({ status: "loading" });
   }
 
+  function openArchivedMemory(id: string): void {
+    const archiveUrl = createMemoryArchiveLocation(
+      archiveLocation.returnTo,
+    );
+    saveMemoryScrollPosition(
+      getMemoryScrollStorage(window),
+      archiveUrl,
+      window.scrollY,
+    );
+    const next = createArchivedMemoryDetailLocation(
+      id,
+      archiveUrl,
+    );
+    window.history.pushState(null, "", next);
+    setArchiveLocation({ archived: false, returnTo: "/memory" });
+    setArchivedDetailLocation(
+      getArchivedMemoryDetailLocation(window.location.search),
+    );
+    setArchivedDetailState({ status: "loading" });
+  }
+
+  function closeArchivedMemory(): void {
+    const returnTo = getSafeMemoryArchiveReturnTo(
+      archivedDetailLocation.returnTo,
+    );
+    window.history.pushState(null, "", returnTo);
+    pendingScrollRestore.current = readMemoryScrollPosition(
+      getMemoryScrollStorage(window),
+      returnTo,
+    );
+    setArchivedDetailLocation({
+      memoryId: null,
+      returnTo: createMemoryArchiveLocation("/memory"),
+    });
+    setArchivedDetailState({ status: "idle" });
+    setArchiveLocation(
+      getMemoryArchiveLocation(window.location.search),
+    );
+    setArchivedState({ status: "loading" });
+  }
+
   const visibleMemories =
     state.status === "ready"
       ? state.result.memories
@@ -649,6 +786,13 @@ export function MemoryPageContent({
             onClick={closeMemory}
           >
             返回记忆列表
+          </button>
+        ) : isArchivedDetail ? (
+          <button
+            className="secondary-button"
+            onClick={closeArchivedMemory}
+          >
+            返回归档列表
           </button>
         ) : isArchived ? (
           <button
@@ -719,9 +863,18 @@ export function MemoryPageContent({
           }}
           onBack={closeMemory}
         />
+      ) : isArchivedDetail ? (
+        <ArchivedMemoryDetail
+          state={archivedDetailState}
+          onRetry={() =>
+            setArchiveReloadKey((value) => value + 1)
+          }
+          onBack={closeArchivedMemory}
+        />
       ) : isArchived ? (
         <ArchivedMemoryList
           state={archivedState}
+          onOpen={openArchivedMemory}
           onRetry={() =>
             setArchiveReloadKey((value) => value + 1)
           }
@@ -1026,9 +1179,11 @@ export function MemoryPageContent({
 
 function ArchivedMemoryList({
   state,
+  onOpen,
   onRetry,
 }: {
   state: ArchivedState;
+  onOpen(id: string): void;
   onRetry(): void;
 }) {
   if (state.status === "loading") {
@@ -1082,10 +1237,67 @@ function ArchivedMemoryList({
             <h2>{memory.key.replaceAll("_", " ")}</h2>
             <MemoryTags tags={memory.tags} />
             <p>{memory.content}</p>
+            <button
+              className="secondary-button"
+              onClick={() => onOpen(memory.id)}
+            >
+              查看详情
+            </button>
           </article>
         ))}
       </section>
     </>
+  );
+}
+
+function ArchivedMemoryDetail({
+  state,
+  onRetry,
+  onBack,
+}: {
+  state: DetailState;
+  onRetry(): void;
+  onBack(): void;
+}) {
+  if (state.status === "loading") {
+    return (
+      <MemoryMessage
+        title="正在读取已归档记忆"
+        description="详情加载中…"
+      />
+    );
+  }
+
+  if (state.status === "error" || state.status === "idle") {
+    return (
+      <MemoryMessage
+        title="无法读取已归档记忆"
+        description="该记忆不存在、无权访问或暂时不可用。"
+        action={
+          <>
+            <button className="secondary-button" onClick={onRetry}>
+              重新加载
+            </button>
+            <button className="secondary-button" onClick={onBack}>
+              返回归档列表
+            </button>
+          </>
+        }
+      />
+    );
+  }
+
+  return (
+    <section className="memory-message memory-detail">
+      <p className="memory-detail-context">已归档记忆</p>
+      <MemoryMetadata memory={state.memory} />
+      <h2>{state.memory.key.replaceAll("_", " ")}</h2>
+      <MemoryTags tags={state.memory.tags} />
+      <p>{state.memory.content}</p>
+      <button className="secondary-button" onClick={onBack}>
+        返回归档列表
+      </button>
+    </section>
   );
 }
 

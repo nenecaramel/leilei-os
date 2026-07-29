@@ -222,6 +222,45 @@ test(
             "archived filtering and updated/id ordering happen before LIMIT",
           );
 
+          assert.equal(
+            (
+              await repository.findArchivedAssistantMemoryById({
+                userId: archiveListUserId,
+                id: archivedTieHigh,
+              })
+            )?.key,
+            "archived_tie_high",
+          );
+
+          for (const key of [
+            "active_excluded",
+            "private_excluded",
+            "restricted_excluded",
+            "other_archived_excluded",
+          ]) {
+            const [row] = await transaction
+              .select({ id: coreMemories.id })
+              .from(coreMemories)
+              .where(eq(coreMemories.key, key))
+              .limit(1);
+            assert.ok(row);
+            assert.equal(
+              await repository.findArchivedAssistantMemoryById({
+                userId: archiveListUserId,
+                id: row.id,
+              }),
+              null,
+            );
+          }
+
+          assert.equal(
+            await repository.findArchivedAssistantMemoryById({
+              userId: archiveListUserId,
+              id: randomUUID(),
+            }),
+            null,
+          );
+
           for (const fixture of fixtures) {
             assert.equal(
               await repository.updateMemory({

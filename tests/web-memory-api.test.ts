@@ -6,10 +6,98 @@ import {
   createCreateMemoryApiHandler,
   createArchiveMemoryApiHandler,
   createReadArchivedMemoriesApiHandler,
+  createReadArchivedMemoryDetailApiHandler,
   createReadMemoryApiHandler,
   createReadMemoryDetailApiHandler,
   createUpdateMemoryApiHandler,
 } from "../src/web-api/memory-router.js";
+
+test("Memory archived detail API uses authenticated identity and safe response", async () => {
+  const calls: unknown[] = [];
+  const expected = {
+    id: "archived-1",
+    category: "goal" as const,
+    key: "archived_goal",
+    content: "Archived content",
+    tags: ["archive"],
+    source: "web",
+    updated_at: "2026-07-29T01:00:00.000Z",
+  };
+  const handler = createReadArchivedMemoryDetailApiHandler({
+    memoryService: {
+      async readArchivedMemoryDetail(input) {
+        calls.push(input);
+        return expected;
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+
+  await handler(
+    {
+      webUserId: "user-a",
+      params: { id: "archived-1" },
+    } as unknown as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+
+  assert.deepEqual(calls, [{ userId: "user-a", id: "archived-1" }]);
+  assert.deepEqual(result.body, { success: true, data: expected });
+});
+
+test("Memory archived detail API rejects unauthenticated requests", async () => {
+  let called = false;
+  const handler = createReadArchivedMemoryDetailApiHandler({
+    memoryService: {
+      async readArchivedMemoryDetail() {
+        called = true;
+        throw new Error("must not run");
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+
+  await handler(
+    { params: { id: "archived-1" } } as unknown as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+  assert.equal(called, false);
+  assert.equal(result.status, 401);
+});
+
+for (const code of [
+  "MEMORY_NOT_FOUND",
+  "USER_NOT_FOUND",
+  "USER_DISABLED",
+] as const) {
+  test(`Memory archived detail API safely maps ${code}`, async () => {
+    const handler = createReadArchivedMemoryDetailApiHandler({
+      memoryService: {
+        async readArchivedMemoryDetail() {
+          throw new MemoryDomainError(code, "private internal detail");
+        },
+      },
+    } as never);
+    const { result, response } = responseRecorder();
+
+    await handler(
+      {
+        webUserId: "user-a",
+        params: { id: "archived-1" },
+      } as unknown as Request,
+      response,
+      (() => {}) as NextFunction,
+    );
+
+    assert.equal(result.status, code === "MEMORY_NOT_FOUND" ? 404 : 403);
+    assert.doesNotMatch(
+      JSON.stringify(result.body),
+      /private internal detail/,
+    );
+  });
+}
 
 function responseRecorder() {
   const result: { status?: number; body?: unknown } = {};
