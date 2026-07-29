@@ -219,6 +219,44 @@ export class MemoryService {
     };
   }
 
+  async readArchivedMemoryDetail(input: {
+    userId: string;
+    id: string;
+  }): Promise<ReadMemoryDetailResult> {
+    await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+
+    const memory =
+      await this.repository.findArchivedAssistantMemoryById({
+        userId: input.userId,
+        id,
+      });
+
+    if (!memory) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+
+    return {
+      id: memory.id,
+      category: memory.category,
+      key: memory.key,
+      content: this.limitContent(memory.content),
+      tags: memory.tags,
+      source: memory.source,
+      updated_at: memory.updatedAt.toISOString(),
+    };
+  }
+
   async createMemory(input: CreateMemoryInput): Promise<void> {
     await this.requireActiveUser(input.userId);
     await this.repository.createMemory({

@@ -38,6 +38,9 @@ function repository(
     async findArchivedAssistantMemories() {
       return [];
     },
+    async findArchivedAssistantMemoryById() {
+      return null;
+    },
     async createMemory() {},
     async updateMemory() {
       return true;
@@ -47,6 +50,97 @@ function repository(
     },
     ...overrides,
   };
+}
+
+test("Memory archived detail validates the user and returns safe fields", async () => {
+  const calls: unknown[] = [];
+  const service = new MemoryService(repository({
+    async findArchivedAssistantMemoryById(input) {
+      calls.push(input);
+      return {
+        id: input.id,
+        category: "project",
+        key: "finished_project",
+        content: "Archived context",
+        tags: ["archive"],
+        source: "web",
+        updatedAt: new Date("2026-07-29T03:00:00.000Z"),
+      };
+    },
+  }));
+
+  const result = await service.readArchivedMemoryDetail({
+    userId: "user-a",
+    id: " archived-1 ",
+  });
+
+  assert.deepEqual(calls, [{ userId: "user-a", id: "archived-1" }]);
+  assert.deepEqual(result, {
+    id: "archived-1",
+    category: "project",
+    key: "finished_project",
+    content: "Archived context",
+    tags: ["archive"],
+    source: "web",
+    updated_at: "2026-07-29T03:00:00.000Z",
+  });
+});
+
+for (const recordKind of [
+  "missing",
+  "active",
+  "private",
+  "restricted",
+  "cross-user",
+] as const) {
+  test(`Memory archived detail hides ${recordKind} records as not found`, async () => {
+    const service = new MemoryService(repository({
+      async findArchivedAssistantMemoryById() {
+        return null;
+      },
+    }));
+
+    await assert.rejects(
+      service.readArchivedMemoryDetail({
+        userId: "user-a",
+        id: `${recordKind}-memory`,
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code === "MEMORY_NOT_FOUND",
+    );
+  });
+}
+
+for (const userState of ["missing", "disabled"] as const) {
+  test(`Memory archived detail rejects a ${userState} user before record lookup`, async () => {
+    let queried = false;
+    const service = new MemoryService(repository({
+      async findUserById() {
+        return userState === "missing"
+          ? null
+          : { displayName: "Leilei", status: "disabled" };
+      },
+      async findArchivedAssistantMemoryById() {
+        queried = true;
+        return null;
+      },
+    }));
+
+    await assert.rejects(
+      service.readArchivedMemoryDetail({
+        userId: "user-a",
+        id: "archived-1",
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code ===
+          (userState === "missing"
+            ? "USER_NOT_FOUND"
+            : "USER_DISABLED"),
+    );
+    assert.equal(queried, false);
+  });
 }
 
 test("Memory detail uses the authenticated user for an active assistant-visible record", async () => {

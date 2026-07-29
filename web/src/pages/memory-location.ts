@@ -84,6 +84,28 @@ export function createMemoryArchiveLocation(
   return `/memory?${parameters.toString()}`;
 }
 
+export function createArchivedMemoryDetailLocation(
+  memoryId: string,
+  returnTo: string,
+): string {
+  const parameters = new URLSearchParams();
+  parameters.set("archivedMemory", memoryId);
+  parameters.set("returnTo", getSafeMemoryArchiveReturnTo(returnTo));
+  return `/memory?${parameters.toString()}`;
+}
+
+export function getArchivedMemoryDetailLocation(search: string): {
+  memoryId: string | null;
+  returnTo: string;
+} {
+  const parameters = new URLSearchParams(search);
+  const candidate = parameters.get("archivedMemory")?.trim() ?? "";
+  return {
+    memoryId: MEMORY_ID_PATTERN.test(candidate) ? candidate : null,
+    returnTo: getSafeMemoryArchiveReturnTo(parameters.get("returnTo")),
+  };
+}
+
 export function getMemoryArchiveLocation(search: string): {
   archived: boolean;
   returnTo: string;
@@ -92,9 +114,37 @@ export function getMemoryArchiveLocation(search: string): {
   return {
     archived:
       parameters.get("view") === "archived" &&
-      !parameters.has("memory"),
+      !parameters.has("memory") &&
+      !parameters.has("archivedMemory"),
     returnTo: getSafeMemoryReturnTo(parameters.get("returnTo")),
   };
+}
+
+export function getSafeMemoryArchiveReturnTo(
+  value: string | null,
+): string {
+  if (!value) return createMemoryArchiveLocation("/memory");
+
+  try {
+    const parsed = new URL(value, "https://leilei-os.invalid");
+    const keys = [...parsed.searchParams.keys()];
+    if (
+      parsed.origin !== "https://leilei-os.invalid" ||
+      parsed.pathname !== "/memory" ||
+      keys.some((key) => !["view", "returnTo"].includes(key)) ||
+      parsed.searchParams.getAll("view").length !== 1 ||
+      parsed.searchParams.get("view") !== "archived" ||
+      parsed.searchParams.getAll("returnTo").length !== 1
+    ) {
+      return createMemoryArchiveLocation("/memory");
+    }
+
+    return createMemoryArchiveLocation(
+      getSafeMemoryReturnTo(parsed.searchParams.get("returnTo")),
+    );
+  } catch {
+    return createMemoryArchiveLocation("/memory");
+  }
 }
 
 export function getSafeMemoryReturnTo(value: string | null): string {
