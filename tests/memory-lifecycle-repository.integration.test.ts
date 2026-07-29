@@ -28,6 +28,7 @@ test(
         database.db.transaction(async (transaction) => {
           const ownerId = randomUUID();
           const otherUserId = randomUUID();
+          const archiveListUserId = randomUUID();
           const now = new Date("2026-07-29T00:00:00.000Z");
 
           await transaction.insert(users).values([
@@ -43,6 +44,14 @@ test(
               id: otherUserId,
               email: `memory-lifecycle-${otherUserId}@example.invalid`,
               displayName: "Memory lifecycle other",
+              status: "active",
+              createdAt: now,
+              updatedAt: now,
+            },
+            {
+              id: archiveListUserId,
+              email: `memory-archive-list-${archiveListUserId}@example.invalid`,
+              displayName: "Memory archive list owner",
               status: "active",
               createdAt: now,
               updatedAt: now,
@@ -115,8 +124,102 @@ test(
             ]);
           }
 
+          const archivedOlder =
+            "00000000-0000-4000-8000-000000000201";
+          const archivedTieLow =
+            "00000000-0000-4000-8000-000000000202";
+          const archivedTieHigh =
+            "00000000-0000-4000-8000-000000000203";
+          await transaction.insert(coreMemories).values([
+            {
+              id: archivedOlder,
+              userId: archiveListUserId,
+              category: "goal",
+              key: "archived_older",
+              content: "Older archived fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "archived",
+              updatedAt: new Date("2026-07-29T01:00:00.000Z"),
+            },
+            {
+              id: archivedTieLow,
+              userId: archiveListUserId,
+              category: "goal",
+              key: "archived_tie_low",
+              content: "Archived tie fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "archived",
+              updatedAt: new Date("2026-07-29T02:00:00.000Z"),
+            },
+            {
+              id: archivedTieHigh,
+              userId: archiveListUserId,
+              category: "goal",
+              key: "archived_tie_high",
+              content: "Archived tie fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "archived",
+              updatedAt: new Date("2026-07-29T02:00:00.000Z"),
+            },
+            {
+              userId: archiveListUserId,
+              category: "goal",
+              key: "active_excluded",
+              content: "Active fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "active",
+            },
+            {
+              userId: archiveListUserId,
+              category: "goal",
+              key: "private_excluded",
+              content: "Private archived fixture",
+              tags: [],
+              visibility: "private",
+              source: "integration",
+              status: "archived",
+            },
+            {
+              userId: archiveListUserId,
+              category: "goal",
+              key: "restricted_excluded",
+              content: "Restricted archived fixture",
+              tags: [],
+              visibility: "restricted",
+              source: "integration",
+              status: "archived",
+            },
+            {
+              userId: otherUserId,
+              category: "goal",
+              key: "other_archived_excluded",
+              content: "Other archived fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "archived",
+            },
+          ]);
+
           const repository = new DrizzleMemoryRepository(
             transaction as never,
+          );
+
+          assert.deepEqual(
+            (await repository.findArchivedAssistantMemories({
+              userId: archiveListUserId,
+              limit: 2,
+            })).map((memory) => memory.key),
+            ["archived_tie_high", "archived_tie_low"],
+            "archived filtering and updated/id ordering happen before LIMIT",
           );
 
           for (const fixture of fixtures) {

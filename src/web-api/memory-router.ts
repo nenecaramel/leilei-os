@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from "express";
 import {
   MemoryDomainError,
+  type ReadArchivedMemoriesResult,
   type ReadMemoryDetailResult,
   type ReadMemoryResult,
 } from "../domains/memory/memory-service.js";
@@ -30,6 +31,10 @@ export type MemoryApiDependencies = {
       id: string;
     }): Promise<ReadMemoryDetailResult>;
 
+    readArchivedMemories(input: {
+      userId: string;
+    }): Promise<ReadArchivedMemoriesResult>;
+
     createMemory(input: {
       userId: string;
       category: "profile" | "preference" | "goal" | "project";
@@ -58,12 +63,67 @@ export function createMemoryApiRouter(
   const router = Router();
 
   router.get("/", createReadMemoryApiHandler(dependencies));
+  router.get(
+    "/archived",
+    createReadArchivedMemoriesApiHandler(dependencies),
+  );
   router.get("/:id", createReadMemoryDetailApiHandler(dependencies));
   router.post("/", createCreateMemoryApiHandler(dependencies));
   router.patch("/", createUpdateMemoryApiHandler(dependencies));
   router.delete("/", createArchiveMemoryApiHandler(dependencies));
 
   return router;
+}
+
+export function createReadArchivedMemoriesApiHandler(
+  dependencies: MemoryApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!request.webUserId) {
+      response.status(401).json({
+        success: false,
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Web API authentication is required.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const data =
+        await dependencies.memoryService.readArchivedMemories({
+          userId: request.webUserId,
+        });
+      response.json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      if (
+        error instanceof MemoryDomainError &&
+        (error.code === "USER_NOT_FOUND" ||
+          error.code === "USER_DISABLED")
+      ) {
+        response.status(403).json({
+          success: false,
+          error: {
+            code: "MEMORY_UNAVAILABLE",
+            message: "Memory is unavailable for the authenticated user.",
+          },
+        });
+        return;
+      }
+
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "MEMORY_UNAVAILABLE",
+          message: "Memory is temporarily unavailable.",
+        },
+      });
+    }
+  };
 }
 
 export function createReadMemoryDetailApiHandler(

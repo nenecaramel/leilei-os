@@ -48,6 +48,11 @@ export type FindMemoriesInput = {
   limit: number;
 };
 
+export type FindArchivedMemoriesInput = {
+  userId: string;
+  limit: number;
+};
+
 export type CreateMemoryInput = {
   userId: string;
   category: MemoryCategory;
@@ -81,6 +86,10 @@ export interface MemoryRepository {
     userId: string;
     id: string;
   }): Promise<ActiveAssistantMemoryRecord | null>;
+
+  findArchivedAssistantMemories(
+    input: FindArchivedMemoriesInput,
+  ): Promise<ActiveAssistantMemoryRecord[]>;
 
   createMemory(input: CreateMemoryInput): Promise<void>;
 
@@ -248,6 +257,34 @@ export class DrizzleMemoryRepository implements MemoryRepository {
       .limit(1);
 
     return memory ?? null;
+  }
+
+  async findArchivedAssistantMemories(
+    input: FindArchivedMemoriesInput,
+  ): Promise<ActiveAssistantMemoryRecord[]> {
+    return this.db
+      .select({
+        id: coreMemories.id,
+        category: coreMemories.category,
+        key: coreMemories.key,
+        content: coreMemories.content,
+        tags: coreMemories.tags,
+        source: coreMemories.source,
+        updatedAt: coreMemories.updatedAt,
+      })
+      .from(coreMemories)
+      .where(
+        and(
+          eq(coreMemories.userId, input.userId),
+          eq(coreMemories.status, "archived"),
+          eq(coreMemories.visibility, "assistant"),
+        ),
+      )
+      .orderBy(
+        desc(coreMemories.updatedAt),
+        desc(coreMemories.id),
+      )
+      .limit(input.limit);
   }
 
   async createMemory(input: CreateMemoryInput): Promise<void> {

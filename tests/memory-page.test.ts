@@ -9,6 +9,7 @@ import {
   formatMemorySource,
 } from "../web/src/pages/MemoryPage.js";
 import {
+  createMemoryArchiveLocation,
   createMemoryDetailLocation,
 } from "../web/src/pages/memory-location.js";
 import {
@@ -44,6 +45,18 @@ function listResponse(memories = [memory]) {
         count: memories.length,
         categories: ["goal" as const],
         tags: ["MCP", "focus"],
+      },
+    },
+  };
+}
+
+function archivedResponse(memories = [memory]) {
+  return {
+    success: true as const,
+    data: {
+      memories,
+      metadata: {
+        count: memories.length,
       },
     },
   };
@@ -163,6 +176,220 @@ test("Memory populated list has a separate heading and empty list does not", asy
     );
   } finally {
     await empty.cleanup();
+  }
+});
+
+test("Memory active cards use archive wording for action, confirmation, loading, and failure", async () => {
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (init?.method === "DELETE") {
+        throw new Error("archive failed");
+      }
+      return listResponse() as T;
+    },
+  };
+  const page = await render("/memory", api);
+  const confirmations: string[] = [];
+  page.window.confirm = (message) => {
+    confirmations.push(String(message));
+    return true;
+  };
+  try {
+    const archive = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "归档");
+    assert.ok(archive);
+    assert.doesNotMatch(page.container.textContent ?? "", /删除/);
+
+    await React.act(async () => {
+      archive.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+
+    assert.deepEqual(confirmations, ["确定归档“current goal”吗？"]);
+    assert.match(
+      page.container.textContent ?? "",
+      /归档记忆失败，请稍后重试。/,
+    );
+    assert.doesNotMatch(page.container.textContent ?? "", /删除/);
+    assert.equal(
+      requests.some(({ init }) => init?.method === "DELETE"),
+      true,
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory archived mode renders read-only cards and returns to the full list URL", async () => {
+  const returnTo = "/memory?q=goal&category=goal&tag=MCP";
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory/archived") {
+        return archivedResponse() as T;
+      }
+      return listResponse() as T;
+    },
+  };
+  const page = await render(
+    createMemoryArchiveLocation(returnTo),
+    api,
+  );
+  try {
+    assert.equal(requests[0]?.path, "/memory/archived");
+    assert.match(page.container.textContent ?? "", /已归档记忆/);
+    assert.match(page.container.textContent ?? "", /共 1 条/);
+    assert.match(page.container.textContent ?? "", /Goal/);
+    assert.match(page.container.textContent ?? "", /#MCP/);
+    assert.match(page.container.textContent ?? "", /网页创建/);
+    assert.match(
+      page.container.textContent ?? "",
+      /Complete the focused milestone/,
+    );
+    for (const forbidden of [
+      "编辑",
+      "归档中…",
+      "恢复",
+      "永久删除",
+    ]) {
+      assert.equal(
+        [...page.container.querySelectorAll("button")]
+          .some((button) => button.textContent === forbidden),
+        false,
+      );
+    }
+
+    const back = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "返回记忆列表");
+    assert.ok(back);
+    await React.act(async () => {
+      back.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      returnTo,
+    );
+    assert.equal(requests.at(-1)?.path, returnTo);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory archived entry uses stable History and browser back restores the active list", async () => {
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory/archived") {
+        return archivedResponse() as T;
+      }
+      return listResponse() as T;
+    },
+  };
+  const page = await render("/memory?q=goal", api);
+  try {
+    const entry = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看归档");
+    assert.ok(entry);
+    await React.act(async () => {
+      entry.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+    const archiveParameters = new URLSearchParams(
+      page.window.location.search,
+    );
+    assert.equal(archiveParameters.get("view"), "archived");
+    assert.equal(
+      archiveParameters.get("returnTo"),
+      "/memory?q=goal",
+    );
+    assert.equal(requests.at(-1)?.path, "/memory/archived");
+
+    await React.act(async () => {
+      const moved = new Promise<void>((resolve) => {
+        page.window.addEventListener(
+          "popstate",
+          () => resolve(),
+          { once: true },
+        );
+      });
+      page.window.history.back();
+      await moved;
+      await new Promise((resolve) =>
+        page.window.setTimeout(resolve, 5),
+      );
+    });
+
+    assert.equal(page.window.location.search, "?q=goal");
+    assert.equal(requests.at(-1)?.path, "/memory?q=goal");
+    assert.ok(
+      page.container.querySelector(
+        "input[aria-label=\"搜索记忆\"]",
+      ),
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory archived mode has distinct loading, empty, and error states", async () => {
+  const loading = await render(
+    createMemoryArchiveLocation("/memory"),
+    pendingApi().api,
+  );
+  try {
+    assert.match(loading.container.textContent ?? "", /正在读取归档/);
+    assert.equal(
+      loading.container.querySelector(
+        "input[aria-label=\"搜索记忆\"]",
+      ),
+      null,
+    );
+  } finally {
+    await loading.cleanup();
+  }
+
+  for (const [api, expected] of [
+    [{
+      async request<T>() {
+        return archivedResponse([]) as T;
+      },
+    } satisfies WebApiClient, /还没有归档记忆/],
+    [{
+      async request<T>(): Promise<T> {
+        throw new Error("private archive failure");
+      },
+    } satisfies WebApiClient, /暂时无法读取归档/],
+  ] as const) {
+    const page = await render(
+      createMemoryArchiveLocation("/memory"),
+      api,
+    );
+    try {
+      assert.match(page.container.textContent ?? "", expected);
+      assert.doesNotMatch(
+        page.container.textContent ?? "",
+        /private archive failure/,
+      );
+      assert.equal(
+        page.container.querySelector(
+          "input[aria-label=\"搜索记忆\"]",
+        ),
+        null,
+      );
+    } finally {
+      await page.cleanup();
+    }
   }
 });
 

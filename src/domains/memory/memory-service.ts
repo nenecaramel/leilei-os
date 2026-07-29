@@ -66,6 +66,21 @@ export type ReadMemoryResult = {
 export type ReadMemoryDetailResult =
   ReadMemoryResult["memories"][number];
 
+export type ReadArchivedMemoriesResult = {
+  memories: Array<{
+    id: string;
+    category: MemoryCategory;
+    key: string;
+    content: string;
+    tags: string[];
+    source: string;
+    updated_at: string;
+  }>;
+  metadata: {
+    count: number;
+  };
+};
+
 export type MemoryDomainErrorCode =
   | "INVALID_MEMORY_CATEGORY"
   | "INVALID_MEMORY_LIMIT"
@@ -173,6 +188,34 @@ export class MemoryService {
       tags: memory.tags,
       source: memory.source,
       updated_at: memory.updatedAt.toISOString(),
+    };
+  }
+
+  async readArchivedMemories(input: {
+    userId: string;
+    limit?: number;
+  }): Promise<ReadArchivedMemoriesResult> {
+    await this.requireActiveUser(input.userId);
+    const limit = this.resolveLimit(input.limit);
+    const memories =
+      await this.repository.findArchivedAssistantMemories({
+        userId: input.userId,
+        limit,
+      });
+
+    return {
+      memories: memories.map((memory) => ({
+        id: memory.id,
+        category: memory.category,
+        key: memory.key,
+        content: this.limitContent(memory.content),
+        tags: memory.tags,
+        source: memory.source,
+        updated_at: memory.updatedAt.toISOString(),
+      })),
+      metadata: {
+        count: memories.length,
+      },
     };
   }
 
