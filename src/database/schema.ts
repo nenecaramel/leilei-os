@@ -298,6 +298,70 @@ export const toolCalls = pgTable(
   ],
 );
 
+export const resourceLifecycleEvents = pgTable(
+  "resource_lifecycle_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    resourceType: varchar("resource_type", { length: 32 })
+      .$type<"memory" | "diary" | "task">()
+      .notNull(),
+    resourceId: uuid("resource_id").notNull(),
+    action: varchar("action", { length: 32 })
+      .$type<"archive" | "restore" | "permanent_delete">()
+      .notNull(),
+    actorType: varchar("actor_type", { length: 32 })
+      .$type<"user" | "assistant" | "system">()
+      .notNull(),
+    channel: varchar("channel", { length: 32 })
+      .$type<"web" | "mcp" | "internal">()
+      .notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("resource_lifecycle_events_user_created_idx").on(
+      table.userId,
+      table.createdAt.desc(),
+    ),
+    index("resource_lifecycle_events_resource_created_idx").on(
+      table.resourceType,
+      table.resourceId,
+      table.createdAt.desc(),
+    ),
+    check(
+      "resource_lifecycle_events_resource_type_allowed",
+      sql`${table.resourceType} IN ('memory', 'diary', 'task')`,
+    ),
+    check(
+      "resource_lifecycle_events_action_allowed",
+      sql`${table.action} IN ('archive', 'restore', 'permanent_delete')`,
+    ),
+    check(
+      "resource_lifecycle_events_actor_type_allowed",
+      sql`${table.actorType} IN ('user', 'assistant', 'system')`,
+    ),
+    check(
+      "resource_lifecycle_events_channel_allowed",
+      sql`${table.channel} IN ('web', 'mcp', 'internal')`,
+    ),
+    check(
+      "resource_lifecycle_events_metadata_object",
+      sql`jsonb_typeof(${table.metadata}) = 'object'`,
+    ),
+  ],
+);
+
 export const tasks = pgTable(
   "tasks",
   {

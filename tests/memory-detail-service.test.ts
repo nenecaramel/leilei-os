@@ -68,7 +68,12 @@ test("Memory restore validates the active user and trims the id before mutation"
     userId: "user-a",
     id: " archived-1 ",
   });
-  assert.deepEqual(calls, [{ userId: "user-a", id: "archived-1" }]);
+  assert.deepEqual(calls, [{
+    userId: "user-a",
+    id: "archived-1",
+    actorType: "user",
+    channel: "web",
+  }]);
 });
 
 for (const userState of ["missing", "disabled"] as const) {
@@ -631,6 +636,28 @@ test("Memory repeated archive returns MEMORY_NOT_FOUND after the first success",
       error instanceof MemoryDomainError &&
       error.code === "MEMORY_NOT_FOUND",
   );
+});
+
+test("Memory archive assigns the server-owned Web lifecycle actor and channel", async () => {
+  const calls: unknown[] = [];
+  const service = new MemoryService(repository({
+    async archiveMemory(input) {
+      calls.push(input);
+      return true;
+    },
+  }));
+
+  await service.archiveMemory({
+    userId: "user-a",
+    id: "memory-1",
+  });
+
+  assert.deepEqual(calls, [{
+    userId: "user-a",
+    id: "memory-1",
+    actorType: "user",
+    channel: "web",
+  }]);
 });
 
 test("Memory tag validation rejects blank, oversized, and excessive tags", async () => {

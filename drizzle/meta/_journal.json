@@ -64,6 +64,13 @@
       "when": 1785234575537,
       "tag": "0008_massive_azazel",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785320286385,
+      "tag": "0009_soft_master_chief",
+      "breakpoints": true
     }
   ]
 }
