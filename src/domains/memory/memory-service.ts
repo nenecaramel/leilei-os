@@ -4,6 +4,7 @@ import type {
   MemoryRepository,
   MemoryUserRecord,
 } from "./memory-repository.js";
+import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
 
 const ALLOWED_CATEGORIES = [
   "profile",
@@ -295,8 +296,7 @@ export class MemoryService {
     await this.requireActiveUser(input.userId);
     const archived = await this.repository.archiveMemory({
       ...input,
-      actorType: "user",
-      channel: "web",
+      ...WEB_USER_LIFECYCLE_CONTEXT,
     });
 
     if (!archived) {
@@ -324,8 +324,7 @@ export class MemoryService {
     const restored = await this.repository.restoreMemory({
       userId: input.userId,
       id,
-      actorType: "user",
-      channel: "web",
+      ...WEB_USER_LIFECYCLE_CONTEXT,
     });
 
     if (!restored) {

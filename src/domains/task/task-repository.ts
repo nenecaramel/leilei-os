@@ -18,10 +18,10 @@ import {
   type taskStatusEnum,
 } from "../../database/schema.js";
 import {
+  createLifecycleAuditEvent,
   DrizzleLifecycleAuditPersistence,
   type LifecycleAuditPersistence,
-  type LifecycleActorType,
-  type LifecycleChannel,
+  type LifecycleMutationInput,
 } from "../lifecycle/lifecycle-audit-repository.js";
 
 export type TaskPriority =
@@ -61,12 +61,7 @@ export type TaskRecord = {
   lifecycleStatus?: "active" | "archived";
 };
 
-export type TaskLifecycleMutationInput = {
-  id: string;
-  userId: string;
-  actorType: LifecycleActorType;
-  channel: LifecycleChannel;
-};
+export type TaskLifecycleMutationInput = LifecycleMutationInput;
 
 export type TaskListQuery = {
   q?: string;
@@ -402,10 +397,10 @@ export class DrizzleTaskRepository
         .where(and(eq(tasks.id, input.id), eq(tasks.userId, input.userId), eq(tasks.lifecycleStatus, "active")))
         .returning({ id: tasks.id });
       if (rows.length !== 1) return false;
-      await this.lifecycleAudit.record(transaction, {
+      await this.lifecycleAudit.record(transaction, createLifecycleAuditEvent({
         userId: input.userId, resourceType: "task", resourceId: input.id,
-        action: "archive", actorType: input.actorType, channel: input.channel, metadata: {},
-      });
+        action: "archive", actorType: input.actorType, channel: input.channel,
+      }));
       return true;
     });
   }
@@ -416,10 +411,10 @@ export class DrizzleTaskRepository
         .where(and(eq(tasks.id, input.id), eq(tasks.userId, input.userId), eq(tasks.lifecycleStatus, "archived")))
         .returning({ id: tasks.id });
       if (rows.length !== 1) return false;
-      await this.lifecycleAudit.record(transaction, {
+      await this.lifecycleAudit.record(transaction, createLifecycleAuditEvent({
         userId: input.userId, resourceType: "task", resourceId: input.id,
-        action: "restore", actorType: input.actorType, channel: input.channel, metadata: {},
-      });
+        action: "restore", actorType: input.actorType, channel: input.channel,
+      }));
       return true;
     });
   }

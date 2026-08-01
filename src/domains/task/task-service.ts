@@ -7,6 +7,7 @@ import type {
   TaskListQuery,
   TaskStatus,
 } from "./task-repository.js";
+import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
 import {
   TaskStateTransitionError,
   assertTaskStatusTransition,
@@ -250,7 +251,7 @@ export class TaskService {
   async archiveTask(input: { userId: string; id: string }): Promise<void> {
     const userId = await this.requireActiveUser(input.userId);
     const repository = this.repository.archiveTask;
-    if (!input.id.trim() || !repository || !(await repository.call(this.repository, { id: input.id.trim(), userId, actorType: "user", channel: "web" }))) {
+    if (!input.id.trim() || !repository || !(await repository.call(this.repository, { id: input.id.trim(), userId, ...WEB_USER_LIFECYCLE_CONTEXT }))) {
       throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
     }
   }
@@ -258,7 +259,7 @@ export class TaskService {
   async restoreTask(input: { userId: string; id: string }): Promise<void> {
     const userId = await this.requireActiveUser(input.userId);
     const repository = this.repository.restoreTask;
-    if (!input.id.trim() || !repository || !(await repository.call(this.repository, { id: input.id.trim(), userId, actorType: "user", channel: "web" }))) {
+    if (!input.id.trim() || !repository || !(await repository.call(this.repository, { id: input.id.trim(), userId, ...WEB_USER_LIFECYCLE_CONTEXT }))) {
       throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
     }
   }
