@@ -70,6 +70,8 @@ test("Diary MCP creation enables durable idempotency without changing Web creati
   assert.equal(repository.writes[0]?.mcpWriteIdempotency, true);
   await service.createDiary({ userId: "user-1" }, { ...VALID_INPUT, idempotencyKey: "diary-web-compatible-0001" });
   assert.equal(repository.writes[1]?.mcpWriteIdempotency, false);
+  assert.equal(repository.writes[0]?.diary.requestHash, repository.writes[1]?.diary.requestHash);
+  assert.notEqual(repository.writes[0]?.diary.mcpRequestHash, repository.writes[0]?.diary.requestHash);
 });
 
 test("creates a normalized diary using only the authenticated context user", async () => {

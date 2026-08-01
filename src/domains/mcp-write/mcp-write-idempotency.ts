@@ -6,6 +6,15 @@ import { mcpWriteIdempotency } from "../../database/schema.js";
 export const MCP_IDEMPOTENCY_KEY_MIN_LENGTH = 16;
 export const MCP_IDEMPOTENCY_KEY_MAX_LENGTH = 128;
 export const MCP_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
+export const MCP_WRITE_FINGERPRINT_VERSION = "leilei-os:mcp-write:v1";
+
+export type McpFingerprintValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly McpFingerprintValue[]
+  | { readonly [key: string]: McpFingerprintValue };
 
 export type McpIdempotentToolName =
   | "create_task"
@@ -41,10 +50,46 @@ export function normalizeMcpIdempotencyKey(value: string): string {
   return normalized;
 }
 
+export function canonicalizeMcpWriteRequest(value: unknown): string {
+  return serializeCanonicalValue(value);
+}
+
 export function hashMcpWriteRequest(value: unknown): string {
+  const canonical = canonicalizeMcpWriteRequest(value);
   return createHash("sha256")
-    .update(JSON.stringify(value), "utf8")
+    .update(`${MCP_WRITE_FINGERPRINT_VERSION}\n${canonical}`, "utf8")
     .digest("hex");
+}
+
+function serializeCanonicalValue(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("UNSUPPORTED_MCP_FINGERPRINT_VALUE");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    const serialized: string[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) {
+        throw new Error("UNSUPPORTED_MCP_FINGERPRINT_VALUE");
+      }
+      serialized.push(serializeCanonicalValue(value[index]));
+    }
+    return `[${serialized.join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error("UNSUPPORTED_MCP_FINGERPRINT_VALUE");
+    }
+    return `{${Object.keys(value as object)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${serializeCanonicalValue((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  throw new Error("UNSUPPORTED_MCP_FINGERPRINT_VALUE");
 }
 
 export async function lockAndReadMcpIdempotency(

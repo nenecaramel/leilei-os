@@ -8,6 +8,7 @@ import type {
   NormalizedDiaryCreate,
 } from "./diary-repository.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
+import { hashMcpWriteRequest } from "../mcp-write/mcp-write-idempotency.js";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_CONTENT_LENGTH = 20_000;
@@ -469,6 +470,7 @@ export class DiaryService {
       mood: normalized.mood,
       idempotencyKey,
       requestHash,
+      mcpRequestHash: hashMcpWriteRequest(hashPayload),
     };
   }
 

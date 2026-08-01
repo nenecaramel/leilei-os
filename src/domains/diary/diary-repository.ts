@@ -38,6 +38,7 @@ export type NormalizedDiaryCreate = {
   mood: string | null;
   idempotencyKey: string;
   requestHash: string;
+  mcpRequestHash: string;
 };
 
 export type DiaryAuditRequestSummary = {
@@ -257,7 +258,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
 
       if (idempotency) {
         if (
-          idempotency.requestHash !== diary.requestHash ||
+          idempotency.requestHash !== diary.mcpRequestHash ||
           idempotency.resourceType !== "diary_entry"
         ) {
           return { outcome: "conflict" };
@@ -324,7 +325,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
             userId: diary.userId,
             toolName: "write_diary",
             idempotencyKey: diary.idempotencyKey,
-            requestHash: diary.requestHash,
+            requestHash: diary.mcpRequestHash,
             resourceType: "diary_entry",
             resourceId: inserted.id,
           });
@@ -400,7 +401,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           userId: diary.userId,
           toolName: "write_diary",
           idempotencyKey: diary.idempotencyKey,
-          requestHash: diary.requestHash,
+          requestHash: diary.mcpRequestHash,
           resourceType: "diary_entry",
           resourceId: existing.id,
         });
