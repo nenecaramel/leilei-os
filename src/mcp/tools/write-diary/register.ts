@@ -6,6 +6,7 @@ import {
   type CreateDiaryInput,
   type CreateDiaryResult,
 } from "../../../domains/diary/diary-service.js";
+import { invokeMcpWrite } from "../write-context.js";
 
 const writeDiaryInputSchema = z
   .object({
@@ -91,33 +92,34 @@ export function registerWriteDiaryTool(
         openWorldHint: false,
       },
     },
-    async ({ title, content, date, tags, mood, idempotency_key }) => {
-      try {
-        const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.diaryService.createDiary(
-          { userId },
-          {
-            title,
-            content,
-            date,
-            tags,
-            mood,
-            idempotencyKey: idempotency_key,
-          },
-        );
-        const result = { success: true as const, data };
-        const message = data.metadata.idempotent_replay
-          ? "The existing diary entry was returned without creating a duplicate."
-          : "Diary entry created successfully.";
+    async ({ title, content, date, tags, mood, idempotency_key }) =>
+      invokeMcpWrite({
+        toolName: "write_diary",
+        getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
+        operation: async ({ userId }) => {
+          const data = await dependencies.diaryService.createDiary(
+            { userId },
+            {
+              title,
+              content,
+              date,
+              tags,
+              mood,
+              idempotencyKey: idempotency_key,
+            },
+          );
+          const result = { success: true as const, data };
+          const message = data.metadata.idempotent_replay
+            ? "The existing diary entry was returned without creating a duplicate."
+            : "Diary entry created successfully.";
 
-        return {
-          content: [{ type: "text", text: message }],
-          structuredContent: result,
-        };
-      } catch (error) {
-        return toSafeToolError(error);
-      }
-    },
+          return {
+            content: [{ type: "text", text: message }],
+            structuredContent: result,
+          };
+        },
+        mapError: toSafeToolError,
+      }),
   );
 }
 

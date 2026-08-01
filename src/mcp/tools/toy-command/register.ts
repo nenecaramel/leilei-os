@@ -7,6 +7,7 @@ import type {
   ToyCommandRecord,
   ToyCreateInput,
 } from "../../../domains/toy/toy-command-types.js";
+import { invokeMcpWrite } from "../write-context.js";
 
 const toyCommandStatusSchema = z.enum([
   "pending",
@@ -85,41 +86,42 @@ export function registerToyCommandTools(
         openWorldHint: false,
       },
     },
-    async ({ percent }) => {
-      try {
-        const userId = dependencies.getAuthenticatedUserId();
-        const command = await dependencies.toyCommandService.create(userId, {
-          action: "set",
-          percent,
-        } satisfies ToyCreateInput);
+    async ({ percent }) =>
+      invokeMcpWrite({
+        toolName: "toy_set",
+        getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
+        operation: async ({ userId }) => {
+          const command = await dependencies.toyCommandService.create(userId, {
+            action: "set",
+            percent,
+          } satisfies ToyCreateInput);
 
-        const result = {
-          success: true as const,
-          data: {
-            command: {
-              id: command.id,
-              action: "set" as const,
-              percent: command.percent as number,
-              status: command.status,
-              created_at: command.createdAt.toISOString(),
-              expires_at: command.expiresAt.toISOString(),
+          const result = {
+            success: true as const,
+            data: {
+              command: {
+                id: command.id,
+                action: "set" as const,
+                percent: command.percent as number,
+                status: command.status,
+                created_at: command.createdAt.toISOString(),
+                expires_at: command.expiresAt.toISOString(),
+              },
             },
-          },
-        };
+          };
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Toy intensity command ${percent} queued successfully.`,
-            },
-          ],
-          structuredContent: result,
-        };
-      } catch (error) {
-        return toSafeToolError(error, "set");
-      }
-    },
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Toy intensity command ${percent} queued successfully.`,
+              },
+            ],
+            structuredContent: result,
+          };
+        },
+        mapError: (error) => toSafeToolError(error, "set"),
+      }),
   );
 
   server.registerTool(
@@ -137,40 +139,41 @@ export function registerToyCommandTools(
         openWorldHint: false,
       },
     },
-    async () => {
-      try {
-        const userId = dependencies.getAuthenticatedUserId();
-        const command = await dependencies.toyCommandService.create(userId, {
-          action: "stop",
-        } satisfies ToyCreateInput);
+    async () =>
+      invokeMcpWrite({
+        toolName: "toy_stop",
+        getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
+        operation: async ({ userId }) => {
+          const command = await dependencies.toyCommandService.create(userId, {
+            action: "stop",
+          } satisfies ToyCreateInput);
 
-        const result = {
-          success: true as const,
-          data: {
-            command: {
-              id: command.id,
-              action: "stop" as const,
-              percent: null,
-              status: command.status,
-              created_at: command.createdAt.toISOString(),
-              expires_at: command.expiresAt.toISOString(),
+          const result = {
+            success: true as const,
+            data: {
+              command: {
+                id: command.id,
+                action: "stop" as const,
+                percent: null,
+                status: command.status,
+                created_at: command.createdAt.toISOString(),
+                expires_at: command.expiresAt.toISOString(),
+              },
             },
-          },
-        };
+          };
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Toy stop command queued successfully.",
-            },
-          ],
-          structuredContent: result,
-        };
-      } catch (error) {
-        return toSafeToolError(error, "stop");
-      }
-    },
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Toy stop command queued successfully.",
+              },
+            ],
+            structuredContent: result,
+          };
+        },
+        mapError: (error) => toSafeToolError(error, "stop"),
+      }),
   );
 }
 
