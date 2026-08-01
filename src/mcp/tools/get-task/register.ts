@@ -31,6 +31,7 @@ const getTaskInputSchema = z
       .trim()
       .min(1)
       .describe("The exact Task id returned by list_tasks."),
+    scope: z.enum(["active", "archived"]).default("active").optional(),
   })
   .strict();
 
@@ -50,11 +51,13 @@ const getTaskOutputSchema = z.object({
     updated_at: dateTimeSchema,
     completed_at: dateTimeSchema.nullable(),
     allowed_actions: z.array(taskActionSchema),
+    lifecycle_status: z.enum(["active", "archived"]),
   }),
 });
 
 export interface GetTaskToolService {
   readTask(input: ReadTaskInput): Promise<TaskEntryResult>;
+  readArchivedTask?(input: ReadTaskInput): Promise<TaskEntryResult>;
 }
 
 export type GetTaskToolDependencies = {
@@ -81,10 +84,13 @@ export function registerGetTaskTool(
         openWorldHint: false,
       },
     },
-    async ({ id }) => {
+    async ({ id, scope = "active" }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.taskService.readTask({ userId, id });
+        const detail = scope === "archived"
+          ? await dependencies.taskService.readArchivedTask?.({ userId, id }) ?? (() => { throw new Error("Archived Task reads are unavailable."); })()
+          : await dependencies.taskService.readTask({ userId, id });
+        const data = { ...detail, lifecycle_status: scope };
         return {
           content: [{ type: "text", text: "Task retrieved." }],
           structuredContent: { success: true as const, data },

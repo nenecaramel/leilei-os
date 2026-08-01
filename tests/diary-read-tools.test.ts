@@ -30,6 +30,7 @@ const ENTRY: DiaryEntryResult = {
 class MockDiaryService {
   listCalls: ListDiariesInput[] = [];
   readCalls: ReadDiaryInput[] = [];
+  archivedReadCalls: ReadDiaryInput[] = [];
   writeCalls: Array<{
     context: AuthenticatedDiaryContext;
     input: CreateDiaryInput;
@@ -48,6 +49,7 @@ class MockDiaryService {
     if (this.readError) throw this.readError;
     return ENTRY;
   }
+  async readArchivedDiary(input: ReadDiaryInput): Promise<DiaryEntryResult> { this.archivedReadCalls.push(input); return ENTRY; }
 
   async createMcpDiary(
     context: AuthenticatedDiaryContext,
@@ -253,8 +255,10 @@ test("get_diary injects identity and returns complete content", async (t) => {
     arguments: { id: `  ${ENTRY.id}  ` },
   });
   assert.deepEqual(service.readCalls, [{ userId: USER_ID, id: ENTRY.id }]);
-  assert.deepEqual(result.structuredContent, { success: true, data: ENTRY });
+  assert.deepEqual(result.structuredContent, { success: true, data: { ...ENTRY, lifecycle_status: "active" } });
 });
+
+test("get_diary archived scope uses only archived detail",async(t)=>{const service=new MockDiaryService();const {client,server}=await connect(service);t.after(async()=>{await client.close();await server.close();});const result=await client.callTool({name:"get_diary",arguments:{id:ENTRY.id,scope:"archived"}});assert.equal(result.isError,undefined);assert.equal(service.readCalls.length,0);assert.deepEqual(service.archivedReadCalls,[{userId:USER_ID,id:ENTRY.id}]);assert.equal((result.structuredContent as {data:{lifecycle_status:string}}).data.lifecycle_status,"archived");});
 
 test("get_diary rejects empty ids and hides inaccessible records", async () => {
   const service = new MockDiaryService();

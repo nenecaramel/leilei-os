@@ -20,6 +20,7 @@ const getMemoryInputSchema = z
       .trim()
       .min(1)
       .describe("The exact Memory id returned by another Memory read tool."),
+    scope: z.enum(["active", "archived"]).default("active").optional(),
   })
   .strict();
 
@@ -33,6 +34,7 @@ const getMemoryOutputSchema = z.object({
     tags: z.array(z.string()),
     source: z.string(),
     updated_at: z.string().datetime(),
+    lifecycle_status: z.enum(["active", "archived"]),
   }),
 });
 
@@ -41,6 +43,7 @@ export interface GetMemoryToolService {
     userId: string;
     id: string;
   }): Promise<ReadMemoryDetailResult>;
+  readArchivedMemoryDetail?(input: { userId: string; id: string }): Promise<ReadMemoryDetailResult>;
 }
 
 export type GetMemoryToolDependencies = {
@@ -67,13 +70,13 @@ export function registerGetMemoryTool(
         openWorldHint: false,
       },
     },
-    async ({ id }) => {
+    async ({ id, scope = "active" }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.memoryService.readMemoryDetail({
-          userId,
-          id,
-        });
+        const detail = scope === "archived"
+          ? await dependencies.memoryService.readArchivedMemoryDetail?.({ userId, id }) ?? (() => { throw new Error("Archived Memory reads are unavailable."); })()
+          : await dependencies.memoryService.readMemoryDetail({ userId, id });
+        const data = { ...detail, lifecycle_status: scope };
 
         return {
           content: [

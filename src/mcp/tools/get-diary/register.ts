@@ -16,6 +16,7 @@ const getDiaryInputSchema = z
       .trim()
       .min(1)
       .describe("The exact Diary id returned by search_diary."),
+    scope: z.enum(["active", "archived"]).default("active").optional(),
   })
   .strict();
 
@@ -30,11 +31,13 @@ const getDiaryOutputSchema = z.object({
     mood: z.string().nullable(),
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
+    lifecycle_status: z.enum(["active", "archived"]),
   }),
 });
 
 export interface GetDiaryToolService {
   readDiary(input: ReadDiaryInput): Promise<DiaryEntryResult>;
+  readArchivedDiary?(input: ReadDiaryInput): Promise<DiaryEntryResult>;
 }
 
 export type GetDiaryToolDependencies = {
@@ -61,13 +64,13 @@ export function registerGetDiaryTool(
         openWorldHint: false,
       },
     },
-    async ({ id }) => {
+    async ({ id, scope = "active" }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.diaryService.readDiary({
-          userId,
-          id,
-        });
+        const detail = scope === "archived"
+          ? await dependencies.diaryService.readArchivedDiary?.({ userId, id }) ?? (() => { throw new Error("Archived Diary reads are unavailable."); })()
+          : await dependencies.diaryService.readDiary({ userId, id });
+        const data = { ...detail, lifecycle_status: scope };
 
         return {
           content: [{ type: "text", text: "Diary entry retrieved." }],

@@ -100,6 +100,7 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
       "get_memory",
       "get_task",
       "get_weather_context",
+      "global_search",
       "hello",
       "list_tasks",
       "read_memory",
