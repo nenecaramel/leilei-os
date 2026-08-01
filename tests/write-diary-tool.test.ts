@@ -108,6 +108,7 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
       "toy_set",
       "toy_stop",
       "write_diary",
+      "write_memory",
     ],
   );
 

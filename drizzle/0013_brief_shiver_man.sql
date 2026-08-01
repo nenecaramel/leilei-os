@@ -1,0 +1,4 @@
+ALTER TABLE "mcp_write_idempotency" DROP CONSTRAINT "mcp_write_idempotency_tool_allowed";--> statement-breakpoint
+ALTER TABLE "mcp_write_idempotency" DROP CONSTRAINT "mcp_write_idempotency_resource_type_allowed";--> statement-breakpoint
+ALTER TABLE "mcp_write_idempotency" ADD CONSTRAINT "mcp_write_idempotency_tool_allowed" CHECK ("mcp_write_idempotency"."tool_name" IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop'));--> statement-breakpoint
+ALTER TABLE "mcp_write_idempotency" ADD CONSTRAINT "mcp_write_idempotency_resource_type_allowed" CHECK ("mcp_write_idempotency"."resource_type" IN ('task', 'diary_entry', 'memory', 'toy_command'));

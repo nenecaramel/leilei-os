@@ -5,6 +5,10 @@ import type {
   MemoryUserRecord,
 } from "./memory-repository.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
+import {
+  hashMcpWriteRequest,
+  normalizeMcpIdempotencyKey,
+} from "../mcp-write/mcp-write-idempotency.js";
 
 const ALLOWED_CATEGORIES = [
   "profile",
@@ -19,6 +23,7 @@ const MAX_CONTENT_LENGTH = 4_000;
 const MAX_SEARCH_LENGTH = 200;
 const MAX_TAGS = 20;
 const MAX_TAG_LENGTH = 50;
+const MAX_KEY_LENGTH = 100;
 
 export type ReadMemoryInput = {
   userId: string;
@@ -37,6 +42,30 @@ export type CreateMemoryInput = {
   key: string;
   content: string;
   tags?: readonly string[];
+};
+
+export type AuthenticatedMemoryContext = { userId: string };
+
+export type CreateMcpMemoryInput = {
+  category: MemoryCategory;
+  key: string;
+  content: string;
+  tags?: readonly string[];
+};
+
+export type CreateMcpMemoryResult = {
+  memory: {
+    id: string;
+    category: MemoryCategory;
+    key: string;
+    content: string;
+    tags: string[];
+    source: "mcp";
+    lifecycle_status: "active" | "archived";
+    created_at: string;
+    updated_at: string;
+  };
+  metadata: { created: boolean; idempotent_replay: boolean };
 };
 
 export type UpdateMemoryInput = {
@@ -87,6 +116,11 @@ export type MemoryDomainErrorCode =
   | "INVALID_MEMORY_LIMIT"
   | "INVALID_MEMORY_QUERY"
   | "INVALID_MEMORY_TAGS"
+  | "INVALID_MEMORY_KEY"
+  | "INVALID_MEMORY_CONTENT"
+  | "INVALID_IDEMPOTENCY_KEY"
+  | "IDEMPOTENCY_CONFLICT"
+  | "MEMORY_KEY_CONFLICT"
   | "MEMORY_NOT_FOUND"
   | "USER_NOT_FOUND"
   | "USER_DISABLED";
@@ -270,6 +304,66 @@ export class MemoryService {
     });
   }
 
+  async createMcpMemory(
+    context: AuthenticatedMemoryContext,
+    input: CreateMcpMemoryInput,
+    idempotencyKey: string,
+  ): Promise<CreateMcpMemoryResult> {
+    await this.requireActiveUser(context.userId);
+    const userId = context.userId.trim();
+    const category = this.validateCategories([input.category])![0]!;
+    const key = this.normalizeRequiredText(input.key, MAX_KEY_LENGTH, "INVALID_MEMORY_KEY");
+    const content = this.normalizeRequiredText(input.content, MAX_CONTENT_LENGTH, "INVALID_MEMORY_CONTENT");
+    const tags = this.normalizeTags(input.tags ?? []);
+    let normalizedIdempotencyKey: string;
+    try {
+      normalizedIdempotencyKey = normalizeMcpIdempotencyKey(idempotencyKey);
+    } catch {
+      throw new MemoryDomainError("INVALID_IDEMPOTENCY_KEY", "The idempotency key is invalid.");
+    }
+
+    const repository = this.repository.createMemoryIdempotently;
+    if (!repository) throw new Error("Memory idempotency persistence is unavailable.");
+    const persisted = await repository.call(this.repository, {
+      userId,
+      category,
+      key,
+      content,
+      tags,
+      source: "mcp",
+      idempotencyKey: normalizedIdempotencyKey,
+      requestHash: hashMcpWriteRequest({ category, key, content, tags }),
+    });
+
+    if (persisted.outcome === "conflict") {
+      throw new MemoryDomainError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for different Memory content.");
+    }
+    if (persisted.outcome === "key_conflict") {
+      throw new MemoryDomainError("MEMORY_KEY_CONFLICT", "The Memory key already exists.");
+    }
+    if (persisted.outcome !== "created" && persisted.outcome !== "replayed") {
+      throw new Error("Unexpected Memory persistence outcome.");
+    }
+
+    return {
+      memory: {
+        id: persisted.memory.id,
+        category: persisted.memory.category,
+        key: persisted.memory.key,
+        content: persisted.memory.content,
+        tags: persisted.memory.tags,
+        source: "mcp",
+        lifecycle_status: persisted.memory.status,
+        created_at: persisted.memory.createdAt.toISOString(),
+        updated_at: persisted.memory.updatedAt.toISOString(),
+      },
+      metadata: {
+        created: persisted.outcome === "created",
+        idempotent_replay: persisted.outcome === "replayed",
+      },
+    };
+  }
+
   async updateMemory(input: UpdateMemoryInput): Promise<void> {
     await this.requireActiveUser(input.userId);
     const updated = await this.repository.updateMemory({
@@ -450,6 +544,18 @@ export class MemoryService {
       );
     }
 
+    return normalized;
+  }
+
+  private normalizeRequiredText(
+    value: string,
+    maxLength: number,
+    code: "INVALID_MEMORY_KEY" | "INVALID_MEMORY_CONTENT",
+  ): string {
+    const normalized = value.normalize("NFC").trim();
+    if (normalized.length === 0 || normalized.length > maxLength) {
+      throw new MemoryDomainError(code, "Memory text is invalid.");
+    }
     return normalized;
   }
 

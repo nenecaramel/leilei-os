@@ -12,6 +12,8 @@ import { TaskDomainError, TaskService } from "../src/domains/task/task-service.j
 import { DrizzleToyCommandRepository } from "../src/domains/toy/toy-command-repository.js";
 import { ToyCommandService, ToyDomainError } from "../src/domains/toy/toy-command-service.js";
 import { hashMcpWriteRequest } from "../src/domains/mcp-write/mcp-write-idempotency.js";
+import { DrizzleMemoryRepository } from "../src/domains/memory/memory-repository.js";
+import { MemoryDomainError, MemoryService } from "../src/domains/memory/memory-service.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const parsed = databaseUrl ? new URL(databaseUrl) : null;
@@ -27,6 +29,7 @@ async function withService<T>(operation: (services: {
   task: TaskService;
   diary: DiaryService;
   toy: ToyCommandService;
+  memory: MemoryService;
 }) => Promise<T>, userId: string): Promise<T> {
   const { client, db } = connection();
   try {
@@ -34,6 +37,7 @@ async function withService<T>(operation: (services: {
       task: new TaskService(new DrizzleTaskRepository(db as never), () => new Date("2026-08-01T00:00:00Z")),
       diary: new DiaryService(new DrizzleDiaryRepository(db as never)),
       toy: new ToyCommandService(new DrizzleToyCommandRepository(db as never), userId),
+      memory: new MemoryService(new DrizzleMemoryRepository(db as never)),
     });
   } finally {
     await client.end();
@@ -42,6 +46,7 @@ async function withService<T>(operation: (services: {
 
 const taskInput = (suffix: string) => ({ title: `Task ${suffix}`, description: `private-task-${suffix}`, priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: ["mcp"] });
 const diaryInput = (key: string, suffix: string) => ({ title: `Diary ${suffix}`, content: `private-diary-${suffix}`, date: "2026-08-01", tags: ["mcp"], mood: null, idempotencyKey: key });
+const memoryInput = (suffix: string) => ({ category: "goal" as const, key: ` memory_${suffix} `, content: ` private-memory-${suffix} `, tags: [" mcp ", "mcp", "Cafe\u0301"] });
 
 test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and atomic", { skip: !RUN }, async () => {
   const admin = connection();
@@ -51,8 +56,16 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
   await admin.db.insert(schema.userSettings).values(users.map((userId) => ({ userId, timezone: "Asia/Shanghai" })));
   const owner = users[0]!;
   const other = users[1]!;
+  const [lifecycleBeforeMemoryWrite] = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents);
+  const [toolCallsBeforeMemoryWrite] = await admin.db.select({ value: count() }).from(schema.toolCalls);
+  let createdMemoryId = "";
 
   const cases = [
+    {
+      tool: "write_memory" as const, key: "integration-memory-key-0001", table: schema.coreMemories,
+      call: (userId = owner, suffix = "same") => withService(({ memory }) => memory.createMcpMemory({ userId }, memoryInput(suffix), "integration-memory-key-0001"), userId).then((result) => result.memory.id),
+      conflict: () => withService(({ memory }) => memory.createMcpMemory({ userId: owner }, { ...memoryInput("same"), content: "different" }, "integration-memory-key-0001"), owner),
+    },
     {
       tool: "create_task" as const, key: "integration-task-key-0001", table: schema.tasks,
       call: (userId = owner, suffix = "same") => withService(({ task }) => task.createTaskIdempotently({ userId }, taskInput(suffix), "integration-task-key-0001"), userId).then((result) => result.task.id),
@@ -93,7 +106,7 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
   ];
 
   for (const item of cases) {
-    const tableName = item.tool === "create_task" ? "tasks" : item.tool === "write_diary" ? "diary_entries" : "toy_commands";
+    const tableName = item.tool === "create_task" ? "tasks" : item.tool === "write_diary" ? "diary_entries" : item.tool === "write_memory" ? "core_memories" : "toy_commands";
     const beforeRows = await admin.client.unsafe(`select count(*)::int as count from ${tableName} where user_id = $1::uuid`, [owner]);
     const ids = await Promise.all(Array.from({ length: 6 }, () => item.call()));
     assert.equal(new Set(ids).size, 1, `${item.tool} callers must receive one identity`);
@@ -102,8 +115,25 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
     const [idempotencyCount] = await admin.db.select({ value: count() }).from(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, owner), eq(schema.mcpWriteIdempotency.toolName, item.tool), eq(schema.mcpWriteIdempotency.idempotencyKey, item.key)));
     assert.equal(idempotencyCount?.value, 1);
     assert.equal(await item.call(), ids[0]);
+    if (item.tool === "write_memory") {
+      createdMemoryId = ids[0]!;
+      const readback = await withService(({ memory }) => memory.readMemoryDetail({ userId: owner, id: createdMemoryId }), owner);
+      assert.deepEqual(readback, {
+        id: createdMemoryId,
+        category: "goal",
+        key: "memory_same",
+        content: "private-memory-same",
+        tags: ["mcp", "Café"],
+        source: "mcp",
+        updated_at: readback.updated_at,
+      });
+      const [lifecycleAfterWrite] = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents);
+      const [toolCallsAfterWrite] = await admin.db.select({ value: count() }).from(schema.toolCalls);
+      assert.equal(lifecycleAfterWrite?.value, lifecycleBeforeMemoryWrite?.value);
+      assert.equal(toolCallsAfterWrite?.value, toolCallsBeforeMemoryWrite?.value);
+    }
     await assert.rejects(item.conflict(), (error: unknown) =>
-      (error instanceof TaskDomainError || error instanceof DiaryDomainError || error instanceof ToyDomainError) && error.code === "IDEMPOTENCY_CONFLICT");
+      (error instanceof TaskDomainError || error instanceof DiaryDomainError || error instanceof MemoryDomainError || error instanceof ToyDomainError) && error.code === "IDEMPOTENCY_CONFLICT");
     const afterConflictRows = await admin.client.unsafe(`select count(*)::int as count from ${tableName} where user_id = $1::uuid`, [owner]);
     assert.equal(afterConflictRows[0]?.count, afterRows[0]?.count, `${item.tool} conflict must create nothing`);
   }
@@ -130,11 +160,40 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
   assert.equal(bridgeAudit[0]?.value, 1);
 
   const privateSnapshot = JSON.stringify(await admin.db.select().from(schema.mcpWriteIdempotency));
-  assert.doesNotMatch(privateSnapshot, /private-task|private-diary|private-legacy|response_snapshot|payload/);
+  assert.doesNotMatch(privateSnapshot, /private-task|private-diary|private-memory|private-legacy|response_snapshot|payload/);
+
+  const memoryReplay = await withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("same"), "integration-memory-key-0001"), owner);
+  assert.equal(memoryReplay.memory.id, createdMemoryId);
+  const memoryRowsBeforeArchive = await admin.db.select({ value: count() }).from(schema.coreMemories).where(eq(schema.coreMemories.id, createdMemoryId));
+  const memoryIdempotencyBeforeArchive = await admin.db.select({ value: count() }).from(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, owner), eq(schema.mcpWriteIdempotency.toolName, "write_memory"), eq(schema.mcpWriteIdempotency.idempotencyKey, "integration-memory-key-0001")));
+  const memoryToolCallsBeforeArchive = await admin.db.select({ value: count() }).from(schema.toolCalls).where(eq(schema.toolCalls.resourceId, createdMemoryId));
+  const memoryLifecycleBeforeArchive = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents).where(and(eq(schema.resourceLifecycleEvents.resourceType, "memory"), eq(schema.resourceLifecycleEvents.resourceId, createdMemoryId)));
+  assert.equal(memoryLifecycleBeforeArchive[0]?.value, 0);
+  await withService(({ memory }) => memory.archiveMemory({ userId: owner, id: memoryReplay.memory.id }), owner);
+  const memoryLifecycleAfterArchive = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents).where(and(eq(schema.resourceLifecycleEvents.resourceType, "memory"), eq(schema.resourceLifecycleEvents.resourceId, createdMemoryId)));
+  assert.equal(memoryLifecycleAfterArchive[0]?.value, 1);
+  const archivedReplay = await withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("same"), "integration-memory-key-0001"), owner);
+  assert.equal(archivedReplay.memory.id, memoryReplay.memory.id);
+  assert.equal(archivedReplay.memory.lifecycle_status, "archived");
+  const memoryAudit = await admin.db.select({ value: count() }).from(schema.toolCalls).where(and(eq(schema.toolCalls.userId, owner), eq(schema.toolCalls.resourceId, memoryReplay.memory.id)));
+  assert.equal(memoryAudit[0]?.value, 0, "MCP Memory creation must not create tool_calls rows");
+  const memoryRowsAfterReplay = await admin.db.select({ value: count() }).from(schema.coreMemories).where(eq(schema.coreMemories.id, createdMemoryId));
+  const memoryIdempotencyAfterReplay = await admin.db.select({ value: count() }).from(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, owner), eq(schema.mcpWriteIdempotency.toolName, "write_memory"), eq(schema.mcpWriteIdempotency.idempotencyKey, "integration-memory-key-0001")));
+  const memoryLifecycleAfterReplay = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents).where(and(eq(schema.resourceLifecycleEvents.resourceType, "memory"), eq(schema.resourceLifecycleEvents.resourceId, createdMemoryId)));
+  assert.equal(memoryRowsAfterReplay[0]?.value, memoryRowsBeforeArchive[0]?.value);
+  assert.equal(memoryIdempotencyAfterReplay[0]?.value, memoryIdempotencyBeforeArchive[0]?.value);
+  assert.equal(memoryAudit[0]?.value, memoryToolCallsBeforeArchive[0]?.value);
+  assert.equal(memoryLifecycleAfterReplay[0]?.value, memoryLifecycleAfterArchive[0]?.value);
+
+  await assert.rejects(
+    withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("same"), "different-memory-key-0001"), owner),
+    (error) => error instanceof MemoryDomainError && error.code === "MEMORY_KEY_CONFLICT",
+  );
 
   const rollbackCases = [
     { tool: "create_task", key: "rollback-task-key-0001", call: () => withService(({ task }) => task.createTaskIdempotently({ userId: owner }, taskInput("rollback"), "rollback-task-key-0001"), owner), table: "tasks", marker: "Task rollback" },
     { tool: "write_diary", key: "rollback-diary-key-0001", call: () => withService(({ diary }) => diary.createMcpDiary({ userId: owner }, diaryInput("rollback-diary-key-0001", "rollback")), owner), table: "diary_entries", marker: "Diary rollback" },
+    { tool: "write_memory", key: "rollback-memory-key-0001", call: () => withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("rollback"), "rollback-memory-key-0001"), owner), table: "core_memories", marker: "Memory rollback" },
     { tool: "toy_set", key: "rollback-toy-set-0001", call: () => withService(({ toy }) => toy.createIdempotently(owner, { action: "set", percent: 22 }, "rollback-toy-set-0001"), owner), table: "toy_commands", marker: null },
     { tool: "toy_stop", key: "rollback-toy-stop-0001", call: () => withService(({ toy }) => toy.createIdempotently(owner, { action: "stop" }, "rollback-toy-stop-0001"), owner), table: "toy_commands", marker: null },
   ];
