@@ -9,6 +9,10 @@ import type {
   ToyAckRepositoryResult,
   ToyCommandRepository,
 } from "./toy-command-repository.js";
+import {
+  hashMcpWriteRequest,
+  normalizeMcpIdempotencyKey,
+} from "../mcp-write/mcp-write-idempotency.js";
 
 const createSchema = z.discriminatedUnion("action", [
   z.object({
@@ -30,6 +34,7 @@ export type ToyDomainErrorCode =
   | "INVALID_INPUT"
   | "TOY_UNAVAILABLE"
   | "TOY_FORBIDDEN"
+  | "IDEMPOTENCY_CONFLICT"
   | "COMMAND_NOT_FOUND"
   | "COMMAND_CONFLICT";
 
@@ -59,6 +64,49 @@ export class ToyCommandService {
       throw new ToyDomainError("INVALID_INPUT", "The toy command is invalid.");
     }
     return this.repository.create(bound, parsed.data as ToyCreateInput);
+  }
+
+  async createIdempotently(
+    userId: string,
+    input: unknown,
+    idempotencyKey: string,
+  ): Promise<ToyCommandRecord> {
+    const bound = this.requireBoundUser();
+    if (userId.trim() !== bound) {
+      throw new ToyDomainError("TOY_FORBIDDEN", "Toy commands are unavailable.");
+    }
+    const parsed = createSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new ToyDomainError("INVALID_INPUT", "The toy command is invalid.");
+    }
+
+    let normalizedKey: string;
+    try {
+      normalizedKey = normalizeMcpIdempotencyKey(idempotencyKey);
+    } catch {
+      throw new ToyDomainError("INVALID_INPUT", "The toy command is invalid.");
+    }
+
+    const repository = this.repository.createIdempotently;
+    if (!repository) {
+      throw new Error("Toy idempotency persistence is unavailable.");
+    }
+    const command = parsed.data as ToyCreateInput;
+    const toolName = command.action === "set" ? "toy_set" : "toy_stop";
+    const persisted = await repository.call(this.repository, bound, {
+      ...command,
+      toolName,
+      idempotencyKey: normalizedKey,
+      requestHash: hashMcpWriteRequest(command),
+    });
+
+    if (persisted.outcome === "conflict") {
+      throw new ToyDomainError(
+        "IDEMPOTENCY_CONFLICT",
+        "The idempotency key was already used for a different toy command.",
+      );
+    }
+    return persisted.command;
   }
 
   async claim(): Promise<ToyCommandRecord | null> {

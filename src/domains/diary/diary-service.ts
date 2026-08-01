@@ -162,6 +162,33 @@ export class DiaryService {
     );
   }
 
+  async createMcpDiary(
+    context: AuthenticatedDiaryContext,
+    input: CreateDiaryInput,
+  ): Promise<CreateDiaryResult> {
+    const userId = await this.requireActiveUser(context.userId);
+    const normalized = this.normalizeInput(userId, input);
+    const requestSummary = this.createAuditSummary(normalized);
+    const persisted = await this.repository.createDiaryWithAudit(
+      normalized,
+      requestSummary,
+      { mcpWriteIdempotency: true },
+    );
+
+    if (persisted.outcome === "conflict") {
+      throw new DiaryDomainError(
+        "IDEMPOTENCY_CONFLICT",
+        "The idempotency key was already used for different diary content.",
+      );
+    }
+
+    return this.toCreateResult(
+      persisted.diary,
+      persisted.outcome === "created",
+      persisted.outcome === "replayed",
+    );
+  }
+
   async listDiaries(
     input: ListDiariesInput,
   ): Promise<ListDiariesResult> {

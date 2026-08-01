@@ -21,7 +21,7 @@ class MockDiaryToolService {
     input: CreateDiaryInput;
   }> = [];
 
-  async createDiary(
+  async createMcpDiary(
     context: AuthenticatedDiaryContext,
     input: CreateDiaryInput,
   ): Promise<CreateDiaryResult> {

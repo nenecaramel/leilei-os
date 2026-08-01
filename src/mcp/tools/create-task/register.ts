@@ -7,6 +7,11 @@ import {
   type CreateTaskResult,
 } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
+import {
+  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
+  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
+  MCP_IDEMPOTENCY_KEY_PATTERN,
+} from "../../../domains/mcp-write/mcp-write-idempotency.js";
 
 const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const taskStatusSchema = z.enum([
@@ -46,6 +51,12 @@ const createTaskInputSchema = z
       .array(z.string().min(1).max(50))
       .max(20)
       .describe("Organizational labels; use an empty array when none apply."),
+    idempotency_key: z
+      .string()
+      .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
+      .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
+      .regex(MCP_IDEMPOTENCY_KEY_PATTERN)
+      .describe("A stable unique key used to prevent duplicate task creation."),
   })
   .strict();
 
@@ -76,9 +87,10 @@ const createTaskOutputSchema = z.object({
 });
 
 export interface CreateTaskToolService {
-  createTask(
+  createTaskIdempotently(
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
+    idempotencyKey: string,
   ): Promise<CreateTaskResult>;
 }
 
@@ -102,16 +114,16 @@ export function registerCreateTaskTool(
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
-        idempotentHint: false,
+        idempotentHint: true,
         openWorldHint: false,
       },
     },
-    async ({ title, description, due_time, timezone, priority, tags }) =>
+    async ({ title, description, due_time, timezone, priority, tags, idempotency_key }) =>
       invokeMcpWrite({
         toolName: "create_task",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
-          const data = await dependencies.taskService.createTask(
+          const data = await dependencies.taskService.createTaskIdempotently(
             { userId },
             {
               title,
@@ -121,6 +133,7 @@ export function registerCreateTaskTool(
               priority,
               tags,
             },
+            idempotency_key,
           );
           const result = { success: true as const, data };
 
@@ -156,6 +169,8 @@ function toSafeToolError(error: unknown) {
     const message =
       error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND"
         ? "Task creation is unavailable for the authenticated user."
+        : error.code === "IDEMPOTENCY_CONFLICT"
+          ? "This idempotency key was already used for a different task."
         : "The task request is invalid.";
 
     return {

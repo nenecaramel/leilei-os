@@ -29,6 +29,7 @@ class MockDiaryRepository implements DiaryRepository {
   writes: Array<{
     diary: NormalizedDiaryCreate;
     summary: DiaryAuditRequestSummary;
+    mcpWriteIdempotency: boolean;
   }> = [];
 
   async findUserById(userId: string): Promise<DiaryUserRecord | null> {
@@ -39,8 +40,9 @@ class MockDiaryRepository implements DiaryRepository {
   async createDiaryWithAudit(
     diary: NormalizedDiaryCreate,
     summary: DiaryAuditRequestSummary,
+    options?: { mcpWriteIdempotency?: boolean },
   ): Promise<PersistDiaryResult> {
-    this.writes.push({ diary, summary });
+    this.writes.push({ diary, summary, mcpWriteIdempotency: options?.mcpWriteIdempotency === true });
 
     if (this.outcome === "conflict") {
       return { outcome: "conflict" };
@@ -60,6 +62,15 @@ class MockDiaryRepository implements DiaryRepository {
     };
   }
 }
+
+test("Diary MCP creation enables durable idempotency without changing Web creation", async () => {
+  const repository = new MockDiaryRepository();
+  const service = new DiaryService(repository);
+  await service.createMcpDiary({ userId: "user-1" }, VALID_INPUT);
+  assert.equal(repository.writes[0]?.mcpWriteIdempotency, true);
+  await service.createDiary({ userId: "user-1" }, { ...VALID_INPUT, idempotencyKey: "diary-web-compatible-0001" });
+  assert.equal(repository.writes[1]?.mcpWriteIdempotency, false);
+});
 
 test("creates a normalized diary using only the authenticated context user", async () => {
   const repository = new MockDiaryRepository();

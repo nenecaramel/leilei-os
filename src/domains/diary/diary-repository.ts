@@ -20,6 +20,10 @@ import {
   type LifecycleAuditPersistence,
   type LifecycleMutationInput,
 } from "../lifecycle/lifecycle-audit-repository.js";
+import {
+  lockAndReadMcpIdempotency,
+  recordMcpIdempotency,
+} from "../mcp-write/mcp-write-idempotency.js";
 
 export type DiaryUserRecord = {
   status: "active" | "disabled";
@@ -107,6 +111,7 @@ export interface DiaryRepository {
   createDiaryWithAudit(
     diary: NormalizedDiaryCreate,
     requestSummary: DiaryAuditRequestSummary,
+    options?: { mcpWriteIdempotency?: boolean },
   ): Promise<PersistDiaryResult>;
 
   updateDiary(
@@ -237,10 +242,52 @@ export class DrizzleDiaryRepository implements DiaryRepository {
   async createDiaryWithAudit(
     diary: NormalizedDiaryCreate,
     requestSummary: DiaryAuditRequestSummary,
+    options: { mcpWriteIdempotency?: boolean } = {},
   ): Promise<PersistDiaryResult> {
     const startedAt = performance.now();
 
     return this.db.transaction(async (transaction) => {
+      const idempotency = options.mcpWriteIdempotency
+        ? await lockAndReadMcpIdempotency(transaction, {
+            userId: diary.userId,
+            toolName: "write_diary",
+            idempotencyKey: diary.idempotencyKey,
+          })
+        : null;
+
+      if (idempotency) {
+        if (
+          idempotency.requestHash !== diary.requestHash ||
+          idempotency.resourceType !== "diary_entry"
+        ) {
+          return { outcome: "conflict" };
+        }
+
+        const [existing] = await transaction
+          .select({
+            id: diaryEntries.id,
+            title: diaryEntries.title,
+            date: diaryEntries.date,
+            tags: diaryEntries.tags,
+            mood: diaryEntries.mood,
+            createdAt: diaryEntries.createdAt,
+            requestHash: diaryEntries.requestHash,
+          })
+          .from(diaryEntries)
+          .where(
+            and(
+              eq(diaryEntries.userId, diary.userId),
+              eq(diaryEntries.id, idempotency.resourceId),
+            ),
+          )
+          .limit(1);
+
+        if (!existing) {
+          throw new Error("Idempotent diary record was not found.");
+        }
+        return { outcome: "replayed", diary: existing };
+      }
+
       const [inserted] = await transaction
         .insert(diaryEntries)
         .values({
@@ -272,6 +319,16 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         });
 
       if (inserted) {
+        if (options.mcpWriteIdempotency) {
+          await recordMcpIdempotency(transaction, {
+            userId: diary.userId,
+            toolName: "write_diary",
+            idempotencyKey: diary.idempotencyKey,
+            requestHash: diary.requestHash,
+            resourceType: "diary_entry",
+            resourceId: inserted.id,
+          });
+        }
         await this.insertAudit(transaction, {
           diary,
           requestSummary,
@@ -319,35 +376,47 @@ export class DrizzleDiaryRepository implements DiaryRepository {
       }
 
       if (existing.requestHash !== diary.requestHash) {
-        await this.insertAudit(transaction, {
-          diary,
-          requestSummary,
-          resourceId: null,
-          status: "rejected",
-          errorCode: "IDEMPOTENCY_CONFLICT",
-          resultSummary: {
-            created: false,
-            idempotent_replay: false,
-          },
-          durationMs: this.elapsedMilliseconds(startedAt),
-        });
-
+        if (!options.mcpWriteIdempotency) {
+          await this.insertAudit(transaction, {
+            diary,
+            requestSummary,
+            resourceId: null,
+            status: "rejected",
+            errorCode: "IDEMPOTENCY_CONFLICT",
+            resultSummary: {
+              created: false,
+              idempotent_replay: false,
+            },
+            durationMs: this.elapsedMilliseconds(startedAt),
+          });
+        }
         return {
           outcome: "conflict",
         };
       }
 
-      await this.insertAudit(transaction, {
-        diary,
-        requestSummary,
-        resourceId: existing.id,
-        status: "success",
-        resultSummary: {
-          created: false,
-          idempotent_replay: true,
-        },
-        durationMs: this.elapsedMilliseconds(startedAt),
-      });
+      if (options.mcpWriteIdempotency) {
+        await recordMcpIdempotency(transaction, {
+          userId: diary.userId,
+          toolName: "write_diary",
+          idempotencyKey: diary.idempotencyKey,
+          requestHash: diary.requestHash,
+          resourceType: "diary_entry",
+          resourceId: existing.id,
+        });
+      } else {
+        await this.insertAudit(transaction, {
+          diary,
+          requestSummary,
+          resourceId: existing.id,
+          status: "success",
+          resultSummary: {
+            created: false,
+            idempotent_replay: true,
+          },
+          durationMs: this.elapsedMilliseconds(startedAt),
+        });
+      }
 
       return {
         outcome: "replayed",

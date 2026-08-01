@@ -7,6 +7,10 @@ import type {
   TaskListQuery,
   TaskStatus,
 } from "./task-repository.js";
+import {
+  hashMcpWriteRequest,
+  normalizeMcpIdempotencyKey,
+} from "../mcp-write/mcp-write-idempotency.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
 import {
   TaskStateTransitionError,
@@ -149,7 +153,9 @@ export type TaskDomainErrorCode =
   | "INVALID_TASK_STATUS_TRANSITION"
   | "INVALID_DUE_TIME"
   | "INVALID_TIMEZONE"
-  | "INVALID_TAGS";
+  | "INVALID_TAGS"
+  | "INVALID_IDEMPOTENCY_KEY"
+  | "IDEMPOTENCY_CONFLICT";
 
 export class TaskDomainError extends Error {
   constructor(
@@ -179,6 +185,57 @@ export class TaskService {
     return {
       task: this.toTaskResult(task, timezone),
     };
+  }
+
+  async createTaskIdempotently(
+    context: AuthenticatedTaskContext,
+    input: CreateTaskInput,
+    idempotencyKey: string,
+  ): Promise<CreateTaskResult> {
+    const userId = await this.requireActiveUser(context.userId);
+    const timezone = await this.getAccountTimezone(userId);
+    const normalized = this.normalizeInput(userId, input, timezone);
+    const repository = this.repository.createTaskIdempotently;
+
+    if (!repository) {
+      throw new Error("Task idempotency persistence is unavailable.");
+    }
+
+    let normalizedKey: string;
+    try {
+      normalizedKey = normalizeMcpIdempotencyKey(idempotencyKey);
+    } catch {
+      throw new TaskDomainError(
+        "INVALID_IDEMPOTENCY_KEY",
+        "The idempotency key is invalid.",
+      );
+    }
+
+    const requestHash = hashMcpWriteRequest({
+      title: normalized.title,
+      description: normalized.description,
+      status: normalized.status,
+      priority: normalized.priority,
+      due_time: normalized.dueTime?.toISOString() ?? null,
+      timezone: normalized.timezone,
+      tags: normalized.tags,
+      completed_at: null,
+    });
+
+    const persisted = await repository.call(this.repository, {
+      ...normalized,
+      idempotencyKey: normalizedKey,
+      requestHash,
+    });
+
+    if (persisted.outcome === "conflict") {
+      throw new TaskDomainError(
+        "IDEMPOTENCY_CONFLICT",
+        "The idempotency key was already used for a different task.",
+      );
+    }
+
+    return { task: this.toTaskResult(persisted.task, timezone) };
   }
 
   async listTasks(

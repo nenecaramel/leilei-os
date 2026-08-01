@@ -22,15 +22,17 @@ class MockToyCommandToolService {
   calls: Array<{
     userId: string;
     input: unknown;
+    idempotencyKey: string;
   }> = [];
 
   nextError: Error | undefined;
 
-  async create(
+  async createIdempotently(
     userId: string,
     input: unknown,
+    idempotencyKey: string,
   ): Promise<ToyCommandRecord> {
-    this.calls.push({ userId, input });
+    this.calls.push({ userId, input, idempotencyKey });
 
     if (this.nextError) {
       throw this.nextError;
@@ -120,17 +122,17 @@ test("tools/list exposes strict toy_set and toy_stop tools", async (t) => {
 
   assert.deepEqual(
     Object.keys(toySet.inputSchema.properties ?? {}),
-    ["percent"],
+    ["percent", "idempotency_key"],
   );
   assert.deepEqual(
     Object.keys(toyStop.inputSchema.properties ?? {}),
-    [],
+    ["idempotency_key"],
   );
 
   for (const tool of [toySet, toyStop]) {
     assert.equal(tool.annotations?.readOnlyHint, false);
     assert.equal(tool.annotations?.destructiveHint, true);
-    assert.equal(tool.annotations?.idempotentHint, false);
+    assert.equal(tool.annotations?.idempotentHint, true);
     assert.equal(tool.annotations?.openWorldHint, false);
   }
 
@@ -173,6 +175,7 @@ test("toy_set queues an authenticated set command", async (t) => {
     name: "toy_set",
     arguments: {
       percent: 1,
+      idempotency_key: "toy-set-20260726-0001",
     },
   });
 
@@ -184,6 +187,7 @@ test("toy_set queues an authenticated set command", async (t) => {
         action: "set",
         percent: 1,
       },
+      idempotencyKey: "toy-set-20260726-0001",
     },
   ]);
 
@@ -215,7 +219,7 @@ test("toy_stop queues an authenticated stop command", async (t) => {
 
   const response = await client.callTool({
     name: "toy_stop",
-    arguments: {},
+    arguments: { idempotency_key: "toy-stop-20260726-0001" },
   });
 
   assert.equal(response.isError, undefined);
@@ -225,6 +229,7 @@ test("toy_stop queues an authenticated stop command", async (t) => {
       input: {
         action: "stop",
       },
+      idempotencyKey: "toy-stop-20260726-0001",
     },
   ]);
 
@@ -311,12 +316,12 @@ test("toy tools fail safely without authenticated context", async (t) => {
 
   const setResponse = await client.callTool({
     name: "toy_set",
-    arguments: { percent: 1 },
+    arguments: { percent: 1, idempotency_key: "toy-set-unauthenticated" },
   });
 
   const stopResponse = await client.callTool({
     name: "toy_stop",
-    arguments: {},
+    arguments: { idempotency_key: "toy-stop-unauthenticated" },
   });
 
   assert.equal(setResponse.isError, true);
@@ -351,7 +356,7 @@ test("toy tools map domain failures to safe messages", async (t) => {
 
   const response = await client.callTool({
     name: "toy_stop",
-    arguments: {},
+    arguments: { idempotency_key: "toy-stop-domain-error" },
   });
 
   assert.equal(response.isError, true);

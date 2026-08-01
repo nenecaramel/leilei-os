@@ -19,13 +19,15 @@ class MockTaskToolService {
   calls: Array<{
     context: AuthenticatedTaskContext;
     input: CreateTaskInput;
+    idempotencyKey: string;
   }> = [];
 
-  async createTask(
+  async createTaskIdempotently(
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
+    idempotencyKey: string,
   ): Promise<CreateTaskResult> {
-    this.calls.push({ context, input });
+    this.calls.push({ context, input, idempotencyKey });
 
     return {
       task: {
@@ -69,7 +71,7 @@ function createTestDependencies(
     },
     writeDiary: {
       diaryService: {
-        createDiary: async () => ({
+        createMcpDiary: async () => ({
           diary: {
             id: "00000000-0000-4000-8000-000000000001",
             title: "Test diary",
@@ -123,6 +125,7 @@ test("create_task calls the mock service with authenticated context", async (t) 
       timezone: "Asia/Shanghai",
       priority: "high",
       tags: ["phase4", "MCP"],
+      idempotency_key: "task-20260723-phase4",
     },
   });
 
@@ -138,6 +141,7 @@ test("create_task calls the mock service with authenticated context", async (t) 
         priority: "high",
         tags: ["phase4", "MCP"],
       },
+      idempotencyKey: "task-20260723-phase4",
     },
   ]);
   assert.equal(
@@ -164,6 +168,7 @@ test("create_task accepts an omitted due time without bypassing Task Service", a
       description: "暂时没有截止时间。",
       priority: "normal",
       tags: [],
+      idempotency_key: "task-20260723-open",
     },
   });
 
@@ -208,7 +213,7 @@ test("create_task schema excludes identity and lifecycle fields", async (t) => {
     assert.equal(forbidden in properties, false);
   }
   assert.equal(createTask?.annotations?.readOnlyHint, false);
-  assert.equal(createTask?.annotations?.idempotentHint, false);
+  assert.equal(createTask?.annotations?.idempotentHint, true);
 });
 
 test("create_task rejects forbidden fields before calling the service", async (t) => {
@@ -230,6 +235,7 @@ test("create_task rejects forbidden fields before calling the service", async (t
       timezone: "Asia/Shanghai",
       priority: "normal",
       tags: [],
+      idempotency_key: "task-20260723-forbidden",
       user_id: "00000000-0000-4000-8000-000000000123",
       status: "completed",
       completed_at: "2026-07-22T09:00:00Z",
@@ -261,6 +267,7 @@ test("create_task fails safely without authenticated context", async (t) => {
       timezone: "Asia/Shanghai",
       priority: "normal",
       tags: [],
+      idempotency_key: "task-20260723-unauthenticated",
     },
   });
 

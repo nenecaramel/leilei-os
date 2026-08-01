@@ -23,6 +23,10 @@ import {
   type LifecycleAuditPersistence,
   type LifecycleMutationInput,
 } from "../lifecycle/lifecycle-audit-repository.js";
+import {
+  lockAndReadMcpIdempotency,
+  recordMcpIdempotency,
+} from "../mcp-write/mcp-write-idempotency.js";
 
 export type TaskPriority =
   (typeof taskPriorityEnum.enumValues)[number];
@@ -62,6 +66,10 @@ export type TaskRecord = {
 };
 
 export type TaskLifecycleMutationInput = LifecycleMutationInput;
+
+export type TaskIdempotentCreateResult =
+  | { outcome: "created" | "replayed"; task: TaskRecord }
+  | { outcome: "conflict" };
 
 export type TaskListQuery = {
   q?: string;
@@ -113,6 +121,13 @@ export interface TaskRepository {
   createTask(
     input: NormalizedTaskCreate,
   ): Promise<TaskRecord>;
+
+  createTaskIdempotently?(
+    input: NormalizedTaskCreate & {
+      idempotencyKey: string;
+      requestHash: string;
+    },
+  ): Promise<TaskIdempotentCreateResult>;
 
   updateTaskStatus(
     input: UpdateTaskStatusInput,
@@ -291,6 +306,92 @@ export class DrizzleTaskRepository
     }
 
     return task;
+  }
+
+  async createTaskIdempotently(
+    input: NormalizedTaskCreate & {
+      idempotencyKey: string;
+      requestHash: string;
+    },
+  ): Promise<TaskIdempotentCreateResult> {
+    return this.db.transaction(async (transaction) => {
+      const idempotency = await lockAndReadMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "create_task",
+        idempotencyKey: input.idempotencyKey,
+      });
+
+      if (idempotency) {
+        if (
+          idempotency.requestHash !== input.requestHash ||
+          idempotency.resourceType !== "task"
+        ) {
+          return { outcome: "conflict" };
+        }
+
+        const [task] = await transaction
+          .select({
+            id: tasks.id,
+            title: tasks.title,
+            description: tasks.description,
+            status: tasks.status,
+            priority: tasks.priority,
+            dueTime: tasks.dueTime,
+            timezone: tasks.timezone,
+            tags: tasks.tags,
+            createdAt: tasks.createdAt,
+            updatedAt: tasks.updatedAt,
+            completedAt: tasks.completedAt,
+          })
+          .from(tasks)
+          .where(and(eq(tasks.userId, input.userId), eq(tasks.id, idempotency.resourceId)))
+          .limit(1);
+
+        if (!task) throw new Error("Idempotent task record was not found.");
+        return { outcome: "replayed", task };
+      }
+
+      const [task] = await transaction
+        .insert(tasks)
+        .values({
+          userId: input.userId,
+          title: input.title,
+          description: input.description,
+          status: input.status,
+          lifecycleStatus: "active",
+          priority: input.priority,
+          dueTime: input.dueTime,
+          timezone: input.timezone,
+          tags: input.tags,
+          completedAt: input.completedAt,
+        })
+        .returning({
+          id: tasks.id,
+          title: tasks.title,
+          description: tasks.description,
+          status: tasks.status,
+          priority: tasks.priority,
+          dueTime: tasks.dueTime,
+          timezone: tasks.timezone,
+          tags: tasks.tags,
+          createdAt: tasks.createdAt,
+          updatedAt: tasks.updatedAt,
+          completedAt: tasks.completedAt,
+        });
+
+      if (!task) throw new Error("Task insert did not return a record.");
+
+      await recordMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "create_task",
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
+        resourceType: "task",
+        resourceId: task.id,
+      });
+
+      return { outcome: "created", task };
+    });
   }
 
   async updateTaskStatus(

@@ -8,6 +8,11 @@ import type {
   ToyCreateInput,
 } from "../../../domains/toy/toy-command-types.js";
 import { invokeMcpWrite } from "../write-context.js";
+import {
+  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
+  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
+  MCP_IDEMPOTENCY_KEY_PATTERN,
+} from "../../../domains/mcp-write/mcp-write-idempotency.js";
 
 const toyCommandStatusSchema = z.enum([
   "pending",
@@ -25,10 +30,25 @@ const toySetInputSchema = z
       .min(1)
       .max(40)
       .describe("Toy intensity as an integer from 1 to 40."),
+    idempotency_key: z
+      .string()
+      .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
+      .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
+      .regex(MCP_IDEMPOTENCY_KEY_PATTERN)
+      .describe("A stable unique key used to prevent duplicate toy commands."),
   })
   .strict();
 
-const toyStopInputSchema = z.object({}).strict();
+const toyStopInputSchema = z
+  .object({
+    idempotency_key: z
+      .string()
+      .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
+      .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
+      .regex(MCP_IDEMPOTENCY_KEY_PATTERN)
+      .describe("A stable unique key used to prevent duplicate stop commands."),
+  })
+  .strict();
 
 const toySetOutputSchema = z.object({
   success: z.literal(true),
@@ -59,7 +79,11 @@ const toyStopOutputSchema = z.object({
 });
 
 export interface ToyCommandToolService {
-  create(userId: string, input: unknown): Promise<ToyCommandRecord>;
+  createIdempotently(
+    userId: string,
+    input: unknown,
+    idempotencyKey: string,
+  ): Promise<ToyCommandRecord>;
 }
 
 export type ToyCommandToolDependencies = {
@@ -82,19 +106,20 @@ export function registerToyCommandTools(
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
-        idempotentHint: false,
+        idempotentHint: true,
         openWorldHint: false,
       },
     },
-    async ({ percent }) =>
+    async ({ percent, idempotency_key }) =>
       invokeMcpWrite({
         toolName: "toy_set",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
-          const command = await dependencies.toyCommandService.create(userId, {
-            action: "set",
-            percent,
-          } satisfies ToyCreateInput);
+          const command = await dependencies.toyCommandService.createIdempotently(
+            userId,
+            { action: "set", percent } satisfies ToyCreateInput,
+            idempotency_key,
+          );
 
           const result = {
             success: true as const,
@@ -135,18 +160,20 @@ export function registerToyCommandTools(
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
-        idempotentHint: false,
+        idempotentHint: true,
         openWorldHint: false,
       },
     },
-    async () =>
+    async ({ idempotency_key }) =>
       invokeMcpWrite({
         toolName: "toy_stop",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
-          const command = await dependencies.toyCommandService.create(userId, {
-            action: "stop",
-          } satisfies ToyCreateInput);
+          const command = await dependencies.toyCommandService.createIdempotently(
+            userId,
+            { action: "stop" } satisfies ToyCreateInput,
+            idempotency_key,
+          );
 
           const result = {
             success: true as const,
@@ -196,6 +223,8 @@ function toSafeToolError(error: unknown, action: "set" | "stop") {
         ? "Toy control is temporarily unavailable."
         : error.code === "TOY_FORBIDDEN"
           ? "Toy control is unavailable for the authenticated user."
+          : error.code === "IDEMPOTENCY_CONFLICT"
+            ? "This idempotency key was already used for a different toy command."
           : error.code === "INVALID_INPUT"
             ? "The toy command is invalid."
             : "The toy command could not be queued.";

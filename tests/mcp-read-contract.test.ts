@@ -117,7 +117,7 @@ class DiaryTools {
     return DIARY;
   }
 
-  async createDiary(
+  async createMcpDiary(
     _context: AuthenticatedDiaryContext,
     _input: CreateDiaryInput,
   ): Promise<never> {
@@ -141,9 +141,10 @@ class TaskTools {
     return TASK;
   }
 
-  async createTask(
+  async createTaskIdempotently(
     _context: AuthenticatedTaskContext,
     _input: CreateTaskInput,
+    _idempotencyKey: string,
   ): Promise<never> {
     this.writeCalls += 1;
     throw new Error("create_task must not be invoked by this suite");
@@ -153,7 +154,7 @@ class TaskTools {
 class ToyWrites {
   writeCalls = 0;
 
-  async create(): Promise<never> {
+  async createIdempotently(): Promise<never> {
     this.writeCalls += 1;
     throw new Error("Toy writes must not be invoked by this suite");
   }

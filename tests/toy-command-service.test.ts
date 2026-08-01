@@ -21,6 +21,8 @@ const USER_ID = "11111111-1111-4111-8111-111111111111";
 
 class FakeRepository implements ToyCommandRepository {
   creates: Array<{ userId: string; input: ToyCreateInput }> = [];
+  idempotentCreates: Array<{ userId: string; input: ToyCreateInput & { toolName: "toy_set" | "toy_stop"; idempotencyKey: string; requestHash: string } }> = [];
+  idempotentOutcome: "created" | "replayed" | "conflict" = "created";
   claimUserIds: string[] = [];
   ackCalls: Array<{ userId: string; id: string; input: ToyAckInput }> = [];
   ackResult: ToyAckRepositoryResult = { kind: "not_found" };
@@ -28,6 +30,11 @@ class FakeRepository implements ToyCommandRepository {
   async create(userId: string, input: ToyCreateInput) {
     this.creates.push({ userId, input });
     return record({ userId, action: input.action, percent: input.action === "set" ? input.percent : null });
+  }
+  async createIdempotently(userId: string, input: ToyCreateInput & { toolName: "toy_set" | "toy_stop"; idempotencyKey: string; requestHash: string }) {
+    this.idempotentCreates.push({ userId, input });
+    if (this.idempotentOutcome === "conflict") return { outcome: "conflict" as const };
+    return { outcome: this.idempotentOutcome, command: record({ userId, action: input.action, percent: input.action === "set" ? input.percent : null }) };
   }
   async claim(userId: string) {
     this.claimUserIds.push(userId);
@@ -38,6 +45,27 @@ class FakeRepository implements ToyCommandRepository {
     return this.ackResult;
   }
 }
+
+test("Toy MCP creation scopes the normalized claim to the exact tool", async () => {
+  const repository = new FakeRepository();
+  const service = new ToyCommandService(repository, USER_ID);
+  const command = await service.createIdempotently(
+    USER_ID,
+    { action: "set", percent: 20 },
+    "toy-client-request-0001",
+  );
+  assert.equal(command.action, "set");
+  assert.equal(repository.idempotentCreates.length, 1);
+  assert.equal(repository.idempotentCreates[0]?.input.toolName, "toy_set");
+  assert.equal(repository.idempotentCreates[0]?.input.idempotencyKey, "toy-client-request-0001");
+  assert.match(repository.idempotentCreates[0]?.input.requestHash ?? "", /^[a-f0-9]{64}$/);
+
+  repository.idempotentOutcome = "conflict";
+  await assert.rejects(
+    service.createIdempotently(USER_ID, { action: "set", percent: 21 }, "toy-client-request-0001"),
+    (error: unknown) => error instanceof ToyDomainError && error.code === "IDEMPOTENCY_CONFLICT",
+  );
+});
 
 test("creates only strict high-level set and stop commands for the bound user", async () => {
   const repository = new FakeRepository();

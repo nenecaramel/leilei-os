@@ -6,6 +6,11 @@ import type {
   ToyCommandRecord,
   ToyCreateInput,
 } from "./toy-command-types.js";
+import {
+  lockAndReadMcpIdempotency,
+  recordMcpIdempotency,
+  type McpIdempotentToolName,
+} from "../mcp-write/mcp-write-idempotency.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -28,8 +33,20 @@ export type ToyAckRepositoryResult =
   | { kind: "updated" | "idempotent"; command: ToyCommandRecord }
   | { kind: "not_found" | "expired" | "conflict" };
 
+export type ToyIdempotentCreateResult =
+  | { outcome: "created" | "replayed"; command: ToyCommandRecord }
+  | { outcome: "conflict" };
+
 export interface ToyCommandRepository {
   create(userId: string, input: ToyCreateInput): Promise<ToyCommandRecord>;
+  createIdempotently?(
+    userId: string,
+    input: ToyCreateInput & {
+      toolName: Extract<McpIdempotentToolName, "toy_set" | "toy_stop">;
+      idempotencyKey: string;
+      requestHash: string;
+    },
+  ): Promise<ToyIdempotentCreateResult>;
   claim(userId: string): Promise<ToyCommandRecord | null>;
   ack(userId: string, id: string, input: ToyAckInput): Promise<ToyAckRepositoryResult>;
 }
@@ -38,46 +55,105 @@ export class DrizzleToyCommandRepository implements ToyCommandRepository {
   constructor(private readonly db: Database) {}
 
   async create(userId: string, input: ToyCreateInput): Promise<ToyCommandRecord> {
+    return this.db.transaction((transaction) =>
+      this.createInTransaction(transaction, userId, input),
+    );
+  }
+
+  async createIdempotently(
+    userId: string,
+    input: ToyCreateInput & {
+      toolName: "toy_set" | "toy_stop";
+      idempotencyKey: string;
+      requestHash: string;
+    },
+  ): Promise<ToyIdempotentCreateResult> {
     return this.db.transaction(async (transaction) => {
-      // Serialize command creation for one bound user so concurrent set/stop
-      // transactions have one deterministic predecessor to replace.
-      await transaction.execute(sql`
-        SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))
-      `);
-      await this.expireElapsed(transaction, userId);
+      const idempotency = await lockAndReadMcpIdempotency(transaction, {
+        userId,
+        toolName: input.toolName,
+        idempotencyKey: input.idempotencyKey,
+      });
 
-      await transaction
-        .update(toyCommands)
-        .set({
-          status: "expired",
-          expiredAt: sql`now()`,
-        })
-        .where(
-          and(
-            eq(toyCommands.userId, userId),
-            eq(toyCommands.status, "pending"),
-            eq(toyCommands.action, "set"),
-            ...(input.action === "set"
-              ? [gt(toyCommands.expiresAt, sql`now()`)]
-              : []),
-          ),
-        );
+      if (idempotency) {
+        if (
+          idempotency.requestHash !== input.requestHash ||
+          idempotency.resourceType !== "toy_command"
+        ) {
+          return { outcome: "conflict" };
+        }
 
-      const [command] = await transaction
-        .insert(toyCommands)
-        .values({
-          userId,
-          action: input.action,
-          percent: input.action === "set" ? input.percent : null,
-          status: "pending",
-          createdAt: sql`now()`,
-          expiresAt: sql`now() + interval '10 seconds'`,
-        })
-        .returning(selection);
+        const [command] = await transaction
+          .select(selection)
+          .from(toyCommands)
+          .where(
+            and(
+              eq(toyCommands.userId, userId),
+              eq(toyCommands.id, idempotency.resourceId),
+            ),
+          )
+          .limit(1);
 
-      if (!command) throw new Error("Toy command insert did not return a record.");
-      return command;
+        if (!command) throw new Error("Idempotent toy command was not found.");
+        return { outcome: "replayed", command };
+      }
+
+      const command = await this.createInTransaction(transaction, userId, input);
+      await recordMcpIdempotency(transaction, {
+        userId,
+        toolName: input.toolName,
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
+        resourceType: "toy_command",
+        resourceId: command.id,
+      });
+      return { outcome: "created", command };
     });
+  }
+
+  private async createInTransaction(
+    transaction: Transaction,
+    userId: string,
+    input: ToyCreateInput,
+  ): Promise<ToyCommandRecord> {
+    // Serialize command creation for one bound user so concurrent set/stop
+    // transactions have one deterministic predecessor to replace.
+    await transaction.execute(sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))
+    `);
+    await this.expireElapsed(transaction, userId);
+
+    await transaction
+      .update(toyCommands)
+      .set({
+        status: "expired",
+        expiredAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(toyCommands.userId, userId),
+          eq(toyCommands.status, "pending"),
+          eq(toyCommands.action, "set"),
+          ...(input.action === "set"
+            ? [gt(toyCommands.expiresAt, sql`now()`)]
+            : []),
+        ),
+      );
+
+    const [command] = await transaction
+      .insert(toyCommands)
+      .values({
+        userId,
+        action: input.action,
+        percent: input.action === "set" ? input.percent : null,
+        status: "pending",
+        createdAt: sql`now()`,
+        expiresAt: sql`now() + interval '10 seconds'`,
+      })
+      .returning(selection);
+
+    if (!command) throw new Error("Toy command insert did not return a record.");
+    return command;
   }
 
   async claim(userId: string): Promise<ToyCommandRecord | null> {
