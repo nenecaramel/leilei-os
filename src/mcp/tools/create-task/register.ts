@@ -6,6 +6,7 @@ import {
   type CreateTaskInput,
   type CreateTaskResult,
 } from "../../../domains/task/task-service.js";
+import { invokeMcpWrite } from "../write-context.js";
 
 const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const taskStatusSchema = z.enum([
@@ -105,35 +106,36 @@ export function registerCreateTaskTool(
         openWorldHint: false,
       },
     },
-    async ({ title, description, due_time, timezone, priority, tags }) => {
-      try {
-        const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.taskService.createTask(
-          { userId },
-          {
-            title,
-            description,
-            dueTime: due_time,
-            timezone,
-            priority,
-            tags,
-          },
-        );
-        const result = { success: true as const, data };
-
-        return {
-          content: [
+    async ({ title, description, due_time, timezone, priority, tags }) =>
+      invokeMcpWrite({
+        toolName: "create_task",
+        getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
+        operation: async ({ userId }) => {
+          const data = await dependencies.taskService.createTask(
+            { userId },
             {
-              type: "text",
-              text: "Task created successfully.",
+              title,
+              description,
+              dueTime: due_time,
+              timezone,
+              priority,
+              tags,
             },
-          ],
-          structuredContent: result,
-        };
-      } catch (error) {
-        return toSafeToolError(error);
-      }
-    },
+          );
+          const result = { success: true as const, data };
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Task created successfully.",
+              },
+            ],
+            structuredContent: result,
+          };
+        },
+        mapError: toSafeToolError,
+      }),
   );
 }
 
