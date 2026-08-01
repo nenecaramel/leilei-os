@@ -73,6 +73,15 @@ test("Task archive and detail URLs preserve exact active and archived return tar
     getTaskArchiveLocation(new URL(archive, "https://local").search),
     { archived: true, returnTo: active },
   );
+  assert.deepEqual(
+    getTaskDetailLocation(new URL(archive, "https://local").search),
+    {
+      taskId: null,
+      returnTo: active,
+      activeReturnTo: active,
+      archived: true,
+    },
+  );
 
   const detailUrl = createArchivedTaskDetailLocation("task-1", archive);
   const detail = getTaskDetailLocation(

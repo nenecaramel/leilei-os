@@ -66,16 +66,17 @@ export function getTaskDetailLocation(search: string): {
     ? taskCandidate
     : null;
   const archived = parameters.get("archived") === "1";
-  const returnTo = archived
+  const archivedDetail = archived && taskId !== null;
+  const returnTo = archivedDetail
     ? getSafeTaskArchiveReturnTo(parameters.get("returnTo"))
     : getSafeTaskReturnTo(parameters.get("returnTo"));
 
   return {
     taskId,
     returnTo,
-    activeReturnTo: archived
+    activeReturnTo: archivedDetail
       ? getTaskArchiveLocation(new URL(returnTo, "https://leilei-os.invalid").search).returnTo
-      : getSafeTaskReturnTo(parameters.get("returnTo")),
+      : returnTo,
     archived,
   };
 }

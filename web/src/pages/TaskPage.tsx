@@ -32,13 +32,13 @@ import {
     readTaskFilterHistorySnapshot,
     subscribeToTaskFilterHistory,
   } from "./task-filter-history";
-  
+
   type TaskStatus =
     | "pending"
     | "in_progress"
     | "completed"
     | "cancelled";
-  
+
   type TaskPriority =
     | "low"
     | "normal"
@@ -46,7 +46,7 @@ import {
     | "urgent";
 
   type TaskAction = "start" | "complete" | "cancel";
-  
+
   type TaskEntry = {
     id: string;
     title: string;
@@ -62,7 +62,7 @@ import {
     completed_at: string | null;
     allowed_actions: TaskAction[];
   };
-  
+
   type TaskListResponse = {
     success: true;
     data: {
@@ -72,12 +72,12 @@ import {
       };
     };
   };
-  
+
   type TaskEntryResponse = {
     success: true;
     data: TaskEntry;
   };
-  
+
   type LoadState =
     | { status: "loading" }
     | {
@@ -88,35 +88,35 @@ import {
     | { status: "error" };
 
   type DetailLoadState = "idle" | "loading" | "ready" | "error";
-  
+
   const statusLabels: Record<TaskStatus, string> = {
     pending: "待处理",
     in_progress: "进行中",
     completed: "已完成",
     cancelled: "已取消",
   };
-  
+
   const priorityLabels: Record<TaskPriority, string> = {
     low: "低",
     normal: "普通",
     high: "高",
     urgent: "紧急",
   };
-  
+
   function getDefaultDueTime(): string {
     const date = new Date();
     date.setHours(date.getHours() + 1);
     date.setMinutes(0, 0, 0);
-  
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     const hour = String(date.getHours()).padStart(2, "0");
     const minute = String(date.getMinutes()).padStart(2, "0");
-  
+
     return `${year}-${month}-${day}T${hour}:${minute}`;
   }
-  
+
   function toDateTimeLocal(
     value: string | null,
     timezone: string,
@@ -146,18 +146,18 @@ import {
       return "";
     }
   }
-  
+
   function formatDueTime(
     value: string | null,
     timezone: string,
   ): string {
     if (!value) return "无截止时间";
     const date = new Date(value);
-  
+
     if (Number.isNaN(date.getTime())) {
       return value;
     }
-  
+
     try {
       return new Intl.DateTimeFormat("zh-CN", {
         year: "numeric",
@@ -171,7 +171,7 @@ import {
       return date.toLocaleString("zh-CN");
     }
   }
-  
+
   function parseTags(value: string): string[] {
     return [
       ...new Set(
@@ -204,7 +204,7 @@ import {
     const listAbortController = useRef<AbortController | null>(
       null,
     );
-  
+
     const [reloadKey, setReloadKey] = useState(0);
     const [filters, setFilters] = useState(initialFilters);
     const [searchDraft, setSearchDraft] = useState(
@@ -225,11 +225,11 @@ import {
     const [state, setState] = useState<LoadState>({
       status: "loading",
     });
-  
+
     const [showCreate, setShowCreate] = useState(false);
     const [creating, setCreating] = useState(false);
     const createGate = useRef(createSubmissionGate());
-  
+
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [priority, setPriority] =
@@ -239,7 +239,7 @@ import {
     );
     const [withoutDueTime, setWithoutDueTime] = useState(false);
     const [tags, setTags] = useState("");
-  
+
     const [selectedTask, setSelectedTask] =
       useState<TaskEntry | null>(null);
     const [loadingTaskId, setLoadingTaskId] =
@@ -261,7 +261,7 @@ import {
     const [editingDueTime, setEditingDueTime] = useState("");
     const [editingWithoutDueTime, setEditingWithoutDueTime] = useState(false);
     const [editingTags, setEditingTags] = useState("");
-  
+
     const [actionError, setActionError] = useState("");
     const filtersRef = useRef(filters);
     filtersRef.current = filters;
@@ -343,7 +343,7 @@ import {
       },
       [],
     );
-  
+
     useEffect(() => {
       if (isDetailMode) {
         invalidateListRequest();
@@ -479,20 +479,20 @@ import {
     function clearFilters() {
       commitFilters(EMPTY_TASK_FILTERS);
     }
-  
+
     const createInvalid =
       title.trim().length === 0 ||
       description.trim().length === 0 ||
       (!withoutDueTime && dueTime.trim().length === 0);
-  
+
     async function handleCreate() {
       if (createInvalid || !createGate.current.enter()) {
         return;
       }
-  
+
       setCreating(true);
       setActionError("");
-  
+
       try {
         const response = await api.request<TaskEntryResponse>(
           "/task",
@@ -508,7 +508,7 @@ import {
             }),
           },
         );
-  
+
         setTitle("");
         setDescription("");
         setPriority("normal");
@@ -516,10 +516,10 @@ import {
         setWithoutDueTime(false);
         setTags("");
         setShowCreate(false);
-  
+
         setReloadKey((value) => value + 1);
         openTaskDetail(response.data.id);
-  
+
         requestAnimationFrame(() => {
           window.scrollTo({
             top: 0,
@@ -533,7 +533,7 @@ import {
         setCreating(false);
       }
     }
-  
+
     async function handleReadTask(id: string) {
       if (loadingTaskId) {
         return;
@@ -580,41 +580,57 @@ import {
       setRestoring(true); setActionError("");
       try {
         await api.request(`/task/archived/${selectedTask.id}/restore`, { method: "POST" });
-        const activeReturnTo = taskLocation.activeReturnTo;
-        window.history.pushState(null, "", activeReturnTo);
-        const restoredFilters = readTaskFilterHistorySnapshot(
-          new URL(activeReturnTo, window.location.origin).search,
-        );
-        setFilters(restoredFilters);
-        setSearchDraft(restoredFilters.q);
-        setTagDraft(restoredFilters.tag);
-        setTaskLocation(initialTaskLocation());
-        setSelectedTask(null);
-        setDetailLoadState("idle");
+        returnToActiveTaskList(taskLocation.activeReturnTo);
       } catch { setActionError("恢复任务失败，请稍后重试。"); }
       finally { restoreGate.current.leave(); setRestoring(false); }
     }
-  
-    function handleCloseTask() {
-      window.history.pushState(null, "", taskLocation.returnTo);
-      setSelectedTask(null);
-      setEditing(false);
-      setActionError("");
-      const restoredFilters = initialFilters();
+
+    function returnToActiveTaskList(
+      returnTo: string,
+      restoreScroll = false,
+    ) {
+      window.history.pushState(null, "", returnTo);
+      const restoredFilters = readTaskFilterHistorySnapshot(
+        new URL(returnTo, window.location.origin).search,
+      );
       setFilters(restoredFilters);
       setSearchDraft(restoredFilters.q);
       setTagDraft(restoredFilters.tag);
+      setSelectedTask(null);
+      setEditing(false);
+      setActionError("");
       setTaskLocation(initialTaskLocation());
       setDetailLoadState("idle");
-  
-      requestAnimationFrame(() => {
-        window.scrollTo({
-          top: listScrollPosition.current,
-          behavior: "smooth",
+      setState({ status: "loading" });
+
+      if (restoreScroll) {
+        requestAnimationFrame(() => {
+          window.scrollTo({
+            top: listScrollPosition.current,
+            behavior: "smooth",
+          });
         });
-      });
+      }
     }
-  
+
+    function returnToArchivedTaskList(returnTo: string) {
+      window.history.pushState(null, "", returnTo);
+      setSelectedTask(null);
+      setEditing(false);
+      setActionError("");
+      setTaskLocation(initialTaskLocation());
+      setDetailLoadState("idle");
+      setState({ status: "loading" });
+    }
+
+    function handleCloseTask() {
+      if (isArchivedMode) {
+        returnToArchivedTaskList(taskLocation.returnTo);
+      } else {
+        returnToActiveTaskList(taskLocation.returnTo, true);
+      }
+    }
+
     function beginEditing(task: TaskEntry) {
       setEditing(true);
       setEditingTitle(task.title);
@@ -639,10 +655,10 @@ import {
       if (!selectedTask || !statusGate.current.enter()) {
         return;
       }
-  
+
       setUpdatingStatus(true);
       setActionError("");
-  
+
       try {
         const response = await api.request<TaskEntryResponse>(
           `/task/${selectedTask.id}/status`,
@@ -698,7 +714,7 @@ import {
         setUpdating(false);
       }
     }
-  
+
     return (
       <div className="page memory-page">
         <PageHeader
@@ -708,8 +724,7 @@ import {
           action={
             isDetailMode && isArchivedMode ? (
               <button className="secondary-button" disabled={restoring} onClick={() => {
-                window.history.pushState(null, "", taskLocation.returnTo);
-                setTaskLocation(initialTaskLocation()); setSelectedTask(null); setDetailLoadState("idle");
+                returnToArchivedTaskList(taskLocation.returnTo);
               }}>返回归档列表</button>
             ) : isDetailMode ? (
               <button
@@ -721,8 +736,7 @@ import {
               </button>
             ) : isArchivedMode ? (
               <button className="secondary-button" onClick={() => {
-                window.history.pushState(null, "", taskLocation.returnTo);
-                setTaskLocation(initialTaskLocation());
+                returnToActiveTaskList(taskLocation.returnTo);
               }}>返回任务列表</button>
             ) : (
               <div className="page-header-actions">
@@ -755,14 +769,14 @@ import {
             <button className="secondary-button" onClick={clearFilters}>清除全部</button>
           </section>
         )}
-  
+
         {actionError && (
           <section className="memory-message">
             <h2>操作没有完成</h2>
             <p>{actionError}</p>
           </section>
         )}
-  
+
         {isDetailMode ? (
           selectedTask ? (
           <section className="memory-message">
@@ -865,15 +879,15 @@ import {
               <span>
                 {statusLabels[selectedTask.status]}
               </span>
-  
+
               <span>
                 优先级：{priorityLabels[selectedTask.priority]}
               </span>
                 </div>
-  
+
                 <h2>{selectedTask.title}</h2>
                 <p>{selectedTask.description}</p>
-  
+
                 <p>
               截止时间：
               {formatDueTime(
@@ -881,9 +895,9 @@ import {
                 selectedTask.timezone,
               )}
                 </p>
-  
+
                 <p>时区：{selectedTask.timezone}</p>
-  
+
                 {selectedTask.tags.length > 0 && (
               <p>
                 {selectedTask.tags
@@ -891,7 +905,7 @@ import {
                   .join(" ")}
               </p>
                 )}
-  
+
                 {selectedTask.completed_at && (
               <p>
                 完成时间：
@@ -970,7 +984,7 @@ import {
             {showCreate && (
               <section className="memory-message">
                 <h2>创建任务</h2>
-  
+
                 <input
                   placeholder="任务标题"
                   value={title}
@@ -980,7 +994,7 @@ import {
                     setActionError("");
                   }}
                 />
-  
+
                 <textarea
                   placeholder="任务说明"
                   value={description}
@@ -990,7 +1004,7 @@ import {
                     setActionError("");
                   }}
                 />
-  
+
                 <select
                   value={priority}
                   disabled={creating}
@@ -1005,7 +1019,7 @@ import {
                   <option value="high">高优先级</option>
                   <option value="urgent">紧急</option>
                 </select>
-  
+
                 <div className="task-due-field">
                   <NativeDateInput
                     type="datetime-local"
@@ -1044,7 +1058,7 @@ import {
                     setActionError("");
                   }}
                 />
-  
+
                 <button
                   className="secondary-button"
                   disabled={creating || createInvalid}
@@ -1054,7 +1068,7 @@ import {
                 </button>
               </section>
             )}
-  
+
             {state.status === "ready" &&
               state.tasks.length > 0 && (
                 <>
@@ -1064,7 +1078,7 @@ import {
                       共 {state.count} 项，按截止时间排列。
                     </p>
                   </section>
-  
+
                   <section className="memory-grid">
                     {state.tasks.map((task) => (
                       <article
@@ -1075,20 +1089,20 @@ import {
                           <span>
                             {statusLabels[task.status]}
                           </span>
-  
+
                           <span>
                             {priorityLabels[task.priority]}
                           </span>
                         </div>
-  
+
                         <h2>{task.title}</h2>
-  
+
                         <p>
                           {task.description.length > 160
                             ? `${task.description.slice(0, 160)}…`
                             : task.description}
                         </p>
-  
+
                         <p>
                           截止：
                           {formatDueTime(
@@ -1096,7 +1110,7 @@ import {
                             task.timezone,
                           )}
                         </p>
-  
+
                         {task.tags.length > 0 && (
                           <p>
                             {task.tags
@@ -1104,7 +1118,7 @@ import {
                               .join(" ")}
                           </p>
                         )}
-  
+
                         <button
                           className="secondary-button"
                           disabled={
@@ -1121,7 +1135,7 @@ import {
                   </section>
                 </>
               )}
-  
+
             {state.status === "ready" &&
               state.tasks.length === 0 && (
                 <TaskMessage
@@ -1130,9 +1144,9 @@ import {
                   action={filters.q || filters.status || filters.priority || filters.tag || filters.due ? <button className="secondary-button" onClick={clearFilters}>清除筛选</button> : undefined}
                 />
               )}
-  
+
             {state.status === "loading" && <TaskLoading />}
-  
+
             {state.status === "error" && (
               <TaskMessage
                 title="暂时无法读取任务"
@@ -1154,7 +1168,7 @@ import {
       </div>
     );
   }
-  
+
   function TaskLoading() {
     return (
       <section className="memory-grid">
@@ -1183,7 +1197,7 @@ import {
       </section>
     );
   }
-  
+
   function TaskMessage({
     action,
     description,
@@ -1198,10 +1212,10 @@ import {
         <div className="placeholder-icon">
           <TaskIcon />
         </div>
-  
+
         <h2>{title}</h2>
         <p>{description}</p>
-  
+
         {action}
       </section>
     );

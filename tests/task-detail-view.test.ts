@@ -12,6 +12,8 @@ import {
   createTaskArchiveLocation,
   createTaskDetailLocation,
 } from "../web/src/pages/task-location.js";
+import { readTaskFilterHistorySnapshot } from "../web/src/pages/task-filter-history.js";
+import { buildTaskListRequest } from "../web/src/pages/task-list-request.js";
 import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 type RequestRecord = {
@@ -26,6 +28,13 @@ type Deferred<T> = {
 };
 
 const TASK_ID = "task-123";
+const FILTERED_TASK_LIST =
+  "/task?q=abc&status=pending&priority=high&tag=work&due=custom&due_from=2026-07-29&due_to=2026-08-05";
+const FILTERED_TASK_REQUEST = buildTaskListRequest(
+  readTaskFilterHistorySnapshot(
+    new URL(FILTERED_TASK_LIST, "https://leilei-os.test").search,
+  ),
+).url;
 const TASK_RESPONSE = {
   success: true as const,
   data: {
@@ -296,6 +305,137 @@ test("archived Task list shows exact summary and no lifecycle or business action
   }
 });
 
+test("filtered active list enters archive and returns with exact URL, controls, and request", async () => {
+  const { api, requests } = createApi(async () => ({
+    success: true,
+    data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
+  }));
+  const page = await renderTaskPage(FILTERED_TASK_LIST, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const archive = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看归档");
+    assert.ok(archive);
+    await React.act(async () => {
+      archive.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(requests.at(-1)?.path, "/task/archived");
+
+    const back = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "返回任务列表");
+    assert.ok(back);
+    await React.act(async () => {
+      back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      FILTERED_TASK_LIST,
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"搜索任务\"]",
+      )?.value,
+      "abc",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLSelectElement>(
+        "select[aria-label=\"状态筛选\"]",
+      )?.value,
+      "pending",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"标签筛选\"]",
+      )?.value,
+      "work",
+    );
+    assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("refreshed archived list returns with exact active filter state and request", async () => {
+  const archivedLocation = createTaskArchiveLocation(FILTERED_TASK_LIST);
+  const { api, requests } = createApi(async () => ({
+    success: true,
+    data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
+  }));
+  const page = await renderTaskPage(archivedLocation, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(requests[0]?.path, "/task/archived");
+    const back = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "返回任务列表");
+    assert.ok(back);
+    await React.act(async () => {
+      back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      FILTERED_TASK_LIST,
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"搜索任务\"]",
+      )?.value,
+      "abc",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"标签筛选\"]",
+      )?.value,
+      "work",
+    );
+    assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("archived detail return keeps the archived list and original active return chain", async () => {
+  const archivedLocation = createTaskArchiveLocation(FILTERED_TASK_LIST);
+  const archivedDetail = createArchivedTaskDetailLocation(
+    TASK_ID,
+    archivedLocation,
+  );
+  const { api, requests } = createApi(async (path) =>
+    path === `/task/archived/${TASK_ID}`
+      ? { ...TASK_RESPONSE, data: { ...TASK_RESPONSE.data, lifecycle_status: "archived" } }
+      : {
+        success: true,
+        data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
+      }
+  );
+  const page = await renderTaskPage(archivedDetail, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const back = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "返回归档列表");
+    assert.ok(back);
+    await React.act(async () => {
+      back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      archivedLocation,
+    );
+    assert.equal(requests.at(-1)?.path, "/task/archived");
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("undated task detail and edit form preserve the no-due state and account timezone", async () => {
   const response = {
     ...TASK_RESPONSE,
@@ -517,8 +657,7 @@ test("active detail archive is strict single-flight and restores the exact filte
     if (init?.method === "DELETE") return archive.promise;
     return Promise.resolve(TASK_RESPONSE);
   });
-  const returnTo =
-    "/task?q=abc&status=pending&priority=high&tag=work&due=custom&due_from=2026-07-29&due_to=2026-08-05";
+  const returnTo = FILTERED_TASK_LIST;
   const page = await renderTaskPage(createTaskDetailLocation(TASK_ID, returnTo), api);
   page.window.confirm = () => true;
   try {
@@ -565,8 +704,7 @@ test("archived detail restore is strict single-flight and returns to the exact a
     if (init?.method === "POST") return restore.promise;
     return Promise.resolve(archivedResponse);
   });
-  const active =
-    "/task?q=abc&status=pending&priority=high&tag=work&due=custom&due_from=2026-07-29&due_to=2026-08-05";
+  const active = FILTERED_TASK_LIST;
   const archivedList = createTaskArchiveLocation(active);
   const detail = createArchivedTaskDetailLocation(TASK_ID, archivedList);
   const page = await renderTaskPage(detail, api);
@@ -601,6 +739,19 @@ test("archived detail restore is strict single-flight and returns to the exact a
       `${page.window.location.pathname}${page.window.location.search}`,
       active,
     );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"搜索任务\"]",
+      )?.value,
+      "abc",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"标签筛选\"]",
+      )?.value,
+      "work",
+    );
+    assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
   } finally {
     await page.cleanup();
   }
