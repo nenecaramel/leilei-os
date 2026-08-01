@@ -248,6 +248,8 @@ import {
       useState(false);
     const [archiving, setArchiving] = useState(false);
     const [restoring, setRestoring] = useState(false);
+    const archiveGate = useRef(createSubmissionGate());
+    const restoreGate = useRef(createSubmissionGate());
     const statusGate = useRef(createSubmissionGate());
     const [editing, setEditing] = useState(false);
     const [updating, setUpdating] = useState(false);
@@ -560,25 +562,37 @@ import {
     }
 
     async function handleArchiveTask() {
-      if (!selectedTask || archiving) return;
-      if (!window.confirm(`确定归档“${selectedTask.title}”吗？`)) return;
+      if (!selectedTask || !archiveGate.current.enter()) return;
+      if (!window.confirm(`确定归档“${selectedTask.title}”吗？`)) {
+        archiveGate.current.leave();
+        return;
+      }
       setArchiving(true); setActionError("");
       try {
         await api.request(`/task/${selectedTask.id}`, { method: "DELETE" });
         handleCloseTask();
       } catch { setActionError("归档任务失败，请稍后重试。"); }
-      finally { setArchiving(false); }
+      finally { archiveGate.current.leave(); setArchiving(false); }
     }
 
     async function handleRestoreTask() {
-      if (!selectedTask || restoring) return;
+      if (!selectedTask || !restoreGate.current.enter()) return;
       setRestoring(true); setActionError("");
       try {
         await api.request(`/task/archived/${selectedTask.id}/restore`, { method: "POST" });
-        window.history.pushState(null, "", "/task");
-        setTaskLocation(initialTaskLocation()); setSelectedTask(null); setDetailLoadState("idle");
+        const activeReturnTo = taskLocation.activeReturnTo;
+        window.history.pushState(null, "", activeReturnTo);
+        const restoredFilters = readTaskFilterHistorySnapshot(
+          new URL(activeReturnTo, window.location.origin).search,
+        );
+        setFilters(restoredFilters);
+        setSearchDraft(restoredFilters.q);
+        setTagDraft(restoredFilters.tag);
+        setTaskLocation(initialTaskLocation());
+        setSelectedTask(null);
+        setDetailLoadState("idle");
       } catch { setActionError("恢复任务失败，请稍后重试。"); }
-      finally { setRestoring(false); }
+      finally { restoreGate.current.leave(); setRestoring(false); }
     }
   
     function handleCloseTask() {
