@@ -106,12 +106,26 @@ async function renderTaskPage(
   installGlobal("document", dom.window.document);
   installGlobal("navigator", dom.window.navigator);
   installGlobal("HTMLElement", dom.window.HTMLElement);
+  installGlobal("HTMLInputElement", dom.window.HTMLInputElement);
+  installGlobal("HTMLTextAreaElement", dom.window.HTMLTextAreaElement);
+  installGlobal("InputEvent", dom.window.InputEvent);
   installGlobal("Node", dom.window.Node);
   installGlobal("Event", dom.window.Event);
   installGlobal("MouseEvent", dom.window.MouseEvent);
   installGlobal("PopStateEvent", dom.window.PopStateEvent);
   installGlobal("React", React);
   installGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  (dom.window.HTMLElement.prototype as unknown as {
+    attachEvent(name: string, listener: EventListener): void;
+    detachEvent(name: string, listener: EventListener): void;
+  }).attachEvent = function (name, listener) {
+    this.addEventListener(name.replace(/^on/, ""), listener);
+  };
+  (dom.window.HTMLElement.prototype as unknown as {
+    detachEvent(name: string, listener: EventListener): void;
+  }).detachEvent = function (name, listener) {
+    this.removeEventListener(name.replace(/^on/, ""), listener);
+  };
   dom.window.scrollTo = () => {};
   dom.window.requestAnimationFrame = (callback) =>
     dom.window.setTimeout(() => callback(Date.now()), 0);
@@ -752,6 +766,243 @@ test("archived detail restore is strict single-flight and returns to the exact a
       "work",
     );
     assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Task dirty create preserves on cancel, retries once, and ignores stale success", async () => {
+  const first = deferred<unknown>();
+  const retry = deferred<unknown>();
+  let createAttempt = 0;
+  const { api, requests } = createApi((path, init) => {
+    if (init?.method === "POST") {
+      createAttempt += 1;
+      return createAttempt === 1 ? first.promise : retry.promise;
+    }
+    if (path === `/task/${TASK_ID}`) return Promise.resolve(TASK_RESPONSE);
+    return Promise.resolve({
+      success: true,
+      data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
+    });
+  });
+  const page = await renderTaskPage("/task?q=goal", api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const findButton = (label: string) => [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === label);
+    await React.act(async () => {
+      findButton("新增任务")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    const title = page.container.querySelector<HTMLInputElement>('input[placeholder="任务标题"]');
+    const description = page.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="任务说明"]');
+    assert.ok(title && description);
+    await React.act(async () => {
+      title.focus();
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(title), "value")?.set?.call(title, "draft task");
+      const titleChange = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(titleChange, "propertyName", { value: "value" });
+      title.dispatchEvent(titleChange);
+      description.focus();
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(description), "value")?.set?.call(description, "draft description");
+      const descriptionChange = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(descriptionChange, "propertyName", { value: "value" });
+      description.dispatchEvent(descriptionChange);
+    });
+    let confirmations = 0;
+    page.window.confirm = () => {
+      confirmations += 1;
+      return false;
+    };
+    await React.act(async () => {
+      findButton("取消新增")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(page.window.location.pathname + page.window.location.search, "/task?q=goal");
+    assert.equal(title.value, "draft task");
+    assert.equal(description.value, "draft description");
+
+    const save = findButton("保存任务");
+    assert.ok(save);
+    await React.act(async () => {
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 1);
+    await React.act(async () => {
+      first.reject(new Error("failed"));
+      await first.promise.catch(() => undefined);
+    });
+    assert.equal(title.value, "draft task");
+    assert.equal(description.value, "draft description");
+    const retryButton = findButton("保存任务");
+    assert.ok(retryButton);
+    await React.act(async () => {
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 2);
+
+    page.window.confirm = () => {
+      confirmations += 1;
+      return true;
+    };
+    await React.act(async () => {
+      page.window.history.pushState(
+        null,
+        "",
+        createTaskDetailLocation(TASK_ID, "/task?q=goal"),
+      );
+      page.window.dispatchEvent(new page.window.PopStateEvent("popstate"));
+    });
+    assert.match(page.window.location.search, new RegExp(`task=${TASK_ID}`));
+    assert.equal(page.container.querySelector('input[placeholder="任务标题"]'), null);
+    assert.equal(page.window.dispatchEvent(new page.window.Event("beforeunload", { cancelable: true })), true);
+    await React.act(async () => {
+      retry.resolve(TASK_RESPONSE);
+      await retry.promise;
+    });
+    assert.match(page.window.location.search, new RegExp(`task=${TASK_ID}`));
+    assert.equal(confirmations, 2);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Task status transition is single-flight, preserves detail on failure, and retries once", async () => {
+  const first = deferred<unknown>();
+  const retry = deferred<unknown>();
+  let attempt = 0;
+  const { api, requests } = createApi((path, init) => {
+    if (path.endsWith("/status") && init?.method === "PATCH") {
+      attempt += 1;
+      return attempt === 1 ? first.promise : retry.promise;
+    }
+    return Promise.resolve(TASK_RESPONSE);
+  });
+  const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const findStart = () => [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "开始任务");
+    const start = findStart();
+    assert.ok(start);
+    await React.act(async () => {
+      start.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      start.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ path }) => path.endsWith("/status")).length, 1);
+    await React.act(async () => {
+      first.reject(new Error("failed"));
+      await first.promise.catch(() => undefined);
+    });
+    assert.match(page.container.textContent ?? "", /详情任务/);
+    const retryButton = findStart();
+    assert.ok(retryButton);
+    await React.act(async () => {
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ path }) => path.endsWith("/status")).length, 2);
+    await React.act(async () => {
+      retry.resolve({
+        ...TASK_RESPONSE,
+        data: { ...TASK_RESPONSE.data, status: "in_progress" },
+      });
+      await retry.promise;
+    });
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Task dirty edit cancellation and update retry are page-level single-flight", async () => {
+  const first = deferred<unknown>();
+  const retry = deferred<unknown>();
+  let updateAttempt = 0;
+  const { api, requests } = createApi((path, init) => {
+    if (path === `/task/${TASK_ID}` && init?.method === "PATCH") {
+      updateAttempt += 1;
+      return updateAttempt === 1 ? first.promise : retry.promise;
+    }
+    return Promise.resolve(TASK_RESPONSE);
+  });
+  const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const findButton = (label: string) => [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === label);
+    const startEdit = async () => {
+      await React.act(async () => {
+        findButton("编辑任务")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      });
+    };
+    const changeTitle = async (value: string) => {
+      const input = page.container.querySelector<HTMLInputElement>('section.memory-message input:not([type="checkbox"])');
+      assert.ok(input);
+      await React.act(async () => {
+        input.focus();
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")?.set?.call(input, value);
+        const change = new page.window.Event("propertychange", { bubbles: true });
+        Object.defineProperty(change, "propertyName", { value: "value" });
+        input.dispatchEvent(change);
+      });
+      return input;
+    };
+    await startEdit();
+    let title = await changeTitle("changed task");
+    page.window.confirm = () => false;
+    await React.act(async () => {
+      findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(title.value, "changed task");
+    assert.match(page.container.textContent ?? "", /编辑任务/);
+    page.window.confirm = () => true;
+    await React.act(async () => {
+      findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(findButton("保存修改"), undefined);
+    assert.equal(page.window.dispatchEvent(new page.window.Event("beforeunload", { cancelable: true })), true);
+
+    await startEdit();
+    title = await changeTitle("retry task");
+    const save = findButton("保存修改");
+    assert.ok(save);
+    await React.act(async () => {
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(
+      requests.filter(({ path, init }) => path === `/task/${TASK_ID}` && init?.method === "PATCH").length,
+      1,
+    );
+    await React.act(async () => {
+      first.reject(new Error("failed"));
+      await first.promise.catch(() => undefined);
+    });
+    assert.equal(title.value, "retry task");
+    const retryButton = findButton("保存修改");
+    assert.ok(retryButton);
+    await React.act(async () => {
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(
+      requests.filter(({ path, init }) => path === `/task/${TASK_ID}` && init?.method === "PATCH").length,
+      2,
+    );
+    await React.act(async () => {
+      retry.resolve({
+        ...TASK_RESPONSE,
+        data: { ...TASK_RESPONSE.data, title: "retry task" },
+      });
+      await retry.promise;
+    });
   } finally {
     await page.cleanup();
   }

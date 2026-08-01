@@ -9,6 +9,12 @@ import { MemoryIcon } from "../components/icons";
 import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
 import {
+  confirmUnsavedChanges,
+  createMutationOwnership,
+  createSubmissionGate,
+} from "./submission-gate";
+import { useUnsavedChanges } from "./use-unsaved-changes";
+import {
   createMemoryFilterDebouncer,
   pushMemoryFilterHistory,
   subscribeToMemoryFilterHistory,
@@ -192,8 +198,8 @@ export function MemoryPageContent({
   const archiveController = useRef<AbortController | null>(null);
   const archivedDetailController =
     useRef<AbortController | null>(null);
-  const archiveInFlight = useRef(false);
-  const restoreInFlight = useRef(false);
+  const mutationGate = useRef(createSubmissionGate());
+  const mutationOwnership = useRef(createMutationOwnership());
   const pendingScrollRestore = useRef<number | null>(null);
   const tracker = useRef(createLatestMemoryRequestTracker());
 
@@ -225,6 +231,61 @@ export function MemoryPageContent({
   const [updatingId, setUpdatingId] = useState("");
   const [archivingId, setArchivingId] = useState("");
   const [restoringId, setRestoringId] = useState("");
+
+  const createDirty = showCreate && (
+    category !== "profile" || key !== "" || content !== "" || tags !== ""
+  );
+  const editDirty = Boolean(
+    editingId && detailState.status === "ready" && (
+      editingContent !== detailState.memory.content ||
+      editingTags !== detailState.memory.tags.join(", ")
+    ),
+  );
+  const createDirtyRef = useRef(false);
+  const editDirtyRef = useRef(false);
+  createDirtyRef.current = createDirty;
+  editDirtyRef.current = editDirty;
+  const dirtyRef = useRef(false);
+  dirtyRef.current = createDirty || editDirty;
+  const currentUrlRef = useRef(
+    `${window.location.pathname}${window.location.search}`,
+  );
+  currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
+  useUnsavedChanges(createDirty || editDirty);
+
+  function discardDraft(): void {
+    if (createDirtyRef.current) {
+      setCategory("profile");
+      setKey("");
+      setContent("");
+      setTags("");
+      setShowCreate(false);
+    }
+    if (editDirtyRef.current) {
+      setEditingId("");
+      setEditingContent("");
+      setEditingTags("");
+    }
+  }
+
+  function confirmAndDiscardDraft(): boolean {
+    if (!confirmUnsavedChanges(
+      dirtyRef.current,
+      window.confirm.bind(window),
+    )) return false;
+    if (dirtyRef.current) discardDraft();
+    return true;
+  }
+
+  function invalidateMutationContext(clearUi = true): void {
+    mutationOwnership.current.invalidate();
+    if (clearUi) {
+      setCreating(false);
+      setUpdatingId("");
+      setArchivingId("");
+      setRestoringId("");
+    }
+  }
 
   function invalidateList(): void {
     tracker.current.invalidate();
@@ -267,6 +328,11 @@ export function MemoryPageContent({
   useEffect(() => subscribeToMemoryFilterHistory(
     window,
     (restoredFilters) => {
+      if (!confirmAndDiscardDraft()) {
+        window.history.pushState(null, "", currentUrlRef.current);
+        return;
+      }
+      invalidateMutationContext();
       searchDebouncer.current?.cancel();
       invalidateList();
       const nextLocation = initialLocation();
@@ -325,6 +391,7 @@ export function MemoryPageContent({
   ), []);
 
   useEffect(() => () => {
+    invalidateMutationContext(false);
     searchDebouncer.current?.cancel();
     invalidateList();
     detailController.current?.abort();
@@ -536,10 +603,13 @@ export function MemoryPageContent({
     content.trim().length === 0;
 
   async function handleCreate() {
-    if (createInvalid || busy) {
+    if (createInvalid) {
       setActionError("Key 和 Content 都不能为空。");
       return;
     }
+    if (!mutationGate.current.enter()) return;
+
+    const ticket = mutationOwnership.current.begin();
 
     setCreating(true);
     setActionError("");
@@ -555,15 +625,19 @@ export function MemoryPageContent({
         }),
       });
 
+      if (!mutationOwnership.current.owns(ticket)) return;
       setKey("");
       setContent("");
       setTags("");
       setShowCreate(false);
       setReloadKey((value) => value + 1);
     } catch {
-      setActionError("创建记忆失败，请稍后重试。");
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("创建记忆失败，请稍后重试。");
+      }
     } finally {
-      setCreating(false);
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setCreating(false);
     }
   }
 
@@ -573,9 +647,11 @@ export function MemoryPageContent({
       return;
     }
 
-    if (busy) {
+    if (!mutationGate.current.enter()) {
       return;
     }
+
+    const ticket = mutationOwnership.current.begin();
 
     setUpdatingId(id);
     setActionError("");
@@ -590,6 +666,7 @@ export function MemoryPageContent({
         }),
       });
 
+      if (!mutationOwnership.current.owns(ticket)) return;
       setEditingId("");
       setEditingContent("");
       setEditingTags("");
@@ -598,9 +675,12 @@ export function MemoryPageContent({
         setDetailReloadKey((value) => value + 1);
       }
     } catch {
-      setActionError("修改记忆失败，请稍后重试。");
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("修改记忆失败，请稍后重试。");
+      }
     } finally {
-      setUpdatingId("");
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setUpdatingId("");
     }
   }
 
@@ -608,19 +688,20 @@ export function MemoryPageContent({
     id: string,
     memoryKey: string,
   ) {
-    if (busy || archiveInFlight.current) {
+    if (!mutationGate.current.enter()) {
       return;
     }
-    archiveInFlight.current = true;
 
     const confirmed = window.confirm(
       `确定归档“${memoryKey.replaceAll("_", " ")}”吗？`,
     );
 
     if (!confirmed) {
-      archiveInFlight.current = false;
+      mutationGate.current.leave();
       return;
     }
+
+    const ticket = mutationOwnership.current.begin();
 
     setArchivingId(id);
     setActionError("");
@@ -633,6 +714,7 @@ export function MemoryPageContent({
         }),
       });
 
+      if (!mutationOwnership.current.owns(ticket)) return;
       if (editingId === id) {
         setEditingId("");
         setEditingContent("");
@@ -641,13 +723,15 @@ export function MemoryPageContent({
 
       setReloadKey((value) => value + 1);
       if (isDetail) {
-        closeMemory();
+        closeMemory(true);
       }
     } catch {
-      setActionError("归档记忆失败，请稍后重试。");
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("归档记忆失败，请稍后重试。");
+      }
     } finally {
-      archiveInFlight.current = false;
-      setArchivingId("");
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setArchivingId("");
     }
   }
 
@@ -659,6 +743,8 @@ export function MemoryPageContent({
   }
 
   function openMemory(id: string): void {
+    if (!confirmAndDiscardDraft()) return;
+    invalidateMutationContext();
     const returnTo = createMemoryListLocation(filters);
     saveMemoryScrollPosition(
       getMemoryScrollStorage(window),
@@ -674,7 +760,9 @@ export function MemoryPageContent({
     setDetailState({ status: "loading" });
   }
 
-  function closeMemory(): void {
+  function closeMemory(skipSafety = false): void {
+    if (!skipSafety && !confirmAndDiscardDraft()) return;
+    if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeMemoryReturnTo(location.returnTo);
     window.history.pushState(null, "", returnTo);
     pendingScrollRestore.current = readMemoryScrollPosition(
@@ -695,6 +783,8 @@ export function MemoryPageContent({
   }
 
   function openArchive(): void {
+    if (!confirmAndDiscardDraft()) return;
+    invalidateMutationContext();
     const returnTo = createMemoryListLocation(filters);
     saveMemoryScrollPosition(
       getMemoryScrollStorage(window),
@@ -773,8 +863,8 @@ export function MemoryPageContent({
   }
 
   async function restoreArchivedMemory(id: string): Promise<void> {
-    if (restoreInFlight.current) return;
-    restoreInFlight.current = true;
+    if (!mutationGate.current.enter()) return;
+    const ticket = mutationOwnership.current.begin();
     setRestoringId(id);
     setActionError("");
 
@@ -783,6 +873,7 @@ export function MemoryPageContent({
         `/memory/archived/${encodeURIComponent(id)}/restore`,
         { method: "POST" },
       );
+      if (!mutationOwnership.current.owns(ticket)) return;
       const archiveReturn = getMemoryArchiveLocation(
         new URL(
           archivedDetailLocation.returnTo,
@@ -807,10 +898,12 @@ export function MemoryPageContent({
       setState({ status: "loading" });
       setReloadKey((value) => value + 1);
     } catch {
-      setActionError("恢复记忆失败，请稍后重试。");
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("恢复记忆失败，请稍后重试。");
+      }
     } finally {
-      restoreInFlight.current = false;
-      setRestoringId("");
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setRestoringId("");
     }
   }
 
@@ -834,7 +927,7 @@ export function MemoryPageContent({
           <button
             className="secondary-button"
             disabled={busy}
-            onClick={closeMemory}
+            onClick={() => closeMemory()}
           >
             返回记忆列表
           </button>
@@ -866,7 +959,13 @@ export function MemoryPageContent({
               className="secondary-button"
               disabled={busy}
               onClick={() => {
-                setShowCreate((value) => !value);
+                if (showCreate) {
+                  if (!confirmAndDiscardDraft()) return;
+                  invalidateMutationContext();
+                  setShowCreate(false);
+                } else {
+                  setShowCreate(true);
+                }
                 setActionError("");
               }}
             >
@@ -906,6 +1005,8 @@ export function MemoryPageContent({
             setActionError("");
           }}
           onCancel={() => {
+            if (!confirmAndDiscardDraft()) return;
+            invalidateMutationContext();
             setEditingId("");
             setEditingContent("");
             setEditingTags("");

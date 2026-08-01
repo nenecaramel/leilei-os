@@ -10,7 +10,12 @@ import {
   import type { SettingsData } from "../settings/types";
   import { PageHeader } from "./PageHeader";
   import { getTaskActionControls } from "./task-actions";
-  import { createSubmissionGate } from "./submission-gate";
+  import {
+    confirmUnsavedChanges,
+    createMutationOwnership,
+    createSubmissionGate,
+  } from "./submission-gate";
+  import { useUnsavedChanges } from "./use-unsaved-changes";
   import {
     EMPTY_TASK_FILTERS,
     createTaskDetailLocation,
@@ -228,7 +233,8 @@ import {
 
     const [showCreate, setShowCreate] = useState(false);
     const [creating, setCreating] = useState(false);
-    const createGate = useRef(createSubmissionGate());
+    const mutationGate = useRef(createSubmissionGate());
+    const mutationOwnership = useRef(createMutationOwnership());
 
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -248,12 +254,8 @@ import {
       useState(false);
     const [archiving, setArchiving] = useState(false);
     const [restoring, setRestoring] = useState(false);
-    const archiveGate = useRef(createSubmissionGate());
-    const restoreGate = useRef(createSubmissionGate());
-    const statusGate = useRef(createSubmissionGate());
     const [editing, setEditing] = useState(false);
     const [updating, setUpdating] = useState(false);
-    const updateGate = useRef(createSubmissionGate());
     const [editingTitle, setEditingTitle] = useState("");
     const [editingDescription, setEditingDescription] = useState("");
     const [editingPriority, setEditingPriority] =
@@ -261,6 +263,74 @@ import {
     const [editingDueTime, setEditingDueTime] = useState("");
     const [editingWithoutDueTime, setEditingWithoutDueTime] = useState(false);
     const [editingTags, setEditingTags] = useState("");
+
+    const initialDueTime = useRef(dueTime);
+    const createDirty = showCreate && (
+      title !== "" || description !== "" || priority !== "normal" ||
+      dueTime !== initialDueTime.current || withoutDueTime || tags !== ""
+    );
+    const editDirty = Boolean(selectedTask && editing && (
+      editingTitle !== selectedTask.title ||
+      editingDescription !== selectedTask.description ||
+      editingPriority !== selectedTask.priority ||
+      editingDueTime !== toDateTimeLocal(selectedTask.due_time, selectedTask.timezone) ||
+      editingWithoutDueTime !== (selectedTask.due_time === null) ||
+      editingTags !== selectedTask.tags.join(", ")
+    ));
+    const createDirtyRef = useRef(false);
+    const editDirtyRef = useRef(false);
+    createDirtyRef.current = createDirty;
+    editDirtyRef.current = editDirty;
+    const dirtyRef = useRef(false);
+    dirtyRef.current = createDirty || editDirty;
+    const currentUrlRef = useRef(
+      `${window.location.pathname}${window.location.search}`,
+    );
+    currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
+    useUnsavedChanges(createDirty || editDirty);
+
+    function discardDraft(): void {
+      if (createDirtyRef.current) {
+        const nextDueTime = getDefaultDueTime();
+        initialDueTime.current = nextDueTime;
+        setTitle("");
+        setDescription("");
+        setPriority("normal");
+        setDueTime(nextDueTime);
+        setWithoutDueTime(false);
+        setTags("");
+        setShowCreate(false);
+      }
+      if (editDirtyRef.current) {
+        setEditing(false);
+        setEditingTitle("");
+        setEditingDescription("");
+        setEditingPriority("normal");
+        setEditingDueTime("");
+        setEditingWithoutDueTime(false);
+        setEditingTags("");
+      }
+    }
+
+    function confirmAndDiscardDraft(): boolean {
+      if (!confirmUnsavedChanges(
+        dirtyRef.current,
+        window.confirm.bind(window),
+      )) return false;
+      if (dirtyRef.current) discardDraft();
+      return true;
+    }
+
+    function invalidateMutationContext(clearUi = true): void {
+      mutationOwnership.current.invalidate();
+      if (clearUi) {
+        setCreating(false);
+        setUpdating(false);
+        setUpdatingStatus(false);
+        setArchiving(false);
+        setRestoring(false);
+      }
+    }
 
     const [actionError, setActionError] = useState("");
     const filtersRef = useRef(filters);
@@ -318,6 +388,11 @@ import {
 
     useEffect(() => {
       return subscribeToTaskFilterHistory(window, (restoredFilters) => {
+        if (!confirmAndDiscardDraft()) {
+          window.history.pushState(null, "", currentUrlRef.current);
+          return;
+        }
+        invalidateMutationContext();
         const restoredLocation = initialTaskLocation();
         searchDebouncerRef.current?.cancel();
         tagDebouncerRef.current?.cancel();
@@ -338,6 +413,7 @@ import {
 
     useEffect(
       () => () => {
+        invalidateMutationContext(false);
         searchDebouncerRef.current?.cancel();
         tagDebouncerRef.current?.cancel();
       },
@@ -486,9 +562,11 @@ import {
       (!withoutDueTime && dueTime.trim().length === 0);
 
     async function handleCreate() {
-      if (createInvalid || !createGate.current.enter()) {
+      if (createInvalid || !mutationGate.current.enter()) {
         return;
       }
+
+      const ticket = mutationOwnership.current.begin();
 
       setCreating(true);
       setActionError("");
@@ -509,16 +587,19 @@ import {
           },
         );
 
+        if (!mutationOwnership.current.owns(ticket)) return;
         setTitle("");
         setDescription("");
         setPriority("normal");
-        setDueTime(getDefaultDueTime());
+        const nextDueTime = getDefaultDueTime();
+        initialDueTime.current = nextDueTime;
+        setDueTime(nextDueTime);
         setWithoutDueTime(false);
         setTags("");
         setShowCreate(false);
 
         setReloadKey((value) => value + 1);
-        openTaskDetail(response.data.id);
+        openTaskDetail(response.data.id, true);
 
         requestAnimationFrame(() => {
           window.scrollTo({
@@ -527,10 +608,12 @@ import {
           });
         });
       } catch {
-        setActionError("创建任务失败，请稍后重试。");
+        if (mutationOwnership.current.owns(ticket)) {
+          setActionError("创建任务失败，请稍后重试。");
+        }
       } finally {
-        createGate.current.leave();
-        setCreating(false);
+        mutationGate.current.leave();
+        if (mutationOwnership.current.owns(ticket)) setCreating(false);
       }
     }
 
@@ -544,7 +627,9 @@ import {
       openTaskDetail(id);
     }
 
-    function openTaskDetail(id: string) {
+    function openTaskDetail(id: string, skipSafety = false) {
+      if (!skipSafety && !confirmAndDiscardDraft()) return;
+      if (!skipSafety) invalidateMutationContext();
       const returnTo = `${window.location.pathname}${window.location.search}`;
       const detailLocation = createTaskDetailLocation(id, returnTo);
       window.history.pushState(null, "", detailLocation);
@@ -562,27 +647,39 @@ import {
     }
 
     async function handleArchiveTask() {
-      if (!selectedTask || !archiveGate.current.enter()) return;
+      if (!selectedTask || !mutationGate.current.enter()) return;
       if (!window.confirm(`确定归档“${selectedTask.title}”吗？`)) {
-        archiveGate.current.leave();
+        mutationGate.current.leave();
         return;
       }
+      const ticket = mutationOwnership.current.begin();
       setArchiving(true); setActionError("");
       try {
         await api.request(`/task/${selectedTask.id}`, { method: "DELETE" });
-        handleCloseTask();
-      } catch { setActionError("归档任务失败，请稍后重试。"); }
-      finally { archiveGate.current.leave(); setArchiving(false); }
+        if (mutationOwnership.current.owns(ticket)) handleCloseTask(true);
+      } catch {
+        if (mutationOwnership.current.owns(ticket)) setActionError("归档任务失败，请稍后重试。");
+      }
+      finally {
+        mutationGate.current.leave();
+        if (mutationOwnership.current.owns(ticket)) setArchiving(false);
+      }
     }
 
     async function handleRestoreTask() {
-      if (!selectedTask || !restoreGate.current.enter()) return;
+      if (!selectedTask || !mutationGate.current.enter()) return;
+      const ticket = mutationOwnership.current.begin();
       setRestoring(true); setActionError("");
       try {
         await api.request(`/task/archived/${selectedTask.id}/restore`, { method: "POST" });
-        returnToActiveTaskList(taskLocation.activeReturnTo);
-      } catch { setActionError("恢复任务失败，请稍后重试。"); }
-      finally { restoreGate.current.leave(); setRestoring(false); }
+        if (mutationOwnership.current.owns(ticket)) returnToActiveTaskList(taskLocation.activeReturnTo);
+      } catch {
+        if (mutationOwnership.current.owns(ticket)) setActionError("恢复任务失败，请稍后重试。");
+      }
+      finally {
+        mutationGate.current.leave();
+        if (mutationOwnership.current.owns(ticket)) setRestoring(false);
+      }
     }
 
     function returnToActiveTaskList(
@@ -623,7 +720,9 @@ import {
       setState({ status: "loading" });
     }
 
-    function handleCloseTask() {
+    function handleCloseTask(skipSafety = false) {
+      if (!skipSafety && !confirmAndDiscardDraft()) return;
+      if (!skipSafety) invalidateMutationContext();
       if (isArchivedMode) {
         returnToArchivedTaskList(taskLocation.returnTo);
       } else {
@@ -652,9 +751,11 @@ import {
       : [];
 
     async function handleUpdateStatus(status: TaskStatus) {
-      if (!selectedTask || !statusGate.current.enter()) {
+      if (!selectedTask || !mutationGate.current.enter()) {
         return;
       }
+
+      const ticket = mutationOwnership.current.begin();
 
       setUpdatingStatus(true);
       setActionError("");
@@ -670,20 +771,25 @@ import {
           },
         );
 
+        if (!mutationOwnership.current.owns(ticket)) return;
         setSelectedTask(response.data);
         setReloadKey((value) => value + 1);
       } catch {
-        setActionError("任务状态无法这样变更，请刷新后重试。");
+        if (mutationOwnership.current.owns(ticket)) {
+          setActionError("任务状态无法这样变更，请刷新后重试。");
+        }
       } finally {
-        statusGate.current.leave();
-        setUpdatingStatus(false);
+        mutationGate.current.leave();
+        if (mutationOwnership.current.owns(ticket)) setUpdatingStatus(false);
       }
     }
 
     async function handleUpdate() {
-      if (!selectedTask || updateInvalid || !updateGate.current.enter()) {
+      if (!selectedTask || updateInvalid || !mutationGate.current.enter()) {
         return;
       }
+
+      const ticket = mutationOwnership.current.begin();
 
       setUpdating(true);
       setActionError("");
@@ -704,14 +810,17 @@ import {
           },
         );
 
+        if (!mutationOwnership.current.owns(ticket)) return;
         setSelectedTask(response.data);
         setEditing(false);
         setReloadKey((value) => value + 1);
       } catch {
-        setActionError("保存任务修改失败，请检查输入后重试。");
+        if (mutationOwnership.current.owns(ticket)) {
+          setActionError("保存任务修改失败，请检查输入后重试。");
+        }
       } finally {
-        updateGate.current.leave();
-        setUpdating(false);
+        mutationGate.current.leave();
+        if (mutationOwnership.current.owns(ticket)) setUpdating(false);
       }
     }
 
@@ -730,7 +839,7 @@ import {
               <button
                 className="secondary-button"
                 disabled={updatingStatus || updating}
-                onClick={handleCloseTask}
+                onClick={() => handleCloseTask()}
               >
                 返回任务列表
               </button>
@@ -741,11 +850,20 @@ import {
             ) : (
               <div className="page-header-actions">
                 <button className="secondary-button" disabled={creating || updating} onClick={() => {
+                  if (!confirmAndDiscardDraft()) return;
+                  invalidateMutationContext();
                   window.history.pushState(null, "", createTaskArchiveLocation(`${window.location.pathname}${window.location.search}`));
                   setTaskLocation(initialTaskLocation());
                 }}>查看归档</button>
                 <button className="secondary-button" disabled={creating || updating} onClick={() => {
-                  setShowCreate((value) => !value); setActionError("");
+                  if (showCreate) {
+                    if (!confirmAndDiscardDraft()) return;
+                    invalidateMutationContext();
+                    setShowCreate(false);
+                  } else {
+                    setShowCreate(true);
+                  }
+                  setActionError("");
                 }}>{showCreate ? "取消新增" : "新增任务"}</button>
               </div>
             )
@@ -866,6 +984,8 @@ import {
                   className="secondary-button"
                   disabled={updating}
                   onClick={() => {
+                    if (!confirmAndDiscardDraft()) return;
+                    invalidateMutationContext();
                     setEditing(false);
                     setActionError("");
                   }}
@@ -969,7 +1089,7 @@ import {
               <button
                 className="secondary-button"
                 disabled={updatingStatus}
-                onClick={handleCloseTask}
+                onClick={() => handleCloseTask()}
               >
                 {isArchivedMode ? "返回归档列表" : "返回任务列表"}
               </button>

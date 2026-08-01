@@ -16,14 +16,17 @@ import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 type Request = { path: string; init?: RequestInit };
 type Deferred<T> = {
   promise: Promise<T>;
+  reject(reason?: unknown): void;
   resolve(value: T): void;
 };
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 function pendingApi() {
   const requests: Request[] = [];
@@ -53,6 +56,9 @@ async function render(path: string, api: WebApiClient) {
   install("document", dom.window.document);
   install("navigator", dom.window.navigator);
   install("HTMLElement", dom.window.HTMLElement);
+  install("HTMLInputElement", dom.window.HTMLInputElement);
+  install("HTMLTextAreaElement", dom.window.HTMLTextAreaElement);
+  install("InputEvent", dom.window.InputEvent);
   install("Node", dom.window.Node);
   install("Event", dom.window.Event);
   install("MouseEvent", dom.window.MouseEvent);
@@ -60,6 +66,17 @@ async function render(path: string, api: WebApiClient) {
   install("sessionStorage", dom.window.sessionStorage);
   install("React", React);
   install("IS_REACT_ACT_ENVIRONMENT", true);
+  (dom.window.HTMLElement.prototype as unknown as {
+    attachEvent(name: string, listener: EventListener): void;
+    detachEvent(name: string, listener: EventListener): void;
+  }).attachEvent = function (name, listener) {
+    this.addEventListener(name.replace(/^on/, ""), listener);
+  };
+  (dom.window.HTMLElement.prototype as unknown as {
+    detachEvent(name: string, listener: EventListener): void;
+  }).detachEvent = function (name, listener) {
+    this.removeEventListener(name.replace(/^on/, ""), listener);
+  };
   dom.window.scrollTo = () => {};
   dom.window.requestAnimationFrame = (callback) =>
     dom.window.setTimeout(() => callback(Date.now()), 0);
@@ -651,6 +668,195 @@ test("Diary browser history restores archive list then exact filtered active lis
       requests.some((path) => path === "/diary/diary-1"),
       false,
     );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary dirty create preserves on cancel, retries once, and ignores stale success", async () => {
+  const first = deferred<unknown>();
+  const retry = deferred<unknown>();
+  const requests: Request[] = [];
+  let createAttempt = 0;
+  const api: WebApiClient = {
+    request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      if (init?.method === "POST") {
+        createAttempt += 1;
+        return (createAttempt === 1 ? first.promise : retry.promise) as Promise<T>;
+      }
+      if (path === "/diary/diary-1") {
+        return Promise.resolve({ success: true, data: diary } as T);
+      }
+      return Promise.resolve({
+        success: true,
+        data: { diaries: [diary], metadata: { count: 1 } },
+      } as T);
+    },
+  };
+  const page = await render("/diary?q=goal", api);
+  try {
+    const findButton = (label: string) => [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === label);
+    await React.act(async () => {
+      findButton("新增日记")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    const title = page.container.querySelector<HTMLInputElement>('input[aria-label="日记标题"]');
+    const content = page.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="日记正文"]');
+    assert.ok(title && content);
+    await React.act(async () => {
+      title.focus();
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(title), "value")?.set?.call(title, "draft diary");
+      const titleChange = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(titleChange, "propertyName", { value: "value" });
+      title.dispatchEvent(titleChange);
+      content.focus();
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(content), "value")?.set?.call(content, "draft diary content");
+      const contentChange = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(contentChange, "propertyName", { value: "value" });
+      content.dispatchEvent(contentChange);
+    });
+
+    let confirmations = 0;
+    page.window.confirm = () => {
+      confirmations += 1;
+      return false;
+    };
+    await React.act(async () => {
+      findButton("取消新增")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(page.window.location.pathname + page.window.location.search, "/diary?q=goal");
+    assert.equal(title.value, "draft diary");
+    assert.equal(content.value, "draft diary content");
+
+    const save = findButton("保存日记");
+    assert.ok(save);
+    await React.act(async () => {
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 1);
+    await React.act(async () => {
+      first.reject(new Error("failed"));
+      await first.promise.catch(() => undefined);
+    });
+    assert.equal(title.value, "draft diary");
+    assert.equal(content.value, "draft diary content");
+
+    const retryButton = findButton("保存日记");
+    assert.ok(retryButton);
+    await React.act(async () => {
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 2);
+
+    page.window.confirm = () => {
+      confirmations += 1;
+      return true;
+    };
+    await React.act(async () => {
+      page.window.history.pushState(
+        null,
+        "",
+        createDiaryDetailLocation("diary-1", "/diary?q=goal"),
+      );
+      page.window.dispatchEvent(new page.window.PopStateEvent("popstate"));
+    });
+    assert.match(page.window.location.search, /diary=diary-1/);
+    assert.equal(page.container.querySelector('input[aria-label="日记标题"]'), null);
+    assert.equal(page.window.dispatchEvent(new page.window.Event("beforeunload", { cancelable: true })), true);
+    await React.act(async () => {
+      retry.resolve({ success: true, data: diary });
+      await retry.promise;
+    });
+    assert.match(page.window.location.search, /diary=diary-1/);
+    assert.equal(confirmations, 2);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary dirty edit cancellation and update retry are page-level single-flight", async () => {
+  const first = deferred<unknown>();
+  const retry = deferred<unknown>();
+  let updateAttempt = 0;
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      if (init?.method === "PATCH") {
+        updateAttempt += 1;
+        return (updateAttempt === 1 ? first.promise : retry.promise) as Promise<T>;
+      }
+      return Promise.resolve({ success: true, data: diary } as T);
+    },
+  };
+  const page = await render(createDiaryDetailLocation("diary-1", "/diary?q=goal"), api);
+  try {
+    const findButton = (label: string) => [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === label);
+    const startEdit = async () => {
+      await React.act(async () => {
+        findButton("编辑")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      });
+    };
+    await startEdit();
+    let title = page.container.querySelector<HTMLInputElement>('input[aria-label="编辑日记标题"]');
+    assert.ok(title);
+    await React.act(async () => {
+      title.focus();
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(title), "value")?.set?.call(title, "changed diary");
+      const change = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(change, "propertyName", { value: "value" });
+      title.dispatchEvent(change);
+    });
+    page.window.confirm = () => false;
+    await React.act(async () => {
+      findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(title.value, "changed diary");
+    assert.match(page.container.textContent ?? "", /编辑日记/);
+    page.window.confirm = () => true;
+    await React.act(async () => {
+      findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.doesNotMatch(page.container.textContent ?? "", /编辑日记/);
+    assert.equal(page.window.dispatchEvent(new page.window.Event("beforeunload", { cancelable: true })), true);
+
+    await startEdit();
+    title = page.container.querySelector<HTMLInputElement>('input[aria-label="编辑日记标题"]');
+    assert.ok(title);
+    await React.act(async () => {
+      title.focus();
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(title), "value")?.set?.call(title, "retry diary");
+      const change = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(change, "propertyName", { value: "value" });
+      title.dispatchEvent(change);
+    });
+    const save = findButton("保存修改");
+    assert.ok(save);
+    await React.act(async () => {
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ init }) => init?.method === "PATCH").length, 1);
+    await React.act(async () => {
+      first.reject(new Error("failed"));
+      await first.promise.catch(() => undefined);
+    });
+    assert.equal(title.value, "retry diary");
+    const retryButton = findButton("保存修改");
+    assert.ok(retryButton);
+    await React.act(async () => {
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ init }) => init?.method === "PATCH").length, 2);
+    await React.act(async () => {
+      retry.resolve({ success: true, data: { ...diary, title: "retry diary" } });
+      await retry.promise;
+    });
   } finally {
     await page.cleanup();
   }
