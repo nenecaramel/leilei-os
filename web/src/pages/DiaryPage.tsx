@@ -10,6 +10,12 @@ import { NativeDateInput } from "../components/NativeDateInput";
 import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
 import {
+  confirmUnsavedChanges,
+  createMutationOwnership,
+  createSubmissionGate,
+} from "./submission-gate";
+import { useUnsavedChanges } from "./use-unsaved-changes";
+import {
   createDiaryFilterDebouncer,
   pushDiaryFilterHistory,
   subscribeToDiaryFilterHistory,
@@ -146,8 +152,8 @@ export function DiaryPageContent({
   const tracker = useRef(createLatestDiaryRequestTracker());
   const listController = useRef<AbortController | null>(null);
   const pendingScrollRestore = useRef<number | null>(null);
-  const archiveInFlight = useRef(false);
-  const restoreInFlight = useRef(false);
+  const mutationGate = useRef(createSubmissionGate());
+  const mutationOwnership = useRef(createMutationOwnership());
   const [archiving, setArchiving] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
@@ -168,6 +174,42 @@ export function DiaryPageContent({
   const [editingMood, setEditingMood] = useState("");
   const [actionError, setActionError] = useState("");
   const [filterError, setFilterError] = useState("");
+
+  const createDirty = showCreate && (
+    title !== "" || content !== "" || tags !== "" || mood !== "" ||
+    date !== getToday()
+  );
+  const editDirty = Boolean(selectedDiary && editing && (
+    editingTitle !== selectedDiary.title ||
+    editingContent !== selectedDiary.content ||
+    editingDate !== selectedDiary.date ||
+    editingTags !== selectedDiary.tags.join(", ") ||
+    editingMood !== (selectedDiary.mood ?? "")
+  ));
+  const dirtyRef = useRef(false);
+  dirtyRef.current = createDirty || editDirty;
+  const currentUrlRef = useRef(
+    `${window.location.pathname}${window.location.search}`,
+  );
+  currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
+  useUnsavedChanges(createDirty || editDirty);
+
+  function canLeaveForm(): boolean {
+    return confirmUnsavedChanges(
+      dirtyRef.current,
+      window.confirm.bind(window),
+    );
+  }
+
+  function invalidateMutationContext(clearUi = true): void {
+    mutationOwnership.current.invalidate();
+    if (clearUi) {
+      setCreating(false);
+      setUpdating(false);
+      setArchiving(false);
+      setRestoring(false);
+    }
+  }
 
   const searchDebouncer = useRef<
     ReturnType<typeof createDiaryFilterDebouncer> | null
@@ -254,6 +296,11 @@ export function DiaryPageContent({
   }
 
   useEffect(() => subscribeToDiaryFilterHistory(window, (restored) => {
+    if (!canLeaveForm()) {
+      window.history.pushState(null, "", currentUrlRef.current);
+      return;
+    }
+    invalidateMutationContext();
     searchDebouncer.current?.cancel();
     tagDebouncer.current?.cancel();
     moodDebouncer.current?.cancel();
@@ -294,6 +341,7 @@ export function DiaryPageContent({
   }), []);
 
   useEffect(() => () => {
+    invalidateMutationContext(false);
     searchDebouncer.current?.cancel();
     tagDebouncer.current?.cancel();
     moodDebouncer.current?.cancel();
@@ -439,7 +487,9 @@ export function DiaryPageContent({
   function clearFilters(): void {
     commitFilters(EMPTY_DIARY_FILTERS);
   }
-  function openDiary(id: string): void {
+  function openDiary(id: string, skipSafety = false): void {
+    if (!skipSafety && !canLeaveForm()) return;
+    if (!skipSafety) invalidateMutationContext();
     const returnTo = `/diary${buildDiaryListRequest(filters).search}`;
     saveDiaryScrollPosition(
       getDiaryScrollStorage(window),
@@ -451,7 +501,9 @@ export function DiaryPageContent({
     setLocation(getDiaryDetailLocation(window.location.search));
     setDetailState("loading");
   }
-  function closeDiary(): void {
+  function closeDiary(skipSafety = false): void {
+    if (!skipSafety && !canLeaveForm()) return;
+    if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeDiaryReturnTo(location.returnTo);
     window.history.pushState(null, "", returnTo);
     const restored = readDiaryFilters(new URL(returnTo, window.location.origin).search);
@@ -471,6 +523,8 @@ export function DiaryPageContent({
   }
 
   function openArchive(): void {
+    if (!canLeaveForm()) return;
+    invalidateMutationContext();
     const returnTo = `/diary${buildDiaryListRequest(filters).search}`;
     const next = createDiaryArchiveLocation(returnTo);
     window.history.pushState(null, "", next);
@@ -521,33 +575,37 @@ export function DiaryPageContent({
   }
 
   async function archiveDiary(id: string): Promise<void> {
-    if (archiveInFlight.current) return;
-    archiveInFlight.current = true;
+    if (!mutationGate.current.enter()) return;
+    const ticket = mutationOwnership.current.begin();
     setArchiving(true);
     setActionError("");
     try {
       await api.request(`/diary/${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
-      closeDiary();
+      if (!mutationOwnership.current.owns(ticket)) return;
+      closeDiary(true);
       setReloadKey((value) => value + 1);
     } catch {
-      setActionError("归档日记失败，请稍后重试。");
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("归档日记失败，请稍后重试。");
+      }
     } finally {
-      archiveInFlight.current = false;
-      setArchiving(false);
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setArchiving(false);
     }
   }
 
   async function restoreDiary(id: string): Promise<void> {
-    if (restoreInFlight.current) return;
-    restoreInFlight.current = true;
+    if (!mutationGate.current.enter()) return;
+    const ticket = mutationOwnership.current.begin();
     setRestoring(true);
     setActionError("");
     try {
       await api.request(`/diary/archived/${encodeURIComponent(id)}/restore`, {
         method: "POST",
       });
+      if (!mutationOwnership.current.owns(ticket)) return;
       const activeReturnTo = getDiaryArchiveLocation(
         new URL(
           archivedDetailLocation.returnTo,
@@ -567,10 +625,12 @@ export function DiaryPageContent({
       setState({ status: "loading" });
       setReloadKey((value) => value + 1);
     } catch {
-      setActionError("恢复日记失败，请稍后重试。");
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("恢复日记失败，请稍后重试。");
+      }
     } finally {
-      restoreInFlight.current = false;
-      setRestoring(false);
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setRestoring(false);
     }
   }
 
@@ -579,7 +639,8 @@ export function DiaryPageContent({
     !editingTitle.trim() || !editingContent.trim() || !editingDate.trim();
 
   async function handleCreate(): Promise<void> {
-    if (createInvalid || creating) return;
+    if (createInvalid || !mutationGate.current.enter()) return;
+    const ticket = mutationOwnership.current.begin();
     setCreating(true);
     setActionError("");
     try {
@@ -593,6 +654,7 @@ export function DiaryPageContent({
           mood: mood.trim() || null,
         }),
       });
+      if (!mutationOwnership.current.owns(ticket)) return;
       setTitle("");
       setContent("");
       setDate(getToday());
@@ -600,11 +662,14 @@ export function DiaryPageContent({
       setMood("");
       setShowCreate(false);
       setReloadKey((value) => value + 1);
-      openDiary(response.data.id);
+      openDiary(response.data.id, true);
     } catch {
-      setActionError("创建日记失败，请稍后重试。");
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("创建日记失败，请稍后重试。");
+      }
     } finally {
-      setCreating(false);
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setCreating(false);
     }
   }
 
@@ -619,7 +684,8 @@ export function DiaryPageContent({
   }
 
   async function handleUpdate(): Promise<void> {
-    if (!selectedDiary || updateInvalid || updating) return;
+    if (!selectedDiary || updateInvalid || !mutationGate.current.enter()) return;
+    const ticket = mutationOwnership.current.begin();
     setUpdating(true);
     setActionError("");
     try {
@@ -636,13 +702,17 @@ export function DiaryPageContent({
           }),
         },
       );
+      if (!mutationOwnership.current.owns(ticket)) return;
       setSelectedDiary(response.data);
       setEditing(false);
       setReloadKey((value) => value + 1);
     } catch {
-      setActionError("修改日记失败，请稍后重试。");
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("修改日记失败，请稍后重试。");
+      }
     } finally {
-      setUpdating(false);
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setUpdating(false);
     }
   }
 
@@ -661,7 +731,7 @@ export function DiaryPageContent({
             返回日记列表
           </button>
         ) : isDetail ? (
-          <button className="secondary-button" disabled={updating} onClick={closeDiary}>
+          <button className="secondary-button" disabled={updating} onClick={() => closeDiary()}>
             返回日记列表
           </button>
         ) : (
@@ -677,6 +747,8 @@ export function DiaryPageContent({
               className="secondary-button"
               disabled={creating || updating}
               onClick={() => {
+                if (!canLeaveForm()) return;
+                invalidateMutationContext();
                 setShowCreate((value) => !value);
                 setActionError("");
               }}
@@ -731,7 +803,11 @@ export function DiaryPageContent({
             mood: setEditingMood,
           }}
           onEdit={beginEditing}
-          onCancel={() => setEditing(false)}
+          onCancel={() => {
+            if (!canLeaveForm()) return;
+            invalidateMutationContext();
+            setEditing(false);
+          }}
           onSave={handleUpdate}
           onArchive={(id) => void archiveDiary(id)}
           archiving={archiving}
