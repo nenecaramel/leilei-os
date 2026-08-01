@@ -99,6 +99,32 @@ test("invalid MCP Memory input and inactive users fail before persistence", asyn
   }
 });
 
+test("MCP Memory length limits apply after NFC normalization and trim", async () => {
+  const calls: Array<{ key: string; content: string; tags: string[] }> = [];
+  const service = new MemoryService(repository({
+    async createMemoryIdempotently(input) {
+      calls.push({ key: input.key, content: input.content, tags: input.tags });
+      return { outcome: "created", memory: { ...record, key: input.key, content: input.content, tags: input.tags } };
+    },
+  }));
+  await service.createMcpMemory({ userId: "user-a" }, {
+    category: "goal",
+    key: ` ${"k".repeat(100)} `,
+    content: ` ${"c".repeat(4_000)} `,
+    tags: [` ${"e\u0301".repeat(50)} `],
+  }, "memory-boundary-0001");
+  assert.deepEqual(calls[0], { key: "k".repeat(100), content: "c".repeat(4_000), tags: ["é".repeat(50)] });
+
+  for (const input of [
+    { category: "goal" as const, key: ` ${"k".repeat(101)} `, content: "content" },
+    { category: "goal" as const, key: "key", content: ` ${"c".repeat(4_001)} ` },
+    { category: "goal" as const, key: "key", content: "content", tags: [` ${"e\u0301".repeat(51)} `] },
+  ]) {
+    await assert.rejects(service.createMcpMemory({ userId: "user-a" }, input, "memory-boundary-0002"), (error) => error instanceof MemoryDomainError && ["INVALID_MEMORY_KEY", "INVALID_MEMORY_CONTENT", "INVALID_MEMORY_TAGS"].includes(error.code));
+  }
+  assert.equal(calls.length, 1);
+});
+
 test("Web Memory creation remains source web", async () => {
   const calls: unknown[] = [];
   const service = new MemoryService(repository({ async createMemory(input) { calls.push(input); } }));

@@ -46,7 +46,7 @@ async function withService<T>(operation: (services: {
 
 const taskInput = (suffix: string) => ({ title: `Task ${suffix}`, description: `private-task-${suffix}`, priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: ["mcp"] });
 const diaryInput = (key: string, suffix: string) => ({ title: `Diary ${suffix}`, content: `private-diary-${suffix}`, date: "2026-08-01", tags: ["mcp"], mood: null, idempotencyKey: key });
-const memoryInput = (suffix: string) => ({ category: "goal" as const, key: `memory_${suffix}`, content: `private-memory-${suffix}`, tags: ["mcp"] });
+const memoryInput = (suffix: string) => ({ category: "goal" as const, key: ` memory_${suffix} `, content: ` private-memory-${suffix} `, tags: [" mcp ", "mcp", "Cafe\u0301"] });
 
 test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and atomic", { skip: !RUN }, async () => {
   const admin = connection();
@@ -56,6 +56,9 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
   await admin.db.insert(schema.userSettings).values(users.map((userId) => ({ userId, timezone: "Asia/Shanghai" })));
   const owner = users[0]!;
   const other = users[1]!;
+  const [lifecycleBeforeMemoryWrite] = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents);
+  const [toolCallsBeforeMemoryWrite] = await admin.db.select({ value: count() }).from(schema.toolCalls);
+  let createdMemoryId = "";
 
   const cases = [
     {
@@ -112,6 +115,23 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
     const [idempotencyCount] = await admin.db.select({ value: count() }).from(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, owner), eq(schema.mcpWriteIdempotency.toolName, item.tool), eq(schema.mcpWriteIdempotency.idempotencyKey, item.key)));
     assert.equal(idempotencyCount?.value, 1);
     assert.equal(await item.call(), ids[0]);
+    if (item.tool === "write_memory") {
+      createdMemoryId = ids[0]!;
+      const readback = await withService(({ memory }) => memory.readMemoryDetail({ userId: owner, id: createdMemoryId }), owner);
+      assert.deepEqual(readback, {
+        id: createdMemoryId,
+        category: "goal",
+        key: "memory_same",
+        content: "private-memory-same",
+        tags: ["mcp", "Café"],
+        source: "mcp",
+        updated_at: readback.updated_at,
+      });
+      const [lifecycleAfterWrite] = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents);
+      const [toolCallsAfterWrite] = await admin.db.select({ value: count() }).from(schema.toolCalls);
+      assert.equal(lifecycleAfterWrite?.value, lifecycleBeforeMemoryWrite?.value);
+      assert.equal(toolCallsAfterWrite?.value, toolCallsBeforeMemoryWrite?.value);
+    }
     await assert.rejects(item.conflict(), (error: unknown) =>
       (error instanceof TaskDomainError || error instanceof DiaryDomainError || error instanceof MemoryDomainError || error instanceof ToyDomainError) && error.code === "IDEMPOTENCY_CONFLICT");
     const afterConflictRows = await admin.client.unsafe(`select count(*)::int as count from ${tableName} where user_id = $1::uuid`, [owner]);
@@ -143,12 +163,27 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
   assert.doesNotMatch(privateSnapshot, /private-task|private-diary|private-memory|private-legacy|response_snapshot|payload/);
 
   const memoryReplay = await withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("same"), "integration-memory-key-0001"), owner);
+  assert.equal(memoryReplay.memory.id, createdMemoryId);
+  const memoryRowsBeforeArchive = await admin.db.select({ value: count() }).from(schema.coreMemories).where(eq(schema.coreMemories.id, createdMemoryId));
+  const memoryIdempotencyBeforeArchive = await admin.db.select({ value: count() }).from(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, owner), eq(schema.mcpWriteIdempotency.toolName, "write_memory"), eq(schema.mcpWriteIdempotency.idempotencyKey, "integration-memory-key-0001")));
+  const memoryToolCallsBeforeArchive = await admin.db.select({ value: count() }).from(schema.toolCalls).where(eq(schema.toolCalls.resourceId, createdMemoryId));
+  const memoryLifecycleBeforeArchive = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents).where(and(eq(schema.resourceLifecycleEvents.resourceType, "memory"), eq(schema.resourceLifecycleEvents.resourceId, createdMemoryId)));
+  assert.equal(memoryLifecycleBeforeArchive[0]?.value, 0);
   await withService(({ memory }) => memory.archiveMemory({ userId: owner, id: memoryReplay.memory.id }), owner);
+  const memoryLifecycleAfterArchive = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents).where(and(eq(schema.resourceLifecycleEvents.resourceType, "memory"), eq(schema.resourceLifecycleEvents.resourceId, createdMemoryId)));
+  assert.equal(memoryLifecycleAfterArchive[0]?.value, 1);
   const archivedReplay = await withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("same"), "integration-memory-key-0001"), owner);
   assert.equal(archivedReplay.memory.id, memoryReplay.memory.id);
   assert.equal(archivedReplay.memory.lifecycle_status, "archived");
   const memoryAudit = await admin.db.select({ value: count() }).from(schema.toolCalls).where(and(eq(schema.toolCalls.userId, owner), eq(schema.toolCalls.resourceId, memoryReplay.memory.id)));
   assert.equal(memoryAudit[0]?.value, 0, "MCP Memory creation must not create tool_calls rows");
+  const memoryRowsAfterReplay = await admin.db.select({ value: count() }).from(schema.coreMemories).where(eq(schema.coreMemories.id, createdMemoryId));
+  const memoryIdempotencyAfterReplay = await admin.db.select({ value: count() }).from(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, owner), eq(schema.mcpWriteIdempotency.toolName, "write_memory"), eq(schema.mcpWriteIdempotency.idempotencyKey, "integration-memory-key-0001")));
+  const memoryLifecycleAfterReplay = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents).where(and(eq(schema.resourceLifecycleEvents.resourceType, "memory"), eq(schema.resourceLifecycleEvents.resourceId, createdMemoryId)));
+  assert.equal(memoryRowsAfterReplay[0]?.value, memoryRowsBeforeArchive[0]?.value);
+  assert.equal(memoryIdempotencyAfterReplay[0]?.value, memoryIdempotencyBeforeArchive[0]?.value);
+  assert.equal(memoryAudit[0]?.value, memoryToolCallsBeforeArchive[0]?.value);
+  assert.equal(memoryLifecycleAfterReplay[0]?.value, memoryLifecycleAfterArchive[0]?.value);
 
   await assert.rejects(
     withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("same"), "different-memory-key-0001"), owner),

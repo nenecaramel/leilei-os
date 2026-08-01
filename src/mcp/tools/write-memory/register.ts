@@ -14,11 +14,14 @@ import {
 import { invokeMcpWrite } from "../write-context.js";
 
 const memoryCategorySchema = z.enum(["profile", "preference", "goal", "project"]);
+const rawMemoryKeySchema = z.string().max(1_000);
+const rawMemoryContentSchema = z.string().max(20_000);
+const rawMemoryTagSchema = z.string().max(500);
 const writeMemoryInputSchema = z.object({
   category: memoryCategorySchema,
-  key: z.string().min(1).max(100),
-  content: z.string().min(1).max(4_000),
-  tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+  key: rawMemoryKeySchema,
+  content: rawMemoryContentSchema,
+  tags: z.array(rawMemoryTagSchema).max(20).optional(),
   idempotency_key: z.string()
     .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
     .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
@@ -68,7 +71,7 @@ export function registerWriteMemoryTool(
     {
       title: "Write a confirmed Memory record",
       description:
-        "Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. After success, call get_memory with the returned id and verify the authoritative stored record.",
+        "Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. For a newly created active Memory or an active idempotent replay, call get_memory with the returned id and verify the authoritative stored record. For an archived idempotent replay, do not call the active-only get_memory tool.",
       inputSchema: writeMemoryInputSchema,
       outputSchema: writeMemoryOutputSchema,
       annotations: {
@@ -91,9 +94,7 @@ export function registerWriteMemoryTool(
           return {
             content: [{
               type: "text",
-              text: data.metadata.idempotent_replay
-                ? "The existing Memory record was returned without creating a duplicate."
-                : "Memory record created successfully. Call get_memory with the returned id to verify it.",
+              text: responseText(data),
             }],
             structuredContent: { success: true as const, data },
           };
@@ -101,6 +102,16 @@ export function registerWriteMemoryTool(
         mapError: toSafeToolError,
       }),
   );
+}
+
+function responseText(data: CreateMcpMemoryResult): string {
+  if (!data.metadata.idempotent_replay) {
+    return "Memory record created successfully. Call get_memory with the returned id to verify it.";
+  }
+  if (data.memory.lifecycle_status === "archived") {
+    return "The original Memory record is archived and no duplicate was created. Do not call the active-only get_memory tool for this archived record.";
+  }
+  return "The active Memory record was returned without creating a duplicate. Call get_memory with the returned id to verify it.";
 }
 
 function toSafeToolError(error: unknown) {
