@@ -19,12 +19,14 @@ export type McpFingerprintValue =
 export type McpIdempotentToolName =
   | "create_task"
   | "write_diary"
+  | "write_memory"
   | "toy_set"
   | "toy_stop";
 
 export type McpIdempotentResourceType =
   | "task"
   | "diary_entry"
+  | "memory"
   | "toy_command";
 
 type Database = ReturnType<typeof createDatabase>["db"];

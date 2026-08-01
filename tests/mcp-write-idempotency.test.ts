@@ -45,6 +45,14 @@ test("canonical MCP fingerprint golden values are version locked", () => {
   assert.equal(hashMcpWriteRequest({ title: "Diary", content: "Entry", date: "2026-08-01", tags: ["x"], mood: null }), "9406fe0dc56ddd6c2797d98b8bb717f25a31c151aa4f6b36a24e182dd5b415c4");
   assert.equal(hashMcpWriteRequest({ action: "set", percent: 20 }), "017533b6c7ed83aabbbbc5424753b71e15a75a6784a1c0ab689d19376efc264a");
   assert.equal(hashMcpWriteRequest({ action: "stop" }), "eea27c47047334348ce10c6ea9a150bde77cc96fe70ffe92be35bdbc5dc7627f");
+  assert.equal(hashMcpWriteRequest({ category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"] }), "158e1a3099f8bec47f0194d8f8b082bea8e49caa88c80a321ad74dcfff86f84f");
+});
+
+test("migration 0013 only extends MCP idempotency checks for Memory", async () => {
+  const sql = await readFile(new URL("../drizzle/0013_brief_shiver_man.sql", import.meta.url), "utf8");
+  assert.match(sql, /'write_memory'/);
+  assert.match(sql, /'memory'/);
+  assert.doesNotMatch(sql, /CREATE TABLE|ADD COLUMN|UPDATE|DELETE|TRUNCATE/i);
 });
 
 test("migration adds only scoped durable MCP idempotency persistence", async () => {

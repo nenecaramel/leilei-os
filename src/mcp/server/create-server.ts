@@ -26,6 +26,11 @@ import {
   type GetMemoryToolDependencies,
 } from "../tools/get-memory/register.js";
 import {
+  registerWriteMemoryTool,
+  WriteMemoryAuthenticationError,
+  type WriteMemoryToolDependencies,
+} from "../tools/write-memory/register.js";
+import {
   registerWriteDiaryTool,
   WriteDiaryAuthenticationError,
   type WriteDiaryToolDependencies,
@@ -147,6 +152,16 @@ const productionGetMemoryDependencies: GetMemoryToolDependencies = {
   },
 };
 
+const productionWriteMemoryDependencies: WriteMemoryToolDependencies = {
+  memoryService: {
+    createMcpMemory: (context, input, idempotencyKey) =>
+      getDefaultMemoryService().createMcpMemory(context, input, idempotencyKey),
+  },
+  getAuthenticatedUserId: () => {
+    throw new WriteMemoryAuthenticationError();
+  },
+};
+
 const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   diaryService: {
     createMcpDiary: (context, input) =>
@@ -231,6 +246,7 @@ export type McpServerDependencies = {
   readMemory?: ReadMemoryToolDependencies;
   searchMemory?: SearchMemoryToolDependencies;
   getMemory?: GetMemoryToolDependencies;
+  writeMemory?: WriteMemoryToolDependencies;
   diaryTools?: {
     diaryService: WriteDiaryToolDependencies["diaryService"] &
       SearchDiaryToolDependencies["diaryService"] &
@@ -290,6 +306,16 @@ export function createMcpServer(
       ...productionGetMemoryDependencies,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerWriteMemoryTool(
+    server,
+    dependencies.writeMemory ?? {
+      ...productionWriteMemoryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new WriteMemoryAuthenticationError();
         return authenticatedUserId;
       },
     },

@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CreateDiaryResult } from "../src/domains/diary/diary-service.js";
 import type { CreateTaskResult } from "../src/domains/task/task-service.js";
+import type { CreateMcpMemoryResult } from "../src/domains/memory/memory-service.js";
 import type { ToyCommandRecord } from "../src/domains/toy/toy-command-types.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
 import { MCP_WRITE_TOOL_NAMES } from "../src/mcp/tools/write-context.js";
@@ -43,6 +44,23 @@ function diaryResult(): CreateDiaryResult {
   };
 }
 
+function memoryResult(): CreateMcpMemoryResult {
+  return {
+    memory: {
+      id: "00000000-0000-4000-8000-000000000105",
+      category: "goal",
+      key: "confirmed_goal",
+      content: "Confirmed content",
+      tags: ["confirmed"],
+      source: "mcp",
+      lifecycle_status: "active",
+      created_at: "2026-08-01T00:00:00.000Z",
+      updated_at: "2026-08-01T00:00:00.000Z",
+    },
+    metadata: { created: true, idempotent_replay: false },
+  };
+}
+
 function toyResult(action: "set" | "stop", percent: number | null): ToyCommandRecord {
   return {
     id: action === "set"
@@ -62,9 +80,10 @@ function toyResult(action: "set" | "stop", percent: number | null): ToyCommandRe
 }
 
 function createFixture(failure?: Error) {
-  const authCalls = { task: 0, diary: 0, toy: 0 };
+  const authCalls = { task: 0, diary: 0, memory: 0, toy: 0 };
   const taskCalls: unknown[] = [];
   const diaryCalls: unknown[] = [];
+  const memoryCalls: unknown[] = [];
   const toyCalls: unknown[] = [];
 
   const server = createMcpServer({
@@ -94,6 +113,19 @@ function createFixture(failure?: Error) {
         },
       },
     },
+    writeMemory: {
+      getAuthenticatedUserId: () => {
+        authCalls.memory += 1;
+        return AUTHENTICATED_USER_ID;
+      },
+      memoryService: {
+        async createMcpMemory(context, input, idempotencyKey) {
+          memoryCalls.push({ context, input, idempotencyKey });
+          if (failure) throw failure;
+          return memoryResult();
+        },
+      },
+    },
     toyCommand: {
       getAuthenticatedUserId: () => {
         authCalls.toy += 1;
@@ -110,7 +142,7 @@ function createFixture(failure?: Error) {
     },
   });
 
-  return { server, authCalls, taskCalls, diaryCalls, toyCalls };
+  return { server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls };
 }
 
 async function connect(failure?: Error) {
@@ -147,12 +179,22 @@ async function invokeAllWrites(client: Client) {
         idempotency_key: "diary-20260801-contract",
       },
     }),
+    client.callTool({
+      name: "write_memory",
+      arguments: {
+        category: "goal",
+        key: "confirmed_goal",
+        content: "Confirmed content",
+        tags: ["confirmed"],
+        idempotency_key: "memory-20260801-contract",
+      },
+    }),
     client.callTool({ name: "toy_set", arguments: { percent: 20, idempotency_key: "toy-set-contract-20260801" } }),
     client.callTool({ name: "toy_stop", arguments: { idempotency_key: "toy-stop-contract-20260801" } }),
   ]);
 }
 
-test("MCP exposes exactly four write tools and preserves every annotation", async (t) => {
+test("MCP exposes exactly five write tools and preserves every annotation", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
@@ -179,6 +221,7 @@ test("MCP exposes exactly four write tools and preserves every annotation", asyn
   assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.destructiveHint, false);
   assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "write_diary")?.annotations?.idempotentHint, true);
+  assert.equal(tools.find((tool) => tool.name === "write_memory")?.annotations?.idempotentHint, true);
   for (const name of ["toy_set", "toy_stop"]) {
     const tool = tools.find((candidate) => candidate.name === name);
     assert.equal(tool?.annotations?.destructiveHint, true);
@@ -187,7 +230,7 @@ test("MCP exposes exactly four write tools and preserves every annotation", asyn
 });
 
 test("each write resolves server identity once and invokes its service once", async (t) => {
-  const { client, server, authCalls, taskCalls, diaryCalls, toyCalls } = await connect();
+  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls } = await connect();
   t.after(async () => {
     await client.close();
     await server.close();
@@ -195,12 +238,14 @@ test("each write resolves server identity once and invokes its service once", as
 
   const responses = await invokeAllWrites(client);
   assert.equal(responses.every((response) => response.isError !== true), true);
-  assert.deepEqual(authCalls, { task: 1, diary: 1, toy: 2 });
+  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2 });
   assert.equal(taskCalls.length, 1);
   assert.equal(diaryCalls.length, 1);
+  assert.equal(memoryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
   assert.deepEqual(taskCalls[0] && (taskCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
   assert.deepEqual(diaryCalls[0] && (diaryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
+  assert.deepEqual(memoryCalls[0] && (memoryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
   assert.deepEqual(toyCalls.map((call) => (call as { userId: string }).userId), [
     AUTHENTICATED_USER_ID,
     AUTHENTICATED_USER_ID,
@@ -208,7 +253,7 @@ test("each write resolves server identity once and invokes its service once", as
 });
 
 test("unexpected identity arguments are rejected before authentication or writes", async (t) => {
-  const { client, server, authCalls, taskCalls, diaryCalls, toyCalls } = await connect();
+  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls } = await connect();
   t.after(async () => {
     await client.close();
     await server.close();
@@ -237,6 +282,17 @@ test("unexpected identity arguments are rejected before authentication or writes
         user_id: "attacker",
       },
     },
+    {
+      name: "write_memory",
+      arguments: {
+        category: "goal",
+        key: "confirmed_goal",
+        content: "Confirmed content",
+        tags: [],
+        idempotency_key: "memory-attacker-20260801",
+        user_id: "attacker",
+      },
+    },
     { name: "toy_set", arguments: { percent: 20, idempotency_key: "toy-set-attacker-20260801", user_id: "attacker" } },
     { name: "toy_stop", arguments: { idempotency_key: "toy-stop-attacker-20260801", user_id: "attacker" } },
   ];
@@ -246,15 +302,16 @@ test("unexpected identity arguments are rejected before authentication or writes
     assert.equal(response.isError, true);
   }
 
-  assert.deepEqual(authCalls, { task: 0, diary: 0, toy: 0 });
+  assert.deepEqual(authCalls, { task: 0, diary: 0, memory: 0, toy: 0 });
   assert.equal(taskCalls.length, 0);
   assert.equal(diaryCalls.length, 0);
+  assert.equal(memoryCalls.length, 0);
   assert.equal(toyCalls.length, 0);
 });
 
 test("write failures are safe and never retried automatically", async (t) => {
   const internalFailure = new Error("private SQL and device transport detail");
-  const { client, server, authCalls, taskCalls, diaryCalls, toyCalls } = await connect(internalFailure);
+  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls } = await connect(internalFailure);
   t.after(async () => {
     await client.close();
     await server.close();
@@ -265,8 +322,9 @@ test("write failures are safe and never retried automatically", async (t) => {
     assert.equal(response.isError, true);
     assert.doesNotMatch(JSON.stringify(response), /private SQL|device transport detail/);
   }
-  assert.deepEqual(authCalls, { task: 1, diary: 1, toy: 2 });
+  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2 });
   assert.equal(taskCalls.length, 1);
   assert.equal(diaryCalls.length, 1);
+  assert.equal(memoryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
 });

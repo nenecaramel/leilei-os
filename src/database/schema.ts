@@ -332,12 +332,12 @@ export const mcpWriteIdempotency = pgTable(
         onUpdate: "cascade",
       }),
     toolName: varchar("tool_name", { length: 100 })
-      .$type<"create_task" | "write_diary" | "toy_set" | "toy_stop">()
+      .$type<"create_task" | "write_diary" | "write_memory" | "toy_set" | "toy_stop">()
       .notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
     resourceType: varchar("resource_type", { length: 32 })
-      .$type<"task" | "diary_entry" | "toy_command">()
+      .$type<"task" | "diary_entry" | "memory" | "toy_command">()
       .notNull(),
     resourceId: uuid("resource_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -356,7 +356,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_tool_allowed",
-      sql`${table.toolName} IN ('create_task', 'write_diary', 'toy_set', 'toy_stop')`,
+      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop')`,
     ),
     check(
       "mcp_write_idempotency_key_format",
@@ -368,7 +368,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_resource_type_allowed",
-      sql`${table.resourceType} IN ('task', 'diary_entry', 'toy_command')`,
+      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command')`,
     ),
   ],
 );

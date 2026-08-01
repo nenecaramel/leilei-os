@@ -20,6 +20,10 @@ import {
   type LifecycleAuditPersistence,
   type LifecycleMutationInput,
 } from "../lifecycle/lifecycle-audit-repository.js";
+import {
+  lockAndReadMcpIdempotency,
+  recordMcpIdempotency,
+} from "../mcp-write/mcp-write-idempotency.js";
 
 export type MemoryCategory = (typeof memoryCategoryEnum.enumValues)[number];
 
@@ -40,7 +44,18 @@ export type ActiveAssistantMemoryRecord = {
 
 export type TrustedMemorySource =
   | "web"
+  | "mcp"
   | "phase_2_validation";
+
+export type McpMemoryRecord = ActiveAssistantMemoryRecord & {
+  source: "mcp";
+  status: "active" | "archived";
+  createdAt: Date;
+};
+
+export type McpMemoryCreateResult =
+  | { outcome: "created" | "replayed"; memory: McpMemoryRecord }
+  | { outcome: "conflict" | "key_conflict" };
 
 export type MemoryOrdering = "default" | "updated_desc";
 
@@ -105,6 +120,12 @@ export interface MemoryRepository {
   }): Promise<ActiveAssistantMemoryRecord | null>;
 
   createMemory(input: CreateMemoryInput): Promise<void>;
+
+  createMemoryIdempotently?(input: CreateMemoryInput & {
+    source: "mcp";
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<McpMemoryCreateResult>;
 
   updateMemory(input: UpdateMemoryInput): Promise<boolean>;
 
@@ -342,6 +363,107 @@ export class DrizzleMemoryRepository implements MemoryRepository {
       visibility: "assistant",
       status: "active",
     });
+  }
+
+  async createMemoryIdempotently(input: CreateMemoryInput & {
+    source: "mcp";
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<McpMemoryCreateResult> {
+    return this.db.transaction(async (transaction) => {
+      const idempotency = await lockAndReadMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "write_memory",
+        idempotencyKey: input.idempotencyKey,
+      });
+
+      if (idempotency) {
+        if (
+          idempotency.requestHash !== input.requestHash ||
+          idempotency.resourceType !== "memory"
+        ) {
+          return { outcome: "conflict" };
+        }
+
+        const existing = await this.findMcpMemoryById(
+          transaction,
+          input.userId,
+          idempotency.resourceId,
+        );
+        if (!existing) {
+          throw new Error("Idempotent Memory record was not found.");
+        }
+        return { outcome: "replayed", memory: existing };
+      }
+
+      const [inserted] = await transaction
+        .insert(coreMemories)
+        .values({
+          userId: input.userId,
+          category: input.category,
+          key: input.key,
+          content: input.content,
+          tags: input.tags,
+          source: "mcp",
+          visibility: "assistant",
+          status: "active",
+        })
+        .onConflictDoNothing({
+          target: [coreMemories.userId, coreMemories.key],
+        })
+        .returning({
+          id: coreMemories.id,
+          category: coreMemories.category,
+          key: coreMemories.key,
+          content: coreMemories.content,
+          tags: coreMemories.tags,
+          source: coreMemories.source,
+          status: coreMemories.status,
+          createdAt: coreMemories.createdAt,
+          updatedAt: coreMemories.updatedAt,
+        });
+
+      if (!inserted) return { outcome: "key_conflict" };
+      if (inserted.source !== "mcp") {
+        throw new Error("MCP Memory source was not preserved.");
+      }
+
+      await recordMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "write_memory",
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
+        resourceType: "memory",
+        resourceId: inserted.id,
+      });
+
+      return { outcome: "created", memory: inserted as McpMemoryRecord };
+    });
+  }
+
+  private async findMcpMemoryById(
+    transaction: Parameters<Parameters<Database["transaction"]>[0]>[0],
+    userId: string,
+    id: string,
+  ): Promise<McpMemoryRecord | null> {
+    const [memory] = await transaction
+      .select({
+        id: coreMemories.id,
+        category: coreMemories.category,
+        key: coreMemories.key,
+        content: coreMemories.content,
+        tags: coreMemories.tags,
+        source: coreMemories.source,
+        status: coreMemories.status,
+        createdAt: coreMemories.createdAt,
+        updatedAt: coreMemories.updatedAt,
+      })
+      .from(coreMemories)
+      .where(and(eq(coreMemories.userId, userId), eq(coreMemories.id, id)))
+      .limit(1);
+
+    if (!memory || memory.source !== "mcp") return null;
+    return memory as McpMemoryRecord;
   }
 
   async updateMemory(input: UpdateMemoryInput): Promise<boolean> {

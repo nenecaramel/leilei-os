@@ -1,6 +1,7 @@
 export const MCP_WRITE_TOOL_NAMES = [
   "create_task",
   "write_diary",
+  "write_memory",
   "toy_set",
   "toy_stop",
 ] as const;
