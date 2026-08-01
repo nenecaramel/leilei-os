@@ -60,9 +60,10 @@ class MockTaskService {
     return TASK;
   }
 
-  async createTask(
+  async createTaskIdempotently(
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
+    _idempotencyKey: string,
   ): Promise<CreateTaskResult> {
     this.createCalls.push({ context, input });
     return {
@@ -423,6 +424,7 @@ test("shared Task dependency preserves create_task behavior", async (t) => {
       description: "This still uses the shared Task Service.",
       priority: "high",
       tags: ["MCP"],
+      idempotency_key: "task-read-regression-0001",
     },
   });
   assert.equal(result.isError, undefined);

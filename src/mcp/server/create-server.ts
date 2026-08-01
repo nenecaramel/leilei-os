@@ -149,8 +149,8 @@ const productionGetMemoryDependencies: GetMemoryToolDependencies = {
 
 const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   diaryService: {
-    createDiary: (context, input) =>
-      getDefaultDiaryService().createDiary(context, input),
+    createMcpDiary: (context, input) =>
+      getDefaultDiaryService().createMcpDiary(context, input),
   },
   getAuthenticatedUserId: () => {
     throw new WriteDiaryAuthenticationError();
@@ -177,8 +177,12 @@ const productionGetDiaryDependencies: GetDiaryToolDependencies = {
 
 const productionCreateTaskDependencies: CreateTaskToolDependencies = {
   taskService: {
-    createTask: (context, input) =>
-      getDefaultTaskService().createTask(context, input),
+    createTaskIdempotently: (context, input, idempotencyKey) =>
+      getDefaultTaskService().createTaskIdempotently(
+        context,
+        input,
+        idempotencyKey,
+      ),
   },
   getAuthenticatedUserId: () => {
     throw new CreateTaskAuthenticationError();
@@ -205,8 +209,12 @@ const productionGetTaskDependencies: GetTaskToolDependencies = {
 
 const productionToyCommandDependencies: ToyCommandToolDependencies = {
   toyCommandService: {
-    create: (userId, input) =>
-      getDefaultToyCommandService().create(userId, input),
+    createIdempotently: (userId, input, idempotencyKey) =>
+      getDefaultToyCommandService().createIdempotently(
+        userId,
+        input,
+        idempotencyKey,
+      ),
   },
   getAuthenticatedUserId: () => {
     throw new ToyCommandAuthenticationError();

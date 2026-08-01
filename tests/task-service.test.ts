@@ -26,10 +26,32 @@ const VALID_INPUT: CreateTaskInput = {
   tags: [" 项目 ", "MCP", "项目"],
 };
 
+test("Task MCP creation forwards one normalized durable idempotency claim", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+  const first = await service.createTaskIdempotently(
+    { userId: "user-1" },
+    VALID_INPUT,
+    "task-client-request-0001",
+  );
+  assert.equal(first.task.id, "00000000-0000-4000-8000-000000000010");
+  assert.equal(repository.idempotentWrites.length, 1);
+  assert.equal(repository.idempotentWrites[0]?.idempotencyKey, "task-client-request-0001");
+  assert.match(repository.idempotentWrites[0]?.requestHash ?? "", /^[a-f0-9]{64}$/);
+
+  repository.idempotentOutcome = "conflict";
+  await assert.rejects(
+    service.createTaskIdempotently({ userId: "user-1" }, VALID_INPUT, "task-client-request-0001"),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "IDEMPOTENCY_CONFLICT",
+  );
+});
+
 class MockTaskRepository implements TaskRepository {
   user: TaskUserRecord | null = { status: "active" };
   findUserCalls: string[] = [];
   writes: NormalizedTaskCreate[] = [];
+  idempotentWrites: Array<NormalizedTaskCreate & { idempotencyKey: string; requestHash: string }> = [];
+  idempotentOutcome: "created" | "replayed" | "conflict" = "created";
   statusWrites: UpdateTaskStatusInput[] = [];
   updateWrites: NormalizedTaskUpdate[] = [];
   listQueries: TaskListQuery[] = [];
@@ -64,6 +86,14 @@ class MockTaskRepository implements TaskRepository {
 
     this.records.set(task.id, { userId: input.userId, task });
     return task;
+  }
+
+  async createTaskIdempotently(input: NormalizedTaskCreate & { idempotencyKey: string; requestHash: string }) {
+    this.idempotentWrites.push(input);
+    const task = await this.createTask(input);
+    return this.idempotentOutcome === "conflict"
+      ? { outcome: "conflict" as const }
+      : { outcome: this.idempotentOutcome, task };
   }
 
   async findTasks(userId: string, _limit: number, query: TaskListQuery = {}): Promise<TaskRecord[]> {

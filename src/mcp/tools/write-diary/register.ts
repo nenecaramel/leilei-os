@@ -62,7 +62,7 @@ const writeDiaryOutputSchema = z.object({
 });
 
 export interface WriteDiaryToolService {
-  createDiary(
+  createMcpDiary(
     context: AuthenticatedDiaryContext,
     input: CreateDiaryInput,
   ): Promise<CreateDiaryResult>;
@@ -97,7 +97,7 @@ export function registerWriteDiaryTool(
         toolName: "write_diary",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
-          const data = await dependencies.diaryService.createDiary(
+          const data = await dependencies.diaryService.createMcpDiary(
             { userId },
             {
               title,

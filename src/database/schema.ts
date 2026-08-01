@@ -321,6 +321,58 @@ export const toolCalls = pgTable(
   ],
 );
 
+export const mcpWriteIdempotency = pgTable(
+  "mcp_write_idempotency",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    toolName: varchar("tool_name", { length: 100 })
+      .$type<"create_task" | "write_diary" | "toy_set" | "toy_stop">()
+      .notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    requestHash: varchar("request_hash", { length: 64 }).notNull(),
+    resourceType: varchar("resource_type", { length: 32 })
+      .$type<"task" | "diary_entry" | "toy_command">()
+      .notNull(),
+    resourceId: uuid("resource_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("mcp_write_idempotency_user_tool_key_unique_idx").on(
+      table.userId,
+      table.toolName,
+      table.idempotencyKey,
+    ),
+    index("mcp_write_idempotency_resource_idx").on(
+      table.resourceType,
+      table.resourceId,
+    ),
+    check(
+      "mcp_write_idempotency_tool_allowed",
+      sql`${table.toolName} IN ('create_task', 'write_diary', 'toy_set', 'toy_stop')`,
+    ),
+    check(
+      "mcp_write_idempotency_key_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9._:-]{16,128}$'`,
+    ),
+    check(
+      "mcp_write_idempotency_hash_format",
+      sql`${table.requestHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "mcp_write_idempotency_resource_type_allowed",
+      sql`${table.resourceType} IN ('task', 'diary_entry', 'toy_command')`,
+    ),
+  ],
+);
+
 export const resourceLifecycleEvents = pgTable(
   "resource_lifecycle_events",
   {

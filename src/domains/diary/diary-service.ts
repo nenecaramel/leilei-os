@@ -8,6 +8,7 @@ import type {
   NormalizedDiaryCreate,
 } from "./diary-repository.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
+import { hashMcpWriteRequest } from "../mcp-write/mcp-write-idempotency.js";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_CONTENT_LENGTH = 20_000;
@@ -146,6 +147,33 @@ export class DiaryService {
     const persisted = await this.repository.createDiaryWithAudit(
       normalized,
       requestSummary,
+    );
+
+    if (persisted.outcome === "conflict") {
+      throw new DiaryDomainError(
+        "IDEMPOTENCY_CONFLICT",
+        "The idempotency key was already used for different diary content.",
+      );
+    }
+
+    return this.toCreateResult(
+      persisted.diary,
+      persisted.outcome === "created",
+      persisted.outcome === "replayed",
+    );
+  }
+
+  async createMcpDiary(
+    context: AuthenticatedDiaryContext,
+    input: CreateDiaryInput,
+  ): Promise<CreateDiaryResult> {
+    const userId = await this.requireActiveUser(context.userId);
+    const normalized = this.normalizeInput(userId, input);
+    const requestSummary = this.createAuditSummary(normalized);
+    const persisted = await this.repository.createDiaryWithAudit(
+      normalized,
+      requestSummary,
+      { mcpWriteIdempotency: true },
     );
 
     if (persisted.outcome === "conflict") {
@@ -442,6 +470,7 @@ export class DiaryService {
       mood: normalized.mood,
       idempotencyKey,
       requestHash,
+      mcpRequestHash: hashMcpWriteRequest(hashPayload),
     };
   }
 

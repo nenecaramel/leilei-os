@@ -74,8 +74,8 @@ function createFixture(failure?: Error) {
         return AUTHENTICATED_USER_ID;
       },
       taskService: {
-        async createTask(context, input) {
-          taskCalls.push({ context, input });
+        async createTaskIdempotently(context, input, idempotencyKey) {
+          taskCalls.push({ context, input, idempotencyKey });
           if (failure) throw failure;
           return taskResult();
         },
@@ -87,7 +87,7 @@ function createFixture(failure?: Error) {
         return AUTHENTICATED_USER_ID;
       },
       diaryService: {
-        async createDiary(context, input) {
+        async createMcpDiary(context, input) {
           diaryCalls.push({ context, input });
           if (failure) throw failure;
           return diaryResult();
@@ -100,8 +100,8 @@ function createFixture(failure?: Error) {
         return AUTHENTICATED_USER_ID;
       },
       toyCommandService: {
-        async create(userId, input) {
-          toyCalls.push({ userId, input });
+        async createIdempotently(userId, input, idempotencyKey) {
+          toyCalls.push({ userId, input, idempotencyKey });
           if (failure) throw failure;
           const command = input as { action: "set" | "stop"; percent?: number };
           return toyResult(command.action, command.action === "set" ? command.percent! : null);
@@ -134,6 +134,7 @@ async function invokeAllWrites(client: Client) {
         description: "Task description",
         priority: "normal",
         tags: [],
+        idempotency_key: "task-contract-20260801",
       },
     }),
     client.callTool({
@@ -146,8 +147,8 @@ async function invokeAllWrites(client: Client) {
         idempotency_key: "diary-20260801-contract",
       },
     }),
-    client.callTool({ name: "toy_set", arguments: { percent: 20 } }),
-    client.callTool({ name: "toy_stop", arguments: {} }),
+    client.callTool({ name: "toy_set", arguments: { percent: 20, idempotency_key: "toy-set-contract-20260801" } }),
+    client.callTool({ name: "toy_stop", arguments: { idempotency_key: "toy-stop-contract-20260801" } }),
   ]);
 }
 
@@ -176,11 +177,12 @@ test("MCP exposes exactly four write tools and preserves every annotation", asyn
   }
 
   assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.destructiveHint, false);
+  assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "write_diary")?.annotations?.idempotentHint, true);
   for (const name of ["toy_set", "toy_stop"]) {
     const tool = tools.find((candidate) => candidate.name === name);
     assert.equal(tool?.annotations?.destructiveHint, true);
-    assert.equal(tool?.annotations?.idempotentHint, false);
+    assert.equal(tool?.annotations?.idempotentHint, true);
   }
 });
 
@@ -220,6 +222,7 @@ test("unexpected identity arguments are rejected before authentication or writes
         description: "Task description",
         priority: "normal",
         tags: [],
+        idempotency_key: "task-attacker-20260801",
         user_id: "attacker",
       },
     },
@@ -234,8 +237,8 @@ test("unexpected identity arguments are rejected before authentication or writes
         user_id: "attacker",
       },
     },
-    { name: "toy_set", arguments: { percent: 20, user_id: "attacker" } },
-    { name: "toy_stop", arguments: { user_id: "attacker" } },
+    { name: "toy_set", arguments: { percent: 20, idempotency_key: "toy-set-attacker-20260801", user_id: "attacker" } },
+    { name: "toy_stop", arguments: { idempotency_key: "toy-stop-attacker-20260801", user_id: "attacker" } },
   ];
 
   for (const attempt of attempts) {

@@ -49,7 +49,7 @@ class MockDiaryService {
     return ENTRY;
   }
 
-  async createDiary(
+  async createMcpDiary(
     context: AuthenticatedDiaryContext,
     input: CreateDiaryInput,
   ): Promise<CreateDiaryResult> {
