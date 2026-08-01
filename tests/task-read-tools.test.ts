@@ -41,16 +41,22 @@ class MockTaskService {
   }> = [];
   listError?: unknown;
   readError?: unknown;
+  active = true;
 
   async listTasks(input: ListTasksInput): Promise<ListTasksResult> {
     this.listCalls.push(input);
     if (this.listError) throw this.listError;
-    return { tasks: [TASK], metadata: { count: 1 } };
+    return this.active
+      ? { tasks: [TASK], metadata: { count: 1 } }
+      : { tasks: [], metadata: { count: 0 } };
   }
 
   async readTask(input: ReadTaskInput): Promise<TaskEntryResult> {
     this.readCalls.push(input);
     if (this.readError) throw this.readError;
+    if (!this.active) {
+      throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    }
     return TASK;
   }
 
@@ -347,6 +353,60 @@ test("get_task safely maps unavailable users, authentication, and unexpected err
   assert.equal(service.readCalls.length, 0);
   await pair.client.close();
   await pair.server.close();
+});
+
+test("Task MCP reads follow the active-only lifecycle path without adding writes", async (t) => {
+  const service = new MockTaskService();
+  const { client, server } = await connect(service);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  assert.equal(
+    ((await client.callTool({ name: "list_tasks", arguments: {} }))
+      .structuredContent as { data: { metadata: { count: number } } })
+      .data.metadata.count,
+    1,
+  );
+  assert.equal(
+    (await client.callTool({
+      name: "get_task",
+      arguments: { id: TASK.id },
+    })).isError,
+    undefined,
+  );
+
+  service.active = false;
+  assert.equal(
+    ((await client.callTool({ name: "list_tasks", arguments: {} }))
+      .structuredContent as { data: { metadata: { count: number } } })
+      .data.metadata.count,
+    0,
+  );
+  assert.equal(
+    (await client.callTool({
+      name: "get_task",
+      arguments: { id: TASK.id },
+    })).isError,
+    true,
+  );
+
+  service.active = true;
+  assert.equal(
+    ((await client.callTool({ name: "list_tasks", arguments: {} }))
+      .structuredContent as { data: { metadata: { count: number } } })
+      .data.metadata.count,
+    1,
+  );
+  assert.equal(service.createCalls.length, 0);
+  const tools = await client.listTools();
+  assert.equal(
+    tools.tools.some((tool) =>
+      ["archive_task", "restore_task"].includes(tool.name)
+    ),
+    false,
+  );
 });
 
 test("shared Task dependency preserves create_task behavior", async (t) => {

@@ -14,6 +14,8 @@ import {
   import {
     EMPTY_TASK_FILTERS,
     createTaskDetailLocation,
+    createTaskArchiveLocation,
+    createArchivedTaskDetailLocation,
     getTaskDetailLocation,
     type TaskDueFilter,
   } from "./task-location";
@@ -30,13 +32,13 @@ import {
     readTaskFilterHistorySnapshot,
     subscribeToTaskFilterHistory,
   } from "./task-filter-history";
-  
+
   type TaskStatus =
     | "pending"
     | "in_progress"
     | "completed"
     | "cancelled";
-  
+
   type TaskPriority =
     | "low"
     | "normal"
@@ -44,7 +46,7 @@ import {
     | "urgent";
 
   type TaskAction = "start" | "complete" | "cancel";
-  
+
   type TaskEntry = {
     id: string;
     title: string;
@@ -60,7 +62,7 @@ import {
     completed_at: string | null;
     allowed_actions: TaskAction[];
   };
-  
+
   type TaskListResponse = {
     success: true;
     data: {
@@ -70,12 +72,12 @@ import {
       };
     };
   };
-  
+
   type TaskEntryResponse = {
     success: true;
     data: TaskEntry;
   };
-  
+
   type LoadState =
     | { status: "loading" }
     | {
@@ -86,35 +88,35 @@ import {
     | { status: "error" };
 
   type DetailLoadState = "idle" | "loading" | "ready" | "error";
-  
+
   const statusLabels: Record<TaskStatus, string> = {
     pending: "待处理",
     in_progress: "进行中",
     completed: "已完成",
     cancelled: "已取消",
   };
-  
+
   const priorityLabels: Record<TaskPriority, string> = {
     low: "低",
     normal: "普通",
     high: "高",
     urgent: "紧急",
   };
-  
+
   function getDefaultDueTime(): string {
     const date = new Date();
     date.setHours(date.getHours() + 1);
     date.setMinutes(0, 0, 0);
-  
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     const hour = String(date.getHours()).padStart(2, "0");
     const minute = String(date.getMinutes()).padStart(2, "0");
-  
+
     return `${year}-${month}-${day}T${hour}:${minute}`;
   }
-  
+
   function toDateTimeLocal(
     value: string | null,
     timezone: string,
@@ -144,18 +146,18 @@ import {
       return "";
     }
   }
-  
+
   function formatDueTime(
     value: string | null,
     timezone: string,
   ): string {
     if (!value) return "无截止时间";
     const date = new Date(value);
-  
+
     if (Number.isNaN(date.getTime())) {
       return value;
     }
-  
+
     try {
       return new Intl.DateTimeFormat("zh-CN", {
         year: "numeric",
@@ -169,7 +171,7 @@ import {
       return date.toLocaleString("zh-CN");
     }
   }
-  
+
   function parseTags(value: string): string[] {
     return [
       ...new Set(
@@ -202,7 +204,7 @@ import {
     const listAbortController = useRef<AbortController | null>(
       null,
     );
-  
+
     const [reloadKey, setReloadKey] = useState(0);
     const [filters, setFilters] = useState(initialFilters);
     const [searchDraft, setSearchDraft] = useState(
@@ -215,6 +217,7 @@ import {
       initialTaskLocation,
     );
     const isDetailMode = taskLocation.taskId !== null;
+    const isArchivedMode = taskLocation.archived;
     const [detailLoadState, setDetailLoadState] =
       useState<DetailLoadState>(() =>
         initialTaskLocation().taskId ? "loading" : "idle",
@@ -222,11 +225,11 @@ import {
     const [state, setState] = useState<LoadState>({
       status: "loading",
     });
-  
+
     const [showCreate, setShowCreate] = useState(false);
     const [creating, setCreating] = useState(false);
     const createGate = useRef(createSubmissionGate());
-  
+
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [priority, setPriority] =
@@ -236,13 +239,17 @@ import {
     );
     const [withoutDueTime, setWithoutDueTime] = useState(false);
     const [tags, setTags] = useState("");
-  
+
     const [selectedTask, setSelectedTask] =
       useState<TaskEntry | null>(null);
     const [loadingTaskId, setLoadingTaskId] =
       useState("");
     const [updatingStatus, setUpdatingStatus] =
       useState(false);
+    const [archiving, setArchiving] = useState(false);
+    const [restoring, setRestoring] = useState(false);
+    const archiveGate = useRef(createSubmissionGate());
+    const restoreGate = useRef(createSubmissionGate());
     const statusGate = useRef(createSubmissionGate());
     const [editing, setEditing] = useState(false);
     const [updating, setUpdating] = useState(false);
@@ -254,7 +261,7 @@ import {
     const [editingDueTime, setEditingDueTime] = useState("");
     const [editingWithoutDueTime, setEditingWithoutDueTime] = useState(false);
     const [editingTags, setEditingTags] = useState("");
-  
+
     const [actionError, setActionError] = useState("");
     const filtersRef = useRef(filters);
     filtersRef.current = filters;
@@ -336,7 +343,7 @@ import {
       },
       [],
     );
-  
+
     useEffect(() => {
       if (isDetailMode) {
         invalidateListRequest();
@@ -346,7 +353,9 @@ import {
       const controller = new AbortController();
       listAbortController.current = controller;
       const requestTicket = listRequestTracker.current.begin();
-      const request = buildTaskListRequest(filters);
+      const request = isArchivedMode
+        ? { url: "/task/archived" }
+        : buildTaskListRequest(filters);
       setState({
         status: "loading",
       });
@@ -379,7 +388,7 @@ import {
           listAbortController.current = null;
         }
       };
-    }, [api, reloadKey, filters, isDetailMode]);
+    }, [api, reloadKey, filters, isDetailMode, isArchivedMode]);
 
     useEffect(() => {
       const { taskId } = taskLocation;
@@ -397,7 +406,7 @@ import {
       setActionError("");
 
       api.request<TaskEntryResponse>(
-        `/task/${encodeURIComponent(taskId)}`,
+        `${isArchivedMode ? "/task/archived/" : "/task/"}${encodeURIComponent(taskId)}`,
       )
         .then((response) => {
           if (!active) return;
@@ -470,20 +479,20 @@ import {
     function clearFilters() {
       commitFilters(EMPTY_TASK_FILTERS);
     }
-  
+
     const createInvalid =
       title.trim().length === 0 ||
       description.trim().length === 0 ||
       (!withoutDueTime && dueTime.trim().length === 0);
-  
+
     async function handleCreate() {
       if (createInvalid || !createGate.current.enter()) {
         return;
       }
-  
+
       setCreating(true);
       setActionError("");
-  
+
       try {
         const response = await api.request<TaskEntryResponse>(
           "/task",
@@ -499,7 +508,7 @@ import {
             }),
           },
         );
-  
+
         setTitle("");
         setDescription("");
         setPriority("normal");
@@ -507,10 +516,10 @@ import {
         setWithoutDueTime(false);
         setTags("");
         setShowCreate(false);
-  
+
         setReloadKey((value) => value + 1);
         openTaskDetail(response.data.id);
-  
+
         requestAnimationFrame(() => {
           window.scrollTo({
             top: 0,
@@ -524,7 +533,7 @@ import {
         setCreating(false);
       }
     }
-  
+
     async function handleReadTask(id: string) {
       if (loadingTaskId) {
         return;
@@ -543,27 +552,85 @@ import {
       setTaskLocation(initialTaskLocation());
       setDetailLoadState("loading");
     }
-  
-    function handleCloseTask() {
-      window.history.pushState(null, "", taskLocation.returnTo);
+
+    function openArchivedTaskDetail(id: string) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      window.history.pushState(null, "", createArchivedTaskDetailLocation(id, returnTo));
       setSelectedTask(null);
-      setEditing(false);
-      setActionError("");
-      const restoredFilters = initialFilters();
+      setTaskLocation(initialTaskLocation());
+      setDetailLoadState("loading");
+    }
+
+    async function handleArchiveTask() {
+      if (!selectedTask || !archiveGate.current.enter()) return;
+      if (!window.confirm(`确定归档“${selectedTask.title}”吗？`)) {
+        archiveGate.current.leave();
+        return;
+      }
+      setArchiving(true); setActionError("");
+      try {
+        await api.request(`/task/${selectedTask.id}`, { method: "DELETE" });
+        handleCloseTask();
+      } catch { setActionError("归档任务失败，请稍后重试。"); }
+      finally { archiveGate.current.leave(); setArchiving(false); }
+    }
+
+    async function handleRestoreTask() {
+      if (!selectedTask || !restoreGate.current.enter()) return;
+      setRestoring(true); setActionError("");
+      try {
+        await api.request(`/task/archived/${selectedTask.id}/restore`, { method: "POST" });
+        returnToActiveTaskList(taskLocation.activeReturnTo);
+      } catch { setActionError("恢复任务失败，请稍后重试。"); }
+      finally { restoreGate.current.leave(); setRestoring(false); }
+    }
+
+    function returnToActiveTaskList(
+      returnTo: string,
+      restoreScroll = false,
+    ) {
+      window.history.pushState(null, "", returnTo);
+      const restoredFilters = readTaskFilterHistorySnapshot(
+        new URL(returnTo, window.location.origin).search,
+      );
       setFilters(restoredFilters);
       setSearchDraft(restoredFilters.q);
       setTagDraft(restoredFilters.tag);
+      setSelectedTask(null);
+      setEditing(false);
+      setActionError("");
       setTaskLocation(initialTaskLocation());
       setDetailLoadState("idle");
-  
-      requestAnimationFrame(() => {
-        window.scrollTo({
-          top: listScrollPosition.current,
-          behavior: "smooth",
+      setState({ status: "loading" });
+
+      if (restoreScroll) {
+        requestAnimationFrame(() => {
+          window.scrollTo({
+            top: listScrollPosition.current,
+            behavior: "smooth",
+          });
         });
-      });
+      }
     }
-  
+
+    function returnToArchivedTaskList(returnTo: string) {
+      window.history.pushState(null, "", returnTo);
+      setSelectedTask(null);
+      setEditing(false);
+      setActionError("");
+      setTaskLocation(initialTaskLocation());
+      setDetailLoadState("idle");
+      setState({ status: "loading" });
+    }
+
+    function handleCloseTask() {
+      if (isArchivedMode) {
+        returnToArchivedTaskList(taskLocation.returnTo);
+      } else {
+        returnToActiveTaskList(taskLocation.returnTo, true);
+      }
+    }
+
     function beginEditing(task: TaskEntry) {
       setEditing(true);
       setEditingTitle(task.title);
@@ -588,10 +655,10 @@ import {
       if (!selectedTask || !statusGate.current.enter()) {
         return;
       }
-  
+
       setUpdatingStatus(true);
       setActionError("");
-  
+
       try {
         const response = await api.request<TaskEntryResponse>(
           `/task/${selectedTask.id}/status`,
@@ -647,7 +714,7 @@ import {
         setUpdating(false);
       }
     }
-  
+
     return (
       <div className="page memory-page">
         <PageHeader
@@ -655,7 +722,11 @@ import {
           title="Task"
           description={settings.page_copy.task_subtitle ?? "管理待办事项、截止时间、优先级与完成状态。"}
           action={
-            isDetailMode ? (
+            isDetailMode && isArchivedMode ? (
+              <button className="secondary-button" disabled={restoring} onClick={() => {
+                returnToArchivedTaskList(taskLocation.returnTo);
+              }}>返回归档列表</button>
+            ) : isDetailMode ? (
               <button
                 className="secondary-button"
                 disabled={updatingStatus || updating}
@@ -663,21 +734,24 @@ import {
               >
                 返回任务列表
               </button>
+            ) : isArchivedMode ? (
+              <button className="secondary-button" onClick={() => {
+                returnToActiveTaskList(taskLocation.returnTo);
+              }}>返回任务列表</button>
             ) : (
-              <button
-                className="secondary-button"
-                disabled={creating || updating}
-                onClick={() => {
-                  setShowCreate((value) => !value);
-                  setActionError("");
-                }}
-              >
-                {showCreate ? "取消新增" : "新增任务"}
-              </button>
+              <div className="page-header-actions">
+                <button className="secondary-button" disabled={creating || updating} onClick={() => {
+                  window.history.pushState(null, "", createTaskArchiveLocation(`${window.location.pathname}${window.location.search}`));
+                  setTaskLocation(initialTaskLocation());
+                }}>查看归档</button>
+                <button className="secondary-button" disabled={creating || updating} onClick={() => {
+                  setShowCreate((value) => !value); setActionError("");
+                }}>{showCreate ? "取消新增" : "新增任务"}</button>
+              </div>
             )
           }
         />
-        {!isDetailMode && (
+        {!isDetailMode && !isArchivedMode && (
           <section className="memory-message task-filters">
             <h2>搜索与筛选</h2>
             <input aria-label="搜索任务" placeholder="搜索任务标题或内容" value={searchDraft} onChange={(event) => updateSearchDraft(event.target.value)} />
@@ -695,18 +769,18 @@ import {
             <button className="secondary-button" onClick={clearFilters}>清除全部</button>
           </section>
         )}
-  
+
         {actionError && (
           <section className="memory-message">
             <h2>操作没有完成</h2>
             <p>{actionError}</p>
           </section>
         )}
-  
+
         {isDetailMode ? (
           selectedTask ? (
           <section className="memory-message">
-            {editing ? (
+            {editing && !isArchivedMode ? (
               <>
                 <h2>编辑任务</h2>
 
@@ -805,15 +879,15 @@ import {
               <span>
                 {statusLabels[selectedTask.status]}
               </span>
-  
+
               <span>
                 优先级：{priorityLabels[selectedTask.priority]}
               </span>
                 </div>
-  
+
                 <h2>{selectedTask.title}</h2>
                 <p>{selectedTask.description}</p>
-  
+
                 <p>
               截止时间：
               {formatDueTime(
@@ -821,9 +895,9 @@ import {
                 selectedTask.timezone,
               )}
                 </p>
-  
+
                 <p>时区：{selectedTask.timezone}</p>
-  
+
                 {selectedTask.tags.length > 0 && (
               <p>
                 {selectedTask.tags
@@ -831,7 +905,7 @@ import {
                   .join(" ")}
               </p>
                 )}
-  
+
                 {selectedTask.completed_at && (
               <p>
                 完成时间：
@@ -842,15 +916,15 @@ import {
               </p>
                 )}
 
-                <button
+                {!isArchivedMode && <button
                   className="secondary-button"
                   disabled={updatingStatus}
                   onClick={() => beginEditing(selectedTask)}
                 >
                   编辑任务
-                </button>
+                </button>}
 
-                {taskActions.includes("start") && (
+                {!isArchivedMode && taskActions.includes("start") && (
                   <button
                     className="secondary-button"
                     disabled={updatingStatus}
@@ -860,7 +934,7 @@ import {
                   </button>
                 )}
 
-                {taskActions.includes("complete") && (
+                {!isArchivedMode && taskActions.includes("complete") && (
                   <button
                     className="secondary-button"
                     disabled={updatingStatus}
@@ -870,7 +944,7 @@ import {
                   </button>
                 )}
 
-                {taskActions.includes("cancel") && (
+                {!isArchivedMode && taskActions.includes("cancel") && (
                   <button
                     className="secondary-button"
                     disabled={updatingStatus}
@@ -880,12 +954,24 @@ import {
                   </button>
                 )}
 
+              {!isArchivedMode && (
+                <button className="secondary-button" disabled={updatingStatus || archiving} onClick={() => void handleArchiveTask()}>
+                  {archiving ? "归档中…" : "归档"}
+                </button>
+              )}
+
+              {isArchivedMode && (
+                <button className="secondary-button" disabled={restoring} onClick={() => void handleRestoreTask()}>
+                  {restoring ? "恢复中…" : "恢复"}
+                </button>
+              )}
+
               <button
                 className="secondary-button"
                 disabled={updatingStatus}
                 onClick={handleCloseTask}
               >
-                返回任务列表
+                {isArchivedMode ? "返回归档列表" : "返回任务列表"}
               </button>
               </>
             )}
@@ -898,7 +984,7 @@ import {
             {showCreate && (
               <section className="memory-message">
                 <h2>创建任务</h2>
-  
+
                 <input
                   placeholder="任务标题"
                   value={title}
@@ -908,7 +994,7 @@ import {
                     setActionError("");
                   }}
                 />
-  
+
                 <textarea
                   placeholder="任务说明"
                   value={description}
@@ -918,7 +1004,7 @@ import {
                     setActionError("");
                   }}
                 />
-  
+
                 <select
                   value={priority}
                   disabled={creating}
@@ -933,7 +1019,7 @@ import {
                   <option value="high">高优先级</option>
                   <option value="urgent">紧急</option>
                 </select>
-  
+
                 <div className="task-due-field">
                   <NativeDateInput
                     type="datetime-local"
@@ -972,7 +1058,7 @@ import {
                     setActionError("");
                   }}
                 />
-  
+
                 <button
                   className="secondary-button"
                   disabled={creating || createInvalid}
@@ -982,17 +1068,17 @@ import {
                 </button>
               </section>
             )}
-  
+
             {state.status === "ready" &&
               state.tasks.length > 0 && (
                 <>
                   <section className="memory-message">
-                    <h2>任务列表</h2>
+                    <h2>{isArchivedMode ? "已归档任务" : "任务列表"}</h2>
                     <p>
                       共 {state.count} 项，按截止时间排列。
                     </p>
                   </section>
-  
+
                   <section className="memory-grid">
                     {state.tasks.map((task) => (
                       <article
@@ -1003,20 +1089,20 @@ import {
                           <span>
                             {statusLabels[task.status]}
                           </span>
-  
+
                           <span>
                             {priorityLabels[task.priority]}
                           </span>
                         </div>
-  
+
                         <h2>{task.title}</h2>
-  
+
                         <p>
                           {task.description.length > 160
                             ? `${task.description.slice(0, 160)}…`
                             : task.description}
                         </p>
-  
+
                         <p>
                           截止：
                           {formatDueTime(
@@ -1024,7 +1110,7 @@ import {
                             task.timezone,
                           )}
                         </p>
-  
+
                         {task.tags.length > 0 && (
                           <p>
                             {task.tags
@@ -1032,15 +1118,13 @@ import {
                               .join(" ")}
                           </p>
                         )}
-  
+
                         <button
                           className="secondary-button"
                           disabled={
                             loadingTaskId.length > 0
                           }
-                          onClick={() =>
-                            handleReadTask(task.id)
-                          }
+                          onClick={() => isArchivedMode ? openArchivedTaskDetail(task.id) : handleReadTask(task.id)}
                         >
                           {loadingTaskId === task.id
                             ? "读取中…"
@@ -1051,18 +1135,18 @@ import {
                   </section>
                 </>
               )}
-  
+
             {state.status === "ready" &&
               state.tasks.length === 0 && (
                 <TaskMessage
-                  title={filters.q || filters.status || filters.priority || filters.tag || filters.due ? "没有符合条件的任务" : "还没有任务"}
-                  description={filters.q || filters.status || filters.priority || filters.tag || filters.due ? "试试清除搜索或筛选条件。" : "创建第一个任务后，它会显示在这里。"}
+                  title={isArchivedMode ? "还没有归档任务" : filters.q || filters.status || filters.priority || filters.tag || filters.due ? "没有符合条件的任务" : "还没有任务"}
+                  description={isArchivedMode ? "归档的任务会显示在这里。" : filters.q || filters.status || filters.priority || filters.tag || filters.due ? "试试清除搜索或筛选条件。" : "创建第一个任务后，它会显示在这里。"}
                   action={filters.q || filters.status || filters.priority || filters.tag || filters.due ? <button className="secondary-button" onClick={clearFilters}>清除筛选</button> : undefined}
                 />
               )}
-  
+
             {state.status === "loading" && <TaskLoading />}
-  
+
             {state.status === "error" && (
               <TaskMessage
                 title="暂时无法读取任务"
@@ -1084,7 +1168,7 @@ import {
       </div>
     );
   }
-  
+
   function TaskLoading() {
     return (
       <section className="memory-grid">
@@ -1113,7 +1197,7 @@ import {
       </section>
     );
   }
-  
+
   function TaskMessage({
     action,
     description,
@@ -1128,10 +1212,10 @@ import {
         <div className="placeholder-icon">
           <TaskIcon />
         </div>
-  
+
         <h2>{title}</h2>
         <p>{description}</p>
-  
+
         {action}
       </section>
     );

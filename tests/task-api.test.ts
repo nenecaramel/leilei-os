@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import express from "express";
 import type { Request, Response } from "express";
 import {
+  createArchiveTaskApiHandler,
   createCreateTaskApiHandler,
+  createListArchivedTasksApiHandler,
   createListTasksApiHandler,
+  createReadArchivedTaskApiHandler,
+  createRestoreTaskApiHandler,
+  createTaskApiRouter,
   createUpdateTaskApiHandler,
   createUpdateTaskStatusApiHandler,
 } from "../src/web-api/task-router.js";
@@ -238,4 +244,132 @@ test("task edit api forwards only editable fields and preserves identity from co
     tags: ["项目"],
   }]);
   assert.deepEqual(result.body, { success: true, data: task });
+});
+
+test("Task archived API handlers preserve authenticated identity and lifecycle methods", async () => {
+  const calls: unknown[] = [];
+  const service = {
+    async listArchivedTasks(input: unknown) {
+      calls.push(["list", input]);
+      return { tasks: [task], metadata: { count: 1 } };
+    },
+    async readArchivedTask(input: unknown) {
+      calls.push(["detail", input]);
+      return task;
+    },
+    async archiveTask(input: unknown) {
+      calls.push(["archive", input]);
+    },
+    async restoreTask(input: unknown) {
+      calls.push(["restore", input]);
+    },
+  };
+
+  for (const [handler, request] of [
+    [createListArchivedTasksApiHandler({ taskService: service as never }), { webUserId: "user-1" }],
+    [createReadArchivedTaskApiHandler({ taskService: service as never }), { webUserId: "user-1", params: { id: "task-1" } }],
+    [createArchiveTaskApiHandler({ taskService: service as never }), { webUserId: "user-1", params: { id: "task-1" } }],
+    [createRestoreTaskApiHandler({ taskService: service as never }), { webUserId: "user-1", params: { id: "task-1" } }],
+  ] as const) {
+    const { response } = responseRecorder();
+    await handler(request as unknown as Request, response, () => {});
+  }
+
+  assert.deepEqual(calls, [
+    ["list", { userId: "user-1" }],
+    ["detail", { userId: "user-1", id: "task-1" }],
+    ["archive", { userId: "user-1", id: "task-1" }],
+    ["restore", { userId: "user-1", id: "task-1" }],
+  ]);
+});
+
+for (const code of ["TASK_NOT_FOUND", "USER_DISABLED", "USER_NOT_FOUND"] as const) {
+  test(`Task lifecycle API safely maps ${code}`, async () => {
+    const handler = createArchiveTaskApiHandler({
+      taskService: {
+        async archiveTask() {
+          throw new TaskDomainError(code, "private internal details");
+        },
+      } as never,
+    });
+    const { result, response } = responseRecorder();
+    await handler({
+      webUserId: "user-1",
+      params: { id: "task-1" },
+    } as unknown as Request, response, () => {});
+    assert.equal(result.status, code === "TASK_NOT_FOUND" ? 404 : 403);
+    assert.doesNotMatch(JSON.stringify(result.body), /private internal details/);
+  });
+}
+
+test("Task lifecycle endpoints reject unauthenticated requests before service calls", async () => {
+  let calls = 0;
+  const handler = createRestoreTaskApiHandler({
+    taskService: {
+      async restoreTask() {
+        calls += 1;
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+  await handler({ params: { id: "task-1" } } as unknown as Request, response, () => {});
+  assert.equal(result.status, 401);
+  assert.equal(calls, 0);
+});
+
+test("Task archived routes take precedence over /:id and no permanent-delete route exists", async () => {
+  const calls: string[] = [];
+  const app = express();
+  app.use((request, _response, next) => {
+    request.webUserId = "user-1";
+    next();
+  });
+  app.use("/task", createTaskApiRouter({
+    taskService: {
+      async listArchivedTasks() {
+        calls.push("archived-list");
+        return { tasks: [], metadata: { count: 0 } };
+      },
+      async readArchivedTask({ id }) {
+        calls.push(`archived-detail:${id}`);
+        return task;
+      },
+      async readTask({ id }) {
+        calls.push(`active-detail:${id}`);
+        return task;
+      },
+      async restoreTask({ id }) {
+        calls.push(`restore:${id}`);
+      },
+      async archiveTask({ id }) {
+        calls.push(`archive:${id}`);
+      },
+    } as never,
+  }));
+  const server = app.listen(0, "127.0.0.1");
+  try {
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const base = `http://127.0.0.1:${address.port}/task`;
+    assert.equal((await fetch(`${base}/archived`)).status, 200);
+    assert.equal((await fetch(`${base}/archived/task-1`)).status, 200);
+    assert.equal((await fetch(`${base}/archived/task-1/restore`, {
+      method: "POST",
+    })).status, 200);
+    assert.equal((await fetch(`${base}/task-1`, { method: "DELETE" })).status, 200);
+    assert.equal((await fetch(`${base}/task-1/permanent`, {
+      method: "DELETE",
+    })).status, 404);
+    assert.deepEqual(calls, [
+      "archived-list",
+      "archived-detail:task-1",
+      "restore:task-1",
+      "archive:task-1",
+    ]);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
 });

@@ -54,6 +54,11 @@ export const taskStatusEnum = pgEnum("task_status", [
   "cancelled",
 ]);
 
+export const taskLifecycleStatusEnum = pgEnum("task_lifecycle_status", [
+  "active",
+  "archived",
+]);
+
 export const taskPriorityEnum = pgEnum("task_priority", [
   "low",
   "normal",
@@ -393,6 +398,9 @@ export const tasks = pgTable(
     title: varchar("title", { length: 200 }).notNull(),
     description: text("description").notNull(),
     status: taskStatusEnum("status").default("pending").notNull(),
+    lifecycleStatus: taskLifecycleStatusEnum("lifecycle_status")
+      .default("active")
+      .notNull(),
     priority: taskPriorityEnum("priority").default("normal").notNull(),
     dueTime: timestamp("due_time", { withTimezone: true }),
     timezone: varchar("timezone", { length: 64 }).notNull(),
@@ -413,6 +421,13 @@ export const tasks = pgTable(
       table.userId,
       table.status,
       table.dueTime,
+    ),
+    index("tasks_user_lifecycle_due_created_idx").on(
+      table.userId,
+      table.lifecycleStatus,
+      table.dueTime,
+      table.createdAt.desc(),
+      table.id,
     ),
     index("tasks_user_due_idx").on(table.userId, table.dueTime),
     index("tasks_user_created_idx").on(

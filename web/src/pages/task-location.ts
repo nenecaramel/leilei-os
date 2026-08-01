@@ -57,17 +57,81 @@ export function readTaskFilters(search: string): TaskFilters {
 export function getTaskDetailLocation(search: string): {
   taskId: string | null;
   returnTo: string;
+  activeReturnTo: string;
+  archived: boolean;
 } {
   const parameters = new URLSearchParams(search);
   const taskCandidate = parameters.get("task")?.trim() ?? "";
   const taskId = TASK_ID_PATTERN.test(taskCandidate)
     ? taskCandidate
     : null;
+  const archived = parameters.get("archived") === "1";
+  const archivedDetail = archived && taskId !== null;
+  const returnTo = archivedDetail
+    ? getSafeTaskArchiveReturnTo(parameters.get("returnTo"))
+    : getSafeTaskReturnTo(parameters.get("returnTo"));
 
   return {
     taskId,
+    returnTo,
+    activeReturnTo: archivedDetail
+      ? getTaskArchiveLocation(new URL(returnTo, "https://leilei-os.invalid").search).returnTo
+      : returnTo,
+    archived,
+  };
+}
+
+export function createTaskArchiveLocation(returnTo = "/task"): string {
+  const parameters = new URLSearchParams();
+  parameters.set("archived", "1");
+  const safe = getSafeTaskReturnTo(returnTo);
+  if (safe !== "/task") parameters.set("returnTo", safe);
+  return `/task?${parameters.toString()}`;
+}
+
+export function createArchivedTaskDetailLocation(taskId: string, returnTo = "/task?archived=1"): string {
+  const parameters = new URLSearchParams();
+  parameters.set("archived", "1");
+  parameters.set("task", taskId);
+  parameters.set("returnTo", getSafeTaskArchiveReturnTo(returnTo));
+  return `/task?${parameters.toString()}`;
+}
+
+export function getTaskArchiveLocation(search: string): {
+  archived: boolean;
+  returnTo: string;
+} {
+  const parameters = new URLSearchParams(search);
+  return {
+    archived:
+      parameters.get("archived") === "1" &&
+      !parameters.has("task"),
     returnTo: getSafeTaskReturnTo(parameters.get("returnTo")),
   };
+}
+
+export function getSafeTaskArchiveReturnTo(value: string | null): string {
+  if (!value) return createTaskArchiveLocation("/task");
+
+  try {
+    const parsed = new URL(value, "https://leilei-os.invalid");
+    const keys = [...parsed.searchParams.keys()];
+    if (
+      parsed.origin !== "https://leilei-os.invalid" ||
+      parsed.pathname !== "/task" ||
+      keys.some((key) => !["archived", "returnTo"].includes(key)) ||
+      parsed.searchParams.getAll("archived").length !== 1 ||
+      parsed.searchParams.get("archived") !== "1" ||
+      parsed.searchParams.getAll("returnTo").length > 1
+    ) {
+      return createTaskArchiveLocation("/task");
+    }
+    return createTaskArchiveLocation(
+      getSafeTaskReturnTo(parsed.searchParams.get("returnTo")),
+    );
+  } catch {
+    return createTaskArchiveLocation("/task");
+  }
 }
 
 export function createTaskDetailLocation(
@@ -92,8 +156,15 @@ export function getSafeTaskReturnTo(value: string | null): string {
       return "/task";
     }
 
-    parsed.searchParams.delete("task");
-    parsed.searchParams.delete("returnTo");
+    const allowed = new Set([
+      "q", "status", "priority", "tag", "due", "due_from", "due_to",
+    ]);
+    if (
+      [...parsed.searchParams.keys()].some((key) => !allowed.has(key)) ||
+      [...allowed].some((key) => parsed.searchParams.getAll(key).length > 1)
+    ) {
+      return "/task";
+    }
     return `${parsed.pathname}${parsed.search}`;
   } catch {
     return "/task";

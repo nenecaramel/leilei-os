@@ -48,6 +48,10 @@ import {
         timezone?: string;
         tags?: readonly string[];
       }): Promise<TaskEntryResult>;
+      listArchivedTasks?(input: { userId: string; limit?: number }): Promise<ListTasksResult>;
+      readArchivedTask?(input: { userId: string; id: string }): Promise<TaskEntryResult>;
+      archiveTask?(input: { userId: string; id: string }): Promise<void>;
+      restoreTask?(input: { userId: string; id: string }): Promise<void>;
     };
   };
   
@@ -56,9 +60,13 @@ import {
   ): Router {
     const router = Router();
   
+    router.get("/archived", createListArchivedTasksApiHandler(dependencies));
+    router.get("/archived/:id", createReadArchivedTaskApiHandler(dependencies));
+    router.post("/archived/:id/restore", createRestoreTaskApiHandler(dependencies));
     router.get("/", createListTasksApiHandler(dependencies));
     router.get("/:id", createReadTaskApiHandler(dependencies));
     router.post("/", createCreateTaskApiHandler(dependencies));
+    router.delete("/:id", createArchiveTaskApiHandler(dependencies));
     router.patch("/:id", createUpdateTaskApiHandler(dependencies));
     router.patch(
       "/:id/status",
@@ -66,6 +74,38 @@ import {
     );
   
     return router;
+  }
+
+  export function createListArchivedTasksApiHandler(dependencies: TaskApiDependencies): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) return sendUnauthorized(response);
+      try { response.json({ success: true, data: await dependencies.taskService.listArchivedTasks!({ userId: request.webUserId }) }); }
+      catch (error) { sendTaskError(response, error); }
+    };
+  }
+
+  export function createReadArchivedTaskApiHandler(dependencies: TaskApiDependencies): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) return sendUnauthorized(response);
+      try { response.json({ success: true, data: await dependencies.taskService.readArchivedTask!({ userId: request.webUserId, id: getRouteParam(request.params.id) }) }); }
+      catch (error) { sendTaskError(response, error); }
+    };
+  }
+
+  export function createArchiveTaskApiHandler(dependencies: TaskApiDependencies): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) return sendUnauthorized(response);
+      try { await dependencies.taskService.archiveTask!({ userId: request.webUserId, id: getRouteParam(request.params.id) }); response.json({ success: true, data: {} }); }
+      catch (error) { sendTaskError(response, error); }
+    };
+  }
+
+  export function createRestoreTaskApiHandler(dependencies: TaskApiDependencies): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) return sendUnauthorized(response);
+      try { await dependencies.taskService.restoreTask!({ userId: request.webUserId, id: getRouteParam(request.params.id) }); response.json({ success: true, data: {} }); }
+      catch (error) { sendTaskError(response, error); }
+    };
   }
   
   export function createListTasksApiHandler(

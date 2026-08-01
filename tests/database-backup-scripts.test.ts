@@ -158,7 +158,7 @@ test("encrypted backup and local temporary restore verification work with fake P
   const match = backup.stdout.match(/Encrypted backup created: (.+)/);
   assert.ok(match);
   const backupFile = match[1].trim();
-  assert.match(backupFile, /_\d{8}T\d{6}Z_0010_many_nico_minoru\.backup\.enc$/);
+  assert.match(backupFile, /_\d{8}T\d{6}Z_0011_clever_lifeguard\.backup\.enc$/);
   assert.equal(readFileSync(`${backupFile}.sha256`, "utf8").split(/\s+/)[0].length, 64);
 
   const restore = run(restoreScript, {

@@ -8,8 +8,12 @@ import {
   TaskPageContent,
 } from "../web/src/pages/TaskPage.js";
 import {
+  createArchivedTaskDetailLocation,
+  createTaskArchiveLocation,
   createTaskDetailLocation,
 } from "../web/src/pages/task-location.js";
+import { readTaskFilterHistorySnapshot } from "../web/src/pages/task-filter-history.js";
+import { buildTaskListRequest } from "../web/src/pages/task-list-request.js";
 import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 type RequestRecord = {
@@ -24,6 +28,13 @@ type Deferred<T> = {
 };
 
 const TASK_ID = "task-123";
+const FILTERED_TASK_LIST =
+  "/task?q=abc&status=pending&priority=high&tag=work&due=custom&due_from=2026-07-29&due_to=2026-08-05";
+const FILTERED_TASK_REQUEST = buildTaskListRequest(
+  readTaskFilterHistorySnapshot(
+    new URL(FILTERED_TASK_LIST, "https://leilei-os.test").search,
+  ),
+).url;
 const TASK_RESPONSE = {
   success: true as const,
   data: {
@@ -168,6 +179,34 @@ test("Task filter heading appears in list mode and not detail mode", async () =>
   }
 });
 
+test("normal Task list keeps header action order, exact summary, and read-only cards", async () => {
+  const { api } = createApi(async () => ({
+    success: true,
+    data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
+  }));
+  const page = await renderTaskPage("/task", api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const headerActions = page.container.querySelector(".page-header-actions");
+    assert.ok(headerActions);
+    assert.deepEqual(
+      [...headerActions.querySelectorAll("button")].map((button) => button.textContent),
+      ["查看归档", "新增任务"],
+    );
+    assert.match(page.container.textContent ?? "", /共 1 项，按截止时间排列。/);
+    const cards = page.container.querySelector(".memory-grid");
+    assert.ok(cards);
+    assert.equal(
+      [...cards.querySelectorAll("button")].some((button) => button.textContent === "归档"),
+      false,
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("direct detail load renders a detail placeholder first and skips the list request", async () => {
   const detail = deferred<unknown>();
   const { api, requests } = createApi(() => detail.promise);
@@ -201,6 +240,197 @@ test("detail success replaces the placeholder with the requested task", async ()
     });
     assert.match(page.container.textContent ?? "", /详情任务/);
     assertNoListView(page.container);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("active Task detail keeps lifecycle action order and hides archive while editing", async () => {
+  const { api } = createApi(async () => TASK_RESPONSE);
+  const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const labels = [...page.container.querySelectorAll("button")]
+      .map((button) => button.textContent);
+    assert.equal(labels.filter((label) => label === "返回任务列表").length, 2);
+    assert.ok(labels.indexOf("归档") < labels.lastIndexOf("返回任务列表"));
+    for (const expected of ["编辑任务", "开始任务", "取消任务", "归档"]) {
+      assert.ok(labels.includes(expected));
+    }
+    const edit = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "编辑任务");
+    assert.ok(edit);
+    await React.act(async () => {
+      edit.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    const editingLabels = [...page.container.querySelectorAll("button")]
+      .map((button) => button.textContent);
+    assert.ok(editingLabels.includes("保存修改"));
+    assert.ok(editingLabels.includes("取消"));
+    assert.equal(editingLabels.includes("归档"), false);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("archived Task list shows exact summary and no lifecycle or business actions", async () => {
+  const archivedTask = {
+    ...TASK_RESPONSE.data,
+    lifecycle_status: "archived" as const,
+  };
+  const { api, requests } = createApi(async () => ({
+    success: true,
+    data: { tasks: [archivedTask], metadata: { count: 1 } },
+  }));
+  const page = await renderTaskPage(createTaskArchiveLocation("/task?q=abc"), api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(requests[0]?.path, "/task/archived");
+    assert.match(page.container.textContent ?? "", /已归档任务/);
+    assert.match(page.container.textContent ?? "", /共 1 项，按截止时间排列。/);
+    const labels = [...page.container.querySelectorAll("button")]
+      .map((button) => button.textContent);
+    for (const forbidden of [
+      "编辑任务", "开始任务", "完成任务", "取消任务",
+      "归档", "恢复", "永久删除",
+    ]) {
+      assert.equal(labels.includes(forbidden), false);
+    }
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("filtered active list enters archive and returns with exact URL, controls, and request", async () => {
+  const { api, requests } = createApi(async () => ({
+    success: true,
+    data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
+  }));
+  const page = await renderTaskPage(FILTERED_TASK_LIST, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const archive = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看归档");
+    assert.ok(archive);
+    await React.act(async () => {
+      archive.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(requests.at(-1)?.path, "/task/archived");
+
+    const back = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "返回任务列表");
+    assert.ok(back);
+    await React.act(async () => {
+      back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      FILTERED_TASK_LIST,
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"搜索任务\"]",
+      )?.value,
+      "abc",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLSelectElement>(
+        "select[aria-label=\"状态筛选\"]",
+      )?.value,
+      "pending",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"标签筛选\"]",
+      )?.value,
+      "work",
+    );
+    assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("refreshed archived list returns with exact active filter state and request", async () => {
+  const archivedLocation = createTaskArchiveLocation(FILTERED_TASK_LIST);
+  const { api, requests } = createApi(async () => ({
+    success: true,
+    data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
+  }));
+  const page = await renderTaskPage(archivedLocation, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(requests[0]?.path, "/task/archived");
+    const back = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "返回任务列表");
+    assert.ok(back);
+    await React.act(async () => {
+      back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      FILTERED_TASK_LIST,
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"搜索任务\"]",
+      )?.value,
+      "abc",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"标签筛选\"]",
+      )?.value,
+      "work",
+    );
+    assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("archived detail return keeps the archived list and original active return chain", async () => {
+  const archivedLocation = createTaskArchiveLocation(FILTERED_TASK_LIST);
+  const archivedDetail = createArchivedTaskDetailLocation(
+    TASK_ID,
+    archivedLocation,
+  );
+  const { api, requests } = createApi(async (path) =>
+    path === `/task/archived/${TASK_ID}`
+      ? { ...TASK_RESPONSE, data: { ...TASK_RESPONSE.data, lifecycle_status: "archived" } }
+      : {
+        success: true,
+        data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
+      }
+  );
+  const page = await renderTaskPage(archivedDetail, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const back = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "返回归档列表");
+    assert.ok(back);
+    await React.act(async () => {
+      back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      archivedLocation,
+    );
+    assert.equal(requests.at(-1)?.path, "/task/archived");
   } finally {
     await page.cleanup();
   }
@@ -383,6 +613,145 @@ test("popstate switches between list and detail without rendering the wrong view
       ),
     );
     assert.equal(requests.at(-1)?.path, "/task?q=report&status=pending");
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("active detail archive confirmation cancellation sends no request", async () => {
+  const { api, requests } = createApi(async () => TASK_RESPONSE);
+  const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
+  let confirmations = 0;
+  page.window.confirm = () => confirmations++ > 0;
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const archive = [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === "归档");
+    assert.ok(archive);
+    await React.act(async () => {
+      archive.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(
+      requests.filter((request) => request.init?.method === "DELETE").length,
+      0,
+    );
+    await React.act(async () => {
+      archive.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(
+      requests.filter((request) => request.init?.method === "DELETE").length,
+      1,
+      "cancelling confirmation must release the archive gate",
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("active detail archive is strict single-flight and restores the exact filtered list", async () => {
+  const archive = deferred<unknown>();
+  const { api, requests } = createApi((path, init) => {
+    if (init?.method === "DELETE") return archive.promise;
+    return Promise.resolve(TASK_RESPONSE);
+  });
+  const returnTo = FILTERED_TASK_LIST;
+  const page = await renderTaskPage(createTaskDetailLocation(TASK_ID, returnTo), api);
+  page.window.confirm = () => true;
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const button = [...page.container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "归档");
+    assert.ok(button);
+    await React.act(async () => {
+      button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(
+      requests.filter((request) => request.init?.method === "DELETE").length,
+      1,
+    );
+    await React.act(async () => {
+      archive.resolve({ success: true, data: {} });
+      await archive.promise;
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      returnTo,
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("archived detail restore is strict single-flight and returns to the exact active origin", async () => {
+  const restore = deferred<unknown>();
+  const archivedResponse = {
+    ...TASK_RESPONSE,
+    data: {
+      ...TASK_RESPONSE.data,
+      status: "completed" as const,
+      completed_at: "2026-07-29T04:00:00.000Z",
+      allowed_actions: [] as const,
+      lifecycle_status: "archived" as const,
+    },
+  };
+  const { api, requests } = createApi((path, init) => {
+    if (init?.method === "POST") return restore.promise;
+    return Promise.resolve(archivedResponse);
+  });
+  const active = FILTERED_TASK_LIST;
+  const archivedList = createTaskArchiveLocation(active);
+  const detail = createArchivedTaskDetailLocation(TASK_ID, archivedList);
+  const page = await renderTaskPage(detail, api);
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.match(page.container.textContent ?? "", /完成时间/);
+    const labels = [...page.container.querySelectorAll("button")]
+      .map((candidate) => candidate.textContent);
+    for (const forbidden of [
+      "编辑任务", "开始任务", "完成任务", "取消任务", "归档",
+    ]) {
+      assert.equal(labels.includes(forbidden), false);
+    }
+    const button = [...page.container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "恢复");
+    assert.ok(button);
+    await React.act(async () => {
+      button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(
+      requests.filter((request) => request.init?.method === "POST").length,
+      1,
+    );
+    await React.act(async () => {
+      restore.resolve({ success: true, data: {} });
+      await restore.promise;
+    });
+    assert.equal(
+      `${page.window.location.pathname}${page.window.location.search}`,
+      active,
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"搜索任务\"]",
+      )?.value,
+      "abc",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        "input[aria-label=\"标签筛选\"]",
+      )?.value,
+      "work",
+    );
+    assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
   } finally {
     await page.cleanup();
   }
