@@ -16,6 +16,24 @@ export type RecordLifecycleEventInput = {
   metadata: Record<string, unknown>;
 };
 
+export type LifecycleMutationInput = {
+  id: string;
+  userId: string;
+  actorType: LifecycleActorType;
+  channel: LifecycleChannel;
+};
+
+export const WEB_USER_LIFECYCLE_CONTEXT = {
+  actorType: "user",
+  channel: "web",
+} as const satisfies Pick<LifecycleMutationInput, "actorType" | "channel">;
+
+export function createLifecycleAuditEvent(
+  input: Omit<RecordLifecycleEventInput, "metadata">,
+): RecordLifecycleEventInput {
+  return { ...input, metadata: {} };
+}
+
 type Database = ReturnType<typeof createDatabase>["db"];
 export type LifecycleTransaction = Parameters<
   Parameters<Database["transaction"]>[0]

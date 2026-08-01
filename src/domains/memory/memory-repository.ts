@@ -15,10 +15,10 @@ import {
   type memoryCategoryEnum,
 } from "../../database/schema.js";
 import {
+  createLifecycleAuditEvent,
   DrizzleLifecycleAuditPersistence,
-  type LifecycleActorType,
   type LifecycleAuditPersistence,
-  type LifecycleChannel,
+  type LifecycleMutationInput,
 } from "../lifecycle/lifecycle-audit-repository.js";
 
 export type MemoryCategory = (typeof memoryCategoryEnum.enumValues)[number];
@@ -75,12 +75,7 @@ export type UpdateMemoryInput = {
   tags?: string[];
 };
 
-export type MemoryLifecycleMutationInput = {
-  id: string;
-  userId: string;
-  actorType: LifecycleActorType;
-  channel: LifecycleChannel;
-};
+export type MemoryLifecycleMutationInput = LifecycleMutationInput;
 
 export interface MemoryRepository {
   findUserById(userId: string): Promise<MemoryUserRecord | null>;
@@ -391,15 +386,14 @@ export class DrizzleMemoryRepository implements MemoryRepository {
 
       if (archived.length !== 1) return false;
 
-      await this.lifecycleAudit.record(transaction, {
+      await this.lifecycleAudit.record(transaction, createLifecycleAuditEvent({
         userId: input.userId,
         resourceType: "memory",
         resourceId: archived[0]!.id,
         action: "archive",
         actorType: input.actorType,
         channel: input.channel,
-        metadata: {},
-      });
+      }));
       return true;
     });
   }
@@ -425,15 +419,14 @@ export class DrizzleMemoryRepository implements MemoryRepository {
 
       if (restored.length !== 1) return false;
 
-      await this.lifecycleAudit.record(transaction, {
+      await this.lifecycleAudit.record(transaction, createLifecycleAuditEvent({
         userId: input.userId,
         resourceType: "memory",
         resourceId: restored[0]!.id,
         action: "restore",
         actorType: input.actorType,
         channel: input.channel,
-        metadata: {},
-      });
+      }));
       return true;
     });
   }

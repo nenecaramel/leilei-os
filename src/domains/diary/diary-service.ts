@@ -7,6 +7,7 @@ import type {
   DiaryListQuery,
   NormalizedDiaryCreate,
 } from "./diary-repository.js";
+import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_CONTENT_LENGTH = 20_000;
@@ -269,8 +270,7 @@ export class DiaryService {
     const archived = await this.repository.archiveDiary({
       userId,
       id,
-      actorType: "user",
-      channel: "web",
+      ...WEB_USER_LIFECYCLE_CONTEXT,
     });
     if (!archived) {
       throw new DiaryDomainError(
@@ -293,8 +293,7 @@ export class DiaryService {
     const restored = await this.repository.restoreDiary({
       userId,
       id,
-      actorType: "user",
-      channel: "web",
+      ...WEB_USER_LIFECYCLE_CONTEXT,
     });
     if (!restored) {
       throw new DiaryDomainError(

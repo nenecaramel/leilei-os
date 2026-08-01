@@ -15,10 +15,10 @@ import {
   users,
 } from "../../database/schema.js";
 import {
+  createLifecycleAuditEvent,
   DrizzleLifecycleAuditPersistence,
-  type LifecycleActorType,
   type LifecycleAuditPersistence,
-  type LifecycleChannel,
+  type LifecycleMutationInput,
 } from "../lifecycle/lifecycle-audit-repository.js";
 
 export type DiaryUserRecord = {
@@ -83,12 +83,7 @@ export type UpdateDiaryInput = {
   mood: string | null;
 };
 
-export type DiaryLifecycleMutationInput = {
-  id: string;
-  userId: string;
-  actorType: LifecycleActorType;
-  channel: LifecycleChannel;
-};
+export type DiaryLifecycleMutationInput = LifecycleMutationInput;
 
 export type PersistDiaryResult =
   | { outcome: "created"; diary: DiaryRecord }
@@ -472,15 +467,14 @@ export class DrizzleDiaryRepository implements DiaryRepository {
 
       if (archived.length !== 1) return false;
 
-      await this.lifecycleAudit.record(transaction, {
+      await this.lifecycleAudit.record(transaction, createLifecycleAuditEvent({
         userId: input.userId,
         resourceType: "diary",
         resourceId: archived[0]!.id,
         action: "archive",
         actorType: input.actorType,
         channel: input.channel,
-        metadata: {},
-      });
+      }));
       return true;
     });
   }
@@ -505,15 +499,14 @@ export class DrizzleDiaryRepository implements DiaryRepository {
 
       if (restored.length !== 1) return false;
 
-      await this.lifecycleAudit.record(transaction, {
+      await this.lifecycleAudit.record(transaction, createLifecycleAuditEvent({
         userId: input.userId,
         resourceType: "diary",
         resourceId: restored[0]!.id,
         action: "restore",
         actorType: input.actorType,
         channel: input.channel,
-        metadata: {},
-      });
+      }));
       return true;
     });
   }
