@@ -277,6 +277,10 @@ import {
       editingWithoutDueTime !== (selectedTask.due_time === null) ||
       editingTags !== selectedTask.tags.join(", ")
     ));
+    const createDirtyRef = useRef(false);
+    const editDirtyRef = useRef(false);
+    createDirtyRef.current = createDirty;
+    editDirtyRef.current = editDirty;
     const dirtyRef = useRef(false);
     dirtyRef.current = createDirty || editDirty;
     const currentUrlRef = useRef(
@@ -285,11 +289,36 @@ import {
     currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
     useUnsavedChanges(createDirty || editDirty);
 
-    function canLeaveForm(): boolean {
-      return confirmUnsavedChanges(
+    function discardDraft(): void {
+      if (createDirtyRef.current) {
+        const nextDueTime = getDefaultDueTime();
+        initialDueTime.current = nextDueTime;
+        setTitle("");
+        setDescription("");
+        setPriority("normal");
+        setDueTime(nextDueTime);
+        setWithoutDueTime(false);
+        setTags("");
+        setShowCreate(false);
+      }
+      if (editDirtyRef.current) {
+        setEditing(false);
+        setEditingTitle("");
+        setEditingDescription("");
+        setEditingPriority("normal");
+        setEditingDueTime("");
+        setEditingWithoutDueTime(false);
+        setEditingTags("");
+      }
+    }
+
+    function confirmAndDiscardDraft(): boolean {
+      if (!confirmUnsavedChanges(
         dirtyRef.current,
         window.confirm.bind(window),
-      );
+      )) return false;
+      if (dirtyRef.current) discardDraft();
+      return true;
     }
 
     function invalidateMutationContext(clearUi = true): void {
@@ -359,7 +388,7 @@ import {
 
     useEffect(() => {
       return subscribeToTaskFilterHistory(window, (restoredFilters) => {
-        if (!canLeaveForm()) {
+        if (!confirmAndDiscardDraft()) {
           window.history.pushState(null, "", currentUrlRef.current);
           return;
         }
@@ -599,7 +628,7 @@ import {
     }
 
     function openTaskDetail(id: string, skipSafety = false) {
-      if (!skipSafety && !canLeaveForm()) return;
+      if (!skipSafety && !confirmAndDiscardDraft()) return;
       if (!skipSafety) invalidateMutationContext();
       const returnTo = `${window.location.pathname}${window.location.search}`;
       const detailLocation = createTaskDetailLocation(id, returnTo);
@@ -692,7 +721,7 @@ import {
     }
 
     function handleCloseTask(skipSafety = false) {
-      if (!skipSafety && !canLeaveForm()) return;
+      if (!skipSafety && !confirmAndDiscardDraft()) return;
       if (!skipSafety) invalidateMutationContext();
       if (isArchivedMode) {
         returnToArchivedTaskList(taskLocation.returnTo);
@@ -821,15 +850,20 @@ import {
             ) : (
               <div className="page-header-actions">
                 <button className="secondary-button" disabled={creating || updating} onClick={() => {
-                  if (!canLeaveForm()) return;
+                  if (!confirmAndDiscardDraft()) return;
                   invalidateMutationContext();
                   window.history.pushState(null, "", createTaskArchiveLocation(`${window.location.pathname}${window.location.search}`));
                   setTaskLocation(initialTaskLocation());
                 }}>查看归档</button>
                 <button className="secondary-button" disabled={creating || updating} onClick={() => {
-                  if (!canLeaveForm()) return;
-                  invalidateMutationContext();
-                  setShowCreate((value) => !value); setActionError("");
+                  if (showCreate) {
+                    if (!confirmAndDiscardDraft()) return;
+                    invalidateMutationContext();
+                    setShowCreate(false);
+                  } else {
+                    setShowCreate(true);
+                  }
+                  setActionError("");
                 }}>{showCreate ? "取消新增" : "新增任务"}</button>
               </div>
             )
@@ -950,7 +984,7 @@ import {
                   className="secondary-button"
                   disabled={updating}
                   onClick={() => {
-                    if (!canLeaveForm()) return;
+                    if (!confirmAndDiscardDraft()) return;
                     invalidateMutationContext();
                     setEditing(false);
                     setActionError("");

@@ -241,6 +241,10 @@ export function MemoryPageContent({
       editingTags !== detailState.memory.tags.join(", ")
     ),
   );
+  const createDirtyRef = useRef(false);
+  const editDirtyRef = useRef(false);
+  createDirtyRef.current = createDirty;
+  editDirtyRef.current = editDirty;
   const dirtyRef = useRef(false);
   dirtyRef.current = createDirty || editDirty;
   const currentUrlRef = useRef(
@@ -249,11 +253,28 @@ export function MemoryPageContent({
   currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
   useUnsavedChanges(createDirty || editDirty);
 
-  function canLeaveForm(): boolean {
-    return confirmUnsavedChanges(
+  function discardDraft(): void {
+    if (createDirtyRef.current) {
+      setCategory("profile");
+      setKey("");
+      setContent("");
+      setTags("");
+      setShowCreate(false);
+    }
+    if (editDirtyRef.current) {
+      setEditingId("");
+      setEditingContent("");
+      setEditingTags("");
+    }
+  }
+
+  function confirmAndDiscardDraft(): boolean {
+    if (!confirmUnsavedChanges(
       dirtyRef.current,
       window.confirm.bind(window),
-    );
+    )) return false;
+    if (dirtyRef.current) discardDraft();
+    return true;
   }
 
   function invalidateMutationContext(clearUi = true): void {
@@ -307,7 +328,7 @@ export function MemoryPageContent({
   useEffect(() => subscribeToMemoryFilterHistory(
     window,
     (restoredFilters) => {
-      if (!canLeaveForm()) {
+      if (!confirmAndDiscardDraft()) {
         window.history.pushState(null, "", currentUrlRef.current);
         return;
       }
@@ -722,7 +743,7 @@ export function MemoryPageContent({
   }
 
   function openMemory(id: string): void {
-    if (!canLeaveForm()) return;
+    if (!confirmAndDiscardDraft()) return;
     invalidateMutationContext();
     const returnTo = createMemoryListLocation(filters);
     saveMemoryScrollPosition(
@@ -740,7 +761,7 @@ export function MemoryPageContent({
   }
 
   function closeMemory(skipSafety = false): void {
-    if (!skipSafety && !canLeaveForm()) return;
+    if (!skipSafety && !confirmAndDiscardDraft()) return;
     if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeMemoryReturnTo(location.returnTo);
     window.history.pushState(null, "", returnTo);
@@ -762,7 +783,7 @@ export function MemoryPageContent({
   }
 
   function openArchive(): void {
-    if (!canLeaveForm()) return;
+    if (!confirmAndDiscardDraft()) return;
     invalidateMutationContext();
     const returnTo = createMemoryListLocation(filters);
     saveMemoryScrollPosition(
@@ -938,9 +959,13 @@ export function MemoryPageContent({
               className="secondary-button"
               disabled={busy}
               onClick={() => {
-                if (!canLeaveForm()) return;
-                invalidateMutationContext();
-                setShowCreate((value) => !value);
+                if (showCreate) {
+                  if (!confirmAndDiscardDraft()) return;
+                  invalidateMutationContext();
+                  setShowCreate(false);
+                } else {
+                  setShowCreate(true);
+                }
                 setActionError("");
               }}
             >
@@ -980,7 +1005,7 @@ export function MemoryPageContent({
             setActionError("");
           }}
           onCancel={() => {
-            if (!canLeaveForm()) return;
+            if (!confirmAndDiscardDraft()) return;
             invalidateMutationContext();
             setEditingId("");
             setEditingContent("");

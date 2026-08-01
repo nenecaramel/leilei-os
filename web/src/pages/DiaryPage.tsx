@@ -186,6 +186,10 @@ export function DiaryPageContent({
     editingTags !== selectedDiary.tags.join(", ") ||
     editingMood !== (selectedDiary.mood ?? "")
   ));
+  const createDirtyRef = useRef(false);
+  const editDirtyRef = useRef(false);
+  createDirtyRef.current = createDirty;
+  editDirtyRef.current = editDirty;
   const dirtyRef = useRef(false);
   dirtyRef.current = createDirty || editDirty;
   const currentUrlRef = useRef(
@@ -194,11 +198,32 @@ export function DiaryPageContent({
   currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
   useUnsavedChanges(createDirty || editDirty);
 
-  function canLeaveForm(): boolean {
-    return confirmUnsavedChanges(
+  function discardDraft(): void {
+    if (createDirtyRef.current) {
+      setTitle("");
+      setContent("");
+      setDate(getToday());
+      setTags("");
+      setMood("");
+      setShowCreate(false);
+    }
+    if (editDirtyRef.current) {
+      setEditing(false);
+      setEditingTitle("");
+      setEditingContent("");
+      setEditingDate("");
+      setEditingTags("");
+      setEditingMood("");
+    }
+  }
+
+  function confirmAndDiscardDraft(): boolean {
+    if (!confirmUnsavedChanges(
       dirtyRef.current,
       window.confirm.bind(window),
-    );
+    )) return false;
+    if (dirtyRef.current) discardDraft();
+    return true;
   }
 
   function invalidateMutationContext(clearUi = true): void {
@@ -296,7 +321,7 @@ export function DiaryPageContent({
   }
 
   useEffect(() => subscribeToDiaryFilterHistory(window, (restored) => {
-    if (!canLeaveForm()) {
+    if (!confirmAndDiscardDraft()) {
       window.history.pushState(null, "", currentUrlRef.current);
       return;
     }
@@ -488,7 +513,7 @@ export function DiaryPageContent({
     commitFilters(EMPTY_DIARY_FILTERS);
   }
   function openDiary(id: string, skipSafety = false): void {
-    if (!skipSafety && !canLeaveForm()) return;
+    if (!skipSafety && !confirmAndDiscardDraft()) return;
     if (!skipSafety) invalidateMutationContext();
     const returnTo = `/diary${buildDiaryListRequest(filters).search}`;
     saveDiaryScrollPosition(
@@ -502,7 +527,7 @@ export function DiaryPageContent({
     setDetailState("loading");
   }
   function closeDiary(skipSafety = false): void {
-    if (!skipSafety && !canLeaveForm()) return;
+    if (!skipSafety && !confirmAndDiscardDraft()) return;
     if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeDiaryReturnTo(location.returnTo);
     window.history.pushState(null, "", returnTo);
@@ -523,7 +548,7 @@ export function DiaryPageContent({
   }
 
   function openArchive(): void {
-    if (!canLeaveForm()) return;
+    if (!confirmAndDiscardDraft()) return;
     invalidateMutationContext();
     const returnTo = `/diary${buildDiaryListRequest(filters).search}`;
     const next = createDiaryArchiveLocation(returnTo);
@@ -747,9 +772,13 @@ export function DiaryPageContent({
               className="secondary-button"
               disabled={creating || updating}
               onClick={() => {
-                if (!canLeaveForm()) return;
-                invalidateMutationContext();
-                setShowCreate((value) => !value);
+                if (showCreate) {
+                  if (!confirmAndDiscardDraft()) return;
+                  invalidateMutationContext();
+                  setShowCreate(false);
+                } else {
+                  setShowCreate(true);
+                }
                 setActionError("");
               }}
             >
@@ -804,7 +833,7 @@ export function DiaryPageContent({
           }}
           onEdit={beginEditing}
           onCancel={() => {
-            if (!canLeaveForm()) return;
+            if (!confirmAndDiscardDraft()) return;
             invalidateMutationContext();
             setEditing(false);
           }}

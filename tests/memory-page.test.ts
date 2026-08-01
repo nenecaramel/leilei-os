@@ -19,6 +19,21 @@ import {
 import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 type Request = { path: string; init?: RequestInit };
+type Deferred<T> = {
+  promise: Promise<T>;
+  reject(reason?: unknown): void;
+  resolve(value: T): void;
+};
+
+function deferred<T>(): Deferred<T> {
+  let reject!: (reason?: unknown) => void;
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 const memory = {
   id: "memory-1",
@@ -91,6 +106,9 @@ async function render(path: string, api: WebApiClient) {
   install("document", dom.window.document);
   install("navigator", dom.window.navigator);
   install("HTMLElement", dom.window.HTMLElement);
+  install("HTMLInputElement", dom.window.HTMLInputElement);
+  install("HTMLTextAreaElement", dom.window.HTMLTextAreaElement);
+  install("InputEvent", dom.window.InputEvent);
   install("Node", dom.window.Node);
   install("Event", dom.window.Event);
   install("MouseEvent", dom.window.MouseEvent);
@@ -98,6 +116,17 @@ async function render(path: string, api: WebApiClient) {
   install("sessionStorage", dom.window.sessionStorage);
   install("React", React);
   install("IS_REACT_ACT_ENVIRONMENT", true);
+  (dom.window.HTMLElement.prototype as unknown as {
+    attachEvent(name: string, listener: EventListener): void;
+    detachEvent(name: string, listener: EventListener): void;
+  }).attachEvent = function (name, listener) {
+    this.addEventListener(name.replace(/^on/, ""), listener);
+  };
+  (dom.window.HTMLElement.prototype as unknown as {
+    detachEvent(name: string, listener: EventListener): void;
+  }).detachEvent = function (name, listener) {
+    this.removeEventListener(name.replace(/^on/, ""), listener);
+  };
   dom.window.scrollTo = () => {};
   dom.window.requestAnimationFrame = (callback) =>
     dom.window.setTimeout(() => callback(Date.now()), 0);
@@ -1243,16 +1272,124 @@ test("Memory detail edit loads and submits existing tags", async () => {
       save.dispatchEvent(new page.window.MouseEvent("click", {
         bubbles: true,
       }));
+      save.dispatchEvent(new page.window.MouseEvent("click", {
+        bubbles: true,
+      }));
       await Promise.resolve();
     });
 
-    const update = requests.find(({ init }) => init?.method === "PATCH");
+    const updates = requests.filter(({ init }) => init?.method === "PATCH");
+    assert.equal(updates.length, 1);
+    const update = updates[0];
     assert.ok(update?.init?.body);
     assert.deepEqual(JSON.parse(String(update.init.body)), {
       id: "memory-1",
       content: memory.content,
       tags: ["MCP", "focus"],
     });
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory dirty create confirmation, retry gate, and stale completion are safe", async () => {
+  const first = deferred<unknown>();
+  const retry = deferred<unknown>();
+  const requests: Request[] = [];
+  let createAttempt = 0;
+  const api: WebApiClient = {
+    request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      if (init?.method === "POST") {
+        createAttempt += 1;
+        return (createAttempt === 1 ? first.promise : retry.promise) as Promise<T>;
+      }
+      if (path === "/memory/memory-1") {
+        return Promise.resolve({ success: true, data: memory } as T);
+      }
+      return Promise.resolve(listResponse() as T);
+    },
+  };
+  const page = await render("/memory?q=goal", api);
+  try {
+    const findButton = (label: string) => [...page.container.querySelectorAll("button")]
+      .find((button) => button.textContent === label);
+    await React.act(async () => {
+      findButton("新增记忆")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    const key = page.container.querySelector<HTMLInputElement>('input[placeholder="Key"]');
+    const content = page.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Content"]');
+    assert.ok(key && content);
+    await React.act(async () => {
+      key.focus();
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(key), "value")?.set?.call(key, "draft_key");
+      const keyChange = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(keyChange, "propertyName", { value: "value" });
+      key.dispatchEvent(keyChange);
+      content.focus();
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(content), "value")?.set?.call(content, "draft content");
+      const contentChange = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(contentChange, "propertyName", { value: "value" });
+      content.dispatchEvent(contentChange);
+    });
+
+    let confirmations = 0;
+    page.window.confirm = () => {
+      confirmations += 1;
+      return false;
+    };
+    await React.act(async () => {
+      findButton("取消新增")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(page.window.location.pathname + page.window.location.search, "/memory?q=goal");
+    assert.equal(key.value, "draft_key");
+    assert.equal(content.value, "draft content");
+
+    const save = findButton("保存");
+    assert.ok(save);
+    await React.act(async () => {
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 1);
+    await React.act(async () => {
+      first.reject(new Error("failed"));
+      await first.promise.catch(() => undefined);
+    });
+    assert.equal(key.value, "draft_key");
+    assert.equal(content.value, "draft content");
+
+    const retryButton = findButton("保存");
+    assert.ok(retryButton);
+    await React.act(async () => {
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 2);
+
+    page.window.confirm = () => {
+      confirmations += 1;
+      return true;
+    };
+    await React.act(async () => {
+      page.window.history.pushState(
+        null,
+        "",
+        createMemoryDetailLocation("memory-1", "/memory?q=goal"),
+      );
+      page.window.dispatchEvent(new page.window.PopStateEvent("popstate"));
+    });
+    assert.match(page.window.location.search, /memory=memory-1/);
+    assert.equal(page.container.querySelector('input[placeholder="Key"]'), null);
+    const unload = new page.window.Event("beforeunload", { cancelable: true });
+    assert.equal(page.window.dispatchEvent(unload), true);
+
+    await React.act(async () => {
+      retry.resolve({ success: true });
+      await retry.promise;
+    });
+    assert.match(page.window.location.search, /memory=memory-1/);
+    assert.equal(confirmations, 2);
   } finally {
     await page.cleanup();
   }
