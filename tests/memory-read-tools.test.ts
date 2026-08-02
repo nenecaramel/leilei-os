@@ -18,6 +18,7 @@ const UPDATED_AT = "2026-07-29T08:00:00.000Z";
 class MockMemoryReadService {
   readCalls: ReadMemoryInput[] = [];
   detailCalls: Array<{ userId: string; id: string }> = [];
+  archivedDetailCalls: Array<{ userId: string; id: string }> = [];
   readError?: unknown;
   detailError?: unknown;
   includeSyntheticSource = false;
@@ -60,7 +61,13 @@ class MockMemoryReadService {
       tags: ["MCP", "Memory"],
       source: "web",
       updated_at: UPDATED_AT,
+      lifecycle_status: "active",
     };
+  }
+
+  async readArchivedMemoryDetail(input: { userId: string; id: string }): Promise<ReadMemoryDetailResult> {
+    this.archivedDetailCalls.push(input);
+    return { id: input.id, category: "project", key: "archived", content: "Archived complete content", tags: [], source: "web", updated_at: UPDATED_AT };
   }
 }
 
@@ -252,8 +259,15 @@ test("get_memory injects identity, trims id, and returns only safe fields", asyn
       tags: ["MCP", "Memory"],
       source: "web",
       updated_at: UPDATED_AT,
+      lifecycle_status: "active",
     },
   });
+});
+
+test("get_memory archived scope uses only the archived detail path", async (t) => {
+  const service=new MockMemoryReadService(); const {client,server}=await connect(service); t.after(async()=>{await client.close();await server.close();});
+  const result=await client.callTool({name:"get_memory",arguments:{id:"archived-memory",scope:"archived"}});
+  assert.equal(result.isError,undefined); assert.equal(service.detailCalls.length,0); assert.deepEqual(service.archivedDetailCalls,[{userId:USER_ID,id:"archived-memory"}]); assert.equal((result.structuredContent as {data:{lifecycle_status:string}}).data.lifecycle_status,"archived");
 });
 
 test("get_memory rejects empty ids before service and preserves non-UUID ids", async (t) => {

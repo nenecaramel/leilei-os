@@ -30,7 +30,8 @@ const getTaskInputSchema = z
       .string()
       .trim()
       .min(1)
-      .describe("The exact Task id returned by list_tasks."),
+      .describe("The exact Task id returned by list_tasks or global_search."),
+    scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
   })
   .strict();
 
@@ -50,11 +51,13 @@ const getTaskOutputSchema = z.object({
     updated_at: dateTimeSchema,
     completed_at: dateTimeSchema.nullable(),
     allowed_actions: z.array(taskActionSchema),
+    lifecycle_status: z.enum(["active", "archived"]),
   }),
 });
 
 export interface GetTaskToolService {
   readTask(input: ReadTaskInput): Promise<TaskEntryResult>;
+  readArchivedTask?(input: ReadTaskInput): Promise<TaskEntryResult>;
 }
 
 export type GetTaskToolDependencies = {
@@ -71,7 +74,7 @@ export function registerGetTaskTool(
     {
       title: "Get one task",
       description:
-        "Read one authorized task, including its full description, by the exact id returned from list_tasks.",
+        "Read one authenticated, authorized Task by exact ID from list_tasks or global_search, including its full description. scope defaults to active. scope=active reads only active records and cannot read archived records; scope=archived reads only archived records and cannot read active records.",
       inputSchema: getTaskInputSchema,
       outputSchema: getTaskOutputSchema,
       annotations: {
@@ -81,10 +84,13 @@ export function registerGetTaskTool(
         openWorldHint: false,
       },
     },
-    async ({ id }) => {
+    async ({ id, scope = "active" }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.taskService.readTask({ userId, id });
+        const detail = scope === "archived"
+          ? await dependencies.taskService.readArchivedTask?.({ userId, id }) ?? (() => { throw new Error("Archived Task reads are unavailable."); })()
+          : await dependencies.taskService.readTask({ userId, id });
+        const data = { ...detail, lifecycle_status: scope };
         return {
           content: [{ type: "text", text: "Task retrieved." }],
           structuredContent: { success: true as const, data },

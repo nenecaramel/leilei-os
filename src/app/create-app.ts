@@ -39,6 +39,9 @@ import {
   createToyBridgeRouter,
   type ToyApiDependencies,
 } from "../web-api/toy-router.js";
+import { DrizzleGlobalSearchRepository } from "../domains/global-search/global-search-repository.js";
+import { GlobalSearchService } from "../domains/global-search/global-search-service.js";
+import type { GlobalSearchApiDependencies } from "../web-api/global-search-router.js";
 
 export type AppDependencies = {
   verifyAccessToken?: AccessTokenVerifier;
@@ -49,6 +52,7 @@ export type AppDependencies = {
   webHealthService?: HealthApiDependencies["healthService"];
   webSettingsService?: SettingsApiDependencies["settingsService"];
   toyService?: ToyApiDependencies["toyService"];
+  webGlobalSearchService?: GlobalSearchApiDependencies["globalSearchService"];
 };
 
 export function createApp(
@@ -128,6 +132,7 @@ export function createApp(
     let webSettingsService =
       dependencies.webSettingsService;
     let toyService = dependencies.toyService;
+    let webGlobalSearchService = dependencies.webGlobalSearchService;
 
     if (
       !webMemoryService ||
@@ -135,7 +140,8 @@ export function createApp(
       !webTaskService ||
       !webHealthService ||
       !webSettingsService ||
-      !toyService
+      !toyService ||
+      !webGlobalSearchService
     ) {
       if (!env.DATABASE_URL) {
         throw new Error(
@@ -181,6 +187,9 @@ export function createApp(
           env.LEILEI_TOY_BRIDGE_USER_ID,
         );
       }
+      if (!webGlobalSearchService) {
+        webGlobalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
+      }
     }
 
     if (
@@ -189,7 +198,8 @@ export function createApp(
       !webTaskService ||
       !webHealthService ||
       !webSettingsService ||
-      !toyService
+      !toyService ||
+      !webGlobalSearchService
     ) {
       throw new Error(
         "Web API services are not configured.",
@@ -232,6 +242,7 @@ export function createApp(
         toy: {
           toyService,
         },
+        globalSearch: { globalSearchService: webGlobalSearchService },
       }),
     );
   }

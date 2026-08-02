@@ -35,6 +35,7 @@ const TASK: TaskEntryResult = {
 class MockTaskService {
   listCalls: ListTasksInput[] = [];
   readCalls: ReadTaskInput[] = [];
+  archivedReadCalls: ReadTaskInput[] = [];
   createCalls: Array<{
     context: AuthenticatedTaskContext;
     input: CreateTaskInput;
@@ -59,6 +60,7 @@ class MockTaskService {
     }
     return TASK;
   }
+  async readArchivedTask(input: ReadTaskInput): Promise<TaskEntryResult> { this.archivedReadCalls.push(input); return TASK; }
 
   async createTaskIdempotently(
     context: AuthenticatedTaskContext,
@@ -284,8 +286,10 @@ test("get_task accepts a trimmed non-UUID id and returns complete detail", async
     arguments: { id: `  ${TASK.id}  ` },
   });
   assert.deepEqual(service.readCalls, [{ userId: USER_ID, id: TASK.id }]);
-  assert.deepEqual(result.structuredContent, { success: true, data: TASK });
+  assert.deepEqual(result.structuredContent, { success: true, data: { ...TASK, lifecycle_status: "active" } });
 });
+
+test("get_task archived scope uses only archived detail",async(t)=>{const service=new MockTaskService();const {client,server}=await connect(service);t.after(async()=>{await client.close();await server.close();});const result=await client.callTool({name:"get_task",arguments:{id:TASK.id,scope:"archived"}});assert.equal(result.isError,undefined);assert.equal(service.readCalls.length,0);assert.deepEqual(service.archivedReadCalls,[{userId:USER_ID,id:TASK.id}]);assert.equal((result.structuredContent as {data:{lifecycle_status:string}}).data.lifecycle_status,"archived");});
 
 test("get_task rejects empty ids and hides inaccessible records", async () => {
   const service = new MockTaskService();

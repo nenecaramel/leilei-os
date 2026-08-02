@@ -63,11 +63,24 @@ import {
   ToyCommandAuthenticationError,
   type ToyCommandToolDependencies,
 } from "../tools/toy-command/register.js";
+import { GlobalSearchService } from "../../domains/global-search/global-search-service.js";
+import { DrizzleGlobalSearchRepository } from "../../domains/global-search/global-search-repository.js";
+import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
 
 let defaultMemoryService: MemoryService | undefined;
 let defaultDiaryService: DiaryService | undefined;
 let defaultTaskService: TaskService | undefined;
 let defaultToyCommandService: ToyCommandService | undefined;
+let defaultGlobalSearchService: GlobalSearchService | undefined;
+
+function getDefaultGlobalSearchService(): GlobalSearchService {
+  if (!defaultGlobalSearchService) {
+    if (!env.DATABASE_URL) throw new Error("Global search database is not configured.");
+    const { db } = createDatabase(env.DATABASE_URL);
+    defaultGlobalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
+  }
+  return defaultGlobalSearchService;
+}
 
 function getDefaultMemoryService(): MemoryService {
   if (!defaultMemoryService) {
@@ -146,6 +159,8 @@ const productionGetMemoryDependencies: GetMemoryToolDependencies = {
   memoryService: {
     readMemoryDetail: (input) =>
       getDefaultMemoryService().readMemoryDetail(input),
+    readArchivedMemoryDetail: (input) =>
+      getDefaultMemoryService().readArchivedMemoryDetail(input),
   },
   getAuthenticatedUserId: () => {
     throw new ReadMemoryAuthenticationError();
@@ -184,6 +199,7 @@ const productionSearchDiaryDependencies: SearchDiaryToolDependencies = {
 const productionGetDiaryDependencies: GetDiaryToolDependencies = {
   diaryService: {
     readDiary: (input) => getDefaultDiaryService().readDiary(input),
+    readArchivedDiary: (input) => getDefaultDiaryService().readArchivedDiary(input),
   },
   getAuthenticatedUserId: () => {
     throw new DiaryReadAuthenticationError();
@@ -216,6 +232,7 @@ const productionListTasksDependencies: ListTasksToolDependencies = {
 const productionGetTaskDependencies: GetTaskToolDependencies = {
   taskService: {
     readTask: (input) => getDefaultTaskService().readTask(input),
+    readArchivedTask: (input) => getDefaultTaskService().readArchivedTask(input),
   },
   getAuthenticatedUserId: () => {
     throw new TaskReadAuthenticationError();
@@ -234,6 +251,11 @@ const productionToyCommandDependencies: ToyCommandToolDependencies = {
   getAuthenticatedUserId: () => {
     throw new ToyCommandAuthenticationError();
   },
+};
+
+const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
+  globalSearchService: { search: (input) => getDefaultGlobalSearchService().search(input) },
+  getAuthenticatedUserId: () => { throw new GlobalSearchAuthenticationError(); },
 };
 
 export type McpServerDependencies = {
@@ -266,6 +288,7 @@ export type McpServerDependencies = {
   listTasks?: ListTasksToolDependencies;
   getTask?: GetTaskToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
+  globalSearch?: GlobalSearchToolDependencies;
 };
 
 export function createMcpServer(
@@ -390,5 +413,12 @@ export function createMcpServer(
       },
     },
   );
+  registerGlobalSearchTool(server, dependencies.globalSearch ?? {
+    ...productionGlobalSearchDependencies,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new GlobalSearchAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
   return server;
 }

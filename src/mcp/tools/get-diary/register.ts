@@ -15,7 +15,8 @@ const getDiaryInputSchema = z
       .string()
       .trim()
       .min(1)
-      .describe("The exact Diary id returned by search_diary."),
+      .describe("The exact Diary id returned by search_diary or global_search."),
+    scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
   })
   .strict();
 
@@ -30,11 +31,13 @@ const getDiaryOutputSchema = z.object({
     mood: z.string().nullable(),
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
+    lifecycle_status: z.enum(["active", "archived"]),
   }),
 });
 
 export interface GetDiaryToolService {
   readDiary(input: ReadDiaryInput): Promise<DiaryEntryResult>;
+  readArchivedDiary?(input: ReadDiaryInput): Promise<DiaryEntryResult>;
 }
 
 export type GetDiaryToolDependencies = {
@@ -51,7 +54,7 @@ export function registerGetDiaryTool(
     {
       title: "Get one diary entry",
       description:
-        "Read one authorized diary entry, including its full private content, by the exact id returned from search_diary.",
+        "Read one authenticated, authorized Diary entry by exact ID from search_diary or global_search, including full private content. scope defaults to active. scope=active reads only active records and cannot read archived records; scope=archived reads only archived records and cannot read active records.",
       inputSchema: getDiaryInputSchema,
       outputSchema: getDiaryOutputSchema,
       annotations: {
@@ -61,13 +64,13 @@ export function registerGetDiaryTool(
         openWorldHint: false,
       },
     },
-    async ({ id }) => {
+    async ({ id, scope = "active" }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.diaryService.readDiary({
-          userId,
-          id,
-        });
+        const detail = scope === "archived"
+          ? await dependencies.diaryService.readArchivedDiary?.({ userId, id }) ?? (() => { throw new Error("Archived Diary reads are unavailable."); })()
+          : await dependencies.diaryService.readDiary({ userId, id });
+        const data = { ...detail, lifecycle_status: scope };
 
         return {
           content: [{ type: "text", text: "Diary entry retrieved." }],

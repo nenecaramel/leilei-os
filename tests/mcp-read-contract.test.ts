@@ -98,6 +98,7 @@ class MemoryReads {
       tags: MEMORY.tags,
       source: MEMORY.source,
       updated_at: MEMORY.updated_at,
+      lifecycle_status: "active",
     };
   }
 }
@@ -279,6 +280,7 @@ test("Memory, Diary, and Task discovery-to-detail flows remain isolated", async 
       tags: MEMORY.tags,
       source: MEMORY.source,
       updated_at: MEMORY.updated_at,
+      lifecycle_status: "active",
     },
   });
 
