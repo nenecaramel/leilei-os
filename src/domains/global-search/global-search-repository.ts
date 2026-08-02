@@ -64,26 +64,13 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     if (input.modules.includes("diary")) moduleQueries.push(diaryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("task")) moduleQueries.push(taskQuery(input, queryText, pattern, prefix));
     const union = sql.join(moduleQueries, sql` union all `);
-    const cursor = input.after;
     const result = await this.db.execute(sql<GlobalSearchRow>`
-      with candidates as (${union}), ranked as (
-        select *, case match_reason
-          when 'exact_stable_name' then 1 when 'exact_phrase' then 2
-          when 'stable_name_prefix' then 3 else 4 end as rank
-        from candidates
-      )
+      with ranked as (${union})
       select entity_type as "entityType", entity_id as "entityId", stable_name as "stableName",
         matched_field as "matchedField", matched_value as "matchedValue", match_reason as "matchReason",
         lifecycle_status as "lifecycleStatus", business_time as "businessTime", time_basis as "timeBasis",
         updated_at as "updatedAt", rank
       from ranked
-      where ${cursor ? sql`(
-        rank > ${cursor.rank} or
-        (rank = ${cursor.rank} and business_time < ${cursor.businessTime}::timestamptz) or
-        (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at < ${cursor.updatedAt}::timestamptz) or
-        (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at = ${cursor.updatedAt}::timestamptz and entity_type > ${cursor.entityType}) or
-        (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at = ${cursor.updatedAt}::timestamptz and entity_type = ${cursor.entityType} and entity_id > ${cursor.entityId}::uuid)
-      )` : sql`true`}
       order by rank asc, business_time desc, updated_at desc, entity_type asc, entity_id asc
       limit ${input.limit}
     `);
@@ -106,12 +93,45 @@ function dates(expr: SQL, input: GlobalSearchQuery): SQL {
 function normalized(expr: SQL, mode: GlobalSearchMode): SQL {
   return mode === "normal" ? sql`regexp_replace(lower(normalize(${expr}, NFC)), '\\s+', ' ', 'g')` : sql`lower(normalize(${expr}, NFC))`;
 }
-function bounded(query: SQL, limit: number): SQL {
-  return sql`(select * from (${query}) module_candidates
-    order by case match_reason when 'exact_stable_name' then 1 when 'exact_phrase' then 2 when 'stable_name_prefix' then 3 else 4 end,
-      business_time desc, updated_at desc, entity_type asc, entity_id asc
-    limit ${limit})`;
+function rankExpression(): SQL {
+  return sql`case match_reason
+    when 'exact_stable_name' then 1
+    when 'exact_phrase' then 2
+    when 'stable_name_prefix' then 3
+    else 4
+  end`;
 }
+
+function cursorPredicate(
+  cursor: GlobalSearchCursorTuple | undefined,
+): SQL {
+  if (!cursor) return sql`true`;
+
+  return sql`(
+    rank > ${cursor.rank} or
+    (rank = ${cursor.rank} and business_time < ${cursor.businessTime}::timestamptz) or
+    (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at < ${cursor.updatedAt}::timestamptz) or
+    (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at = ${cursor.updatedAt}::timestamptz and entity_type > ${cursor.entityType}) or
+    (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at = ${cursor.updatedAt}::timestamptz and entity_type = ${cursor.entityType} and entity_id > ${cursor.entityId}::uuid)
+  )`;
+}
+
+function bounded(
+  query: SQL,
+  input: GlobalSearchQuery,
+): SQL {
+  return sql`(
+    select *
+    from (
+      select module_candidates.*, ${rankExpression()} as rank
+      from (${query}) module_candidates
+    ) ranked_module_candidates
+    where ${cursorPredicate(input.after)}
+    order by rank asc, business_time desc, updated_at desc, entity_type asc, entity_id asc
+    limit ${input.limit}
+  )`;
+}
+
 function reasonAndField(stable: SQL, fields: Array<{ name: GlobalSearchMatchedField; value: SQL }>, mode: GlobalSearchMode, query: string, pattern: string, prefix: string): SQL {
   const normStable = normalized(stable, mode);
   const exactPhrase = fields.map(({ value }) => sql`${normalized(value, mode)} = lower(${query})`);
@@ -136,7 +156,7 @@ function memoryQuery(input: GlobalSearchQuery, query: string, pattern: string, p
     ${reasonAndField(sql`m.key`, fields, input.mode, query, pattern, prefix)}, m.status::text lifecycle_status,
     m.updated_at business_time, 'updated_at'::text time_basis, m.updated_at
     from core_memories m where m.user_id=${input.userId}::uuid and m.visibility='assistant' and ${lifecycle(sql`m.status`, input.scope)}
-    and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input.limit);
+    and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input);
 }
 function diaryQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
   const tags = sql`array_to_string(d.tags, ' ')`; const mood = sql`coalesce(d.mood, '')`;
@@ -145,7 +165,7 @@ function diaryQuery(input: GlobalSearchQuery, query: string, pattern: string, pr
     ${reasonAndField(sql`d.title`, fields, input.mode, query, pattern, prefix)}, d.status::text lifecycle_status,
     (d.date::timestamp at time zone ${input.timezone}) business_time, 'diary_date'::text time_basis, d.updated_at
     from diary_entries d where d.user_id=${input.userId}::uuid and ${lifecycle(sql`d.status`, input.scope)}
-    and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(sql`d.date`, input)}`, input.limit);
+    and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(sql`d.date`, input)}`, input);
 }
 function taskQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
   const tags = sql`array_to_string(t.tags, ' ')`;
@@ -155,5 +175,5 @@ function taskQuery(input: GlobalSearchQuery, query: string, pattern: string, pre
     ${reasonAndField(sql`t.title`, fields, input.mode, query, pattern, prefix)}, t.lifecycle_status::text lifecycle_status,
     ${effective} business_time, case when t.due_time is null then 'created_at' else 'due_time' end::text time_basis, t.updated_at
     from tasks t where t.user_id=${input.userId}::uuid and ${lifecycle(sql`t.lifecycle_status`, input.scope)}
-    and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input.limit);
+    and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input);
 }

@@ -55,3 +55,86 @@ test("real PostgreSQL global search covers fields, ranking, scope, dates, pagina
     }),Rollback);
   } finally { await client.end(); }
 });
+
+test("real PostgreSQL keyset pagination consumes every row after the cursor", { skip: !RUN }, async () => {
+  const client = postgres(url!, { max: 1, prepare: false, ssl: false });
+  const db = drizzle(client, { schema });
+
+  try {
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        const owner = randomUUID();
+
+        await tx.insert(schema.users).values({
+          id: owner,
+          email: `pagination-${owner}@example.invalid`,
+          displayName: "Pagination Owner",
+          status: "active",
+        });
+
+        await tx.insert(schema.userSettings).values({
+          userId: owner,
+          timezone: "Asia/Shanghai",
+        });
+
+        const baseTime = Date.parse("2026-08-01T12:00:00.000Z");
+        const records = Array.from({ length: 7 }, (_, index) => ({
+          id: randomUUID(),
+          userId: owner,
+          category: "project" as const,
+          key: `分页记录 ${index + 1}`,
+          content: `分页词 内容 ${index + 1}`,
+          tags: ["pagination"],
+          visibility: "assistant" as const,
+          source: "web" as const,
+          status: "active" as const,
+          updatedAt: new Date(baseTime - index * 60_000),
+        }));
+
+        await tx.insert(schema.coreMemories).values(records);
+
+        const service = new GlobalSearchService(
+          new DrizzleGlobalSearchRepository(tx as never),
+        );
+
+        const complete = await service.search({
+          userId: owner,
+          query: "分页词",
+          modules: ["memory"],
+          scope: "active",
+          limit: 25,
+        });
+
+        assert.equal(complete.results.length, 7);
+
+        const pagedIds: string[] = [];
+        let cursor: string | undefined;
+
+        do {
+          const page = await service.search({
+            userId: owner,
+            query: "分页词",
+            modules: ["memory"],
+            scope: "active",
+            limit: 2,
+            cursor,
+          });
+
+          pagedIds.push(...page.results.map((result) => result.entity_id));
+          cursor = page.metadata.next_cursor ?? undefined;
+        } while (cursor);
+
+        assert.deepEqual(
+          pagedIds,
+          complete.results.map((result) => result.entity_id),
+        );
+        assert.equal(new Set(pagedIds).size, 7);
+
+        throw new Rollback();
+      }),
+      Rollback,
+    );
+  } finally {
+    await client.end();
+  }
+});
