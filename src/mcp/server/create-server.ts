@@ -65,7 +65,7 @@ import {
 } from "../tools/toy-command/register.js";
 import { GlobalSearchService } from "../../domains/global-search/global-search-service.js";
 import { DrizzleGlobalSearchRepository } from "../../domains/global-search/global-search-repository.js";
-import { registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
+import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
 
 let defaultMemoryService: MemoryService | undefined;
 let defaultDiaryService: DiaryService | undefined;
@@ -255,7 +255,7 @@ const productionToyCommandDependencies: ToyCommandToolDependencies = {
 
 const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
   globalSearchService: { search: (input) => getDefaultGlobalSearchService().search(input) },
-  getAuthenticatedUserId: () => { throw new ReadMemoryAuthenticationError(); },
+  getAuthenticatedUserId: () => { throw new GlobalSearchAuthenticationError(); },
 };
 
 export type McpServerDependencies = {
@@ -416,7 +416,7 @@ export function createMcpServer(
   registerGlobalSearchTool(server, dependencies.globalSearch ?? {
     ...productionGlobalSearchDependencies,
     getAuthenticatedUserId: () => {
-      if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
+      if (!authenticatedUserId) throw new GlobalSearchAuthenticationError();
       return authenticatedUserId;
     },
   });

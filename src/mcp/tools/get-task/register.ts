@@ -30,8 +30,8 @@ const getTaskInputSchema = z
       .string()
       .trim()
       .min(1)
-      .describe("The exact Task id returned by list_tasks."),
-    scope: z.enum(["active", "archived"]).default("active").optional(),
+      .describe("The exact Task id returned by list_tasks or global_search."),
+    scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
   })
   .strict();
 
@@ -74,7 +74,7 @@ export function registerGetTaskTool(
     {
       title: "Get one task",
       description:
-        "Read one authorized task, including its full description, by the exact id returned from list_tasks.",
+        "Read one authenticated, authorized Task by exact ID from list_tasks or global_search, including its full description. scope defaults to active. scope=active reads only active records and cannot read archived records; scope=archived reads only archived records and cannot read active records.",
       inputSchema: getTaskInputSchema,
       outputSchema: getTaskOutputSchema,
       annotations: {

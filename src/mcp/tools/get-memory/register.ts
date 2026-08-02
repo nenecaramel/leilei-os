@@ -19,8 +19,8 @@ const getMemoryInputSchema = z
       .string()
       .trim()
       .min(1)
-      .describe("The exact Memory id returned by another Memory read tool."),
-    scope: z.enum(["active", "archived"]).default("active").optional(),
+      .describe("The exact Memory id returned by read_memory, search_memory, or global_search."),
+    scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
   })
   .strict();
 
@@ -60,7 +60,7 @@ export function registerGetMemoryTool(
     {
       title: "Get one Memory",
       description:
-        "Read one authorized active Memory record by its exact id. This tool is read-only and cannot access archived or non-assistant-visible records.",
+        "Read one authenticated, authorized Memory by exact ID from read_memory, search_memory, or global_search. scope defaults to active. scope=active reads only active records and cannot read archived records; scope=archived reads only archived records and cannot read active records. Both scopes enforce exact-ID ownership and assistant visibility.",
       inputSchema: getMemoryInputSchema,
       outputSchema: getMemoryOutputSchema,
       annotations: {

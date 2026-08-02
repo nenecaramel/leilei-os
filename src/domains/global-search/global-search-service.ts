@@ -1,41 +1,249 @@
 import { createHash } from "node:crypto";
-import type { GlobalSearchCursorTuple, GlobalSearchMatchReason, GlobalSearchMode, GlobalSearchModule, GlobalSearchRepository, GlobalSearchScope, GlobalSearchTimeBasis } from "./global-search-repository.js";
+import type {
+  GlobalSearchCursorTuple,
+  GlobalSearchMatchedField,
+  GlobalSearchMatchReason,
+  GlobalSearchModule,
+  GlobalSearchRepository,
+  GlobalSearchScope,
+  GlobalSearchTimeBasis,
+} from "./global-search-repository.js";
 
 const MODULES = ["memory", "diary", "task"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-export type GlobalSearchInput = { userId: string; query: string; modules?: readonly string[]; scope?: string; mode?: string; date_from?: string; date_to?: string; limit?: number; cursor?: string };
-export type GlobalSearchResult = { results: Array<{ entity_type: GlobalSearchModule; entity_id: string; stable_name: string; snippet: string; matched_field: string; match_reason: GlobalSearchMatchReason; lifecycle_status: "active" | "archived"; business_time: string; time_basis: GlobalSearchTimeBasis; updated_at: string; detail_tool: "get_memory" | "get_diary" | "get_task"; detail_arguments: { id: string; scope: "active" | "archived" } }>; metadata: { count: number; has_more: boolean; next_cursor: string | null; searched_modules: GlobalSearchModule[]; searched_scope: GlobalSearchScope } };
+const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
+const CURSOR_FINGERPRINT = /^[0-9a-f]{64}$/;
+const CURSOR_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_CURSOR_ENCODED_LENGTH = 1200;
+const MAX_CURSOR_DECODED_BYTES = 900;
+const MAX_SNIPPET_CODE_POINTS = 240;
+
+export type GlobalSearchInput = {
+  userId: string;
+  query: string;
+  modules?: readonly string[];
+  scope?: string;
+  mode?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  cursor?: string;
+};
+
+export type GlobalSearchItem = {
+  entity_type: GlobalSearchModule;
+  entity_id: string;
+  stable_name: string;
+  snippet: string;
+  matched_field: GlobalSearchMatchedField;
+  match_reason: GlobalSearchMatchReason;
+  lifecycle_status: "active" | "archived";
+  business_time: string;
+  time_basis: GlobalSearchTimeBasis;
+  updated_at: string;
+  detail_tool: "get_memory" | "get_diary" | "get_task";
+  detail_arguments: { id: string; scope: "active" | "archived" };
+};
+
+export type GlobalSearchResult = {
+  results: GlobalSearchItem[];
+  metadata: {
+    count: number;
+    has_more: boolean;
+    next_cursor: string | null;
+    searched_modules: GlobalSearchModule[];
+    searched_scope: GlobalSearchScope;
+  };
+};
+
 export type GlobalSearchErrorCode = "INVALID_GLOBAL_SEARCH" | "USER_NOT_FOUND" | "USER_DISABLED";
-export class GlobalSearchError extends Error { constructor(readonly code: GlobalSearchErrorCode, message: string) { super(message); this.name = "GlobalSearchError"; } }
+export class GlobalSearchError extends Error {
+  constructor(readonly code: GlobalSearchErrorCode, message: string) {
+    super(message);
+    this.name = "GlobalSearchError";
+  }
+}
 
 export class GlobalSearchService {
   constructor(private readonly repository: GlobalSearchRepository) {}
+
   async search(input: GlobalSearchInput): Promise<GlobalSearchResult> {
-    const user = await this.repository.findUser(input.userId);
-    if (!user) throw new GlobalSearchError("USER_NOT_FOUND", "Search is unavailable.");
-    if (user.status !== "active") throw new GlobalSearchError("USER_DISABLED", "Search is unavailable.");
+    // Every client-controlled field, including the cursor, is normalized before
+    // even the user lookup can touch PostgreSQL.
     const query = normalizeRequired(input.query, 200);
     const modules = normalizeModules(input.modules);
     const scope = enumValue(input.scope ?? "active", ["active", "archived", "all"] as const);
     const mode = enumValue(input.mode ?? "normal", ["phrase", "normal"] as const);
-    const dateFrom = validDate(input.date_from); const dateTo = validDate(input.date_to);
+    const dateFrom = validDate(input.date_from);
+    const dateTo = validDate(input.date_to);
     if (dateFrom && dateTo && dateFrom > dateTo) invalid();
     const limit = input.limit ?? 10;
     if (!Number.isInteger(limit) || limit < 1 || limit > 25) invalid();
     const fingerprint = hashRequest({ query, modules, scope, mode, dateFrom, dateTo });
     const after = decodeCursor(input.cursor, fingerprint);
-    const rows = await this.repository.search({ userId: input.userId, query, modules, scope, mode, dateFrom, dateTo, timezone: user.timezone, limit: limit + 1, after });
-    const hasMore = rows.length > limit; const page = rows.slice(0, limit);
+
+    const user = await this.repository.findUser(input.userId);
+    if (!user) throw new GlobalSearchError("USER_NOT_FOUND", "Search is unavailable.");
+    if (user.status !== "active") throw new GlobalSearchError("USER_DISABLED", "Search is unavailable.");
+    const rows = await this.repository.search({
+      userId: input.userId,
+      query,
+      modules,
+      scope,
+      mode,
+      dateFrom,
+      dateTo,
+      timezone: user.timezone,
+      limit: limit + 1,
+      after,
+    });
+    const hasMore = rows.length > limit;
+    const page = rows.slice(0, limit);
     const last = page.at(-1);
-    return { results: page.map((row) => ({ entity_type: row.entityType, entity_id: row.entityId, stable_name: row.stableName, snippet: snippet(row.matchedValue, query), matched_field: row.matchedField, match_reason: row.matchReason, lifecycle_status: row.lifecycleStatus, business_time: row.businessTime.toISOString(), time_basis: row.timeBasis, updated_at: row.updatedAt.toISOString(), detail_tool: ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType], detail_arguments: { id: row.entityId, scope: row.lifecycleStatus } })), metadata: { count: page.length, has_more: hasMore, next_cursor: hasMore && last ? encodeCursor(fingerprint, { rank: last.rank, businessTime: last.businessTime.toISOString(), updatedAt: last.updatedAt.toISOString(), entityType: last.entityType, entityId: last.entityId }) : null, searched_modules: modules, searched_scope: scope } };
+    return {
+      results: page.map((row) => ({
+        entity_type: row.entityType,
+        entity_id: row.entityId,
+        stable_name: row.stableName,
+        snippet: createGlobalSearchSnippet(row.matchedValue, query),
+        matched_field: row.matchedField,
+        match_reason: row.matchReason,
+        lifecycle_status: row.lifecycleStatus,
+        business_time: row.businessTime.toISOString(),
+        time_basis: row.timeBasis,
+        updated_at: row.updatedAt.toISOString(),
+        detail_tool: ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
+        detail_arguments: { id: row.entityId, scope: row.lifecycleStatus },
+      })),
+      metadata: {
+        count: page.length,
+        has_more: hasMore,
+        next_cursor: hasMore && last
+          ? encodeCursor(fingerprint, {
+              rank: last.rank,
+              businessTime: last.businessTime.toISOString(),
+              updatedAt: last.updatedAt.toISOString(),
+              entityType: last.entityType,
+              entityId: last.entityId,
+            })
+          : null,
+        searched_modules: modules,
+        searched_scope: scope,
+      },
+    };
   }
 }
-function invalid(): never { throw new GlobalSearchError("INVALID_GLOBAL_SEARCH", "The global search request is invalid."); }
-function normalizeRequired(value: unknown, max: number): string { if (typeof value !== "string") return invalid(); const v=value.normalize("NFC").trim(); if (!v || [...v].length>max) invalid(); return v; }
-function normalizeModules(values?: readonly string[]): GlobalSearchModule[] { if (values===undefined) return [...MODULES]; if (!Array.isArray(values)||values.length===0) invalid(); const unique=[...new Set(values)]; if (unique.some((v)=>!MODULES.includes(v as GlobalSearchModule))) invalid(); return MODULES.filter((v)=>unique.includes(v)); }
-function enumValue<T extends string>(value: string, allowed: readonly T[]): T { if (!allowed.includes(value as T)) invalid(); return value as T; }
-function validDate(value?: string): string|undefined { if (value===undefined) return undefined; if (!DATE.test(value)||Number.isNaN(Date.parse(`${value}T00:00:00Z`))||new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)!==value) invalid(); return value; }
-function hashRequest(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
-function encodeCursor(fingerprint:string, tuple:GlobalSearchCursorTuple):string { return Buffer.from(JSON.stringify({v:1,f:fingerprint,t:tuple})).toString("base64url"); }
-function decodeCursor(cursor:string|undefined,fingerprint:string):GlobalSearchCursorTuple|undefined { if (!cursor) return undefined; if (cursor.length>1200) invalid(); try { const p=JSON.parse(Buffer.from(cursor,"base64url").toString("utf8")); if(p.v!==1||p.f!==fingerprint||!p.t||![1,2,3,4].includes(p.t.rank)||!MODULES.includes(p.t.entityType)||typeof p.t.entityId!=="string"||Number.isNaN(Date.parse(p.t.businessTime))||Number.isNaN(Date.parse(p.t.updatedAt))) invalid(); return p.t; } catch { return invalid(); } }
-function snippet(value:string, query:string):string { const normalized=value.normalize("NFC"); const flexible=query.normalize("NFC").replace(/[.*+?^${}()|[\]\\]/gu,"\\$&").replace(/\s+/gu,"\\s+"); const match=new RegExp(flexible,"iu").exec(normalized); const charAt=match?[...normalized.slice(0,match.index)].length:0; const chars=[...value]; const start=Math.max(0,charAt-80); const end=Math.min(chars.length,start+240); return `${start>0?"…":""}${chars.slice(start,end).join("")}${end<chars.length?"…":""}`; }
+
+function invalid(): never {
+  throw new GlobalSearchError("INVALID_GLOBAL_SEARCH", "The global search request is invalid.");
+}
+
+function normalizeRequired(value: unknown, max: number): string {
+  if (typeof value !== "string") return invalid();
+  const normalized = value.normalize("NFC").trim();
+  if (!normalized || [...normalized].length > max) invalid();
+  return normalized;
+}
+
+function normalizeModules(values?: readonly string[]): GlobalSearchModule[] {
+  if (values === undefined) return [...MODULES];
+  if (!Array.isArray(values) || values.length === 0) invalid();
+  const unique = [...new Set(values)];
+  if (unique.some((value) => typeof value !== "string" || !MODULES.includes(value as GlobalSearchModule))) invalid();
+  return MODULES.filter((value) => unique.includes(value));
+}
+
+function enumValue<T extends string>(value: unknown, allowed: readonly T[]): T {
+  if (typeof value !== "string" || !allowed.includes(value as T)) invalid();
+  return value as T;
+}
+
+function validDate(value?: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (!DATE.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value) invalid();
+  return value;
+}
+
+function hashRequest(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function encodeCursor(fingerprint: string, tuple: GlobalSearchCursorTuple): string {
+  return Buffer.from(JSON.stringify({ v: 1, f: fingerprint, t: tuple })).toString("base64url");
+}
+
+function isExactObject(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  return actual.length === keys.length && actual.every((key, index) => key === [...keys].sort()[index]);
+}
+
+function validCursorInstant(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length === 24
+    && CURSOR_INSTANT.test(value)
+    && !Number.isNaN(Date.parse(value))
+    && new Date(value).toISOString() === value;
+}
+
+function decodeCursor(cursor: string | undefined, fingerprint: string): GlobalSearchCursorTuple | undefined {
+  if (cursor === undefined) return undefined;
+  if (!cursor || cursor.length > MAX_CURSOR_ENCODED_LENGTH || !CURSOR_BASE64URL.test(cursor)) invalid();
+  try {
+    const bytes = Buffer.from(cursor, "base64url");
+    if (bytes.length === 0 || bytes.length > MAX_CURSOR_DECODED_BYTES || bytes.toString("base64url") !== cursor) invalid();
+    const parsed: unknown = JSON.parse(bytes.toString("utf8"));
+    if (!isExactObject(parsed, ["v", "f", "t"])) invalid();
+    if (parsed.v !== 1 || typeof parsed.f !== "string" || !CURSOR_FINGERPRINT.test(parsed.f) || parsed.f !== fingerprint) invalid();
+    if (!isExactObject(parsed.t, ["rank", "businessTime", "updatedAt", "entityType", "entityId"])) invalid();
+    const tuple = parsed.t;
+    if (!Number.isInteger(tuple.rank) || (tuple.rank as number) < 1 || (tuple.rank as number) > 4) invalid();
+    if (!validCursorInstant(tuple.businessTime) || !validCursorInstant(tuple.updatedAt)) invalid();
+    if (typeof tuple.entityType !== "string" || !MODULES.includes(tuple.entityType as GlobalSearchModule)) invalid();
+    if (typeof tuple.entityId !== "string" || tuple.entityId.length > 36 || !UUID.test(tuple.entityId)) invalid();
+    return tuple as GlobalSearchCursorTuple;
+  } catch {
+    return invalid();
+  }
+}
+
+function flexibleQueryPattern(query: string): RegExp {
+  const escaped = query
+    .normalize("NFC")
+    .replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")
+    .replace(/\s+/gu, "\\s+");
+  return new RegExp(escaped, "iu");
+}
+
+export function createGlobalSearchSnippet(value: string, query: string): string {
+  const source = value.normalize("NFC");
+  const match = flexibleQueryPattern(query).exec(source);
+  if (!match) throw new Error("Global search repository returned a non-matching snippet source.");
+
+  const sourcePoints = [...source];
+  const matchStart = [...source.slice(0, match.index)].length;
+  const matchLength = [...match[0]].length;
+  const matchEnd = matchStart + matchLength;
+  let start = Math.max(0, matchStart - 80);
+  let end = Math.min(sourcePoints.length, Math.max(matchEnd, start + MAX_SNIPPET_CODE_POINTS));
+  start = Math.max(0, Math.min(start, end - MAX_SNIPPET_CODE_POINTS));
+
+  let leading = start > 0;
+  let trailing = end < sourcePoints.length;
+  let contentBudget = MAX_SNIPPET_CODE_POINTS - Number(leading) - Number(trailing);
+  if (end - start > contentBudget) {
+    const before = Math.min(matchStart, Math.floor((contentBudget - matchLength) / 2));
+    start = Math.max(0, matchStart - Math.max(0, before));
+    end = Math.min(sourcePoints.length, start + contentBudget);
+    if (end < matchEnd) {
+      end = matchEnd;
+      start = Math.max(0, end - contentBudget);
+    }
+    leading = start > 0;
+    trailing = end < sourcePoints.length;
+    contentBudget = MAX_SNIPPET_CODE_POINTS - Number(leading) - Number(trailing);
+    if (end - start > contentBudget) end = start + contentBudget;
+  }
+  return `${leading ? "…" : ""}${sourcePoints.slice(start, end).join("")}${trailing ? "…" : ""}`;
+}
