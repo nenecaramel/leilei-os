@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { count } from "drizzle-orm";
+import { count, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/database/schema.js";
@@ -129,6 +129,109 @@ test("real PostgreSQL keyset pagination consumes every row after the cursor", { 
           complete.results.map((result) => result.entity_id),
         );
         assert.equal(new Set(pagedIds).size, 7);
+
+        throw new Rollback();
+      }),
+      Rollback,
+    );
+  } finally {
+    await client.end();
+  }
+});
+
+test("real PostgreSQL pagination preserves sub-millisecond rows", { skip: !RUN }, async () => {
+  const client = postgres(url!, { max: 1, prepare: false, ssl: false });
+  const db = drizzle(client, { schema });
+
+  try {
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        const owner = randomUUID();
+
+        await tx.insert(schema.users).values({
+          id: owner,
+          email: `precision-${owner}@example.invalid`,
+          displayName: "Precision Owner",
+          status: "active",
+        });
+
+        await tx.insert(schema.userSettings).values({
+          userId: owner,
+          timezone: "Asia/Shanghai",
+        });
+
+        const ids = Array.from({ length: 4 }, () => randomUUID());
+
+        await tx.insert(schema.coreMemories).values(
+          ids.map((id, index) => ({
+            id,
+            userId: owner,
+            category: "project" as const,
+            key: `微秒分页 ${index + 1}`,
+            content: `微秒分页 内容 ${index + 1}`,
+            tags: ["precision"],
+            visibility: "assistant" as const,
+            source: "web" as const,
+            status: "active" as const,
+            updatedAt: new Date("2026-08-01T12:00:00.123Z"),
+          })),
+        );
+
+        const instants = [
+          "2026-08-01T12:00:00.123900Z",
+          "2026-08-01T12:00:00.123800Z",
+          "2026-08-01T12:00:00.123700Z",
+          "2026-08-01T12:00:00.123600Z",
+        ];
+
+        for (const [index, id] of ids.entries()) {
+          await tx.execute(sql`
+            update core_memories
+            set updated_at = ${instants[index]}::timestamptz
+            where id = ${id}::uuid
+          `);
+        }
+
+        const service = new GlobalSearchService(
+          new DrizzleGlobalSearchRepository(tx as never),
+        );
+
+        const complete = await service.search({
+          userId: owner,
+          query: "微秒分页",
+          modules: ["memory"],
+          scope: "active",
+          limit: 25,
+        });
+
+        assert.equal(complete.results.length, 4);
+
+        const pagedIds: string[] = [];
+        let cursor: string | undefined;
+        let pageCount = 0;
+
+        do {
+          pageCount += 1;
+          assert.ok(pageCount <= 10, "pagination did not terminate");
+
+          const page = await service.search({
+            userId: owner,
+            query: "微秒分页",
+            modules: ["memory"],
+            scope: "active",
+            limit: 1,
+            cursor,
+          });
+
+          pagedIds.push(...page.results.map((result) => result.entity_id));
+          cursor = page.metadata.next_cursor ?? undefined;
+        } while (cursor);
+
+        assert.deepEqual(
+          pagedIds,
+          complete.results.map((result) => result.entity_id),
+        );
+        assert.equal(new Set(pagedIds).size, 4);
 
         throw new Rollback();
       }),

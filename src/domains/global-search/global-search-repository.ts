@@ -123,7 +123,18 @@ function bounded(
   return sql`(
     select *
     from (
-      select module_candidates.*, ${rankExpression()} as rank
+      select
+        module_candidates.entity_type,
+        module_candidates.entity_id,
+        module_candidates.stable_name,
+        module_candidates.matched_field,
+        module_candidates.matched_value,
+        module_candidates.match_reason,
+        module_candidates.lifecycle_status,
+        date_trunc('milliseconds', module_candidates.business_time) as business_time,
+        module_candidates.time_basis,
+        date_trunc('milliseconds', module_candidates.updated_at) as updated_at,
+        ${rankExpression()} as rank
       from (${query}) module_candidates
     ) ranked_module_candidates
     where ${cursorPredicate(input.after)}
