@@ -151,6 +151,8 @@ export type TaskDomainErrorCode =
   | "INVALID_PRIORITY"
   | "INVALID_TASK_STATUS"
   | "INVALID_TASK_STATUS_TRANSITION"
+  | "INVALID_TASK_REOPEN_STATE"
+  | "TASK_STATUS_CONFLICT"
   | "INVALID_DUE_TIME"
   | "INVALID_TIMEZONE"
   | "INVALID_TAGS"
@@ -391,6 +393,13 @@ export class TaskService {
       userId,
       id,
       status,
+      expectedStatus: existing.status,
+      resumeStatus:
+        status === "completed" || status === "cancelled"
+          ? existing.status === "pending" || existing.status === "in_progress"
+            ? existing.status
+            : null
+          : null,
       completedAt:
         status === "completed"
           ? this.now()
@@ -398,9 +407,53 @@ export class TaskService {
     });
 
     if (!task) {
+      const current = await this.repository.findTaskById(userId, id);
       throw new TaskDomainError(
-        "TASK_NOT_FOUND",
-        "Task was not found.",
+        current ? "TASK_STATUS_CONFLICT" : "TASK_NOT_FOUND",
+        current ? "Task status changed concurrently." : "Task was not found.",
+      );
+    }
+
+    return this.toTaskResult(task, await this.getAccountTimezone(userId));
+  }
+
+  async reopenTask(input: { userId: string; id: string }): Promise<TaskEntryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+    if (!id) {
+      throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    }
+
+    const existing = await this.repository.findTaskById(userId, id);
+    if (!existing) {
+      throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    }
+    if (existing.status !== "completed" && existing.status !== "cancelled") {
+      throw new TaskDomainError(
+        "INVALID_TASK_REOPEN_STATE",
+        "Only completed or cancelled tasks can be reopened.",
+      );
+    }
+
+    const resumeStatus = existing.resumeStatus;
+    if (resumeStatus !== "pending" && resumeStatus !== "in_progress") {
+      throw new TaskDomainError(
+        "INVALID_TASK_REOPEN_STATE",
+        "The task has no valid active status to restore.",
+      );
+    }
+
+    const task = await this.repository.reopenTask({
+      userId,
+      id,
+      expectedStatus: existing.status,
+      resumeStatus,
+    });
+    if (!task) {
+      const current = await this.repository.findTaskById(userId, id);
+      throw new TaskDomainError(
+        current ? "TASK_STATUS_CONFLICT" : "TASK_NOT_FOUND",
+        current ? "Task status changed concurrently." : "Task was not found.",
       );
     }
 

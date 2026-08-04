@@ -58,6 +58,7 @@ test(
             title: `Task ${id}`,
             description: "Lifecycle fixture",
             status: "pending",
+            resumeStatus: null,
             lifecycleStatus,
             priority: "normal",
             dueTime: new Date("2026-08-01T00:00:00.000Z"),
@@ -67,6 +68,13 @@ test(
             updatedAt: timestamp,
             completedAt: null,
             ...overrides,
+            resumeStatus: overrides.resumeStatus ?? (
+              overrides.status === "completed"
+                ? "in_progress"
+                : overrides.status === "cancelled"
+                  ? "pending"
+                  : null
+            ),
           });
 
           const lifecycleIds = [
@@ -157,6 +165,8 @@ test(
             id: lifecycleIds[1]!,
             userId: owner,
             status: "completed",
+            expectedStatus: "in_progress",
+            resumeStatus: "in_progress",
             completedAt: transitionCompletedAt,
           });
           assert.equal(transitioned?.status, "completed");

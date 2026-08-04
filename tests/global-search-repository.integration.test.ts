@@ -37,7 +37,7 @@ test("real PostgreSQL global search covers fields, ranking, scope, dates, pagina
       const taskIds=[randomUUID(),randomUUID()];
       await tx.insert(schema.tasks).values([
         {id:taskIds[0],userId:owner,title:"精确计划",description:"任务描述字段",status:"pending",lifecycleStatus:"active",priority:"normal",dueTime:null,timezone:"Asia/Shanghai",tags:["任务标签"],createdAt:now,updatedAt:now},
-        {id:taskIds[1],userId:owner,title:"归档任务",description:"历史任务正文",status:"completed",lifecycleStatus:"archived",priority:"low",dueTime:new Date("2026-07-30T08:00:00Z"),timezone:"Asia/Shanghai",tags:["历史任务"],createdAt:now,updatedAt:now,completedAt:now},
+        {id:taskIds[1],userId:owner,title:"归档任务",description:"历史任务正文",status:"completed",resumeStatus:"in_progress",lifecycleStatus:"archived",priority:"low",dueTime:new Date("2026-07-30T08:00:00Z"),timezone:"Asia/Shanghai",tags:["历史任务"],createdAt:now,updatedAt:now,completedAt:now},
       ]);
       const before={tool:(await tx.select({v:count()}).from(schema.toolCalls))[0]!.v,life:(await tx.select({v:count()}).from(schema.resourceLifecycleEvents))[0]!.v,idem:(await tx.select({v:count()}).from(schema.mcpWriteIdempotency))[0]!.v};
       const service=new GlobalSearchService(new DrizzleGlobalSearchRepository(tx as never));

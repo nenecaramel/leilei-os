@@ -248,6 +248,31 @@ test("normal Task list keeps header action order, exact summary, and read-only c
   }
 });
 
+test("active terminal Task list exposes one in-place reopen action", async () => {
+  const terminal = {
+    ...TASK_RESPONSE.data,
+    status: "cancelled" as const,
+    completed_at: null,
+    allowed_actions: ["reopen"] as const,
+  };
+  const { api, requests } = createApi(async (path, init) => {
+    if (path === "/task/task-123/reopen") {
+      return { success: true, data: { ...terminal, status: "pending", allowed_actions: ["start", "cancel"] } };
+    }
+    return { success: true, data: { tasks: [terminal], metadata: { count: 1 } } };
+  });
+  const page = await renderTaskPage("/task?status=cancelled", api);
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const buttons = [...page.container.querySelectorAll("button")].filter((button) => button.textContent === "恢复任务");
+    assert.equal(buttons.length, 1);
+    await React.act(async () => { buttons[0]!.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    assert.equal(requests.filter(({ path, init }) => path === "/task/task-123/reopen" && init?.method === "POST").length, 1);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("direct detail load renders a detail placeholder first and skips the list request", async () => {
   const detail = deferred<unknown>();
   const { api, requests } = createApi(() => detail.promise);
@@ -967,6 +992,46 @@ test("Task status transition is single-flight, preserves detail on failure, and 
       });
       await retry.promise;
     });
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("completed Task detail exposes a single reopen action and sends one mutation", async () => {
+  const response = {
+    ...TASK_RESPONSE,
+    data: {
+      ...TASK_RESPONSE.data,
+      status: "completed" as const,
+      completed_at: "2026-07-29T04:00:00.000Z",
+      allowed_actions: ["reopen"] as const,
+    },
+  };
+  const requests: RequestRecord[] = [];
+  const api: WebApiClient = {
+    request<T>(path, init) {
+      requests.push({ path, init });
+      if (path === `/task/${TASK_ID}`) return Promise.resolve(response as T);
+      if (path === `/task/${TASK_ID}/reopen`) {
+        return Promise.resolve({
+          ...response,
+          data: { ...response.data, status: "in_progress", completed_at: null, allowed_actions: ["complete", "cancel"] },
+        } as T);
+      }
+      if (path === "/task") return Promise.resolve({ success: true, data: { tasks: [], metadata: { count: 0 } } } as T);
+      return Promise.resolve({ success: true, data: { tasks: [], metadata: { count: 0 } } } as T);
+    },
+  };
+  const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const reopen = [...page.container.querySelectorAll("button")].filter((button) => button.textContent === "恢复任务");
+    assert.equal(reopen.length, 1);
+    await React.act(async () => {
+      reopen[0]!.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      reopen[0]!.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter(({ path, init }) => path === `/task/${TASK_ID}/reopen` && init?.method === "POST").length, 1);
   } finally {
     await page.cleanup();
   }

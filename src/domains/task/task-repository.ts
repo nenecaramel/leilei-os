@@ -62,6 +62,7 @@ export type TaskRecord = {
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
+  resumeStatus?: TaskStatus | null;
   lifecycleStatus?: "active" | "archived";
 };
 
@@ -87,6 +88,15 @@ export type UpdateTaskStatusInput = {
   id: string;
   status: TaskStatus;
   completedAt: Date | null;
+  resumeStatus?: TaskStatus | null;
+  expectedStatus?: TaskStatus;
+};
+
+export type ReopenTaskInput = {
+  userId: string;
+  id: string;
+  expectedStatus: "completed" | "cancelled";
+  resumeStatus: "pending" | "in_progress";
 };
 
 export type NormalizedTaskUpdate = {
@@ -131,6 +141,10 @@ export interface TaskRepository {
 
   updateTaskStatus(
     input: UpdateTaskStatusInput,
+  ): Promise<TaskRecord | null>;
+
+  reopenTask(
+    input: ReopenTaskInput,
   ): Promise<TaskRecord | null>;
 
   updateTask(
@@ -225,6 +239,7 @@ export class DrizzleTaskRepository
         createdAt: tasks.createdAt,
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
+        resumeStatus: tasks.resumeStatus,
       })
       .from(tasks)
       .where(and(...conditions))
@@ -254,6 +269,7 @@ export class DrizzleTaskRepository
         createdAt: tasks.createdAt,
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
+        resumeStatus: tasks.resumeStatus,
       })
       .from(tasks)
       .where(
@@ -278,6 +294,7 @@ export class DrizzleTaskRepository
         title: input.title,
         description: input.description,
         status: input.status,
+        resumeStatus: null,
         lifecycleStatus: "active",
         priority: input.priority,
         dueTime: input.dueTime,
@@ -297,6 +314,7 @@ export class DrizzleTaskRepository
         createdAt: tasks.createdAt,
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
+        resumeStatus: tasks.resumeStatus,
       });
 
     if (!task) {
@@ -342,6 +360,7 @@ export class DrizzleTaskRepository
             createdAt: tasks.createdAt,
             updatedAt: tasks.updatedAt,
             completedAt: tasks.completedAt,
+            resumeStatus: tasks.resumeStatus,
           })
           .from(tasks)
           .where(and(eq(tasks.userId, input.userId), eq(tasks.id, idempotency.resourceId)))
@@ -358,6 +377,7 @@ export class DrizzleTaskRepository
           title: input.title,
           description: input.description,
           status: input.status,
+          resumeStatus: null,
           lifecycleStatus: "active",
           priority: input.priority,
           dueTime: input.dueTime,
@@ -377,6 +397,7 @@ export class DrizzleTaskRepository
           createdAt: tasks.createdAt,
           updatedAt: tasks.updatedAt,
           completedAt: tasks.completedAt,
+          resumeStatus: tasks.resumeStatus,
         });
 
       if (!task) throw new Error("Task insert did not return a record.");
@@ -401,6 +422,7 @@ export class DrizzleTaskRepository
       .update(tasks)
       .set({
         status: input.status,
+        resumeStatus: input.resumeStatus ?? null,
         completedAt: input.completedAt,
         updatedAt: new Date(),
       })
@@ -409,6 +431,7 @@ export class DrizzleTaskRepository
           eq(tasks.userId, input.userId),
           eq(tasks.id, input.id),
           eq(tasks.lifecycleStatus, "active"),
+          ...(input.expectedStatus ? [eq(tasks.status, input.expectedStatus)] : []),
         ),
       )
       .returning({
@@ -423,6 +446,45 @@ export class DrizzleTaskRepository
         createdAt: tasks.createdAt,
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
+        resumeStatus: tasks.resumeStatus,
+      });
+
+    return task ?? null;
+  }
+
+  async reopenTask(
+    input: ReopenTaskInput,
+  ): Promise<TaskRecord | null> {
+    const [task] = await this.db
+      .update(tasks)
+      .set({
+        status: input.resumeStatus,
+        resumeStatus: null,
+        completedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(tasks.userId, input.userId),
+          eq(tasks.id, input.id),
+          eq(tasks.lifecycleStatus, "active"),
+          eq(tasks.status, input.expectedStatus),
+          eq(tasks.resumeStatus, input.resumeStatus),
+        ),
+      )
+      .returning({
+        id: tasks.id,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueTime: tasks.dueTime,
+        timezone: tasks.timezone,
+        tags: tasks.tags,
+        createdAt: tasks.createdAt,
+        updatedAt: tasks.updatedAt,
+        completedAt: tasks.completedAt,
+        resumeStatus: tasks.resumeStatus,
       });
 
     return task ?? null;
@@ -461,6 +523,7 @@ export class DrizzleTaskRepository
         createdAt: tasks.createdAt,
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
+        resumeStatus: tasks.resumeStatus,
       });
 
     return task ?? null;
@@ -472,6 +535,7 @@ export class DrizzleTaskRepository
       status: tasks.status, priority: tasks.priority, dueTime: tasks.dueTime,
       timezone: tasks.timezone, tags: tasks.tags, createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt, completedAt: tasks.completedAt,
+      resumeStatus: tasks.resumeStatus,
       lifecycleStatus: tasks.lifecycleStatus,
     }).from(tasks)
       .where(and(eq(tasks.userId, userId), eq(tasks.lifecycleStatus, "archived")))
@@ -485,6 +549,7 @@ export class DrizzleTaskRepository
       status: tasks.status, priority: tasks.priority, dueTime: tasks.dueTime,
       timezone: tasks.timezone, tags: tasks.tags, createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt, completedAt: tasks.completedAt,
+      resumeStatus: tasks.resumeStatus,
       lifecycleStatus: tasks.lifecycleStatus,
     }).from(tasks)
       .where(and(eq(tasks.userId, userId), eq(tasks.id, id), eq(tasks.lifecycleStatus, "archived")))

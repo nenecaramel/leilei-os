@@ -1,6 +1,6 @@
-export type TaskAction = "start" | "complete" | "cancel";
+export type TaskAction = "start" | "complete" | "cancel" | "reopen";
 
-const actionOrder: TaskAction[] = ["start", "complete", "cancel"];
+const actionOrder: TaskAction[] = ["start", "complete", "cancel", "reopen"];
 
 export function getTaskActionControls(
   allowedActions: readonly TaskAction[],
