@@ -785,7 +785,7 @@ export function MemoryPageContent({
     if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeMemoryReturnTo(location.returnTo);
     if (isSearchLocation(returnTo)) {
-      navigateWithinApp(returnTo, window.history.state);
+      navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
     }
     window.history.pushState(null, "", returnTo);
@@ -871,7 +871,7 @@ export function MemoryPageContent({
       archivedDetailLocation.returnTo,
     );
     if (isSearchLocation(returnTo)) {
-      navigateWithinApp(returnTo, window.history.state);
+      navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
     }
     window.history.pushState(null, "", returnTo);

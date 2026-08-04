@@ -551,7 +551,7 @@ export function DiaryPageContent({
     if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeDiaryReturnTo(location.returnTo);
     if (isSearchLocation(returnTo)) {
-      navigateWithinApp(returnTo, window.history.state);
+      navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
     }
     window.history.pushState(null, "", returnTo);
@@ -619,7 +619,7 @@ export function DiaryPageContent({
       archivedDetailLocation.returnTo,
     );
     if (isSearchLocation(returnTo)) {
-      navigateWithinApp(returnTo, window.history.state);
+      navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
     }
     window.history.pushState(null, "", returnTo);
