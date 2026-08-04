@@ -11,6 +11,7 @@ import { MemoryPage } from "./pages/MemoryPageContainer";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TaskPage } from "./pages/TaskPageContainer";
+import { GlobalSearchPage } from "./pages/GlobalSearchPageContainer";
 
 export default function App() {
   return (
@@ -34,6 +35,8 @@ export default function App() {
               path="task"
               element={<TaskPage />}
             />
+
+            <Route path="search" element={<GlobalSearchPage />} />
 
             <Route
               path="settings"

@@ -1,3 +1,5 @@
+import { getSafeGlobalSearchReturnTo } from "./global-search-location";
+
 export type DiaryFilters = {
   q: string;
   tag: string;
@@ -97,6 +99,7 @@ export function getSafeDiaryArchiveReturnTo(value: string | null): string {
 
   try {
     const parsed = new URL(value, "https://leilei-os.invalid");
+    if (parsed.pathname === "/search") return getSafeGlobalSearchReturnTo(value);
     const keys = [...parsed.searchParams.keys()];
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
@@ -121,6 +124,7 @@ export function getSafeDiaryReturnTo(value: string | null): string {
 
   try {
     const parsed = new URL(value, "https://leilei-os.invalid");
+    if (parsed.pathname === "/search") return getSafeGlobalSearchReturnTo(value);
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
       parsed.pathname !== "/diary" ||

@@ -1085,6 +1085,48 @@ textarea:disabled {
   align-items: stretch;
 }
 
+.global-search-filters {
+  align-items: stretch;
+}
+
+.global-search-filters > input,
+.global-search-filters > select,
+.global-search-filters > label,
+.global-search-filters > fieldset {
+  width: min(100%, 760px);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.global-search-filters > label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.global-search-filters > fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.global-search-filters > fieldset label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.global-search-filters > fieldset input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
 .task-filters > input,
 .task-filters > select,
 .task-filters > .native-date-field,
