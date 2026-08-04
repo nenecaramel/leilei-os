@@ -24,9 +24,14 @@ export function normalizeGlobalSearchQuery(value: string): string {
   return value.normalize("NFC").trim();
 }
 
-export function hasValidGlobalSearchQuery(value: string): boolean {
+export function isGlobalSearchQueryWithinLimit(value: string): boolean {
   const normalized = normalizeGlobalSearchQuery(value);
-  return Boolean(normalized) && [...normalized].length <= GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS;
+  return [...normalized].length <= GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS;
+}
+
+export function hasSearchableGlobalSearchQuery(value: string): boolean {
+  const normalized = normalizeGlobalSearchQuery(value);
+  return Boolean(normalized) && isGlobalSearchQueryWithinLimit(normalized);
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -97,7 +102,8 @@ export function getSafeGlobalSearchReturnTo(value: string | null): string {
     const allowed = new Set(["q", "modules", "scope", "mode", "date_from", "date_to"]);
     if ([...parsed.searchParams.keys()].some((key) => !allowed.has(key))) return "/search";
     if ([...allowed].some((key) => parsed.searchParams.getAll(key).length > 1)) return "/search";
-    return createGlobalSearchLocation(readGlobalSearchFilters(parsed.search));
+    const filters = readGlobalSearchFilters(parsed.search);
+    return isGlobalSearchQueryWithinLimit(filters.q) ? createGlobalSearchLocation(filters) : "/search";
   } catch {
     return "/search";
   }

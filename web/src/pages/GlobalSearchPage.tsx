@@ -16,8 +16,9 @@ import {
 } from "./task-location";
 import {
   createGlobalSearchLocation,
-  hasValidGlobalSearchQuery,
   hasValidGlobalSearchDateRange,
+  hasSearchableGlobalSearchQuery,
+  isGlobalSearchQueryWithinLimit,
   normalizeGlobalSearchQuery,
   readGlobalSearchFilters,
   SEARCH_MODULES,
@@ -76,13 +77,13 @@ export function GlobalSearchPageContent({ api }: Props) {
   const [filters, setFilters] = useState<GlobalSearchFilters>(() => {
     const parsed = readGlobalSearchFilters(window.location.search);
     const query = normalizeGlobalSearchQuery(parsed.q);
-    return hasValidGlobalSearchQuery(query) ? { ...parsed, q: query } : { ...parsed, q: "" };
+    return isGlobalSearchQueryWithinLimit(query) ? { ...parsed, q: query } : { ...parsed, q: "" };
   });
   const [draftFilters, setDraftFilters] = useState<GlobalSearchFilters>(() => readGlobalSearchFilters(window.location.search));
   const [queryInput, setQueryInput] = useState(() => readGlobalSearchFilters(window.location.search).q);
   const [state, setState] = useState<SearchState>(() => {
     const query = normalizeGlobalSearchQuery(readGlobalSearchFilters(window.location.search).q);
-    return hasValidGlobalSearchQuery(query) ? "loading" : "idle";
+    return hasSearchableGlobalSearchQuery(query) ? "loading" : "idle";
   });
   const [results, setResults] = useState<GlobalSearchResult[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -121,12 +122,12 @@ export function GlobalSearchPageContent({ api }: Props) {
     const ticket = ++sequence.current;
     abortRef.current?.abort();
     abortRef.current = null;
-    if (nextFilters.q && !hasValidGlobalSearchQuery(nextFilters.q)) {
+    if (!isGlobalSearchQueryWithinLimit(nextFilters.q)) {
       setQueryError("搜索关键词不能超过 200 个字符。");
       return;
     }
     if (!nextFilters.q) {
-      setResults([]); setCursor(null); setState("idle"); setLoadMoreError(false); setLoadingMore(false); return;
+      setQueryError(""); setResults([]); setCursor(null); setState("idle"); setLoadMoreError(false); setLoadingMore(false); return;
     }
     const controller = new AbortController();
     abortRef.current = controller;
@@ -158,16 +159,21 @@ export function GlobalSearchPageContent({ api }: Props) {
       invalidateRequests();
       const parsed = readGlobalSearchFilters(window.location.search);
       const query = normalizeGlobalSearchQuery(parsed.q);
-      const validQuery = !query || hasValidGlobalSearchQuery(query);
+      const queryWithinLimit = isGlobalSearchQueryWithinLimit(query);
+      const validQuery = queryWithinLimit;
       const next = validQuery ? { ...parsed, q: query } : { ...parsed, q: "" };
       setFilters(next);
       setDraftFilters(parsed);
       setQueryInput(parsed.q);
       setDateError("");
       setQueryError(validQuery ? "" : "搜索关键词不能超过 200 个字符。");
-      const snapshot = validQuery ? readSnapshot(createGlobalSearchLocation(next)) : null;
+      if (!validQuery) {
+        setResults([]); setCursor(null); setState("idle"); setLoadingMore(false); setLoadMoreError(false);
+        return;
+      }
+      const snapshot = next.q ? readSnapshot(createGlobalSearchLocation(next)) : null;
       if (next.q && snapshot) restoreSnapshot(snapshot);
-      else if (validQuery) requestSearch(next);
+      else requestSearch(next);
     };
     window.addEventListener("popstate", restoreOrRequest);
     restoreOrRequest();
@@ -181,7 +187,7 @@ export function GlobalSearchPageContent({ api }: Props) {
       const query = normalizeGlobalSearchQuery(queryInput);
       const nextDraft = { ...draftFilters, q: query };
       if (draftFilters.q !== query) setDraftFilters(nextDraft);
-      if (!hasValidGlobalSearchQuery(query)) {
+      if (!isGlobalSearchQueryWithinLimit(query)) {
         setQueryError("搜索关键词不能超过 200 个字符。");
         return;
       }
@@ -203,7 +209,7 @@ export function GlobalSearchPageContent({ api }: Props) {
       return;
     }
     setDateError("");
-    if (!hasValidGlobalSearchQuery(nextDraft.q)) {
+    if (!isGlobalSearchQueryWithinLimit(nextDraft.q)) {
       setQueryError("搜索关键词不能超过 200 个字符。");
       return;
     }

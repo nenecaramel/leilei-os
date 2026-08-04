@@ -10,6 +10,8 @@ import {
   createGlobalSearchLocation,
   DEFAULT_GLOBAL_SEARCH_FILTERS,
   getSafeGlobalSearchReturnTo,
+  hasSearchableGlobalSearchQuery,
+  isGlobalSearchQueryWithinLimit,
   readGlobalSearchFilters,
   toggleGlobalSearchModule,
   type SearchModule,
@@ -32,6 +34,19 @@ test("global search URL parsing uses safe defaults and stable serialization", ()
   assert.equal(getSafeMemoryReturnTo("/search?q=goal&scope=archived"), "/search?q=goal&scope=archived");
   assert.equal(getSafeDiaryReturnTo("/search?q=goal&modules=diary"), "/search?q=goal&modules=diary");
   assert.equal(getSafeTaskReturnTo("/search?q=goal&mode=phrase"), "/search?q=goal&mode=phrase");
+});
+
+test("global search distinguishes an empty query from an overlong query", () => {
+  assert.equal(isGlobalSearchQueryWithinLimit(""), true);
+  assert.equal(isGlobalSearchQueryWithinLimit("  \u0065\u0301  "), true);
+  assert.equal(hasSearchableGlobalSearchQuery(""), false);
+  assert.equal(hasSearchableGlobalSearchQuery("  \u0065\u0301  "), true);
+  assert.equal(isGlobalSearchQueryWithinLimit("a".repeat(200)), true);
+  assert.equal(isGlobalSearchQueryWithinLimit("a".repeat(201)), false);
+  assert.equal(hasSearchableGlobalSearchQuery("a".repeat(200)), true);
+  assert.equal(hasSearchableGlobalSearchQuery("a".repeat(201)), false);
+  assert.equal(getSafeGlobalSearchReturnTo(`/search?q=${"a".repeat(201)}`), "/search");
+  assert.equal(getSafeGlobalSearchReturnTo(`/search?q=${"a".repeat(200)}`), `/search?q=${"a".repeat(200)}`);
 });
 
 test("global search never removes the final selected module", () => {
@@ -335,6 +350,66 @@ test("global search debounces input, aborts stale reads, and never renders stale
   }
 });
 
+test("clearing a query returns to idle without requesting or restoring the old snapshot", async () => {
+  const requests: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      requests.push(path);
+      return response([result("00000000-0000-4000-8000-000000000011")], "next-cursor") as T;
+    },
+  };
+  const page = await renderSearch("/search?q=base", api);
+  try {
+    await page.settle();
+    assert.match(page.dom.window.document.body.textContent ?? "", /目标/);
+    assert.ok(page.dom.window.history.state?.globalSearch);
+    const input = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-query");
+    assert.ok(input);
+    await React.act(async () => { reactChange(input, ""); });
+    await React.act(async () => { await new Promise((resolve) => page.dom.window.setTimeout(resolve, 310)); });
+    assert.equal(requests.length, 1);
+    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search");
+    assert.equal(page.dom.window.history.state?.globalSearch, undefined);
+    assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /目标/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /输入关键词后开始搜索/);
+    assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
+    assert.equal(page.dom.window.document.querySelector("[role=alert]"), null);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("empty query filter changes update URL without requesting", async () => {
+  const requests: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      requests.push(path);
+      return response([]) as T;
+    },
+  };
+  const page = await renderSearch("/search", api);
+  try {
+    const module = page.dom.window.document.querySelector<HTMLInputElement>("input[type=checkbox]");
+    assert.ok(module);
+    await React.act(async () => { reactChange(module, ""); });
+    const scope = page.dom.window.document.querySelector<HTMLSelectElement>("#global-search-scope");
+    assert.ok(scope);
+    await React.act(async () => { reactChange(scope, "all"); });
+    const mode = page.dom.window.document.querySelector<HTMLSelectElement>("#global-search-mode");
+    assert.ok(mode);
+    await React.act(async () => { reactChange(mode, "phrase"); });
+    const from = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-date-from");
+    assert.ok(from);
+    await React.act(async () => { reactChange(from, "2026-08-01"); });
+    assert.equal(requests.length, 0);
+    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=diary%2Ctask&scope=all&mode=phrase&date_from=2026-08-01");
+    assert.match(page.dom.window.document.body.textContent ?? "", /输入关键词后开始搜索/);
+    assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("popstate snapshot restoration invalidates a pending newer request", async () => {
   let resolveB!: (value: unknown) => void;
   const pendingB = new Promise<unknown>((resolve) => { resolveB = resolve; });
@@ -492,6 +567,32 @@ test("global search accepts exactly 200 code points and rejects 201", async () =
     await React.act(async () => { await new Promise((resolve) => page.dom.window.setTimeout(resolve, 310)); });
     assert.equal(requests.length, 1);
     assert.match(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符。/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("popstate to an overlong query clears old results without requesting", async () => {
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      return response([result("00000000-0000-4000-8000-000000000012")], "old-cursor") as T;
+    },
+  };
+  const page = await renderSearch("/search?q=base", api);
+  try {
+    await page.settle();
+    assert.match(page.dom.window.document.body.textContent ?? "", /目标/);
+    await React.act(async () => {
+      page.dom.window.history.pushState(null, "", `/search?q=${"x".repeat(201)}`);
+      page.dom.window.dispatchEvent(new page.dom.window.PopStateEvent("popstate"));
+      await new Promise((resolve) => page.dom.window.setTimeout(resolve, 0));
+    });
+    assert.equal(requests.length, 1);
+    assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /目标/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
+    assert.equal([...page.dom.window.document.querySelectorAll("button")].some((button) => button.textContent === "加载更多"), false);
   } finally {
     await page.cleanup();
   }
