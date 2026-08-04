@@ -11,6 +11,7 @@ import {
   UniverseIcon,
 } from "../components/icons";
 import { useSettings } from "../settings/SettingsProvider";
+import { RouteScrollManager } from "./RouteScrollManager";
 
 export const NAV_ITEMS = [
   { label: "Dashboard", to: "/", icon: DashboardIcon, end: true },
@@ -42,6 +43,7 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
+      <RouteScrollManager />
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark">L</div>

@@ -707,7 +707,7 @@ import {
       restoreScroll = false,
     ) {
       if (isSearchLocation(returnTo)) {
-        navigateWithinApp(returnTo, window.history.state);
+        navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
         return;
       }
       window.history.pushState(null, "", returnTo);
@@ -736,7 +736,7 @@ import {
 
     function returnToArchivedTaskList(returnTo: string) {
       if (isSearchLocation(returnTo)) {
-        navigateWithinApp(returnTo, window.history.state);
+        navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
         return;
       }
       window.history.pushState(null, "", returnTo);
