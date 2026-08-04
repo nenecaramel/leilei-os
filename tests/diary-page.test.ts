@@ -350,6 +350,32 @@ test("Diary refreshed detail explicitly returns to complete safe filters", async
   }
 });
 
+test("Diary active and archived detail returns notify the app router for a safe global-search return", async () => {
+  const returnTo = "/search?q=trip&modules=diary&mode=phrase";
+  const paths = [
+    createDiaryDetailLocation("diary-1", returnTo),
+    createArchivedDiaryDetailLocation("diary-1", returnTo),
+  ];
+  for (const path of paths) {
+    const { api } = pendingApi();
+    const page = await render(path, api);
+    try {
+      let routeChanges = 0;
+      page.window.addEventListener("popstate", () => { routeChanges += 1; });
+      const button = [...page.container.querySelectorAll("button")]
+        .find((candidate) => candidate.textContent === (path.includes("archivedDiary") ? "返回归档列表" : "返回日记列表"));
+      assert.ok(button);
+      await React.act(async () => {
+        button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      });
+      assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
+      assert.equal(routeChanges, 1);
+    } finally {
+      await page.cleanup();
+    }
+  }
+});
+
 test("Diary in-page return restores scroll only after the filtered list is ready", async () => {
   const returnTo = "/diary?q=trip&tag=Japan";
   const list = deferred<unknown>();

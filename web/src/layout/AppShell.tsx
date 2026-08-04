@@ -6,6 +6,7 @@ import {
   DiaryIcon,
   MemoryIcon,
   SettingsIcon,
+  SearchIcon,
   TaskIcon,
   UniverseIcon,
 } from "../components/icons";
@@ -16,6 +17,7 @@ const navigation = [
   { label: "Memory", to: "/memory", icon: MemoryIcon },
   { label: "Diary", to: "/diary", icon: DiaryIcon },
   { label: "Task", to: "/task", icon: TaskIcon },
+  { label: "全局搜索", to: "/search", icon: SearchIcon },
   { label: "Settings", to: "/settings", icon: SettingsIcon },
   { label: "Chat Archive", to: "/chat-archive", icon: ArchiveIcon },
   { label: "Universe", to: "/universe", icon: UniverseIcon },

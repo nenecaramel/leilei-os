@@ -8,6 +8,7 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
 import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
+import { isSearchLocation, navigateWithinApp } from "./app-navigation";
 import {
   confirmUnsavedChanges,
   createMutationOwnership,
@@ -764,6 +765,10 @@ export function MemoryPageContent({
     if (!skipSafety && !confirmAndDiscardDraft()) return;
     if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeMemoryReturnTo(location.returnTo);
+    if (isSearchLocation(returnTo)) {
+      navigateWithinApp(returnTo, window.history.state);
+      return;
+    }
     window.history.pushState(null, "", returnTo);
     pendingScrollRestore.current = readMemoryScrollPosition(
       getMemoryScrollStorage(window),
@@ -846,6 +851,10 @@ export function MemoryPageContent({
     const returnTo = getSafeMemoryArchiveReturnTo(
       archivedDetailLocation.returnTo,
     );
+    if (isSearchLocation(returnTo)) {
+      navigateWithinApp(returnTo, window.history.state);
+      return;
+    }
     window.history.pushState(null, "", returnTo);
     pendingScrollRestore.current = readMemoryScrollPosition(
       getMemoryScrollStorage(window),

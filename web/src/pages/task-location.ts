@@ -1,3 +1,5 @@
+import { getSafeGlobalSearchReturnTo } from "./global-search-location";
+
 export type TaskDueFilter =
   | ""
   | "no_due_date"
@@ -115,6 +117,7 @@ export function getSafeTaskArchiveReturnTo(value: string | null): string {
 
   try {
     const parsed = new URL(value, "https://leilei-os.invalid");
+    if (parsed.pathname === "/search") return getSafeGlobalSearchReturnTo(value);
     const keys = [...parsed.searchParams.keys()];
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
@@ -149,6 +152,7 @@ export function getSafeTaskReturnTo(value: string | null): string {
 
   try {
     const parsed = new URL(value, "https://leilei-os.invalid");
+    if (parsed.pathname === "/search") return getSafeGlobalSearchReturnTo(value);
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
       parsed.pathname !== "/task"

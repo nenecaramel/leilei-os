@@ -1,3 +1,5 @@
+import { getSafeGlobalSearchReturnTo } from "./global-search-location";
+
 const MEMORY_ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
 const MEMORY_CATEGORIES = new Set([
   "profile",
@@ -127,6 +129,7 @@ export function getSafeMemoryArchiveReturnTo(
 
   try {
     const parsed = new URL(value, "https://leilei-os.invalid");
+    if (parsed.pathname === "/search") return getSafeGlobalSearchReturnTo(value);
     const keys = [...parsed.searchParams.keys()];
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
@@ -152,6 +155,7 @@ export function getSafeMemoryReturnTo(value: string | null): string {
 
   try {
     const parsed = new URL(value, "https://leilei-os.invalid");
+    if (parsed.pathname === "/search") return getSafeGlobalSearchReturnTo(value);
     const keys = [...parsed.searchParams.keys()];
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
