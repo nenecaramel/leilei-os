@@ -22,12 +22,24 @@ const styles = readFileSync(
   new URL("../web/src/styles.css", import.meta.url),
   "utf8",
 );
+const indexHtml = readFileSync(
+  new URL("../web/index.html", import.meta.url),
+  "utf8",
+);
 const taskPageSource = readFileSync(
   new URL("../web/src/pages/TaskPage.tsx", import.meta.url),
   "utf8",
 );
 const diaryPageSource = readFileSync(
   new URL("../web/src/pages/DiaryPage.tsx", import.meta.url),
+  "utf8",
+);
+const globalSearchPageSource = readFileSync(
+  new URL("../web/src/pages/GlobalSearchPage.tsx", import.meta.url),
+  "utf8",
+);
+const appShellSource = readFileSync(
+  new URL("../web/src/layout/AppShell.tsx", import.meta.url),
   "utf8",
 );
 
@@ -257,6 +269,37 @@ test("Task and Diary route date fields share NativeDateInput", () => {
   assert.match(taskPageSource, /<NativeDateInput[\s\S]*?type="datetime-local"/);
   assert.match(diaryPageSource, /import \{ NativeDateInput \}/);
   assert.match(diaryPageSource, /<NativeDateInput[\s\S]*?type="date"/);
+});
+
+test("Global Search date fields share NativeDateInput and its constrained class", () => {
+  assert.match(globalSearchPageSource, /import \{ NativeDateInput \}/);
+  assert.match(globalSearchPageSource, /<NativeDateInput[\s\S]*?id="global-search-date-from"[\s\S]*?type="date"/);
+  assert.match(globalSearchPageSource, /<NativeDateInput[\s\S]*?id="global-search-date-to"[\s\S]*?type="date"/);
+  const markup = renderToStaticMarkup(createElement(NativeDateInput, { type: "date", id: "global-search-date-from" }));
+  assert.match(markup, /class="native-date-field"/);
+  assert.match(markup, /class="native-date-input"/);
+  assert.match(styles, /\.global-search-filters > \.native-date-field/);
+});
+
+test("Web shell reserves the iPhone safe area and declares a theme color", () => {
+  assert.match(indexHtml, /viewport-fit=cover/);
+  assert.match(indexHtml, /<meta name="theme-color" content="#f3f1eb"/);
+  assert.match(indexHtml, /--theme-page-background/);
+  assert.match(styles, /env\(safe-area-inset-top, 0px\)/);
+  assert.match(styles, /html,[\s\S]*body,[\s\S]*#root/);
+});
+
+test("mobile navigation keeps all eight routes in one scrollable row", () => {
+  assert.equal((appShellSource.match(/label: /g) ?? []).length, 8);
+  assert.match(styles, /\.primary-nav\s*\{[\s\S]*?grid-auto-flow:\s*column/);
+  assert.match(styles, /\.primary-nav\s*\{[\s\S]*?overflow-x:\s*auto/);
+  assert.match(styles, /\.nav-item\s*\{[\s\S]*?min-width:\s*44px/);
+  assert.doesNotMatch(styles, /grid-template-columns:\s*repeat\(7,/);
+  assert.match(styles, /white-space:\s*nowrap/);
+  assert.doesNotMatch(styles, /body\s*\{[\s\S]*?overflow-x:\s*hidden/);
+  assert.match(styles, /right:\s*max\(12px,\s*env\(safe-area-inset-right/);
+  assert.match(styles, /left:\s*max\(12px,\s*env\(safe-area-inset-left/);
+  assert.match(styles, /min-height:\s*100dvh/);
 });
 
 test(

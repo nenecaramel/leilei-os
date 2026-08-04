@@ -1,29 +1,14 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useWebApiClient } from "../api/useWebApiClient";
-import {
-  ArchiveIcon,
-  DiaryIcon,
-  MemoryIcon,
-  TaskIcon,
-} from "../components/icons";
-import { useSettings } from "../settings/SettingsProvider";
+import type { WebApiClient } from "../api/useWebApiClient";
+import { DiaryIcon, MemoryIcon, TaskIcon } from "../components/icons";
+import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
+import { navigateWithinApp } from "./app-navigation";
 import { summarizeDashboardTasks } from "./dashboard-tasks";
+import { createQuickCreateState, type QuickCreateTarget } from "./quick-create";
 
-type DiaryEntry = {
-  id: string;
-  title: string;
-  content: string;
-  date: string;
-};
-
-type TaskStatus =
-  | "pending"
-  | "in_progress"
-  | "completed"
-  | "cancelled";
-
+type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
 type TaskEntry = {
   id: string;
   title: string;
@@ -33,38 +18,12 @@ type TaskEntry = {
   timezone: string;
   time_bucket: "no_due_date" | "overdue" | "today" | "next_7_days" | "later";
 };
-
-type MemoryResponse = {
-  success: true;
-  data: {
-    metadata: {
-      count: number;
-    };
-  };
-};
-
-type DiaryResponse = {
-  success: true;
-  data: {
-    diaries: DiaryEntry[];
-    metadata: {
-      count: number;
-    };
-  };
-};
-
-type TaskResponse = {
-  success: true;
-  data: {
-    tasks: TaskEntry[];
-    metadata: {
-      count: number;
-    };
-  };
-};
-
+type MemoryResponse = { success: true; data: { metadata: { count: number } } };
+type DiaryResponse = { success: true; data: { metadata: { count: number } } };
+type TaskResponse = { success: true; data: { tasks: TaskEntry[]; metadata: { count: number } } };
 type DashboardState =
   | { status: "loading" }
+  | { status: "error" }
   | {
       status: "ready";
       memoryCount: number;
@@ -73,185 +32,107 @@ type DashboardState =
       openTaskCount: number;
       completedTaskCount: number;
       overdueTaskCount: number;
-      latestDiary: DiaryEntry | null;
-      nextTask: TaskEntry | null;
-    }
-  | { status: "error" };
+    };
+
+export const AUTOMATIC_HERO_TITLE = "你的个人系统正在持续运转。";
+
+export const DASHBOARD_MODULES = ["Memory", "Diary", "Task"] as const;
+
+export function formatDashboardTaskSummary(
+  openTaskCount: number,
+  overdueTaskCount: number,
+  completedTaskCount: number,
+): string {
+  return `${openTaskCount} 项待处理 · ${overdueTaskCount} 项逾期 · ${completedTaskCount} 项已完成`;
+}
+
+export function getDashboardHeroDescription(
+  status: "loading" | "ready" | "error",
+  counts?: { memory: number; diary: number; openTasks: number; overdue: number },
+  custom?: string | null,
+): string {
+  if (custom && custom.trim()) return custom;
+  if (status === "ready" && counts) {
+    return `Memory 有 ${counts.memory} 条记忆，Diary 有 ${counts.diary} 篇日记，Task 有 ${counts.openTasks} 项待处理，其中 ${counts.overdue} 项已逾期。`;
+  }
+  return status === "loading" ? "正在读取 Memory、Diary 和 Task。" : "暂时无法读取 Dashboard，请重试。";
+}
+
+export function getDashboardHeroTitle(
+  status: "loading" | "ready" | "error",
+  custom?: string | null,
+): string {
+  if (custom && custom.trim()) return custom;
+  if (status === "loading") return "正在读取你的个人系统。";
+  if (status === "error") return "Dashboard 暂时无法读取。";
+  return AUTOMATIC_HERO_TITLE;
+}
+
+export function getDashboardBadge(status: "loading" | "ready" | "error"): string {
+  return status === "ready" ? "3 modules connected" : status === "loading" ? "正在读取" : "读取失败";
+}
 
 function getGreeting(): string {
   const hour = new Date().getHours();
-
-  if (hour < 6) {
-    return "夜深了";
-  }
-
-  if (hour < 12) {
-    return "早上好";
-  }
-
-  if (hour < 18) {
-    return "下午好";
-  }
-
+  if (hour < 6) return "夜深了";
+  if (hour < 12) return "早上好";
+  if (hour < 18) return "下午好";
   return "晚上好";
 }
 
-function formatDiaryDate(value: string): string {
-  const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(date);
-}
-
-function formatTaskDueTime(
-  value: string | null,
-  timezone: string,
-): string {
-  if (!value) return "无截止时间";
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  try {
-    return new Intl.DateTimeFormat("zh-CN", {
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: timezone,
-    }).format(date);
-  } catch {
-    return date.toLocaleString("zh-CN");
-  }
-}
-
-function truncate(value: string, length: number): string {
-  return value.length > length
-    ? `${value.slice(0, length)}…`
-    : value;
-}
-
-const CORE_MODULES = [
-  {
-    name: "Memory",
-    capabilities: "创建、编辑、搜索与归档",
-  },
-  {
-    name: "Diary",
-    capabilities: "创建、查看与编辑",
-  },
-  {
-    name: "Task",
-    capabilities: "创建、状态管理与完成",
-  },
-] as const;
-
-const AUTOMATIC_HERO_DESCRIPTION =
-  `${CORE_MODULES.length} 个核心模块已连接：` +
-  CORE_MODULES.map(
-    (module) =>
-      `${module.name} 支持${module.capabilities}`,
-  ).join("；") +
-  "。";
-
-export const AUTOMATIC_HERO_TITLE =
-  "你的个人系统正在持续运转。";
-
-export function DashboardPage() {
-  const api = useWebApiClient();
-  const { settings } = useSettings();
-
+export function DashboardPageContent({
+  api,
+  settings,
+}: {
+  api: WebApiClient;
+  settings: SettingsData;
+}) {
   const [reloadKey, setReloadKey] = useState(0);
-  const [state, setState] = useState<DashboardState>({
-    status: "loading",
-  });
+  const [state, setState] = useState<DashboardState>({ status: "loading" });
 
   useEffect(() => {
     let active = true;
-
-    setState({
-      status: "loading",
-    });
-
+    setState({ status: "loading" });
     Promise.all([
       api.request<MemoryResponse>("/memory"),
       api.request<DiaryResponse>("/diary"),
       api.request<TaskResponse>("/task"),
     ])
-      .then(([memoryResponse, diaryResponse, taskResponse]) => {
-        if (!active) {
-          return;
-        }
-
-        const tasks = taskResponse.data.tasks;
-
-        const {
-          openTasks,
-          completedTasks,
-          overdueTaskCount,
-          nextTask,
-        } = summarizeDashboardTasks(tasks);
-
+      .then(([memory, diary, task]) => {
+        if (!active) return;
+        const summary = summarizeDashboardTasks(task.data.tasks);
         setState({
           status: "ready",
-          memoryCount: memoryResponse.data.metadata.count,
-          diaryCount: diaryResponse.data.metadata.count,
-          taskCount: taskResponse.data.metadata.count,
-          openTaskCount: openTasks.length,
-          completedTaskCount: completedTasks.length,
-          overdueTaskCount,
-          latestDiary:
-            diaryResponse.data.diaries[0] ?? null,
-          nextTask,
+          memoryCount: memory.data.metadata.count,
+          diaryCount: diary.data.metadata.count,
+          taskCount: task.data.metadata.count,
+          openTaskCount: summary.openTasks.length,
+          completedTaskCount: summary.completedTasks.length,
+          overdueTaskCount: summary.overdueTaskCount,
         });
       })
       .catch(() => {
-        if (active) {
-          setState({
-            status: "error",
-          });
-        }
+        if (active) setState({ status: "error" });
       });
-
     return () => {
       active = false;
     };
   }, [api, reloadKey]);
 
-  const preferredName =
-    settings.preferred_name ?? "蕾蕾";
-
-  const pageTitle =
-    settings.home_title ??
-    `${getGreeting()}，${preferredName}`;
-
-  const pageDescription =
-    settings.home_subtitle ??
-    "记忆、日记和任务都汇集在这里。";
-
-  const heroEyebrow =
-    settings.page_copy.home_hero_eyebrow;
-
-  const heroDescription =
-    settings.page_copy.home_hero_description_mode === "custom"
-      ? settings.page_copy.home_hero_description ??
-        AUTOMATIC_HERO_DESCRIPTION
-      : AUTOMATIC_HERO_DESCRIPTION;
-
-  const heroTitle =
-    settings.page_copy.home_hero_title_mode === "custom"
-      ? settings.page_copy.home_hero_title ??
-        AUTOMATIC_HERO_TITLE
-      : AUTOMATIC_HERO_TITLE;
+  const preferredName = settings.preferred_name ?? "蕾蕾";
+  const pageTitle = settings.home_title ?? `${getGreeting()}，${preferredName}`;
+  const pageDescription = settings.home_subtitle ?? "记忆、日记和任务都汇集在这里。";
+  const isCustomHero = settings.page_copy.home_hero_description_mode === "custom";
+  const heroDescription = getDashboardHeroDescription(
+    state.status,
+    state.status === "ready"
+      ? { memory: state.memoryCount, diary: state.diaryCount, openTasks: state.openTaskCount, overdue: state.overdueTaskCount }
+      : undefined,
+    isCustomHero ? settings.page_copy.home_hero_description : null,
+  );
+  const heroTitle = settings.page_copy.home_hero_title_mode === "custom"
+    ? getDashboardHeroTitle(state.status, settings.page_copy.home_hero_title)
+    : getDashboardHeroTitle(state.status);
 
   return (
     <div className="page dashboard-page">
@@ -261,219 +142,73 @@ export function DashboardPage() {
         description={pageDescription}
         action={
           <span className="live-badge">
-            {state.status === "ready"
-              ? ` modules connected`
-              : "Loading"}
+            {getDashboardBadge(state.status)}
           </span>
         }
       />
-
       <section className="hero-panel">
         <div>
-          {heroEyebrow && (
-            <span className="status-pill">
-              {heroEyebrow}
-            </span>
-          )}
-
+          {settings.page_copy.home_hero_eyebrow && <span className="status-pill">{settings.page_copy.home_hero_eyebrow}</span>}
           <h2>{heroTitle}</h2>
-
           <p>{heroDescription}</p>
         </div>
-
-        <div className="orbit" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
+        <div className="orbit" aria-hidden="true"><span /><span /><span /></div>
       </section>
-
       {state.status === "loading" && (
-        <section className="space-grid">
+        <section className="space-grid dashboard-module-grid" aria-label="模块加载中">
           {[0, 1, 2].map((item) => (
-            <article
-              className="space-card memory-card-loading"
-              key={item}
-            >
-              <span />
-              <strong />
-              <p />
-            </article>
+            <article className="space-card memory-card-loading" key={item}><span /><strong /><p /></article>
           ))}
         </section>
       )}
-
       {state.status === "error" && (
-        <section className="quiet-panel">
+        <section className="quiet-panel" role="alert">
           <p className="eyebrow">System status</p>
-          <h2>暂时无法读取 Dashboard</h2>
-          <p>Memory、Diary 或 Task 的连接没有完成。</p>
-
-          <button
-            className="secondary-button"
-            onClick={() =>
-              setReloadKey((value) => value + 1)
-            }
-          >
-            重新加载
-          </button>
+          <h2>Dashboard 暂时无法读取。</h2>
+          <p>请检查连接后重试。</p>
+          <button className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>重新加载</button>
         </section>
       )}
-
       {state.status === "ready" && (
-        <>
-          <section className="section-block">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Spaces</p>
-                <h2>你的个人系统</h2>
-              </div>
-
-              <span>3 live modules</span>
-            </div>
-
-            <div className="space-grid">
-              <article className="space-card">
-                <div className="space-icon sage">
-                  <MemoryIcon />
-                </div>
-
-                <div>
-                  <h3>Memory</h3>
-                  <p>稳定偏好、目标和项目</p>
-                </div>
-
-                <span className="card-state">
-                  {state.memoryCount} 条
-                </span>
-
-                <Link
-                  className="secondary-button"
-                  to="/memory"
-                >
-                  打开
-                </Link>
-              </article>
-
-              <article className="space-card">
-                <div className="space-icon peach">
-                  <DiaryIcon />
-                </div>
-
-                <div>
-                  <h3>Diary</h3>
-                  <p>个人记录与生活切片</p>
-                </div>
-
-                <span className="card-state">
-                  {state.diaryCount} 篇
-                </span>
-
-                <Link
-                  className="secondary-button"
-                  to="/diary"
-                >
-                  打开
-                </Link>
-              </article>
-
-              <article className="space-card">
-                <div className="space-icon blue">
-                  <TaskIcon />
-                </div>
-
-                <div>
-                  <h3>Task</h3>
-                  <p>
-                    {state.openTaskCount} 项进行中，
-                    {state.overdueTaskCount} 项逾期，
-                    {state.completedTaskCount} 项已完成
-                  </p>
-                </div>
-
-                <span className="card-state">
-                  {state.taskCount} 项
-                </span>
-
-                <Link
-                  className="secondary-button"
-                  to="/task"
-                >
-                  打开
-                </Link>
-              </article>
-
-              <article className="space-card">
-                <div className="space-icon lilac">
-                  <ArchiveIcon />
-                </div>
-
-                <div>
-                  <h3>Archive</h3>
-                  <p>未来的对话归档空间</p>
-                </div>
-
-                <span className="card-state">
-                  Later
-                </span>
-              </article>
-            </div>
-          </section>
-
-          <section className="quiet-panel">
-            <p className="eyebrow">Today at a glance</p>
-
-            <div className="status-row">
-              <div>
-                <span className="status-dot" />
-                <strong>最近一篇日记</strong>
-
-                {state.latestDiary ? (
-                  <>
-                    <p>
-                      {formatDiaryDate(
-                        state.latestDiary.date,
-                      )}
-                      {" · "}
-                      {state.latestDiary.title}
-                    </p>
-
-                    <p>
-                      {truncate(
-                        state.latestDiary.content,
-                        100,
-                      )}
-                    </p>
-                  </>
-                ) : (
-                  <p>还没有日记。</p>
-                )}
-              </div>
-
-              <div>
-                <span className="status-dot" />
-                <strong>下一项任务</strong>
-
-                {state.nextTask ? (
-                  <>
-                    <p>{state.nextTask.title}</p>
-
-                    <p>
-                      截止于{" "}
-                      {formatTaskDueTime(
-                        state.nextTask.due_time,
-                        state.nextTask.timezone,
-                      )}
-                    </p>
-                  </>
-                ) : (
-                  <p>目前没有待处理任务。</p>
-                )}
-              </div>
-            </div>
-          </section>
-        </>
+        <section className="space-grid dashboard-module-grid" aria-label="核心模块">
+          <DashboardModuleCard icon={<MemoryIcon />} iconClass="sage" name="Memory" description="稳定偏好、目标和项目" count={`${state.memoryCount} 条`} href="/memory" quickLabel="新增记忆" quickTarget="memory" />
+          <DashboardModuleCard icon={<DiaryIcon />} iconClass="peach" name="Diary" description="个人记录与生活切片" count={`${state.diaryCount} 篇`} href="/diary" quickLabel="写日记" quickTarget="diary" />
+              <DashboardModuleCard icon={<TaskIcon />} iconClass="blue" name="Task" description={formatDashboardTaskSummary(state.openTaskCount, state.overdueTaskCount, state.completedTaskCount)} count={`${state.taskCount} 项`} href="/task" quickLabel="新建任务" quickTarget="task" />
+        </section>
       )}
     </div>
+  );
+}
+
+export function DashboardModuleCard({
+  icon,
+  iconClass,
+  name,
+  description,
+  count,
+  href,
+  quickLabel,
+  quickTarget,
+}: {
+  icon: ReactNode;
+  iconClass: string;
+  name: string;
+  description: string;
+  count: string;
+  href: string;
+  quickLabel: string;
+  quickTarget: QuickCreateTarget;
+}) {
+  return (
+    <article className="space-card">
+      <Link className="space-card-main" to={href} aria-label={`打开 ${name} 列表`}>
+        <div className={`space-icon ${iconClass}`}>{icon}</div>
+        <div><h3>{name}</h3><p>{description}</p></div>
+        <span className="card-state">{count}</span>
+      </Link>
+      <button className="secondary-button" type="button" onClick={() => navigateWithinApp(href, createQuickCreateState(window.history.state, quickTarget))}>
+        {quickLabel}
+      </button>
+    </article>
   );
 }

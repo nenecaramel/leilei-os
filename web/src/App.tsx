@@ -5,7 +5,7 @@ import {
   UniverseIcon,
 } from "./components/icons";
 import { AppShell } from "./layout/AppShell";
-import { DashboardPage } from "./pages/DashboardPage";
+import { DashboardPage } from "./pages/DashboardPageContainer";
 import { DiaryPage } from "./pages/DiaryPageContainer";
 import { MemoryPage } from "./pages/MemoryPageContainer";
 import { PlaceholderPage } from "./pages/PlaceholderPage";

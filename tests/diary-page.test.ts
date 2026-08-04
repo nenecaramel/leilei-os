@@ -39,7 +39,7 @@ function pendingApi() {
   return { api, requests };
 }
 
-async function render(path: string, api: WebApiClient) {
+async function render(path: string, api: WebApiClient, historyState?: unknown) {
   const dom = new JSDOM("<main id=\"root\"></main>", {
     url: `https://leilei-os.test${path}`,
   });
@@ -86,6 +86,7 @@ async function render(path: string, api: WebApiClient) {
   );
   const container = dom.window.document.querySelector("#root");
   assert.ok(container);
+  if (historyState !== undefined) dom.window.history.replaceState(historyState, "", path);
   const root = createRoot(container);
   await React.act(async () => {
     root.render(React.createElement(DiaryPageContent, {
@@ -126,6 +127,31 @@ const diary = {
   created_at: "2026-07-29T01:00:00.000Z",
   updated_at: "2026-07-29T02:00:00.000Z",
 };
+
+test("Dashboard quick-create intent opens Diary form and focuses title once", async () => {
+  const page = await render("/diary", pendingApi().api, { quickCreate: "diary", preserved: true });
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const title = page.container.querySelector<HTMLInputElement>('input[aria-label="日记标题"]');
+    assert.ok(title);
+    assert.equal(page.window.history.state.quickCreate, undefined);
+    assert.equal(page.window.history.state.preserved, true);
+    assert.equal(page.window.document.activeElement, title);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary archive safely consumes quick-create without opening a hidden form", async () => {
+  const page = await render(createDiaryArchiveLocation("/diary"), pendingApi().api, { quickCreate: "diary" });
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(page.container.querySelector('input[aria-label="日记标题"]'), null);
+    assert.equal(page.window.history.state.quickCreate, undefined);
+  } finally {
+    await page.cleanup();
+  }
+});
 
 test("Diary detail refresh starts in detail loading and skips list request", async () => {
   const { api, requests } = pendingApi();

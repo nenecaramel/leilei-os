@@ -10,6 +10,7 @@ import {
   import type { SettingsData } from "../settings/types";
   import { PageHeader } from "./PageHeader";
   import { isSearchLocation, navigateWithinApp } from "./app-navigation";
+  import { consumeQuickCreateTarget } from "./quick-create";
   import { getTaskActionControls } from "./task-actions";
   import {
     confirmUnsavedChanges,
@@ -234,6 +235,8 @@ import {
 
     const [showCreate, setShowCreate] = useState(false);
     const [creating, setCreating] = useState(false);
+    const createTitleInput = useRef<HTMLInputElement | null>(null);
+    const focusCreateRef = useRef(false);
     const mutationGate = useRef(createSubmissionGate());
     const mutationOwnership = useRef(createMutationOwnership());
 
@@ -289,6 +292,22 @@ import {
     );
     currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
     useUnsavedChanges(createDirty || editDirty);
+
+    useEffect(() => {
+      const hasIntent = consumeQuickCreateTarget("task");
+      if (!hasIntent || isDetailMode || isArchivedMode || showCreate || dirtyRef.current) return;
+      if (hasIntent) {
+        focusCreateRef.current = true;
+        setShowCreate(true);
+        setActionError("");
+      }
+    }, [isDetailMode, isArchivedMode, showCreate]);
+
+    useEffect(() => {
+      if (!showCreate || !focusCreateRef.current) return;
+      focusCreateRef.current = false;
+      (window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0)))(() => createTitleInput.current?.focus());
+    }, [showCreate]);
 
     function discardDraft(): void {
       if (createDirtyRef.current) {
@@ -870,14 +889,85 @@ import {
                     invalidateMutationContext();
                     setShowCreate(false);
                   } else {
+                    focusCreateRef.current = true;
                     setShowCreate(true);
                   }
                   setActionError("");
-                }}>{showCreate ? "取消新增" : "新增任务"}</button>
+                }}>{showCreate ? "取消新建" : "新建任务"}</button>
               </div>
             )
           }
         />
+        {!isDetailMode && !isArchivedMode && showCreate && (
+          <section className="memory-message">
+            <h2>创建任务</h2>
+            <input
+              ref={createTitleInput}
+              placeholder="任务标题"
+              value={title}
+              disabled={creating}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                setActionError("");
+              }}
+            />
+            <textarea
+              placeholder="任务说明"
+              value={description}
+              disabled={creating}
+              onChange={(event) => {
+                setDescription(event.target.value);
+                setActionError("");
+              }}
+            />
+            <select
+              value={priority}
+              disabled={creating}
+              onChange={(event) => setPriority(event.target.value as TaskPriority)}
+            >
+              <option value="low">低优先级</option>
+              <option value="normal">普通优先级</option>
+              <option value="high">高优先级</option>
+              <option value="urgent">紧急</option>
+            </select>
+            <div className="task-due-field">
+              <NativeDateInput
+                type="datetime-local"
+                value={dueTime}
+                disabled={creating || withoutDueTime}
+                onChange={(event) => {
+                  setDueTime(event.target.value);
+                  setActionError("");
+                }}
+              />
+              <label className="task-no-due-control">
+                <input
+                  type="checkbox"
+                  checked={withoutDueTime}
+                  disabled={creating}
+                  onChange={(event) => {
+                    setWithoutDueTime(event.target.checked);
+                    setActionError("");
+                  }}
+                />
+                <span>无截止时间</span>
+              </label>
+            </div>
+            <p>当前账户时区：{settings.timezone}</p>
+            <input
+              placeholder="标签，用逗号分隔（可选）"
+              value={tags}
+              disabled={creating}
+              onChange={(event) => {
+                setTags(event.target.value);
+                setActionError("");
+              }}
+            />
+            <button className="secondary-button" disabled={creating || createInvalid} onClick={handleCreate}>
+              {creating ? "保存中…" : "保存任务"}
+            </button>
+          </section>
+        )}
         {!isDetailMode && !isArchivedMode && (
           <section className="memory-message task-filters">
             <h2>搜索与筛选</h2>
@@ -1110,94 +1200,6 @@ import {
           ) : null
         ) : (
           <>
-            {showCreate && (
-              <section className="memory-message">
-                <h2>创建任务</h2>
-
-                <input
-                  placeholder="任务标题"
-                  value={title}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setTitle(event.target.value);
-                    setActionError("");
-                  }}
-                />
-
-                <textarea
-                  placeholder="任务说明"
-                  value={description}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setDescription(event.target.value);
-                    setActionError("");
-                  }}
-                />
-
-                <select
-                  value={priority}
-                  disabled={creating}
-                  onChange={(event) =>
-                    setPriority(
-                      event.target.value as TaskPriority,
-                    )
-                  }
-                >
-                  <option value="low">低优先级</option>
-                  <option value="normal">普通优先级</option>
-                  <option value="high">高优先级</option>
-                  <option value="urgent">紧急</option>
-                </select>
-
-                <div className="task-due-field">
-                  <NativeDateInput
-                    type="datetime-local"
-                    value={dueTime}
-                    disabled={creating || withoutDueTime}
-                    onChange={(event) => {
-                      setDueTime(event.target.value);
-                      setActionError("");
-                    }}
-                  />
-
-                  <label className="task-no-due-control">
-                    <input
-                      type="checkbox"
-                      checked={withoutDueTime}
-                      disabled={creating}
-                      onChange={(event) => {
-                        setWithoutDueTime(event.target.checked);
-                        setActionError("");
-                      }}
-                    />
-                    <span>无截止时间</span>
-                  </label>
-                </div>
-
-                <p>
-                  当前账户时区：{settings.timezone}
-                </p>
-
-                <input
-                  placeholder="标签，用逗号分隔（可选）"
-                  value={tags}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setTags(event.target.value);
-                    setActionError("");
-                  }}
-                />
-
-                <button
-                  className="secondary-button"
-                  disabled={creating || createInvalid}
-                  onClick={handleCreate}
-                >
-                  {creating ? "保存中…" : "保存任务"}
-                </button>
-              </section>
-            )}
-
             {state.status === "ready" &&
               state.tasks.length > 0 && (
                 <>

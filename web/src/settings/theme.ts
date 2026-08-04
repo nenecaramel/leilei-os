@@ -118,6 +118,15 @@ export function applyThemeVariables(
   }
 }
 
+export function syncThemeColorMeta(
+  documentRef: Pick<Document, "querySelector"> | undefined,
+  background: string,
+): void {
+  if (!documentRef || !/^#[0-9A-Fa-f]{6}$/.test(background)) return;
+  const meta = documentRef.querySelector('meta[name="theme-color"]');
+  meta?.setAttribute("content", background);
+}
+
 export function applyThemeColor(
   color: string,
   documentRef: Document | undefined = typeof document === "undefined" ? undefined : document,
@@ -125,6 +134,7 @@ export function applyThemeColor(
   const cache = createThemeCache(color);
   if (!cache) return null;
   applyThemeVariables(documentRef?.documentElement.style, cache.variables);
+  syncThemeColorMeta(documentRef, cache.variables["--theme-page-background"] ?? "");
   return cache;
 }
 

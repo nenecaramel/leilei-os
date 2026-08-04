@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
+import { NativeDateInput } from "../components/NativeDateInput";
 import { PageHeader } from "./PageHeader";
 import { navigateWithinApp } from "./app-navigation";
 import {
@@ -246,8 +247,8 @@ export function GlobalSearchPageContent({ api }: Props) {
       <fieldset><legend>模块</legend>{SEARCH_MODULES.map((module) => <label key={module}><input type="checkbox" checked={draftFilters.modules.includes(module)} onChange={() => toggleModule(module)} />{moduleLabels[module]}</label>)}</fieldset>
       <label htmlFor="global-search-scope">范围</label><select id="global-search-scope" value={draftFilters.scope} onChange={(event) => updateFilter({ scope: event.target.value as GlobalSearchFilters["scope"] })}><option value="active">当前记录</option><option value="archived">已归档</option><option value="all">全部记录</option></select>
       <label htmlFor="global-search-mode">匹配方式</label><select id="global-search-mode" value={draftFilters.mode} onChange={(event) => updateFilter({ mode: event.target.value as GlobalSearchFilters["mode"] })}><option value="normal">普通检索</option><option value="phrase">精确短语</option></select>
-      <label htmlFor="global-search-date-from">开始日期</label><input id="global-search-date-from" type="date" value={draftFilters.dateFrom} onChange={(event) => updateFilter({ dateFrom: event.target.value })} />
-      <label htmlFor="global-search-date-to">结束日期</label><input id="global-search-date-to" type="date" value={draftFilters.dateTo} onChange={(event) => updateFilter({ dateTo: event.target.value })} />
+      <label htmlFor="global-search-date-from">开始日期</label><NativeDateInput id="global-search-date-from" type="date" value={draftFilters.dateFrom} onChange={(event) => updateFilter({ dateFrom: event.target.value })} />
+      <label htmlFor="global-search-date-to">结束日期</label><NativeDateInput id="global-search-date-to" type="date" value={draftFilters.dateTo} onChange={(event) => updateFilter({ dateTo: event.target.value })} />
       {dateError && <p className="form-error" role="alert">{dateError}</p>}
       {queryError && <p className="form-error" role="alert">{queryError}</p>}
     </section>

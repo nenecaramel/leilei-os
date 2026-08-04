@@ -54,6 +54,31 @@ const TASK_RESPONSE = {
   },
 };
 
+test("Dashboard quick-create intent opens Task form and focuses title once", async () => {
+  const page = await renderTaskPage("/task", createApi(async () => new Promise<never>(() => {})).api, { quickCreate: "task", preserved: true });
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const title = page.container.querySelector<HTMLInputElement>('input[placeholder="任务标题"]');
+    assert.ok(title);
+    assert.equal(page.window.history.state.quickCreate, undefined);
+    assert.equal(page.window.history.state.preserved, true);
+    assert.equal(page.window.document.activeElement, title);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Task detail safely consumes quick-create without opening a hidden form", async () => {
+  const page = await renderTaskPage(createTaskDetailLocation(TASK_ID, "/task"), createApi(async () => new Promise<never>(() => {})).api, { quickCreate: "task" });
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(page.container.querySelector('input[placeholder="任务标题"]'), null);
+    assert.equal(page.window.history.state.quickCreate, undefined);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -85,6 +110,7 @@ function createApi(
 async function renderTaskPage(
   path: string,
   api: WebApiClient,
+  historyState?: unknown,
 ) {
   const dom = new JSDOM("<main id=\"root\"></main>", {
     url: `https://leilei-os.test${path}`,
@@ -136,6 +162,7 @@ async function renderTaskPage(
 
   const container = dom.window.document.getElementById("root");
   assert.ok(container);
+  if (historyState !== undefined) dom.window.history.replaceState(historyState, "", path);
   const root = createRoot(container);
   await React.act(async () => {
     root.render(React.createElement(TaskPageContent, {
@@ -207,7 +234,7 @@ test("normal Task list keeps header action order, exact summary, and read-only c
     assert.ok(headerActions);
     assert.deepEqual(
       [...headerActions.querySelectorAll("button")].map((button) => button.textContent),
-      ["查看归档", "新增任务"],
+      ["查看归档", "新建任务"],
     );
     assert.match(page.container.textContent ?? "", /共 1 项，按截止时间排列。/);
     const cards = page.container.querySelector(".memory-grid");
@@ -820,7 +847,7 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
     const findButton = (label: string) => [...page.container.querySelectorAll("button")]
       .find((button) => button.textContent === label);
     await React.act(async () => {
-      findButton("新增任务")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      findButton("新建任务")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     const title = page.container.querySelector<HTMLInputElement>('input[placeholder="任务标题"]');
     const description = page.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="任务说明"]');
@@ -843,7 +870,7 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
       return false;
     };
     await React.act(async () => {
-      findButton("取消新增")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      findButton("取消新建")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(page.window.location.pathname + page.window.location.search, "/task?q=goal");
     assert.equal(title.value, "draft task");
