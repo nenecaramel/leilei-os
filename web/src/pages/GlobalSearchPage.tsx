@@ -16,7 +16,9 @@ import {
 } from "./task-location";
 import {
   createGlobalSearchLocation,
+  hasValidGlobalSearchQuery,
   hasValidGlobalSearchDateRange,
+  normalizeGlobalSearchQuery,
   readGlobalSearchFilters,
   SEARCH_MODULES,
   toggleGlobalSearchModule,
@@ -71,12 +73,21 @@ function readSnapshot(url: string): SearchSnapshot | null {
 }
 
 export function GlobalSearchPageContent({ api }: Props) {
-  const [filters, setFilters] = useState<GlobalSearchFilters>(() => readGlobalSearchFilters(window.location.search));
-  const [queryInput, setQueryInput] = useState(filters.q);
-  const [state, setState] = useState<SearchState>(filters.q ? "loading" : "idle");
+  const [filters, setFilters] = useState<GlobalSearchFilters>(() => {
+    const parsed = readGlobalSearchFilters(window.location.search);
+    const query = normalizeGlobalSearchQuery(parsed.q);
+    return hasValidGlobalSearchQuery(query) ? { ...parsed, q: query } : { ...parsed, q: "" };
+  });
+  const [draftFilters, setDraftFilters] = useState<GlobalSearchFilters>(() => readGlobalSearchFilters(window.location.search));
+  const [queryInput, setQueryInput] = useState(() => readGlobalSearchFilters(window.location.search).q);
+  const [state, setState] = useState<SearchState>(() => {
+    const query = normalizeGlobalSearchQuery(readGlobalSearchFilters(window.location.search).q);
+    return hasValidGlobalSearchQuery(query) ? "loading" : "idle";
+  });
   const [results, setResults] = useState<GlobalSearchResult[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [dateError, setDateError] = useState("");
+  const [queryError, setQueryError] = useState("");
   const [loadMoreError, setLoadMoreError] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -84,13 +95,21 @@ export function GlobalSearchPageContent({ api }: Props) {
   const searchInput = useRef<HTMLInputElement | null>(null);
   const resultButtons = useRef(new Map<string, HTMLButtonElement>());
 
+  const invalidateRequests = (): void => {
+    sequence.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoadingMore(false);
+    setLoadMoreError(false);
+  };
+
   const persistSnapshot = (nextResults: GlobalSearchResult[], nextCursor: string | null, focusKey: string | null, scrollY = window.scrollY) => {
     const url = createGlobalSearchLocation(filters);
     window.history.replaceState({ ...(window.history.state ?? {}), globalSearch: { version: 1, url, results: nextResults, cursor: nextCursor, scrollY, focusKey } satisfies SearchSnapshot }, "", url);
   };
 
   const restoreSnapshot = (snapshot: SearchSnapshot): void => {
-    setResults(snapshot.results); setCursor(snapshot.cursor); setState(snapshot.results.length ? "ready" : "empty");
+    setResults(snapshot.results); setCursor(snapshot.cursor); setLoadingMore(false); setLoadMoreError(false); setState(snapshot.results.length ? "ready" : "empty");
     requestAnimationFrame(() => {
       window.scrollTo({ top: Math.max(0, snapshot.scrollY) });
       const button = snapshot.focusKey ? resultButtons.current.get(snapshot.focusKey) : null;
@@ -101,6 +120,11 @@ export function GlobalSearchPageContent({ api }: Props) {
   const requestSearch = (nextFilters: GlobalSearchFilters, append = false, nextCursor: string | null = null): void => {
     const ticket = ++sequence.current;
     abortRef.current?.abort();
+    abortRef.current = null;
+    if (nextFilters.q && !hasValidGlobalSearchQuery(nextFilters.q)) {
+      setQueryError("搜索关键词不能超过 200 个字符。");
+      return;
+    }
     if (!nextFilters.q) {
       setResults([]); setCursor(null); setState("idle"); setLoadMoreError(false); setLoadingMore(false); return;
     }
@@ -131,11 +155,19 @@ export function GlobalSearchPageContent({ api }: Props) {
 
   useEffect(() => {
     const restoreOrRequest = () => {
-      const next = readGlobalSearchFilters(window.location.search);
-      setFilters(next); setQueryInput(next.q); setDateError("");
-      const snapshot = readSnapshot(createGlobalSearchLocation(next));
+      invalidateRequests();
+      const parsed = readGlobalSearchFilters(window.location.search);
+      const query = normalizeGlobalSearchQuery(parsed.q);
+      const validQuery = !query || hasValidGlobalSearchQuery(query);
+      const next = validQuery ? { ...parsed, q: query } : { ...parsed, q: "" };
+      setFilters(next);
+      setDraftFilters(parsed);
+      setQueryInput(parsed.q);
+      setDateError("");
+      setQueryError(validQuery ? "" : "搜索关键词不能超过 200 个字符。");
+      const snapshot = validQuery ? readSnapshot(createGlobalSearchLocation(next)) : null;
       if (next.q && snapshot) restoreSnapshot(snapshot);
-      else requestSearch(next);
+      else if (validQuery) requestSearch(next);
     };
     window.addEventListener("popstate", restoreOrRequest);
     restoreOrRequest();
@@ -146,23 +178,43 @@ export function GlobalSearchPageContent({ api }: Props) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const next = { ...filters, q: queryInput.normalize("NFC").trim() };
-      if (createGlobalSearchLocation(next) === createGlobalSearchLocation(filters)) return;
-      setFilters(next); setResults([]); setCursor(null); setLoadMoreError(false);
-      window.history.pushState(null, "", createGlobalSearchLocation(next)); requestSearch(next);
+      const query = normalizeGlobalSearchQuery(queryInput);
+      const nextDraft = { ...draftFilters, q: query };
+      if (draftFilters.q !== query) setDraftFilters(nextDraft);
+      if (!hasValidGlobalSearchQuery(query)) {
+        setQueryError("搜索关键词不能超过 200 个字符。");
+        return;
+      }
+      if (dateError) return;
+      setQueryError("");
+      if (createGlobalSearchLocation(nextDraft) === createGlobalSearchLocation(filters)) return;
+      setFilters(nextDraft); setResults([]); setCursor(null); setLoadMoreError(false);
+      window.history.pushState(null, "", createGlobalSearchLocation(nextDraft)); requestSearch(nextDraft);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [queryInput]);
+  }, [queryInput, draftFilters, dateError]);
 
   const updateFilter = (patch: Partial<GlobalSearchFilters>): void => {
-    const next = { ...filters, ...patch };
-    if (!hasValidGlobalSearchDateRange(next)) { setFilters(next); setDateError("开始日期不能晚于结束日期。"); return; }
-    setDateError(""); setFilters(next); setQueryInput(next.q); setResults([]); setCursor(null); setLoadMoreError(false);
-    window.history.pushState(null, "", createGlobalSearchLocation(next)); requestSearch(next);
+    const nextDraft = { ...draftFilters, ...patch, q: normalizeGlobalSearchQuery(patch.q ?? draftFilters.q) };
+    setDraftFilters(nextDraft);
+    setQueryInput(nextDraft.q);
+    if (!hasValidGlobalSearchDateRange(nextDraft)) {
+      setDateError("开始日期不能晚于结束日期。");
+      return;
+    }
+    setDateError("");
+    if (!hasValidGlobalSearchQuery(nextDraft.q)) {
+      setQueryError("搜索关键词不能超过 200 个字符。");
+      return;
+    }
+    setQueryError("");
+    if (createGlobalSearchLocation(nextDraft) === createGlobalSearchLocation(filters)) return;
+    setFilters(nextDraft); setResults([]); setCursor(null); setLoadMoreError(false);
+    window.history.pushState(null, "", createGlobalSearchLocation(nextDraft)); requestSearch(nextDraft);
   };
   const toggleModule = (module: SearchModule): void => {
-    const next = toggleGlobalSearchModule(filters, module);
-    if (next === filters) return;
+    const next = toggleGlobalSearchModule(draftFilters, module);
+    if (next === draftFilters) return;
     updateFilter({ modules: next.modules });
   };
   const openDetail = (result: GlobalSearchResult): void => {
@@ -182,13 +234,14 @@ export function GlobalSearchPageContent({ api }: Props) {
     <PageHeader eyebrow="Global search" title="全局搜索" description="在 Memory、Diary 和 Task 中查找已保存的信息。搜索结果只显示有限片段，打开详情可读取完整记录。" />
     <section className="memory-message global-search-filters" aria-label="搜索与筛选">
       <label htmlFor="global-search-query">搜索关键词</label>
-      <input ref={searchInput} id="global-search-query" value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索已保存的信息" autoComplete="off" />
-      <fieldset><legend>模块</legend>{SEARCH_MODULES.map((module) => <label key={module}><input type="checkbox" checked={filters.modules.includes(module)} onChange={() => toggleModule(module)} />{moduleLabels[module]}</label>)}</fieldset>
-      <label htmlFor="global-search-scope">范围</label><select id="global-search-scope" value={filters.scope} onChange={(event) => updateFilter({ scope: event.target.value as GlobalSearchFilters["scope"] })}><option value="active">当前记录</option><option value="archived">已归档</option><option value="all">全部记录</option></select>
-      <label htmlFor="global-search-mode">匹配方式</label><select id="global-search-mode" value={filters.mode} onChange={(event) => updateFilter({ mode: event.target.value as GlobalSearchFilters["mode"] })}><option value="normal">普通检索</option><option value="phrase">精确短语</option></select>
-      <label htmlFor="global-search-date-from">开始日期</label><input id="global-search-date-from" type="date" value={filters.dateFrom} onChange={(event) => updateFilter({ dateFrom: event.target.value })} />
-      <label htmlFor="global-search-date-to">结束日期</label><input id="global-search-date-to" type="date" value={filters.dateTo} onChange={(event) => updateFilter({ dateTo: event.target.value })} />
+      <input ref={searchInput} id="global-search-query" value={queryInput} onChange={(event) => { setQueryInput(event.target.value); setDraftFilters((current) => ({ ...current, q: event.target.value })); }} placeholder="搜索已保存的信息" autoComplete="off" />
+      <fieldset><legend>模块</legend>{SEARCH_MODULES.map((module) => <label key={module}><input type="checkbox" checked={draftFilters.modules.includes(module)} onChange={() => toggleModule(module)} />{moduleLabels[module]}</label>)}</fieldset>
+      <label htmlFor="global-search-scope">范围</label><select id="global-search-scope" value={draftFilters.scope} onChange={(event) => updateFilter({ scope: event.target.value as GlobalSearchFilters["scope"] })}><option value="active">当前记录</option><option value="archived">已归档</option><option value="all">全部记录</option></select>
+      <label htmlFor="global-search-mode">匹配方式</label><select id="global-search-mode" value={draftFilters.mode} onChange={(event) => updateFilter({ mode: event.target.value as GlobalSearchFilters["mode"] })}><option value="normal">普通检索</option><option value="phrase">精确短语</option></select>
+      <label htmlFor="global-search-date-from">开始日期</label><input id="global-search-date-from" type="date" value={draftFilters.dateFrom} onChange={(event) => updateFilter({ dateFrom: event.target.value })} />
+      <label htmlFor="global-search-date-to">结束日期</label><input id="global-search-date-to" type="date" value={draftFilters.dateTo} onChange={(event) => updateFilter({ dateTo: event.target.value })} />
       {dateError && <p className="form-error" role="alert">{dateError}</p>}
+      {queryError && <p className="form-error" role="alert">{queryError}</p>}
     </section>
     <p role="status" aria-live="polite">{statusText}</p>
     {state === "error" && <button className="secondary-button" type="button" onClick={() => requestSearch(filters)}>重试</button>}

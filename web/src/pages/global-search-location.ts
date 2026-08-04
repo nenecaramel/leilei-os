@@ -1,4 +1,5 @@
 export const SEARCH_MODULES = ["memory", "diary", "task"] as const;
+export const GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS = 200;
 export type SearchModule = typeof SEARCH_MODULES[number];
 export type SearchScope = "active" | "archived" | "all";
 export type SearchMode = "normal" | "phrase";
@@ -19,6 +20,15 @@ export const DEFAULT_GLOBAL_SEARCH_FILTERS: GlobalSearchFilters = {
   dateTo: "",
 };
 
+export function normalizeGlobalSearchQuery(value: string): string {
+  return value.normalize("NFC").trim();
+}
+
+export function hasValidGlobalSearchQuery(value: string): boolean {
+  const normalized = normalizeGlobalSearchQuery(value);
+  return Boolean(normalized) && [...normalized].length <= GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS;
+}
+
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const scopes = new Set<SearchScope>(["active", "archived", "all"]);
 const modes = new Set<SearchMode>(["normal", "phrase"]);
@@ -30,7 +40,7 @@ export function readGlobalSearchFilters(search: string): GlobalSearchFilters {
   const uniqueModules = [...new Set(modules)];
   const modulesAreValid = uniqueModules.length > 0 && uniqueModules.every((module) => SEARCH_MODULES.includes(module as SearchModule));
   const validModules = modulesAreValid ? uniqueModules as SearchModule[] : [...SEARCH_MODULES];
-  const q = (params.get("q") ?? "").normalize("NFC").trim();
+  const q = normalizeGlobalSearchQuery(params.get("q") ?? "");
   const scope = scopes.has(params.get("scope") as SearchScope)
     ? params.get("scope") as SearchScope
     : "active";
@@ -52,7 +62,7 @@ export function readGlobalSearchFilters(search: string): GlobalSearchFilters {
 
 export function createGlobalSearchLocation(filters: GlobalSearchFilters): string {
   const params = new URLSearchParams();
-  const q = filters.q.normalize("NFC").trim();
+  const q = normalizeGlobalSearchQuery(filters.q);
   if (q) params.set("q", q);
   const modules = SEARCH_MODULES.filter((module) => filters.modules.includes(module));
   if (modules.length && modules.length < SEARCH_MODULES.length) params.set("modules", modules.join(","));

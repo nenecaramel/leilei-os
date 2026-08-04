@@ -334,3 +334,165 @@ test("global search debounces input, aborts stale reads, and never renders stale
     await page.cleanup();
   }
 });
+
+test("popstate snapshot restoration invalidates a pending newer request", async () => {
+  let resolveB!: (value: unknown) => void;
+  const pendingB = new Promise<unknown>((resolve) => { resolveB = resolve; });
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const api: WebApiClient = {
+    request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      return pendingB as Promise<T>;
+    },
+  };
+  const page = await renderSearch("/search?q=b", api);
+  const resultA = { ...result("00000000-0000-4000-8000-000000000007"), stable_name: "查询 A" };
+  const snapshotA = { version: 1, url: "/search?q=a", results: [resultA], cursor: "a-cursor", scrollY: 240, focusKey: "memory:00000000-0000-4000-8000-000000000007" };
+  try {
+    assert.equal(requests.length, 1);
+    await React.act(async () => {
+      page.dom.window.history.pushState({ globalSearch: snapshotA }, "", "/search?q=a");
+      page.dom.window.dispatchEvent(new page.dom.window.PopStateEvent("popstate"));
+      await new Promise((resolve) => page.dom.window.setTimeout(resolve, 0));
+    });
+    assert.equal(requests[0]?.init?.signal?.aborted, true);
+    assert.match(page.dom.window.document.body.textContent ?? "", /查询 A/);
+    resolveB(response([{ ...result("00000000-0000-4000-8000-000000000008"), stable_name: "查询 B" }], "b-cursor"));
+    await React.act(async () => { await pendingB; await new Promise((resolve) => page.dom.window.setTimeout(resolve, 0)); });
+    assert.match(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, /^\/search\?q=a$/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /查询 A/);
+    assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /查询 B/);
+    assert.deepEqual(page.dom.window.history.state.globalSearch, snapshotA);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("invalid date drafts do not let other filter changes alter the applied search", async () => {
+  const requests: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      requests.push(path);
+      return response([result("00000000-0000-4000-8000-000000000009")]) as T;
+    },
+  };
+  const page = await renderSearch("/search?q=base", api);
+  try {
+    await page.settle();
+    const from = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-date-from");
+    assert.ok(from);
+    await React.act(async () => { reactChange(from, "2026-08-10"); });
+    await page.settle();
+    const validUrl = `${page.dom.window.location.pathname}${page.dom.window.location.search}`;
+    const requestsAfterFrom = requests.length;
+    const to = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-date-to");
+    assert.ok(to);
+    await React.act(async () => { reactChange(to, "2026-08-09"); });
+    assert.match(page.dom.window.document.body.textContent ?? "", /开始日期不能晚于结束日期。/);
+    const invalidUrl = `${page.dom.window.location.pathname}${page.dom.window.location.search}`;
+    assert.equal(invalidUrl, validUrl);
+    const query = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-query");
+    assert.ok(query);
+    await React.act(async () => { reactChange(query, "changed"); });
+    await React.act(async () => { await new Promise((resolve) => page.dom.window.setTimeout(resolve, 310)); });
+    const module = page.dom.window.document.querySelector<HTMLInputElement>("input[type=checkbox]");
+    assert.ok(module);
+    await React.act(async () => { reactChange(module, ""); });
+    const scope = page.dom.window.document.querySelector<HTMLSelectElement>("#global-search-scope");
+    assert.ok(scope);
+    await React.act(async () => { reactChange(scope, "all"); });
+    const mode = page.dom.window.document.querySelector<HTMLSelectElement>("#global-search-mode");
+    assert.ok(mode);
+    await React.act(async () => { reactChange(mode, "phrase"); });
+    assert.equal(requests.length, requestsAfterFrom);
+    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, validUrl);
+
+    const correctedTo = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-date-to");
+    assert.ok(correctedTo);
+    await React.act(async () => { reactChange(correctedTo, "2026-08-11"); });
+    await page.settle();
+    assert.equal(requests.length, requestsAfterFrom + 1);
+    assert.match(requests.at(-1) ?? "", /query=changed/);
+    assert.match(requests.at(-1) ?? "", /date_from=2026-08-10/);
+    assert.match(requests.at(-1) ?? "", /date_to=2026-08-11/);
+    assert.match(requests.at(-1) ?? "", /scope=all/);
+    assert.match(requests.at(-1) ?? "", /mode=phrase/);
+    assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /开始日期不能晚于结束日期。/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("invalid date drafts never enter a detail return target", async () => {
+  const api: WebApiClient = {
+    async request<T>(): Promise<T> {
+      return response([result("00000000-0000-4000-8000-000000000010")]) as T;
+    },
+  };
+  const page = await renderSearch("/search?q=base", api);
+  try {
+    await page.settle();
+    const from = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-date-from");
+    const to = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-date-to");
+    assert.ok(from); assert.ok(to);
+    await React.act(async () => { reactChange(from, "2026-08-10"); });
+    await page.settle();
+    const invalidTo = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-date-to");
+    assert.ok(invalidTo);
+    await React.act(async () => { reactChange(invalidTo, "2026-08-09"); });
+    const button = [...page.dom.window.document.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "查看详情");
+    assert.ok(button);
+    await React.act(async () => { button.dispatchEvent(new page.dom.window.MouseEvent("click", { bubbles: true })); });
+    const detailUrl = new URL(page.dom.window.location.href);
+    assert.equal(detailUrl.searchParams.get("returnTo"), "/search?q=base&date_from=2026-08-10");
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("global search enforces a 200-code-point query limit without truncating", async () => {
+  const requests: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      requests.push(path);
+      return response([]) as T;
+    },
+  };
+  const page = await renderSearch(`/search?q=${encodeURIComponent("😀".repeat(201))}`, api);
+  try {
+    assert.equal(requests.length, 0);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符。/);
+    const input = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-query");
+    assert.ok(input);
+    await React.act(async () => { reactChange(input, "😀".repeat(100)); });
+    await React.act(async () => { await new Promise((resolve) => page.dom.window.setTimeout(resolve, 310)); });
+    assert.equal(requests.length, 1);
+    assert.match(requests[0] ?? "", /query=/);
+    assert.equal([...decodeURIComponent(new URL(`https://leilei.test${requests[0]}`).searchParams.get("query") ?? "")].length, 100);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("global search accepts exactly 200 code points and rejects 201", async () => {
+  const requests: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      requests.push(path);
+      return response([]) as T;
+    },
+  };
+  const page = await renderSearch(`/search?q=${"a".repeat(200)}`, api);
+  try {
+    assert.equal(requests.length, 1);
+    const input = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-query");
+    assert.ok(input);
+    await React.act(async () => { reactChange(input, "b".repeat(201)); });
+    await React.act(async () => { await new Promise((resolve) => page.dom.window.setTimeout(resolve, 310)); });
+    assert.equal(requests.length, 1);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符。/);
+  } finally {
+    await page.cleanup();
+  }
+});
