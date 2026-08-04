@@ -10,7 +10,6 @@ export type GlobalSearchFilters = {
   dateFrom: string;
   dateTo: string;
 };
-
 export const DEFAULT_GLOBAL_SEARCH_FILTERS: GlobalSearchFilters = {
   q: "",
   modules: [...SEARCH_MODULES],
@@ -63,6 +62,21 @@ export function createGlobalSearchLocation(filters: GlobalSearchFilters): string
   if (filters.dateTo) params.set("date_to", filters.dateTo);
   const search = params.toString();
   return search ? `/search?${search}` : "/search";
+}
+
+export function toggleGlobalSearchModule(
+  filters: GlobalSearchFilters,
+  module: SearchModule,
+): GlobalSearchFilters {
+  if (!filters.modules.includes(module)) {
+    return { ...filters, modules: [...filters.modules, module] };
+  }
+  if (filters.modules.length === 1) return filters;
+  return { ...filters, modules: filters.modules.filter((item) => item !== module) };
+}
+
+export function hasValidGlobalSearchDateRange(filters: GlobalSearchFilters): boolean {
+  return !filters.dateFrom || !filters.dateTo || filters.dateFrom <= filters.dateTo;
 }
 
 export function getSafeGlobalSearchReturnTo(value: string | null): string {

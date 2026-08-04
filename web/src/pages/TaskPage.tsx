@@ -9,6 +9,7 @@ import {
   import { NativeDateInput } from "../components/NativeDateInput";
   import type { SettingsData } from "../settings/types";
   import { PageHeader } from "./PageHeader";
+  import { isSearchLocation, navigateWithinApp } from "./app-navigation";
   import { getTaskActionControls } from "./task-actions";
   import {
     confirmUnsavedChanges,
@@ -686,6 +687,10 @@ import {
       returnTo: string,
       restoreScroll = false,
     ) {
+      if (isSearchLocation(returnTo)) {
+        navigateWithinApp(returnTo, window.history.state);
+        return;
+      }
       window.history.pushState(null, "", returnTo);
       const restoredFilters = readTaskFilterHistorySnapshot(
         new URL(returnTo, window.location.origin).search,
@@ -711,6 +716,10 @@ import {
     }
 
     function returnToArchivedTaskList(returnTo: string) {
+      if (isSearchLocation(returnTo)) {
+        navigateWithinApp(returnTo, window.history.state);
+        return;
+      }
       window.history.pushState(null, "", returnTo);
       setSelectedTask(null);
       setEditing(false);

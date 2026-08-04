@@ -242,6 +242,32 @@ test("direct detail load renders a detail placeholder first and skips the list r
   }
 });
 
+test("Task active and archived detail returns notify the app router for a safe global-search return", async () => {
+  const returnTo = "/search?q=plan&modules=task&scope=all";
+  const paths = [
+    createTaskDetailLocation(TASK_ID, returnTo),
+    createArchivedTaskDetailLocation(TASK_ID, returnTo),
+  ];
+  for (const path of paths) {
+    const { api } = createApi(() => new Promise(() => {}));
+    const page = await renderTaskPage(path, api);
+    try {
+      let routeChanges = 0;
+      page.window.addEventListener("popstate", () => { routeChanges += 1; });
+      const button = [...page.container.querySelectorAll("button")]
+        .find((candidate) => candidate.textContent === (path.includes("archived=1") ? "返回归档列表" : "返回任务列表"));
+      assert.ok(button);
+      await React.act(async () => {
+        button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      });
+      assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
+      assert.equal(routeChanges, 1);
+    } finally {
+      await page.cleanup();
+    }
+  }
+});
+
 test("detail success replaces the placeholder with the requested task", async () => {
   const detail = deferred<unknown>();
   const { api } = createApi(() => detail.promise);

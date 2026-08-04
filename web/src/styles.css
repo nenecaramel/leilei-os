@@ -1127,6 +1127,13 @@ textarea:disabled {
   margin: 0;
 }
 
+.form-error {
+  margin: 0;
+  color: #a3483b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .task-filters > input,
 .task-filters > select,
 .task-filters > .native-date-field,

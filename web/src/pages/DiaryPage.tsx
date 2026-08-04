@@ -9,6 +9,7 @@ import { DiaryIcon } from "../components/icons";
 import { NativeDateInput } from "../components/NativeDateInput";
 import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
+import { isSearchLocation, navigateWithinApp } from "./app-navigation";
 import {
   confirmUnsavedChanges,
   createMutationOwnership,
@@ -530,6 +531,10 @@ export function DiaryPageContent({
     if (!skipSafety && !confirmAndDiscardDraft()) return;
     if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeDiaryReturnTo(location.returnTo);
+    if (isSearchLocation(returnTo)) {
+      navigateWithinApp(returnTo, window.history.state);
+      return;
+    }
     window.history.pushState(null, "", returnTo);
     const restored = readDiaryFilters(new URL(returnTo, window.location.origin).search);
     pendingScrollRestore.current =
@@ -594,6 +599,10 @@ export function DiaryPageContent({
     const returnTo = getSafeDiaryArchiveReturnTo(
       archivedDetailLocation.returnTo,
     );
+    if (isSearchLocation(returnTo)) {
+      navigateWithinApp(returnTo, window.history.state);
+      return;
+    }
     window.history.pushState(null, "", returnTo);
     setArchivedDetailLocation({ diaryId: null, returnTo });
     setArchiveLocation(getDiaryArchiveLocation(window.location.search));

@@ -925,6 +925,32 @@ test("Memory detail refresh starts in detail loading and skips list request", as
   }
 });
 
+test("Memory active and archived detail returns notify the app router for a safe global-search return", async () => {
+  const returnTo = "/search?q=goal&modules=memory&scope=all";
+  const paths = [
+    createMemoryDetailLocation("memory-1", returnTo),
+    createArchivedMemoryDetailLocation("memory-1", returnTo),
+  ];
+  for (const path of paths) {
+    const { api } = pendingApi();
+    const page = await render(path, api);
+    try {
+      let routeChanges = 0;
+      page.window.addEventListener("popstate", () => { routeChanges += 1; });
+      const button = [...page.container.querySelectorAll("button")]
+        .find((candidate) => candidate.textContent === (path.includes("archivedMemory") ? "返回归档列表" : "返回记忆列表"));
+      assert.ok(button);
+      await React.act(async () => {
+        button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      });
+      assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
+      assert.equal(routeChanges, 1);
+    } finally {
+      await page.cleanup();
+    }
+  }
+});
+
 test("Memory detail success and failure never flash the list", async () => {
   for (const [api, expected, sourceVisible] of [
     [{
