@@ -294,13 +294,14 @@ import {
     useUnsavedChanges(createDirty || editDirty);
 
     useEffect(() => {
-      if (showCreate || dirtyRef.current) return;
-      if (consumeQuickCreateTarget("task")) {
+      const hasIntent = consumeQuickCreateTarget("task");
+      if (!hasIntent || isDetailMode || isArchivedMode || showCreate || dirtyRef.current) return;
+      if (hasIntent) {
         focusCreateRef.current = true;
         setShowCreate(true);
         setActionError("");
       }
-    }, [showCreate]);
+    }, [isDetailMode, isArchivedMode, showCreate]);
 
     useEffect(() => {
       if (!showCreate || !focusCreateRef.current) return;
@@ -892,7 +893,7 @@ import {
                     setShowCreate(true);
                   }
                   setActionError("");
-                }}>{showCreate ? "取消新增" : "新增任务"}</button>
+                }}>{showCreate ? "取消新建" : "新建任务"}</button>
               </div>
             )
           }

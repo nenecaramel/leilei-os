@@ -61,7 +61,6 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  overflow-x: hidden;
   background:
     radial-gradient(
       circle at 82% 10%,
@@ -122,6 +121,7 @@ a {
   display: grid;
   grid-template-columns: 264px minmax(0, 1fr);
   min-height: 100vh;
+  min-height: 100dvh;
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
   background: var(--theme-page-background);
 }
@@ -130,7 +130,8 @@ a {
   position: sticky;
   top: 0;
   display: flex;
-  height: 100vh;
+  height: calc(100vh - env(safe-area-inset-top, 0px));
+  height: calc(100dvh - env(safe-area-inset-top, 0px));
   flex-direction: column;
   padding: 28px 20px 22px;
   border-right: 1px solid var(--line);
@@ -672,8 +673,17 @@ textarea:disabled {
 
 .space-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+}
+
+.dashboard-module-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 46px;
+}
+
+.dashboard-page > .quiet-panel {
+  margin-top: 46px;
 }
 
 .space-card {
@@ -1286,6 +1296,10 @@ textarea:disabled {
     grid-template-columns: 1fr 1fr;
   }
 
+  .dashboard-module-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .hero-panel {
     grid-template-columns: 1fr;
   }
@@ -1312,9 +1326,9 @@ textarea:disabled {
     position: fixed;
     z-index: 20;
     top: auto;
-    right: 12px;
+    right: max(12px, env(safe-area-inset-right, 0px));
     bottom: max(12px, env(safe-area-inset-bottom));
-    left: 12px;
+    left: max(12px, env(safe-area-inset-left, 0px));
     width: auto;
     height: 64px;
     padding: 8px;
@@ -1330,12 +1344,23 @@ textarea:disabled {
   }
 
   .primary-nav {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(44px, max-content);
+    grid-template-columns: none;
     height: 100%;
     gap: 3px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  .primary-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .nav-item {
+    min-width: 44px;
     padding: 8px;
     transform: none;
   }
@@ -1400,6 +1425,10 @@ textarea:disabled {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-module-grid {
+    grid-template-columns: 1fr;
+  }
+
   .space-card {
     min-height: 205px;
   }
@@ -1461,8 +1490,8 @@ textarea:disabled {
 
 @media (max-width: 380px) {
   .sidebar {
-    right: 8px;
-    left: 8px;
+    right: max(8px, env(safe-area-inset-right, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
   }
 
   .nav-item {

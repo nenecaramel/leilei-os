@@ -51,6 +51,31 @@ test("Memory source labels keep provenance read-only and legacy-safe", () => {
   assert.equal(formatMemorySource("legacy-import-v0"), "其他来源");
 });
 
+test("Dashboard quick-create intent opens Memory form and focuses Key once", async () => {
+  const page = await render("/memory", pendingApi().api, { quickCreate: "memory", preserved: true });
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const key = page.container.querySelector<HTMLInputElement>('input[placeholder="Key"]');
+    assert.ok(key);
+    assert.equal(page.window.history.state.quickCreate, undefined);
+    assert.equal(page.window.history.state.preserved, true);
+    assert.equal(page.window.document.activeElement, key);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory detail safely consumes quick-create without opening a hidden form", async () => {
+  const page = await render(createMemoryDetailLocation("memory-1", "/memory"), pendingApi().api, { quickCreate: "memory" });
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(page.container.querySelector('input[placeholder="Key"]'), null);
+    assert.equal(page.window.history.state.quickCreate, undefined);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 function listResponse(memories = [memory]) {
   return {
     success: true as const,
@@ -89,7 +114,7 @@ function pendingApi() {
   return { api, requests };
 }
 
-async function render(path: string, api: WebApiClient) {
+async function render(path: string, api: WebApiClient, historyState?: unknown) {
   const dom = new JSDOM("<main id=\"root\"></main>", {
     url: `https://leilei-os.test${path}`,
   });
@@ -137,6 +162,7 @@ async function render(path: string, api: WebApiClient) {
 
   const container = dom.window.document.querySelector("#root");
   assert.ok(container);
+  if (historyState !== undefined) dom.window.history.replaceState(historyState, "", path);
   const root = createRoot(container);
   await React.act(async () => {
     root.render(React.createElement(MemoryPageContent, {

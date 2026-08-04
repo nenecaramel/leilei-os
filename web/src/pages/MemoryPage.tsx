@@ -258,13 +258,14 @@ export function MemoryPageContent({
   useUnsavedChanges(createDirty || editDirty);
 
   useEffect(() => {
-    if (showCreate || dirtyRef.current) return;
-    if (consumeQuickCreateTarget("memory")) {
+    const hasIntent = consumeQuickCreateTarget("memory");
+    if (!hasIntent || isDetail || isArchived || isArchivedDetail || showCreate || dirtyRef.current) return;
+    if (hasIntent) {
       focusCreateRef.current = true;
       setShowCreate(true);
       setActionError("");
     }
-  }, [showCreate]);
+  }, [isDetail, isArchived, isArchivedDetail, showCreate]);
 
   useEffect(() => {
     if (!showCreate || !focusCreateRef.current) return;

@@ -203,13 +203,14 @@ export function DiaryPageContent({
   useUnsavedChanges(createDirty || editDirty);
 
   useEffect(() => {
-    if (showCreate || dirtyRef.current) return;
-    if (consumeQuickCreateTarget("diary")) {
+    const hasIntent = consumeQuickCreateTarget("diary");
+    if (!hasIntent || isDetail || isArchived || isArchivedDetail || showCreate || dirtyRef.current) return;
+    if (hasIntent) {
       focusCreateRef.current = true;
       setShowCreate(true);
       setActionError("");
     }
-  }, [showCreate]);
+  }, [isDetail, isArchived, isArchivedDetail, showCreate]);
 
   useEffect(() => {
     if (!showCreate || !focusCreateRef.current) return;

@@ -28,13 +28,13 @@ export function consumeQuickCreateTarget(
 ): boolean {
   if (typeof window === "undefined") return false;
   const state = window.history.state;
-  const target = state && typeof state === "object"
-    ? (state as { quickCreate?: unknown }).quickCreate
-    : undefined;
-  if (target !== expected || !isQuickCreateTarget(target)) return false;
-
+  if (!state || typeof state !== "object" || !Object.prototype.hasOwnProperty.call(state, "quickCreate")) {
+    return false;
+  }
+  const target = (state as { quickCreate?: unknown }).quickCreate;
+  const matches = target === expected && isQuickCreateTarget(target);
   const nextState = { ...(state as Record<string, unknown>) };
   delete nextState.quickCreate;
   window.history.replaceState(nextState, "", window.location.href);
-  return true;
+  return matches;
 }

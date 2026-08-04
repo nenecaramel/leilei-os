@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import React, { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useWebApiClient } from "../api/useWebApiClient";
+import type { WebApiClient } from "../api/useWebApiClient";
 import { DiaryIcon, MemoryIcon, TaskIcon } from "../components/icons";
-import { useSettings } from "../settings/SettingsProvider";
+import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
 import { navigateWithinApp } from "./app-navigation";
 import { summarizeDashboardTasks } from "./dashboard-tasks";
@@ -58,6 +58,16 @@ export function getDashboardHeroDescription(
   return status === "loading" ? "正在读取 Memory、Diary 和 Task。" : "暂时无法读取 Dashboard，请重试。";
 }
 
+export function getDashboardHeroTitle(
+  status: "loading" | "ready" | "error",
+  custom?: string | null,
+): string {
+  if (custom && custom.trim()) return custom;
+  if (status === "loading") return "正在读取你的个人系统。";
+  if (status === "error") return "Dashboard 暂时无法读取。";
+  return AUTOMATIC_HERO_TITLE;
+}
+
 export function getDashboardBadge(status: "loading" | "ready" | "error"): string {
   return status === "ready" ? "3 modules connected" : status === "loading" ? "正在读取" : "读取失败";
 }
@@ -70,9 +80,13 @@ function getGreeting(): string {
   return "晚上好";
 }
 
-export function DashboardPage() {
-  const api = useWebApiClient();
-  const { settings } = useSettings();
+export function DashboardPageContent({
+  api,
+  settings,
+}: {
+  api: WebApiClient;
+  settings: SettingsData;
+}) {
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<DashboardState>({ status: "loading" });
 
@@ -117,8 +131,8 @@ export function DashboardPage() {
     isCustomHero ? settings.page_copy.home_hero_description : null,
   );
   const heroTitle = settings.page_copy.home_hero_title_mode === "custom"
-    ? settings.page_copy.home_hero_title ?? AUTOMATIC_HERO_TITLE
-    : AUTOMATIC_HERO_TITLE;
+    ? getDashboardHeroTitle(state.status, settings.page_copy.home_hero_title)
+    : getDashboardHeroTitle(state.status);
 
   return (
     <div className="page dashboard-page">
@@ -150,8 +164,8 @@ export function DashboardPage() {
       {state.status === "error" && (
         <section className="quiet-panel" role="alert">
           <p className="eyebrow">System status</p>
-          <h2>暂时无法读取 Dashboard</h2>
-          <p>Memory、Diary 或 Task 的连接没有完成。</p>
+          <h2>Dashboard 暂时无法读取。</h2>
+          <p>请检查连接后重试。</p>
           <button className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>重新加载</button>
         </section>
       )}

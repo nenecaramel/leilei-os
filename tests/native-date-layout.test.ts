@@ -38,6 +38,10 @@ const globalSearchPageSource = readFileSync(
   new URL("../web/src/pages/GlobalSearchPage.tsx", import.meta.url),
   "utf8",
 );
+const appShellSource = readFileSync(
+  new URL("../web/src/layout/AppShell.tsx", import.meta.url),
+  "utf8",
+);
 
 type WebDriverResponse<T> = {
   value: T;
@@ -283,6 +287,19 @@ test("Web shell reserves the iPhone safe area and declares a theme color", () =>
   assert.match(indexHtml, /--theme-page-background/);
   assert.match(styles, /env\(safe-area-inset-top, 0px\)/);
   assert.match(styles, /html,[\s\S]*body,[\s\S]*#root/);
+});
+
+test("mobile navigation keeps all eight routes in one scrollable row", () => {
+  assert.equal((appShellSource.match(/label: /g) ?? []).length, 8);
+  assert.match(styles, /\.primary-nav\s*\{[\s\S]*?grid-auto-flow:\s*column/);
+  assert.match(styles, /\.primary-nav\s*\{[\s\S]*?overflow-x:\s*auto/);
+  assert.match(styles, /\.nav-item\s*\{[\s\S]*?min-width:\s*44px/);
+  assert.doesNotMatch(styles, /grid-template-columns:\s*repeat\(7,/);
+  assert.match(styles, /white-space:\s*nowrap/);
+  assert.doesNotMatch(styles, /body\s*\{[\s\S]*?overflow-x:\s*hidden/);
+  assert.match(styles, /right:\s*max\(12px,\s*env\(safe-area-inset-right/);
+  assert.match(styles, /left:\s*max\(12px,\s*env\(safe-area-inset-left/);
+  assert.match(styles, /min-height:\s*100dvh/);
 });
 
 test(

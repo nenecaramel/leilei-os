@@ -12,7 +12,7 @@ import {
 } from "../components/icons";
 import { useSettings } from "../settings/SettingsProvider";
 
-const navigation = [
+export const NAV_ITEMS = [
   { label: "Dashboard", to: "/", icon: DashboardIcon, end: true },
   { label: "Memory", to: "/memory", icon: MemoryIcon },
   { label: "Diary", to: "/diary", icon: DiaryIcon },
@@ -53,7 +53,7 @@ export function AppShell() {
         </div>
 
         <nav className="primary-nav" aria-label="主导航">
-          {navigation.map(
+          {NAV_ITEMS.map(
             ({ end, icon: Icon, label, to }) => (
               <NavLink
                 key={to}
