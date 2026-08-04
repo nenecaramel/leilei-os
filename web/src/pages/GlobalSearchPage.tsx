@@ -193,9 +193,11 @@ export function GlobalSearchPageContent({ api }: Props) {
       }
       if (dateError) return;
       setQueryError("");
-      if (createGlobalSearchLocation(nextDraft) === createGlobalSearchLocation(filters)) return;
+      const nextLocation = createGlobalSearchLocation(nextDraft);
+      const currentLocation = `${window.location.pathname}${window.location.search}`;
+      if (nextLocation === createGlobalSearchLocation(filters) && currentLocation === nextLocation) return;
       setFilters(nextDraft); setResults([]); setCursor(null); setLoadMoreError(false);
-      window.history.pushState(null, "", createGlobalSearchLocation(nextDraft)); requestSearch(nextDraft);
+      window.history.pushState(null, "", nextLocation); requestSearch(nextDraft);
     }, 300);
     return () => window.clearTimeout(timer);
   }, [queryInput, draftFilters, dateError]);

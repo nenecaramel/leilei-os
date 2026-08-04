@@ -379,6 +379,32 @@ test("clearing a query returns to idle without requesting or restoring the old s
   }
 });
 
+test("clearing an overlong initial URL normalizes the address without requesting", async () => {
+  const requests: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      requests.push(path);
+      return response([]) as T;
+    },
+  };
+  const page = await renderSearch(`/search?q=${"x".repeat(201)}&modules=memory&scope=all&mode=phrase&date_from=2026-08-01`, api);
+  try {
+    assert.equal(requests.length, 0);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
+    const input = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-query");
+    assert.ok(input);
+    await React.act(async () => { reactChange(input, ""); });
+    await React.act(async () => { await new Promise((resolve) => page.dom.window.setTimeout(resolve, 310)); });
+    assert.equal(requests.length, 0);
+    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=memory&scope=all&mode=phrase&date_from=2026-08-01");
+    assert.equal(page.dom.window.history.state?.globalSearch, undefined);
+    assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /输入关键词后开始搜索/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("empty query filter changes update URL without requesting", async () => {
   const requests: string[] = [];
   const api: WebApiClient = {
