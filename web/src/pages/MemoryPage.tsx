@@ -9,6 +9,7 @@ import { MemoryIcon } from "../components/icons";
 import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
 import { isSearchLocation, navigateWithinApp } from "./app-navigation";
+import { consumeQuickCreateTarget } from "./quick-create";
 import {
   confirmUnsavedChanges,
   createMutationOwnership,
@@ -225,6 +226,8 @@ export function MemoryPageContent({
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
   const [creating, setCreating] = useState(false);
+  const createKeyInput = useRef<HTMLInputElement | null>(null);
+  const focusCreateRef = useRef(false);
 
   const [editingId, setEditingId] = useState("");
   const [editingContent, setEditingContent] = useState("");
@@ -253,6 +256,21 @@ export function MemoryPageContent({
   );
   currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
   useUnsavedChanges(createDirty || editDirty);
+
+  useEffect(() => {
+    if (showCreate || dirtyRef.current) return;
+    if (consumeQuickCreateTarget("memory")) {
+      focusCreateRef.current = true;
+      setShowCreate(true);
+      setActionError("");
+    }
+  }, [showCreate]);
+
+  useEffect(() => {
+    if (!showCreate || !focusCreateRef.current) return;
+    focusCreateRef.current = false;
+    (window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0)))(() => createKeyInput.current?.focus());
+  }, [showCreate]);
 
   function discardDraft(): void {
     if (createDirtyRef.current) {
@@ -1073,6 +1091,7 @@ export function MemoryPageContent({
 
               <input
                 placeholder="Key"
+                ref={createKeyInput}
                 value={key}
                 disabled={creating}
                 onChange={(event) => {

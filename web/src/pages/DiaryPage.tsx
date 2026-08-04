@@ -10,6 +10,7 @@ import { NativeDateInput } from "../components/NativeDateInput";
 import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
 import { isSearchLocation, navigateWithinApp } from "./app-navigation";
+import { consumeQuickCreateTarget } from "./quick-create";
 import {
   confirmUnsavedChanges,
   createMutationOwnership,
@@ -160,6 +161,8 @@ export function DiaryPageContent({
 
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
+  const createTitleInput = useRef<HTMLInputElement | null>(null);
+  const focusCreateRef = useRef(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [date, setDate] = useState(getToday());
@@ -198,6 +201,21 @@ export function DiaryPageContent({
   );
   currentUrlRef.current = `${window.location.pathname}${window.location.search}`;
   useUnsavedChanges(createDirty || editDirty);
+
+  useEffect(() => {
+    if (showCreate || dirtyRef.current) return;
+    if (consumeQuickCreateTarget("diary")) {
+      focusCreateRef.current = true;
+      setShowCreate(true);
+      setActionError("");
+    }
+  }, [showCreate]);
+
+  useEffect(() => {
+    if (!showCreate || !focusCreateRef.current) return;
+    focusCreateRef.current = false;
+    (window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0)))(() => createTitleInput.current?.focus());
+  }, [showCreate]);
 
   function discardDraft(): void {
     if (createDirtyRef.current) {
@@ -857,7 +875,7 @@ export function DiaryPageContent({
           {showCreate && (
             <section className="memory-message">
               <h2>创建日记</h2>
-              <input aria-label="日记标题" placeholder="标题" value={title} disabled={creating} onChange={(event) => setTitle(event.target.value)} />
+              <input ref={createTitleInput} aria-label="日记标题" placeholder="标题" value={title} disabled={creating} onChange={(event) => setTitle(event.target.value)} />
               <NativeDateInput aria-label="日记日期" type="date" value={date} disabled={creating} onChange={(event) => setDate(event.target.value)} />
               <input aria-label="日记心情" placeholder="心情（可选）" value={mood} disabled={creating} onChange={(event) => setMood(event.target.value)} />
               <input aria-label="日记标签" placeholder="标签，用逗号分隔（可选）" value={tags} disabled={creating} onChange={(event) => setTags(event.target.value)} />

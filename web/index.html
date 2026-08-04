@@ -2,7 +2,8 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3f1eb" />
     <meta
       name="description"
       content="Leilei OS personal operations dashboard"
@@ -35,6 +36,10 @@
               document.documentElement.style.setProperty(name, value);
             }
           });
+          const pageBackground = cached.variables["--theme-page-background"];
+          if (typeof pageBackground === "string") {
+            document.querySelector('meta[name="theme-color"]')?.setAttribute("content", pageBackground);
+          }
         } catch {
           // Theme cache is optional and must never block initial rendering.
         }

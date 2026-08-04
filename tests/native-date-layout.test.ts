@@ -22,12 +22,20 @@ const styles = readFileSync(
   new URL("../web/src/styles.css", import.meta.url),
   "utf8",
 );
+const indexHtml = readFileSync(
+  new URL("../web/index.html", import.meta.url),
+  "utf8",
+);
 const taskPageSource = readFileSync(
   new URL("../web/src/pages/TaskPage.tsx", import.meta.url),
   "utf8",
 );
 const diaryPageSource = readFileSync(
   new URL("../web/src/pages/DiaryPage.tsx", import.meta.url),
+  "utf8",
+);
+const globalSearchPageSource = readFileSync(
+  new URL("../web/src/pages/GlobalSearchPage.tsx", import.meta.url),
   "utf8",
 );
 
@@ -257,6 +265,24 @@ test("Task and Diary route date fields share NativeDateInput", () => {
   assert.match(taskPageSource, /<NativeDateInput[\s\S]*?type="datetime-local"/);
   assert.match(diaryPageSource, /import \{ NativeDateInput \}/);
   assert.match(diaryPageSource, /<NativeDateInput[\s\S]*?type="date"/);
+});
+
+test("Global Search date fields share NativeDateInput and its constrained class", () => {
+  assert.match(globalSearchPageSource, /import \{ NativeDateInput \}/);
+  assert.match(globalSearchPageSource, /<NativeDateInput[\s\S]*?id="global-search-date-from"[\s\S]*?type="date"/);
+  assert.match(globalSearchPageSource, /<NativeDateInput[\s\S]*?id="global-search-date-to"[\s\S]*?type="date"/);
+  const markup = renderToStaticMarkup(createElement(NativeDateInput, { type: "date", id: "global-search-date-from" }));
+  assert.match(markup, /class="native-date-field"/);
+  assert.match(markup, /class="native-date-input"/);
+  assert.match(styles, /\.global-search-filters > \.native-date-field/);
+});
+
+test("Web shell reserves the iPhone safe area and declares a theme color", () => {
+  assert.match(indexHtml, /viewport-fit=cover/);
+  assert.match(indexHtml, /<meta name="theme-color" content="#f3f1eb"/);
+  assert.match(indexHtml, /--theme-page-background/);
+  assert.match(styles, /env\(safe-area-inset-top, 0px\)/);
+  assert.match(styles, /html,[\s\S]*body,[\s\S]*#root/);
 });
 
 test(

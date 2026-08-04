@@ -6,6 +6,7 @@ import {
   createThemeVariables,
   parseThemeCache,
   readThemeCache,
+  syncThemeColorMeta,
   writeThemeCache,
 } from "../web/src/settings/theme.js";
 
@@ -37,4 +38,18 @@ test("theme cache handles unavailable browser storage safely", () => {
 
   assert.equal(readThemeCache(unavailableStorage), null);
   assert.equal(writeThemeCache(unavailableStorage, "#405f4d")?.accentColor, "#405f4d");
+});
+
+test("theme color meta follows the page background and not the accent", () => {
+  let value = "#f3f1eb";
+  const documentRef = {
+    querySelector() {
+      return { setAttribute(_name: string, next: string) { value = next; } };
+    },
+  } as unknown as Document;
+  const variables = createThemeVariables("#d7a928");
+  assert.ok(variables);
+  syncThemeColorMeta(documentRef, variables["--theme-page-background"]!);
+  assert.equal(value, variables["--theme-page-background"]);
+  assert.notEqual(value, "#d7a928");
 });
