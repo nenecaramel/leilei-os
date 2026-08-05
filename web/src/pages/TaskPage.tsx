@@ -846,6 +846,9 @@ import {
           if (current.status !== "ready") return current;
           const stillMatchesStatus =
             statusFilter.length === 0 || response.data.status === statusFilter;
+          const taskWasVisible = current.tasks.some(
+            (task) => task.id === response.data.id,
+          );
           return {
             status: "ready",
             tasks: stillMatchesStatus
@@ -855,7 +858,7 @@ import {
               : current.tasks.filter((task) => task.id !== response.data.id),
             count: stillMatchesStatus
               ? current.count
-              : Math.max(0, current.count - 1),
+              : Math.max(0, current.count - (taskWasVisible ? 1 : 0)),
           };
         });
         requestAnimationFrame(() => {
