@@ -21,7 +21,7 @@ const taskTimeBucketSchema = z.enum([
   "next_7_days",
   "later",
 ]);
-const taskActionSchema = z.enum(["start", "complete", "cancel"]);
+const taskActionSchema = z.enum(["start", "complete", "cancel", "reopen"]);
 const dateTimeSchema = z.string().datetime();
 
 const getTaskInputSchema = z

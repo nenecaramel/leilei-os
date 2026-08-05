@@ -52,7 +52,7 @@ import {
     | "high"
     | "urgent";
 
-  type TaskAction = "start" | "complete" | "cancel";
+  type TaskAction = "start" | "complete" | "cancel" | "reopen";
 
   type TaskEntry = {
     id: string;
@@ -812,6 +812,77 @@ import {
       }
     }
 
+    async function handleReopenTask(taskOverride?: TaskEntry) {
+      const target = taskOverride ?? selectedTask;
+      if (!target || !mutationGate.current.enter()) return;
+      const listSnapshot = {
+        location: `${window.location.pathname}${window.location.search}`,
+        historyState: window.history.state,
+        scrollY: window.scrollY,
+      };
+      const statusFilter = filters.status;
+      const ticket = mutationOwnership.current.begin();
+      setUpdatingStatus(true);
+      setActionError("");
+      try {
+        const response = await api.request<TaskEntryResponse>(
+          `/task/${target.id}/reopen`,
+          { method: "POST" },
+        );
+        if (!mutationOwnership.current.owns(ticket)) return;
+        if (!taskOverride) {
+          setSelectedTask(response.data);
+          return;
+        }
+
+        if (
+          `${window.location.pathname}${window.location.search}` !== listSnapshot.location ||
+          window.history.state !== listSnapshot.historyState
+        ) {
+          return;
+        }
+
+        setState((current) => {
+          if (current.status !== "ready") return current;
+          const stillMatchesStatus =
+            statusFilter.length === 0 || response.data.status === statusFilter;
+          const taskWasVisible = current.tasks.some(
+            (task) => task.id === response.data.id,
+          );
+          return {
+            status: "ready",
+            tasks: stillMatchesStatus
+              ? current.tasks.map((task) =>
+                  task.id === response.data.id ? response.data : task,
+                )
+              : current.tasks.filter((task) => task.id !== response.data.id),
+            count: stillMatchesStatus
+              ? current.count
+              : Math.max(0, current.count - (taskWasVisible ? 1 : 0)),
+          };
+        });
+        requestAnimationFrame(() => {
+          if (
+            `${window.location.pathname}${window.location.search}` === listSnapshot.location &&
+            window.history.state === listSnapshot.historyState
+          ) {
+            window.scrollTo({
+              top: listSnapshot.scrollY,
+              left: 0,
+              behavior: "auto",
+            });
+          }
+        });
+      } catch {
+        if (mutationOwnership.current.owns(ticket)) {
+          setActionError("恢复任务失败，请稍后重试。");
+        }
+      } finally {
+        mutationGate.current.leave();
+        if (mutationOwnership.current.owns(ticket)) setUpdatingStatus(false);
+      }
+    }
+
     async function handleUpdate() {
       if (!selectedTask || updateInvalid || !mutationGate.current.enter()) {
         return;
@@ -1173,6 +1244,16 @@ import {
                   </button>
                 )}
 
+                {!isArchivedMode && taskActions.includes("reopen") && (
+                  <button
+                    className="secondary-button"
+                    disabled={updatingStatus}
+                    onClick={() => void handleReopenTask()}
+                  >
+                    {updatingStatus ? "恢复中…" : "恢复任务"}
+                  </button>
+                )}
+
               {!isArchivedMode && (
                 <button className="secondary-button" disabled={updatingStatus || archiving} onClick={() => void handleArchiveTask()}>
                   {archiving ? "归档中…" : "归档"}
@@ -1261,6 +1342,15 @@ import {
                             ? "读取中…"
                             : "查看任务"}
                         </button>
+                        {!isArchivedMode && task.allowed_actions.includes("reopen") && (
+                          <button
+                            className="secondary-button"
+                            disabled={updatingStatus}
+                            onClick={() => void handleReopenTask(task)}
+                          >
+                            {updatingStatus ? "恢复中…" : "恢复任务"}
+                          </button>
+                        )}
                       </article>
                     ))}
                   </section>

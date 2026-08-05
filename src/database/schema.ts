@@ -450,6 +450,7 @@ export const tasks = pgTable(
     title: varchar("title", { length: 200 }).notNull(),
     description: text("description").notNull(),
     status: taskStatusEnum("status").default("pending").notNull(),
+    resumeStatus: taskStatusEnum("resume_status"),
     lifecycleStatus: taskLifecycleStatusEnum("lifecycle_status")
       .default("active")
       .notNull(),
@@ -506,6 +507,10 @@ export const tasks = pgTable(
     check(
       "tasks_completed_at_consistency",
       sql`(${table.status} = 'completed' AND ${table.completedAt} IS NOT NULL) OR (${table.status} <> 'completed' AND ${table.completedAt} IS NULL)`,
+    ),
+    check(
+      "tasks_resume_status_consistency",
+      sql`((${table.status} IN ('pending', 'in_progress') AND ${table.resumeStatus} IS NULL) OR (${table.status} IN ('completed', 'cancelled') AND ${table.resumeStatus} IS NOT NULL AND ${table.resumeStatus} IN ('pending', 'in_progress')))`,
     ),
   ],
 );

@@ -53,6 +53,7 @@ class MockTaskRepository implements TaskRepository {
   idempotentWrites: Array<NormalizedTaskCreate & { idempotencyKey: string; requestHash: string }> = [];
   idempotentOutcome: "created" | "replayed" | "conflict" = "created";
   statusWrites: UpdateTaskStatusInput[] = [];
+  statusWriteConflict = false;
   updateWrites: NormalizedTaskUpdate[] = [];
   listQueries: TaskListQuery[] = [];
   records = new Map<string, { userId: string; task: TaskRecord }>();
@@ -110,14 +111,23 @@ class MockTaskRepository implements TaskRepository {
 
   async updateTaskStatus(input: UpdateTaskStatusInput): Promise<TaskRecord | null> {
     this.statusWrites.push(input);
+    if (this.statusWriteConflict) return null;
     const record = this.records.get(input.id);
     if (!record || record.userId !== input.userId) return null;
     record.task = {
       ...record.task,
       status: input.status,
+      resumeStatus: input.resumeStatus ?? null,
       completedAt: input.completedAt,
       updatedAt: new Date("2026-07-22T10:00:00.000Z"),
     };
+    return record.task;
+  }
+
+  async reopenTask(input: { userId: string; id: string; expectedStatus: "completed" | "cancelled"; resumeStatus: "pending" | "in_progress" }): Promise<TaskRecord | null> {
+    const record = this.records.get(input.id);
+    if (!record || record.userId !== input.userId || record.task.lifecycleStatus === "archived" || record.task.status !== input.expectedStatus || record.task.resumeStatus !== input.resumeStatus) return null;
+    record.task = { ...record.task, status: input.resumeStatus, resumeStatus: null, completedAt: null, updatedAt: new Date("2026-07-22T10:00:00.000Z") };
     return record.task;
   }
 
@@ -406,6 +416,7 @@ function seedTask(
     createdAt: new Date("2026-07-22T09:00:00.000Z"),
     updatedAt: new Date("2026-07-22T09:00:00.000Z"),
     completedAt: status === "completed" ? new Date("2026-07-22T09:30:00.000Z") : null,
+    resumeStatus: status === "completed" ? "in_progress" : status === "cancelled" ? "pending" : null,
   };
   repository.records.set(task.id, { userId, task });
   return task;
@@ -646,12 +657,94 @@ test("treats a repeated status request as an idempotent no-op", async () => {
   assert.equal(repository.statusWrites.length, 0);
 });
 
+test("repeated terminal status keeps its reopen target", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository, "completed");
+  const service = new TaskService(repository);
+
+  const result = await service.updateWebTaskStatus({
+    userId: "user-1",
+    id: "task-1",
+    status: "completed",
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal((repository.records.get("task-1")!.task as TaskRecord & { resumeStatus?: TaskStatus | null }).resumeStatus, "in_progress");
+  assert.equal(repository.statusWrites.length, 0);
+});
+
+test("cancel and complete retain server-owned reopen targets", async () => {
+  for (const [from, terminal, expectedResume] of [
+    ["pending", "cancelled", "pending"],
+    ["in_progress", "cancelled", "in_progress"],
+    ["in_progress", "completed", "in_progress"],
+  ] as const) {
+    const repository = new MockTaskRepository();
+    seedTask(repository, from);
+    const service = new TaskService(repository);
+
+    await service.updateWebTaskStatus({ userId: "user-1", id: "task-1", status: terminal });
+    const stored = repository.records.get("task-1")!.task as TaskRecord & { resumeStatus?: TaskStatus | null };
+    assert.equal(stored.status, terminal);
+    assert.equal(stored.resumeStatus, expectedResume);
+    assert.equal(stored.completedAt === null, terminal !== "completed");
+
+    const reopen = (service as unknown as {
+      reopenTask(input: { userId: string; id: string }): Promise<{ status: TaskStatus; completed_at: string | null }>;
+    }).reopenTask;
+    const result = await reopen.call(service, { userId: "user-1", id: "task-1" });
+    assert.equal(result.status, from);
+    assert.equal(result.completed_at, null);
+    assert.equal((repository.records.get("task-1")!.task as TaskRecord & { resumeStatus?: TaskStatus | null }).resumeStatus, null);
+  }
+});
+
+test("reopen rejects active tasks, invalid terminal state, and disabled users", async () => {
+  const activeRepository = new MockTaskRepository();
+  seedTask(activeRepository, "pending");
+  const activeService = new TaskService(activeRepository);
+  const reopen = (activeService as unknown as { reopenTask(input: { userId: string; id: string }): Promise<unknown> }).reopenTask;
+  await assert.rejects(
+    reopen.call(activeService, { userId: "user-1", id: "task-1" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_REOPEN_STATE",
+  );
+
+  const invalidRepository = new MockTaskRepository();
+  seedTask(invalidRepository, "completed");
+  const invalidRecord = invalidRepository.records.get("task-1")!.task as TaskRecord & { resumeStatus?: TaskStatus | null };
+  invalidRecord.resumeStatus = "completed" as TaskStatus;
+  const invalidService = new TaskService(invalidRepository);
+  const invalidReopen = (invalidService as unknown as { reopenTask(input: { userId: string; id: string }): Promise<unknown> }).reopenTask;
+  await assert.rejects(
+    invalidReopen.call(invalidService, { userId: "user-1", id: "task-1" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_REOPEN_STATE",
+  );
+
+  invalidRepository.user = { status: "disabled" };
+  await assert.rejects(
+    invalidReopen.call(invalidService, { userId: "user-1", id: "task-1" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "USER_DISABLED",
+  );
+});
+
+test("concurrent status mutation is reported as a conflict rather than not found", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository, "pending");
+  repository.statusWriteConflict = true;
+  const service = new TaskService(repository);
+
+  await assert.rejects(
+    service.updateWebTaskStatus({ userId: "user-1", id: "task-1", status: "in_progress" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "TASK_STATUS_CONFLICT",
+  );
+});
+
 test("returns the domain-approved actions for each task state", async () => {
   const cases: Array<[TaskStatus, string[]]> = [
     ["pending", ["start", "cancel"]],
     ["in_progress", ["complete", "cancel"]],
-    ["completed", []],
-    ["cancelled", []],
+    ["completed", ["reopen"]],
+    ["cancelled", ["reopen"]],
   ];
 
   for (const [status, expectedActions] of cases) {
@@ -661,6 +754,18 @@ test("returns the domain-approved actions for each task state", async () => {
 
     const result = await service.readTask({ userId: "user-1", id: "task-1" });
     assert.deepEqual(result.allowed_actions, expectedActions);
+  }
+});
+
+test("archived tasks never expose lifecycle actions", async () => {
+  for (const status of ["pending", "in_progress", "completed", "cancelled"] as const) {
+    const repository = new MockTaskRepository();
+    const task = seedTask(repository, status);
+    task.lifecycleStatus = "archived";
+    const service = new TaskService(repository);
+
+    const result = await service.readTask({ userId: "user-1", id: task.id });
+    assert.deepEqual(result.allowed_actions, []);
   }
 });
 

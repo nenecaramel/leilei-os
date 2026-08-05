@@ -8,6 +8,7 @@ import {
   createListArchivedTasksApiHandler,
   createListTasksApiHandler,
   createReadArchivedTaskApiHandler,
+  createReopenTaskApiHandler,
   createRestoreTaskApiHandler,
   createTaskApiRouter,
   createUpdateTaskApiHandler,
@@ -372,4 +373,99 @@ test("Task archived routes take precedence over /:id and no permanent-delete rou
       server.close((error) => error ? reject(error) : resolve());
     });
   }
+});
+
+test("Task reopen route uses the authenticated user and returns the task envelope", async () => {
+  const calls: unknown[] = [];
+  const app = express();
+  app.use(express.json());
+  app.use((request, _response, next) => {
+    request.webUserId = "user-1";
+    next();
+  });
+  app.use("/task", createTaskApiRouter({
+    taskService: {
+      async reopenTask(input: unknown) {
+        calls.push(input);
+        return task;
+      },
+    } as never,
+  }));
+  const server = app.listen(0, "127.0.0.1");
+  try {
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await fetch(`http://127.0.0.1:${address.port}/task/task-1/reopen`, {
+      method: "POST",
+      body: JSON.stringify({ status: "pending", userId: "attacker" }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { success: true, data: task });
+    assert.deepEqual(calls, [{ userId: "user-1", id: "task-1" }]);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("Task reopen maps invalid state and concurrent conflict without leaking internals", async () => {
+  for (const code of ["INVALID_TASK_REOPEN_STATE", "TASK_STATUS_CONFLICT"] as const) {
+    const handler = createTaskApiRouter({
+      taskService: {
+        async reopenTask() {
+          throw new TaskDomainError(code, "private task state details");
+        },
+      } as never,
+    });
+    const app = express();
+    app.use((request, _response, next) => {
+      request.webUserId = "user-1";
+      next();
+    });
+    app.use("/task", handler);
+    const server = app.listen(0, "127.0.0.1");
+    try {
+      await new Promise<void>((resolve) => server.once("listening", resolve));
+      const address = server.address();
+      assert.ok(address && typeof address === "object");
+      const response = await fetch(`http://127.0.0.1:${address.port}/task/task-1/reopen`, { method: "POST" });
+      assert.equal(response.status, 409);
+      const body = await response.json() as { error: { code: string; message: string } };
+      assert.equal(body.error.code, code);
+      assert.doesNotMatch(body.error.message, /private task state details/);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  }
+});
+
+test("Task reopen maps missing task and missing user consistently", async () => {
+  for (const code of ["TASK_NOT_FOUND", "USER_NOT_FOUND", "USER_DISABLED"] as const) {
+    const handler = createReopenTaskApiHandler({
+      taskService: {
+        async reopenTask() {
+          throw new TaskDomainError(code, "private task details");
+        },
+      } as never,
+    });
+    const { result, response } = responseRecorder();
+    await handler({ webUserId: "user-1", params: { id: "task-1" } } as unknown as Request, response, () => {});
+    assert.equal(result.status, code === "TASK_NOT_FOUND" ? 404 : 403);
+    assert.doesNotMatch(JSON.stringify(result.body), /private task details/);
+  }
+
+  let calls = 0;
+  const unauthenticated = createReopenTaskApiHandler({
+    taskService: {
+      async reopenTask() {
+        calls += 1;
+        return task;
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+  await unauthenticated({ params: { id: "task-1" } } as unknown as Request, response, () => {});
+  assert.equal(result.status, 401);
+  assert.equal(calls, 0);
 });

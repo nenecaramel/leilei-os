@@ -1,6 +1,6 @@
 import type { TaskStatus } from "./task-repository.js";
 
-export type TaskAction = "start" | "complete" | "cancel";
+export type TaskAction = "start" | "complete" | "cancel" | "reopen";
 
 const transitions: Record<TaskStatus, Partial<Record<TaskAction, TaskStatus>>> = {
   pending: {
@@ -11,8 +11,12 @@ const transitions: Record<TaskStatus, Partial<Record<TaskAction, TaskStatus>>> =
     complete: "completed",
     cancel: "cancelled",
   },
-  completed: {},
-  cancelled: {},
+  completed: {
+    reopen: "in_progress",
+  },
+  cancelled: {
+    reopen: "pending",
+  },
 };
 
 export class TaskStateTransitionError extends Error {
@@ -32,7 +36,9 @@ export function assertTaskStatusTransition(
 ): void {
   if (current === next) return;
 
-  const allowed = Object.values(transitions[current]);
+  const allowed = Object.entries(transitions[current])
+    .filter(([action]) => action !== "reopen")
+    .map(([, next]) => next);
   if (!allowed.includes(next)) {
     throw new TaskStateTransitionError(current, next);
   }

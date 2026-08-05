@@ -38,6 +38,11 @@ import {
         status: string;
       }): Promise<TaskEntryResult>;
 
+      reopenTask(input: {
+        userId: string;
+        id: string;
+      }): Promise<TaskEntryResult>;
+
       updateWebTask(input: {
         userId: string;
         id: string;
@@ -63,6 +68,7 @@ import {
     router.get("/archived", createListArchivedTasksApiHandler(dependencies));
     router.get("/archived/:id", createReadArchivedTaskApiHandler(dependencies));
     router.post("/archived/:id/restore", createRestoreTaskApiHandler(dependencies));
+    router.post("/:id/reopen", createReopenTaskApiHandler(dependencies));
     router.get("/", createListTasksApiHandler(dependencies));
     router.get("/:id", createReadTaskApiHandler(dependencies));
     router.post("/", createCreateTaskApiHandler(dependencies));
@@ -105,6 +111,21 @@ import {
       if (!request.webUserId) return sendUnauthorized(response);
       try { await dependencies.taskService.restoreTask!({ userId: request.webUserId, id: getRouteParam(request.params.id) }); response.json({ success: true, data: {} }); }
       catch (error) { sendTaskError(response, error); }
+    };
+  }
+
+  export function createReopenTaskApiHandler(dependencies: TaskApiDependencies): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) return sendUnauthorized(response);
+      try {
+        const data = await dependencies.taskService.reopenTask({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.id),
+        });
+        response.json({ success: true, data });
+      } catch (error) {
+        sendTaskError(response, error);
+      }
     };
   }
   
@@ -301,6 +322,19 @@ import {
           error: {
             code: "INVALID_TASK_STATUS_TRANSITION",
             message: error.message,
+          },
+        });
+        return;
+      }
+
+      if (error.code === "INVALID_TASK_REOPEN_STATE" || error.code === "TASK_STATUS_CONFLICT") {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.code === "TASK_STATUS_CONFLICT"
+              ? "Task status changed; please retry."
+              : "Task cannot be reopened.",
           },
         });
         return;
