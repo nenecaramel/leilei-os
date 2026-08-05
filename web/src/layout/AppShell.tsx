@@ -1,32 +1,19 @@
+import React, { useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { NavLink, Outlet } from "react-router-dom";
-import {
-  ArchiveIcon,
-  DashboardIcon,
-  DiaryIcon,
-  MemoryIcon,
-  SettingsIcon,
-  SearchIcon,
-  TaskIcon,
-  UniverseIcon,
-} from "../components/icons";
+import { Outlet } from "react-router-dom";
 import { useSettings } from "../settings/SettingsProvider";
+import { MobileNavigationDrawer } from "./MobileNavigationDrawer";
+import { MobileTopBar } from "./MobileTopBar";
+import { NavigationGroups } from "./NavigationGroups";
 import { RouteScrollManager } from "./RouteScrollManager";
 
-export const NAV_ITEMS = [
-  { label: "Dashboard", to: "/", icon: DashboardIcon, end: true },
-  { label: "Memory", to: "/memory", icon: MemoryIcon },
-  { label: "Diary", to: "/diary", icon: DiaryIcon },
-  { label: "Task", to: "/task", icon: TaskIcon },
-  { label: "全局搜索", to: "/search", icon: SearchIcon },
-  { label: "Settings", to: "/settings", icon: SettingsIcon },
-  { label: "Chat Archive", to: "/chat-archive", icon: ArchiveIcon },
-  { label: "Universe", to: "/universe", icon: UniverseIcon },
-];
+export { NAV_ITEMS } from "./NavigationGroups";
 
 export function AppShell() {
   const { logout, user } = useAuth0();
   const { settings } = useSettings();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   const displayName =
     settings.preferred_name ||
@@ -44,6 +31,16 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <RouteScrollManager />
+      <MobileTopBar
+        menuOpen={mobileMenuOpen}
+        menuButtonRef={menuButtonRef}
+        onMenuClick={() => setMobileMenuOpen((open) => !open)}
+      />
+      <MobileNavigationDrawer
+        open={mobileMenuOpen}
+        menuButtonRef={menuButtonRef}
+        onClose={() => setMobileMenuOpen(false)}
+      />
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark">L</div>
@@ -54,27 +51,8 @@ export function AppShell() {
           </div>
         </div>
 
-        <nav className="primary-nav" aria-label="主导航">
-          {NAV_ITEMS.map(
-            ({ end, icon: Icon, label, to }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) =>
-                  `nav-item${isActive ? " active" : ""}`
-                }
-              >
-                <Icon />
-                <span>{label}</span>
-
-                {(label === "Chat Archive" ||
-                  label === "Universe") && (
-                  <small>soon</small>
-                )}
-              </NavLink>
-            ),
-          )}
+        <nav className="primary-nav" aria-label="Primary navigation">
+          <NavigationGroups />
         </nav>
 
         <div className="sidebar-footer">
