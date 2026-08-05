@@ -848,7 +848,10 @@ export class TaskService {
       updated_at: task.updatedAt.toISOString(),
       completed_at:
         task.completedAt?.toISOString() ?? null,
-      allowed_actions: getAllowedTaskActions(task.status),
+      allowed_actions:
+        task.lifecycleStatus === "archived"
+          ? []
+          : getAllowedTaskActions(task.status),
       lifecycle_status: task.lifecycleStatus ?? "active",
     };
   }

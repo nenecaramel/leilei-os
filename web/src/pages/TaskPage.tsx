@@ -815,6 +815,12 @@ import {
     async function handleReopenTask(taskOverride?: TaskEntry) {
       const target = taskOverride ?? selectedTask;
       if (!target || !mutationGate.current.enter()) return;
+      const listSnapshot = {
+        location: `${window.location.pathname}${window.location.search}`,
+        historyState: window.history.state,
+        scrollY: window.scrollY,
+      };
+      const statusFilter = filters.status;
       const ticket = mutationOwnership.current.begin();
       setUpdatingStatus(true);
       setActionError("");
@@ -824,8 +830,46 @@ import {
           { method: "POST" },
         );
         if (!mutationOwnership.current.owns(ticket)) return;
-        if (!taskOverride) setSelectedTask(response.data);
-        setReloadKey((value) => value + 1);
+        if (!taskOverride) {
+          setSelectedTask(response.data);
+          return;
+        }
+
+        if (
+          `${window.location.pathname}${window.location.search}` !== listSnapshot.location ||
+          window.history.state !== listSnapshot.historyState
+        ) {
+          return;
+        }
+
+        setState((current) => {
+          if (current.status !== "ready") return current;
+          const stillMatchesStatus =
+            statusFilter.length === 0 || response.data.status === statusFilter;
+          return {
+            status: "ready",
+            tasks: stillMatchesStatus
+              ? current.tasks.map((task) =>
+                  task.id === response.data.id ? response.data : task,
+                )
+              : current.tasks.filter((task) => task.id !== response.data.id),
+            count: stillMatchesStatus
+              ? current.count
+              : Math.max(0, current.count - 1),
+          };
+        });
+        requestAnimationFrame(() => {
+          if (
+            `${window.location.pathname}${window.location.search}` === listSnapshot.location &&
+            window.history.state === listSnapshot.historyState
+          ) {
+            window.scrollTo({
+              top: listSnapshot.scrollY,
+              left: 0,
+              behavior: "auto",
+            });
+          }
+        });
       } catch {
         if (mutationOwnership.current.owns(ticket)) {
           setActionError("恢复任务失败，请稍后重试。");

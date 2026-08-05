@@ -757,6 +757,18 @@ test("returns the domain-approved actions for each task state", async () => {
   }
 });
 
+test("archived tasks never expose lifecycle actions", async () => {
+  for (const status of ["pending", "in_progress", "completed", "cancelled"] as const) {
+    const repository = new MockTaskRepository();
+    const task = seedTask(repository, status);
+    task.lifecycleStatus = "archived";
+    const service = new TaskService(repository);
+
+    const result = await service.readTask({ userId: "user-1", id: task.id });
+    assert.deepEqual(result.allowed_actions, []);
+  }
+});
+
 test("does not read, update, or transition another user's task", async () => {
   const repository = new MockTaskRepository();
   seedTask(repository, "pending", "owner-1");

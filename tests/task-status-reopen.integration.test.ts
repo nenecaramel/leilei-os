@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { sql } from "drizzle-orm";
-import { createDatabase } from "../src/database/client.js";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import { tasks, users } from "../src/database/schema.js";
 import { DrizzleTaskRepository } from "../src/domains/task/task-repository.js";
 
@@ -12,11 +14,23 @@ const RUN_DATABASE_INTEGRATION =
 
 class RollbackTaskStatusReopen extends Error {}
 
+function createLocalDatabase(databaseUrl: string) {
+  const client = postgres(databaseUrl, {
+    max: 10,
+    prepare: false,
+    ssl: false,
+  });
+  return {
+    db: drizzle(client, { schema }),
+    close: () => client.end(),
+  };
+}
+
 test(
   "real Task status reopen preserves resume targets, enforces CAS, and rejects inconsistent rows",
   { skip: !RUN_DATABASE_INTEGRATION },
   async () => {
-    const database = createDatabase(process.env.DATABASE_URL!);
+    const database = createLocalDatabase(process.env.DATABASE_URL!);
     const owner = randomUUID();
     const timestamp = new Date("2026-08-05T00:00:00.000Z");
     const taskId = randomUUID();
@@ -112,17 +126,17 @@ test(
         (error: unknown) => error instanceof RollbackTaskStatusReopen,
       );
     } finally {
-      await database.client.end({ timeout: 5 });
+      await database.close();
     }
   },
 );
 
 test("Task reopen migration contains only the expected consistency constraint", { skip: !RUN_DATABASE_INTEGRATION }, async () => {
-  const database = createDatabase(process.env.DATABASE_URL!);
+  const database = createLocalDatabase(process.env.DATABASE_URL!);
   try {
     const rows = await database.db.execute(sql`SELECT conname FROM pg_constraint WHERE conname = 'tasks_resume_status_consistency'`);
     assert.equal(rows.length, 1);
   } finally {
-    await database.client.end({ timeout: 5 });
+    await database.close();
   }
 });

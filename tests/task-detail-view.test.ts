@@ -152,7 +152,23 @@ async function renderTaskPage(
   }).detachEvent = function (name, listener) {
     this.removeEventListener(name.replace(/^on/, ""), listener);
   };
-  dom.window.scrollTo = () => {};
+  const scrollCalls: ScrollToOptions[] = [];
+  Object.defineProperty(dom.window, "scrollY", {
+    configurable: true,
+    value: 0,
+  });
+  dom.window.scrollTo = (options?: ScrollToOptions | number, y?: number) => {
+    if (typeof options === "number") {
+      scrollCalls.push({ top: y ?? 0, left: options });
+      Object.defineProperty(dom.window, "scrollY", { configurable: true, value: y ?? 0 });
+      return;
+    }
+    scrollCalls.push(options ?? {});
+    Object.defineProperty(dom.window, "scrollY", {
+      configurable: true,
+      value: options?.top ?? dom.window.scrollY,
+    });
+  };
   dom.window.requestAnimationFrame = (callback) =>
     dom.window.setTimeout(() => callback(Date.now()), 0);
   installGlobal(
@@ -174,6 +190,7 @@ async function renderTaskPage(
   return {
     container,
     window: dom.window,
+    scrollCalls,
     async cleanup() {
       await React.act(async () => root.unmount());
       dom.window.close();
@@ -264,10 +281,102 @@ test("active terminal Task list exposes one in-place reopen action", async () =>
   const page = await renderTaskPage("/task?status=cancelled", api);
   try {
     await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    page.window.history.replaceState({ preserved: true }, "", "/task?status=cancelled");
+    Object.defineProperty(page.window, "scrollY", { configurable: true, value: 640 });
     const buttons = [...page.container.querySelectorAll("button")].filter((button) => button.textContent === "恢复任务");
     assert.equal(buttons.length, 1);
     await React.act(async () => { buttons[0]!.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
     assert.equal(requests.filter(({ path, init }) => path === "/task/task-123/reopen" && init?.method === "POST").length, 1);
+    assert.equal(page.container.querySelector("[aria-label=\"任务列表加载中\"]"), null);
+    assert.equal(page.container.textContent?.includes("详情任务"), false);
+    assert.equal(page.window.location.pathname + page.window.location.search, "/task?status=cancelled");
+    assert.deepEqual(page.window.history.state, { preserved: true });
+    assert.deepEqual(page.scrollCalls.at(-1), { top: 640, left: 0, behavior: "auto" });
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("completed status-filtered reopen removes the task without entering loading", async () => {
+  const terminal = {
+    ...TASK_RESPONSE.data,
+    status: "completed" as const,
+    completed_at: "2026-07-29T04:00:00.000Z",
+    allowed_actions: ["reopen"] as const,
+  };
+  const { api, requests } = createApi(async (path) => {
+    if (path === "/task/task-123/reopen") {
+      return {
+        success: true,
+        data: { ...terminal, status: "in_progress", completed_at: null, allowed_actions: ["complete", "cancel"] },
+      };
+    }
+    return { success: true, data: { tasks: [terminal], metadata: { count: 1 } } };
+  });
+  const page = await renderTaskPage("/task?status=completed", api);
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const button = [...page.container.querySelectorAll("button")].find((candidate) => candidate.textContent === "恢复任务");
+    assert.ok(button);
+    await React.act(async () => { button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    assert.equal(requests.filter(({ path, init }) => path === "/task/task-123/reopen" && init?.method === "POST").length, 1);
+    assert.match(page.container.textContent ?? "", /还没有任务|没有符合条件的任务/);
+    assert.equal(page.container.querySelector("[aria-label=\"任务列表加载中\"]"), null);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("unfiltered reopen replaces the card in place and preserves count", async () => {
+  const terminal = { ...TASK_RESPONSE.data, status: "cancelled" as const, allowed_actions: ["reopen"] as const };
+  const reopened = { ...terminal, status: "pending" as const, allowed_actions: ["start", "cancel"] as const };
+  const { api, requests } = createApi(async (path) => {
+    if (path === "/task/task-123/reopen") return { success: true, data: reopened };
+    return { success: true, data: { tasks: [terminal], metadata: { count: 1 } } };
+  });
+  const page = await renderTaskPage("/task", api);
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const card = page.container.querySelector(".memory-card");
+    assert.ok(card);
+    const button = [...card.querySelectorAll("button")].find((candidate) => candidate.textContent === "恢复任务");
+    assert.ok(button);
+    await React.act(async () => { button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    assert.equal(requests.filter(({ path, init }) => path === "/task/task-123/reopen" && init?.method === "POST").length, 1);
+    assert.match(card.textContent ?? "", /待处理/);
+    assert.equal([...card.querySelectorAll("button")].some((candidate) => candidate.textContent === "恢复任务"), false);
+    assert.match(page.container.textContent ?? "", /共 1 项/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("list reopen failure preserves the card and allows exactly one retry", async () => {
+  let attempt = 0;
+  const terminal = { ...TASK_RESPONSE.data, status: "cancelled" as const, allowed_actions: ["reopen"] as const };
+  const reopened = { ...terminal, status: "pending" as const, allowed_actions: ["start", "cancel"] as const };
+  const { api, requests } = createApi(async (path) => {
+    if (path === "/task/task-123/reopen") {
+      attempt += 1;
+      if (attempt === 1) throw new Error("failed");
+      return { success: true, data: reopened };
+    }
+    return { success: true, data: { tasks: [terminal], metadata: { count: 1 } } };
+  });
+  const page = await renderTaskPage("/task", api);
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const findButton = () => [...page.container.querySelectorAll("button")].find((candidate) => candidate.textContent === "恢复任务");
+    const first = findButton();
+    assert.ok(first);
+    await React.act(async () => { first.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    assert.match(page.container.textContent ?? "", /恢复任务失败/);
+    const retry = findButton();
+    assert.ok(retry);
+    assert.equal(retry.disabled, false);
+    await React.act(async () => { retry.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    assert.equal(requests.filter(({ path, init }) => path === "/task/task-123/reopen" && init?.method === "POST").length, 2);
+    assert.match(page.container.textContent ?? "", /待处理/);
   } finally {
     await page.cleanup();
   }
@@ -371,6 +480,7 @@ test("archived Task list shows exact summary and no lifecycle or business action
   const archivedTask = {
     ...TASK_RESPONSE.data,
     lifecycle_status: "archived" as const,
+    allowed_actions: ["reopen"] as const,
   };
   const { api, requests } = createApi(async () => ({
     success: true,
@@ -500,7 +610,7 @@ test("archived detail return keeps the archived list and original active return 
   );
   const { api, requests } = createApi(async (path) =>
     path === `/task/archived/${TASK_ID}`
-      ? { ...TASK_RESPONSE, data: { ...TASK_RESPONSE.data, lifecycle_status: "archived" } }
+      ? { ...TASK_RESPONSE, data: { ...TASK_RESPONSE.data, lifecycle_status: "archived", allowed_actions: ["reopen"] } }
       : {
         success: true,
         data: { tasks: [TASK_RESPONSE.data], metadata: { count: 1 } },
@@ -514,6 +624,11 @@ test("archived detail return keeps the archived list and original active return 
     const back = [...page.container.querySelectorAll("button")]
       .find((button) => button.textContent === "返回归档列表");
     assert.ok(back);
+    assert.equal(
+      [...page.container.querySelectorAll("button")]
+        .some((button) => button.textContent === "恢复任务"),
+      false,
+    );
     await React.act(async () => {
       back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1025,6 +1140,7 @@ test("completed Task detail exposes a single reopen action and sends one mutatio
   const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
   try {
     await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    page.window.history.replaceState({ detail: true }, "", `/task?task=${TASK_ID}`);
     const reopen = [...page.container.querySelectorAll("button")].filter((button) => button.textContent === "恢复任务");
     assert.equal(reopen.length, 1);
     await React.act(async () => {
@@ -1032,6 +1148,9 @@ test("completed Task detail exposes a single reopen action and sends one mutatio
       reopen[0]!.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(requests.filter(({ path, init }) => path === `/task/${TASK_ID}/reopen` && init?.method === "POST").length, 1);
+    assert.equal(requests.some(({ path, init }) => path === "/task" && !init?.method), false);
+    assert.equal(page.window.location.pathname + page.window.location.search, `/task?task=${TASK_ID}`);
+    assert.deepEqual(page.window.history.state, { detail: true });
   } finally {
     await page.cleanup();
   }
