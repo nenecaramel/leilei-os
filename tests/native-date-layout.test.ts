@@ -283,7 +283,7 @@ test("Global Search date fields share NativeDateInput and its constrained class"
 
 test("Web shell reserves the iPhone safe area and declares a theme color", () => {
   assert.match(indexHtml, /viewport-fit=cover/);
-  assert.match(indexHtml, /<meta name="theme-color" content="#f3f1eb"/);
+  assert.match(indexHtml, /<meta name="theme-color" content="#ebeae4"/);
   assert.match(indexHtml, /--theme-page-background/);
   assert.match(styles, /env\(safe-area-inset-top, 0px\)/);
   assert.match(styles, /html,[\s\S]*body,[\s\S]*#root/);
