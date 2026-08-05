@@ -28,6 +28,14 @@ function contrast(first: string, second: string): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
+function mixHex(base: string, accent: string): string {
+  const channels = [1, 3, 5].map((offset) => Math.round(
+    Number.parseInt(base.slice(offset, offset + 2), 16) * 0.94
+      + Number.parseInt(accent.slice(offset, offset + 2), 16) * 0.06,
+  ));
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
 test("Dashboard module icon colors remain distinct and readable under accent mixing", () => {
   const modules = [
     ["memory", "#496153", "#e3ebe4"],
@@ -41,6 +49,30 @@ test("Dashboard module icon colors remain distinct and readable under accent mix
     assert.match(block, new RegExp(`color:\\s*${foreground}`));
     assert.match(block, new RegExp(`background:\\s*color-mix\\(in srgb, ${background} 94%, var\\(--theme\\) 6%\\)`));
     assert.ok(contrast(foreground, background) >= 3);
+  }
+});
+
+test("Dashboard module icon contrast remains valid for actual mixed backgrounds", () => {
+  const modules = [
+    ["Memory", "#496153", "#e3ebe4"],
+    ["Diary", "#625b76", "#e8e5ef"],
+    ["Task", "#516779", "#dfe8ef"],
+  ] as const;
+  const accents = ["#405f4d", "#111111", "#ffffff", "#ffd400", "#00bcd4", "#ff2d75"];
+
+  for (const accent of accents) {
+    const mixedBackgrounds = modules.map(([, , background]) => mixHex(background, accent));
+    assert.equal(new Set(mixedBackgrounds).size, modules.length, `mixed module backgrounds must differ for ${accent}`);
+
+    modules.forEach(([name, foreground], index) => {
+      const mixedBackground = mixedBackgrounds[index];
+      assert.match(mixedBackground, /^#[0-9a-f]{6}$/i);
+      const ratio = contrast(foreground, mixedBackground);
+      assert.ok(
+        ratio >= 3,
+        `${name} ${accent} mixed background ${mixedBackground} contrast ${ratio.toFixed(3)} must be at least 3:1`,
+      );
+    });
   }
 });
 
