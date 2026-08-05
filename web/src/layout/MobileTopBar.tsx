@@ -22,9 +22,11 @@ export function MobileTopBar({
         aria-controls="mobile-navigation-drawer"
         onClick={onMenuClick}
       >
-        <span aria-hidden="true" />
-        <span aria-hidden="true" />
-        <span aria-hidden="true" />
+        <span className="mobile-menu-icon" aria-hidden="true">
+          <span className="mobile-menu-line" />
+          <span className="mobile-menu-line" />
+          <span className="mobile-menu-line" />
+        </span>
       </button>
       <span className="mobile-top-bar-title">Leilei OS</span>
       <Link className="mobile-search-link" to="/search" aria-label="打开 Global Search">

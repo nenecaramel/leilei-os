@@ -24,7 +24,7 @@ export function TodayPanel({
     >
       <span className="today-panel-author">{author}</span>
       <span className="today-panel-notes">
-        {notes.slice(0, 4).map((note) => (
+        {notes.slice(0, 3).map((note) => (
           <span className={`today-note today-note-${note.kind}`} key={note.id}>
             <span className="today-note-mark" aria-hidden="true">
               {note.kind === "pending" ? "○" : note.kind === "completed" ? "✓" : "●"}

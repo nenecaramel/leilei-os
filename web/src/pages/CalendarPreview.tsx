@@ -5,7 +5,7 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function CalendarPreview({ days, date = new Date() }: { days: HomeCalendarDay[]; date?: Date }) {
   void days;
-  const monthLabel = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "long" }).format(date);
+  const monthLabel = `${date.getFullYear()}年 ${date.getMonth() + 1}月`;
   const firstWeekday = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const previousMonthDays = new Date(date.getFullYear(), date.getMonth(), 0).getDate();

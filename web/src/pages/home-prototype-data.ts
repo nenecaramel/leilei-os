@@ -26,15 +26,14 @@ export const L_HOME_NOTES: HomeNote[] = [
 ];
 
 export const G_HOME_NOTES: HomeNote[] = [
-  { id: "g-1", author: "G", kind: "pending", text: "项目下一步：保留安静的节奏" },
-  { id: "g-2", author: "G", kind: "record", text: "今天 G 留给明天 G 的交接" },
-  { id: "g-3", author: "G", kind: "record", text: "准备提醒蕾蕾的一句话" },
-  { id: "g-4", author: "G", kind: "completed", text: "一条轻松随机的小念头" },
+  { id: "g-1", author: "G", kind: "pending", text: "项目下一步：确定侧边栏交互" },
+  { id: "g-2", author: "G", kind: "record", text: "明天记得向蕾蕾推进进度展开方式" },
+  { id: "g-3", author: "G", kind: "record", text: "准备提醒蕾蕾吃午饭啦" },
 ];
 
 export const HOME_STICKIES: HomeSticky[] = [
-  { id: "sticky-1", author: "L", text: "先把今天过完，再决定下一步。" },
-  { id: "sticky-2", author: "G", text: "留一点空间给不急着完成的事。" },
+  { id: "sticky-1", author: "L", text: "灵感：\n未来的日记可以\n跟天气联动~" },
+  { id: "sticky-2", author: "G", text: "想去看一场\n海边的日落 ▪" },
 ];
 
 export const HOME_CALENDAR_DAYS: HomeCalendarDay[] = Array.from({ length: 31 }, (_, index) => ({
