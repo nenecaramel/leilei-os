@@ -1993,8 +1993,26 @@ textarea:disabled {
 
 @media (prefers-color-scheme: dark) {
   .home-prototype {
-    --home-dark-surface: #252926;
-    --home-dark-border: rgba(239, 241, 235, 0.1);
+    --home-dark-page: #1f2321;
+    --home-dark-surface: #292e2b;
+    --home-dark-border: rgba(239, 241, 235, 0.12);
+    --home-dark-ink: #f1f2ec;
+    --home-dark-ink-soft: #d4d9d3;
+    --home-dark-muted: #b1b9b2;
+    color: var(--home-dark-ink);
+    background: var(--home-dark-page);
+  }
+
+  html:has(.home-prototype),
+  body:has(.home-prototype),
+  #root:has(.home-prototype) {
+    background: #1f2321;
+  }
+
+  body:has(.home-prototype) .mobile-top-bar {
+    border-color: var(--home-dark-border);
+    color: var(--home-dark-ink);
+    background: #1f2321;
   }
 
   .home-prototype .today-panel,
@@ -2003,6 +2021,26 @@ textarea:disabled {
   .home-prototype .home-add-button {
     border-color: var(--home-dark-border);
     background: var(--home-dark-surface);
+    color: var(--home-dark-ink);
+  }
+
+  .home-prototype .home-today-header h1,
+  .home-prototype .home-section-heading h2,
+  .home-prototype .today-panel,
+  .home-prototype .today-note,
+  .home-prototype .today-dialog-note,
+  .home-prototype .sticky-card p,
+  .home-prototype .calendar-day {
+    color: var(--home-dark-ink-soft);
+  }
+
+  .home-prototype .home-today-actions,
+  .home-prototype .home-section-heading span,
+  .home-prototype .today-panel-hint,
+  .home-prototype .sticky-card small,
+  .home-prototype .today-dialog-note small,
+  .home-prototype .calendar-weekdays {
+    color: var(--home-dark-muted);
   }
 
   .home-prototype .today-panel-l {

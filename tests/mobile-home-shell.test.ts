@@ -118,5 +118,7 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   assert.match(stylesSource, /min-width:\s*44px/);
   assert.match(stylesSource, /:focus-visible/);
   assert.match(stylesSource, /@media \(prefers-color-scheme:\s*dark\)/);
+  assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar/);
+  assert.match(stylesSource, /html:has\(\.home-prototype\)[\s\S]*?#root:has\(\.home-prototype\)/);
   assert.doesNotMatch(stylesSource, /\.home-prototype[\s\S]*?hero-panel|\.home-prototype[\s\S]*?orbit/);
 });
