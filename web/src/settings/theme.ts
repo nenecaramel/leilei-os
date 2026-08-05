@@ -1,7 +1,7 @@
 const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
 export const THEME_CACHE_KEY = "leilei-os.theme.v1";
-export const THEME_CACHE_VERSION = 1;
+export const THEME_CACHE_VERSION = 2;
 
 export type ThemeVariables = Record<string, string>;
 
@@ -36,6 +36,11 @@ export function createThemeVariables(
   const pageBackground = mixColor(basePage, accent, isBright ? 0.065 : 0.045);
   const surface = mixColor(baseSurface, accent, 0.035);
   const sidebar = mixColor(baseSidebar, accent, 0.045);
+  const heroStart = mixColor(baseSurface, accent, 0.3);
+  const heroEnd = mixColor(basePage, accent, 0.18);
+  const onBrand = chooseBrandForeground(accent);
+  const onHero = chooseForeground([heroStart, heroEnd]);
+  const onHeroMuted = muteForeground(onHero);
   const accentHex = toHexColor(accent);
   const strongHex = toHexColor(strong);
   const deepHex = toHexColor(deep);
@@ -50,15 +55,22 @@ export function createThemeVariables(
     "--theme-strong-rgb": `${strong.red}, ${strong.green}, ${strong.blue}`,
     "--theme-deep-rgb": `${deep.red}, ${deep.green}, ${deep.blue}`,
     "--theme-on-accent": isBright ? "#25302a" : "#f8f5ec",
-    "--theme-on-hero": "#f8f5ec",
+    "--theme-brand": color,
+    "--theme-on-brand": toHexColor(onBrand),
+    "--theme-brand-rgb": `${accent.red}, ${accent.green}, ${accent.blue}`,
+    "--theme-on-hero": toHexColor(onHero),
+    "--theme-on-hero-muted": toHexColor(onHeroMuted),
+    "--theme-on-hero-rgb": `${onHero.red}, ${onHero.green}, ${onHero.blue}`,
     "--theme-page-background": toHexColor(pageBackground),
     "--theme-surface": toHexColor(surface),
     "--theme-sidebar": toHexColor(sidebar),
     "--theme-page-glow": `rgba(${accent.red}, ${accent.green}, ${accent.blue}, 0.2)`,
     "--theme-page-glow-soft": `rgba(${accent.red}, ${accent.green}, ${accent.blue}, 0.1)`,
-    "--theme-hero-start": deepHex,
-    "--theme-hero-end": strongHex,
-    "--theme-hero-glow": `rgba(${accent.red}, ${accent.green}, ${accent.blue}, 0.34)`,
+    "--theme-hero-start": toHexColor(heroStart),
+    "--theme-hero-end": toHexColor(heroEnd),
+    "--theme-hero-glow": `rgba(${onHero.red}, ${onHero.green}, ${onHero.blue}, 0.14)`,
+    "--theme-hero-overlay": `rgba(${onHero.red}, ${onHero.green}, ${onHero.blue}, 0.08)`,
+    "--theme-hero-border": `rgba(${onHero.red}, ${onHero.green}, ${onHero.blue}, 0.22)`,
     "--theme-hover-background": `rgba(${accent.red}, ${accent.green}, ${accent.blue}, 0.07)`,
     "--theme-border": `rgba(${deep.red}, ${deep.green}, ${deep.blue}, 0.11)`,
     "--theme-border-strong": `rgba(${deep.red}, ${deep.green}, ${deep.blue}, 0.18)`,
@@ -172,6 +184,41 @@ function mixColor(first: RgbColor, second: RgbColor, amount: number): RgbColor {
     green: Math.round(first.green + (second.green - first.green) * amount),
     blue: Math.round(first.blue + (second.blue - first.blue) * amount),
   };
+}
+
+function chooseForeground(backgrounds: RgbColor[]): RgbColor {
+  const candidates: RgbColor[] = [
+    { red: 37, green: 48, blue: 42 },
+    { red: 248, green: 245, blue: 236 },
+  ];
+  return candidates.reduce((best, candidate) => {
+    const candidateContrast = Math.min(...backgrounds.map((background) => getContrastRatio(candidate, background)));
+    const bestContrast = Math.min(...backgrounds.map((background) => getContrastRatio(best, background)));
+    return candidateContrast > bestContrast ? candidate : best;
+  });
+}
+
+function chooseBrandForeground(background: RgbColor): RgbColor {
+  const candidates = [
+    ...[{ red: 37, green: 48, blue: 42 }, { red: 248, green: 245, blue: 236 }],
+    { red: 0, green: 0, blue: 0 },
+  ];
+  return candidates.reduce((best, candidate) =>
+    getContrastRatio(candidate, background) > getContrastRatio(best, background) ? candidate : best,
+  );
+}
+
+function muteForeground(color: RgbColor): RgbColor {
+  const isLight = getRelativeLuminance(color) > 0.5;
+  return mixColor(color, isLight ? { red: 255, green: 255, blue: 255 } : { red: 0, green: 0, blue: 0 }, 0.18);
+}
+
+function getContrastRatio(first: RgbColor, second: RgbColor): number {
+  const firstLuminance = getRelativeLuminance(first);
+  const secondLuminance = getRelativeLuminance(second);
+  const lighter = Math.max(firstLuminance, secondLuminance);
+  const darker = Math.min(firstLuminance, secondLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
 }
 
 function getRelativeLuminance(color: RgbColor): number {

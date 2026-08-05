@@ -171,9 +171,9 @@ export function DashboardPageContent({
       )}
       {state.status === "ready" && (
         <section className="space-grid dashboard-module-grid" aria-label="核心模块">
-          <DashboardModuleCard icon={<MemoryIcon />} iconClass="sage" name="Memory" description="稳定偏好、目标和项目" count={`${state.memoryCount} 条`} href="/memory" quickLabel="新增记忆" quickTarget="memory" />
-          <DashboardModuleCard icon={<DiaryIcon />} iconClass="peach" name="Diary" description="个人记录与生活切片" count={`${state.diaryCount} 篇`} href="/diary" quickLabel="写日记" quickTarget="diary" />
-              <DashboardModuleCard icon={<TaskIcon />} iconClass="blue" name="Task" description={formatDashboardTaskSummary(state.openTaskCount, state.overdueTaskCount, state.completedTaskCount)} count={`${state.taskCount} 项`} href="/task" quickLabel="新建任务" quickTarget="task" />
+          <DashboardModuleCard icon={<MemoryIcon />} iconClass="memory" name="Memory" description="稳定偏好、目标和项目" count={`${state.memoryCount} 条`} href="/memory" quickLabel="新增记忆" quickTarget="memory" />
+          <DashboardModuleCard icon={<DiaryIcon />} iconClass="diary" name="Diary" description="个人记录与生活切片" count={`${state.diaryCount} 篇`} href="/diary" quickLabel="写日记" quickTarget="diary" />
+          <DashboardModuleCard icon={<TaskIcon />} iconClass="task" name="Task" description={formatDashboardTaskSummary(state.openTaskCount, state.overdueTaskCount, state.completedTaskCount)} count={`${state.taskCount} 项`} href="/task" quickLabel="新建任务" quickTarget="task" />
         </section>
       )}
     </div>

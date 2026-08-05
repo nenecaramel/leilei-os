@@ -11,27 +11,34 @@
   --ink-soft: #4d5751;
   --muted: #7d847f;
   --theme: #405f4d;
-  --theme-strong: #31503e;
-  --theme-deep: #263b30;
-  --theme-soft: #dce7dd;
-  --theme-pale: #eef3ee;
+  --theme-strong: #344e3f;
+  --theme-deep: #23332a;
+  --theme-soft: #d5dcd8;
+  --theme-pale: #ecefed;
   --theme-rgb: 64, 95, 77;
-  --theme-strong-rgb: 49, 80, 62;
-  --theme-deep-rgb: 38, 59, 48;
+  --theme-strong-rgb: 52, 78, 63;
+  --theme-deep-rgb: 35, 51, 42;
   --theme-on-accent: #f8f5ec;
-  --theme-on-hero: #f8f5ec;
-  --theme-page-background: #f3f1eb;
-  --theme-surface: #faf8f3;
-  --theme-sidebar: #f8f6f0;
+  --theme-brand: #405f4d;
+  --theme-on-brand: #f8f5ec;
+  --theme-brand-rgb: 64, 95, 77;
+  --theme-on-hero: #25302a;
+  --theme-on-hero-muted: #1e2722;
+  --theme-on-hero-rgb: 37, 48, 42;
+  --theme-page-background: #ebeae4;
+  --theme-surface: #f3f3ed;
+  --theme-sidebar: #f0efe9;
   --theme-page-glow: rgba(64, 95, 77, 0.2);
   --theme-page-glow-soft: rgba(64, 95, 77, 0.1);
-  --theme-hero-start: #263b30;
-  --theme-hero-end: #486452;
-  --theme-hero-glow: rgba(151, 177, 152, 0.28);
+  --theme-hero-start: #c2cac1;
+  --theme-hero-end: #d3d7cf;
+  --theme-hero-glow: rgba(37, 48, 42, 0.14);
+  --theme-hero-overlay: rgba(37, 48, 42, 0.08);
+  --theme-hero-border: rgba(37, 48, 42, 0.22);
   --theme-hover-background: rgba(64, 95, 77, 0.06);
-  --theme-border: rgba(43, 54, 47, 0.11);
-  --theme-border-strong: rgba(43, 54, 47, 0.18);
-  --theme-shadow-color: rgba(38, 59, 48, 0.11);
+  --theme-border: rgba(35, 51, 42, 0.11);
+  --theme-border-strong: rgba(35, 51, 42, 0.18);
+  --theme-shadow-color: rgba(35, 51, 42, 0.11);
 
   --line: var(--theme-border);
   --line-strong: var(--theme-border-strong);
@@ -42,8 +49,8 @@
   --green-soft: var(--theme-soft);
   --danger: #8a4a45;
   --danger-soft: #f2dfdc;
-  --shadow-soft: 0 18px 42px rgba(38, 59, 48, 0.06);
-  --shadow-card: 0 22px 54px rgba(38, 59, 48, 0.09);
+  --shadow-soft: 0 18px 42px rgba(35, 51, 42, 0.06);
+  --shadow-card: 0 22px 54px rgba(35, 51, 42, 0.09);
   --focus-ring: 0 0 0 4px rgba(64, 95, 77, 0.15);
 }
 
@@ -157,8 +164,8 @@ a {
   flex: 0 0 auto;
   place-items: center;
   border-radius: 14px;
-  color: var(--theme-on-accent);
-  background: var(--theme-strong);
+  color: var(--theme-on-brand);
+  background: var(--theme-brand);
   box-shadow: 0 10px 26px var(--theme-shadow-color);
   font-family: "Newsreader", serif;
   font-size: 24px;
@@ -557,6 +564,7 @@ textarea:disabled {
   padding: 48px;
   border-radius: 28px;
   color: var(--theme-on-hero);
+  border-color: var(--theme-hero-border);
   background:
     radial-gradient(
       circle at 80% 25%,
@@ -582,14 +590,14 @@ textarea:disabled {
 .hero-panel p {
   max-width: 610px;
   margin: 0;
-  color: rgba(246, 244, 235, 0.72);
+  color: var(--theme-on-hero-muted);
   line-height: 1.7;
 }
 
 .hero-panel .status-pill {
   padding: 7px 10px;
-  color: var(--theme-pale);
-  background: rgba(255, 255, 255, 0.09);
+  color: var(--theme-on-hero);
+  background: var(--theme-hero-overlay);
   letter-spacing: 0.04em;
 }
 
@@ -598,7 +606,7 @@ textarea:disabled {
   align-self: center;
   width: 220px;
   height: 220px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--theme-hero-border);
   border-radius: 50%;
 }
 
@@ -606,14 +614,14 @@ textarea:disabled {
 .orbit::after {
   position: absolute;
   inset: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid var(--theme-hero-border);
   border-radius: 50%;
   content: "";
 }
 
 .orbit::after {
   inset: 48px;
-  background: rgba(225, 234, 220, 0.07);
+  background: var(--theme-hero-overlay);
 }
 
 .orbit span {
@@ -622,8 +630,8 @@ textarea:disabled {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--theme-soft);
-  box-shadow: 0 0 28px rgba(var(--theme-rgb), 0.7);
+  background: var(--theme-on-hero);
+  box-shadow: 0 0 28px rgba(var(--theme-on-hero-rgb), 0.5);
 }
 
 .orbit span:nth-child(1) {
@@ -745,6 +753,21 @@ textarea:disabled {
 .space-icon.sage {
   color: var(--theme-strong);
   background: var(--theme-soft);
+}
+
+.space-icon.memory {
+  color: #496153;
+  background: color-mix(in srgb, #e3ebe4 94%, var(--theme) 6%);
+}
+
+.space-icon.diary {
+  color: #625b76;
+  background: color-mix(in srgb, #e8e5ef 94%, var(--theme) 6%);
+}
+
+.space-icon.task {
+  color: #516779;
+  background: color-mix(in srgb, #dfe8ef 94%, var(--theme) 6%);
 }
 
 .space-icon.peach {
