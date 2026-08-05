@@ -42,6 +42,10 @@ const appShellSource = readFileSync(
   new URL("../web/src/layout/AppShell.tsx", import.meta.url),
   "utf8",
 );
+const navigationSource = readFileSync(
+  new URL("../web/src/layout/NavigationGroups.tsx", import.meta.url),
+  "utf8",
+);
 
 type WebDriverResponse<T> = {
   value: T;
@@ -289,17 +293,20 @@ test("Web shell reserves the iPhone safe area and declares a theme color", () =>
   assert.match(styles, /html,[\s\S]*body,[\s\S]*#root/);
 });
 
-test("mobile navigation keeps all eight routes in one scrollable row", () => {
-  assert.equal((appShellSource.match(/label: /g) ?? []).length, 8);
-  assert.match(styles, /\.primary-nav\s*\{[\s\S]*?grid-auto-flow:\s*column/);
-  assert.match(styles, /\.primary-nav\s*\{[\s\S]*?overflow-x:\s*auto/);
-  assert.match(styles, /\.nav-item\s*\{[\s\S]*?min-width:\s*44px/);
-  assert.doesNotMatch(styles, /grid-template-columns:\s*repeat\(7,/);
-  assert.match(styles, /white-space:\s*nowrap/);
+test("grouped navigation keeps every entry reachable in the mobile drawer", () => {
+  assert.equal((navigationSource.match(/\{ label: "/g) ?? []).length, 9);
+  assert.match(navigationSource, /label: "Home"/);
+  assert.match(navigationSource, /label: "Global Search"/);
+  assert.match(navigationSource, /label: "System"/);
+  assert.match(navigationSource, /label: "Day Space"[\s\S]*disabled: true/);
+  assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?width:\s*min\(82vw,\s*320px\)/);
+  assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?padding:\s*max\(18px,\s*env\(safe-area-inset-top/);
+  assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?env\(safe-area-inset-bottom/);
+  assert.match(styles, /\.mobile-drawer \.nav-item\s*\{[\s\S]*?min-height:\s*44px/);
+  assert.match(styles, /\.mobile-drawer\s*\{[\s\S]*?z-index:/);
   assert.doesNotMatch(styles, /body\s*\{[\s\S]*?overflow-x:\s*hidden/);
-  assert.match(styles, /right:\s*max\(12px,\s*env\(safe-area-inset-right/);
-  assert.match(styles, /left:\s*max\(12px,\s*env\(safe-area-inset-left/);
   assert.match(styles, /min-height:\s*100dvh/);
+  assert.match(appShellSource, /MobileNavigationDrawer/);
 });
 
 test(

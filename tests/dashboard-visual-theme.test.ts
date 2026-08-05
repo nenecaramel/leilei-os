@@ -4,17 +4,18 @@ import test from "node:test";
 import { createThemeVariables } from "../web/src/settings/theme.js";
 
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
+const navigationSource = readFileSync(new URL("../web/src/layout/NavigationGroups.tsx", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 const heroBlock = stylesSource.slice(stylesSource.indexOf(".hero-panel {"), stylesSource.indexOf(".section-block"));
 
-test("Dashboard uses semantic module icon classes", () => {
-  assert.match(dashboardSource, /iconClass="memory"/);
-  assert.match(dashboardSource, /iconClass="diary"/);
-  assert.match(dashboardSource, /iconClass="task"/);
-  assert.doesNotMatch(dashboardSource, /iconClass="(?:sage|peach|blue)"/);
-  assert.match(stylesSource, /\.space-icon\.memory/);
-  assert.match(stylesSource, /\.space-icon\.diary/);
-  assert.match(stylesSource, /\.space-icon\.task/);
+test("Home replaces the old module-card icon contract with grouped shell navigation", () => {
+  assert.match(dashboardSource, /TodayPanel/);
+  assert.match(dashboardSource, /StickyPreview/);
+  assert.match(dashboardSource, /CalendarPreview/);
+  assert.doesNotMatch(dashboardSource, /iconClass|space-icon|quickTarget/);
+  assert.match(navigationSource, /label: "Home"/);
+  assert.match(navigationSource, /label: "Global Search"/);
+  assert.match(navigationSource, /label: "System"/);
 });
 
 function luminance(hex: string): number {
