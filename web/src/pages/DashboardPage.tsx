@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import type { SettingsData } from "../settings/types";
 import { CalendarPreview } from "./CalendarPreview";
@@ -27,23 +28,20 @@ export function DashboardPageContent({
 
   return (
     <div className="page home-prototype">
-      <header className="home-today-header">
-        <div>
-          <span className="eyebrow">Leilei OS</span>
-          <h1>Today</h1>
-        </div>
-        <div className="home-today-actions">
-          <time dateTime={today.toISOString().slice(0, 10)}>{formatHomeDate(today)}</time>
-          <button className="home-add-button" type="button" aria-label="新增（预览）" disabled>+</button>
-        </div>
-      </header>
-
+      <h1 className="home-page-title">Todo</h1>
       <main className="home-prototype-content">
         <TodayPanel author="L" notes={L_HOME_NOTES} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
         <TodayPanel author="G" notes={G_HOME_NOTES} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
         <StickyPreview stickies={HOME_STICKIES} />
         <CalendarPreview days={HOME_CALENDAR_DAYS} date={today} />
       </main>
+
+      <nav className="home-bottom-nav" aria-label="模块入口">
+        <Link to="/memory">Memory</Link>
+        <Link to="/diary">Diary</Link>
+        <Link to="/task">Task</Link>
+        <Link to="/universe">Universe</Link>
+      </nav>
 
       <TodayPanelDialog author="L" notes={L_HOME_NOTES} open={dialogAuthor === "L"} triggerRef={lTriggerRef} onClose={() => setDialogAuthor(null)} />
       <TodayPanelDialog author="G" notes={G_HOME_NOTES} open={dialogAuthor === "G"} triggerRef={gTriggerRef} onClose={() => setDialogAuthor(null)} />

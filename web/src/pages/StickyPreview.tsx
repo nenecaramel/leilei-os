@@ -6,7 +6,6 @@ export function StickyPreview({ stickies }: { stickies: HomeSticky[] }) {
     <section className="home-section sticky-preview" aria-labelledby="sticky-preview-title">
       <div className="home-section-heading">
         <h2 id="sticky-preview-title">Sticky</h2>
-        <span>最近留下的两句话</span>
       </div>
       <div className="sticky-preview-grid">
         {stickies.slice(0, 2).map((sticky) => (

@@ -56,7 +56,7 @@ test("Home fixture collections use one typed L/G note structure", () => {
 });
 
 test("Home is fixture-only and does not retain the dashboard API modules", () => {
-  assert.match(dashboardSource, /Today/);
+  assert.match(dashboardSource, />Todo</);
   assert.match(dashboardSource, /TodayPanel/);
   assert.match(dashboardSource, /StickyPreview/);
   assert.match(dashboardSource, /CalendarPreview/);
@@ -74,10 +74,14 @@ test("Home renders compact L/G panels, Sticky, Calendar, and no authenticated mo
     settings: DEFAULT_SETTINGS,
   })));
   await waitForPaint();
-  assert.equal(container.querySelector("h1")?.textContent, "Today");
+  assert.equal(container.querySelector("h1")?.textContent, "Todo");
+  assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
   assert.equal(container.querySelectorAll(".today-panel").length, 2);
   assert.equal(container.querySelectorAll(".sticky-card").length, 2);
   assert.ok(container.querySelector(".calendar-grid"));
+  assert.equal(container.querySelectorAll(".calendar-day").length, 42);
+  assert.equal(container.querySelectorAll(".calendar-day i").length, 0);
+  assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 4);
   assert.equal(container.querySelector(".hero-panel"), null);
   assert.equal(container.querySelector(".space-card"), null);
   assert.deepEqual(requests, []);
@@ -110,15 +114,19 @@ test("Home L/G dialogs are scrollable, closable, and restore trigger focus", asy
 });
 
 test("Home and mobile shell CSS keep the prototype compact and safe", () => {
+  const homeV2Styles = stylesSource.slice(stylesSource.lastIndexOf("/* Mobile Home v2:"));
   assert.match(stylesSource, /\.mobile-top-bar\s*\{/);
   assert.match(stylesSource, /\.mobile-drawer-panel[\s\S]*?width:\s*min\(82vw,\s*320px\)/);
   assert.match(stylesSource, /env\(safe-area-inset-top/);
   assert.match(stylesSource, /\.today-panel-dialog[\s\S]*?max-height:\s*min\(88dvh/);
   assert.match(stylesSource, /\.calendar-grid[\s\S]*?grid-template-columns:\s*repeat\(7,/);
+  assert.match(stylesSource, /\.calendar-preview-header[\s\S]*?grid-template-columns:\s*28px 1fr 28px/);
+  assert.match(stylesSource, /\.home-bottom-nav[\s\S]*?grid-template-columns:\s*repeat\(4,/);
+  assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar-title[\s\S]*?left:\s*50%[\s\S]*?transform:\s*translateX\(-50%\)/);
   assert.match(stylesSource, /min-width:\s*44px/);
   assert.match(stylesSource, /:focus-visible/);
-  assert.match(stylesSource, /@media \(prefers-color-scheme:\s*dark\)/);
   assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar/);
   assert.match(stylesSource, /html:has\(\.home-prototype\)[\s\S]*?#root:has\(\.home-prototype\)/);
   assert.doesNotMatch(stylesSource, /\.home-prototype[\s\S]*?hero-panel|\.home-prototype[\s\S]*?orbit/);
+  assert.doesNotMatch(homeV2Styles, /radial-gradient|linear-gradient|color-mix/);
 });

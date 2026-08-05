@@ -11,13 +11,14 @@ import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const taskSource = readFileSync(new URL("../web/src/pages/TaskPage.tsx", import.meta.url), "utf8");
 
-test("Home prototype keeps the approved Today, L/G, Sticky and Calendar structure", () => {
+test("Home prototype keeps the approved Todo, L/G, Sticky, Calendar and footer structure", () => {
   assert.match(dashboardSource, /TodayPanel/);
   assert.match(dashboardSource, /StickyPreview/);
   assert.match(dashboardSource, /CalendarPreview/);
-  assert.doesNotMatch(dashboardSource, /hero-panel|orbit|space-card|quickTarget|Archive|Today at a glance/);
+  assert.match(dashboardSource, />Todo</);
+  assert.match(dashboardSource, /home-bottom-nav/);
+  assert.doesNotMatch(dashboardSource, /hero-panel|orbit|space-card|quickTarget|Archive|Today at a glance|Wednesday, August 5|新增（预览）/);
   assert.doesNotMatch(dashboardSource, /api\.request|fetch\(/);
-  assert.match(dashboardSource, /新增（预览）/);
 });
 
 test("Task keeps its create form before filters and wires title focus", () => {
@@ -60,12 +61,14 @@ test("Dashboard renders the fixture-backed Home view without API requests", asyn
     settings: DEFAULT_SETTINGS,
   })));
   await waitForPaint();
-  assert.equal(container.querySelector("h1")?.textContent, "Today");
+  assert.equal(container.querySelector("h1")?.textContent, "Todo");
+  assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
   assert.equal(container.querySelectorAll(".today-panel").length, 2);
   assert.equal(container.querySelectorAll(".sticky-card").length, 2);
   assert.ok(container.querySelector(".calendar-preview"));
-  assert.equal(container.querySelectorAll(".home-add-button").length, 1);
-  assert.equal((container.querySelector(".home-add-button") as HTMLButtonElement).disabled, true);
+  assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 4);
+  assert.equal(container.querySelectorAll(".calendar-frame").length, 1);
+  assert.deepEqual([...container.querySelectorAll(".home-bottom-nav a")].map((link) => link.textContent), ["Memory", "Diary", "Task", "Universe"]);
   assert.equal(container.querySelector(".hero-panel"), null);
   assert.equal(requestCount, 0);
   root.unmount();

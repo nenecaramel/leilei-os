@@ -2283,3 +2283,405 @@ textarea:disabled {
     width: 52px;
   }
 }
+
+/* Mobile Home v2: geometry follows reference A; surfaces follow reference B. */
+html:has(.home-prototype),
+body:has(.home-prototype),
+#root:has(.home-prototype),
+.app-shell:has(.home-prototype),
+.main-content:has(.home-prototype) {
+  background: #ffffff;
+}
+
+body:has(.home-prototype) {
+  background-image: none;
+}
+
+body:has(.home-prototype) .mobile-top-bar {
+  min-height: calc(60px + env(safe-area-inset-top, 0px));
+  height: calc(60px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 16px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  color: #171717;
+  background: #ffffff;
+  backdrop-filter: none;
+}
+
+body:has(.home-prototype) .mobile-top-bar-title {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 17px);
+  left: 50%;
+  transform: translateX(-50%);
+  color: #171717;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 26px;
+  white-space: nowrap;
+}
+
+body:has(.home-prototype) .mobile-menu-button,
+body:has(.home-prototype) .mobile-search-link {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 8px;
+  color: #171717;
+}
+
+body:has(.home-prototype) .mobile-menu-button {
+  left: 12px;
+}
+
+body:has(.home-prototype) .mobile-search-link {
+  right: 12px;
+}
+
+body:has(.home-prototype) .mobile-menu-button:hover,
+body:has(.home-prototype) .mobile-search-link:hover {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+body:has(.home-prototype) .mobile-menu-button span {
+  width: 22px;
+  height: 1.5px;
+  background: #171717;
+}
+
+body:has(.home-prototype) .mobile-search-link svg {
+  width: 25px;
+  height: 25px;
+  stroke-width: 1.8;
+}
+
+.home-prototype {
+  width: min(860px, calc(100% - 40px));
+  min-height: calc(100dvh - 60px);
+  margin: 0 auto;
+  padding: 8px 0 max(10px, env(safe-area-inset-bottom, 0px));
+  color: #171717;
+  background: #ffffff;
+}
+
+.home-page-title {
+  margin: 0 0 10px;
+  color: #171717;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 29px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.home-prototype-content {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.today-panel {
+  display: grid;
+  width: 100%;
+  height: 118px;
+  min-height: 118px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  overflow: hidden;
+  padding: 10px 13px 11px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 11px;
+  color: #171717;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.045);
+  text-align: left;
+  transform: none;
+}
+
+.today-panel:hover {
+  border-color: rgba(0, 0, 0, 0.14);
+  transform: none;
+}
+
+.today-panel-author {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  justify-self: end;
+  place-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 4px;
+  color: #171717;
+  background: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.today-panel-notes {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.today-note {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: #171717;
+  font-size: 15px;
+  line-height: 1.38;
+  white-space: nowrap;
+}
+
+.today-note > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.today-note-mark {
+  width: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  color: #171717;
+  font-size: 17px;
+  line-height: 1;
+  text-align: center;
+}
+
+.today-note-completed .today-note-mark {
+  background: transparent;
+}
+
+.today-note-record .today-note-mark {
+  border-radius: 0;
+}
+
+.home-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.home-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 27px;
+}
+
+.home-section-heading h2 {
+  margin: 0;
+  color: #171717;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.sticky-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sticky-card {
+  display: flex;
+  height: 100px;
+  min-height: 100px;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 9px 11px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.045);
+}
+
+.sticky-card p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #171717;
+  font-size: 14px;
+  line-height: 1.38;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.sticky-card small {
+  align-self: flex-end;
+  color: #6b6b6b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.calendar-preview {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0 0;
+}
+
+.calendar-frame {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px 9px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.035);
+}
+
+.calendar-section-heading {
+  min-height: 26px;
+}
+
+.calendar-preview-header {
+  display: grid;
+  grid-template-columns: 28px 1fr 28px;
+  align-items: center;
+  min-height: 22px;
+  color: #171717;
+  text-align: center;
+}
+
+.calendar-preview-header span {
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.calendar-preview-header strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+}
+
+.calendar-weekdays {
+  color: #6b6b6b;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.calendar-day {
+  display: grid;
+  height: 22px;
+  min-height: 22px;
+  min-width: 0;
+  place-items: center;
+  border-radius: 50%;
+  color: #171717;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.calendar-day-outside {
+  color: #b6b6b6;
+}
+
+.calendar-day-current {
+  width: 24px;
+  height: 24px;
+  justify-self: center;
+  color: #171717;
+  background: #ededed;
+}
+
+.calendar-day-empty {
+  visibility: visible;
+}
+
+.calendar-day i {
+  display: none;
+}
+
+.home-bottom-nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 26px;
+}
+
+.home-bottom-nav a {
+  display: grid;
+  min-height: 32px;
+  place-items: center;
+  padding: 6px 4px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  color: #171717;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.home-bottom-nav a:hover,
+.home-bottom-nav a:focus-visible {
+  background: #f5f5f5;
+}
+
+@media (max-width: 760px) {
+  .home-prototype {
+    width: calc(100% - 40px);
+    min-height: calc(100dvh - 60px - env(safe-area-inset-top, 0px));
+    padding-top: 8px;
+  }
+
+  .home-page-title {
+    margin-bottom: 9px;
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 380px) {
+  .home-prototype {
+    width: calc(100% - 32px);
+  }
+
+  .today-panel {
+    height: 112px;
+    min-height: 112px;
+  }
+
+  .today-note {
+    font-size: 14px;
+  }
+
+  .sticky-card {
+    height: 92px;
+    min-height: 92px;
+  }
+
+  .sticky-card p {
+    font-size: 13px;
+  }
+
+  .calendar-day {
+    height: 21px;
+    font-size: 14px;
+  }
+}

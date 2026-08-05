@@ -22,14 +22,13 @@ export function TodayPanel({
       aria-controls={`today-panel-dialog-${author.toLowerCase()}`}
       onClick={onOpen}
     >
-      <span className="today-panel-heading">
-        <span className="today-panel-author">{author}</span>
-        <span className="today-panel-hint">打开今日记录</span>
-      </span>
+      <span className="today-panel-author">{author}</span>
       <span className="today-panel-notes">
-        {notes.slice(0, 3).map((note) => (
+        {notes.slice(0, 4).map((note) => (
           <span className={`today-note today-note-${note.kind}`} key={note.id}>
-            <span className="today-note-mark" aria-hidden="true" />
+            <span className="today-note-mark" aria-hidden="true">
+              {note.kind === "pending" ? "○" : note.kind === "completed" ? "✓" : "●"}
+            </span>
             <span>{note.text}</span>
           </span>
         ))}
