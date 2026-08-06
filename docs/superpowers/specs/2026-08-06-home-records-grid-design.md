@@ -7,7 +7,7 @@ Only adjust the four Records module cards on Home.
 ## Layout
 
 - Change the four cards to a 2 × 2 grid.
-- Use a 10px horizontal and vertical gap, matching the Todo card spacing.
+- Use an 8px horizontal gap and a 10px vertical gap.
 - Keep the grid at full Home content width.
 - Align the left and right outer edges with the Todo and Calendar cards.
 - Keep the order: Memory, Diary, Task, Universe.

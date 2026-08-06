@@ -2097,14 +2097,16 @@ body:has(.home-prototype) .mobile-search-link svg {
 
 .home-bottom-nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 8px;
+  row-gap: 10px;
   padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
 }
 
 .home-bottom-nav a {
   display: grid;
-  min-height: 32px;
+  height: 35px;
+  min-height: 35px;
   place-items: center;
   padding: 6px 4px;
   border: 1px solid rgba(0, 0, 0, 0.13);
