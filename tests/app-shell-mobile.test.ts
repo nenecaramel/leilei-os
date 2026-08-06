@@ -65,11 +65,25 @@ test("mobile drawer closes on Escape and restores focus and body scrolling", asy
   assert.equal(env.dom.window.document.body.style.overflow, "hidden");
   const dialog = container.querySelector('[role="dialog"]');
   assert.equal(dialog?.getAttribute("aria-modal"), "true");
+  assert.equal(dialog?.getAttribute("tabindex"), "-1");
+  assert.equal(env.dom.window.document.activeElement, dialog);
+  assert.equal(container.querySelector(".mobile-drawer-header .icon-button"), null);
+  assert.match(container.textContent ?? "", /General/);
+  assert.match(container.textContent ?? "", /Appearance/);
+  assert.match(container.textContent ?? "", /Data & Backup/);
+  assert.match(container.textContent ?? "", /About/);
   env.dom.window.document.dispatchEvent(new env.dom.window.KeyboardEvent("keydown", { key: "Escape" }));
   await waitForPaint();
   assert.equal(container.querySelector('[role="dialog"]'), null);
   assert.equal(env.dom.window.document.body.style.overflow, "");
   assert.equal(env.dom.window.document.activeElement, trigger);
+
+  open = true;
+  render();
+  await waitForPaint();
+  (container.querySelector(".mobile-drawer-backdrop") as HTMLButtonElement)?.click();
+  await waitForPaint();
+  assert.equal(container.querySelector('[role="dialog"]'), null);
 
   open = true;
   render();

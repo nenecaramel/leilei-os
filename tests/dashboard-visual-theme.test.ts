@@ -10,7 +10,7 @@ const heroBlock = stylesSource.slice(stylesSource.indexOf(".hero-panel {"), styl
 
 test("Home replaces the old module-card icon contract with grouped shell navigation", () => {
   assert.match(dashboardSource, /TodayPanel/);
-  assert.match(dashboardSource, /StickyPreview/);
+  assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
   assert.match(dashboardSource, /CalendarPreview/);
   assert.doesNotMatch(dashboardSource, /iconClass|space-icon|quickTarget/);
   assert.match(navigationSource, /label: "Home"/);

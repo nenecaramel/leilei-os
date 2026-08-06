@@ -8,12 +8,6 @@ export type HomeNote = {
   text: string;
 };
 
-export type HomeSticky = {
-  id: string;
-  author: HomeAuthor;
-  text: string;
-};
-
 export type HomeCalendarDay = {
   day: number;
   hasContent: boolean;
@@ -29,11 +23,6 @@ export const G_HOME_NOTES: HomeNote[] = [
   { id: "g-1", author: "G", kind: "pending", text: "项目下一步：确定侧边栏交互" },
   { id: "g-2", author: "G", kind: "record", text: "明天记得向蕾蕾推进进度展开方式" },
   { id: "g-3", author: "G", kind: "record", text: "准备提醒蕾蕾吃午饭啦" },
-];
-
-export const HOME_STICKIES: HomeSticky[] = [
-  { id: "sticky-1", author: "L", text: "灵感：\n未来的日记可以\n跟天气联动~" },
-  { id: "sticky-2", author: "G", text: "想去看一场\n海边的日落 ▪" },
 ];
 
 export const HOME_CALENDAR_DAYS: HomeCalendarDay[] = Array.from({ length: 31 }, (_, index) => ({
