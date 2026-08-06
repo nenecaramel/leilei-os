@@ -143,6 +143,30 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   assert.match(stylesSource, /\.mobile-top-bar\s*\{/);
   assert.match(stylesSource, /\.mobile-drawer-panel[\s\S]*?width:\s*min\(82vw,\s*312px\)/);
   assert.match(stylesSource, /\.mobile-drawer-panel[\s\S]*?background:\s*#FFFFFE/);
+  assert.match(
+    stylesSource,
+    /\.mobile-drawer-panel[\s\S]*?padding:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 8px\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.mobile-drawer-header strong[\s\S]*?font-size:\s*20px[\s\S]*?line-height:\s*28px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.mobile-drawer \.navigation-groups[\s\S]*?gap:\s*26px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.mobile-drawer \.navigation-group\s*\{[\s\S]*?gap:\s*2px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.mobile-drawer \.navigation-group h2[\s\S]*?margin:\s*0 var\(--mobile-drawer-item-padding\) 0/,
+  );
+  assert.match(
+    stylesSource,
+    /\.mobile-drawer \.nav-item\s*\{[\s\S]*?min-height:\s*40px[\s\S]*?height:\s*40px[\s\S]*?font-size:\s*15px[\s\S]*?line-height:\s*20px/,
+  );
   assert.match(stylesSource, /\.mobile-drawer \.nav-item svg,[\s\S]*?display:\s*none/);
   assert.match(stylesSource, /env\(safe-area-inset-top/);
   assert.match(stylesSource, /\.today-panel-dialog[\s\S]*?max-height:\s*min\(88dvh/);

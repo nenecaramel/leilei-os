@@ -1674,7 +1674,7 @@ textarea:disabled {
   width: min(82vw, 312px);
   max-width: 100%;
   overflow-y: auto;
-  padding: max(18px, env(safe-area-inset-top, 0px)) var(--mobile-drawer-item-padding) max(18px, env(safe-area-inset-bottom, 0px));
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) var(--mobile-drawer-item-padding) max(18px, env(safe-area-inset-bottom, 0px));
   border-right: 1px solid rgba(0, 0, 0, 0.08);
   background: #FFFFFE;
   box-shadow: 6px 0 18px rgba(0, 0, 0, 0.06);
@@ -1695,6 +1695,7 @@ textarea:disabled {
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.03em;
+  line-height: 28px;
 }
 
 .mobile-drawer .navigation-groups {
@@ -1702,11 +1703,11 @@ textarea:disabled {
 }
 
 .mobile-drawer .navigation-group {
-  gap: 6px;
+  gap: 2px;
 }
 
 .mobile-drawer .navigation-group h2 {
-  margin: 0 var(--mobile-drawer-item-padding) 2px;
+  margin: 0 var(--mobile-drawer-item-padding) 0;
   color: #8e8e93;
   font-size: 12px;
   font-weight: 500;
@@ -1720,15 +1721,15 @@ textarea:disabled {
 
 .mobile-drawer .nav-item {
   display: flex;
-  min-height: 44px;
-  height: 44px;
+  min-height: 40px;
+  height: 40px;
   align-items: center;
   padding: 0 var(--mobile-drawer-item-padding);
   border-radius: 10px;
   color: #171717;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 500;
-  line-height: 42px;
+  line-height: 20px;
   gap: 0;
   grid-template-columns: 1fr;
   transform: none;
