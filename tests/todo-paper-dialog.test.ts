@@ -3,12 +3,30 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import { createRequire } from "node:module";
 
+const bootstrapDom = new JSDOM(
+  "<!doctype html><html><body></body></html>",
+  { url: "http://localhost/" },
+);
+
+for (const [name, value] of Object.entries({
+  window: bootstrapDom.window,
+  document: bootstrapDom.window.document,
+  navigator: bootstrapDom.window.navigator,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+
 const requireFromWeb = createRequire(new URL("../web/package.json", import.meta.url));
 const React = requireFromWeb("react");
 const { act, useState } = React;
 const { createRoot } = requireFromWeb("react-dom/client");
 type Root = ReturnType<typeof createRoot>;
 import { PaperDetailDialog } from "../web/src/pages/PaperDetailDialog.js";
+import { TodoPaperEditor } from "../web/src/pages/TodoPaperEditor.js";
 
 type DomHarness = {
   dom: JSDOM;
@@ -21,7 +39,7 @@ type DomHarness = {
 function installDom(): DomHarness {
   const dom = new JSDOM(
     '<!doctype html><html><body><button id="trigger">Open</button><div id="root"></div></body></html>',
-    { url: "http://localhost/" },
+    { url: "http://localhost/", pretendToBeVisual: true },
   );
 
   const previousDescriptors = new Map<string, PropertyDescriptor | undefined>();
@@ -31,6 +49,14 @@ function installDom(): DomHarness {
     navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement,
     HTMLButtonElement: dom.window.HTMLButtonElement,
+    HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+    requestAnimationFrame: (callback: FrameRequestCallback) =>
+      dom.window.setTimeout(
+        () => callback(dom.window.performance.now()),
+        0,
+      ),
+    cancelAnimationFrame: (handle: number) =>
+      dom.window.clearTimeout(handle),
     KeyboardEvent: dom.window.KeyboardEvent,
     MouseEvent: dom.window.MouseEvent,
     Event: dom.window.Event,
@@ -226,6 +252,179 @@ test("A pending or rejected close cannot re-enter and keeps the paper open", asy
     });
 
     assert.ok(harness.container.querySelector('[role="dialog"]'));
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+type TodoEditorHandle = {
+  getNormalizedEntries(): Array<{
+    id: string;
+    author: "L" | "G";
+    kind: "pending" | "completed" | "record";
+    text: string;
+  }>;
+  focusFirstRow(): void;
+};
+
+async function renderTodoEditor(
+  harness: DomHarness,
+  options: {
+    author?: "L" | "G";
+    initialEntries?: Array<{
+      id: string;
+      author: "L" | "G";
+      kind: "pending" | "completed" | "record";
+      text: string;
+    }>;
+    onDirtyChange?: (dirty: boolean) => void;
+  } = {},
+) {
+  const editorRef: { current: TodoEditorHandle | null } = { current: null };
+
+  await act(async () => {
+    harness.root.render(
+      React.createElement(TodoPaperEditor, {
+        ref: editorRef,
+        author: options.author ?? "L",
+        initialEntries:
+          options.initialEntries ??
+          [{ id: "l-1", author: "L", kind: "pending", text: "First" }],
+        onDirtyChange: options.onDirtyChange ?? (() => undefined),
+      }),
+    );
+  });
+
+  return editorRef;
+}
+
+test("Todo editor keeps one creation row and Enter creates and focuses the next row", async () => {
+  const harness = installDom();
+
+  try {
+    await renderTodoEditor(harness);
+
+    let textareas = [...harness.container.querySelectorAll<HTMLTextAreaElement>("textarea")];
+    assert.equal(textareas.length, 2);
+
+    await act(async () => {
+      textareas[0].dispatchEvent(
+        new harness.dom.window.KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    textareas = [...harness.container.querySelectorAll<HTMLTextAreaElement>("textarea")];
+    assert.equal(textareas.length, 3);
+    assert.equal(harness.dom.window.document.activeElement, textareas[1]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("Backspace removes an empty non-final row and focuses the previous row", async () => {
+  const harness = installDom();
+
+  try {
+    await renderTodoEditor(harness);
+
+    let textareas = [...harness.container.querySelectorAll<HTMLTextAreaElement>("textarea")];
+
+    await act(async () => {
+      textareas[0].dispatchEvent(
+        new harness.dom.window.KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    textareas = [...harness.container.querySelectorAll<HTMLTextAreaElement>("textarea")];
+    assert.equal(textareas.length, 3);
+
+    await act(async () => {
+      textareas[1].dispatchEvent(
+        new harness.dom.window.KeyboardEvent("keydown", {
+          key: "Backspace",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    textareas = [...harness.container.querySelectorAll<HTMLTextAreaElement>("textarea")];
+    assert.equal(textareas.length, 2);
+    assert.equal(harness.dom.window.document.activeElement, textareas[0]);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("Todo status cycles pending completed record pending with accessible labels", async () => {
+  const harness = installDom();
+
+  try {
+    await renderTodoEditor(harness);
+
+    const status = harness.container.querySelector<HTMLButtonElement>(".todo-paper-status");
+    assert.ok(status);
+
+    assert.equal(status.dataset.kind, "pending");
+    assert.match(status.getAttribute("aria-label") ?? "", /待办/);
+
+    await act(async () => {
+      status.dispatchEvent(new harness.dom.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(status.dataset.kind, "completed");
+    assert.match(status.getAttribute("aria-label") ?? "", /已完成/);
+
+    await act(async () => {
+      status.dispatchEvent(new harness.dom.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(status.dataset.kind, "record");
+    assert.match(status.getAttribute("aria-label") ?? "", /记录/);
+
+    await act(async () => {
+      status.dispatchEvent(new harness.dom.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(status.dataset.kind, "pending");
+    assert.match(status.getAttribute("aria-label") ?? "", /待办/);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("Normalized editor output trims text, drops empty rows, and reports dirty changes", async () => {
+  const harness = installDom();
+
+  try {
+    const dirtyValues: boolean[] = [];
+    const editorRef = await renderTodoEditor(harness, {
+      initialEntries: [
+        { id: "l-1", author: "L", kind: "record", text: " first " },
+        { id: "l-empty", author: "L", kind: "pending", text: "   " },
+      ],
+      onDirtyChange: (dirty) => dirtyValues.push(dirty),
+    });
+
+    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    assert.ok(first);
+
+    await act(async () => {
+      first.value = " changed ";
+      first.dispatchEvent(new harness.dom.window.Event("input", { bubbles: true }));
+    });
+
+    assert.deepEqual(editorRef.current?.getNormalizedEntries(), [
+      { id: "l-1", author: "L", kind: "record", text: "changed" },
+    ]);
+    assert.equal(dirtyValues.at(-1), true);
   } finally {
     await harness.cleanup();
   }
