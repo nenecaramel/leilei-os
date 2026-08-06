@@ -11,7 +11,7 @@ export function MobileNavigationDrawer({
   onClose: () => void;
   menuButtonRef: RefObject<HTMLButtonElement | null>;
 }) {
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerPanelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -22,7 +22,7 @@ export function MobileNavigationDrawer({
     };
     document.addEventListener("keydown", onKeyDown);
     const frameWindow = window;
-    const focusFrame = frameWindow.requestAnimationFrame(() => closeButtonRef.current?.focus());
+    const focusFrame = frameWindow.requestAnimationFrame(() => drawerPanelRef.current?.focus());
     return () => {
       frameWindow.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", onKeyDown);
@@ -35,13 +35,12 @@ export function MobileNavigationDrawer({
   return (
     <div className="mobile-drawer" id="mobile-navigation-drawer">
       <button className="mobile-drawer-backdrop" type="button" aria-label="关闭菜单" onClick={onClose} />
-      <aside className="mobile-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="mobile-drawer-title">
+      <aside ref={drawerPanelRef} className="mobile-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="mobile-drawer-title" tabIndex={-1}>
         <div className="mobile-drawer-header">
           <strong id="mobile-drawer-title">Leilei OS</strong>
-          <button ref={closeButtonRef} className="icon-button" type="button" aria-label="关闭菜单" onClick={onClose}>×</button>
         </div>
         <nav aria-label="Mobile navigation">
-          <NavigationGroups onNavigate={onClose} />
+          <NavigationGroups onNavigate={onClose} includeSecondarySystemItems />
         </nav>
       </aside>
     </div>

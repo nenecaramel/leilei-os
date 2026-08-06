@@ -141,7 +141,9 @@ test("Home mobile top bar moves controls upward and inward without moving Home c
 test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   const homeV2Styles = stylesSource.slice(stylesSource.lastIndexOf("/* Mobile Home v2:"));
   assert.match(stylesSource, /\.mobile-top-bar\s*\{/);
-  assert.match(stylesSource, /\.mobile-drawer-panel[\s\S]*?width:\s*min\(82vw,\s*320px\)/);
+  assert.match(stylesSource, /\.mobile-drawer-panel[\s\S]*?width:\s*min\(82vw,\s*312px\)/);
+  assert.match(stylesSource, /\.mobile-drawer-panel[\s\S]*?background:\s*#FFFFFE/);
+  assert.match(stylesSource, /\.mobile-drawer \.nav-item svg,[\s\S]*?display:\s*none/);
   assert.match(stylesSource, /env\(safe-area-inset-top/);
   assert.match(stylesSource, /\.today-panel-dialog[\s\S]*?max-height:\s*min\(88dvh/);
   assert.match(stylesSource, /\.calendar-grid[\s\S]*?grid-template-columns:\s*repeat\(7,/);

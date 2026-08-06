@@ -51,10 +51,32 @@ export const NAV_GROUPS: NavigationGroup[] = [
 
 export const NAV_ITEMS = NAV_GROUPS.flatMap(({ entries }) => entries);
 
-export function NavigationGroups({ onNavigate }: { onNavigate?: () => void }) {
+export function NavigationGroups({
+  onNavigate,
+  includeSecondarySystemItems = false,
+}: {
+  onNavigate?: () => void;
+  includeSecondarySystemItems?: boolean;
+}) {
+  const groups: NavigationGroup[] = includeSecondarySystemItems
+    ? NAV_GROUPS.map((group) => group.label === "System"
+      ? {
+          ...group,
+          entries: [
+            ...group.entries.map((entry, index) => group.label === "System" && index === 0
+              ? { ...entry, label: "General" }
+              : entry),
+            { label: "Appearance", icon: SettingsIcon, disabled: true },
+            { label: "Data & Backup", icon: SettingsIcon, disabled: true },
+            { label: "About", icon: SettingsIcon, disabled: true },
+          ],
+        }
+      : group)
+    : NAV_GROUPS;
+
   return (
     <div className="navigation-groups">
-      {NAV_GROUPS.map((group) => (
+      {groups.map((group) => (
         <section className="navigation-group" key={group.label} aria-labelledby={`navigation-${group.label.toLowerCase()}`}>
           <h2 id={`navigation-${group.label.toLowerCase()}`}>{group.label}</h2>
           <div className="navigation-group-items">
