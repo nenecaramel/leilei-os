@@ -212,6 +212,10 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
     stylesSource,
     /\.home-section-heading h2\s*\{[^}]*font-weight:\s*500/,
   );
+  assert.match(
+    stylesSource,
+    /@media \(min-width:\s*761px\)[\s\S]*?\.records-section[\s\S]*?grid-column:\s*1 \/ -1/,
+  );
   assert.match(stylesSource, /\.home-bottom-nav[\s\S]*?grid-template-columns:\s*repeat\(4,/);
   assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar-title[\s\S]*?left:\s*50%[\s\S]*?transform:\s*translateX\(-50%\)/);
   assert.match(stylesSource, /min-width:\s*44px/);

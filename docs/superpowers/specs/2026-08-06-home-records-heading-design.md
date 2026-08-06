@@ -13,7 +13,7 @@ Add a `Records` heading directly above the four existing bottom cards:
 - Task
 - Universe
 
-`Records` must reuse the exact same section-heading structure and spacing rules as `Todo` and `Calendar`.
+`Records` must reuse the same section-heading structure and match the visual spacing rhythm of `Todo` and `Calendar`.
 
 Required alignment and spacing:
 
@@ -22,7 +22,7 @@ Required alignment and spacing:
 - font weight 500
 - distance from `Records` to the four cards below must equal the distance from `Calendar` to the calendar card below
 - distance from the calendar card above to `Records` must follow the same section-to-section spacing used between the Todo section and Calendar section
-- do not introduce independent visual spacing values for `Records`
+- spacing values may compensate for the Calendar frame pseudo-element, but the rendered visual rhythm must match
 
 The four cards and their internal content remain unchanged.
 

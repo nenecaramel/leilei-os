@@ -2225,7 +2225,8 @@ body:has(.home-prototype) .mobile-search-link svg {
   }
 
   .today-panel:nth-child(-n + 2),
-  .calendar-preview {
+  .calendar-preview,
+  .records-section {
     grid-column: 1 / -1;
   }
 
