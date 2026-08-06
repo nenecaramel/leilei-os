@@ -11,9 +11,9 @@ import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const taskSource = readFileSync(new URL("../web/src/pages/TaskPage.tsx", import.meta.url), "utf8");
 
-test("Home prototype keeps the approved Todo, L/G, Sticky, Calendar and footer structure", () => {
+test("Home prototype keeps the approved Todo, L/G, Calendar and footer structure", () => {
   assert.match(dashboardSource, /TodayPanel/);
-  assert.match(dashboardSource, /StickyPreview/);
+  assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
   assert.match(dashboardSource, /CalendarPreview/);
   assert.match(dashboardSource, />Todo</);
   assert.match(dashboardSource, /home-bottom-nav/);
@@ -64,7 +64,7 @@ test("Dashboard renders the fixture-backed Home view without API requests", asyn
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
   assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
   assert.equal(container.querySelectorAll(".today-panel").length, 2);
-  assert.equal(container.querySelectorAll(".sticky-card").length, 2);
+  assert.equal(container.querySelectorAll(".sticky-card").length, 0);
   assert.ok(container.querySelector(".calendar-preview"));
   assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 4);
   assert.equal(container.querySelectorAll(".calendar-frame").length, 1);

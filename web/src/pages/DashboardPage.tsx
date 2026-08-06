@@ -3,8 +3,7 @@ import { Link } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import type { SettingsData } from "../settings/types";
 import { CalendarPreview } from "./CalendarPreview";
-import { G_HOME_NOTES, HOME_CALENDAR_DAYS, HOME_STICKIES, L_HOME_NOTES, type HomeAuthor } from "./home-prototype-data";
-import { StickyPreview } from "./StickyPreview";
+import { G_HOME_NOTES, HOME_CALENDAR_DAYS, L_HOME_NOTES, type HomeAuthor } from "./home-prototype-data";
 import { TodayPanel } from "./TodayPanel";
 import { TodayPanelDialog } from "./TodayPanelDialog";
 
@@ -32,7 +31,6 @@ export function DashboardPageContent({
       <main className="home-prototype-content">
         <TodayPanel author="L" notes={L_HOME_NOTES} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
         <TodayPanel author="G" notes={G_HOME_NOTES} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
-        <StickyPreview stickies={HOME_STICKIES} />
         <CalendarPreview days={HOME_CALENDAR_DAYS} date={today} />
       </main>
 

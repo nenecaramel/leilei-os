@@ -8,7 +8,6 @@ import test from "node:test";
 import {
   G_HOME_NOTES,
   HOME_CALENDAR_DAYS,
-  HOME_STICKIES,
   L_HOME_NOTES,
   type HomeNote,
 } from "../web/src/pages/home-prototype-data.js";
@@ -50,21 +49,19 @@ test("Home fixture collections use one typed L/G note structure", () => {
   assert.ok(G_HOME_NOTES.length >= 3);
   L_HOME_NOTES.forEach(noteShape);
   G_HOME_NOTES.forEach(noteShape);
-  assert.ok(HOME_STICKIES.length >= 2);
   assert.ok(HOME_CALENDAR_DAYS.length >= 28);
-  assert.equal(new Set(HOME_STICKIES.map((sticky) => sticky.author)).size, 2);
 });
 
 test("Home is fixture-only and does not retain the dashboard API modules", () => {
   assert.match(dashboardSource, />Todo</);
   assert.match(dashboardSource, /TodayPanel/);
-  assert.match(dashboardSource, /StickyPreview/);
   assert.match(dashboardSource, /CalendarPreview/);
+  assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
   assert.doesNotMatch(dashboardSource, /hero-panel|orbit|space-card|quickTarget/);
   assert.doesNotMatch(dashboardSource, /api\.request\(["']\/(?:memory|diary|task)/);
 });
 
-test("Home renders compact L/G panels, Sticky, Calendar, and no authenticated module requests", async () => {
+test("Home renders compact L/G Todo panels, Calendar, and no authenticated module requests", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const requests: string[] = [];
@@ -77,7 +74,8 @@ test("Home renders compact L/G panels, Sticky, Calendar, and no authenticated mo
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
   assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
   assert.equal(container.querySelectorAll(".today-panel").length, 2);
-  assert.equal(container.querySelectorAll(".sticky-card").length, 2);
+  assert.equal(container.querySelectorAll(".sticky-card").length, 0);
+  assert.doesNotMatch(container.textContent ?? "", /Sticky/);
   assert.ok(container.querySelector(".calendar-grid"));
   assert.equal(container.querySelectorAll(".calendar-day").length, 42);
   assert.equal(container.querySelectorAll(".calendar-day i").length, 0);
