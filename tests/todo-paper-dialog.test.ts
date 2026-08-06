@@ -27,6 +27,7 @@ const { createRoot } = requireFromWeb("react-dom/client");
 type Root = ReturnType<typeof createRoot>;
 import { PaperDetailDialog } from "../web/src/pages/PaperDetailDialog.js";
 import { TodoPaperEditor } from "../web/src/pages/TodoPaperEditor.js";
+import { TodoPaperDialog } from "../web/src/pages/TodoPaperDialog.js";
 
 type DomHarness = {
   dom: JSDOM;
@@ -425,6 +426,213 @@ test("Normalized editor output trims text, drops empty rows, and reports dirty c
       { id: "l-1", author: "L", kind: "record", text: "changed" },
     ]);
     assert.equal(dirtyValues.at(-1), true);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+class TodoDialogStorage implements Storage {
+  readonly writes: Array<[string, string]> = [];
+  failWrites = false;
+  private readonly values = new Map<string, string>();
+
+  get length() {
+    return this.values.size;
+  }
+
+  clear() {
+    this.values.clear();
+  }
+
+  getItem(key: string) {
+    return this.values.get(key) ?? null;
+  }
+
+  key(index: number) {
+    return [...this.values.keys()][index] ?? null;
+  }
+
+  removeItem(key: string) {
+    this.values.delete(key);
+  }
+
+  setItem(key: string, value: string) {
+    if (this.failWrites) throw new Error("storage unavailable");
+    this.writes.push([key, value]);
+    this.values.set(key, value);
+  }
+}
+
+async function renderTodoPaperDialog(
+  harness: ReturnType<typeof installDom>,
+  options: {
+    storage?: Storage;
+    entries?: Array<{
+      id: string;
+      author: "L" | "G";
+      kind: "pending" | "completed" | "record";
+      text: string;
+    }>;
+  } = {},
+) {
+  const storage = options.storage ?? new TodoDialogStorage();
+  const saved: unknown[] = [];
+  let closed = 0;
+  const triggerRef = { current: harness.dom.window.document.createElement("button") };
+
+  function DialogHarness() {
+    const [open, setOpen] = useState(true);
+    const [entries, setEntries] = useState(
+      options.entries ?? [
+        { id: "l-1", author: "L" as const, kind: "pending" as const, text: "First" },
+        { id: "l-2", author: "L" as const, kind: "record" as const, text: "Second" },
+      ],
+    );
+
+    return React.createElement(TodoPaperDialog, {
+      author: "L",
+      date: new Date(2026, 7, 7, 12, 0, 0),
+      open,
+      entries,
+      triggerRef,
+      storage,
+      onSaved: (nextEntries) => {
+        saved.push(nextEntries);
+        setEntries(nextEntries);
+      },
+      onClosed: () => {
+        closed += 1;
+        setOpen(false);
+      },
+    });
+  }
+
+  await act(async () => {
+    harness.root.render(React.createElement(DialogHarness));
+  });
+
+  return {
+    storage,
+    saved,
+    get closed() {
+      return closed;
+    },
+  };
+}
+
+test("Todo paper coordinator renders L metadata and entries without legacy chrome", async () => {
+  const harness = installDom();
+
+  try {
+    await renderTodoPaperDialog(harness, {
+      entries: [
+        { id: "l-1", author: "L", kind: "pending", text: "First" },
+        { id: "l-2", author: "L", kind: "completed", text: "Second" },
+        { id: "l-3", author: "L", kind: "record", text: "Third" },
+      ],
+    });
+
+    const dialog = harness.container.querySelector<HTMLElement>('[role="dialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? "", /2026\.08\.07/);
+    assert.match(dialog.textContent ?? "", /L/);
+    assert.match(dialog.textContent ?? "", /First/);
+    assert.match(dialog.textContent ?? "", /Second/);
+    assert.match(dialog.textContent ?? "", /Third/);
+    assert.doesNotMatch(dialog.textContent ?? "", /今日记录|Today/);
+    assert.equal(dialog.querySelector('button[aria-label*="关闭"]'), null);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("Todo paper closes without writing when nothing changed", async () => {
+  const harness = installDom();
+
+  try {
+    const storage = new TodoDialogStorage();
+    const rendered = await renderTodoPaperDialog(harness, { storage });
+
+    const veil = harness.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+    assert.ok(veil);
+
+    await act(async () => {
+      veil.dispatchEvent(new harness.dom.window.MouseEvent("click", { bubbles: true }));
+    });
+
+    assert.equal(storage.writes.length, 0);
+    assert.equal(rendered.closed, 1);
+    assert.equal(harness.container.querySelector('[role="dialog"]'), null);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("Todo paper writes changed entries before closing and reports the saved preview", async () => {
+  const harness = installDom();
+
+  try {
+    const storage = new TodoDialogStorage();
+    const rendered = await renderTodoPaperDialog(harness, { storage });
+    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    assert.ok(first);
+
+    await act(async () => {
+      first.value = "Changed";
+      first.dispatchEvent(new harness.dom.window.Event("input", { bubbles: true }));
+    });
+
+    const veil = harness.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+    assert.ok(veil);
+
+    await act(async () => {
+      veil.dispatchEvent(new harness.dom.window.MouseEvent("click", { bubbles: true }));
+    });
+
+    assert.equal(storage.writes.length, 1);
+    assert.equal(storage.writes[0][0], "leilei.home.todo-paper.v1:2026-08-07:L");
+    assert.match(storage.writes[0][1], /Changed/);
+    assert.deepEqual(rendered.saved, [[
+      { id: "l-1", author: "L", kind: "pending", text: "Changed" },
+      { id: "l-2", author: "L", kind: "record", text: "Second" },
+    ]]);
+    assert.equal(rendered.closed, 1);
+    assert.equal(harness.container.querySelector('[role="dialog"]'), null);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("Todo paper keeps edits open and shows an alert when storage fails", async () => {
+  const harness = installDom();
+
+  try {
+    const storage = new TodoDialogStorage();
+    storage.failWrites = true;
+    const rendered = await renderTodoPaperDialog(harness, { storage });
+    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    assert.ok(first);
+
+    await act(async () => {
+      first.value = "Unsaved";
+      first.dispatchEvent(new harness.dom.window.Event("input", { bubbles: true }));
+    });
+
+    const veil = harness.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+    assert.ok(veil);
+
+    await act(async () => {
+      veil.dispatchEvent(new harness.dom.window.MouseEvent("click", { bubbles: true }));
+    });
+
+    assert.ok(harness.container.querySelector('[role="dialog"]'));
+    assert.match(
+      harness.container.querySelector('[role="alert"]')?.textContent ?? "",
+      /保存|重试/,
+    );
+    assert.equal(rendered.closed, 0);
+    assert.equal(rendered.saved.length, 0);
+    assert.equal(first.value, "Unsaved");
   } finally {
     await harness.cleanup();
   }

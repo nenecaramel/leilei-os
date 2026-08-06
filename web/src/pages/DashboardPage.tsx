@@ -3,12 +3,26 @@ import { Link } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import type { SettingsData } from "../settings/types";
 import { CalendarPreview } from "./CalendarPreview";
-import { G_HOME_NOTES, HOME_CALENDAR_DAYS, L_HOME_NOTES, type HomeAuthor } from "./home-prototype-data";
+import {
+  G_HOME_NOTES,
+  HOME_CALENDAR_DAYS,
+  L_HOME_NOTES,
+  type HomeAuthor,
+  type HomeNote,
+} from "./home-prototype-data";
+import {
+  formatTodoStorageDate,
+  readTodoPaperEntries,
+} from "./todo-paper-storage";
 import { TodayPanel } from "./TodayPanel";
-import { TodayPanelDialog } from "./TodayPanelDialog";
+import { TodoPaperDialog } from "./TodoPaperDialog";
 
 export function formatHomeDate(date: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(date);
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(date);
 }
 
 export function DashboardPageContent({
@@ -20,17 +34,48 @@ export function DashboardPageContent({
 }) {
   void api;
   void settings;
+
+  const [today] = useState(() => new Date());
+  const dateKey = formatTodoStorageDate(today);
+  const storage =
+    typeof window === "undefined" ? null : window.localStorage;
+
+  const [lNotes, setLNotes] = useState<HomeNote[]>(() =>
+    storage
+      ? readTodoPaperEntries(storage, "L", dateKey, L_HOME_NOTES)
+      : L_HOME_NOTES.map((entry) => ({ ...entry })),
+  );
+  const [gNotes, setGNotes] = useState<HomeNote[]>(() =>
+    storage
+      ? readTodoPaperEntries(storage, "G", dateKey, G_HOME_NOTES)
+      : G_HOME_NOTES.map((entry) => ({ ...entry })),
+  );
   const [dialogAuthor, setDialogAuthor] = useState<HomeAuthor | null>(null);
   const lTriggerRef = useRef<HTMLButtonElement>(null);
   const gTriggerRef = useRef<HTMLButtonElement>(null);
-  const today = new Date();
+
+  const selectedEntries = dialogAuthor === "L" ? lNotes : gNotes;
+  const selectedTriggerRef =
+    dialogAuthor === "L" ? lTriggerRef : gTriggerRef;
+  const handleSaved =
+    dialogAuthor === "L" ? setLNotes : setGNotes;
 
   return (
     <div className="page home-prototype">
       <h1 className="home-page-title">Todo</h1>
       <main className="home-prototype-content">
-        <TodayPanel author="L" notes={L_HOME_NOTES} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
-        <TodayPanel author="G" notes={G_HOME_NOTES} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
+        <TodayPanel
+          author="L"
+          notes={lNotes}
+          triggerRef={lTriggerRef}
+          onOpen={() => setDialogAuthor("L")}
+        />
+        <TodayPanel
+          author="G"
+          notes={gNotes}
+          triggerRef={gTriggerRef}
+          onOpen={() => setDialogAuthor("G")}
+        />
         <CalendarPreview days={HOME_CALENDAR_DAYS} date={today} />
 
         <section
@@ -50,8 +95,17 @@ export function DashboardPageContent({
         </section>
       </main>
 
-      <TodayPanelDialog author="L" notes={L_HOME_NOTES} open={dialogAuthor === "L"} triggerRef={lTriggerRef} onClose={() => setDialogAuthor(null)} />
-      <TodayPanelDialog author="G" notes={G_HOME_NOTES} open={dialogAuthor === "G"} triggerRef={gTriggerRef} onClose={() => setDialogAuthor(null)} />
+      {dialogAuthor ? (
+        <TodoPaperDialog
+          author={dialogAuthor}
+          date={today}
+          open
+          entries={selectedEntries}
+          triggerRef={selectedTriggerRef}
+          onSaved={handleSaved}
+          onClosed={() => setDialogAuthor(null)}
+        />
+      ) : null}
     </div>
   );
 }

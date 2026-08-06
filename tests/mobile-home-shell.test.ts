@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
-import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { BrowserRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
 import test from "node:test";
 import {
   G_HOME_NOTES,
@@ -13,6 +11,28 @@ import {
 } from "../web/src/pages/home-prototype-data.js";
 import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
 import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
+
+const bootstrapDom = new JSDOM(
+  "<!doctype html><html><body></body></html>",
+  { url: "https://leilei.test/" },
+);
+
+for (const [name, value] of Object.entries({
+  window: bootstrapDom.window,
+  document: bootstrapDom.window.document,
+  navigator: bootstrapDom.window.navigator,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+
+const { createRoot } = await import("../web/node_modules/react-dom/client.js");
+const { BrowserRouter } = await import(
+  "../web/node_modules/react-router-dom/dist/index.mjs"
+);
 
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
@@ -52,13 +72,15 @@ test("Home fixture collections use one typed L/G note structure", () => {
   assert.ok(HOME_CALENDAR_DAYS.length >= 28);
 });
 
-test("Home is fixture-only and does not retain the dashboard API modules", () => {
+test("Home stays local-only and uses the Todo paper coordinator", () => {
   assert.match(dashboardSource, />Todo</);
   assert.match(dashboardSource, />Records</);
   assert.match(dashboardSource, /records-section/);
   assert.match(dashboardSource, /home-preview-section/);
   assert.match(dashboardSource, /TodayPanel/);
+  assert.match(dashboardSource, /TodoPaperDialog/);
   assert.match(dashboardSource, /CalendarPreview/);
+  assert.doesNotMatch(dashboardSource, /TodayPanelDialog/);
   assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
   assert.doesNotMatch(dashboardSource, /hero-panel|orbit|space-card|quickTarget/);
   assert.doesNotMatch(dashboardSource, /api\.request\(["']\/(?:memory|diary|task)/);
@@ -76,7 +98,20 @@ test("Home renders compact L/G Todo panels, Calendar, and no authenticated modul
   await waitForPaint();
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
   assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
-  assert.equal(container.querySelectorAll(".today-panel").length, 2);
+  const todoPanels = [...container.querySelectorAll<HTMLElement>(".today-panel")];
+  assert.equal(todoPanels.length, 2);
+
+  for (const panel of todoPanels) {
+    const notes = [...panel.querySelectorAll<HTMLElement>(".today-note")];
+    assert.equal(notes.length, 3);
+
+    for (const mark of panel.querySelectorAll<HTMLElement>(".today-note-mark")) {
+      assert.equal(mark.textContent, "");
+      assert.ok(["pending", "completed", "record"].includes(mark.dataset.kind ?? ""));
+      assert.ok(mark.querySelector("span"));
+    }
+  }
+
   assert.equal(container.querySelectorAll(".sticky-card").length, 0);
   assert.doesNotMatch(container.textContent ?? "", /Sticky/);
   assert.ok(container.querySelector(".calendar-grid"));
@@ -95,24 +130,73 @@ test("Home renders compact L/G Todo panels, Calendar, and no authenticated modul
   env.restore();
 });
 
-test("Home L/G dialogs are scrollable, closable, and restore trigger focus", async () => {
+test("Home saves an edited L paper, updates only L preview, and restores trigger focus", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-  root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, { settings: DEFAULT_SETTINGS })));
+
+  env.dom.window.localStorage.clear();
+
+  root.render(
+    React.createElement(
+      BrowserRouter,
+      null,
+      React.createElement(DashboardPageContent, {
+        settings: DEFAULT_SETTINGS,
+      }),
+    ),
+  );
   await waitForPaint();
+
   const lPanel = container.querySelector<HTMLButtonElement>(".today-panel-l")!;
+  const gPanel = container.querySelector<HTMLButtonElement>(".today-panel-g")!;
+  const gPreviewBefore = gPanel.textContent;
+
   lPanel.focus();
   lPanel.click();
   await waitForPaint();
-  assert.equal(container.querySelector('[role="dialog"]')?.getAttribute("aria-modal"), "true");
+
+  const dialog = container.querySelector<HTMLElement>('[role="dialog"]');
+  assert.ok(dialog);
+  assert.equal(dialog.getAttribute("aria-modal"), "true");
   assert.equal(document.body.style.overflow, "hidden");
-  const close = container.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="关闭今日记录"]')!;
-  close.click();
+  assert.equal(
+    dialog.querySelector('button[aria-label*="关闭"]'),
+    null,
+  );
+
+  const firstStatus = dialog.querySelector<HTMLButtonElement>(".todo-paper-status");
+  assert.ok(firstStatus);
+  firstStatus.click();
   await waitForPaint();
+  assert.equal(firstStatus.dataset.kind, "completed");
+
+  const veil = container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+  assert.ok(veil);
+  veil.click();
+  await waitForPaint();
+
   assert.equal(container.querySelector('[role="dialog"]'), null);
   assert.equal(document.body.style.overflow, "");
   assert.equal(env.dom.window.document.activeElement, lPanel);
+
+  const lPreviewFirst = container.querySelector<HTMLElement>(
+    ".today-panel-l .today-note",
+  );
+  assert.ok(lPreviewFirst?.classList.contains("today-note-completed"));
+  assert.equal(gPanel.textContent, gPreviewBefore);
+
+  const savedKey = Array.from(
+    { length: env.dom.window.localStorage.length },
+    (_, index) => env.dom.window.localStorage.key(index),
+  ).find((key) => key?.endsWith(":L"));
+
+  assert.ok(savedKey);
+  assert.match(
+    env.dom.window.localStorage.getItem(savedKey) ?? "",
+    /"kind":"completed"/,
+  );
+
   root.unmount();
   await waitForPaint();
   env.restore();
