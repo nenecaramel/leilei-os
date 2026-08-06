@@ -16,7 +16,7 @@ export function CalendarPreview({ days, date = new Date() }: { days: HomeCalenda
     return { day: dayOffset, outside: false, key: `current-${index}` };
   });
   return (
-    <section className="home-section calendar-preview" aria-labelledby="calendar-preview-title">
+    <section className="home-section home-preview-section calendar-preview" aria-labelledby="calendar-preview-title">
       <div className="home-section-heading calendar-section-heading">
         <h2 id="calendar-preview-title">Calendar</h2>
       </div>

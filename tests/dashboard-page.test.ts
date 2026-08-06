@@ -16,6 +16,8 @@ test("Home prototype keeps the approved Todo, L/G, Calendar and footer structure
   assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
   assert.match(dashboardSource, /CalendarPreview/);
   assert.match(dashboardSource, />Todo</);
+  assert.match(dashboardSource, />Records</);
+  assert.match(dashboardSource, /records-section/);
   assert.match(dashboardSource, /home-bottom-nav/);
   assert.doesNotMatch(dashboardSource, /hero-panel|orbit|space-card|quickTarget|Archive|Today at a glance|Wednesday, August 5|新增（预览）/);
   assert.doesNotMatch(dashboardSource, /api\.request|fetch\(/);
@@ -67,6 +69,10 @@ test("Dashboard renders the fixture-backed Home view without API requests", asyn
   assert.equal(container.querySelectorAll(".sticky-card").length, 0);
   assert.ok(container.querySelector(".calendar-preview"));
   assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 4);
+  assert.equal(
+    container.querySelector(".records-section .home-section-heading h2")?.textContent,
+    "Records",
+  );
   assert.equal(container.querySelectorAll(".calendar-frame").length, 1);
   assert.deepEqual([...container.querySelectorAll(".home-bottom-nav a")].map((link) => link.textContent), ["Memory", "Diary", "Task", "Universe"]);
   assert.equal(container.querySelector(".hero-panel"), null);

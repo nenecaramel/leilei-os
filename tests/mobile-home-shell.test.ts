@@ -54,6 +54,9 @@ test("Home fixture collections use one typed L/G note structure", () => {
 
 test("Home is fixture-only and does not retain the dashboard API modules", () => {
   assert.match(dashboardSource, />Todo</);
+  assert.match(dashboardSource, />Records</);
+  assert.match(dashboardSource, /records-section/);
+  assert.match(dashboardSource, /home-preview-section/);
   assert.match(dashboardSource, /TodayPanel/);
   assert.match(dashboardSource, /CalendarPreview/);
   assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
@@ -80,6 +83,10 @@ test("Home renders compact L/G Todo panels, Calendar, and no authenticated modul
   assert.equal(container.querySelectorAll(".calendar-day").length, 42);
   assert.equal(container.querySelectorAll(".calendar-day i").length, 0);
   assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 4);
+  assert.equal(
+    container.querySelector(".records-section .home-section-heading h2")?.textContent,
+    "Records",
+  );
   assert.equal(container.querySelector(".hero-panel"), null);
   assert.equal(container.querySelector(".space-card"), null);
   assert.deepEqual(requests, []);
@@ -180,6 +187,31 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   assert.match(stylesSource, /\.today-panel-dialog[\s\S]*?max-height:\s*min\(88dvh/);
   assert.match(stylesSource, /\.calendar-grid[\s\S]*?grid-template-columns:\s*repeat\(7,/);
   assert.match(stylesSource, /\.calendar-preview-header[\s\S]*?grid-template-columns:\s*28px 1fr 28px/);
+  assert.match(
+    stylesSource,
+    /\.home-preview-section\s*\{[^}]*display:\s*grid[^}]*padding:\s*0/,
+  );
+  assert.match(
+    stylesSource,
+    /\.calendar-preview\s*\{[^}]*gap:\s*11px[^}]*margin-top:\s*6px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.records-section\s*\{[^}]*gap:\s*5px[^}]*margin-top:\s*12px/,
+  );
+  assert.match(stylesSource, /\.home-page-title\s*\{[^}]*font-weight:\s*500/);
+  assert.match(
+    stylesSource,
+    /body:has\(\.home-prototype\) \.mobile-top-bar-title\s*\{[^}]*font-weight:\s*500/,
+  );
+  assert.match(
+    stylesSource,
+    /\.mobile-drawer-header strong\s*\{[^}]*font-weight:\s*500/,
+  );
+  assert.match(
+    stylesSource,
+    /\.home-section-heading h2\s*\{[^}]*font-weight:\s*500/,
+  );
   assert.match(stylesSource, /\.home-bottom-nav[\s\S]*?grid-template-columns:\s*repeat\(4,/);
   assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar-title[\s\S]*?left:\s*50%[\s\S]*?transform:\s*translateX\(-50%\)/);
   assert.match(stylesSource, /min-width:\s*44px/);

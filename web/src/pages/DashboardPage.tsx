@@ -32,14 +32,23 @@ export function DashboardPageContent({
         <TodayPanel author="L" notes={L_HOME_NOTES} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
         <TodayPanel author="G" notes={G_HOME_NOTES} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
         <CalendarPreview days={HOME_CALENDAR_DAYS} date={today} />
-      </main>
 
-      <nav className="home-bottom-nav" aria-label="模块入口">
-        <Link to="/memory">Memory</Link>
-        <Link to="/diary">Diary</Link>
-        <Link to="/task">Task</Link>
-        <Link to="/universe">Universe</Link>
-      </nav>
+        <section
+          className="home-section home-preview-section records-section"
+          aria-labelledby="records-title"
+        >
+          <div className="home-section-heading records-section-heading">
+            <h2 id="records-title">Records</h2>
+          </div>
+
+          <nav className="home-bottom-nav" aria-label="模块入口">
+            <Link to="/memory">Memory</Link>
+            <Link to="/diary">Diary</Link>
+            <Link to="/task">Task</Link>
+            <Link to="/universe">Universe</Link>
+          </nav>
+        </section>
+      </main>
 
       <TodayPanelDialog author="L" notes={L_HOME_NOTES} open={dialogAuthor === "L"} triggerRef={lTriggerRef} onClose={() => setDialogAuthor(null)} />
       <TodayPanelDialog author="G" notes={G_HOME_NOTES} open={dialogAuthor === "G"} triggerRef={gTriggerRef} onClose={() => setDialogAuthor(null)} />

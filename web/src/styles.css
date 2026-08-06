@@ -1693,7 +1693,7 @@ textarea:disabled {
   color: #171717;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.03em;
   line-height: 28px;
 }
@@ -1797,7 +1797,7 @@ body:has(.home-prototype) .mobile-top-bar-title {
   color: #171717;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.03em;
   line-height: 28px;
   white-space: nowrap;
@@ -1868,7 +1868,7 @@ body:has(.home-prototype) .mobile-search-link svg {
   color: #171717;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.03em;
   line-height: 1.2;
 }
@@ -1976,29 +1976,29 @@ body:has(.home-prototype) .mobile-search-link svg {
   color: #171717;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.03em;
   line-height: 1.2;
 }
 
-.calendar-preview {
-  margin-top: 6px;
-}
-
-.calendar-preview {
+.home-preview-section {
   display: grid;
-  gap: 5px;
   padding: 0;
 }
 
-.calendar-section-heading {
-  min-height: 27px;
+.calendar-preview {
+  gap: 11px;
+  margin-top: 6px;
+}
+
+.records-section {
+  gap: 5px;
+  margin-top: 12px;
 }
 
 .calendar-frame {
   display: grid;
   position: relative;
-  transform: translateY(6px);
   gap: 2px;
   height: 201px;
   padding: 4px 8px 0;
@@ -2099,7 +2099,6 @@ body:has(.home-prototype) .mobile-search-link svg {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
-  margin-top: 28px;
   padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
 }
 
