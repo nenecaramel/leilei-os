@@ -111,6 +111,33 @@ test("Home L/G dialogs are scrollable, closable, and restore trigger focus", asy
   env.restore();
 });
 
+test("Home mobile top bar moves controls upward and inward without moving Home content", () => {
+  assert.match(
+    stylesSource,
+    /body:has\(\.home-prototype\) \.mobile-top-bar\s*\{[\s\S]*?min-height:\s*calc\(44px \+ env\(safe-area-inset-top,\s*0px\)\)[\s\S]*?height:\s*calc\(44px \+ env\(safe-area-inset-top,\s*0px\)\)/,
+  );
+  assert.match(
+    stylesSource,
+    /body:has\(\.home-prototype\) \.mobile-top-bar-title[\s\S]*?top:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 8px\)/,
+  );
+  assert.match(
+    stylesSource,
+    /body:has\(\.home-prototype\) \.mobile-menu-button,[\s\S]*?body:has\(\.home-prototype\) \.mobile-search-link[\s\S]*?top:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 0px\)/,
+  );
+  assert.match(
+    stylesSource,
+    /body:has\(\.home-prototype\) \.mobile-menu-button\s*\{[\s\S]*?left:\s*18px/,
+  );
+  assert.match(
+    stylesSource,
+    /body:has\(\.home-prototype\) \.mobile-search-link\s*\{[\s\S]*?right:\s*18px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.home-prototype\s*\{[\s\S]*?padding:\s*18px 0/,
+  );
+});
+
 test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   const homeV2Styles = stylesSource.slice(stylesSource.lastIndexOf("/* Mobile Home v2:"));
   assert.match(stylesSource, /\.mobile-top-bar\s*\{/);
