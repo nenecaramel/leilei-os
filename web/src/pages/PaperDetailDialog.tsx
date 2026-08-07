@@ -17,6 +17,8 @@ export type PaperDetailDialogProps = {
   onRequestClose: () => boolean | Promise<boolean>;
   children: ReactNode;
   errorMessage?: string | null;
+  topRight?: ReactNode;
+  bottomLeft?: ReactNode;
 };
 
 const FOCUSABLE_SELECTOR = [
@@ -37,6 +39,8 @@ export function PaperDetailDialog({
   onRequestClose,
   children,
   errorMessage = null,
+  topRight = null,
+  bottomLeft = null,
 }: PaperDetailDialogProps) {
   const paperRef = useRef<HTMLElement | null>(null);
   const closingRef = useRef(false);
@@ -133,6 +137,9 @@ export function PaperDetailDialog({
         onKeyDown={handlePaperKeyDown}
       >
         <span className="paper-detail-date">{dateLabel}</span>
+        {topRight ? (
+          <div className="paper-detail-top-right">{topRight}</div>
+        ) : null}
         <div className="paper-detail-scroll">
           <div className="paper-detail-rules" aria-hidden="true">
             {Array.from({ length: 24 }, (_, index) => (
@@ -141,6 +148,9 @@ export function PaperDetailDialog({
           </div>
           <div className="paper-detail-body">{children}</div>
         </div>
+        {bottomLeft ? (
+          <div className="paper-detail-bottom-left">{bottomLeft}</div>
+        ) : null}
         {errorMessage ? (
           <p className="paper-detail-error" role="alert">
             {errorMessage}
