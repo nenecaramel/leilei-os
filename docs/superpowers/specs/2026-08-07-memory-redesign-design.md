@@ -207,7 +207,9 @@ The corner typography should reuse the Todo paper metadata language.
 - top-left: Memory date/time, using the same `.paper-detail-date` typography and placement as Todo;
 - top-right: `归档 · 编辑`, styled in the same small metadata type family rather than as large button blocks;
 - bottom-left: `category · tags`, same metadata type family;
-- bottom-right: reuse the Todo paper signature typography and placement through `PaperDetailDialog`'s existing signature slot.
+- bottom-right: fixed signature `N`, using the same Todo paper signature typography, placement, and visual treatment through `PaperDetailDialog`'s existing signature slot.
+
+The `N` is a fixed Memory paper signature only; it does not represent or introduce an author field.
 
 The existing Todo contract includes a top-left date around `13px` and the existing bottom-right signature treatment; Memory should reuse those primitives rather than invent substitutes.
 
@@ -372,6 +374,7 @@ Add or update tests for:
 - detail title omission when key is empty;
 - active edit exposes content/tags but not editable key/category;
 - archive detail is read-only and exposes restore;
+- fixed bottom-right Memory signature is `N` and reuses the Todo paper signature primitive;
 - Todo paper date/signature primitives are reused rather than duplicated by separate paper geometry.
 
 ### Final verification
@@ -406,7 +409,7 @@ On mobile, verify:
 - long content scrolling while paper corners remain fixed;
 - top-left date/time matches Todo corner typography;
 - top-right and bottom-left metadata use the same small paper metadata language;
-- bottom-right signature matches Todo paper;
+- bottom-right fixed `N` signature matches Todo paper typography and placement;
 - close/back returns to the same filters and scroll position.
 
 ## 17. Implementation constraint summary
