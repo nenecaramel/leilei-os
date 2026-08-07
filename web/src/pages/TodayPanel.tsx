@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { HomeAuthor, HomeNote } from "./home-prototype-data";
 
@@ -13,6 +13,24 @@ export function TodayPanel({
   onOpen: () => void;
   triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
+  const notesRef = useRef<HTMLSpanElement | null>(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useLayoutEffect(() => {
+    const element = notesRef.current;
+    if (!element) return;
+
+    const measure = () =>
+      setHasOverflow(element.scrollHeight > element.clientHeight + 1);
+
+    measure();
+    const observer = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(measure);
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, [notes]);
+
   return (
     <button
       ref={triggerRef}
@@ -23,8 +41,8 @@ export function TodayPanel({
       onClick={onOpen}
     >
       <span className="today-panel-author">{author}</span>
-      <span className="today-panel-notes">
-        {notes.slice(0, 3).map((note) => (
+      <span ref={notesRef} className="today-panel-notes">
+        {notes.map((note) => (
           <span className={`today-note today-note-${note.kind}`} key={note.id}>
             <span
               className="today-note-mark"
@@ -37,6 +55,9 @@ export function TodayPanel({
           </span>
         ))}
       </span>
+      {hasOverflow ? (
+        <span className="today-panel-overflow" aria-hidden="true">...</span>
+      ) : null}
     </button>
   );
 }

@@ -68,11 +68,22 @@ test("Home fixture collections use one typed L/G note structure", () => {
   };
   assert.ok(L_HOME_NOTES.length >= 4);
   assert.ok(G_HOME_NOTES.length >= 4);
-  assert.match(todayPanelSource, /notes\.slice\(0,\s*3\)/);
+  assert.doesNotMatch(todayPanelSource, /notes\.slice\(0,\s*3\)/);
+  assert.match(todayPanelSource, /scrollHeight\s*>\s*[^;\n]*clientHeight/);
+  assert.match(todayPanelSource, /today-panel-overflow/);
   L_HOME_NOTES.forEach(noteShape);
   G_HOME_NOTES.forEach(noteShape);
   assert.ok(HOME_CALENDAR_DAYS.length >= 28);
 });
+
+test("Home Todo preview uses three visual lines and a fading overflow marker", () => {
+  assert.match(stylesSource, /\.today-panel-notes\s*\{[^}]*height:\s*60px[^}]*overflow:\s*hidden/s);
+  assert.match(stylesSource, /\.today-note\s*\{[^}]*min-height:\s*20px[^}]*height:\s*auto[^}]*align-items:\s*flex-start/s);
+  assert.match(stylesSource, /\.today-note > span:last-child\s*\{[^}]*white-space:\s*normal/s);
+  assert.doesNotMatch(stylesSource, /\.today-note:nth-child\(3\)/);
+  assert.match(stylesSource, /\.today-panel-overflow\s*\{[^}]*left:\s*43px[^}]*mask-image:/s);
+});
+
 
 test("Home stays local-only and uses the Todo paper coordinator", () => {
   assert.match(dashboardSource, />Todo</);
@@ -105,7 +116,7 @@ test("Home renders compact L/G Todo panels, Calendar, and no authenticated modul
 
   for (const panel of todoPanels) {
     const notes = [...panel.querySelectorAll<HTMLElement>(".today-note")];
-    assert.equal(notes.length, 3);
+    assert.ok(notes.length >= 4);
 
     for (const mark of panel.querySelectorAll<HTMLElement>(".today-note-mark")) {
       assert.equal(mark.textContent, "");
@@ -323,20 +334,12 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   );
   assert.match(
     stylesSource,
-    /\.today-panel-notes\s*\{[^}]*grid-row:\s*1 \/ -1[^}]*align-self:\s*center[^}]*height:\s*auto[^}]*margin-top:\s*0/,
+    /\.today-panel-notes\s*\{[^}]*grid-row:\s*1 \/ -1[^}]*align-self:\s*center[^}]*height:\s*60px[^}]*margin-top:\s*0[^}]*overflow:\s*hidden/,
   );
   assert.match(stylesSource, /\.today-note\s*\{[^}]*font-size:\s*14\.5px/);
-  assert.match(
+  assert.doesNotMatch(
     stylesSource,
-    /\.today-note:nth-child\(3\)\s*\{[^}]*padding-right:\s*32px/,
-  );
-  assert.match(
-    stylesSource,
-    /\.today-note:nth-child\(3\)\s*\{[^}]*-webkit-mask-image:\s*linear-gradient/,
-  );
-  assert.match(
-    stylesSource,
-    /\.today-note:nth-child\(3\)\s*\{[^}]*mask-image:\s*linear-gradient/,
+    /\.today-note:nth-child\(3\)/,
   );
   assert.match(stylesSource, /\.calendar-weekdays\s*\{[^}]*font-size:\s*12px/);
   assert.match(

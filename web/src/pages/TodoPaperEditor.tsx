@@ -86,6 +86,11 @@ function createInitialRows(
   return rows;
 }
 
+function resizeTodoTextarea(textarea: HTMLTextAreaElement) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
 function normalizeRows(rows: readonly EditableTodoRow[]): HomeNote[] {
   return normalizeTodoPaperEntries(
     rows.map(({ id, author, kind, text }) => ({
@@ -203,8 +208,7 @@ export const TodoPaperEditor = forwardRef<
     event: FormEvent<HTMLTextAreaElement>,
   ) => {
     const textarea = event.currentTarget;
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
+    resizeTodoTextarea(textarea);
     updateText(id, textarea.value);
   };
 
@@ -255,6 +259,7 @@ export const TodoPaperEditor = forwardRef<
                 }
 
                 textareaRefs.current.set(row.id, node);
+                resizeTodoTextarea(node);
 
                 const pending = pendingCaretRef.current;
                 if (pending?.rowId === row.id) {

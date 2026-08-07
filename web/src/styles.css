@@ -1916,44 +1916,54 @@ body:has(.home-prototype) .mobile-search-link svg {
 }
 
 .today-panel-notes {
-  display: grid;
+  display: block;
   grid-row: 1 / -1;
   align-self: center;
-  grid-template-rows: repeat(3, 20px);
-  align-content: start;
-  row-gap: 0.5px;
   width: 100%;
-  height: auto;
+  height: 60px;
   min-width: 0;
   margin-top: 0;
+  transform: translateY(-4px);
   overflow: hidden;
 }
 
 .today-note {
   display: flex;
   min-width: 0;
-  height: 20px;
-  align-items: center;
+  min-height: 20px;
+  height: auto;
+  align-items: flex-start;
   gap: 8px;
-  overflow: hidden;
   color: #171717;
   font-size: 14.5px;
   font-weight: 400;
   line-height: 20px;
-  white-space: nowrap;
 }
 
 .today-note > span:last-child {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
-.today-note:nth-child(3) {
-  padding-right: 32px;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 20%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 20%, transparent 100%);
+.today-note-mark {
+  height: 20px;
+  min-height: 20px;
 }
+
+.today-panel-overflow {
+  position: absolute;
+  left: 43px;
+  bottom: 14px;
+  color: #8f8f8f;
+  font-size: 13px;
+  line-height: 12px;
+  letter-spacing: 1px;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, rgba(0, 0, 0, 0.65) 55%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, rgba(0, 0, 0, 0.65) 55%, transparent 100%);
+}
+
 
 .today-note-mark,
 .todo-paper-status {
@@ -2227,6 +2237,7 @@ body:has(.home-prototype) .mobile-search-link svg {
 
 .paper-detail-paper {
   position: relative;
+  transform: translateY(31px);
   z-index: 1;
   width: min(665px, calc(100vw - 46px));
   height: clamp(536px, calc(78dvh - 24px), 696px);
@@ -2337,6 +2348,12 @@ body:has(.home-prototype) .mobile-search-link svg {
   outline: none;
   background: transparent;
   box-shadow: none;
+}
+
+.todo-paper-status[data-kind="completed"] + textarea,
+.todo-paper-status[data-kind="completed"] + .todo-paper-line-view {
+  color: #8f8f8f;
+  text-decoration: line-through;
 }
 
 .todo-paper-line-view {

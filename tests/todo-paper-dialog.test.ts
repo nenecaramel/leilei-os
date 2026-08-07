@@ -313,6 +313,39 @@ async function renderTodoEditor(
   return editorRef;
 }
 
+test("Activating a wrapped Todo immediately expands its textarea", async () => {
+  const harness = installDom();
+
+  try {
+    Object.defineProperty(
+      harness.dom.window.HTMLTextAreaElement.prototype,
+      "scrollHeight",
+      { configurable: true, get: () => 60 },
+    );
+
+    await renderTodoEditor(harness);
+
+    const firstLine = harness.container.querySelector<HTMLButtonElement>(
+      '[aria-label="编辑 Todo 第 1 行"]',
+    );
+    assert.ok(firstLine);
+
+    await act(async () => {
+      firstLine.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const textarea = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
+    assert.ok(textarea);
+    assert.equal(textarea.style.height, "60px");
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+
 test("Enter moves editing to the next visible Todo line", async () => {
   const harness = installDom();
 
@@ -959,6 +992,8 @@ test("Clicking elsewhere on the paper exits row editing", async () => {
 
 
 test("Todo paper uses the compact view-edit visual treatment", () => {
+  assert.match(todoPaperStylesSource, /\.paper-detail-paper\s*\{[^}]*transform:\s*translateY\(31px\)/s);
+
   assert.match(
     todoPaperStylesSource,
     /\.paper-detail-paper\s*\{[^}]*width:\s*min\(665px,[^}]*height:\s*clamp\(536px,[^}]*696px\)/s,
@@ -987,6 +1022,11 @@ test("Todo paper uses the compact view-edit visual treatment", () => {
   assert.match(
     todoPaperStylesSource,
     /\.todo-paper-line-view\s*\{[^}]*min-height:\s*30px[^}]*border:\s*0[^}]*background:\s*transparent/s,
+  );
+
+  assert.match(
+    todoPaperStylesSource,
+    /\.todo-paper-status\[data-kind="completed"\] \+ textarea,[\s\S]*\.todo-paper-status\[data-kind="completed"\] \+ \.todo-paper-line-view\s*\{[^}]*color:\s*#8f8f8f[^}]*text-decoration:\s*line-through/s,
   );
 });
 
