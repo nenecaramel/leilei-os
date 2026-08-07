@@ -1446,3 +1446,22 @@ test("Memory dirty create confirmation, retry gate, and stale completion are saf
     await page.cleanup();
   }
 });
+
+
+test("Memory active list uses the compact five-tool header", async () => {
+  const page = await render("/memory", { async request() { return listResponse() as any; } });
+  const result = {
+    pageHeader: page.container.querySelector(".page-header"),
+    filters: page.container.querySelector(".memory-filters"),
+    title: page.container.querySelector(".memory-page-title")?.textContent,
+    count: page.container.querySelector(".memory-page-count")?.textContent ?? "",
+    labels: [...page.container.querySelectorAll(".memory-page-tools button")].map((button) => button.getAttribute("aria-label")),
+  };
+  await page.cleanup();
+
+  assert.equal(result.pageHeader, null);
+  assert.equal(result.filters, null);
+  assert.equal(result.title, "Memory");
+  assert.match(result.count, /1条记忆/);
+  assert.deepEqual(result.labels, ["筛选分类", "筛选标签", "搜索记忆", "查看归档", "新增记忆"]);
+});
