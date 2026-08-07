@@ -80,6 +80,7 @@ test("Home Todo preview uses three visual lines and a fading overflow marker", (
   assert.match(stylesSource, /\.today-panel-notes\s*\{[^}]*height:\s*60px[^}]*overflow:\s*hidden/s);
   assert.match(stylesSource, /\.today-note\s*\{[^}]*min-height:\s*20px[^}]*height:\s*auto[^}]*align-items:\s*flex-start/s);
   assert.match(stylesSource, /\.today-note > span:last-child\s*\{[^}]*white-space:\s*normal/s);
+  assert.match(stylesSource, /\.today-note-completed > span:last-child\s*\{[^}]*color:\s*#8f8f8f[^}]*text-decoration:\s*line-through/s);
   assert.doesNotMatch(stylesSource, /\.today-note:nth-child\(3\)/);
   assert.match(stylesSource, /\.today-panel-overflow\s*\{[^}]*left:\s*43px[^}]*mask-image:/s);
 });

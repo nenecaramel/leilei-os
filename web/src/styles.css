@@ -1946,6 +1946,11 @@ body:has(.home-prototype) .mobile-search-link svg {
   white-space: normal;
 }
 
+.today-note-completed > span:last-child {
+  color: #8f8f8f;
+  text-decoration: line-through;
+}
+
 .today-note-mark {
   height: 20px;
   min-height: 20px;
