@@ -36,6 +36,7 @@ const { BrowserRouter } = await import(
 
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
+const todayPanelSource = readFileSync(new URL("../web/src/pages/TodayPanel.tsx", import.meta.url), "utf8");
 
 function installDom() {
   const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "https://leilei.test/" });
@@ -65,8 +66,9 @@ test("Home fixture collections use one typed L/G note structure", () => {
     assert.ok(["L", "G"].includes(note.author));
     assert.ok(["pending", "completed", "record"].includes(note.kind));
   };
-  assert.ok(L_HOME_NOTES.length >= 3);
-  assert.ok(G_HOME_NOTES.length >= 3);
+  assert.ok(L_HOME_NOTES.length >= 4);
+  assert.ok(G_HOME_NOTES.length >= 4);
+  assert.match(todayPanelSource, /notes\.slice\(0,\s*3\)/);
   L_HOME_NOTES.forEach(noteShape);
   G_HOME_NOTES.forEach(noteShape);
   assert.ok(HOME_CALENDAR_DAYS.length >= 28);
@@ -315,13 +317,79 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
     stylesSource,
     /\.home-bottom-nav a\s*\{[^}]*place-items:\s*center/,
   );
+  assert.match(
+    stylesSource,
+    /\.home-page-title,\s*\.calendar-section-heading h2,\s*\.records-section-heading h2\s*\{[^}]*transform:\s*translateY\(-2px\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-panel-notes\s*\{[^}]*grid-row:\s*1 \/ -1[^}]*align-self:\s*center[^}]*height:\s*auto[^}]*margin-top:\s*0/,
+  );
+  assert.match(stylesSource, /\.today-note\s*\{[^}]*font-size:\s*14\.5px/);
+  assert.match(
+    stylesSource,
+    /\.today-note:nth-child\(3\)\s*\{[^}]*padding-right:\s*32px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-note:nth-child\(3\)\s*\{[^}]*-webkit-mask-image:\s*linear-gradient/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-note:nth-child\(3\)\s*\{[^}]*mask-image:\s*linear-gradient/,
+  );
+  assert.match(stylesSource, /\.calendar-weekdays\s*\{[^}]*font-size:\s*12px/);
+  assert.match(
+    stylesSource,
+    /\.calendar-frame > \*\s*\{[^}]*position:\s*relative[^}]*z-index:\s*1[^}]*transform:\s*translateY\(-1px\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.calendar-weekdays,\s*\.calendar-grid\s*\{[^}]*transform:\s*translateY\(-1px\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.calendar-weekdays,\s*\.calendar-grid\s*\{[^}]*transform:\s*translateY\(-1px\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.home-prototype\s*\{[^}]*padding:\s*18px 0/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-panel\s*\{[^}]*height:\s*104px[^}]*min-height:\s*104px/,
+  );
   assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar-title[\s\S]*?left:\s*50%[\s\S]*?transform:\s*translateX\(-50%\)/);
   assert.match(stylesSource, /min-width:\s*44px/);
   assert.match(stylesSource, /:focus-visible/);
   assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar/);
   assert.match(stylesSource, /html:has\(\.home-prototype\)[\s\S]*?#root:has\(\.home-prototype\)/);
   assert.doesNotMatch(stylesSource, /\.home-prototype[\s\S]*?hero-panel|\.home-prototype[\s\S]*?orbit/);
-  assert.doesNotMatch(homeV2Styles, /radial-gradient|linear-gradient|color-mix/);
+  assert.doesNotMatch(homeV2Styles, /background(?:-image)?:\s*(?:radial-gradient|linear-gradient|color-mix)/);
+});
+
+
+test("Home cards share one visual surface and press feedback", () => {
+  assert.match(
+    stylesSource,
+    /\.today-panel\s*\{[^}]*border:\s*1px solid rgba\(0,\s*0,\s*0,\s*0\.11\)[^}]*border-radius:\s*14px[^}]*background:\s*#ffffff[^}]*box-shadow:\s*0 10px 28px rgba\(0,\s*0,\s*0,\s*0\.055\)[^}]*transition:\s*transform 120ms ease,\s*box-shadow 120ms ease/,
+  );
+  assert.match(
+    stylesSource,
+    /\.calendar-frame\s*\{[^}]*border-radius:\s*14px[^}]*background:\s*#ffffff[^}]*box-shadow:\s*0 10px 28px rgba\(0,\s*0,\s*0,\s*0\.055\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.calendar-frame::before\s*\{[^}]*border:\s*1px solid rgba\(0,\s*0,\s*0,\s*0\.11\)[^}]*border-radius:\s*14px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.home-bottom-nav a\s*\{[^}]*border:\s*1px solid rgba\(0,\s*0,\s*0,\s*0\.11\)[^}]*border-radius:\s*14px[^}]*background:\s*#ffffff[^}]*box-shadow:\s*0 10px 28px rgba\(0,\s*0,\s*0,\s*0\.055\)[^}]*transition:\s*transform 120ms ease,\s*box-shadow 120ms ease/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-panel:active,\s*\.home-bottom-nav a:active\s*\{[^}]*transform:\s*scale\(0\.99\)[^}]*box-shadow:\s*0 5px 18px rgba\(0,\s*0,\s*0,\s*0\.045\)/,
+  );
 });
 
 

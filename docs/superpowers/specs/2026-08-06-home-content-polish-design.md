@@ -11,13 +11,13 @@ Move only the visible words `Todo`, `Calendar`, and `Records` upward by 2px usin
 ## Todo preview
 
 - Keep both cards at their current size and position.
-- Increase note text from 14px to 15px.
-- Display three note rows.
-- Vertically center the three-row note area inside the available card space.
-- Fade the lower half of the third row.
+- Use 14.5px note text.
+- Display exactly three note rows.
+- Keep the three-row note area vertically centered inside the available card space.
+- Apply a subtle fade to the lower part of the third row while keeping its bottom faintly visible.
 - Reserve space at the right of the third row for the L/G signature.
 - Keep the L/G signature position unchanged.
 
 ## Calendar
 
-Reduce weekday text from 13px to 12px. Keep dates and Calendar geometry unchanged.
+Keep the currently approved Calendar styling and 12px weekday text. The remaining 1px weekday/date alignment adjustment is deferred; do not make further Calendar geometry changes in this batch.
