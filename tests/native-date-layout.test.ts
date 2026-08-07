@@ -294,13 +294,16 @@ test("Web shell reserves the iPhone safe area and declares a theme color", () =>
 });
 
 test("grouped navigation keeps every entry reachable in the mobile drawer", () => {
-  assert.equal((navigationSource.match(/\{ label: "/g) ?? []).length, 9);
+  assert.equal((navigationSource.match(/\{ label: "/g) ?? []).length, 12);
+  assert.match(navigationSource, /label: "Appearance"/);
+  assert.match(navigationSource, /label: "Data & Backup"/);
+  assert.match(navigationSource, /label: "About"/);
   assert.match(navigationSource, /label: "Home"/);
   assert.match(navigationSource, /label: "Global Search"/);
   assert.match(navigationSource, /label: "System"/);
   assert.match(navigationSource, /label: "Day Space"[\s\S]*disabled: true/);
-  assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?width:\s*min\(82vw,\s*320px\)/);
-  assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?padding:\s*max\(18px,\s*env\(safe-area-inset-top/);
+  assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?width:\s*min\(82vw,\s*280px\)/);
+  assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?padding:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 8px\)[\s\S]*?max\(18px,\s*env\(safe-area-inset-bottom,\s*0px\)\)/);
   assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?env\(safe-area-inset-bottom/);
   assert.match(styles, /\.mobile-drawer \.nav-item\s*\{[\s\S]*?min-height:\s*44px/);
   assert.match(styles, /\.mobile-drawer\s*\{[\s\S]*?z-index:/);
