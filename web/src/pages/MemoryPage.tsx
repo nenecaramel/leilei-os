@@ -7,6 +7,7 @@ import {
 import type { WebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
 import type { SettingsData } from "../settings/types";
+import { MemoryPageHeader } from "./MemoryPageHeader";
 import { PageHeader } from "./PageHeader";
 import { isSearchLocation, navigateWithinApp } from "./app-navigation";
 import { consumeQuickCreateTarget } from "./quick-create";
@@ -947,61 +948,68 @@ export function MemoryPageContent({
 
   return (
     <div className="page memory-page">
-      <PageHeader
-        eyebrow="Long-term context"
-        title="Memory"
-        description={settings.page_copy.memory_subtitle ?? "由 Leilei OS 安全保存的核心信息、稳定偏好、长期目标与当前项目。"}
-        action={isDetail ? (
-          <button
-            className="secondary-button"
-            disabled={busy}
-            onClick={() => closeMemory()}
-          >
-            返回记忆列表
-          </button>
-        ) : isArchivedDetail ? (
-          <button
-            className="secondary-button"
-            disabled={restoringId.length > 0}
-            onClick={closeArchivedMemory}
-          >
-            返回归档列表
-          </button>
-        ) : isArchived ? (
-          <button
-            className="secondary-button"
-            onClick={closeArchive}
-          >
-            返回记忆列表
-          </button>
-        ) : (
-          <div className="page-header-actions">
-            <button
-              className="secondary-button"
-              disabled={busy}
-              onClick={openArchive}
-            >
-              查看归档
-            </button>
-            <button
-              className="secondary-button"
-              disabled={busy}
-              onClick={() => {
-                if (showCreate) {
-                  if (!confirmAndDiscardDraft()) return;
-                  invalidateMutationContext();
-                  setShowCreate(false);
-                } else {
-                  setShowCreate(true);
-                }
-                setActionError("");
-              }}
-            >
-              {showCreate ? "取消新增" : "新增记忆"}
-            </button>
-          </div>
-        )}
+      {isDetail ? (
+        <PageHeader
+          eyebrow="Long-term context"
+          title="Memory"
+          description={settings.page_copy.memory_subtitle ?? ""}
+          action={<button className="secondary-button" disabled={busy} onClick={() => closeMemory()}>返回记忆列表</button>}
+        />
+      ) : isArchivedDetail ? (
+        <PageHeader
+          eyebrow="Long-term context"
+          title="Memory"
+          description={settings.page_copy.memory_subtitle ?? ""}
+          action={<button className="secondary-button" disabled={restoringId.length > 0} onClick={closeArchivedMemory}>返回归档列表</button>}
+        />
+      ) : isArchived ? (
+        <PageHeader
+          eyebrow="Long-term context"
+          title="Memory"
+          description={settings.page_copy.memory_subtitle ?? ""}
+          action={<button className="secondary-button" onClick={closeArchive}>返回记忆列表</button>}
+        />
+      ) : (
+      <MemoryPageHeader
+        count={state.status === "ready" ? state.result.metadata.count : 0}
+        categories={availableCategories.map((value) => ({
+          value,
+          label: categoryLabels[value],
+        }))}
+        tags={availableTags}
+        category={filters.category}
+        tag={filters.tag}
+        searchDraft={searchDraft}
+        busy={busy}
+        onCategoryChange={(value) =>
+          commitFilters({
+            ...filters,
+            q: searchDraft,
+            category: value as MemoryFilterCategory,
+          })
+        }
+        onTagChange={(value) =>
+          commitFilters({
+            ...filters,
+            q: searchDraft,
+            tag: value,
+          })
+        }
+        onSearchChange={updateSearch}
+        onClearFilters={() => commitFilters(EMPTY_MEMORY_FILTERS)}
+        onOpenArchive={() => openArchive()}
+        onCreate={() => {
+          if (showCreate) {
+            if (!confirmAndDiscardDraft()) return;
+            invalidateMutationContext();
+            setShowCreate(false);
+          } else {
+            setShowCreate(true);
+          }
+          setActionError("");
+        }}
       />
+      )}
 
       {actionError && (
         <section className="memory-message">
@@ -1132,70 +1140,7 @@ export function MemoryPageContent({
             </section>
           )}
 
-          <section className="memory-message memory-filters">
-            <h2>搜索与筛选</h2>
 
-            <input
-              aria-label="搜索记忆"
-              type="search"
-              maxLength={200}
-              placeholder="搜索 Key 或内容"
-              value={searchDraft}
-              onChange={(event) =>
-                updateSearch(event.target.value)
-              }
-            />
-
-            <select
-              aria-label="按分类筛选"
-              value={filters.category}
-              onChange={(event) => {
-                commitFilters({
-                  ...filters,
-                  q: searchDraft,
-                  category: event.target
-                    .value as MemoryFilterCategory,
-                });
-              }}
-            >
-              <option value="">全部分类</option>
-              {availableCategories.map((value) => (
-                <option key={value} value={value}>
-                  {categoryLabels[value]}
-                </option>
-              ))}
-            </select>
-
-            <select
-              aria-label="按标签筛选"
-              value={filters.tag}
-              onChange={(event) => {
-                commitFilters({
-                  ...filters,
-                  q: searchDraft,
-                  tag: event.target.value,
-                });
-              }}
-            >
-              <option value="">全部标签</option>
-              {availableTags.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
-
-            {(filters.q || filters.category || filters.tag) && (
-              <button
-                className="secondary-button"
-                onClick={() =>
-                  commitFilters(EMPTY_MEMORY_FILTERS)
-                }
-              >
-                清除筛选
-              </button>
-            )}
-          </section>
 
           {state.status === "ready" && (
             <>

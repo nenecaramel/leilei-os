@@ -753,8 +753,7 @@ test("Memory archived entry uses stable History and browser back restores the ac
   };
   const page = await render("/memory?q=goal", api);
   try {
-    const entry = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "查看归档");
+    const entry = page.container.querySelector("[aria-label=\"查看归档\"]");
     assert.ok(entry);
     await React.act(async () => {
       entry.dispatchEvent(new page.window.MouseEvent("click", {
@@ -837,8 +836,7 @@ test("Memory browser history restores archive list then the exact filtered activ
   };
 
   try {
-    const archiveEntry = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "查看归档");
+    const archiveEntry = page.container.querySelector("[aria-label=\"查看归档\"]");
     assert.ok(archiveEntry);
     await React.act(async () => {
       archiveEntry.dispatchEvent(new page.window.MouseEvent("click", {
@@ -1143,38 +1141,20 @@ test("Memory category filter initializes from URL, requests AND filters, and cle
       return listResponse() as T;
     },
   };
-  const page = await render(
-    "/memory?q=focus&category=goal",
-    api,
-  );
+  const page = await render("/memory?q=focus&category=goal", api);
   try {
-    const search = page.container.querySelector<HTMLInputElement>(
-      "input[aria-label=\"搜索记忆\"]",
-    );
-    const category = page.container.querySelector<HTMLSelectElement>(
-      "select[aria-label=\"按分类筛选\"]",
-    );
+    const search = page.container.querySelector<HTMLInputElement>("input[aria-label=\"搜索记忆\"]");
+    const categoryButton = [...page.container.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "筛选分类");
     assert.equal(search?.value, "focus");
-    assert.equal(category?.value, "goal");
-    assert.deepEqual(
-      [...(category?.options ?? [])].map(({ value }) => value),
-      ["", "goal"],
-      "options come only from the authenticated response metadata",
-    );
-    assert.equal(
-      requests[0]?.path,
-      "/memory?q=focus&category=goal",
-    );
-
-    assert.ok(category);
-    await React.act(async () => {
-      category.value = "";
-      category.dispatchEvent(new page.window.Event("change", {
-        bubbles: true,
-      }));
-      await Promise.resolve();
-    });
-
+    assert.ok(categoryButton);
+    assert.equal(requests[0]?.path, "/memory?q=focus&category=goal");
+    await React.act(async () => { categoryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    const items = [...page.container.querySelectorAll("[role=menuitemradio]")];
+    assert.deepEqual(items.map((item) => item.textContent), ["全部分类", "Goal"]);
+    assert.equal(items.find((item) => item.textContent === "Goal")?.getAttribute("aria-checked"), "true");
+    const clear = items.find((item) => item.textContent === "全部分类");
+    assert.ok(clear);
+    await React.act(async () => { clear.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); await Promise.resolve(); });
     assert.equal(page.window.location.search, "?q=focus");
     assert.equal(requests.at(-1)?.path, "/memory?q=focus");
   } finally {
@@ -1186,54 +1166,33 @@ test("Memory filtered detail return restores q, category, tag, and scroll positi
   const returnTo = "/memory?q=focus&category=goal&tag=MCP";
   const api: WebApiClient = {
     async request<T>(path: string) {
-      if (path === "/memory/memory-1") {
-        return { success: true, data: memory } as T;
-      }
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
       return listResponse() as T;
     },
   };
-  const page = await render(
-    createMemoryDetailLocation("memory-1", returnTo),
-    api,
-  );
+  const page = await render(createMemoryDetailLocation("memory-1", returnTo), api);
   const scrolls: number[] = [];
   page.window.scrollTo = (options?: ScrollToOptions | number) => {
     if (typeof options === "object") scrolls.push(options.top ?? 0);
   };
   saveMemoryScrollPosition(page.window.sessionStorage, returnTo, 420);
   try {
-    const back = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "返回记忆列表");
+    const back = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "返回记忆列表");
     assert.ok(back);
     await React.act(async () => {
-      back.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
+      back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
       await new Promise((resolve) => page.window.setTimeout(resolve, 5));
     });
-
-    assert.equal(
-      `${page.window.location.pathname}${page.window.location.search}`,
-      returnTo,
-    );
-    assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"搜索记忆\"]",
-      )?.value,
-      "focus",
-    );
-    assert.equal(
-      page.container.querySelector<HTMLSelectElement>(
-        "select[aria-label=\"按分类筛选\"]",
-      )?.value,
-      "goal",
-    );
-    assert.equal(
-      page.container.querySelector<HTMLSelectElement>(
-        "select[aria-label=\"按标签筛选\"]",
-      )?.value,
-      "MCP",
-    );
+    assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
+    const search = page.container.querySelector("input[aria-label=\"搜索记忆\"]") as any;
+    assert.equal(search?.value, "focus");
+    const categoryButton = [...page.container.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "筛选分类");
+    const tagButton = [...page.container.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "筛选标签");
+    assert.ok(categoryButton && tagButton);
+    await React.act(async () => { categoryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    assert.equal([...page.container.querySelectorAll("[role=menuitemradio]")].find((item) => item.textContent === "Goal")?.getAttribute("aria-checked"), "true");
+    await React.act(async () => { tagButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    assert.equal([...page.container.querySelectorAll("[role=menuitemradio]")].find((item) => item.textContent === "#MCP")?.getAttribute("aria-checked"), "true");
     assert.ok(scrolls.includes(420));
   } finally {
     await page.cleanup();
@@ -1248,39 +1207,21 @@ test("Memory exact tag filter restores from URL and clearing it preserves q and 
       return listResponse() as T;
     },
   };
-  const page = await render(
-    "/memory?q=focus&category=goal&tag=MCP",
-    api,
-  );
+  const page = await render("/memory?q=focus&category=goal&tag=MCP", api);
   try {
-    const tag = page.container.querySelector<HTMLSelectElement>(
-      "select[aria-label=\"按标签筛选\"]",
-    );
-    assert.equal(tag?.value, "MCP");
-    assert.equal(
-      requests[0]?.path,
-      "/memory?q=focus&category=goal&tag=MCP",
-    );
+    assert.equal(requests[0]?.path, "/memory?q=focus&category=goal&tag=MCP");
     assert.match(page.container.textContent ?? "", /#MCP/);
     assert.match(page.container.textContent ?? "", /#focus/);
-
-    assert.ok(tag);
-    await React.act(async () => {
-      tag.value = "";
-      tag.dispatchEvent(new page.window.Event("change", {
-        bubbles: true,
-      }));
-      await Promise.resolve();
-    });
-
-    assert.equal(
-      page.window.location.search,
-      "?q=focus&category=goal",
-    );
-    assert.equal(
-      requests.at(-1)?.path,
-      "/memory?q=focus&category=goal",
-    );
+    const tagButton = [...page.container.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "筛选标签");
+    assert.ok(tagButton);
+    await React.act(async () => { tagButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    const items = [...page.container.querySelectorAll("[role=menuitemradio]")];
+    assert.equal(items.find((item) => item.textContent === "#MCP")?.getAttribute("aria-checked"), "true");
+    const clear = items.find((item) => item.textContent === "全部标签");
+    assert.ok(clear);
+    await React.act(async () => { clear.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); await Promise.resolve(); });
+    assert.equal(page.window.location.search, "?q=focus&category=goal");
+    assert.equal(requests.at(-1)?.path, "/memory?q=focus&category=goal");
   } finally {
     await page.cleanup();
   }
@@ -1367,7 +1308,7 @@ test("Memory dirty create confirmation, retry gate, and stale completion are saf
     const findButton = (label: string) => [...page.container.querySelectorAll("button")]
       .find((button) => button.textContent === label);
     await React.act(async () => {
-      findButton("新增记忆")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      page.container.querySelector('[aria-label="新增记忆"]')?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     const key = page.container.querySelector<HTMLInputElement>('input[placeholder="Key"]');
     const content = page.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Content"]');
@@ -1391,7 +1332,7 @@ test("Memory dirty create confirmation, retry gate, and stale completion are saf
       return false;
     };
     await React.act(async () => {
-      findButton("取消新增")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      page.container.querySelector('[aria-label="新增记忆"]')?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(page.window.location.pathname + page.window.location.search, "/memory?q=goal");
     assert.equal(key.value, "draft_key");
@@ -1464,4 +1405,19 @@ test("Memory active list uses the compact five-tool header", async () => {
   assert.equal(result.title, "Memory");
   assert.match(result.count, /1条记忆/);
   assert.deepEqual(result.labels, ["筛选分类", "筛选标签", "搜索记忆", "查看归档", "新增记忆"]);
+});
+
+test("Memory header opens category menu and expandable search", async () => {
+  const page = await render("/memory", { async request() { return listResponse() as any; } });
+  const category = page.container.querySelector<HTMLButtonElement>("[aria-label=\"筛选分类\"]");
+  const search = page.container.querySelector<HTMLButtonElement>("[aria-label=\"搜索记忆\"]");
+  assert.ok(category);
+  assert.ok(search);
+  await React.act(async () => { category.click(); });
+  const hasCategoryMenu = Boolean(page.container.querySelector("[role=\"menu\"][aria-label=\"Memory 分类\"]"));
+  await React.act(async () => { search.click(); });
+  const hasSearchInput = Boolean(page.container.querySelector("input[aria-label=\"搜索记忆\"]"));
+  await page.cleanup();
+  assert.equal(hasCategoryMenu, true);
+  assert.equal(hasSearchInput, true);
 });
