@@ -37,7 +37,6 @@ const api: WebApiClient = {
 async function renderMemory() {
   const dom = new JSDOM('<main id="root"></main>', {
     url: "https://leilei-os.test/memory",
-    pretendToBeVisual: true,
   });
   const prior = new Map<PropertyKey, PropertyDescriptor | undefined>();
   const install = (name: PropertyKey, value: unknown) => {
@@ -64,14 +63,18 @@ async function renderMemory() {
   install("React", React);
   install("IS_REACT_ACT_ENVIRONMENT", true);
 
-  Object.defineProperty(dom.window.HTMLElement.prototype, "attachEvent", {
-    configurable: true,
-    value() {},
-  });
-  Object.defineProperty(dom.window.HTMLElement.prototype, "detachEvent", {
-    configurable: true,
-    value() {},
-  });
+  (dom.window.HTMLElement.prototype as unknown as {
+    attachEvent(name: string, listener: EventListener): void;
+    detachEvent(name: string, listener: EventListener): void;
+  }).attachEvent = function (name, listener) {
+    this.addEventListener(name.replace(/^on/, ""), listener);
+  };
+  (dom.window.HTMLElement.prototype as unknown as {
+    detachEvent(name: string, listener: EventListener): void;
+  }).detachEvent = function (name, listener) {
+    this.removeEventListener(name.replace(/^on/, ""), listener);
+  };
+
   dom.window.scrollTo = () => {};
   dom.window.requestAnimationFrame = (callback) =>
     dom.window.setTimeout(() => callback(Date.now()), 0);
@@ -82,7 +85,6 @@ async function renderMemory() {
   const root = createRoot(container);
   await React.act(async () => {
     root.render(React.createElement(MemoryPageContent, { api, settings: DEFAULT_SETTINGS }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   return {
