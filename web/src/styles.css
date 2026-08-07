@@ -1774,7 +1774,7 @@ body:has(.home-prototype) {
   font-synthesis: none;
 }
 
-body:has(.home-prototype) .mobile-top-bar {
+.mobile-top-bar {
   min-height: calc(44px + env(safe-area-inset-top, 0px));
   height: calc(44px + env(safe-area-inset-top, 0px));
   padding: env(safe-area-inset-top, 0px) 16px 0;
@@ -1784,7 +1784,7 @@ body:has(.home-prototype) .mobile-top-bar {
   backdrop-filter: none;
 }
 
-body:has(.home-prototype) .mobile-top-bar-title {
+.mobile-top-bar-title {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 8px);
   left: 50%;
@@ -1798,8 +1798,8 @@ body:has(.home-prototype) .mobile-top-bar-title {
   white-space: nowrap;
 }
 
-body:has(.home-prototype) .mobile-menu-button,
-body:has(.home-prototype) .mobile-search-link {
+.mobile-menu-button,
+.mobile-search-link {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 0px);
   width: 44px;
@@ -1810,20 +1810,20 @@ body:has(.home-prototype) .mobile-search-link {
   color: #171717;
 }
 
-body:has(.home-prototype) .mobile-menu-button {
+.mobile-menu-button {
   left: 18px;
 }
 
-body:has(.home-prototype) .mobile-search-link {
+.mobile-search-link {
   right: 18px;
 }
 
-body:has(.home-prototype) .mobile-menu-button:hover,
-body:has(.home-prototype) .mobile-search-link:hover {
+.mobile-menu-button:hover,
+.mobile-search-link:hover {
   background: rgba(0, 0, 0, 0.035);
 }
 
-body:has(.home-prototype) .mobile-menu-button {
+.mobile-menu-button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1832,18 +1832,18 @@ body:has(.home-prototype) .mobile-menu-button {
   padding: 0;
 }
 
-body:has(.home-prototype) .mobile-menu-icon {
+.mobile-menu-icon {
   width: 22px;
   height: 12.5px;
 }
 
-body:has(.home-prototype) .mobile-menu-line {
+.mobile-menu-line {
   width: 22px;
   height: 1.5px;
   background: #171717;
 }
 
-body:has(.home-prototype) .mobile-search-link svg {
+.mobile-search-link svg {
   width: 25px;
   height: 25px;
   stroke-width: 1.8;

@@ -216,31 +216,15 @@ test("Home saves an edited L paper, updates only L preview, and restores trigger
   env.restore();
 });
 
-test("Home mobile top bar moves controls upward and inward without moving Home content", () => {
-  assert.match(
-    stylesSource,
-    /body:has\(\.home-prototype\) \.mobile-top-bar\s*\{[\s\S]*?min-height:\s*calc\(44px \+ env\(safe-area-inset-top,\s*0px\)\)[\s\S]*?height:\s*calc\(44px \+ env\(safe-area-inset-top,\s*0px\)\)/,
-  );
-  assert.match(
-    stylesSource,
-    /body:has\(\.home-prototype\) \.mobile-top-bar-title[\s\S]*?top:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 8px\)/,
-  );
-  assert.match(
-    stylesSource,
-    /body:has\(\.home-prototype\) \.mobile-menu-button,[\s\S]*?body:has\(\.home-prototype\) \.mobile-search-link[\s\S]*?top:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 0px\)/,
-  );
-  assert.match(
-    stylesSource,
-    /body:has\(\.home-prototype\) \.mobile-menu-button\s*\{[\s\S]*?left:\s*18px/,
-  );
-  assert.match(
-    stylesSource,
-    /body:has\(\.home-prototype\) \.mobile-search-link\s*\{[\s\S]*?right:\s*18px/,
-  );
-  assert.match(
-    stylesSource,
-    /\.home-prototype\s*\{[\s\S]*?padding:\s*18px 0/,
-  );
+test("mobile top bar uses the approved Home geometry globally", () => {
+  assert.match(stylesSource, /\.mobile-top-bar\s*\{[\s\S]*?min-height:\s*calc\(44px \+ env\(safe-area-inset-top,\s*0px\)\)[\s\S]*?height:\s*calc\(44px \+ env\(safe-area-inset-top,\s*0px\)\)[\s\S]*?border-bottom:\s*0[\s\S]*?background:\s*#ffffff[\s\S]*?backdrop-filter:\s*none/);
+  assert.match(stylesSource, /\.mobile-top-bar-title\s*\{[\s\S]*?top:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 8px\)[\s\S]*?font-family:\s*-apple-system[\s\S]*?font-size:\s*20px/);
+  assert.match(stylesSource, /\.mobile-menu-button,\s*\.mobile-search-link\s*\{[\s\S]*?top:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 0px\)[\s\S]*?width:\s*44px[\s\S]*?height:\s*44px/);
+  assert.match(stylesSource, /\.mobile-menu-button\s*\{[\s\S]*?left:\s*18px/);
+  assert.match(stylesSource, /\.mobile-search-link\s*\{[\s\S]*?right:\s*18px/);
+  assert.match(stylesSource, /\.mobile-menu-icon\s*\{[\s\S]*?width:\s*22px/);
+  assert.match(stylesSource, /\.mobile-search-link svg\s*\{[\s\S]*?width:\s*25px[\s\S]*?height:\s*25px[\s\S]*?stroke-width:\s*1\.8/);
+  assert.doesNotMatch(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar/);
 });
 
 test("Home and mobile shell CSS keep the prototype compact and safe", () => {
@@ -303,7 +287,7 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   assert.match(stylesSource, /\.home-page-title\s*\{[^}]*font-weight:\s*500/);
   assert.match(
     stylesSource,
-    /body:has\(\.home-prototype\) \.mobile-top-bar-title\s*\{[^}]*font-weight:\s*500/,
+    /\.mobile-top-bar-title\s*\{[^}]*font-weight:\s*500/,
   );
   assert.match(
     stylesSource,
@@ -363,10 +347,9 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
     stylesSource,
     /\.today-panel\s*\{[^}]*height:\s*104px[^}]*min-height:\s*104px/,
   );
-  assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar-title[\s\S]*?left:\s*50%[\s\S]*?transform:\s*translateX\(-50%\)/);
+  assert.match(stylesSource, /\.mobile-top-bar-title[\s\S]*?left:\s*50%[\s\S]*?transform:\s*translateX\(-50%\)/);
   assert.match(stylesSource, /min-width:\s*44px/);
   assert.match(stylesSource, /:focus-visible/);
-  assert.match(stylesSource, /body:has\(\.home-prototype\) \.mobile-top-bar/);
   assert.match(stylesSource, /html:has\(\.home-prototype\)[\s\S]*?#root:has\(\.home-prototype\)/);
   assert.doesNotMatch(stylesSource, /\.home-prototype[\s\S]*?hero-panel|\.home-prototype[\s\S]*?orbit/);
   assert.doesNotMatch(homeV2Styles, /background(?:-image)?:\s*(?:radial-gradient|linear-gradient|color-mix)/);
