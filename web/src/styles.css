@@ -2269,6 +2269,38 @@ body:has(.home-prototype) {
   letter-spacing: 0.04em;
 }
 
+.paper-detail-top-right,
+.paper-detail-bottom-left {
+  position: absolute;
+  z-index: 2;
+  color: #6d6d6d;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.paper-detail-top-right {
+  top: 13px;
+  right: 24px;
+}
+
+.paper-detail-bottom-left {
+  left: 24px;
+  bottom: 14px;
+  max-width: calc(100% - 92px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paper-detail-top-right button {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
 .paper-detail-signature {
   right: 24px;
   bottom: 11px;
