@@ -40,6 +40,11 @@ export function PaperDetailDialog({
 }: PaperDetailDialogProps) {
   const paperRef = useRef<HTMLElement | null>(null);
   const closingRef = useRef(false);
+  const onRequestCloseRef = useRef(onRequestClose);
+
+  useEffect(() => {
+    onRequestCloseRef.current = onRequestClose;
+  }, [onRequestClose]);
 
   const requestClose = useCallback(async () => {
     if (closingRef.current) return;
@@ -47,12 +52,12 @@ export function PaperDetailDialog({
     closingRef.current = true;
 
     try {
-      const mayClose = await onRequestClose();
+      const mayClose = await onRequestCloseRef.current();
       if (!mayClose) closingRef.current = false;
     } catch {
       closingRef.current = false;
     }
-  }, [onRequestClose]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -62,10 +67,7 @@ export function PaperDetailDialog({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const focusTarget =
-      paperRef.current?.querySelector<HTMLElement>("[data-paper-autofocus]") ??
-      paperRef.current;
-    focusTarget?.focus();
+    paperRef.current?.focus();
 
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;

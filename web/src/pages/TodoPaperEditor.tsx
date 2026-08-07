@@ -7,6 +7,7 @@ import React, {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 
 import type { HomeAuthor, HomeNote, HomeNoteKind } from "./home-prototype-data";
@@ -19,7 +20,6 @@ type EditableTodoRow = HomeNote & { creation?: boolean };
 
 export type TodoPaperEditorHandle = {
   getNormalizedEntries(): HomeNote[];
-  focusFirstRow(): void;
 };
 
 export type TodoPaperEditorProps = {
@@ -40,6 +40,29 @@ const STATUS_LABEL: Record<HomeNoteKind, string> = {
   record: "记录",
 };
 
+const PAPER_LINE_COUNT = 24;
+
+function getCaretOffsetFromPoint(
+  document: Document,
+  clientX: number,
+  clientY: number,
+  fallback: number,
+): number {
+  const caretDocument = document as Document & {
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+
+  const position = caretDocument.caretPositionFromPoint?.(clientX, clientY);
+  if (position) return position.offset;
+
+  const range = caretDocument.caretRangeFromPoint?.(clientX, clientY);
+  return range?.startOffset ?? fallback;
+}
+
 function createCreationRow(author: HomeAuthor): EditableTodoRow {
   return {
     id: createTodoPaperEntryId(author),
@@ -54,10 +77,13 @@ function createInitialRows(
   author: HomeAuthor,
   entries: readonly HomeNote[],
 ): EditableTodoRow[] {
-  return [
-    ...entries.map((entry) => ({ ...entry })),
-    createCreationRow(author),
-  ];
+  const rows: EditableTodoRow[] = entries.map((entry) => ({ ...entry }));
+
+  while (rows.length < PAPER_LINE_COUNT) {
+    rows.push(createCreationRow(author));
+  }
+
+  return rows;
 }
 
 function normalizeRows(rows: readonly EditableTodoRow[]): HomeNote[] {
@@ -86,6 +112,29 @@ export const TodoPaperEditor = forwardRef<
     createInitialRows(author, initialEntries),
   );
   const textareaRefs = useRef(new Map<string, HTMLTextAreaElement>());
+  const pendingCaretRef = useRef<{ rowId: string; offset: number } | null>(null);
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activeRowId) return;
+
+    const handlePointerAway = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+
+      const activeTextarea = textareaRefs.current.get(activeRowId);
+      const activeRow = activeTextarea?.closest(".todo-paper-row");
+
+      if (activeRow?.contains(target)) return;
+      setActiveRowId(null);
+    };
+
+    document.addEventListener("mousedown", handlePointerAway);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerAway);
+    };
+  }, [activeRowId]);
 
   useEffect(() => {
     setRows(createInitialRows(author, initialEntries));
@@ -108,10 +157,6 @@ export const TodoPaperEditor = forwardRef<
     ref,
     () => ({
       getNormalizedEntries: () => normalizeRows(rows),
-      focusFirstRow: () => {
-        const first = rows[0];
-        if (first) textareaRefs.current.get(first.id)?.focus();
-      },
     }),
     [rows],
   );
@@ -131,42 +176,16 @@ export const TodoPaperEditor = forwardRef<
           : undefined,
       };
 
-      if (target.creation && text.trim().length > 0) {
-        next.push(createCreationRow(author));
-      }
-
       return next;
     });
   };
 
-  const insertRowAfter = (index: number) => {
-    const row: EditableTodoRow = {
-      id: createTodoPaperEntryId(author),
-      author,
-      kind: "pending",
-      text: "",
-    };
-
-    setRows((current) => {
-      const next = [...current];
-      next.splice(index + 1, 0, row);
-      return next;
-    });
-    focusRow(row.id);
-  };
-
-  const removeEmptyRow = (index: number) => {
+  const activateRowAt = (index: number) => {
     const target = rows[index];
-    if (!target || target.creation || target.text.trim().length > 0) {
-      return;
-    }
+    if (!target) return;
 
-    const previous = rows[index - 1] ?? rows[index + 1];
-    previous && textareaRefs.current.get(previous.id)?.focus();
-
-    setRows((current) =>
-      current.filter((row) => row.id !== target.id),
-    );
+    setActiveRowId(target.id);
+    focusRow(target.id);
   };
 
   const cycleStatus = (id: string) => {
@@ -195,19 +214,17 @@ export const TodoPaperEditor = forwardRef<
   ) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      insertRowAfter(index);
+      activateRowAt(index + 1);
       return;
     }
 
     if (
       event.key === "Backspace" &&
-      event.currentTarget.value.trim().length === 0
+      event.currentTarget.value.trim().length === 0 &&
+      index > 0
     ) {
-      const row = rows[index];
-      if (!row?.creation) {
-        event.preventDefault();
-        removeEmptyRow(index);
-      }
+      event.preventDefault();
+      activateRowAt(index - 1);
     }
   };
 
@@ -229,18 +246,68 @@ export const TodoPaperEditor = forwardRef<
             <span aria-hidden="true" />
           </button>
 
-          <textarea
-            ref={(node) => {
-              if (node) textareaRefs.current.set(row.id, node);
-              else textareaRefs.current.delete(row.id);
-            }}
-            rows={1}
-            value={row.text}
-            aria-label={`Todo 第 ${index + 1} 行`}
-            data-paper-autofocus={index === 0 ? "true" : undefined}
-            onInput={(event) => handleInput(row.id, event)}
-            onKeyDown={(event) => handleKeyDown(index, event)}
-          />
+          {activeRowId === row.id ? (
+            <textarea
+              ref={(node) => {
+                if (!node) {
+                  textareaRefs.current.delete(row.id);
+                  return;
+                }
+
+                textareaRefs.current.set(row.id, node);
+
+                const pending = pendingCaretRef.current;
+                if (pending?.rowId === row.id) {
+                  pendingCaretRef.current = null;
+
+                  requestAnimationFrame(() => {
+                    const offset = Math.max(
+                      0,
+                      Math.min(pending.offset, node.value.length),
+                    );
+                    node.focus();
+                    node.setSelectionRange(offset, offset);
+                  });
+                }
+              }}
+              rows={1}
+              value={row.text}
+              aria-label={`Todo 第 ${index + 1} 行`}
+              onInput={(event) => handleInput(row.id, event)}
+              onKeyDown={(event) => handleKeyDown(index, event)}
+              onBlur={() => {
+                setActiveRowId((current) =>
+                  current === row.id ? null : current
+                );
+              }}
+            />
+          ) : (
+            <button
+              className="todo-paper-line-view"
+              type="button"
+              aria-label={`编辑 Todo 第 ${index + 1} 行`}
+              onClick={(event: ReactMouseEvent<HTMLButtonElement>) => {
+                pendingCaretRef.current = {
+                  rowId: row.id,
+                  offset: Math.max(
+                    0,
+                    Math.min(
+                      row.text.length,
+                      getCaretOffsetFromPoint(
+                        event.currentTarget.ownerDocument,
+                        event.clientX,
+                        event.clientY,
+                        row.text.length,
+                      ),
+                    ),
+                  ),
+                };
+                setActiveRowId(row.id);
+              }}
+            >
+              {row.text}
+            </button>
+          )}
         </div>
       ))}
     </div>

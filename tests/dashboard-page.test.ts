@@ -98,7 +98,7 @@ test("L and G panels open a modal with their own fixture notes", async () => {
   assert.equal(container.querySelectorAll('[role="dialog"]').length, 1);
   assert.match(container.querySelector('[role="dialog"]')?.textContent ?? "", /L/);
   assert.equal(env.dom.window.document.body.style.overflow, "hidden");
-  const close = container.querySelector<HTMLButtonElement>('[role="dialog"] button');
+  const close = container.querySelector<HTMLButtonElement>(".paper-detail-veil");
   close?.click();
   await waitForPaint();
   assert.equal(container.querySelector('[role="dialog"]'), null);

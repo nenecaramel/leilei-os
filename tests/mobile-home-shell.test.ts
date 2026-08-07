@@ -268,7 +268,10 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   );
   assert.match(stylesSource, /\.mobile-drawer \.nav-item svg,[\s\S]*?display:\s*none/);
   assert.match(stylesSource, /env\(safe-area-inset-top/);
-  assert.match(stylesSource, /\.today-panel-dialog[\s\S]*?max-height:\s*min\(88dvh/);
+  assert.match(
+    stylesSource,
+    /\.paper-detail-paper\s*\{[^}]*height:\s*clamp\(536px,\s*calc\(78dvh - 24px\),\s*696px\)/,
+  );
   assert.match(stylesSource, /\.calendar-grid[\s\S]*?grid-template-columns:\s*repeat\(7,/);
   assert.match(stylesSource, /\.calendar-preview-header[\s\S]*?grid-template-columns:\s*28px 1fr 28px/);
   assert.match(
@@ -319,4 +322,36 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
   assert.match(stylesSource, /html:has\(\.home-prototype\)[\s\S]*?#root:has\(\.home-prototype\)/);
   assert.doesNotMatch(stylesSource, /\.home-prototype[\s\S]*?hero-panel|\.home-prototype[\s\S]*?orbit/);
   assert.doesNotMatch(homeV2Styles, /radial-gradient|linear-gradient|color-mix/);
+});
+
+
+test("Home and Todo editor reuse semantic CSS status marks", () => {
+  assert.match(
+    stylesSource,
+    /\.today-note-mark,\s*\.todo-paper-status\s*\{[^}]*width:\s*22px[^}]*flex:\s*0 0 22px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-note-mark\[data-kind="pending"\] > span,\s*\.todo-paper-status\[data-kind="pending"\] > span\s*\{[^}]*width:\s*14px[^}]*height:\s*14px[^}]*border:\s*1px solid/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-note-mark\[data-kind="completed"\] > span,\s*\.todo-paper-status\[data-kind="completed"\] > span\s*\{[^}]*width:\s*14px[^}]*height:\s*14px[^}]*background:/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-note-mark\[data-kind="completed"\] > span::after,\s*\.todo-paper-status\[data-kind="completed"\] > span::after\s*\{[^}]*border-color:\s*#ffffff[^}]*transform:\s*rotate\(45deg\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.today-note-mark\[data-kind="record"\] > span,\s*\.todo-paper-status\[data-kind="record"\] > span\s*\{[^}]*width:\s*8px[^}]*height:\s*8px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.todo-paper-row\s*\{[^}]*grid-template-columns:\s*22px minmax\(0,\s*1fr\)[^}]*min-height:\s*30px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.todo-paper-row textarea\s*\{[^}]*resize:\s*none[^}]*border:\s*0[^}]*background:\s*transparent[^}]*font:\s*inherit/,
+  );
 });
