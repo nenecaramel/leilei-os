@@ -199,34 +199,21 @@ function hasMemoryListHeading(container: Element): boolean {
     .some((heading) => heading.textContent === "记忆列表");
 }
 
-test("Memory populated list has a separate heading and empty list does not", async () => {
+test("Memory populated list uses read-only month rows and empty list has no months", async () => {
   const populated = await render("/memory", {
     async request<T>() {
       return listResponse() as T;
     },
   });
   try {
-    assert.equal(hasMemoryListHeading(populated.container), true);
-    assert.match(
-      populated.container.textContent ?? "",
-      /共 1 条，按更新时间从新到旧排列。/,
-    );
-    assert.doesNotMatch(
-      populated.container.textContent ?? "",
-      /显示 1 条/,
-    );
-    const cardButtons = [
-      ...populated.container.querySelectorAll(".memory-card button"),
-    ].map((button) => button.textContent);
-    assert.deepEqual(cardButtons, ["查看详情"]);
-    assert.doesNotMatch(
-      populated.container.querySelector(".memory-card")?.textContent ?? "",
-      /编辑|归档/,
-    );
-    assert.equal(
-      populated.container.querySelector(".memory-card textarea"),
-      null,
-    );
+    assert.equal(hasMemoryListHeading(populated.container), false);
+    assert.equal(populated.container.querySelectorAll(".memory-month-section").length, 1);
+    assert.equal(populated.container.querySelector(".memory-month-label")?.textContent, "2026年7月");
+    const rows = [...populated.container.querySelectorAll(".memory-row")];
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.getAttribute("data-memory-id"), "memory-1");
+    assert.doesNotMatch(rows[0]?.textContent ?? "", /查看详情|编辑|归档/);
+    assert.equal(populated.container.querySelector(".memory-row textarea"), null);
   } finally {
     await populated.cleanup();
   }
@@ -238,10 +225,8 @@ test("Memory populated list has a separate heading and empty list does not", asy
   });
   try {
     assert.equal(hasMemoryListHeading(empty.container), false);
-    assert.match(
-      empty.container.textContent ?? "",
-      /没有找到记忆/,
-    );
+    assert.equal(empty.container.querySelector(".memory-month-section"), null);
+    assert.match(empty.container.textContent ?? "", /还没有记忆/);
   } finally {
     await empty.cleanup();
   }
@@ -1016,15 +1001,16 @@ test("Memory list search becomes a refresh-safe returnTo before detail editing",
   };
   const page = await render("/memory?q=goal", api);
   try {
-    assert.match(page.container.textContent ?? "", /网页创建/);
+    assert.doesNotMatch(page.container.textContent ?? "", /网页创建/);
     assert.equal(
       page.container.querySelector(
         "input[aria-label*=\"来源\"], select[aria-label*=\"来源\"]",
       ),
       null,
     );
-    const detail = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "查看详情");
+    const detail = page.container.querySelector(
+      ".memory-row[data-memory-id=\"memory-1\"]",
+    );
     assert.ok(detail);
     await React.act(async () => {
       detail.dispatchEvent(new page.window.MouseEvent("click", {
@@ -1420,4 +1406,54 @@ test("Memory header opens category menu and expandable search", async () => {
   await page.cleanup();
   assert.equal(hasCategoryMenu, true);
   assert.equal(hasSearchInput, true);
+});
+
+test("Memory active list groups rows by month", async () => {
+  const records = [
+    { ...memory, id: "newer-id", key: "newer_key", content: "Newer", tags: ["MCP"], updated_at: "2026-08-20T12:00:00.000Z" },
+    { ...memory, id: "older-id", key: "", content: "\n first visible line\n second", tags: ["focus"], updated_at: "2026-08-10T12:00:00.000Z" },
+    { ...memory, id: "july-id", key: "july_key", content: "July", tags: [], updated_at: "2026-07-15T12:00:00.000Z" },
+  ];
+  const page = await render("/memory", { async request() { return listResponse(records) as any; } });
+  const sections = [...page.container.querySelectorAll(".memory-month-section")];
+  const result = {
+    oldCards: page.container.querySelectorAll(".memory-card").length,
+    hasViewDetail: (page.container.textContent ?? "").includes("查看详情"),
+    labels: [...page.container.querySelectorAll(".memory-month-label")].map((node) => node.textContent),
+    augustIds: sections[0] ? [...sections[0].querySelectorAll(".memory-row")].map((row) => row.getAttribute("data-memory-id")) : [],
+    titles: [...page.container.querySelectorAll(".memory-row-title")].map((node) => node.textContent),
+    metas: [...page.container.querySelectorAll(".memory-row-meta")].map((node) => node.textContent ?? ""),
+  };
+  await page.cleanup();
+  assert.equal(result.oldCards, 0);
+  assert.equal(result.hasViewDetail, false);
+  assert.deepEqual(result.labels, ["2026年8月", "2026年7月"]);
+  assert.deepEqual(result.augustIds, ["newer-id", "older-id"]);
+  assert.ok(result.titles.includes("first visible line"));
+  assert.ok(result.metas.some((text) => text.includes("Goal") && !text.includes("·")));
+});
+
+test("Memory active list uses lightweight loading empty and error states", async () => {
+  const loading = await render("/memory", pendingApi().api);
+  try {
+    assert.equal(loading.container.querySelectorAll(".memory-month-skeleton").length, 2);
+  } finally { await loading.cleanup(); }
+
+  const empty = await render("/memory", { async request<T>() { return listResponse([]) as T; } });
+  try {
+    assert.match(empty.container.textContent ?? "", /还没有记忆/);
+  } finally { await empty.cleanup(); }
+
+  const filtered = await render("/memory?q=missing", { async request<T>() { return listResponse([]) as T; } });
+  try {
+    assert.match(filtered.container.textContent ?? "", /没有匹配的记忆/);
+    assert.ok([...filtered.container.querySelectorAll("button")].some((button) => button.textContent === "清除筛选"));
+  } finally { await filtered.cleanup(); }
+
+  const failing = await render("/memory", { async request() { throw new Error("offline"); } });
+  try {
+    await React.act(async () => { await Promise.resolve(); });
+    assert.match(failing.container.textContent ?? "", /暂时无法读取记忆/);
+    assert.ok([...failing.container.querySelectorAll("button")].some((button) => button.textContent === "重新加载"));
+  } finally { await failing.cleanup(); }
 });

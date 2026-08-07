@@ -8,6 +8,12 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
 import type { SettingsData } from "../settings/types";
 import { MemoryPageHeader } from "./MemoryPageHeader";
+import {
+  formatMemoryRowDate,
+  formatMemoryRowMeta,
+  getMemoryRowTitle,
+  groupMemoriesByMonth,
+} from "./memory-presentation";
 import { PageHeader } from "./PageHeader";
 import { isSearchLocation, navigateWithinApp } from "./app-navigation";
 import { consumeQuickCreateTarget } from "./quick-create";
@@ -941,6 +947,8 @@ export function MemoryPageContent({
       ? state.result.memories
       : [];
 
+  const memoryGroups = groupMemoriesByMonth(visibleMemories);
+
   const detailMemory =
     detailState.status === "ready"
       ? detailState.memory
@@ -1145,54 +1153,61 @@ export function MemoryPageContent({
           {state.status === "ready" && (
             <>
               {visibleMemories.length > 0 ? (
-                <>
-                  <section className="memory-message">
-                    <h2>记忆列表</h2>
-                    <p>
-                      共 {state.result.metadata.count} 条，按更新时间从新到旧排列。
-                    </p>
-                  </section>
-
-                  <section className="memory-grid">
-                  {visibleMemories.map((memory) => {
-                    return (
-                      <article
-                        className="memory-card"
-                        key={memory.id}
-                      >
-                        <MemoryMetadata memory={memory} />
-
-                        <h2>
-                          {memory.key.replaceAll("_", " ")}
-                        </h2>
-                        <MemoryTags tags={memory.tags} />
-                        <p>{memory.content}</p>
-                        <button
-                          className="secondary-button"
-                          disabled={busy}
-                          onClick={() => openMemory(memory.id)}
-                        >
-                          查看详情
-                        </button>
-                      </article>
-                    );
-                  })}
-                  </section>
-                </>
+                <section className="memory-months" aria-label="Memory 列表">
+                  {memoryGroups.map((group) => (
+                    <section className="memory-month-section" key={group.key}>
+                      <h2 className="memory-month-label">{group.label}</h2>
+                      <div className="memory-month-card">
+                        {group.memories.map((memory) => (
+                          <button
+                            key={memory.id}
+                            type="button"
+                            className="memory-row"
+                            data-memory-id={memory.id}
+                            disabled={busy}
+                            onClick={() => openMemory(memory.id)}
+                          >
+                            <span className="memory-row-title">{getMemoryRowTitle(memory)}</span>
+                            <span className="memory-row-meta">
+                              <span>{formatMemoryRowDate(memory.updated_at)}</span>
+                              <span>{formatMemoryRowMeta(memory, categoryLabels[memory.category])}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </section>
               ) : (
-                <MemoryMessage
-                  title="没有找到记忆"
-                  description={
-                    filters.q || filters.category || filters.tag
-                      ? "没有与当前搜索、分类或标签匹配的记忆。"
-                      : "目前还没有可显示的记忆。"
-                  }
-                />
+                <section className="memory-empty-state">
+                  <p>{filters.q || filters.category || filters.tag ? "没有匹配的记忆" : "还没有记忆"}</p>
+                  {(filters.q || filters.category || filters.tag) && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => commitFilters(EMPTY_MEMORY_FILTERS)}
+                    >
+                      清除筛选
+                    </button>
+                  )}
+                </section>
               )}
             </>
           )}
 
-          {state.status === "loading" && <MemoryLoading />}
+          {state.status === "loading" && (
+            <section className="memory-months" aria-label="Memory 加载中">
+              {[0, 1].map((index) => (
+                <div className="memory-month-skeleton" key={index}>
+                  <span className="memory-month-skeleton-label" />
+                  <div className="memory-month-skeleton-card">
+                    <span />
+                    <span />
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
 
           {state.status === "error" && (
             <MemoryMessage
