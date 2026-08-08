@@ -3507,7 +3507,7 @@ body:has(.home-prototype) {
 /* Mobile Memory and Diary final optical polish */
 @media (max-width: 760px) {
   .memory-page-tools > button:nth-last-child(-n + 2) {
-    color: #666666;
+    color: #444444;
   }
 
   .paper-detail-paper[id^="memory-"] .memory-paper-content-editor {
@@ -3518,3 +3518,269 @@ body:has(.home-prototype) {
     font-size: 16px;
   }
 }
+
+/* Metadata edit/read visual parity */
+@media (max-width: 760px) {
+  .memory-paper-metadata,
+  .diary-paper-metadata {
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .memory-paper-tags,
+  .diary-paper-mood,
+  .diary-paper-tags {
+    font-size: 16px;
+    line-height: 25px;
+    height: 25px;
+    min-height: 25px;
+    zoom: 1;
+  }
+}
+
+/* leilei-final-mobile-visual-round-2026-08-08:start */
+@media (max-width: 760px) {
+  .paper-detail-paper[id^="memory-"] .memory-paper-content-editor,
+  .paper-detail-paper[id^="diary-"] .diary-paper-content-editor {
+    font-size: 16px !important;
+  }
+
+  .paper-detail-paper[id^="memory-"] .memory-paper-tags,
+  .paper-detail-paper[id^="diary-"] .diary-paper-mood,
+  .paper-detail-paper[id^="diary-"] .diary-paper-tags {
+    font-size: 16px !important;
+    zoom: 1 !important;
+  }
+
+  .paper-detail-paper[id^="memory-"] .memory-paper-control,
+  .paper-detail-paper[id^="diary-"] .native-date-input {
+    font-size: 16px !important;
+  }
+
+  .diary-page-tools
+    > .memory-page-tool-wrap:nth-child(-n + 3)
+    > button,
+  .diary-page-tools
+    > .memory-page-tool-wrap:nth-child(-n + 3)
+    > button:focus,
+  .diary-page-tools
+    > .memory-page-tool-wrap:nth-child(-n + 3)
+    > button:active,
+  .diary-page-tools
+    > .memory-page-tool-wrap:nth-child(-n + 3)
+    > button[aria-expanded="true"] {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .diary-date-popover {
+    width: 244px !important;
+    max-width: calc(100vw - 48px) !important;
+    overflow: hidden;
+  }
+
+  .diary-date-popover .diary-filter-field {
+    grid-template-columns: 58px minmax(0, 1fr) !important;
+    min-width: 0;
+  }
+
+  .diary-date-popover .native-date-field {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    inline-size: 100% !important;
+    min-inline-size: 0 !important;
+    max-inline-size: 100% !important;
+    overflow: hidden;
+  }
+
+  .diary-date-popover .native-date-input {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    inline-size: 100% !important;
+    min-inline-size: 0 !important;
+    max-inline-size: 100% !important;
+    box-sizing: border-box;
+    padding-inline: 6px !important;
+    font-size: 16px !important;
+    text-align: center !important;
+  }
+
+  .diary-date-popover
+    .native-date-input::-webkit-date-and-time-value {
+    width: 100%;
+    min-width: 0;
+    text-align: center !important;
+  }
+
+  .diary-date-popover .native-date-input::-webkit-datetime-edit {
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .diary-text-popover {
+    width: 160px !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 48px) !important;
+  }
+
+  .diary-filter-popover input,
+  .diary-filter-popover .native-date-input {
+    font-size: 16px !important;
+  }
+
+  .memory-page-tools > button:nth-last-child(-n + 2),
+  .diary-page-tools > button:nth-last-child(-n + 2) {
+    color: #444444 !important;
+  }
+
+  .memory-archive-header,
+  .diary-archive-header {
+    padding-right: 12px !important;
+  }
+
+  .paper-detail-top-right {
+    top: 13px !important;
+    height: 20px !important;
+    display: flex;
+    align-items: flex-start;
+    white-space: nowrap;
+  }
+
+  .paper-detail-top-right button {
+    height: 20px !important;
+    min-height: 20px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    line-height: 20px !important;
+  }
+}
+/* leilei-final-mobile-visual-round-2026-08-08:end */
+
+/* leilei-final-mobile-visual-round-v3-2026-08-08:start */
+@media (max-width: 760px) {
+  /*
+   * iOS date input reserves asymmetric native space on the right.
+   * Keep the same popover geometry and shift only the content box.
+   */
+  .diary-date-popover .native-date-input {
+    padding-left: 0 !important;
+    padding-right: 14px !important;
+    text-align: center !important;
+  }
+
+  .diary-date-popover
+    .native-date-input::-webkit-date-and-time-value {
+    width: 100%;
+    text-align: center !important;
+  }
+
+  /*
+   * v2's broad focus-safe memory control selector also reached the
+   * top-right paper action. Restore that action to the same 13px size
+   * Diary already uses.
+   */
+  .paper-detail-paper[id^="memory-"] .paper-detail-top-right,
+  .paper-detail-paper[id^="memory-"] .paper-detail-top-right button,
+  .paper-detail-paper[id^="memory-"]
+    .paper-detail-top-right
+    .memory-paper-control {
+    font-size: 13px !important;
+  }
+
+  /*
+   * Keep a real/computed 16px editor font for Safari focus safety, then
+   * optically return the body to the 14px reading size.
+   * 16 * 0.875 = 14.
+   */
+  .paper-detail-paper[id^="memory-"] .memory-paper-content-editor,
+  .paper-detail-paper[id^="diary-"] .diary-paper-content-editor {
+    font-size: 16px !important;
+    line-height: 34.285714px !important;
+    transform: scale(0.875);
+    transform-origin: top left;
+    width: 114.285714% !important;
+    max-width: 114.285714% !important;
+  }
+
+  /*
+   * Same idea for bottom metadata:
+   * 16 * 0.8125 = 13.
+   */
+  .paper-detail-paper[id^="memory-"] .memory-paper-tags,
+  .paper-detail-paper[id^="diary-"] .diary-paper-mood,
+  .paper-detail-paper[id^="diary-"] .diary-paper-tags {
+    font-size: 16px !important;
+    transform: scale(0.8125);
+    transform-origin: left center;
+  }
+
+  /*
+   * PenIcon's shared SVG baseline is 1.8; reduce only this create glyph,
+   * not the other header icons.
+   */
+  .memory-page-create-icon {
+    stroke-width: 1.65 !important;
+  }
+}
+/* leilei-final-mobile-visual-round-v3-2026-08-08:end */
+
+/* leilei-diary-date-vertical-center-2026-08-08:start */
+@media (max-width: 760px) {
+  .diary-date-popover .native-date-input {
+    height: 34px !important;
+    min-height: 34px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    line-height: 34px !important;
+  }
+
+  .diary-date-popover
+    .native-date-input::-webkit-date-and-time-value {
+    height: 34px !important;
+    min-height: 34px !important;
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    line-height: 34px !important;
+  }
+
+  .diary-date-popover .native-date-input::-webkit-datetime-edit {
+    height: 34px !important;
+    min-height: 34px !important;
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    line-height: 34px !important;
+  }
+}
+/* leilei-diary-date-vertical-center-2026-08-08:end */
+
+/* leilei-diary-date-rounded-surface-2026-08-08:start */
+@media (max-width: 760px) {
+  /*
+   * Safari's native date control can paint its own right-side segment with
+   * a square edge. Let one wrapper own the visible gray surface and clipping
+   * so both ends use the same 7px radius.
+   */
+  .diary-date-popover .native-date-field {
+    border-radius: 7px !important;
+    overflow: hidden !important;
+    background: #f4f4f4 !important;
+  }
+
+  .diary-date-popover .native-date-input {
+    border-radius: 7px !important;
+    background: transparent !important;
+    padding-left: 0 !important;
+    padding-right: 14px !important;
+  }
+
+  .diary-date-popover
+    .native-date-input::-webkit-calendar-picker-indicator {
+    background-color: transparent !important;
+  }
+}
+/* leilei-diary-date-rounded-surface-2026-08-08:end */

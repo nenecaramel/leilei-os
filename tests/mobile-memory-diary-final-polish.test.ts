@@ -37,14 +37,14 @@ test("Memory editable content and tags avoid iOS focus zoom", async () => {
   );
 });
 
-test("Archive and create glyphs are lighter while touch targets stay 44px", async () => {
+test("Archive and create glyphs keep the final darker middle gray while touch targets stay 44px", async () => {
   const css = await readFile(
     new URL("../web/src/styles.css", import.meta.url),
     "utf8",
   );
   assert.match(
     css,
-    /\.memory-page-tools\s*>\s*button:nth-last-child\(-n\s*\+\s*2\)\s*\{[\s\S]*?color:\s*#666666;/,
+    /\.memory-page-tools\s*>\s*button:nth-last-child\(-n\s*\+\s*2\)\s*\{[\s\S]*?color:\s*#444444;/,
   );
   assert.match(
     css,
