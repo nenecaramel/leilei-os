@@ -2713,6 +2713,39 @@ body:has(.home-prototype) {
   }
 }
 
+@media (max-width: 760px) {
+  .memory-paper-title {
+    margin: 0 0 14px;
+    color: #171717;
+    font-size: 17px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+
+  .memory-paper-content {
+    margin: 0;
+    color: #252525;
+    font-size: 14px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+  }
+
+  .memory-paper-form {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .memory-paper-control {
+    padding: 0 4px;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+  }
+}
+
 /* Settings */
 
 .settings-form {

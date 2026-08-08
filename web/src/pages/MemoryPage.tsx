@@ -3,12 +3,15 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
 import type { SettingsData } from "../settings/types";
 import { MemoryPageHeader } from "./MemoryPageHeader";
+import { PaperDetailDialog } from "./PaperDetailDialog";
 import {
+  formatMemoryPaperDate,
   formatMemoryRowDate,
   formatMemoryRowMeta,
   getMemoryRowTitle,
@@ -234,6 +237,7 @@ export function MemoryPageContent({
   const [tags, setTags] = useState("");
   const [creating, setCreating] = useState(false);
   const createKeyInput = useRef<HTMLInputElement | null>(null);
+  const paperTriggerRef = useRef<HTMLElement | null>(null);
   const focusCreateRef = useRef(false);
 
   const [editingId, setEditingId] = useState("");
@@ -1006,7 +1010,8 @@ export function MemoryPageContent({
         onSearchChange={updateSearch}
         onClearFilters={() => commitFilters(EMPTY_MEMORY_FILTERS)}
         onOpenArchive={() => openArchive()}
-        onCreate={() => {
+        onCreate={(trigger) => {
+          paperTriggerRef.current = trigger;
           if (showCreate) {
             if (!confirmAndDiscardDraft()) return;
             invalidateMutationContext();
@@ -1019,7 +1024,7 @@ export function MemoryPageContent({
       />
       )}
 
-      {actionError && (
+      {actionError && !isDetail && !showCreate && (
         <section className="memory-message">
           <h2>操作没有完成</h2>
           <p>{actionError}</p>
@@ -1029,6 +1034,8 @@ export function MemoryPageContent({
       {isDetail ? (
         <MemoryDetail
           state={detailState}
+          triggerRef={paperTriggerRef}
+          errorMessage={actionError || null}
           editing={editingId === detailMemory?.id}
           editingContent={editingContent}
           editingTags={editingTags}
@@ -1062,6 +1069,11 @@ export function MemoryPageContent({
           onArchive={(memory) => {
             void handleArchive(memory.id, memory.key);
           }}
+          onRequestClose={() => {
+            if (!confirmAndDiscardDraft()) return false;
+            closeMemory(true);
+            return true;
+          }}
           onBack={closeMemory}
         />
       ) : isArchivedDetail ? (
@@ -1087,68 +1099,94 @@ export function MemoryPageContent({
       ) : (
         <>
           {showCreate && (
-            <section className="memory-message">
-              <h2>创建记忆</h2>
+            <PaperDetailDialog
+              id="memory-create-paper"
+              open
+              label="创建 Memory"
+              dateLabel={formatMemoryPaperDate(new Date().toISOString())}
+              signature="N"
+              triggerRef={paperTriggerRef}
+              onRequestClose={() => {
+                if (!confirmAndDiscardDraft()) return false;
+                setShowCreate(false);
+                setActionError("");
+                return true;
+              }}
+              topRight={
+                <>
+                  <button
+                    className="memory-paper-control"
+                    disabled={creating}
+                    onClick={() => {
+                      if (!confirmAndDiscardDraft()) return;
+                      setShowCreate(false);
+                      setActionError("");
+                    }}
+                  >
+                    取消
+                  </button>
+                  <span>·</span>
+                  <button
+                    className="memory-paper-control"
+                    disabled={creating || createInvalid}
+                    onClick={handleCreate}
+                  >
+                    {creating ? "保存中…" : "保存"}
+                  </button>
+                </>
+              }
+              bottomLeft={categoryLabels[category]}
+              errorMessage={actionError || null}
+            >
+              <div className="memory-paper-form">
+                <select
+                  value={category}
+                  disabled={creating}
+                  onChange={(event) => {
+                    setCategory(event.target.value as MemoryCategory);
+                    setActionError("");
+                  }}
+                >
+                  <option value="profile">Profile</option>
+                  <option value="preference">Preference</option>
+                  <option value="goal">Goal</option>
+                  <option value="project">Project</option>
+                </select>
 
-              <select
-                value={category}
-                disabled={creating}
-                onChange={(event) => {
-                  setCategory(
-                    event.target.value as MemoryCategory,
-                  );
-                  setActionError("");
-                }}
-              >
-                <option value="profile">Profile</option>
-                <option value="preference">Preference</option>
-                <option value="goal">Goal</option>
-                <option value="project">Project</option>
-              </select>
+                <input
+                  placeholder="Key"
+                  ref={createKeyInput}
+                  value={key}
+                  disabled={creating}
+                  onChange={(event) => {
+                    setKey(event.target.value);
+                    setActionError("");
+                  }}
+                />
 
-              <input
-                placeholder="Key"
-                ref={createKeyInput}
-                value={key}
-                disabled={creating}
-                onChange={(event) => {
-                  setKey(event.target.value);
-                  setActionError("");
-                }}
-              />
+                <textarea
+                  placeholder="Content"
+                  value={content}
+                  disabled={creating}
+                  onChange={(event) => {
+                    setContent(event.target.value);
+                    setActionError("");
+                  }}
+                />
 
-              <textarea
-                placeholder="Content"
-                value={content}
-                disabled={creating}
-                onChange={(event) => {
-                  setContent(event.target.value);
-                  setActionError("");
-                }}
-              />
-
-              <input
-                aria-label="记忆标签"
-                placeholder="标签，用逗号分隔（可选）"
-                value={tags}
-                disabled={creating}
-                onChange={(event) => {
-                  setTags(event.target.value);
-                  setActionError("");
-                }}
-              />
-
-              <button
-                className="secondary-button"
-                disabled={creating || createInvalid}
-                onClick={handleCreate}
-              >
-                {creating ? "保存中…" : "保存"}
-              </button>
-            </section>
+                <input
+                  aria-label="记忆标签"
+                  placeholder="标签，用逗号分隔（可选）"
+                  value={tags}
+                  disabled={creating}
+                  onChange={(event) => {
+                    setTags(event.target.value);
+                    setActionError("");
+                  }}
+                />
+              </div>
+            </PaperDetailDialog>
           )}
-
-
 
           {state.status === "ready" && (
             <>
@@ -1374,6 +1412,8 @@ function ArchivedMemoryDetail({
 
 function MemoryDetail({
   state,
+  triggerRef,
+  errorMessage,
   editing,
   editingContent,
   editingTags,
@@ -1385,9 +1425,12 @@ function MemoryDetail({
   onCancel,
   onSave,
   onArchive,
+  onRequestClose,
   onBack,
 }: {
   state: DetailState;
+  triggerRef: RefObject<HTMLElement | null>;
+  errorMessage: string | null;
   editing: boolean;
   editingContent: string;
   editingTags: string;
@@ -1399,6 +1442,7 @@ function MemoryDetail({
   onCancel(): void;
   onSave(): void;
   onArchive(memory: MemoryRecord): void;
+  onRequestClose(): boolean;
   onBack(): void;
 }) {
   if (state.status === "loading") {
@@ -1425,6 +1469,51 @@ function MemoryDetail({
   }
 
   const memory = state.memory;
+  return (
+    <PaperDetailDialog
+      id={`memory-paper-${memory.id}`}
+      open
+      label={`Memory ${getMemoryRowTitle(memory)}`}
+      dateLabel={formatMemoryPaperDate(memory.updated_at)}
+      signature="N"
+      triggerRef={triggerRef}
+      errorMessage={errorMessage}
+      onRequestClose={onRequestClose}
+      topRight={
+        editing ? (
+          <>
+            <button className="memory-paper-control" disabled={updating} onClick={onCancel}>取消</button>
+            <span>·</span>
+            <button className="memory-paper-control" disabled={updating || !editingContent.trim()} onClick={onSave}>
+              {updating ? "保存中…" : "保存"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="memory-paper-control" disabled={archiving} onClick={() => onArchive(memory)}>
+              {archiving ? "归档中…" : "归档"}
+            </button>
+            <span>·</span>
+            <button className="memory-paper-control" disabled={archiving} onClick={() => onEdit(memory)}>编辑</button>
+          </>
+        )
+      }
+      bottomLeft={formatMemoryRowMeta(memory, categoryLabels[memory.category])}
+    >
+      {editing ? (
+        <div className="memory-paper-form">
+          <textarea aria-label="编辑记忆内容" value={editingContent} disabled={updating} onChange={(event) => onEditingContentChange(event.target.value)} />
+          <input aria-label="编辑记忆标签" value={editingTags} disabled={updating} onChange={(event) => onEditingTagsChange(event.target.value)} />
+        </div>
+      ) : (
+        <>
+          {memory.key.trim() ? <h2 className="memory-paper-title">{memory.key}</h2> : null}
+          <p className="memory-paper-content">{memory.content}</p>
+        </>
+      )}
+    </PaperDetailDialog>
+  );
+
   return (
     <section className="memory-message memory-detail">
       <MemoryMetadata memory={memory} />

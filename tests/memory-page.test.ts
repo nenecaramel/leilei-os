@@ -264,12 +264,8 @@ test("Memory active detail uses archive wording and calls the existing endpoint 
       .filter((button) => button.textContent === "返回记忆列表");
     assert.ok(edit);
     assert.ok(archive);
-    assert.equal(returns.length, 2);
-    assert.deepEqual(
-      [...page.container.querySelectorAll(".memory-detail > button")]
-        .map((button) => button.textContent),
-      ["编辑", "归档", "返回记忆列表"],
-    );
+    assert.equal(returns.length, 1);
+    assert.equal(page.container.querySelector(".memory-detail"), null);
     assert.doesNotMatch(page.container.textContent ?? "", /删除/);
 
     await React.act(async () => {
@@ -976,9 +972,7 @@ test("Memory detail success and failure never flash the list", async () => {
     const page = await render("/memory?memory=memory-1", api);
     try {
       assert.match(page.container.textContent ?? "", expected);
-      if (sourceVisible) {
-        assert.match(page.container.textContent ?? "", /网页创建/);
-      }
+      assert.doesNotMatch(page.container.textContent ?? "", /网页创建/);
       assertNoList(page.container);
       assert.doesNotMatch(page.container.textContent ?? "", /private failure/);
     } finally {
@@ -1245,7 +1239,7 @@ test("Memory detail edit loads and submits existing tags", async () => {
     );
     assert.equal(tags?.value, "MCP, focus");
     const save = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "保存修改");
+      .find((button) => button.textContent === "保存");
     assert.ok(save);
     await React.act(async () => {
       save.dispatchEvent(new page.window.MouseEvent("click", {
@@ -1456,4 +1450,168 @@ test("Memory active list uses lightweight loading empty and error states", async
     assert.match(failing.container.textContent ?? "", /暂时无法读取记忆/);
     assert.ok([...failing.container.querySelectorAll("button")].some((button) => button.textContent === "重新加载"));
   } finally { await failing.cleanup(); }
+});
+
+test("Memory active detail renders in the shared paper shell", async () => {
+  const page = await render(createMemoryDetailLocation("memory-1", "/memory"), {
+    async request<T>(path: string) {
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
+      throw new Error(`unexpected request: ${path}`);
+    },
+  });
+  try {
+    const dialog = page.container.querySelector<HTMLElement>("[role=dialog]");
+    assert.ok(dialog);
+    assert.equal(dialog.classList.contains("paper-detail-paper"), true);
+    assert.equal(dialog.querySelector(".paper-detail-signature")?.textContent, "N");
+    assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /归档.*编辑/);
+    assert.match(dialog.querySelector(".paper-detail-bottom-left")?.textContent ?? "", /Goal/);
+    assert.equal(page.container.querySelector(".memory-detail"), null);
+    assert.equal(dialog.querySelector(".memory-paper-title")?.textContent, "current_goal");
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory active paper edit exposes only content and tags", async () => {
+  const page = await render(createMemoryDetailLocation("memory-1", "/memory"), {
+    async request<T>(path: string) {
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
+      throw new Error(`unexpected request: ${path}`);
+    },
+  });
+  try {
+    const edit = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
+    assert.ok(edit);
+    await React.act(async () => {
+      edit.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    const dialog = page.container.querySelector<HTMLElement>("[role=dialog]");
+    assert.ok(dialog);
+    assert.ok(dialog.querySelector("textarea[aria-label=编辑记忆内容]"));
+    assert.ok(dialog.querySelector("input[aria-label=编辑记忆标签]"));
+    assert.equal(dialog.querySelector("input[aria-label=编辑记忆Key]"), null);
+    assert.equal(dialog.querySelector("select[aria-label=编辑记忆分类]"), null);
+    assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /取消.*保存/);
+    assert.doesNotMatch(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /归档|编辑/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory create opens directly in the shared paper shell", async () => {
+  const page = await render("/memory", {
+    async request<T>() {
+      return listResponse() as T;
+    },
+  });
+  try {
+    const create = page.container.querySelector<HTMLButtonElement>("button[aria-label=新增记忆]");
+    assert.ok(create);
+    await React.act(async () => {
+      create.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    const dialog = page.container.querySelector<HTMLElement>("[role=dialog]");
+    assert.ok(dialog);
+    assert.equal(dialog.querySelector(".paper-detail-signature")?.textContent, "N");
+    assert.ok(dialog.querySelector("input[placeholder=Key]"));
+    assert.ok(dialog.querySelector("textarea[placeholder=Content]"));
+    assert.ok(dialog.querySelector("select"));
+    assert.ok(dialog.querySelector("input[aria-label=记忆标签]"));
+    assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /取消.*保存/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory dirty edit can retry closing after rejecting discard once", async () => {
+  const page = await render(createMemoryDetailLocation("memory-1", "/memory"), {
+    async request<T>(path: string) {
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
+      return listResponse() as T;
+    },
+  });
+  const confirmations: string[] = [];
+  let allowDiscard = false;
+  page.window.confirm = (message) => {
+    confirmations.push(String(message));
+    return allowDiscard;
+  };
+  try {
+    const edit = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
+    assert.ok(edit);
+    await React.act(async () => { edit.click(); });
+
+    const content = page.container.querySelector<HTMLTextAreaElement>("textarea[aria-label=编辑记忆内容]");
+    assert.ok(content);
+    await React.act(async () => {
+      content.focus();
+      Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(content),
+        "value",
+      )?.set?.call(content, "changed content");
+      const change = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(change, "propertyName", { value: "value" });
+      content.dispatchEvent(change);
+    });
+
+    const veil = page.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+    assert.ok(veil);
+    await React.act(async () => { veil.click(); await Promise.resolve(); });
+    assert.ok(page.container.querySelector("[role=dialog]"));
+    assert.equal(confirmations.length, 1);
+
+    allowDiscard = true;
+    await React.act(async () => { veil.click(); await Promise.resolve(); await Promise.resolve(); });
+    assert.equal(confirmations.length, 2);
+    assert.equal(page.container.querySelector("[role=dialog]"), null);
+    assert.equal(`${page.window.location.pathname}${page.window.location.search}`, "/memory");
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory active paper keeps mutation errors inside the paper", async () => {
+  const page = await render(createMemoryDetailLocation("memory-1", "/memory"), {
+    async request<T>(path: string, init?: RequestInit) {
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
+      if (init?.method === "DELETE") throw new Error("archive failed");
+      return listResponse() as T;
+    },
+  });
+  page.window.confirm = () => true;
+  try {
+    const archive = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "归档");
+    assert.ok(archive);
+    await React.act(async () => { archive.click(); await Promise.resolve(); });
+    const dialog = page.container.querySelector<HTMLElement>("[role=dialog]");
+    assert.ok(dialog);
+    assert.match(dialog.querySelector(".paper-detail-error")?.textContent ?? "", /归档记忆失败，请稍后重试/);
+    assert.equal([...page.container.querySelectorAll(".memory-message")].some((node) => node.textContent?.includes("操作没有完成")), false);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory create paper restores focus to the pen trigger when closed", async () => {
+  const page = await render("/memory", {
+    async request<T>() {
+      return listResponse() as T;
+    },
+  });
+  try {
+    const create = page.container.querySelector<HTMLButtonElement>("button[aria-label=新增记忆]");
+    assert.ok(create);
+    await React.act(async () => { create.click(); });
+    assert.ok(page.container.querySelector("[role=dialog]"));
+
+    const cancel = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "取消");
+    assert.ok(cancel);
+    await React.act(async () => { cancel.click(); await Promise.resolve(); });
+
+    assert.equal(page.container.querySelector("[role=dialog]"), null);
+    assert.equal(page.window.document.activeElement, create);
+  } finally {
+    await page.cleanup();
+  }
 });
