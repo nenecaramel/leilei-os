@@ -33,7 +33,6 @@ export function MemoryPageHeader({
   onCategoryChange,
   onTagChange,
   onSearchChange,
-  onClearFilters,
   onOpenArchive,
   onCreate,
 }: MemoryPageHeaderProps) {
@@ -67,7 +66,7 @@ export function MemoryPageHeader({
             disabled={busy}
             onClick={() => setOpenMenu((value) => value === "category" ? null : "category")}
           >
-            <DashboardIcon />
+            <DashboardIcon className="memory-page-category-icon" />
           </button>
           {openMenu === "category" ? (
             <div className="memory-page-popover" role="menu" aria-label="Memory 分类">
@@ -108,7 +107,7 @@ export function MemoryPageHeader({
             disabled={busy}
             onClick={() => setOpenMenu((value) => value === "tag" ? null : "tag")}
           >
-            <span aria-hidden="true">#</span>
+            <span className="memory-page-tag-icon" aria-hidden="true">#</span>
           </button>
           {openMenu === "tag" ? (
             <div className="memory-page-popover" role="menu" aria-label="Memory 标签">
@@ -175,18 +174,14 @@ export function MemoryPageHeader({
         <div className="memory-page-search">
           <SearchIcon />
           <input
-            type="search"
+            type="text"
             aria-label="搜索记忆"
             maxLength={200}
             placeholder="搜索 Key 或内容"
             value={searchDraft}
             onChange={(event) => onSearchChange(event.target.value)}
           />
-          {searchDraft || category || tag ? (
-            <button type="button" aria-label="清除筛选" onClick={onClearFilters}>
-              ×
-            </button>
-          ) : null}
+
         </div>
       ) : null}
     </header>

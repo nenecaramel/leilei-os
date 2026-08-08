@@ -34,22 +34,16 @@ test("Memory month list keeps the mobile Home-style card contract", () => {
 });
 
 
-test("Memory archive header stays compact on mobile", () => {
-  const header = block(".memory-archive-header");
-  assert.ok(header.includes("display: flex;"));
-  assert.ok(header.includes("justify-content: space-between;"));
-  assert.ok(header.includes("align-items: center;"));
-  assert.ok(header.includes("padding: 0 20px;"));
+test("Memory archive header reuses active geometry and a borderless return control", () => {
+  const activeHeader = block(".memory-page-header");
+  assert.ok(activeHeader.includes("padding: 0 0 10px;"));
 
-  const title = block(".memory-archive-header h1");
-  assert.ok(title.includes("font-size:"));
-  assert.ok(title.includes("font-weight:"));
-
-  const count = block(".memory-archive-header p");
-  assert.ok(count.includes("font-size:"));
-  assert.ok(count.includes("color:"));
+  const back = block(".memory-archive-back");
+  assert.ok(back.includes("width: 44px;"));
+  assert.ok(back.includes("height: 44px;"));
+  assert.ok(back.includes("border: 0;"));
+  assert.ok(back.includes("background: transparent;"));
 });
-
 
 test("Memory mobile shell matches Home page geometry", () => {
   assert.ok(styles.includes("body:has(.memory-page)"));
@@ -94,7 +88,7 @@ test("Memory header glyphs balance visual size without shrinking tap targets", (
   assert.ok(search.includes("height: 21px;"));
 
   const pen = block(".memory-page-create-icon");
-  assert.ok(pen.includes("transform: scaleX(-1);"));
+  assert.ok(pen.includes("transform: none;"));
 });
 
 

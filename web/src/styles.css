@@ -2546,7 +2546,7 @@ body:has(.home-prototype) {
   }
 
   .memory-page-create-icon {
-    transform: scaleX(-1);
+    transform: none;
   }
 
   .memory-page-tool-wrap {
@@ -2603,7 +2603,8 @@ body:has(.home-prototype) {
     height: 18px;
     color: #7d7d7d;
   }
-\n  .memory-page-search:focus-within {
+
+  .memory-page-search:focus-within {
     box-shadow: 0 0 0 1px #d8d8d8;
   }
 
@@ -2760,25 +2761,166 @@ body:has(.home-prototype) {
 
 @media (max-width: 760px) {
   .memory-paper-title {
-    margin: 0 0 14px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
     color: #171717;
     font-size: 17px;
     font-weight: 500;
-    line-height: 1.35;
+    line-height: 30px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .memory-paper-content {
     margin: 0;
     color: #252525;
     font-size: 14px;
-    line-height: 1.75;
+    line-height: 30px;
+    overflow-wrap: anywhere;
     white-space: pre-wrap;
   }
 
-  .memory-paper-form {
+  .memory-paper-status {
+    margin: 0;
+    color: #6f6f6f;
+    font-size: 14px;
+    line-height: 30px;
+  }
+
+  .memory-paper-editor {
     display: grid;
-    gap: 14px;
     min-width: 0;
+    align-content: start;
+  }
+
+  .memory-paper-key {
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    outline: 0;
+    color: #171717;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    font-size: 17px;
+    font-weight: 500;
+    line-height: 30px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .memory-paper-content-editor {
+    width: 100%;
+    min-height: 240px;
+    margin: 0;
+    padding: 0;
+    resize: none;
+    overflow: hidden;
+    border: 0;
+    outline: 0;
+    color: #252525;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    font-size: 14px;
+    line-height: 30px;
+  }
+
+  .memory-paper-key:focus,
+  .memory-paper-content-editor:focus,
+  .memory-paper-tags:focus {
+    border: 0;
+    outline: 0;
+    box-shadow: none;
+  }
+
+  .paper-detail-bottom-left:has(.memory-paper-metadata) {
+    overflow: visible;
+  }
+
+  .memory-paper-metadata {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .memory-paper-category-wrap {
+    position: relative;
+    flex: 0 0 auto;
+  }
+
+  .memory-paper-category {
+    min-height: 30px;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+  }
+
+  .memory-paper-metadata-separator {
+    opacity: 0.62;
+  }
+
+  .memory-paper-tags {
+    width: min(160px, 38vw);
+    min-width: 56px;
+    height: 30px;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    outline: 0;
+    color: inherit;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .memory-paper-tags::placeholder {
+    color: #9a9a9a;
+  }
+
+  .memory-paper-category-menu {
+    position: absolute;
+    z-index: 8;
+    bottom: 34px;
+    left: -6px;
+    width: max-content;
+    min-width: 136px;
+    padding: 5px;
+    border: 1px solid #e5e5e5;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+
+  .memory-paper-category-menu button {
+    display: flex;
+    width: 100%;
+    min-height: 36px;
+    align-items: center;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 7px;
+    color: #303030;
+    background: transparent;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .memory-paper-category-menu button[aria-checked="true"] {
+    background: #f2f2f2;
   }
 
   .memory-paper-control {
@@ -2789,28 +2931,25 @@ body:has(.home-prototype) {
     font: inherit;
     font-size: 13px;
   }
-}
 
-@media (max-width: 760px) {
-  .memory-archive-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-  }
-
-  .memory-archive-header h1 {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 600;
-  }
-
-  .memory-archive-header p {
-    margin: 2px 0 0;
-    color: #9a9a9a;
-    font-size: 12px;
+  .memory-archive-back {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    place-items: center;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 8px;
+    color: #555555;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1;
   }
 }
+
 
 /* Settings */
 
@@ -2976,5 +3115,141 @@ body:has(.home-prototype) {
 
   .settings-color-control input[type="color"] {
     width: 52px;
+  }
+}
+
+
+/* Memory visual acceptance fixes */
+@media (max-width: 760px) {
+  .memory-page-category-icon {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .memory-page-tag-icon {
+    display: inline-block;
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1;
+    transform: translateY(-0.5px);
+  }
+
+  .memory-archive-header {
+    position: relative;
+    z-index: 4;
+    pointer-events: auto;
+    isolation: isolate;
+  }
+
+  .memory-archive-back {
+    position: relative;
+    z-index: 5;
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
+
+  .paper-detail-paper[id^="memory-"] .memory-paper-title,
+  .paper-detail-paper[id^="memory-"] .memory-paper-title-input,
+  .paper-detail-paper[id^="memory-"] .memory-paper-key,
+  .paper-detail-paper[id^="memory-"] input[aria-label*="Key"],
+  .paper-detail-paper[id^="memory-"] input[placeholder="Key"] {
+    display: block;
+    width: 100%;
+    height: 23px;
+    min-height: 23px;
+    margin: 0 0 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    overflow: hidden;
+    color: #171717;
+    background: transparent;
+    box-shadow: none;
+    font-size: 17px;
+    font-weight: 500;
+    line-height: 23px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .paper-detail-paper[id^="memory-"] .memory-paper-content,
+  .paper-detail-paper[id^="memory-"] .memory-paper-content-input,
+  .paper-detail-paper[id^="memory-"] .memory-paper-content-editor,
+  .paper-detail-paper[id^="memory-"] .memory-paper-editor textarea,
+  .paper-detail-paper[id^="memory-"] textarea {
+    display: block;
+    width: 100%;
+    min-height: 240px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    color: #252525;
+    background: transparent;
+    box-shadow: none;
+    resize: none;
+    font-size: 14px;
+    line-height: 30px;
+  }
+
+  .paper-detail-paper[id^="memory-"] input,
+  .paper-detail-paper[id^="memory-"] textarea,
+  .paper-detail-paper[id^="memory-"] select {
+    border-color: transparent;
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .paper-detail-paper[id^="memory-"] input:focus,
+  .paper-detail-paper[id^="memory-"] textarea:focus,
+  .paper-detail-paper[id^="memory-"] select:focus {
+    border: 0;
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .paper-detail-paper[id^="memory-"] .paper-detail-bottom-left {
+    z-index: 3;
+    line-height: 20px;
+  }
+
+  .paper-detail-paper[id^="memory-"] .paper-detail-bottom-left input,
+  .paper-detail-paper[id^="memory-"] .paper-detail-bottom-left select {
+    width: auto;
+    min-width: 0;
+    height: 20px;
+    min-height: 20px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+    line-height: 20px;
+  }
+
+  .paper-detail-paper[id^="memory-"] .paper-detail-bottom-left button {
+    width: auto;
+    min-height: 20px;
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: 20px;
+  }
+}
+
+
+/* Memory pen optical alignment */
+@media (max-width: 760px) {
+  .memory-page-tools .memory-page-create-icon {
+    width: 22px;
+    height: 22px;
+    position: relative;
+    top: -0.5px;
   }
 }

@@ -64,8 +64,10 @@ export const ArchiveIcon = (props: IconProps) => (
 
 export const PenIcon = (props: IconProps) => (
   <IconBase {...props}>
-    <path d="M4 20h4l11-11-4-4L4 16v4Z" />
-    <path d="m13.5 6.5 4 4" />
+    <g transform="translate(24 0) scale(-1 1)">
+      <path d="M4 20h4l11-11-4-4L4 16v4Z" />
+      <path d="m13.5 6.5 4 4" />
+    </g>
   </IconBase>
 );
 

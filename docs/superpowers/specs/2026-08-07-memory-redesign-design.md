@@ -456,7 +456,7 @@ Preserve the existing controller behavior wherever possible. The only accepted A
 
 The following mobile-only corrections are required before Memory visual acceptance can pass:
 
-1. The create Pen icon must be visibly horizontally mirrored. Do not rely on a transform that fails to alter the rendered glyph.
+1. The create Pen icon orientation is accepted as currently rendered. Its optical size must be slightly increased so all five Memory header tools have balanced visual height and share the same center line.
 2. The five Memory header tools must have balanced optical weight while keeping 44×44 tap targets: shrink the category four-square glyph slightly, enlarge the `#` tag glyph slightly, and keep search/archive/pen visually matched.
 3. View, edit, and create modes must use identical paper coordinates. Switching into edit mode must not move the key/title, content, category, or tags. Create mode must place those regions at the same coordinates as the corresponding existing-memory paper.
 4. Memory editing must visually behave like writing directly on the Todo paper: title input and content textarea remain transparent and borderless at rest and focus, with no focus background, focus ring, box shadow, large tinted rectangle, or rule-line obstruction. Content line-height must align with the paper rules.

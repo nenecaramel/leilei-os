@@ -276,7 +276,7 @@ git commit -m "fix: keep Memory list behind detail paper"
 
 **Interfaces:**
 - Consumes: `MemoryCategory = "profile" | "preference" | "goal" | "project"` and shared paper slots.
-- Produces: controlled editor for key/category/content/tags and imperative `focusKey()` for quick-create.
+- Produces: a controlled key/content paper editor with imperative `focusKey()` plus a companion bottom-left metadata editor for category/tags.
 
 Use this contract:
 
@@ -312,7 +312,7 @@ Expected: FAIL because the component does not exist.
 
 - [ ] **Step 3: Implement controlled paper editor**
 
-Create a Memory-specific component instead of reusing Todo row/status semantics. Key stays in the first/title region and retains title typography when wrapping. Content is a transparent borderless textarea in the body. Bottom-left metadata shows category/tags; category opens a lightweight anchored menu of four legal values; tags edit inline in the same metadata position. Expose `focusKey()` via `forwardRef/useImperativeHandle`.
+Create a Memory-specific component instead of reusing Todo row/status semantics. The key/title remains a single visual line in view and edit modes and never wraps. View mode truncates overflow with an ellipsis. Edit mode uses a borderless single-line `<input>` and does not shrink title typography to fit. Content is a transparent borderless textarea in the body. Bottom-left metadata shows category/tags; category opens a lightweight anchored menu of four legal values; tags edit inline in the same metadata position. Expose `focusKey()` via `forwardRef/useImperativeHandle`.
 
 - [ ] **Step 4: Re-run component test and verify GREEN**
 
@@ -320,7 +320,7 @@ Run Step 2 again. Expected: PASS.
 
 - [ ] **Step 5: Write paper-native CSS RED assertions**
 
-Lock transparent background, `border: 0`, no box-shadow, inherited color/font, `resize: none`, title typography for key, long-key wrapping without font shrink, and lightweight metadata/category-menu styling.
+Lock transparent background, `border: 0`, no box-shadow, inherited color/font, `resize: none`, title typography for key, single-line long-key truncation with ellipsis in view mode and a single-line input in edit mode, without font-size reduction, and lightweight metadata/category-menu styling.
 
 - [ ] **Step 6: Run style test and verify RED**
 
@@ -531,7 +531,7 @@ At `393 × 852`, confirm Home-style white shell, four-square category icon, mirr
 
 - [ ] **Step 4: Accept active detail/edit/create paper**
 
-Compare directly with Home Todo: same paper size/viewport placement, stationary Memory list behind it, same top-left date and bottom-right `N` coordinates/typography, borderless paper-native key/category/content/tags editing, long key retaining title typography, create using the same editor, and long body scrolling inside fixed paper corners.
+Compare directly with Home Todo: same paper size/viewport placement, stationary Memory list behind it, same top-left date and bottom-right `N` coordinates/typography, borderless paper-native key/category/content/tags editing, long key staying on one visual line with ellipsis in view mode and a single-line editor, create using the same editor, and long body scrolling inside fixed paper corners.
 
 - [ ] **Step 5: Accept Archive**
 

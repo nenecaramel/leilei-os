@@ -289,66 +289,107 @@ test("Memory expanded search uses the shared SVG search glyph", async () => {
   }
 });
 
+test("Memory detail keeps active list stationary underneath the paper", async () => {
+  const second = {
+    ...memory,
+    id: "memory-2",
+    key: "older_goal",
+    updated_at: "2026-06-28T00:00:00.000Z",
+  };
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory") return listResponse([memory, second]) as T;
+      if (path === "/memory/memory-1") {
+        return { success: true, data: memory } as T;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  };
+  const page = await render("/memory", api);
+  const scrolls: number[] = [];
+  page.window.scrollTo = (options?: ScrollToOptions | number) => {
+    if (typeof options === "object") scrolls.push(options.top ?? 0);
+  };
+
+  try {
+    assert.equal(page.container.querySelectorAll(".memory-month-section").length, 2);
+    const row = page.container.querySelector<HTMLButtonElement>(
+      ".memory-row[data-memory-id=\"memory-1\"]",
+    );
+    assert.ok(row);
+
+    await React.act(async () => {
+      row.click();
+      await Promise.resolve();
+    });
+
+    assert.ok(page.container.querySelector(".memory-page-header"));
+    assert.equal(page.container.querySelectorAll(".memory-month-section").length, 2);
+    assert.ok(page.container.querySelector("#memory-detail-paper"));
+    assert.equal(page.container.querySelector(".page-header"), null);
+    assert.equal(
+      [...page.container.querySelectorAll("button")]
+        .some((button) => button.textContent === "返回记忆列表"),
+      false,
+    );
+    assert.deepEqual(scrolls, []);
+    assert.deepEqual(requests.map(({ path }) => path), ["/memory", "/memory/memory-1"]);
+
+    const veil = page.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+    assert.ok(veil);
+    await React.act(async () => {
+      veil.click();
+      await Promise.resolve();
+    });
+
+    assert.equal(page.container.querySelector("[role=dialog]"), null);
+    assert.equal(page.container.querySelectorAll(".memory-month-section").length, 2);
+    assert.deepEqual(requests.map(({ path }) => path), ["/memory", "/memory/memory-1"]);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Memory active detail uses archive wording and calls the existing endpoint once", async () => {
   const requests: Request[] = [];
   const api: WebApiClient = {
     async request<T>(path: string, init?: RequestInit) {
       requests.push({ path, init });
-      if (init?.method === "DELETE") {
-        throw new Error("archive failed");
-      }
-      if (path === "/memory/memory-1") {
-        return { success: true, data: memory } as T;
-      }
+      if (init?.method === "DELETE") throw new Error("archive failed");
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
       return listResponse() as T;
     },
   };
-  const page = await render(
-    createMemoryDetailLocation("memory-1", "/memory?q=goal"),
-    api,
-  );
+  const page = await render(createMemoryDetailLocation("memory-1", "/memory?q=goal"), api);
   const confirmations: string[] = [];
   page.window.confirm = (message) => {
     confirmations.push(String(message));
     return true;
   };
   try {
-    const edit = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "编辑");
-    const archive = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "归档");
-    const returns = [...page.container.querySelectorAll("button")]
-      .filter((button) => button.textContent === "返回记忆列表");
+    const edit = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
+    const archive = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "归档");
     assert.ok(edit);
     assert.ok(archive);
-    assert.equal(returns.length, 1);
-    assert.equal(page.container.querySelector(".memory-detail"), null);
-    assert.doesNotMatch(page.container.textContent ?? "", /删除/);
+    assert.ok(page.container.querySelector("#memory-detail-paper"));
+    assert.equal(page.container.querySelector(".page-header"), null);
+    assert.equal(
+      [...page.container.querySelectorAll("button")].some((button) => button.textContent === "返回记忆列表"),
+      false,
+    );
 
     await React.act(async () => {
-      archive.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
-      archive.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
+      archive.click();
+      archive.click();
       await Promise.resolve();
     });
 
     assert.deepEqual(confirmations, ["确定归档“current goal”吗？"]);
-    assert.match(
-      page.container.textContent ?? "",
-      /归档记忆失败，请稍后重试。/,
-    );
-    assert.doesNotMatch(page.container.textContent ?? "", /删除/);
-    assert.equal(
-      requests.filter(({ init }) => init?.method === "DELETE").length,
-      1,
-    );
-    assert.equal(
-      requests.find(({ init }) => init?.method === "DELETE")?.path,
-      "/memory",
-    );
+    assert.equal(requests.filter(({ init }) => init?.method === "DELETE").length, 1);
+    assert.equal(requests.find(({ init }) => init?.method === "DELETE")?.path, "/memory");
+    assert.match(page.container.querySelector(".paper-detail-error")?.textContent ?? "", /归档记忆失败/);
     assert.equal(
       page.window.location.search,
       "?memory=memory-1&returnTo=%2Fmemory%3Fq%3Dgoal",
@@ -457,58 +498,53 @@ test("Memory detail cancelled archive confirmation performs no request", async (
 
 test("Memory archived mode renders read-only rows and returns to the full list URL", async () => {
   const returnTo = "/memory?q=goal&category=goal&tag=MCP";
-  const requests: Request[] = [];
+
   const api: WebApiClient = {
-    async request<T>(path: string, init?: RequestInit) {
-      requests.push({ path, init });
+    async request<T>(path: string) {
       if (path === "/memory/archived") {
         return archivedResponse() as T;
       }
       return listResponse() as T;
     },
   };
+
   const page = await render(
     createMemoryArchiveLocation(returnTo),
     api,
   );
-  try {
-    assert.equal(requests[0]?.path, "/memory/archived");
-    assert.match(page.container.textContent ?? "", /已归档记忆/);
-    assert.match(page.container.textContent ?? "", /1条记忆/);
-    assert.match(page.container.textContent ?? "", /Goal/);
-    assert.match(page.container.textContent ?? "", /#MCP/);
-    assert.doesNotMatch(page.container.textContent ?? "", /网页创建/);
-    assert.doesNotMatch(
-      page.container.textContent ?? "",
-      /Complete the focused milestone/,
-    );
-    for (const forbidden of [
-      "编辑",
-      "归档中…",
-      "恢复",
-      "永久删除",
-    ]) {
-      assert.equal(
-        [...page.container.querySelectorAll("button")]
-          .some((button) => button.textContent === forbidden),
-        false,
-      );
-    }
 
-    const back = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "返回");
+  try {
+    assert.equal(
+      page.container.querySelector(".memory-page-title")?.textContent,
+      "Archive",
+    );
+    assert.match(
+      page.container.querySelector(".memory-page-count")?.textContent ?? "",
+      /1条记忆/,
+    );
+
+    const back =
+      page.container.querySelector<HTMLButtonElement>(
+        ".memory-archive-back",
+      );
     assert.ok(back);
+
     await React.act(async () => {
-      back.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
+      back.click();
       await Promise.resolve();
     });
+
     assert.equal(
       `${page.window.location.pathname}${page.window.location.search}`,
       returnTo,
     );
-    assert.equal(requests.at(-1)?.path, returnTo);
+    assert.equal(
+      page.container.querySelector(".memory-archive-header"),
+      null,
+    );
+    assert.ok(
+      page.container.querySelector(".memory-page-header"),
+    );
   } finally {
     await page.cleanup();
   }
@@ -517,10 +553,9 @@ test("Memory archived mode renders read-only rows and returns to the full list U
 test("Memory archived card opens a read-only archived detail and returns to archive list", async () => {
   const activeList = "/memory?q=goal&category=goal&tag=MCP";
   const archiveList = createMemoryArchiveLocation(activeList);
-  const requests: Request[] = [];
+
   const api: WebApiClient = {
-    async request<T>(path: string, init?: RequestInit) {
-      requests.push({ path, init });
+    async request<T>(path: string) {
       if (path === "/memory/archived") {
         return archivedResponse() as T;
       }
@@ -530,47 +565,47 @@ test("Memory archived card opens a read-only archived detail and returns to arch
       return listResponse() as T;
     },
   };
+
   const page = await render(archiveList, api);
 
   try {
-    const open = page.container.querySelector<HTMLButtonElement>(".memory-row");
-    assert.ok(open);
+    const row =
+      page.container.querySelector<HTMLButtonElement>(".memory-row");
+    assert.ok(row);
+
     await React.act(async () => {
-      open.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
+      row.click();
       await Promise.resolve();
     });
 
-    assert.equal(
-      requests.at(-1)?.path,
-      "/memory/archived/memory-1",
+    assert.ok(
+      page.container.querySelector("#memory-archive-detail-paper"),
     );
-    assert.ok(page.container.querySelector("[role=dialog]"));
-    assert.match(page.container.textContent ?? "", /current_goal/);
-    assert.match(
-      page.container.textContent ?? "",
-      /Complete the focused milestone/,
+    assert.ok(
+      page.container.querySelector(".memory-archive-header"),
     );
-    for (const forbidden of ["编辑", "归档", "永久删除"]) {
-      assert.equal(
-        [...page.container.querySelectorAll("button")]
-          .some((button) => button.textContent === forbidden),
-        false,
+    assert.ok(
+      page.container.querySelector(".memory-month-card"),
+    );
+
+    const veil =
+      page.container.querySelector<HTMLButtonElement>(
+        ".paper-detail-veil",
       );
-    }
+    assert.ok(veil);
 
-    const back = page.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
-    assert.ok(back);
     await React.act(async () => {
-      back.click();
+      veil.click();
       await Promise.resolve();
     });
+
     assert.equal(
       `${page.window.location.pathname}${page.window.location.search}`,
       archiveList,
     );
-    assert.equal(requests.at(-1)?.path, "/memory/archived");
+    assert.ok(
+      page.container.querySelector(".memory-archive-header"),
+    );
   } finally {
     await page.cleanup();
   }
@@ -646,75 +681,131 @@ test("Memory archived detail error retries without exposing list actions", async
 test("Memory archived detail restore is single-flight and returns to exact active filters", async () => {
   const activeList = "/memory?q=goal&category=goal&tag=MCP";
   const archiveList = createMemoryArchiveLocation(activeList);
+
   let finishRestore!: () => void;
   const restorePending = new Promise<void>((resolve) => {
     finishRestore = resolve;
   });
+
   const requests: Request[] = [];
+
   const api: WebApiClient = {
     async request<T>(path: string, init?: RequestInit) {
       requests.push({ path, init });
+
       if (path === "/memory/archived/memory-1") {
         return { success: true, data: memory } as T;
       }
-      if (path === "/memory/archived/memory-1/restore") {
+
+      if (
+        path === "/memory/archived/memory-1/restore"
+      ) {
         await restorePending;
         return { success: true } as T;
       }
-      if (path === activeList) return listResponse() as T;
+
+      if (path === activeList) {
+        return listResponse() as T;
+      }
+
       throw new Error(`Unexpected request: ${path}`);
     },
   };
+
   const page = await render(
-    createArchivedMemoryDetailLocation("memory-1", archiveList),
+    createArchivedMemoryDetailLocation(
+      "memory-1",
+      archiveList,
+    ),
     api,
   );
 
   try {
-    const restore = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "恢复");
+    assert.ok(
+      page.container.querySelector(
+        "#memory-archive-detail-paper",
+      ),
+    );
+
+    const restore = [
+      ...page.container.querySelectorAll("button"),
+    ].find((button) => button.textContent === "恢复");
+
     assert.ok(restore);
+
     await React.act(async () => {
-      restore.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
-      restore.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
+      restore.click();
+      restore.click();
       await Promise.resolve();
     });
+
     assert.equal(
       requests.filter(
         ({ path }) =>
-          path === "/memory/archived/memory-1/restore",
+          path ===
+          "/memory/archived/memory-1/restore",
       ).length,
       1,
     );
-    assert.match(page.container.textContent ?? "", /恢复中…/);
-    const back = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "返回归档列表");
-    assert.ok(back?.disabled);
+
+    assert.ok(
+      page.container.querySelector(
+        "#memory-archive-detail-paper",
+      ),
+      "paper stays open while restore is pending",
+    );
+
+    assert.match(
+      page.container.textContent ?? "",
+      /恢复中…/,
+    );
+
+    const veil =
+      page.container.querySelector<HTMLButtonElement>(
+        ".paper-detail-veil",
+      );
+    assert.ok(veil);
+
+    await React.act(async () => {
+      veil.click();
+      await Promise.resolve();
+    });
+
+    assert.ok(
+      page.container.querySelector(
+        "#memory-archive-detail-paper",
+      ),
+      "restore cannot be interrupted by closing the paper",
+    );
 
     await React.act(async () => {
       finishRestore();
       await restorePending;
-      await Promise.resolve();
+      await new Promise((resolve) =>
+        page.window.setTimeout(resolve, 0),
+      );
     });
 
     assert.equal(
       `${page.window.location.pathname}${page.window.location.search}`,
       activeList,
     );
-    assert.equal(requests.at(-1)?.path, activeList);
-    const filters = new URLSearchParams(page.window.location.search);
+
+    assert.equal(
+      page.container.querySelector(
+        "#memory-archive-detail-paper",
+      ),
+      null,
+      "successful restore closes the archived detail",
+    );
+
+    const filters =
+      new URLSearchParams(page.window.location.search);
+
     assert.equal(filters.get("q"), "goal");
     assert.equal(filters.get("category"), "goal");
     assert.equal(filters.get("tag"), "MCP");
-    assert.equal(
-      page.window.history.state,
-      null,
-      "the invalid archived detail entry is replaced",
-    );
+    assert.equal(page.window.history.state, null);
   } finally {
     await page.cleanup();
   }
@@ -891,7 +982,7 @@ test("Memory browser history restores archive list then the exact filtered activ
 
     await goBack();
     assert.equal(requests.at(-1)?.path, "/memory/archived");
-    assert.match(page.container.textContent ?? "", /已归档记忆/);
+    assert.match(page.container.textContent ?? "", /Archive/);
 
     await goBack();
     assert.equal(
@@ -912,57 +1003,77 @@ test("Memory browser history restores archive list then the exact filtered activ
   }
 });
 
-test("Memory archived mode has distinct loading, empty, and error states", async () => {
+test("Memory archived mode keeps the Archive header in loading empty and error states", async () => {
   const loading = await render(
     createMemoryArchiveLocation("/memory"),
     pendingApi().api,
   );
+
   try {
-    assert.match(loading.container.textContent ?? "", /正在读取归档/);
-    assert.equal(loading.container.querySelector(".memory-grid") === null, true);
-    assert.equal(loading.container.querySelector(".memory-card") === null, true);
-    assert.ok(loading.container.querySelector(".memory-month-skeleton"));
     assert.equal(
-      loading.container.querySelector(
-        "input[aria-label=\"搜索记忆\"]",
-      ),
-      null,
+      loading.container.querySelector(".memory-page-title")?.textContent,
+      "Archive",
+    );
+    assert.ok(
+      loading.container.querySelector(".memory-archive-back"),
+    );
+    assert.ok(
+      loading.container.querySelector(".memory-month-skeleton"),
     );
   } finally {
     await loading.cleanup();
   }
 
-  for (const [api, expected] of [
-    [{
+  const empty = await render(
+    createMemoryArchiveLocation("/memory"),
+    {
       async request<T>() {
         return archivedResponse([]) as T;
       },
-    } satisfies WebApiClient, /还没有归档记忆/],
-    [{
+    },
+  );
+
+  try {
+    assert.equal(
+      empty.container.querySelector(".memory-page-title")?.textContent,
+      "Archive",
+    );
+    assert.match(
+      empty.container.textContent ?? "",
+      /还没有归档记忆/,
+    );
+  } finally {
+    await empty.cleanup();
+  }
+
+  const failing = await render(
+    createMemoryArchiveLocation("/memory"),
+    {
       async request<T>(): Promise<T> {
         throw new Error("private archive failure");
       },
-    } satisfies WebApiClient, /暂时无法读取归档/],
-  ] as const) {
-    const page = await render(
-      createMemoryArchiveLocation("/memory"),
-      api,
+    },
+  );
+
+  try {
+    assert.equal(
+      failing.container.querySelector(".memory-page-title")?.textContent,
+      "Archive",
     );
-    try {
-      assert.match(page.container.textContent ?? "", expected);
-      assert.doesNotMatch(
-        page.container.textContent ?? "",
-        /private archive failure/,
-      );
-      assert.equal(
-        page.container.querySelector(
-          "input[aria-label=\"搜索记忆\"]",
-        ),
-        null,
-      );
-    } finally {
-      await page.cleanup();
-    }
+    assert.match(
+      failing.container.textContent ?? "",
+      /暂时无法读取归档/,
+    );
+    assert.ok(
+      [...failing.container.querySelectorAll("button")]
+        .some((button) => button.textContent === "重新加载"),
+    );
+    assert.doesNotMatch(
+      failing.container.textContent ?? "",
+      /private archive failure/,
+    );
+  } finally {
+    await failing.cleanup();
   }
 });
 
@@ -982,25 +1093,54 @@ test("Memory detail refresh starts in detail loading and skips list request", as
   }
 });
 
-test("Memory active and archived detail returns notify the app router for a safe global-search return", async () => {
+test("Memory active and archived papers notify the app router for a safe global-search return", async () => {
   const returnTo = "/search?q=goal&modules=memory&scope=all";
-  const paths = [
+
+  for (const path of [
     createMemoryDetailLocation("memory-1", returnTo),
-    createArchivedMemoryDetailLocation("memory-1", returnTo),
-  ];
-  for (const path of paths) {
-    const { api } = pendingApi();
+    createArchivedMemoryDetailLocation(
+      "memory-1",
+      returnTo,
+    ),
+  ]) {
+    const api: WebApiClient = {
+      async request<T>(requestPath: string) {
+        if (
+          requestPath === "/memory/memory-1" ||
+          requestPath === "/memory/archived/memory-1"
+        ) {
+          return { success: true, data: memory } as T;
+        }
+        return listResponse() as T;
+      },
+    };
+
     const page = await render(path, api);
+
     try {
       let routeChanges = 0;
-      page.window.addEventListener("popstate", () => { routeChanges += 1; });
-      const button = [...page.container.querySelectorAll("button")]
-        .find((candidate) => candidate.textContent === (path.includes("archivedMemory") ? "返回归档列表" : "返回记忆列表"));
-      assert.ok(button);
+      page.window.addEventListener(
+        "popstate",
+        () => {
+          routeChanges += 1;
+        },
+      );
+
+      const veil =
+        page.container.querySelector<HTMLButtonElement>(
+          ".paper-detail-veil",
+        );
+      assert.ok(veil);
+
       await React.act(async () => {
-        button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+        veil.click();
+        await Promise.resolve();
       });
-      assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
+
+      assert.equal(
+        `${page.window.location.pathname}${page.window.location.search}`,
+        returnTo,
+      );
       assert.equal(routeChanges, 1);
     } finally {
       await page.cleanup();
@@ -1092,40 +1232,27 @@ test("Memory in-page return restores the searched URL and saved scroll after lis
   const returnTo = "/memory?q=goal";
   const api: WebApiClient = {
     async request<T>(path: string) {
-      if (path === "/memory/memory-1") {
-        return { success: true, data: memory } as T;
-      }
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
       return listResponse() as T;
     },
   };
-  const page = await render(
-    createMemoryDetailLocation("memory-1", returnTo),
-    api,
-  );
+  const page = await render(createMemoryDetailLocation("memory-1", returnTo), api);
   const scrolls: number[] = [];
   page.window.scrollTo = (options?: ScrollToOptions | number) => {
     if (typeof options === "object") scrolls.push(options.top ?? 0);
   };
   saveMemoryScrollPosition(page.window.sessionStorage, returnTo, 640);
   try {
-    const back = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "返回记忆列表");
-    assert.ok(back);
+    const veil = page.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+    assert.ok(veil);
     await React.act(async () => {
-      back.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
+      veil.click();
       await new Promise((resolve) => page.window.setTimeout(resolve, 5));
     });
 
+    assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
     assert.equal(
-      `${page.window.location.pathname}${page.window.location.search}`,
-      returnTo,
-    );
-    assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"搜索记忆\"]",
-      )?.value,
+      page.container.querySelector<HTMLInputElement>("input[aria-label=\"搜索记忆\"]")?.value,
       "goal",
     );
     assert.ok(scrolls.includes(640));
@@ -1209,21 +1336,21 @@ test("Memory filtered detail return restores q, category, tag, and scroll positi
   };
   saveMemoryScrollPosition(page.window.sessionStorage, returnTo, 420);
   try {
-    const back = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "返回记忆列表");
-    assert.ok(back);
+    const veil = page.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+    assert.ok(veil);
     await React.act(async () => {
-      back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      veil.click();
       await new Promise((resolve) => page.window.setTimeout(resolve, 5));
     });
     assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
-    const search = page.container.querySelector("input[aria-label=\"搜索记忆\"]") as any;
+    const search = page.container.querySelector<HTMLInputElement>("input[aria-label=\"搜索记忆\"]");
     assert.equal(search?.value, "focus");
     const categoryButton = [...page.container.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "筛选分类");
     const tagButton = [...page.container.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "筛选标签");
     assert.ok(categoryButton && tagButton);
-    await React.act(async () => { categoryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    await React.act(async () => { categoryButton.click(); });
     assert.equal([...page.container.querySelectorAll("[role=menuitemradio]")].find((item) => item.textContent === "Goal")?.getAttribute("aria-checked"), "true");
-    await React.act(async () => { tagButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    await React.act(async () => { tagButton.click(); });
     assert.equal([...page.container.querySelectorAll("[role=menuitemradio]")].find((item) => item.textContent === "#MCP")?.getAttribute("aria-checked"), "true");
     assert.ok(scrolls.includes(420));
   } finally {
@@ -1259,58 +1386,64 @@ test("Memory exact tag filter restores from URL and clearing it preserves q and 
   }
 });
 
-test("Memory detail edit loads and submits existing tags", async () => {
+test("Memory detail edit updates key category content and tags through PATCH", async () => {
   const requests: Request[] = [];
   const api: WebApiClient = {
     async request<T>(path: string, init?: RequestInit) {
       requests.push({ path, init });
-      if (path === "/memory/memory-1") {
-        return { success: true, data: memory } as T;
-      }
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
       return listResponse() as T;
     },
   };
   const page = await render("/memory?memory=memory-1", api);
   try {
-    const edit = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "编辑");
+    const edit = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(edit);
-    await React.act(async () => {
-      edit.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
-    });
-    assert.equal(
-      [...page.container.querySelectorAll("button")]
-        .some((button) => button.textContent === "归档"),
-      false,
-    );
+    await React.act(async () => { edit.click(); });
 
-    const tags = page.container.querySelector<HTMLInputElement>(
-      "input[aria-label=\"编辑记忆标签\"]",
-    );
-    assert.equal(tags?.value, "MCP, focus");
-    const save = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "保存");
+    const key = page.container.querySelector<HTMLInputElement>('input[aria-label="记忆 Key"]');
+    const contentField = page.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="记忆内容"]');
+    const tagsField = page.container.querySelector<HTMLInputElement>('input[aria-label="记忆标签"]');
+    const categoryButton = page.container.querySelector<HTMLButtonElement>('button[aria-label="记忆分类"]');
+    assert.ok(key && contentField && tagsField && categoryButton);
+
+    const setValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set?.call(element, value);
+      const change = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(change, "propertyName", { value: "value" });
+      element.dispatchEvent(change);
+    };
+
+    await React.act(async () => {
+      key.focus();
+      setValue(key, "renamed_key");
+      contentField.focus();
+      setValue(contentField, "new body");
+      tagsField.focus();
+      setValue(tagsField, "alpha, beta");
+      categoryButton.click();
+    });
+    const project = [...page.container.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      .find((button) => button.textContent === "Project");
+    assert.ok(project);
+    await React.act(async () => { project.click(); });
+
+    const save = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "保存");
     assert.ok(save);
     await React.act(async () => {
-      save.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
-      save.dispatchEvent(new page.window.MouseEvent("click", {
-        bubbles: true,
-      }));
+      save.click();
+      save.click();
       await Promise.resolve();
     });
 
     const updates = requests.filter(({ init }) => init?.method === "PATCH");
     assert.equal(updates.length, 1);
-    const update = updates[0];
-    assert.ok(update?.init?.body);
-    assert.deepEqual(JSON.parse(String(update.init.body)), {
+    assert.deepEqual(JSON.parse(String(updates[0]?.init?.body)), {
       id: "memory-1",
-      content: memory.content,
-      tags: ["MCP", "focus"],
+      key: "renamed_key",
+      category: "project",
+      content: "new body",
+      tags: ["alpha", "beta"],
     });
   } finally {
     await page.cleanup();
@@ -1525,7 +1658,7 @@ test("Memory active detail renders in the shared paper shell", async () => {
   }
 });
 
-test("Memory active paper edit exposes only content and tags", async () => {
+test("Memory active paper edit exposes key category content and tags in paper positions", async () => {
   const page = await render(createMemoryDetailLocation("memory-1", "/memory"), {
     async request<T>(path: string) {
       if (path === "/memory/memory-1") return { success: true, data: memory } as T;
@@ -1533,19 +1666,30 @@ test("Memory active paper edit exposes only content and tags", async () => {
     },
   });
   try {
+    const dialogBefore = page.container.querySelector<HTMLElement>("#memory-detail-paper");
+    assert.ok(dialogBefore);
     const edit = [...page.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(edit);
-    await React.act(async () => {
-      edit.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
-    });
-    const dialog = page.container.querySelector<HTMLElement>("[role=dialog]");
+    await React.act(async () => { edit.click(); });
+
+    const dialog = page.container.querySelector<HTMLElement>("#memory-detail-paper");
     assert.ok(dialog);
-    assert.ok(dialog.querySelector("textarea[aria-label=编辑记忆内容]"));
-    assert.ok(dialog.querySelector("input[aria-label=编辑记忆标签]"));
-    assert.equal(dialog.querySelector("input[aria-label=编辑记忆Key]"), null);
-    assert.equal(dialog.querySelector("select[aria-label=编辑记忆分类]"), null);
+    assert.equal(dialog, dialogBefore);
+    assert.equal(dialog.querySelector<HTMLInputElement>('input[aria-label="记忆 Key"]')?.value, "current_goal");
+    assert.equal(dialog.querySelector<HTMLTextAreaElement>('textarea[aria-label="记忆内容"]')?.value, memory.content);
+    assert.equal(dialog.querySelector<HTMLInputElement>('input[aria-label="记忆标签"]')?.value, "MCP, focus");
+    const category = dialog.querySelector<HTMLButtonElement>('button[aria-label="记忆分类"]');
+    assert.ok(category);
+    assert.equal(category.textContent, "Goal");
+    assert.equal(dialog.querySelector("select"), null);
+    assert.equal(dialog.querySelector(".memory-paper-form"), null);
     assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /取消.*保存/);
-    assert.doesNotMatch(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /归档|编辑/);
+
+    await React.act(async () => { category.click(); });
+    assert.deepEqual(
+      [...dialog.querySelectorAll('[role="menuitemradio"]')].map((item) => item.textContent),
+      ["Profile", "Preference", "Goal", "Project"],
+    );
   } finally {
     await page.cleanup();
   }
@@ -1553,23 +1697,24 @@ test("Memory active paper edit exposes only content and tags", async () => {
 
 test("Memory create opens directly in the shared paper shell", async () => {
   const page = await render("/memory", {
-    async request<T>() {
-      return listResponse() as T;
-    },
+    async request<T>() { return listResponse() as T; },
   });
   try {
     const create = page.container.querySelector<HTMLButtonElement>("button[aria-label=新增记忆]");
     assert.ok(create);
     await React.act(async () => {
-      create.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      create.click();
+      await new Promise((resolve) => page.window.setTimeout(resolve, 0));
     });
-    const dialog = page.container.querySelector<HTMLElement>("[role=dialog]");
+    const dialog = page.container.querySelector<HTMLElement>("#memory-create-paper");
     assert.ok(dialog);
     assert.equal(dialog.querySelector(".paper-detail-signature")?.textContent, "N");
-    assert.ok(dialog.querySelector("input[placeholder=Key]"));
-    assert.ok(dialog.querySelector("textarea[placeholder=Content]"));
-    assert.ok(dialog.querySelector("select"));
-    assert.ok(dialog.querySelector("input[aria-label=记忆标签]"));
+    assert.ok(dialog.querySelector('input[aria-label="记忆 Key"][placeholder=Key]'));
+    assert.ok(dialog.querySelector('textarea[aria-label="记忆内容"][placeholder=Content]'));
+    assert.ok(dialog.querySelector('button[aria-label="记忆分类"]'));
+    assert.ok(dialog.querySelector('input[aria-label="记忆标签"]'));
+    assert.equal(dialog.querySelector("select"), null);
+    assert.equal(dialog.querySelector(".memory-paper-form"), null);
     assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /取消.*保存/);
   } finally {
     await page.cleanup();
@@ -1594,7 +1739,7 @@ test("Memory dirty edit can retry closing after rejecting discard once", async (
     assert.ok(edit);
     await React.act(async () => { edit.click(); });
 
-    const content = page.container.querySelector<HTMLTextAreaElement>("textarea[aria-label=编辑记忆内容]");
+    const content = page.container.querySelector<HTMLTextAreaElement>("textarea[aria-label=记忆内容]");
     assert.ok(content);
     await React.act(async () => {
       content.focus();
@@ -1668,26 +1813,59 @@ test("Memory create paper restores focus to the pen trigger when closed", async 
   }
 });
 
-test("Memory archive list uses month cards without legacy detail affordance", async () => {
+test("Memory archive list reuses active heading and month-card geometry", async () => {
   const records = [
-    { ...memory, id: "archive-new", key: "archive_new", updated_at: "2026-08-20T12:00:00.000Z" },
-    { ...memory, id: "archive-old", key: "archive_old", updated_at: "2026-07-15T12:00:00.000Z" },
-  ];
-  const page = await render(createMemoryArchiveLocation("/memory"), {
-    async request<T>(path: string) {
-      if (path === "/memory/archived") return archivedResponse(records) as T;
-      throw new Error(`unexpected request: ${path}`);
+    {
+      ...memory,
+      id: "archive-new",
+      key: "archive_new",
+      updated_at: "2026-08-20T12:00:00.000Z",
     },
-  });
+    {
+      ...memory,
+      id: "archive-old",
+      key: "archive_old",
+      updated_at: "2026-07-15T12:00:00.000Z",
+    },
+  ];
+
+  const page = await render(
+    createMemoryArchiveLocation("/memory"),
+    {
+      async request<T>(path: string) {
+        if (path === "/memory/archived") {
+          return archivedResponse(records) as T;
+        }
+        throw new Error(`unexpected request: ${path}`);
+      },
+    },
+  );
+
   try {
-    assert.equal(page.container.querySelectorAll(".memory-card").length, 0);
-    assert.ok(page.container.querySelector(".memory-archive-header"));
-    assert.equal(page.container.querySelectorAll(".memory-month-card").length, 2);
+    const header =
+      page.container.querySelector(".memory-archive-header");
+    assert.ok(header);
+
+    assert.equal(
+      header.querySelector(".memory-page-title")?.textContent,
+      "Archive",
+    );
+    assert.match(
+      header.querySelector(".memory-page-count")?.textContent ?? "",
+      /2条记忆/,
+    );
+    assert.ok(
+      header.querySelector(".memory-archive-back"),
+    );
+    assert.equal(
+      page.container.querySelectorAll(".memory-month-card").length,
+      2,
+    );
     assert.deepEqual(
-      [...page.container.querySelectorAll(".memory-month-label")].map((node) => node.textContent),
+      [...page.container.querySelectorAll(".memory-month-label")]
+        .map((node) => node.textContent),
       ["2026年8月", "2026年7月"],
     );
-    assert.equal((page.container.textContent ?? "").includes("查看详情"), false);
   } finally {
     await page.cleanup();
   }
@@ -1710,7 +1888,7 @@ test("Memory archived detail renders as a read-only paper", async () => {
     assert.equal(dialog.querySelector(".paper-detail-signature")?.textContent, "N");
     assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /恢复/);
     assert.match(dialog.querySelector(".paper-detail-bottom-left")?.textContent ?? "", /Goal/);
-    assert.equal(dialog.querySelector("textarea[aria-label=编辑记忆内容]"), null);
+    assert.equal(dialog.querySelector("textarea[aria-label=记忆内容]"), null);
     assert.equal(page.container.querySelector(".memory-detail"), null);
   } finally {
     await page.cleanup();

@@ -9,6 +9,12 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
 import type { SettingsData } from "../settings/types";
 import { MemoryPageHeader } from "./MemoryPageHeader";
+import {
+  MemoryPaperEditor,
+  MemoryPaperMetadataEditor,
+  type MemoryCategory,
+  type MemoryPaperEditorHandle,
+} from "./MemoryPaperEditor";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import {
   formatMemoryPaperDate,
@@ -17,7 +23,6 @@ import {
   getMemoryRowTitle,
   groupMemoriesByMonth,
 } from "./memory-presentation";
-import { PageHeader } from "./PageHeader";
 import { isSearchLocation, navigateWithinApp } from "./app-navigation";
 import { consumeQuickCreateTarget } from "./quick-create";
 import {
@@ -56,8 +61,6 @@ import {
   readMemoryScrollPosition,
   saveMemoryScrollPosition,
 } from "./memory-scroll-restoration";
-
-type MemoryCategory = "profile" | "preference" | "goal" | "project";
 
 type MemoryRecord = {
   id: string;
@@ -156,9 +159,14 @@ function parseTags(value: string): string[] {
   ];
 }
 
+function sameMemoryFilters(left: MemoryFilters, right: MemoryFilters): boolean {
+  return left.q === right.q &&
+    left.category === right.category &&
+    left.tag === right.tag;
+}
+
 export function MemoryPageContent({
   api,
-  settings,
 }: {
   api: WebApiClient;
   settings: SettingsData;
@@ -200,6 +208,7 @@ export function MemoryPageContent({
   const mutationOwnership = useRef(createMutationOwnership());
   const pendingScrollRestore = useRef<number | null>(null);
   const tracker = useRef(createLatestMemoryRequestTracker());
+  const listAvailableRef = useRef(false);
 
   const [filters, setFilters] = useState(initialFilters);
   const filtersRef = useRef(filters);
@@ -222,11 +231,13 @@ export function MemoryPageContent({
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
   const [creating, setCreating] = useState(false);
-  const createKeyInput = useRef<HTMLInputElement | null>(null);
+  const createEditorRef = useRef<MemoryPaperEditorHandle | null>(null);
   const paperTriggerRef = useRef<HTMLElement | null>(null);
   const focusCreateRef = useRef(false);
 
   const [editingId, setEditingId] = useState("");
+  const [editingKey, setEditingKey] = useState("");
+  const [editingCategory, setEditingCategory] = useState<MemoryCategory>("profile");
   const [editingContent, setEditingContent] = useState("");
   const [editingTags, setEditingTags] = useState("");
   const [updatingId, setUpdatingId] = useState("");
@@ -238,6 +249,8 @@ export function MemoryPageContent({
   );
   const editDirty = Boolean(
     editingId && detailState.status === "ready" && (
+      editingKey !== detailState.memory.key ||
+      editingCategory !== detailState.memory.category ||
       editingContent !== detailState.memory.content ||
       editingTags !== detailState.memory.tags.join(", ")
     ),
@@ -267,7 +280,7 @@ export function MemoryPageContent({
   useEffect(() => {
     if (!showCreate || !focusCreateRef.current) return;
     focusCreateRef.current = false;
-    (window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0)))(() => createKeyInput.current?.focus());
+    (window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0)))(() => createEditorRef.current?.focusKey());
   }, [showCreate]);
 
   function discardDraft(): void {
@@ -280,6 +293,8 @@ export function MemoryPageContent({
     }
     if (editDirtyRef.current) {
       setEditingId("");
+      setEditingKey("");
+      setEditingCategory("profile");
       setEditingContent("");
       setEditingTags("");
     }
@@ -361,6 +376,8 @@ export function MemoryPageContent({
       archivedDetailController.current?.abort();
       setActionError("");
       setEditingId("");
+      setEditingKey("");
+      setEditingCategory("profile");
       setEditingContent("");
       setEditingTags("");
       setLocation(nextLocation);
@@ -390,6 +407,7 @@ export function MemoryPageContent({
           archiveUrl,
         );
         setArchivedState({ status: "loading" });
+        setArchiveReloadKey((value) => value + 1);
         setDetailState({ status: "idle" });
         setShowCreate(false);
         return;
@@ -417,7 +435,7 @@ export function MemoryPageContent({
   }, []);
 
   useEffect(() => {
-    if (isDetail || isArchived || isArchivedDetail) {
+    if ((isDetail && !listAvailableRef.current) || isArchived || isArchivedDetail) {
       listController.current?.abort();
       listController.current = null;
       return;
@@ -436,6 +454,7 @@ export function MemoryPageContent({
       ticket,
       signal: controller.signal,
       onSuccess: (response) => {
+        listAvailableRef.current = true;
         setState({
           status: "ready",
           result: response.data,
@@ -469,7 +488,6 @@ export function MemoryPageContent({
     filters,
     isArchived,
     isArchivedDetail,
-    isDetail,
     reloadKey,
   ]);
 
@@ -544,7 +562,6 @@ export function MemoryPageContent({
           status: "ready",
           memory: response.data,
         });
-        window.scrollTo({ top: 0 });
       })
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -589,7 +606,6 @@ export function MemoryPageContent({
           status: "ready",
           memory: response.data,
         });
-        window.scrollTo({ top: 0 });
       })
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -659,17 +675,13 @@ export function MemoryPageContent({
   }
 
   async function handleUpdate(id: string) {
-    if (!editingContent.trim()) {
-      setActionError("记忆内容不能为空。");
+    if (!editingKey.trim() || !editingContent.trim()) {
+      setActionError("Key 和 Content 都不能为空。");
       return;
     }
 
-    if (!mutationGate.current.enter()) {
-      return;
-    }
-
+    if (!mutationGate.current.enter()) return;
     const ticket = mutationOwnership.current.begin();
-
     setUpdatingId(id);
     setActionError("");
 
@@ -678,6 +690,8 @@ export function MemoryPageContent({
         method: "PATCH",
         body: JSON.stringify({
           id,
+          key: editingKey.trim(),
+          category: editingCategory,
           content: editingContent.trim(),
           tags: parseTags(editingTags),
         }),
@@ -685,12 +699,12 @@ export function MemoryPageContent({
 
       if (!mutationOwnership.current.owns(ticket)) return;
       setEditingId("");
+      setEditingKey("");
+      setEditingCategory("profile");
       setEditingContent("");
       setEditingTags("");
       setReloadKey((value) => value + 1);
-      if (isDetail) {
-        setDetailReloadKey((value) => value + 1);
-      }
+      if (isDetail) setDetailReloadKey((value) => value + 1);
     } catch {
       if (mutationOwnership.current.owns(ticket)) {
         setActionError("修改记忆失败，请稍后重试。");
@@ -734,6 +748,8 @@ export function MemoryPageContent({
       if (!mutationOwnership.current.owns(ticket)) return;
       if (editingId === id) {
         setEditingId("");
+        setEditingKey("");
+        setEditingCategory("profile");
         setEditingContent("");
         setEditingTags("");
       }
@@ -771,6 +787,8 @@ export function MemoryPageContent({
     const next = createMemoryDetailLocation(id, returnTo);
     window.history.pushState(null, "", next);
     setEditingId("");
+    setEditingKey("");
+    setEditingCategory("profile");
     setEditingContent("");
     setEditingTags("");
     setLocation(getMemoryDetailLocation(window.location.search));
@@ -785,22 +803,31 @@ export function MemoryPageContent({
       navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
     }
+
+    const hadList = listAvailableRef.current;
     window.history.pushState(null, "", returnTo);
-    pendingScrollRestore.current = readMemoryScrollPosition(
-      getMemoryScrollStorage(window),
-      returnTo,
-    );
+    pendingScrollRestore.current = hadList
+      ? null
+      : readMemoryScrollPosition(getMemoryScrollStorage(window), returnTo);
     const restoredFilters = readMemoryFilters(
       new URL(returnTo, window.location.origin).search,
     );
-    setFilters(restoredFilters);
+    setFilters((current) =>
+      sameMemoryFilters(current, restoredFilters) ? current : restoredFilters
+    );
     setSearchDraft(restoredFilters.q);
     setEditingId("");
+    setEditingKey("");
+    setEditingCategory("profile");
     setEditingContent("");
     setEditingTags("");
     setLocation({ memoryId: null, returnTo: "/memory" });
     setDetailState({ status: "idle" });
-    setState({ status: "loading" });
+
+    if (!hadList) {
+      setState({ status: "loading" });
+      setReloadKey((value) => value + 1);
+    }
   }
 
   function openArchive(): void {
@@ -828,7 +855,7 @@ export function MemoryPageContent({
     const returnTo = getSafeMemoryReturnTo(
       archiveLocation.returnTo,
     );
-    window.history.pushState(null, "", returnTo);
+    navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
     pendingScrollRestore.current = readMemoryScrollPosition(
       getMemoryScrollStorage(window),
       returnTo,
@@ -838,7 +865,6 @@ export function MemoryPageContent({
     );
     setFilters(restoredFilters);
     setSearchDraft(restoredFilters.q);
-    setArchiveLocation({ archived: false, returnTo: "/memory" });
     setState({ status: "loading" });
   }
 
@@ -856,7 +882,6 @@ export function MemoryPageContent({
       archiveUrl,
     );
     window.history.pushState(null, "", next);
-    setArchiveLocation({ archived: false, returnTo: "/memory" });
     setArchivedDetailLocation(
       getArchivedMemoryDetailLocation(window.location.search),
     );
@@ -871,20 +896,19 @@ export function MemoryPageContent({
       navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
     }
+
+    const hadArchiveList = isArchived && archivedState.status === "ready";
     window.history.pushState(null, "", returnTo);
-    pendingScrollRestore.current = readMemoryScrollPosition(
-      getMemoryScrollStorage(window),
-      returnTo,
-    );
+    pendingScrollRestore.current = hadArchiveList
+      ? null
+      : readMemoryScrollPosition(getMemoryScrollStorage(window), returnTo);
     setArchivedDetailLocation({
       memoryId: null,
       returnTo: createMemoryArchiveLocation("/memory"),
     });
     setArchivedDetailState({ status: "idle" });
-    setArchiveLocation(
-      getMemoryArchiveLocation(window.location.search),
-    );
-    setArchivedState({ status: "loading" });
+    setArchiveLocation(getMemoryArchiveLocation(window.location.search));
+    if (!hadArchiveList) setArchivedState({ status: "loading" });
   }
 
   async function restoreArchivedMemory(id: string): Promise<void> {
@@ -943,133 +967,57 @@ export function MemoryPageContent({
     detailState.status === "ready"
       ? detailState.memory
       : null;
+  const showActiveBackground = !isDetail || listAvailableRef.current;
 
   return (
     <div className="page memory-page">
-      {isDetail ? (
-        <PageHeader
-          eyebrow="Long-term context"
-          title="Memory"
-          description={settings.page_copy.memory_subtitle ?? ""}
-          action={<button className="secondary-button" disabled={busy} onClick={() => closeMemory()}>返回记忆列表</button>}
-        />
-      ) : isArchivedDetail ? (
-        <PageHeader
-          eyebrow="Long-term context"
-          title="Memory"
-          description={settings.page_copy.memory_subtitle ?? ""}
-          action={<button className="secondary-button" disabled={restoringId.length > 0} onClick={closeArchivedMemory}>返回归档列表</button>}
-        />
-      ) : isArchived ? null : (
-      <MemoryPageHeader
-        count={state.status === "ready" ? state.result.metadata.count : 0}
-        categories={availableCategories.map((value) => ({
-          value,
-          label: categoryLabels[value],
-        }))}
-        tags={availableTags}
-        category={filters.category}
-        tag={filters.tag}
-        searchDraft={searchDraft}
-        busy={busy}
-        onCategoryChange={(value) =>
-          commitFilters({
-            ...filters,
-            q: searchDraft,
-            category: value as MemoryFilterCategory,
-          })
-        }
-        onTagChange={(value) =>
-          commitFilters({
-            ...filters,
-            q: searchDraft,
-            tag: value,
-          })
-        }
-        onSearchChange={updateSearch}
-        onClearFilters={() => commitFilters(EMPTY_MEMORY_FILTERS)}
-        onOpenArchive={() => openArchive()}
-        onCreate={(trigger) => {
-          paperTriggerRef.current = trigger;
-          if (showCreate) {
-            if (!confirmAndDiscardDraft()) return;
-            invalidateMutationContext();
-            setShowCreate(false);
-          } else {
-            setShowCreate(true);
-          }
-          setActionError("");
-        }}
-      />
-      )}
+      {!isArchived && !isArchivedDetail ? (
+        <>
+          {showActiveBackground ? (
+            <MemoryPageHeader
+              count={state.status === "ready" ? state.result.metadata.count : 0}
+              categories={availableCategories.map((value) => ({
+                value,
+                label: categoryLabels[value],
+              }))}
+              tags={availableTags}
+              category={filters.category}
+              tag={filters.tag}
+              searchDraft={searchDraft}
+              busy={busy}
+              onCategoryChange={(value) =>
+                commitFilters({
+                  ...filters,
+                  q: searchDraft,
+                  category: value as MemoryFilterCategory,
+                })
+              }
+              onTagChange={(value) =>
+                commitFilters({
+                  ...filters,
+                  q: searchDraft,
+                  tag: value,
+                })
+              }
+              onSearchChange={updateSearch}
+              onClearFilters={() => commitFilters(EMPTY_MEMORY_FILTERS)}
+              onOpenArchive={() => openArchive()}
+              onCreate={(trigger) => {
+                paperTriggerRef.current = trigger;
+                if (showCreate) {
+                  if (!confirmAndDiscardDraft()) return;
+                  invalidateMutationContext();
+                  setShowCreate(false);
+                } else {
+                  focusCreateRef.current = true;
+                  setShowCreate(true);
+                }
+                setActionError("");
+              }}
+            />
+          ) : null}
 
-      {actionError && !isDetail && !isArchivedDetail && !showCreate && (
-        <section className="memory-message">
-          <h2>操作没有完成</h2>
-          <p>{actionError}</p>
-        </section>
-      )}
-
-      {isDetail ? (
-        <MemoryDetail
-          state={detailState}
-          triggerRef={paperTriggerRef}
-          errorMessage={actionError || null}
-          editing={editingId === detailMemory?.id}
-          editingContent={editingContent}
-          editingTags={editingTags}
-          updating={updatingId === detailMemory?.id}
-          archiving={archivingId === detailMemory?.id}
-          onEditingContentChange={(value) => {
-            setEditingContent(value);
-            setActionError("");
-          }}
-          onEditingTagsChange={(value) => {
-            setEditingTags(value);
-            setActionError("");
-          }}
-          onEdit={(memory) => {
-            setEditingId(memory.id);
-            setEditingContent(memory.content);
-            setEditingTags(memory.tags.join(", "));
-            setActionError("");
-          }}
-          onCancel={() => {
-            if (!confirmAndDiscardDraft()) return;
-            invalidateMutationContext();
-            setEditingId("");
-            setEditingContent("");
-            setEditingTags("");
-            setActionError("");
-          }}
-          onSave={() => {
-            if (detailMemory) void handleUpdate(detailMemory.id);
-          }}
-          onArchive={(memory) => {
-            void handleArchive(memory.id, memory.key);
-          }}
-          onRequestClose={() => {
-            if (!confirmAndDiscardDraft()) return false;
-            closeMemory(true);
-            return true;
-          }}
-          onBack={closeMemory}
-        />
-      ) : isArchivedDetail ? (
-        <ArchivedMemoryDetail
-          state={archivedDetailState}
-          triggerRef={paperTriggerRef}
-          errorMessage={actionError || null}
-          onRetry={() =>
-            setArchiveReloadKey((value) => value + 1)
-          }
-          onBack={closeArchivedMemory}
-          restoring={
-            restoringId === archivedDetailLocation.memoryId
-          }
-          onRestore={(id) => void restoreArchivedMemory(id)}
-        />
-      ) : isArchived ? (
+          {isArchivedDetail && archivedState.status === "ready" ? (
         <ArchivedMemoryList
           state={archivedState}
           onOpen={(id, trigger) => {
@@ -1081,181 +1029,256 @@ export function MemoryPageContent({
             setArchiveReloadKey((value) => value + 1)
           }
         />
-      ) : (
-        <>
-          {showCreate && (
-            <PaperDetailDialog
-              id="memory-create-paper"
-              open
-              label="创建 Memory"
-              dateLabel={formatMemoryPaperDate(new Date().toISOString())}
-              signature="N"
-              triggerRef={paperTriggerRef}
-              onRequestClose={() => {
-                if (!confirmAndDiscardDraft()) return false;
-                setShowCreate(false);
-                setActionError("");
-                return true;
-              }}
-              topRight={
-                <>
-                  <button
-                    className="memory-paper-control"
-                    disabled={creating}
-                    onClick={() => {
-                      if (!confirmAndDiscardDraft()) return;
-                      setShowCreate(false);
-                      setActionError("");
-                    }}
-                  >
-                    取消
-                  </button>
-                  <span>·</span>
-                  <button
-                    className="memory-paper-control"
-                    disabled={creating || createInvalid}
-                    onClick={handleCreate}
-                  >
-                    {creating ? "保存中…" : "保存"}
-                  </button>
-                </>
-              }
-              bottomLeft={categoryLabels[category]}
-              errorMessage={actionError || null}
-            >
-              <div className="memory-paper-form">
-                <select
-                  value={category}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setCategory(event.target.value as MemoryCategory);
-                    setActionError("");
-                  }}
-                >
-                  <option value="profile">Profile</option>
-                  <option value="preference">Preference</option>
-                  <option value="goal">Goal</option>
-                  <option value="project">Project</option>
-                </select>
+      ) : null}
 
-                <input
-                  placeholder="Key"
-                  ref={createKeyInput}
-                  value={key}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setKey(event.target.value);
-                    setActionError("");
-                  }}
-                />
-
-                <textarea
-                  placeholder="Content"
-                  value={content}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setContent(event.target.value);
-                    setActionError("");
-                  }}
-                />
-
-                <input
-                  aria-label="记忆标签"
-                  placeholder="标签，用逗号分隔（可选）"
-                  value={tags}
-                  disabled={creating}
-                  onChange={(event) => {
-                    setTags(event.target.value);
-                    setActionError("");
-                  }}
-                />
-              </div>
-            </PaperDetailDialog>
-          )}
-
-          {state.status === "ready" && (
-            <>
-              {visibleMemories.length > 0 ? (
-                <section className="memory-months" aria-label="Memory 列表">
-                  {memoryGroups.map((group) => (
-                    <section className="memory-month-section" key={group.key}>
-                      <h2 className="memory-month-label">{group.label}</h2>
-                      <div className="memory-month-card">
-                        {group.memories.map((memory) => (
-                          <button
-                            key={memory.id}
-                            type="button"
-                            className="memory-row"
-                            data-memory-id={memory.id}
-                            disabled={busy}
-                            onClick={(event) => {
-                              paperTriggerRef.current = event.currentTarget;
-                              openMemory(memory.id);
-                            }}
-                          >
-                            <span className="memory-row-title">{getMemoryRowTitle(memory)}</span>
-                            <span className="memory-row-meta">
-                              <span>{formatMemoryRowDate(memory.updated_at)}</span>
-                              <span>{formatMemoryRowMeta(memory, categoryLabels[memory.category])}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </section>
-              ) : (
-                <section className="memory-empty-state">
-                  <p>{filters.q || filters.category || filters.tag ? "没有匹配的记忆" : "还没有记忆"}</p>
-                  {(filters.q || filters.category || filters.tag) && (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => commitFilters(EMPTY_MEMORY_FILTERS)}
-                    >
-                      清除筛选
-                    </button>
-                  )}
-                </section>
-              )}
-            </>
-          )}
-
-          {state.status === "loading" && (
-            <section className="memory-months" aria-label="Memory 加载中">
-              {[0, 1].map((index) => (
-                <div className="memory-month-skeleton" key={index}>
-                  <span className="memory-month-skeleton-label" />
-                  <div className="memory-month-skeleton-card">
-                    <span />
-                    <span />
-                  </div>
-                </div>
-              ))}
+      {actionError && !isDetail && !showCreate && (
+            <section className="memory-message">
+              <h2>操作没有完成</h2>
+              <p>{actionError}</p>
             </section>
           )}
 
-          {state.status === "error" && (
-            <MemoryMessage
-              title="暂时无法读取记忆"
-              description="连接没有完成，请稍后重试。"
-              action={
-                <button
-                  className="secondary-button"
-                  onClick={() =>
-                    setReloadKey((value) => value + 1)
+          {showActiveBackground ? (
+            <>
+              {showCreate && (
+                <PaperDetailDialog
+                  id="memory-create-paper"
+                  open
+                  label="创建 Memory"
+                  dateLabel={formatMemoryPaperDate(new Date().toISOString())}
+                  signature="N"
+                  triggerRef={paperTriggerRef}
+                  onRequestClose={() => {
+                    if (!confirmAndDiscardDraft()) return false;
+                    setShowCreate(false);
+                    setActionError("");
+                    return true;
+                  }}
+                  topRight={
+                    <>
+                      <button
+                        className="memory-paper-control"
+                        disabled={creating}
+                        onClick={() => {
+                          if (!confirmAndDiscardDraft()) return;
+                          setShowCreate(false);
+                          setActionError("");
+                        }}
+                      >
+                        取消
+                      </button>
+                      <span>·</span>
+                      <button
+                        className="memory-paper-control"
+                        disabled={creating || createInvalid}
+                        onClick={handleCreate}
+                      >
+                        {creating ? "保存中…" : "保存"}
+                      </button>
+                    </>
                   }
+                  bottomLeft={
+                    <MemoryPaperMetadataEditor
+                      category={category}
+                      tagsValue={tags}
+                      disabled={creating}
+                      onCategoryChange={(value) => {
+                        setCategory(value);
+                        setActionError("");
+                      }}
+                      onTagsChange={(value) => {
+                        setTags(value);
+                        setActionError("");
+                      }}
+                    />
+                  }
+                  errorMessage={actionError || null}
                 >
-                  重新加载
-                </button>
-              }
+                  <MemoryPaperEditor
+                    ref={createEditorRef}
+                    keyValue={key}
+                    content={content}
+                    disabled={creating}
+                    onKeyChange={(value) => {
+                      setKey(value);
+                      setActionError("");
+                    }}
+                    onContentChange={(value) => {
+                      setContent(value);
+                      setActionError("");
+                    }}
+                  />
+                </PaperDetailDialog>
+              )}
+
+              {state.status === "ready" && (
+                <>
+                  {visibleMemories.length > 0 ? (
+                    <section className="memory-months" aria-label="Memory 列表">
+                      {memoryGroups.map((group) => (
+                        <section className="memory-month-section" key={group.key}>
+                          <h2 className="memory-month-label">{group.label}</h2>
+                          <div className="memory-month-card">
+                            {group.memories.map((memory) => (
+                              <button
+                                key={memory.id}
+                                type="button"
+                                className="memory-row"
+                                data-memory-id={memory.id}
+                                disabled={busy}
+                                onClick={(event) => {
+                                  paperTriggerRef.current = event.currentTarget;
+                                  openMemory(memory.id);
+                                }}
+                              >
+                                <span className="memory-row-title">{getMemoryRowTitle(memory)}</span>
+                                <span className="memory-row-meta">
+                                  <span>{formatMemoryRowDate(memory.updated_at)}</span>
+                                  <span>{formatMemoryRowMeta(memory, categoryLabels[memory.category])}</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      ))}
+                    </section>
+                  ) : (
+                    <section className="memory-empty-state">
+                      <p>{filters.q || filters.category || filters.tag ? "没有匹配的记忆" : "还没有记忆"}</p>
+                      {(filters.q || filters.category || filters.tag) && (
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => commitFilters(EMPTY_MEMORY_FILTERS)}
+                        >
+                          清除筛选
+                        </button>
+                      )}
+                    </section>
+                  )}
+                </>
+              )}
+
+              {state.status === "loading" && (
+                <section className="memory-months" aria-label="Memory 加载中">
+                  {[0, 1].map((index) => (
+                    <div className="memory-month-skeleton" key={index}>
+                      <span className="memory-month-skeleton-label" />
+                      <div className="memory-month-skeleton-card">
+                        <span />
+                        <span />
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {state.status === "error" && (
+                <MemoryMessage
+                  title="暂时无法读取记忆"
+                  description="连接没有完成，请稍后重试。"
+                  action={
+                    <button
+                      className="secondary-button"
+                      onClick={() => setReloadKey((value) => value + 1)}
+                    >
+                      重新加载
+                    </button>
+                  }
+                />
+              )}
+            </>
+          ) : null}
+
+          {isDetail && (
+            <MemoryDetail
+              state={detailState}
+              triggerRef={paperTriggerRef}
+              errorMessage={actionError || null}
+              editing={editingId === detailMemory?.id}
+              editingKey={editingKey}
+              editingCategory={editingCategory}
+              editingContent={editingContent}
+              editingTags={editingTags}
+              updating={updatingId === detailMemory?.id}
+              archiving={archivingId === detailMemory?.id}
+              onEditingKeyChange={(value) => {
+                setEditingKey(value);
+                setActionError("");
+              }}
+              onEditingCategoryChange={(value) => {
+                setEditingCategory(value);
+                setActionError("");
+              }}
+              onEditingContentChange={(value) => {
+                setEditingContent(value);
+                setActionError("");
+              }}
+              onEditingTagsChange={(value) => {
+                setEditingTags(value);
+                setActionError("");
+              }}
+              onEdit={(memory) => {
+                setEditingId(memory.id);
+                setEditingKey(memory.key);
+                setEditingCategory(memory.category);
+                setEditingContent(memory.content);
+                setEditingTags(memory.tags.join(", "));
+                setActionError("");
+              }}
+              onCancel={() => {
+                if (!confirmAndDiscardDraft()) return;
+                invalidateMutationContext();
+                setEditingId("");
+                setEditingKey("");
+                setEditingCategory("profile");
+                setEditingContent("");
+                setEditingTags("");
+                setActionError("");
+              }}
+              onSave={() => {
+                if (detailMemory) void handleUpdate(detailMemory.id);
+              }}
+              onArchive={(memory) => void handleArchive(memory.id, memory.key)}
+              onRetry={() => setDetailReloadKey((value) => value + 1)}
+              onRequestClose={() => {
+                if (!confirmAndDiscardDraft()) return false;
+                closeMemory(true);
+                return true;
+              }}
             />
           )}
+        </>
+      ) : (
+        <>
+          {isArchived ? (
+            <ArchivedMemoryList
+              state={archivedState}
+              onOpen={(id, trigger) => {
+                paperTriggerRef.current = trigger;
+                openArchivedMemory(id);
+              }}
+              onBack={closeArchive}
+              onRetry={() => setArchiveReloadKey((value) => value + 1)}
+            />
+          ) : null}
+          {isArchivedDetail ? (
+            <ArchivedMemoryDetail
+              state={archivedDetailState}
+              triggerRef={paperTriggerRef}
+              errorMessage={actionError || null}
+              onRetry={() => setArchiveReloadKey((value) => value + 1)}
+              onBack={closeArchivedMemory}
+              restoring={restoringId === archivedDetailLocation.memoryId}
+              onRestore={(id) => void restoreArchivedMemory(id)}
+            />
+          ) : null}
         </>
       )}
     </div>
   );
 }
+
 
 function ArchivedMemoryList({
   state,
@@ -1268,13 +1291,13 @@ function ArchivedMemoryList({
   onBack(): void;
   onRetry(): void;
 }) {
+  const count = state.status === "ready" ? state.result.metadata.count : 0;
+
+  let body: ReactNode;
   if (state.status === "loading") {
-    return (
+    body = (
       <>
-        <MemoryMessage
-          title="已归档记忆"
-          description="正在读取归档…"
-        />
+        <MemoryMessage title="正在读取归档" description="正在读取归档…" />
         <section className="memory-months" aria-label="已归档 Memory 加载中">
           {[0, 1].map((index) => (
             <div className="memory-month-skeleton" key={index}>
@@ -1288,48 +1311,19 @@ function ArchivedMemoryList({
         </section>
       </>
     );
-  }
-
-  if (state.status === "error") {
-    return (
+  } else if (state.status === "error") {
+    body = (
       <MemoryMessage
         title="暂时无法读取归档"
         description="连接没有完成，请稍后重试。"
-        action={
-          <button
-            className="secondary-button"
-            onClick={onRetry}
-          >
-            重新加载
-          </button>
-        }
+        action={<button className="secondary-button" onClick={onRetry}>重新加载</button>}
       />
     );
-  }
-
-  if (state.result.memories.length === 0) {
-    return (
-      <MemoryMessage
-        title="已归档记忆"
-        description="还没有归档记忆"
-      />
-    );
-  }
-
-  const groups = groupMemoriesByMonth(state.result.memories);
-
-  return (
-    <>
-      <header className="memory-archive-header">
-        <div>
-          <h1>已归档记忆</h1>
-          <p>{state.result.metadata.count}条记忆</p>
-        </div>
-        <button type="button" className="secondary-button" onClick={onBack}>
-          返回
-        </button>
-      </header>
-
+  } else if (state.result.memories.length === 0) {
+    body = <MemoryMessage title="还没有归档记忆" description="归档区目前为空。" />;
+  } else {
+    const groups = groupMemoriesByMonth(state.result.memories);
+    body = (
       <section className="memory-months" aria-label="已归档 Memory 列表">
         {groups.map((group) => (
           <section className="memory-month-section" key={group.key}>
@@ -1341,9 +1335,7 @@ function ArchivedMemoryList({
                   type="button"
                   className="memory-row"
                   data-memory-id={memory.id}
-                  onClick={(event) =>
-                    onOpen(memory.id, event.currentTarget)
-                  }
+                  onClick={(event) => onOpen(memory.id, event.currentTarget)}
                 >
                   <span className="memory-row-title">{getMemoryRowTitle(memory)}</span>
                   <span className="memory-row-meta">
@@ -1356,9 +1348,25 @@ function ArchivedMemoryList({
           </section>
         ))}
       </section>
+    );
+  }
+
+  return (
+    <>
+      <header className="memory-page-header memory-archive-header">
+        <div className="memory-page-heading">
+          <div className="memory-page-title">Archive</div>
+          <div className="memory-page-count">{count}条记忆</div>
+        </div>
+        <button type="button" className="memory-archive-back" onClick={onBack}>
+          返回
+        </button>
+      </header>
+      {body}
     </>
   );
 }
+
 
 function ArchivedMemoryDetail({
   state,
@@ -1393,10 +1401,16 @@ function ArchivedMemoryDetail({
         description="该记忆不存在、无权访问或暂时不可用。"
         action={
           <>
-            <button className="secondary-button" onClick={onRetry}>
+            <button
+              className="secondary-button"
+              onClick={onRetry}
+            >
               重新加载
             </button>
-            <button className="secondary-button" onClick={onBack}>
+            <button
+              className="secondary-button"
+              onClick={onBack}
+            >
               返回归档列表
             </button>
           </>
@@ -1409,7 +1423,7 @@ function ArchivedMemoryDetail({
 
   return (
     <PaperDetailDialog
-      id={`memory-archive-paper-${memory.id}`}
+      id="memory-archive-detail-paper"
       open
       label={`已归档 Memory ${getMemoryRowTitle(memory)}`}
       dateLabel={formatMemoryPaperDate(memory.updated_at)}
@@ -1417,6 +1431,7 @@ function ArchivedMemoryDetail({
       triggerRef={triggerRef}
       errorMessage={errorMessage}
       onRequestClose={() => {
+        if (restoring) return false;
         onBack();
         return true;
       }}
@@ -1435,9 +1450,14 @@ function ArchivedMemoryDetail({
       )}
     >
       {memory.key.trim() ? (
-        <h2 className="memory-paper-title">{memory.key}</h2>
+        <h2 className="memory-paper-title">
+          {memory.key}
+        </h2>
       ) : null}
-      <p className="memory-paper-content">{memory.content}</p>
+
+      <p className="memory-paper-content">
+        {memory.content}
+      </p>
     </PaperDetailDialog>
   );
 }
@@ -1447,63 +1467,82 @@ function MemoryDetail({
   triggerRef,
   errorMessage,
   editing,
+  editingKey,
+  editingCategory,
   editingContent,
   editingTags,
   updating,
   archiving,
+  onEditingKeyChange,
+  onEditingCategoryChange,
   onEditingContentChange,
   onEditingTagsChange,
   onEdit,
   onCancel,
   onSave,
   onArchive,
+  onRetry,
   onRequestClose,
-  onBack,
 }: {
   state: DetailState;
   triggerRef: RefObject<HTMLElement | null>;
   errorMessage: string | null;
   editing: boolean;
+  editingKey: string;
+  editingCategory: MemoryCategory;
   editingContent: string;
   editingTags: string;
   updating: boolean;
   archiving: boolean;
+  onEditingKeyChange(value: string): void;
+  onEditingCategoryChange(value: MemoryCategory): void;
   onEditingContentChange(value: string): void;
   onEditingTagsChange(value: string): void;
   onEdit(memory: MemoryRecord): void;
   onCancel(): void;
   onSave(): void;
   onArchive(memory: MemoryRecord): void;
+  onRetry(): void;
   onRequestClose(): boolean;
-  onBack(): void;
 }) {
   if (state.status === "loading") {
     return (
-      <MemoryMessage
-        title="正在读取记忆"
-        description="详情加载中…"
-      />
+      <PaperDetailDialog
+        id="memory-detail-paper"
+        open
+        label="正在读取 Memory"
+        dateLabel=""
+        signature="N"
+        triggerRef={triggerRef}
+        onRequestClose={onRequestClose}
+      >
+        <p className="memory-paper-status">正在读取记忆…</p>
+      </PaperDetailDialog>
     );
   }
 
   if (state.status === "error" || state.status === "idle") {
     return (
-      <MemoryMessage
-        title="无法读取记忆"
-        description="该记忆不存在、无权访问或暂时不可用。"
-        action={
-          <button className="secondary-button" onClick={onBack}>
-            返回记忆列表
-          </button>
-        }
-      />
+      <PaperDetailDialog
+        id="memory-detail-paper"
+        open
+        label="无法读取 Memory"
+        dateLabel=""
+        signature="N"
+        triggerRef={triggerRef}
+        onRequestClose={onRequestClose}
+        topRight={<button className="memory-paper-control" onClick={onRetry}>重试</button>}
+      >
+        <p className="memory-paper-status">无法读取记忆</p>
+        <p className="memory-paper-content">该记忆不存在、无权访问或暂时不可用。</p>
+      </PaperDetailDialog>
     );
   }
 
   const memory = state.memory;
   return (
     <PaperDetailDialog
-      id={`memory-paper-${memory.id}`}
+      id="memory-detail-paper"
       open
       label={`Memory ${getMemoryRowTitle(memory)}`}
       dateLabel={formatMemoryPaperDate(memory.updated_at)}
@@ -1516,7 +1555,11 @@ function MemoryDetail({
           <>
             <button className="memory-paper-control" disabled={updating} onClick={onCancel}>取消</button>
             <span>·</span>
-            <button className="memory-paper-control" disabled={updating || !editingContent.trim()} onClick={onSave}>
+            <button
+              className="memory-paper-control"
+              disabled={updating || !editingKey.trim() || !editingContent.trim()}
+              onClick={onSave}
+            >
               {updating ? "保存中…" : "保存"}
             </button>
           </>
@@ -1530,13 +1573,26 @@ function MemoryDetail({
           </>
         )
       }
-      bottomLeft={formatMemoryRowMeta(memory, categoryLabels[memory.category])}
+      bottomLeft={
+        editing ? (
+          <MemoryPaperMetadataEditor
+            category={editingCategory}
+            tagsValue={editingTags}
+            disabled={updating}
+            onCategoryChange={onEditingCategoryChange}
+            onTagsChange={onEditingTagsChange}
+          />
+        ) : formatMemoryRowMeta(memory, categoryLabels[memory.category])
+      }
     >
       {editing ? (
-        <div className="memory-paper-form">
-          <textarea aria-label="编辑记忆内容" value={editingContent} disabled={updating} onChange={(event) => onEditingContentChange(event.target.value)} />
-          <input aria-label="编辑记忆标签" value={editingTags} disabled={updating} onChange={(event) => onEditingTagsChange(event.target.value)} />
-        </div>
+        <MemoryPaperEditor
+          keyValue={editingKey}
+          content={editingContent}
+          disabled={updating}
+          onKeyChange={onEditingKeyChange}
+          onContentChange={onEditingContentChange}
+        />
       ) : (
         <>
           {memory.key.trim() ? <h2 className="memory-paper-title">{memory.key}</h2> : null}
@@ -1545,8 +1601,8 @@ function MemoryDetail({
       )}
     </PaperDetailDialog>
   );
-
 }
+
 
 function MemoryMessage({
   action,

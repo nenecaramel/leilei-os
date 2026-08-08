@@ -22,26 +22,40 @@ test("Memory filter history pushes exact category and restores it through back a
     (filters) => restored.push(filters),
   );
 
+  const waitForPopState = () =>
+    new Promise<void>((resolve) => {
+      dom.window.addEventListener(
+        "popstate",
+        () => resolve(),
+        { once: true },
+      );
+    });
+
   pushMemoryFilterHistory(dom.window, {
     q: "focus",
     category: "goal",
     tag: "MCP",
   });
+
   assert.equal(
     dom.window.location.search,
     "?q=focus&category=goal&tag=MCP",
   );
 
+  const wentBack = waitForPopState();
   dom.window.history.back();
-  await new Promise((resolve) => dom.window.setTimeout(resolve, 10));
+  await wentBack;
+
   assert.deepEqual(restored.at(-1), {
     q: "focus",
     category: "",
     tag: "",
   });
 
+  const wentForward = waitForPopState();
   dom.window.history.forward();
-  await new Promise((resolve) => dom.window.setTimeout(resolve, 10));
+  await wentForward;
+
   assert.deepEqual(restored.at(-1), {
     q: "focus",
     category: "goal",
