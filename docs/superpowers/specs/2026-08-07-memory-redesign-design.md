@@ -451,3 +451,17 @@ On mobile, verify:
 The redesign succeeds only if Memory adopts the Home/Todo visual and interaction language without weakening its lifecycle, ownership, navigation, or mutation-safety semantics.
 
 Preserve the existing controller behavior wherever possible. The only accepted API-contract expansion in this batch is extending the existing active Web Memory update path to allow the already-existing `key` and `category` fields alongside `content` and `tags`. No schema migration, new endpoint, archived editing, MCP contract change, or signature persistence belongs in this batch.
+
+## 2026-08-08 Visual Acceptance Amendment
+
+The following mobile-only corrections are required before Memory visual acceptance can pass:
+
+1. The create Pen icon must be visibly horizontally mirrored. Do not rely on a transform that fails to alter the rendered glyph.
+2. The five Memory header tools must have balanced optical weight while keeping 44×44 tap targets: shrink the category four-square glyph slightly, enlarge the `#` tag glyph slightly, and keep search/archive/pen visually matched.
+3. View, edit, and create modes must use identical paper coordinates. Switching into edit mode must not move the key/title, content, category, or tags. Create mode must place those regions at the same coordinates as the corresponding existing-memory paper.
+4. Memory editing must visually behave like writing directly on the Todo paper: title input and content textarea remain transparent and borderless at rest and focus, with no focus background, focus ring, box shadow, large tinted rectangle, or rule-line obstruction. Content line-height must align with the paper rules.
+5. Archive Return must be a functioning control that restores the exact active Memory `returnTo` URL/state. Its hit target must not be blocked by overlay or stacking layers.
+6. Expanded Memory search must show no right-side cancel/clear cross while typing or focused. Remove the custom clear button and suppress the native `type=search` cancel glyph. Filtering may still be cleared through the existing filter controls.
+
+These corrections do not change the API, database schema, Memory lifecycle semantics, desktop UI, PaperDetailDialog geometry, Todo behavior, signature behavior, or the two untracked preview helpers.
+
