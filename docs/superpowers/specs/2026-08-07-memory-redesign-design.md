@@ -464,4 +464,3 @@ The following mobile-only corrections are required before Memory visual acceptan
 6. Expanded Memory search must show no right-side cancel/clear cross while typing or focused. Remove the custom clear button and suppress the native `type=search` cancel glyph. Filtering may still be cleared through the existing filter controls.
 
 These corrections do not change the API, database schema, Memory lifecycle semantics, desktop UI, PaperDetailDialog geometry, Todo behavior, signature behavior, or the two untracked preview helpers.
-
