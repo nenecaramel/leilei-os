@@ -45,6 +45,42 @@ const memory = {
   updated_at: "2026-07-28T00:00:00.000Z",
 };
 
+test("Memory archive loading shows only the new month skeleton under Archive", async () => {
+  const page = await render(
+    createMemoryArchiveLocation("/memory"),
+    pendingApi().api,
+  );
+
+  try {
+    assert.ok(page.container.querySelector(".memory-archive-header"));
+    assert.ok(page.container.querySelector(".memory-month-skeleton"));
+    assert.equal(page.container.querySelector(".memory-message"), null);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory archive header uses the shared Return label", async () => {
+  const page = await render(createMemoryArchiveLocation("/memory"), {
+    async request<T>(path: string) {
+      if (path === "/memory/archived") return archivedResponse() as T;
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  });
+
+  try {
+    await React.act(async () => {
+      await Promise.resolve();
+    });
+    assert.equal(
+      page.container.querySelector(".memory-archive-back")?.textContent?.trim(),
+      "Return",
+    );
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Memory source labels keep provenance read-only and legacy-safe", () => {
   assert.equal(formatMemorySource("web"), "网页创建");
   assert.equal(formatMemorySource("phase_2_validation"), "初始化数据");

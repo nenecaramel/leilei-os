@@ -69,7 +69,7 @@ export function groupDiariesByMonth<T extends DiaryPresentationRecord>(
 
 export function formatDiaryRowDate(value: string): string {
   const parsed = parseDiaryDate(value);
-  return parsed ? `${parsed.month}月${parsed.day}日` : value;
+  return parsed ? `${parsed.month}/${parsed.day}` : value;
 }
 
 export function formatDiaryPaperDate(value: string): string {

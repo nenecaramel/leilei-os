@@ -86,22 +86,16 @@ export function formatMemoryRowDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "时间未知";
 
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-  }).format(date);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 export function formatMemoryPaperDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "时间未知";
 
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  return [
+    String(date.getFullYear()).padStart(4, "0"),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join(".");
 }

@@ -97,14 +97,16 @@ test("Diary paper metadata keeps mood and tags as free text", async () => {
       onTagsChange() {},
     }),
     (root) => {
-      assert.equal(
-        root.querySelector<HTMLInputElement>('input[aria-label="日记心情"]')?.value,
-        "calm",
+      const mood = root.querySelector<HTMLInputElement>(
+        'input[aria-label="日记心情"]',
       );
-      assert.equal(
-        root.querySelector<HTMLInputElement>('input[aria-label="日记标签"]')?.value,
-        "work, MCP",
+      const tags = root.querySelector<HTMLInputElement>(
+        'input[aria-label="日记标签"]',
       );
+      assert.equal(mood?.value, "calm");
+      assert.equal(mood?.style.width, "6ch");
+      assert.equal(tags?.value, "work, MCP");
+      assert.equal(tags?.style.width, "11ch");
     },
   );
 });

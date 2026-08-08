@@ -124,6 +124,9 @@ export function DiaryPaperMetadataEditor({
         aria-label="日记心情"
         placeholder="心情"
         value={moodValue}
+        style={{
+          width: `${Math.max(4, Math.min(10, Array.from(moodValue || "心情").length + 2))}ch`,
+        }}
         disabled={disabled}
         maxLength={50}
         autoComplete="off"
@@ -136,6 +139,9 @@ export function DiaryPaperMetadataEditor({
         aria-label="日记标签"
         placeholder="标签"
         value={tagsValue}
+        style={{
+          width: `${Math.max(4, Math.min(16, Array.from(tagsValue || "标签").length + 2))}ch`,
+        }}
         disabled={disabled}
         autoComplete="off"
         onChange={(event) => onTagsChange(event.target.value)}

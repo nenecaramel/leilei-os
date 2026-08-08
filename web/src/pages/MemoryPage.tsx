@@ -1297,7 +1297,6 @@ function ArchivedMemoryList({
   if (state.status === "loading") {
     body = (
       <>
-        <MemoryMessage title="正在读取归档" description="正在读取归档…" />
         <section className="memory-months" aria-label="已归档 Memory 加载中">
           {[0, 1].map((index) => (
             <div className="memory-month-skeleton" key={index}>
@@ -1359,7 +1358,7 @@ function ArchivedMemoryList({
           <div className="memory-page-count">{count}条记忆</div>
         </div>
         <button type="button" className="memory-archive-back" onClick={onBack}>
-          返回
+          Return
         </button>
       </header>
       {body}

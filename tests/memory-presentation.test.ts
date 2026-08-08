@@ -63,9 +63,17 @@ test("Memory row metadata never leaves a dangling separator", () => {
   assert.equal(formatMemoryRowMeta(records[2], "Project"), "Project · #OS #UI");
 });
 
-test("Memory row and paper dates are safe for valid and invalid timestamps", () => {
-  assert.notEqual(formatMemoryRowDate(records[0].updated_at), "时间未知");
+test("Memory row and paper dates are safe and use the shared visual separators", () => {
+  const date = new Date(records[0].updated_at);
+  const expectedRow = `${date.getMonth() + 1}/${date.getDate()}`;
+  const expectedPaper = [
+    String(date.getFullYear()).padStart(4, "0"),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join(".");
+
+  assert.equal(formatMemoryRowDate(records[0].updated_at), expectedRow);
   assert.equal(formatMemoryRowDate("invalid"), "时间未知");
-  assert.match(formatMemoryPaperDate(records[0].updated_at), /2026/);
+  assert.equal(formatMemoryPaperDate(records[0].updated_at), expectedPaper);
   assert.equal(formatMemoryPaperDate("invalid"), "时间未知");
 });

@@ -17,4 +17,12 @@ test("Diary mobile additions keep paper fields direct and date text interactive"
     /\.paper-detail-paper\[id\^="diary-"\][\s\S]*background:\s*transparent/,
   );
   assert.match(css, /\.diary-paper-metadata/);
+  assert.match(
+    css,
+    /\.diary-paper-mood,[\s\S]*width:\s*auto;[\s\S]*max-width:\s*min\(120px, 28vw\)/,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.diary-paper-mood,\s*\n\s*\.diary-paper-tags\s*\{\s*\n\s*width:\s*min\(120px, 28vw\)/,
+  );
 });

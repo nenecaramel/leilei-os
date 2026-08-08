@@ -33,7 +33,7 @@ test("Diary presentation groups by the domain date without timezone drift", () =
       { key: "2026-07", label: "2026年7月", ids: ["d3"] },
     ],
   );
-  assert.equal(formatDiaryRowDate("2026-08-08"), "8月8日");
+  assert.equal(formatDiaryRowDate("2026-08-08"), "8/8");
   assert.equal(formatDiaryPaperDate("2026-08-08"), "2026.08.08");
 });
 

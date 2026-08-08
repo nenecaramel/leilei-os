@@ -3422,8 +3422,10 @@ body:has(.home-prototype) {
 
   .diary-paper-mood,
   .diary-paper-tags {
-    width: min(120px, 28vw);
-    min-width: 48px;
+    width: auto;
+    min-width: 0;
+    max-width: min(120px, 28vw);
+    flex: 0 1 auto;
     height: 20px;
     min-height: 20px;
     margin: 0;
@@ -3443,7 +3445,7 @@ body:has(.home-prototype) {
   }
 
   .diary-paper-tags {
-    width: min(160px, 38vw);
+    max-width: min(160px, 38vw);
   }
 
   .diary-paper-mood::placeholder,
@@ -3456,5 +3458,63 @@ body:has(.home-prototype) {
     z-index: 4;
     pointer-events: auto;
     isolation: isolate;
+  }
+}
+
+/* Memory and Diary left-tool optical spacing */
+@media (max-width: 760px) {
+  .memory-page-tools:not(.diary-page-tools)
+    > .memory-page-tool-wrap:nth-child(1)
+    > button
+    > * {
+    position: relative;
+    left: 4px;
+  }
+
+  .memory-page-tools:not(.diary-page-tools)
+    > .memory-page-tool-wrap:nth-child(2)
+    > button
+    > * {
+    position: relative;
+    left: 2px;
+  }
+
+  .diary-page-tools
+    > .memory-page-tool-wrap:nth-child(1)
+    > button
+    > * {
+    position: relative;
+    left: 6px;
+  }
+
+  .diary-page-tools
+    > .memory-page-tool-wrap:nth-child(2)
+    > button
+    > * {
+    position: relative;
+    left: 4px;
+  }
+
+  .diary-page-tools
+    > .memory-page-tool-wrap:nth-child(3)
+    > button
+    > * {
+    position: relative;
+    left: 2px;
+  }
+}
+
+/* Mobile Memory and Diary final optical polish */
+@media (max-width: 760px) {
+  .memory-page-tools > button:nth-last-child(-n + 2) {
+    color: #666666;
+  }
+
+  .paper-detail-paper[id^="memory-"] .memory-paper-content-editor {
+    font-size: 16px;
+  }
+
+  .paper-detail-paper[id^="memory-"] .memory-paper-tags {
+    font-size: 16px;
   }
 }

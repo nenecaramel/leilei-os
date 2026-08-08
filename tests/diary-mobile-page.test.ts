@@ -179,7 +179,7 @@ test("mobile Diary matches Memory header and month-row hierarchy", async () => {
     );
     assert.ok(row);
     assert.match(row.textContent ?? "", /August note/);
-    assert.match(row.textContent ?? "", /8月8日/);
+    assert.match(row.textContent ?? "", /8\/8/);
     assert.match(row.textContent ?? "", /calm · #work #MCP/);
   } finally {
     await page.cleanup();
