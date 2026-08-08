@@ -232,6 +232,63 @@ test("Memory populated list uses read-only month rows and empty list has no mont
   }
 });
 
+test("Memory mobile header uses ordered SVG tools", async () => {
+  const page = await render("/memory", {
+    async request<T>() {
+      return listResponse() as T;
+    },
+  });
+
+  try {
+    const tools = page.container.querySelector(".memory-page-tools");
+    assert.ok(tools);
+
+    const buttons = [...tools.querySelectorAll<HTMLButtonElement>("button")];
+    assert.deepEqual(
+      buttons.map((button) => button.getAttribute("aria-label")),
+      ["筛选分类", "筛选标签", "搜索记忆", "查看归档", "新增记忆"],
+    );
+
+    const category = buttons[0];
+    assert.ok(category);
+    assert.equal(category.querySelectorAll("svg rect").length, 4);
+
+    for (const index of [2, 3, 4]) {
+      assert.ok(buttons[index]?.querySelector("svg"));
+    }
+
+    assert.doesNotMatch(tools.textContent ?? "", /⌕|▣|✎/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory expanded search uses the shared SVG search glyph", async () => {
+  const page = await render("/memory", {
+    async request<T>() {
+      return listResponse() as T;
+    },
+  });
+
+  try {
+    const trigger = page.container.querySelector<HTMLButtonElement>(
+      "button[aria-label=\"搜索记忆\"]",
+    );
+    assert.ok(trigger);
+
+    await React.act(async () => {
+      trigger.click();
+    });
+
+    const search = page.container.querySelector(".memory-page-search");
+    assert.ok(search);
+    assert.ok(search.querySelector("svg"));
+    assert.doesNotMatch(search.textContent ?? "", /⌕/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Memory active detail uses archive wording and calls the existing endpoint once", async () => {
   const requests: Request[] = [];
   const api: WebApiClient = {

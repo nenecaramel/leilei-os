@@ -1,4 +1,10 @@
 import { useEffect, useState } from "react";
+import {
+  ArchiveIcon,
+  DashboardIcon,
+  PenIcon,
+  SearchIcon,
+} from "../components/icons.js";
 
 type MemoryPageHeaderProps = {
   count: number;
@@ -61,7 +67,7 @@ export function MemoryPageHeader({
             disabled={busy}
             onClick={() => setOpenMenu((value) => value === "category" ? null : "category")}
           >
-            <span aria-hidden="true">▦</span>
+            <DashboardIcon />
           </button>
           {openMenu === "category" ? (
             <div className="memory-page-popover" role="menu" aria-label="Memory 分类">
@@ -145,7 +151,7 @@ export function MemoryPageHeader({
             setSearchOpen((value) => !value);
           }}
         >
-          <span aria-hidden="true">⌕</span>
+          <SearchIcon className="memory-page-search-icon" />
         </button>
         <button
           type="button"
@@ -153,7 +159,7 @@ export function MemoryPageHeader({
           disabled={busy}
           onClick={(event) => onOpenArchive(event.currentTarget)}
         >
-          <span aria-hidden="true">▣</span>
+          <ArchiveIcon />
         </button>
         <button
           type="button"
@@ -161,13 +167,13 @@ export function MemoryPageHeader({
           disabled={busy}
           onClick={(event) => onCreate(event.currentTarget)}
         >
-          <span aria-hidden="true">✎</span>
+          <PenIcon className="memory-page-create-icon" />
         </button>
       </div>
 
       {searchOpen ? (
         <div className="memory-page-search">
-          <span aria-hidden="true">⌕</span>
+          <SearchIcon />
           <input
             type="search"
             aria-label="搜索记忆"

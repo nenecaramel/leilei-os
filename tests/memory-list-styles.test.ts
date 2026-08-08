@@ -67,3 +67,45 @@ test("Memory mobile shell matches Home page geometry", () => {
   const months = block(".memory-months");
   assert.ok(months.includes("padding: 4px 0 24px;"));
 });
+
+
+test("Memory expanded search keeps one visible surface", () => {
+  const search = block(".memory-page-search");
+  assert.ok(search.includes("background: #f3f3f3;"));
+
+  const input = block(".memory-page-search input");
+  assert.ok(input.includes("border: 0;"));
+  assert.ok(input.includes("background: transparent;"));
+  assert.ok(input.includes("box-shadow: none;"));
+});
+
+
+test("Memory header glyphs balance visual size without shrinking tap targets", () => {
+  const buttons = block(".memory-page-tools > button,\n  .memory-page-tool-wrap > button");
+  assert.ok(buttons.includes("width: 44px;"));
+  assert.ok(buttons.includes("height: 44px;"));
+
+  const icons = block(".memory-page-tools svg");
+  assert.ok(icons.includes("width: 20px;"));
+  assert.ok(icons.includes("height: 20px;"));
+
+  const search = block(".memory-page-search-icon");
+  assert.ok(search.includes("width: 21px;"));
+  assert.ok(search.includes("height: 21px;"));
+
+  const pen = block(".memory-page-create-icon");
+  assert.ok(pen.includes("transform: scaleX(-1);"));
+});
+
+
+test("Memory expanded search glyph stays field-sized", () => {
+  const icon = block(".memory-page-search > svg");
+  assert.ok(icon.includes("width: 18px;"));
+  assert.ok(icon.includes("height: 18px;"));
+});
+
+
+test("Memory expanded search keeps focus on the outer surface", () => {
+  const focus = block(".memory-page-search:focus-within");
+  assert.ok(focus.includes("box-shadow:"));
+});

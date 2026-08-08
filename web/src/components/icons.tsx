@@ -62,6 +62,13 @@ export const ArchiveIcon = (props: IconProps) => (
   </IconBase>
 );
 
+export const PenIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <path d="M4 20h4l11-11-4-4L4 16v4Z" />
+    <path d="m13.5 6.5 4 4" />
+  </IconBase>
+);
+
 export const UniverseIcon = (props: IconProps) => (
   <IconBase {...props}>
     <circle cx="12" cy="12" r="3" />
