@@ -2456,13 +2456,38 @@ body:has(.home-prototype) {
 
 }
 @media (max-width: 760px) {
+  html:has(.memory-page),
+  body:has(.memory-page),
+  #root:has(.memory-page),
+  .app-shell:has(.memory-page),
+  .main-content:has(.memory-page) {
+    min-height: calc(100dvh - (44px + env(safe-area-inset-top, 0px)));
+    background: #ffffff;
+  }
+
+  body:has(.memory-page) {
+    background-image: none;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  }
+
+  .memory-page {
+    width: min(860px, calc(100% - 48px));
+    min-height: calc(100dvh - (44px + env(safe-area-inset-top, 0px)));
+    margin: 0 auto;
+    padding: 18px 0 max(20px, env(safe-area-inset-bottom, 0px));
+    color: #171717;
+    background: #ffffff;
+  }
+}
+
+@media (max-width: 760px) {
   .memory-page-header {
     position: relative;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
     gap: 10px;
-    padding: 18px 18px 10px;
+    padding: 0 0 10px;
     color: #171717;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   }
@@ -2592,7 +2617,7 @@ body:has(.home-prototype) {
   .memory-months {
     display: grid;
     gap: 18px;
-    padding: 4px 18px 24px;
+    padding: 4px 0 24px;
   }
 
   .memory-month-section {

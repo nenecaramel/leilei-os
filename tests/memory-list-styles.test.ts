@@ -49,3 +49,21 @@ test("Memory archive header stays compact on mobile", () => {
   assert.ok(count.includes("font-size:"));
   assert.ok(count.includes("color:"));
 });
+
+
+test("Memory mobile shell matches Home page geometry", () => {
+  assert.ok(styles.includes("body:has(.memory-page)"));
+  assert.ok(styles.includes(".main-content:has(.memory-page)"));
+
+  const page = block(".memory-page");
+  assert.ok(page.includes("width: min(860px, calc(100% - 48px));"));
+  assert.ok(page.includes("margin: 0 auto;"));
+  assert.ok(page.includes("padding: 18px 0"));
+  assert.ok(page.includes("background: #ffffff;"));
+
+  const header = block(".memory-page-header");
+  assert.ok(header.includes("padding: 0 0 10px;"));
+
+  const months = block(".memory-months");
+  assert.ok(months.includes("padding: 4px 0 24px;"));
+});
