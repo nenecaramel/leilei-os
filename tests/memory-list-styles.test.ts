@@ -32,3 +32,20 @@ test("Memory month list keeps the mobile Home-style card contract", () => {
   block(".memory-row + .memory-row");
   block(".memory-month-skeleton");
 });
+
+
+test("Memory archive header stays compact on mobile", () => {
+  const header = block(".memory-archive-header");
+  assert.ok(header.includes("display: flex;"));
+  assert.ok(header.includes("justify-content: space-between;"));
+  assert.ok(header.includes("align-items: center;"));
+  assert.ok(header.includes("padding: 0 20px;"));
+
+  const title = block(".memory-archive-header h1");
+  assert.ok(title.includes("font-size:"));
+  assert.ok(title.includes("font-weight:"));
+
+  const count = block(".memory-archive-header p");
+  assert.ok(count.includes("font-size:"));
+  assert.ok(count.includes("color:"));
+});

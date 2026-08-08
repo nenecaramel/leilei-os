@@ -2746,6 +2746,27 @@ body:has(.home-prototype) {
   }
 }
 
+@media (max-width: 760px) {
+  .memory-archive-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+
+  .memory-archive-header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  .memory-archive-header p {
+    margin: 2px 0 0;
+    color: #9a9a9a;
+    font-size: 12px;
+  }
+}
+
 /* Settings */
 
 .settings-form {

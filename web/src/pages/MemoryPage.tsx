@@ -974,14 +974,7 @@ export function MemoryPageContent({
           description={settings.page_copy.memory_subtitle ?? ""}
           action={<button className="secondary-button" disabled={restoringId.length > 0} onClick={closeArchivedMemory}>返回归档列表</button>}
         />
-      ) : isArchived ? (
-        <PageHeader
-          eyebrow="Long-term context"
-          title="Memory"
-          description={settings.page_copy.memory_subtitle ?? ""}
-          action={<button className="secondary-button" onClick={closeArchive}>返回记忆列表</button>}
-        />
-      ) : (
+      ) : isArchived ? null : (
       <MemoryPageHeader
         count={state.status === "ready" ? state.result.metadata.count : 0}
         categories={availableCategories.map((value) => ({
@@ -1024,7 +1017,7 @@ export function MemoryPageContent({
       />
       )}
 
-      {actionError && !isDetail && !showCreate && (
+      {actionError && !isDetail && !isArchivedDetail && !showCreate && (
         <section className="memory-message">
           <h2>操作没有完成</h2>
           <p>{actionError}</p>
@@ -1079,6 +1072,8 @@ export function MemoryPageContent({
       ) : isArchivedDetail ? (
         <ArchivedMemoryDetail
           state={archivedDetailState}
+          triggerRef={paperTriggerRef}
+          errorMessage={actionError || null}
           onRetry={() =>
             setArchiveReloadKey((value) => value + 1)
           }
@@ -1091,7 +1086,11 @@ export function MemoryPageContent({
       ) : isArchived ? (
         <ArchivedMemoryList
           state={archivedState}
-          onOpen={openArchivedMemory}
+          onOpen={(id, trigger) => {
+            paperTriggerRef.current = trigger;
+            openArchivedMemory(id);
+          }}
+          onBack={closeArchive}
           onRetry={() =>
             setArchiveReloadKey((value) => value + 1)
           }
@@ -1272,10 +1271,12 @@ export function MemoryPageContent({
 function ArchivedMemoryList({
   state,
   onOpen,
+  onBack,
   onRetry,
 }: {
   state: ArchivedState;
-  onOpen(id: string): void;
+  onOpen(id: string, trigger: HTMLElement): void;
+  onBack(): void;
   onRetry(): void;
 }) {
   if (state.status === "loading") {
@@ -1316,28 +1317,44 @@ function ArchivedMemoryList({
     );
   }
 
+  const groups = groupMemoriesByMonth(state.result.memories);
+
   return (
     <>
-      <section className="memory-message">
-        <h2>已归档记忆</h2>
-        <p>
-          共 {state.result.metadata.count} 条，按更新时间从新到旧排列。
-        </p>
-      </section>
-      <section className="memory-grid">
-        {state.result.memories.map((memory) => (
-          <article className="memory-card" key={memory.id}>
-            <MemoryMetadata memory={memory} />
-            <h2>{memory.key.replaceAll("_", " ")}</h2>
-            <MemoryTags tags={memory.tags} />
-            <p>{memory.content}</p>
-            <button
-              className="secondary-button"
-              onClick={() => onOpen(memory.id)}
-            >
-              查看详情
-            </button>
-          </article>
+      <header className="memory-archive-header">
+        <div>
+          <h1>已归档记忆</h1>
+          <p>{state.result.metadata.count}条记忆</p>
+        </div>
+        <button type="button" className="secondary-button" onClick={onBack}>
+          返回
+        </button>
+      </header>
+
+      <section className="memory-months" aria-label="已归档 Memory 列表">
+        {groups.map((group) => (
+          <section className="memory-month-section" key={group.key}>
+            <h2 className="memory-month-label">{group.label}</h2>
+            <div className="memory-month-card">
+              {group.memories.map((memory) => (
+                <button
+                  key={memory.id}
+                  type="button"
+                  className="memory-row"
+                  data-memory-id={memory.id}
+                  onClick={(event) =>
+                    onOpen(memory.id, event.currentTarget)
+                  }
+                >
+                  <span className="memory-row-title">{getMemoryRowTitle(memory)}</span>
+                  <span className="memory-row-meta">
+                    <span>{formatMemoryRowDate(memory.updated_at)}</span>
+                    <span>{formatMemoryRowMeta(memory, categoryLabels[memory.category])}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
         ))}
       </section>
     </>
@@ -1346,12 +1363,16 @@ function ArchivedMemoryList({
 
 function ArchivedMemoryDetail({
   state,
+  triggerRef,
+  errorMessage,
   onRetry,
   onBack,
   restoring,
   onRestore,
 }: {
   state: DetailState;
+  triggerRef: RefObject<HTMLElement | null>;
+  errorMessage: string | null;
   onRetry(): void;
   onBack(): void;
   restoring: boolean;
@@ -1385,28 +1406,40 @@ function ArchivedMemoryDetail({
     );
   }
 
+  const memory = state.memory;
+
   return (
-    <section className="memory-message memory-detail">
-      <p className="memory-detail-context">已归档记忆</p>
-      <MemoryMetadata memory={state.memory} />
-      <h2>{state.memory.key.replaceAll("_", " ")}</h2>
-      <MemoryTags tags={state.memory.tags} />
-      <p>{state.memory.content}</p>
-      <button
-        className="secondary-button"
-        disabled={restoring}
-        onClick={() => onRestore(state.memory.id)}
-      >
-        {restoring ? "恢复中…" : "恢复"}
-      </button>
-      <button
-        className="secondary-button"
-        disabled={restoring}
-        onClick={onBack}
-      >
-        返回归档列表
-      </button>
-    </section>
+    <PaperDetailDialog
+      id={`memory-archive-paper-${memory.id}`}
+      open
+      label={`已归档 Memory ${getMemoryRowTitle(memory)}`}
+      dateLabel={formatMemoryPaperDate(memory.updated_at)}
+      signature="N"
+      triggerRef={triggerRef}
+      errorMessage={errorMessage}
+      onRequestClose={() => {
+        onBack();
+        return true;
+      }}
+      topRight={
+        <button
+          className="memory-paper-control"
+          disabled={restoring}
+          onClick={() => onRestore(memory.id)}
+        >
+          {restoring ? "恢复中…" : "恢复"}
+        </button>
+      }
+      bottomLeft={formatMemoryRowMeta(
+        memory,
+        categoryLabels[memory.category],
+      )}
+    >
+      {memory.key.trim() ? (
+        <h2 className="memory-paper-title">{memory.key}</h2>
+      ) : null}
+      <p className="memory-paper-content">{memory.content}</p>
+    </PaperDetailDialog>
   );
 }
 
