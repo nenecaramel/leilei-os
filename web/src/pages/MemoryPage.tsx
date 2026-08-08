@@ -123,20 +123,6 @@ const categoryLabels: Record<MemoryCategory, string> = {
   project: "Project",
 };
 
-function formatUpdatedAt(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "更新时间未知";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(date);
-}
-
 export function formatMemorySource(source: string): string {
   if (source === "web") return "网页创建";
   if (source === "phase_2_validation") return "初始化数据";
@@ -1202,7 +1188,10 @@ export function MemoryPageContent({
                             className="memory-row"
                             data-memory-id={memory.id}
                             disabled={busy}
-                            onClick={() => openMemory(memory.id)}
+                            onClick={(event) => {
+                              paperTriggerRef.current = event.currentTarget;
+                              openMemory(memory.id);
+                            }}
                           >
                             <span className="memory-row-title">{getMemoryRowTitle(memory)}</span>
                             <span className="memory-row-meta">
@@ -1286,7 +1275,17 @@ function ArchivedMemoryList({
           title="已归档记忆"
           description="正在读取归档…"
         />
-        <MemoryLoading />
+        <section className="memory-months" aria-label="已归档 Memory 加载中">
+          {[0, 1].map((index) => (
+            <div className="memory-month-skeleton" key={index}>
+              <span className="memory-month-skeleton-label" />
+              <div className="memory-month-skeleton-card">
+                <span />
+                <span />
+              </div>
+            </div>
+          ))}
+        </section>
       </>
     );
   }
@@ -1547,117 +1546,6 @@ function MemoryDetail({
     </PaperDetailDialog>
   );
 
-  return (
-    <section className="memory-message memory-detail">
-      <MemoryMetadata memory={memory} />
-      <h2>{memory.key.replaceAll("_", " ")}</h2>
-      <MemoryTags tags={memory.tags} />
-
-      {editing ? (
-        <>
-          <textarea
-            aria-label="编辑记忆内容"
-            value={editingContent}
-            disabled={updating}
-            onChange={(event) =>
-              onEditingContentChange(event.target.value)
-            }
-          />
-          <input
-            aria-label="编辑记忆标签"
-            value={editingTags}
-            disabled={updating}
-            onChange={(event) =>
-              onEditingTagsChange(event.target.value)
-            }
-          />
-          <button
-            className="secondary-button"
-            disabled={updating || !editingContent.trim()}
-            onClick={onSave}
-          >
-            {updating ? "保存中…" : "保存修改"}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={updating}
-            onClick={onCancel}
-          >
-            取消
-          </button>
-        </>
-      ) : (
-        <>
-          <p>{memory.content}</p>
-          <button
-            className="secondary-button"
-            disabled={archiving}
-            onClick={() => onEdit(memory)}
-          >
-            编辑
-          </button>
-          <button
-            className="secondary-button"
-            disabled={archiving}
-            onClick={() => onArchive(memory)}
-          >
-            {archiving ? "归档中…" : "归档"}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={archiving}
-            onClick={onBack}
-          >
-            返回记忆列表
-          </button>
-        </>
-      )}
-    </section>
-  );
-}
-
-function MemoryTags({ tags }: { tags: string[] }) {
-  if (tags.length === 0) return null;
-  return (
-    <div className="memory-tags" aria-label="记忆标签">
-      {tags.map((tag) => (
-        <span key={tag}>#{tag}</span>
-      ))}
-    </div>
-  );
-}
-
-function MemoryMetadata({ memory }: { memory: MemoryRecord }) {
-  return (
-    <div className="memory-card-topline">
-      <span
-        className={`memory-category memory-category-${memory.category}`}
-      >
-        {categoryLabels[memory.category]}
-      </span>
-      <span className="memory-source">
-        {formatMemorySource(memory.source)}
-      </span>
-      <span>{formatUpdatedAt(memory.updated_at)}</span>
-    </div>
-  );
-}
-
-function MemoryLoading() {
-  return (
-    <section className="memory-grid">
-      {[0, 1, 2].map((item) => (
-        <div
-          className="memory-card memory-card-loading"
-          key={item}
-        >
-          <span />
-          <strong />
-          <p />
-        </div>
-      ))}
-    </section>
-  );
 }
 
 function MemoryMessage({

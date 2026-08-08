@@ -862,6 +862,9 @@ test("Memory archived mode has distinct loading, empty, and error states", async
   );
   try {
     assert.match(loading.container.textContent ?? "", /正在读取归档/);
+    assert.equal(loading.container.querySelector(".memory-grid") === null, true);
+    assert.equal(loading.container.querySelector(".memory-card") === null, true);
+    assert.ok(loading.container.querySelector(".memory-month-skeleton"));
     assert.equal(
       loading.container.querySelector(
         "input[aria-label=\"搜索记忆\"]",
@@ -1708,6 +1711,69 @@ test("Memory archived paper keeps restore errors inside the paper", async () => 
       [...page.container.querySelectorAll(".memory-message")].some((node) => node.textContent?.includes("操作没有完成")),
       false,
     );
+  } finally {
+    await page.cleanup();
+  }
+});
+
+
+test("Memory ready active and archive views contain no legacy presentation paths", async () => {
+  for (const [path, api] of [
+    ["/memory", { async request<T>() { return listResponse() as T; } }],
+    [createMemoryArchiveLocation("/memory"), {
+      async request<T>(requestPath: string) {
+        if (requestPath === "/memory/archived") return archivedResponse() as T;
+        throw new Error(`unexpected request: ${requestPath}`);
+      },
+    }],
+  ] as const) {
+    const page = await render(path, api);
+    try {
+      assert.equal(page.container.querySelector(".memory-grid"), null);
+      assert.equal(page.container.querySelector(".memory-card"), null);
+      assert.equal(page.container.querySelector(".memory-filters"), null);
+      assert.doesNotMatch(page.container.textContent ?? "", /记忆列表|查看详情/);
+    } finally {
+      await page.cleanup();
+    }
+  }
+});
+
+
+test("Memory active row becomes the paper focus-return trigger", async () => {
+  const page = await render("/memory", {
+    async request<T>(path: string) {
+      if (path === "/memory") return listResponse() as T;
+      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
+      throw new Error(`unexpected request: ${path}`);
+    },
+  });
+
+  try {
+    const row = page.container.querySelector<HTMLButtonElement>(".memory-row");
+    assert.ok(row);
+
+    let focusCalls = 0;
+    row.focus = () => {
+      focusCalls += 1;
+    };
+
+    await React.act(async () => {
+      row.click();
+      await Promise.resolve();
+    });
+
+    assert.ok(page.container.querySelector("[role=dialog]"));
+
+    const veil = page.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+    assert.ok(veil);
+
+    await React.act(async () => {
+      veil.click();
+      await Promise.resolve();
+    });
+
+    assert.equal(focusCalls, 1);
   } finally {
     await page.cleanup();
   }
