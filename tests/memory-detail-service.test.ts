@@ -431,6 +431,89 @@ test("Memory category options reject a disabled user before querying visible cat
   assert.equal(queried, false);
 });
 
+test("Memory update normalizes and forwards all editable Web fields", async () => {
+  const writes: unknown[] = [];
+  const service = new MemoryService(repository({
+    async updateMemory(input) {
+      writes.push(input);
+      return true;
+    },
+  }));
+
+  await service.updateMemory({
+    userId: "user-a",
+    id: "memory-1",
+    key: " new_key ",
+    category: "project",
+    content: " updated content ",
+    tags: ["one", " two "],
+  });
+
+  assert.deepEqual(writes, [{
+    userId: "user-a",
+    id: "memory-1",
+    key: "new_key",
+    category: "project",
+    content: "updated content",
+    tags: ["one", "two"],
+  }]);
+});
+
+for (const key of ["   ", "x".repeat(101)]) {
+  test("Memory update rejects an invalid key", async () => {
+    const service = new MemoryService(repository());
+
+    await assert.rejects(
+      service.updateMemory({
+        userId: "user-a",
+        id: "memory-1",
+        key,
+        category: "goal",
+        content: "Updated",
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code === "INVALID_MEMORY_KEY",
+    );
+  });
+}
+
+test("Memory update rejects an invalid category", async () => {
+  const service = new MemoryService(repository());
+
+  await assert.rejects(
+    service.updateMemory({
+      userId: "user-a",
+      id: "memory-1",
+      key: "valid_key",
+      category: "other" as any,
+      content: "Updated",
+    }),
+    (error) =>
+      error instanceof MemoryDomainError &&
+      error.code === "INVALID_MEMORY_CATEGORY",
+  );
+});
+
+for (const content of ["   ", "x".repeat(4001)]) {
+  test("Memory update rejects invalid content", async () => {
+    const service = new MemoryService(repository());
+
+    await assert.rejects(
+      service.updateMemory({
+        userId: "user-a",
+        id: "memory-1",
+        key: "valid_key",
+        category: "goal",
+        content,
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code === "INVALID_MEMORY_CONTENT",
+    );
+  });
+}
+
 test("Memory creates and edits normalized tags using the shared tag rules", async () => {
   const writes: unknown[] = [];
   const service = new MemoryService(repository({
@@ -453,6 +536,8 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
   await service.updateMemory({
     userId: "user-a",
     id: "memory-1",
+    key: "tagged_memory",
+    category: "goal",
     content: "Updated",
     tags: ["MCP", "完成"],
   });
@@ -472,6 +557,8 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
       update: {
         userId: "user-a",
         id: "memory-1",
+        key: "tagged_memory",
+        category: "goal",
         content: "Updated",
         tags: ["MCP", "完成"],
       },
@@ -507,6 +594,8 @@ for (const operation of ["create", "update", "archive"] as const) {
       await service.updateMemory({
         userId: "user-a",
         id: "memory-1",
+        key: "memory-key",
+        category: "goal",
         content: "Updated",
       });
     } else {
@@ -592,6 +681,8 @@ for (const reason of [
       service.updateMemory({
         userId: "user-a",
         id: `memory-${reason}`,
+        key: "memory-key",
+        category: "goal",
         content: "Updated",
       }),
       (error) =>

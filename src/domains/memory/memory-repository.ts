@@ -86,6 +86,8 @@ export type CreateMemoryInput = {
 export type UpdateMemoryInput = {
   id: string;
   userId: string;
+  key: string;
+  category: MemoryCategory;
   content: string;
   tags?: string[];
 };
@@ -470,6 +472,8 @@ export class DrizzleMemoryRepository implements MemoryRepository {
     const updated = await this.db
       .update(coreMemories)
       .set({
+        key: input.key,
+        category: input.category,
         content: input.content,
         ...(input.tags ? { tags: input.tags } : {}),
         updatedAt: new Date(),

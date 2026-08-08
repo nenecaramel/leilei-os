@@ -553,6 +553,8 @@ test("Memory create and update ignore client source and use only editable fields
       webUserId: "user-a",
       body: {
         id: "memory-1",
+        key: "renamed_key",
+        category: "project",
         content: "Updated",
         tags: ["MCP"],
         source: "system",
@@ -577,6 +579,8 @@ test("Memory create and update ignore client source and use only editable fields
       update: {
         userId: "user-a",
         id: "memory-1",
+        key: "renamed_key",
+        category: "project",
         content: "Updated",
         tags: ["MCP"],
       },

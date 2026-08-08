@@ -51,6 +51,8 @@ export type MemoryApiDependencies = {
     updateMemory(input: {
       userId: string;
       id: string;
+      key: string;
+      category: "profile" | "preference" | "goal" | "project";
       content: string;
       tags?: readonly string[];
     }): Promise<void>;
@@ -479,6 +481,8 @@ export function createUpdateMemoryApiHandler(
       await dependencies.memoryService.updateMemory({
         userId: request.webUserId,
         id: request.body.id,
+        key: request.body.key,
+        category: request.body.category,
         content: request.body.content,
         tags: request.body.tags,
       });

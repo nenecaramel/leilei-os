@@ -538,7 +538,10 @@ test(
               await repository.updateMemory({
                 id: updateIds.get(fixture.name)!,
                 userId: ownerId,
+                key: `updated_${fixture.name}_${updateIds.get(fixture.name)!}`,
+                category: "project",
                 content: "Updated",
+                tags: ["edited"],
               }),
               fixture.name === "eligible",
             );
@@ -557,7 +560,10 @@ test(
             await repository.updateMemory({
               id: randomUUID(),
               userId: ownerId,
+              key: "missing_key",
+              category: "project",
               content: "Missing",
+              tags: ["edited"],
             }),
             false,
           );
@@ -600,11 +606,26 @@ test(
           );
 
           for (const fixture of fixtures) {
+            const updateId = updateIds.get(fixture.name)!;
             assert.equal(
-              byId.get(updateIds.get(fixture.name)!)?.content,
+              byId.get(updateId)?.content,
               fixture.name === "eligible"
                 ? "Updated"
                 : "Original update fixture",
+            );
+            assert.equal(
+              byId.get(updateId)?.key,
+              fixture.name === "eligible"
+                ? `updated_${fixture.name}_${updateId}`
+                : `update_${fixture.name}_${updateId}`,
+            );
+            assert.equal(
+              byId.get(updateId)?.category,
+              fixture.name === "eligible" ? "project" : "goal",
+            );
+            assert.deepEqual(
+              byId.get(updateId)?.tags,
+              fixture.name === "eligible" ? ["edited"] : [],
             );
             assert.equal(
               byId.get(archiveIds.get(fixture.name)!)?.status,

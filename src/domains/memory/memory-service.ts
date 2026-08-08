@@ -71,6 +71,8 @@ export type CreateMcpMemoryResult = {
 export type UpdateMemoryInput = {
   userId: string;
   id: string;
+  key: string;
+  category: MemoryCategory;
   content: string;
   tags?: readonly string[];
 };
@@ -366,10 +368,21 @@ export class MemoryService {
 
   async updateMemory(input: UpdateMemoryInput): Promise<void> {
     await this.requireActiveUser(input.userId);
+    const category = this.validateCategories([input.category])![0]!;
     const updated = await this.repository.updateMemory({
       userId: input.userId,
       id: input.id,
-      content: input.content.trim(),
+      key: this.normalizeRequiredText(
+        input.key,
+        MAX_KEY_LENGTH,
+        "INVALID_MEMORY_KEY",
+      ),
+      category,
+      content: this.normalizeRequiredText(
+        input.content,
+        MAX_CONTENT_LENGTH,
+        "INVALID_MEMORY_CONTENT",
+      ),
       ...(input.tags === undefined
         ? {}
         : { tags: this.normalizeTags(input.tags) }),
