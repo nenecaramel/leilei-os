@@ -3,12 +3,17 @@ import {
     useRef,
     useState,
     type ReactNode,
+    type RefObject,
   } from "react";
   import type { WebApiClient } from "../api/useWebApiClient";
   import { TaskIcon } from "../components/icons";
   import { NativeDateInput } from "../components/NativeDateInput";
   import type { SettingsData } from "../settings/types";
   import { PageHeader } from "./PageHeader";
+  import { PaperDetailDialog } from "./PaperDetailDialog";
+  import { TaskPageHeader } from "./TaskPageHeader";
+  import { TaskDeadlineEditor, TaskPaperEditor, TaskPaperMetadataEditor, TaskPaperMetadataRead, type TaskPaperAction } from "./TaskPaperEditor";
+  import { formatTaskPaperDeadline, formatTaskRowDeadline, formatTaskRowMeta, groupTasksForMobile } from "./task-mobile-presentation";
   import { isSearchLocation, navigateWithinApp } from "./app-navigation";
   import { consumeQuickCreateTarget } from "./quick-create";
   import { getTaskActionControls } from "./task-actions";
@@ -101,13 +106,6 @@ import {
     in_progress: "进行中",
     completed: "已完成",
     cancelled: "已取消",
-  };
-
-  const priorityLabels: Record<TaskPriority, string> = {
-    low: "低",
-    normal: "普通",
-    high: "高",
-    urgent: "紧急",
   };
 
   function getDefaultDueTime(): string {
@@ -204,6 +202,9 @@ import {
     api: WebApiClient;
     settings: SettingsData;
   }) {
+    const isMobile =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 760px)").matches;
     const listScrollPosition = useRef(0);
     const listRequestTracker = useRef(
       createLatestTaskRequestTracker(),
@@ -236,6 +237,7 @@ import {
     const [showCreate, setShowCreate] = useState(false);
     const [creating, setCreating] = useState(false);
     const createTitleInput = useRef<HTMLInputElement | null>(null);
+    const paperTriggerRef = useRef<HTMLElement | null>(null);
     const focusCreateRef = useRef(false);
     const mutationGate = useRef(createSubmissionGate());
     const mutationOwnership = useRef(createMutationOwnership());
@@ -247,7 +249,7 @@ import {
     const [dueTime, setDueTime] = useState(
       getDefaultDueTime(),
     );
-    const [withoutDueTime, setWithoutDueTime] = useState(false);
+    const [withoutDueTime, setWithoutDueTime] = useState(true);
     const [tags, setTags] = useState("");
 
     const [selectedTask, setSelectedTask] =
@@ -271,7 +273,7 @@ import {
     const initialDueTime = useRef(dueTime);
     const createDirty = showCreate && (
       title !== "" || description !== "" || priority !== "normal" ||
-      dueTime !== initialDueTime.current || withoutDueTime || tags !== ""
+      !withoutDueTime || tags !== ""
     );
     const editDirty = Boolean(selectedTask && editing && (
       editingTitle !== selectedTask.title ||
@@ -317,7 +319,7 @@ import {
         setDescription("");
         setPriority("normal");
         setDueTime(nextDueTime);
-        setWithoutDueTime(false);
+        setWithoutDueTime(true);
         setTags("");
         setShowCreate(false);
       }
@@ -509,9 +511,6 @@ import {
           setSelectedTask(response.data);
           setEditing(false);
           setDetailLoadState("ready");
-          requestAnimationFrame(() => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          });
         })
         .catch(() => {
           if (!active) return;
@@ -614,7 +613,7 @@ import {
         const nextDueTime = getDefaultDueTime();
         initialDueTime.current = nextDueTime;
         setDueTime(nextDueTime);
-        setWithoutDueTime(false);
+        setWithoutDueTime(true);
         setTags("");
         setShowCreate(false);
 
@@ -923,12 +922,62 @@ import {
       }
     }
 
+
+    if (isMobile) {
+      const busy = creating || updating || updatingStatus || archiving || restoring;
+      const hasFilters = Boolean(filters.q || filters.status || filters.priority || filters.tag || filters.due);
+      const backgroundAvailable = !isDetailMode || state.status === "ready";
+      const runStatusAction = (action: TaskPaperAction) => {
+        if (editing || updatingStatus) return;
+        if (action === "reopen") { void handleReopenTask(); return; }
+        const next: Record<Exclude<TaskPaperAction, "reopen">, TaskStatus> = { start: "in_progress", complete: "completed", cancel: "cancelled" };
+        void handleUpdateStatus(next[action]);
+      };
+      const openArchive = (trigger: HTMLElement) => {
+        if (!confirmAndDiscardDraft()) return;
+        paperTriggerRef.current = trigger;
+        invalidateMutationContext();
+        window.history.pushState(null, "", createTaskArchiveLocation(`${window.location.pathname}${window.location.search}`));
+        setSelectedTask(null); setEditing(false); setActionError(""); setTaskLocation(initialTaskLocation()); setDetailLoadState("idle");
+      };
+      return <div className="page memory-page task-page">
+        {!isArchivedMode ? <>
+          {backgroundAvailable ? <>
+            <TaskPageHeader count={state.status === "ready" ? state.count : 0} due={filters.due} dueFrom={filters.dueFrom} dueTo={filters.dueTo} status={filters.status} tagDraft={tagDraft} searchDraft={searchDraft} busy={busy}
+              onDueChange={(due) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, due, dueFrom: "", dueTo: "" })}
+              onDueRangeChange={(dueFrom, dueTo) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, due: dueFrom || dueTo ? "custom" : "", dueFrom, dueTo })}
+              onStatusChange={(status) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, status })}
+              onTagChange={updateTagDraft} onSearchChange={updateSearchDraft} onOpenArchive={openArchive}
+              onCreate={(trigger) => { paperTriggerRef.current = trigger; if (showCreate) { if (!confirmAndDiscardDraft()) return; invalidateMutationContext(); setShowCreate(false); } else { focusCreateRef.current = true; setShowCreate(true); } setActionError(""); }} />
+            {actionError && !isDetailMode && !showCreate ? <section className="memory-message"><h2>操作没有完成</h2><p>{actionError}</p></section> : null}
+            {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task 列表" onOpen={(id, trigger) => { paperTriggerRef.current = trigger; void handleReadTask(id); }} /> : <section className="memory-empty-state"><p>{hasFilters ? "没有符合条件的任务" : "还没有任务"}</p>{hasFilters ? <button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button> : null}</section> : null}
+            {state.status === "loading" ? <MobileTaskLoading label="Task 加载中" /> : null}
+            {state.status === "error" ? <TaskMessage title="暂时无法读取任务" description="筛选条件已保留，请稍后重试。" action={<button className="secondary-button" onClick={() => setReloadKey((v) => v + 1)}>重新加载</button>} /> : null}
+          </> : null}
+          {showCreate ? <PaperDetailDialog id="task-create-paper" open label="创建 Task" dateLabel={<TaskDeadlineEditor value={dueTime} withoutDueTime={withoutDueTime} disabled={creating} onValueChange={(v) => { setDueTime(v); setActionError(""); }} onWithoutDueTimeChange={(v) => { setWithoutDueTime(v); setActionError(""); }} />} signature="N" triggerRef={paperTriggerRef}
+            onRequestClose={() => { if (!confirmAndDiscardDraft()) return false; setShowCreate(false); setActionError(""); return true; }}
+            topRight={<><button className="memory-paper-control" disabled={creating} onClick={() => { if (!confirmAndDiscardDraft()) return; setShowCreate(false); setActionError(""); }}>取消</button><span>·</span><button className="memory-paper-control" disabled={creating || createInvalid} onClick={() => void handleCreate()}>{creating ? "保存中…" : "保存"}</button></>}
+            bottomLeft={<TaskPaperMetadataEditor status="pending" tagsValue={tags} disabled={creating} onTagsChange={(v) => { setTags(v); setActionError(""); }} />} errorMessage={actionError || null}>
+            <TaskPaperEditor title={title} description={description} disabled={creating} onTitleChange={(v) => { setTitle(v); setActionError(""); }} onDescriptionChange={(v) => { setDescription(v); setActionError(""); }} />
+          </PaperDetailDialog> : null}
+          {isDetailMode ? <MobileTaskDetail state={detailLoadState} task={selectedTask} triggerRef={paperTriggerRef} errorMessage={actionError || null} editing={editing} updating={updating} updatingStatus={updatingStatus} archiving={archiving}
+            values={{ title: editingTitle, description: editingDescription, dueTime: editingDueTime, withoutDueTime: editingWithoutDueTime, tags: editingTags }}
+            setValues={{ title: (v) => { setEditingTitle(v); setActionError(""); }, description: (v) => { setEditingDescription(v); setActionError(""); }, dueTime: (v) => { setEditingDueTime(v); setActionError(""); }, withoutDueTime: (v) => { setEditingWithoutDueTime(v); setActionError(""); }, tags: (v) => { setEditingTags(v); setActionError(""); } }}
+            invalid={updateInvalid} onEdit={beginEditing} onCancel={() => { if (!confirmAndDiscardDraft()) return; invalidateMutationContext(); setEditing(false); setActionError(""); }} onSave={() => void handleUpdate()} onArchive={() => void handleArchiveTask()} onStatusAction={runStatusAction}
+            onRequestClose={() => { if (!confirmAndDiscardDraft()) return false; handleCloseTask(true); return true; }} /> : null}
+        </> : <>
+          {!isDetailMode || state.status === "ready" ? <MobileArchivedTaskList state={state} busy={busy} onBack={() => returnToActiveTaskList(taskLocation.returnTo)} onOpen={(id, trigger) => { paperTriggerRef.current = trigger; openArchivedTaskDetail(id); }} onRetry={() => setReloadKey((v) => v + 1)} /> : null}
+          {isDetailMode ? <MobileArchivedTaskDetail state={detailLoadState} task={selectedTask} triggerRef={paperTriggerRef} errorMessage={actionError || null} restoring={restoring} onRestore={() => void handleRestoreTask()} onRequestClose={() => { handleCloseTask(true); return true; }} /> : null}
+        </>}
+      </div>;
+    }
+
     return (
       <div className="page memory-page">
         <PageHeader
           eyebrow="Focus & execution"
           title="Task"
-          description={settings.page_copy.task_subtitle ?? "管理待办事项、截止时间、优先级与完成状态。"}
+          description={settings.page_copy.task_subtitle ?? "管理待办事项、截止时间与完成状态。"}
           action={
             isDetailMode && isArchivedMode ? (
               <button className="secondary-button" disabled={restoring} onClick={() => {
@@ -991,16 +1040,6 @@ import {
                 setActionError("");
               }}
             />
-            <select
-              value={priority}
-              disabled={creating}
-              onChange={(event) => setPriority(event.target.value as TaskPriority)}
-            >
-              <option value="low">低优先级</option>
-              <option value="normal">普通优先级</option>
-              <option value="high">高优先级</option>
-              <option value="urgent">紧急</option>
-            </select>
             <div className="task-due-field">
               <NativeDateInput
                 type="datetime-local"
@@ -1046,9 +1085,6 @@ import {
             <select aria-label="状态筛选" value={filters.status} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, status: event.target.value })}>
               <option value="">全部状态</option><option value="pending">待处理</option><option value="in_progress">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option>
             </select>
-            <select aria-label="优先级筛选" value={filters.priority} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, priority: event.target.value })}>
-              <option value="">全部优先级</option><option value="low">低</option><option value="normal">普通</option><option value="high">高</option><option value="urgent">紧急</option>
-            </select>
             <input aria-label="标签筛选" placeholder="筛选标签" value={tagDraft} onChange={(event) => updateTagDraft(event.target.value)} />
             <select aria-label="截止时间筛选" value={filters.due} onChange={(event) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, due: event.target.value as TaskDueFilter, dueFrom: "", dueTo: "" })}>
               <option value="">全部时间</option><option value="no_due_date">无截止时间</option><option value="overdue">已逾期</option><option value="today">今天</option><option value="next_7_days">未来七天</option><option value="custom">自定义范围</option>
@@ -1089,19 +1125,6 @@ import {
                     setActionError("");
                   }}
                 />
-
-                <select
-                  value={editingPriority}
-                  disabled={updating}
-                  onChange={(event) =>
-                    setEditingPriority(event.target.value as TaskPriority)
-                  }
-                >
-                  <option value="low">低优先级</option>
-                  <option value="normal">普通优先级</option>
-                  <option value="high">高优先级</option>
-                  <option value="urgent">紧急</option>
-                </select>
 
                 <div className="task-due-field">
                   <NativeDateInput
@@ -1168,10 +1191,6 @@ import {
                 <div className="memory-card-topline">
               <span>
                 {statusLabels[selectedTask.status]}
-              </span>
-
-              <span>
-                优先级：{priorityLabels[selectedTask.priority]}
               </span>
                 </div>
 
@@ -1301,10 +1320,6 @@ import {
                           <span>
                             {statusLabels[task.status]}
                           </span>
-
-                          <span>
-                            {priorityLabels[task.priority]}
-                          </span>
                         </div>
 
                         <h2>{task.title}</h2>
@@ -1389,6 +1404,38 @@ import {
       </div>
     );
   }
+
+
+function MobileTaskLoading({ label }: { label: string }) {
+  return <section className="memory-months" aria-label={label}>{[0,1].map((i) => <div className="memory-month-skeleton" key={i}><span className="memory-month-skeleton-label" /><div className="memory-month-skeleton-card"><span /><span /></div></div>)}</section>;
+}
+function MobileTaskRows({ tasks, busy, label, onOpen }: { tasks: TaskEntry[]; busy: boolean; label: string; onOpen(id: string, trigger: HTMLElement): void }) {
+  return <section className="memory-months task-groups" aria-label={label}>{groupTasksForMobile(tasks).map((group) => <section className={`memory-month-section task-group task-group-${group.key}`} key={group.key}><h2 className="memory-month-label">{group.label}</h2><div className="memory-month-card">{group.tasks.map((task) => <button key={task.id} type="button" className="memory-row task-row" data-task-id={task.id} disabled={busy} onClick={(e) => onOpen(task.id, e.currentTarget)}><span className="memory-row-title">{task.title}</span><span className="memory-row-meta"><span>{formatTaskRowDeadline(task)}</span><span>{formatTaskRowMeta(task)}</span></span></button>)}</div></section>)}</section>;
+}
+function MobileTaskDetail(props: { state: DetailLoadState; task: TaskEntry | null; triggerRef: RefObject<HTMLElement | null>; errorMessage: string | null; editing: boolean; updating: boolean; updatingStatus: boolean; archiving: boolean; values: { title: string; description: string; dueTime: string; withoutDueTime: boolean; tags: string }; setValues: { title(v: string): void; description(v: string): void; dueTime(v: string): void; withoutDueTime(v: boolean): void; tags(v: string): void }; invalid: boolean; onEdit(task: TaskEntry): void; onCancel(): void; onSave(): void; onArchive(): void; onStatusAction(a: TaskPaperAction): void; onRequestClose(): boolean }) {
+  if (props.state === "loading") return <PaperDetailDialog id="task-detail-paper" open label="正在读取 Task" dateLabel="" signature="N" triggerRef={props.triggerRef} onRequestClose={props.onRequestClose}><p className="memory-paper-status">正在读取任务…</p></PaperDetailDialog>;
+  if (props.state === "error" || !props.task) return <PaperDetailDialog id="task-detail-paper" open label="无法读取 Task" dateLabel="" signature="N" triggerRef={props.triggerRef} onRequestClose={props.onRequestClose}><p className="memory-paper-status">无法读取任务</p></PaperDetailDialog>;
+  const task = props.task;
+  return <PaperDetailDialog id="task-detail-paper" open label={`Task ${task.title}`} signature="N" triggerRef={props.triggerRef} errorMessage={props.errorMessage} onRequestClose={props.onRequestClose}
+    dateLabel={props.editing ? <TaskDeadlineEditor value={props.values.dueTime} withoutDueTime={props.values.withoutDueTime} disabled={props.updating} onValueChange={props.setValues.dueTime} onWithoutDueTimeChange={props.setValues.withoutDueTime} /> : <button type="button" className="task-paper-deadline-read" aria-label="编辑任务截止时间" disabled={props.updatingStatus || props.archiving} onClick={() => props.onEdit(task)}>{formatTaskPaperDeadline(task.due_time, task.timezone)}</button>}
+    topRight={props.editing ? <><button className="memory-paper-control" disabled={props.updating} onClick={props.onCancel}>取消</button><span>·</span><button className="memory-paper-control" disabled={props.updating || props.invalid} onClick={props.onSave}>{props.updating ? "保存中…" : "保存"}</button></> : <><button className="memory-paper-control" disabled={props.archiving || props.updatingStatus} onClick={() => { if (window.confirm(`确定归档“${task.title}”吗？`)) props.onArchive(); }}>{props.archiving ? "归档中…" : "归档"}</button><span>·</span><button className="memory-paper-control" disabled={props.archiving || props.updatingStatus} onClick={() => props.onEdit(task)}>编辑</button></>}
+    bottomLeft={props.editing ? <TaskPaperMetadataEditor status={task.status} tagsValue={props.values.tags} disabled={props.updating} onTagsChange={props.setValues.tags} /> : <TaskPaperMetadataRead status={task.status} tags={task.tags} actions={task.allowed_actions} disabled={props.updatingStatus || props.archiving} onAction={props.onStatusAction} />}>
+    {props.editing ? <TaskPaperEditor title={props.values.title} description={props.values.description} disabled={props.updating} onTitleChange={props.setValues.title} onDescriptionChange={props.setValues.description} /> : <><h2 className="memory-paper-title">{task.title}</h2><p className="memory-paper-content">{task.description}</p></>}
+  </PaperDetailDialog>;
+}
+function MobileArchivedTaskList({ state, busy, onBack, onOpen, onRetry }: { state: LoadState; busy: boolean; onBack(): void; onOpen(id: string, trigger: HTMLElement): void; onRetry(): void }) {
+  const count = state.status === "ready" ? state.count : 0;
+  return <><header className="memory-page-header memory-archive-header task-archive-header"><div className="memory-page-heading"><div className="memory-page-title">Archive</div><div className="memory-page-count">{count}项任务</div></div><button type="button" className="memory-archive-back" onClick={onBack}>Return</button></header>
+    {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task Archive 列表" onOpen={onOpen} /> : <section className="memory-empty-state"><p>归档为空</p></section> : null}
+    {state.status === "loading" ? <MobileTaskLoading label="Task Archive 加载中" /> : null}
+    {state.status === "error" ? <TaskMessage title="暂时无法读取归档任务" description="请稍后重试。" action={<button className="secondary-button" onClick={onRetry}>重新加载</button>} /> : null}</>;
+}
+function MobileArchivedTaskDetail(props: { state: DetailLoadState; task: TaskEntry | null; triggerRef: RefObject<HTMLElement | null>; errorMessage: string | null; restoring: boolean; onRestore(): void; onRequestClose(): boolean }) {
+  if (props.state === "loading") return <PaperDetailDialog id="task-archive-detail-paper" open label="正在读取归档 Task" dateLabel="" signature="N" triggerRef={props.triggerRef} onRequestClose={props.onRequestClose}><p className="memory-paper-status">正在读取归档任务…</p></PaperDetailDialog>;
+  if (props.state === "error" || !props.task) return <PaperDetailDialog id="task-archive-detail-paper" open label="无法读取归档 Task" dateLabel="" signature="N" triggerRef={props.triggerRef} onRequestClose={props.onRequestClose}><p className="memory-paper-status">无法读取归档任务</p></PaperDetailDialog>;
+  const task = props.task;
+  return <PaperDetailDialog id="task-archive-detail-paper" open label={`已归档 Task ${task.title}`} dateLabel={formatTaskPaperDeadline(task.due_time, task.timezone)} signature="N" triggerRef={props.triggerRef} errorMessage={props.errorMessage} onRequestClose={props.onRequestClose} topRight={<button className="memory-paper-control" disabled={props.restoring} onClick={props.onRestore}>{props.restoring ? "恢复中…" : "恢复"}</button>} bottomLeft={<TaskPaperMetadataRead status={task.status} tags={task.tags} actions={[]} disabled />}><h2 className="memory-paper-title">{task.title}</h2><p className="memory-paper-content">{task.description}</p></PaperDetailDialog>;
+}
 
   function TaskLoading() {
     return (

@@ -1111,7 +1111,7 @@ if (isMobile) {
                     {hasFilters(filters) ? (
                       <button
                         type="button"
-                        className="secondary-button"
+                        className="secondary-button memory-empty-clear"
                         onClick={clearFilters}
                       >
                         清除条件

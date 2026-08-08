@@ -1148,7 +1148,7 @@ export function MemoryPageContent({
                       {(filters.q || filters.category || filters.tag) && (
                         <button
                           type="button"
-                          className="secondary-button"
+                          className="secondary-button memory-empty-clear"
                           onClick={() => commitFilters(EMPTY_MEMORY_FILTERS)}
                         >
                           清除筛选
@@ -1386,10 +1386,20 @@ function ArchivedMemoryDetail({
 }) {
   if (state.status === "loading") {
     return (
-      <MemoryMessage
-        title="正在读取已归档记忆"
-        description="详情加载中…"
-      />
+      <PaperDetailDialog
+        id="memory-archive-detail-paper"
+        open
+        label="正在读取归档 Memory"
+        dateLabel=""
+        signature="N"
+        triggerRef={triggerRef}
+        onRequestClose={() => {
+          onBack();
+          return true;
+        }}
+      >
+        <p className="memory-paper-status">正在读取归档记忆…</p>
+      </PaperDetailDialog>
     );
   }
 

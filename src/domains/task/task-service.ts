@@ -707,16 +707,16 @@ export class TaskService {
         overdueBefore: getTaskTimeBoundaries(timezone, this.now()).todayStart,
       };
     }
-    if (due === "today" || due === "next_7_days") {
+    if (due === "today" || due === "next_7_days" || due === "later") {
       if (dueFrom || dueTo) throw new TaskDomainError("INVALID_TASK_QUERY", "Task due presets use account-timezone boundaries and do not accept a range.");
       const boundaries = getTaskTimeBoundaries(timezone, this.now());
-      return due === "today"
-        ? { ...base, dueFrom: boundaries.todayStart, dueTo: boundaries.tomorrowStart }
-        : { ...base, dueFrom: boundaries.tomorrowStart, dueTo: boundaries.eighthDayStart };
+      if (due === "today") return { ...base, dueFrom: boundaries.todayStart, dueTo: boundaries.tomorrowStart };
+      if (due === "next_7_days") return { ...base, dueFrom: boundaries.tomorrowStart, dueTo: boundaries.eighthDayStart };
+      return { ...base, dueFrom: boundaries.eighthDayStart };
     }
     throw new TaskDomainError(
       "INVALID_TASK_QUERY",
-      "Task due filter must be no_due_date, overdue, today, next_7_days, or custom.",
+      "Task due filter must be no_due_date, overdue, today, next_7_days, later, or custom.",
     );
   }
 

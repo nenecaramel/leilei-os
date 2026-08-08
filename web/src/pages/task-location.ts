@@ -6,6 +6,7 @@ export type TaskDueFilter =
   | "overdue"
   | "today"
   | "next_7_days"
+  | "later"
   | "custom";
 
 export type TaskFilters = {
@@ -24,6 +25,7 @@ const ALLOWED_DUE_FILTERS = new Set<TaskDueFilter>([
   "overdue",
   "today",
   "next_7_days",
+  "later",
   "custom",
 ]);
 const TASK_ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;

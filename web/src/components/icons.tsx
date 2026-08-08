@@ -85,6 +85,13 @@ export const MoodIcon = (props: IconProps) => (
   </IconBase>
 );
 
+export const StatusIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none" />
+  </IconBase>
+);
+
 export const UniverseIcon = (props: IconProps) => (
   <IconBase {...props}>
     <circle cx="12" cy="12" r="3" />

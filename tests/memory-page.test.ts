@@ -660,7 +660,7 @@ test("Memory archived detail refresh requests only archived detail", async () =>
   try {
     assert.match(
       page.container.textContent ?? "",
-      /正在读取已归档记忆/,
+      /正在读取归档记忆/,
     );
     assertNoList(page.container);
     assert.deepEqual(
