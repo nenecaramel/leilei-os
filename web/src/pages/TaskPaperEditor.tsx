@@ -16,7 +16,7 @@ export const TaskPaperEditor = forwardRef<TaskPaperEditorHandle, { title: string
 });
 export function TaskDeadlineEditor(props: { value: string; withoutDueTime: boolean; disabled: boolean; onValueChange(v: string): void; onWithoutDueTimeChange(v: boolean): void }) {
   const [open, setOpen] = useState(false);
-  const display = props.withoutDueTime ? "无截止时间" : props.value ? `${props.value.slice(0,10).replaceAll("-","/")} ${props.value.slice(11,16)}截止` : "设置截止时间";
+  const display = props.withoutDueTime ? "无截止时间" : props.value ? `${props.value.slice(0,10).replaceAll("-",".")} ${props.value.slice(11,16)}截止` : "设置截止时间";
   return <span className="task-paper-deadline-editor">
     <button type="button" className="task-paper-deadline-trigger" aria-label="编辑任务截止时间" aria-expanded={open} disabled={props.disabled} onClick={() => setOpen((v) => !v)}>{display}</button>
     {open ? <span className="task-paper-deadline-popover">

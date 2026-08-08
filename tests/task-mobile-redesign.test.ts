@@ -57,7 +57,7 @@ test("No Deadline puts In Progress before Pending", () => {
 test("Task deadline and metadata copy matches design", () => {
   const task = entry("d", "in_progress", "today", "2026-08-08T12:30:00Z", { tags: ["work", "UI"] });
   assert.equal(formatTaskRowDeadline(task), "2026/08/08截止");
-  assert.equal(formatTaskPaperDeadline(task.due_time, task.timezone), "2026/08/08 20:30截止");
+  assert.equal(formatTaskPaperDeadline(task.due_time, task.timezone), "2026.08.08 20:30截止");
   assert.equal(formatTaskRowMeta(task), "进行中 · #work #UI");
   assert.equal(formatTaskRowDeadline(entry("n", "pending", "no_due_date", null)), "无截止时间");
 });

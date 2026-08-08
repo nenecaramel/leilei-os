@@ -66,7 +66,7 @@ export function formatTaskRowDeadline(task: TaskMobileEntry) {
 export function formatTaskPaperDeadline(value: string | null, timezone: string) {
   if (!value) return "无截止时间";
   const p = parts(value, timezone, true);
-  return p ? `${p.year}/${p.month}/${p.day} ${p.hour}:${p.minute}截止` : "截止时间";
+  return p ? `${p.year}.${p.month}.${p.day} ${p.hour}:${p.minute}截止` : "截止时间";
 }
 export function formatTaskRowMeta(task: TaskMobileEntry) {
   const tags = task.tags.map((tag) => `#${tag}`).join(" ");
