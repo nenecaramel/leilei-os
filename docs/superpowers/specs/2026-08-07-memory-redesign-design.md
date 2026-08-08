@@ -6,9 +6,9 @@ Base: `codex/phase-6-web-ui-foundation`
 
 ## 1. Goal
 
-Redesign the mobile Memory experience so it visually and behaviorally matches the current Leilei OS Home language while preserving the existing Memory data model, API contracts, navigation semantics, lifecycle protections, and archive behavior.
+Redesign the mobile Memory experience so it visually and behaviorally matches the current Leilei OS Home language while preserving the existing Memory data model, navigation semantics, lifecycle protections, and archive behavior, with only the explicitly accepted active-Web update expansion for key and category.
 
-This batch is a UI redesign, not a backend capability expansion.
+This batch remains primarily a mobile UI redesign, but the accepted visual-editing model requires one bounded capability expansion: existing active Memory records must support updating key and category in addition to content and tags. This must extend the existing authenticated Web update path without changing the database schema, archive semantics, MCP contracts, or identity rules.
 
 Primary acceptance viewport: `393 × 852`.
 
@@ -30,10 +30,9 @@ Primary acceptance viewport: `393 × 852`.
 
 - Changing the Memory database schema.
 - Adding author editing or author display as a new Memory field.
-- Editing `key` after creation.
-- Editing `category` after creation.
 - Editing archived Memory records.
-- Adding new backend endpoints or extending `PATCH /memory`.
+- Adding author/signature persistence in this batch.
+- Adding new Memory endpoints; the existing authenticated `PATCH /memory` may be extended only to accept the already-existing `key` and `category` fields.
 - Changing desktop layout or desktop-specific visual design beyond keeping it functional.
 - Refactoring unrelated pages.
 
@@ -75,15 +74,17 @@ The current requirement that trimmed `key` and `content` are non-empty remains u
 
 ### Edit
 
-Continue using the existing update endpoint with only:
+Extend the existing authenticated update path so an active Memory can update:
 
 - `id`
+- `key`
+- `category`
 - `content`
 - `tags`
 
-`key` remains read-only after creation.
+No schema migration is required because all four editable values already belong to the Memory record.
 
-`category` remains read-only after creation because the current API does not support category updates. The redesign must not imply that category is editable.
+Validation and ownership remain server-controlled. Category remains restricted to the existing legal category enum. Archived Memory records remain read-only. MCP Memory contracts are unchanged.
 
 ### Archive / restore
 
@@ -126,6 +127,14 @@ Right side, fixed order:
 
 These are page-level tools and must look one visual level smaller than the global top-bar controls.
 
+Accepted icon refinements:
+
+- category is a literal 2 × 2 set of four small independent squares, not an ambiguous grid glyph;
+- search glyph must have the same perceived visual weight as the neighboring tools;
+- archive must read clearly as archive storage, using an archive box/tray semantic rather than an indistinct generic symbol;
+- create pen is horizontally mirrored so its stroke direction visually reads like a right hand raising a pen to write;
+- all controls retain 44 × 44px hit targets even when the glyph itself is smaller.
+
 ### Category and tag filters
 
 Category and tag tools open small white popovers anchored near their trigger.
@@ -144,6 +153,7 @@ When activated, a full-width light-gray search field expands below the page head
 - left: search icon;
 - middle: input;
 - right: clear/close `×`;
+- the expanded search shell is the only visible field surface; the inner input remains transparent and borderless on focus, with no second rectangle, browser-style inset field, or duplicate focus box;
 - current 300ms debounce remains;
 - current URL filter state remains;
 - typing updates results with existing request-cancellation/latest-request protections.
@@ -196,7 +206,7 @@ The entire row is the trigger for detail.
 
 ## 8. Active detail paper
 
-Opening a Memory continues to use the existing detail URL/history state and `/memory/:id` fetch. The visual presentation becomes a paper overlay rather than a standalone page-like message block.
+Opening a Memory continues to use the existing detail URL/history state and `/memory/:id` fetch, but the visible active Memory page must remain mounted and visually stationary underneath. Opening detail must not replace the list background with a detail-page header or otherwise make the page appear to navigate away. The paper overlays the unchanged Memory list exactly like the Home Todo paper experience.
 
 Reuse `PaperDetailDialog` rather than recreating the Todo paper shell. This preserves the existing dialog semantics, body scroll lock, focus containment, Escape behavior, veil close behavior, trigger focus restoration, fixed date/signature corners, paper rules, and paper geometry.
 
@@ -228,42 +238,48 @@ Returning from detail must restore the prior list URL, active filters, and saved
 
 ## 9. Edit state
 
-Editing happens inside the same open paper instead of switching to a different visual shell.
+Editing happens directly on the same open paper. It must feel like writing on the Todo paper, not like placing a conventional form inside a dialog.
 
-Read-only fields:
+Editable active-Memory fields:
 
 - `key`;
-- `category`.
-
-Editable fields:
-
+- `category`;
 - `content`;
 - `tags`.
 
-Save uses the current update request shape only.
+### Paper-native editing
 
-Cancel restores the fetched Memory values and continues to use current unsaved-change confirmation rules when appropriate.
+- The key occupies the title position at the top of the paper. Clicking Edit turns that same title area into a borderless editor in place.
+- Key text uses the title typography even when it wraps to multiple lines. A long key must not shrink into body typography or switch visual component style.
+- Content remains in the body position and becomes a borderless paper-native textarea/editor in place.
+- Tags are edited from the bottom-left metadata area without a boxed input appearance.
+- Category is chosen from a lightweight anchored selection menu limited to the existing legal categories: Profile, Preference, Goal, Project.
+- No visible rectangular `input`, `select`, or `textarea` chrome may appear on the paper.
+- Paper rules, spacing, and corner metadata remain visible while editing.
 
-The top-right controls may transition from `归档 · 编辑` to concise edit-state actions such as `取消 · 保存`, but remain in the same small paper-control language.
+The top-right controls transition from `归档 · 编辑` to concise `取消 · 保存` controls in the same metadata language.
 
-Mutation errors should appear inside/adjacent to the paper content using the existing `PaperDetailDialog` error capability where practical, not as a large page-level alert block.
+Cancel restores fetched values. Save updates key, category, content, and tags through the existing authenticated update path. Existing unsaved-change, single-flight, ownership, and inline mutation-error protections remain.
 
 ## 10. Create state
 
-The pen tool opens a new paper editor using the same paper shell and visual hierarchy as detail/edit.
+The pen tool opens the same `PaperDetailDialog` directly in paper-native edit mode.
 
-Fields:
+The create paper must not render a conventional stacked form.
 
-- category selector;
-- key input;
-- content textarea;
-- tags input.
+- The first paper line/title area is the key editor. Any entered key uses the same slightly larger title typography.
+- The body area below is the content editor.
+- Bottom-left displays editable `category · tags` metadata.
+- Category uses the same lightweight legal-category selector as active edit.
+- Tags are edited inline from the bottom-left metadata area.
+- Inputs remain visually borderless and transparent so the user appears to write directly on the paper.
+- The paper geometry and ruled background remain the same as detail and Todo.
 
-Create validation remains unchanged: trimmed key and content are required.
+Trimmed key and content remain required before Save is enabled.
 
-The create paper must preserve quick-create behavior: an external Memory quick-create intent should open the create paper and focus the key field once, while detail/archive states continue to suppress hidden create UI.
+Quick-create continues to open this paper and focus the key position once. Unsaved create content remains protected by the existing dirty-state mechanism.
 
-Unsaved create content remains protected by the existing dirty-state mechanism.
+The bottom-right signature remains fixed `N` in this batch. The signature slot should remain structurally reusable for a future directly editable signature, but no author/signature persistence is added now.
 
 ## 11. Archive views
 
@@ -275,7 +291,14 @@ Archive list uses the same month-group/card/row visual language as active Memory
 
 Archive mode does not expose active-list category, tag, or search controls in this batch.
 
-The header clearly indicates archive context and offers a concise return control.
+The archive header must use the same geometry and typography as the active Memory header:
+
+- title: `Archive`;
+- subtitle: `n条记忆`;
+- identical title/subtitle positions, font sizes, and vertical rhythm to `Memory`;
+- return control is small borderless text with a 44px tap target and visual height aligned with the active Memory tools.
+
+The first archive month label and first month card must begin at exactly the same vertical position as the corresponding active Memory list. Archive month labels, cards, and rows reuse the same active-list classes rather than maintaining archive-specific spacing.
 
 ### Archived detail
 
@@ -338,6 +361,12 @@ Month cards should visually relate to Home cards rather than the old Dashboard `
 
 Paper views should use the existing Todo paper primitives instead of duplicating paper geometry or corner typography.
 
+### Paper geometry lock
+
+Memory detail, edit, create, and archived detail must use the same `PaperDetailDialog` geometry as Todo. In particular, Memory must not override the Todo paper width, height, viewport placement, top-left date coordinates/typography, or bottom-right signature coordinates/typography.
+
+The accepted interaction model is: unchanged Memory page behind, paper overlay above, body scroll locked behind the paper, and only the paper content region scrolling for long content.
+
 ## 15. Testing strategy
 
 Implementation follows small-step TDD.
@@ -372,7 +401,8 @@ Add or update tests for:
 - expandable search shell while retaining existing debounce/URL behavior;
 - `PaperDetailDialog` reuse for detail/create/edit/archived detail;
 - detail title omission when key is empty;
-- active edit exposes content/tags but not editable key/category;
+- active edit exposes paper-native key/category/content/tags editing;
+- active edit PATCH submits key/category/content/tags while preserving authentication and active-record restrictions;
 - archive detail is read-only and exposes restore;
 - fixed bottom-right Memory signature is `N` and reuses the Todo paper signature primitive;
 - Todo paper date/signature primitives are reused rather than duplicated by separate paper geometry.
@@ -402,8 +432,12 @@ On mobile, verify:
 - long titles/tags truncation;
 - row press/click behavior;
 - active detail paper;
-- edit state in the same paper;
-- create paper;
+- edit state directly on the same paper with no visible form boxes;
+- create directly on the paper with no visible form boxes;
+- background Memory list remains visually stationary while detail/edit/create paper is open;
+- archive title is `Archive` and its title/count geometry matches active Memory;
+- archive return is borderless compact text;
+- archive first month label/card geometry matches active Memory;
 - archive list;
 - archived detail/restore paper;
 - long content scrolling while paper corners remain fixed;
@@ -414,6 +448,6 @@ On mobile, verify:
 
 ## 17. Implementation constraint summary
 
-The redesign succeeds only if it changes what Memory looks and feels like without silently changing what Memory means.
+The redesign succeeds only if Memory adopts the Home/Todo visual and interaction language without weakening its lifecycle, ownership, navigation, or mutation-safety semantics.
 
-Preserve the existing controller semantics and API contracts; introduce only the presentation helpers necessary to express the approved design. Any newly discovered requirement that needs schema/API expansion must be split into a later batch rather than folded into this redesign.
+Preserve the existing controller behavior wherever possible. The only accepted API-contract expansion in this batch is extending the existing active Web Memory update path to allow the already-existing `key` and `category` fields alongside `content` and `tags`. No schema migration, new endpoint, archived editing, MCP contract change, or signature persistence belongs in this batch.
