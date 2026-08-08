@@ -3784,3 +3784,45 @@ body:has(.home-prototype) {
   }
 }
 /* leilei-diary-date-rounded-surface-2026-08-08:end */
+
+/* leilei-mobile-search-focus-safe-2026-08-08:start */
+@media (max-width: 760px) {
+  /*
+   * Safari zooms focused form controls whose real text size is below 16px.
+   * Keep the computed input at 16px, then optically return it to 14px.
+   * 16 * 0.875 = 14.
+   */
+  .memory-page-search input {
+    font-size: 16px !important;
+    transform: scale(0.875);
+    transform-origin: left center;
+    width: 114.285714% !important;
+    max-width: 114.285714% !important;
+  }
+}
+/* leilei-mobile-search-focus-safe-2026-08-08:end */
+
+/* leilei-simple-placeholder-pages-2026-08-08:start */
+.simple-placeholder-page {
+  background: #ffffff !important;
+}
+
+.main-content:has(.simple-placeholder-page) {
+  background: #ffffff !important;
+}
+
+@media (max-width: 760px) {
+  html:has(.simple-placeholder-page),
+  body:has(.simple-placeholder-page),
+  #root:has(.simple-placeholder-page),
+  .app-shell:has(.simple-placeholder-page),
+  .main-content:has(.simple-placeholder-page) {
+    background: #ffffff !important;
+    background-image: none !important;
+  }
+
+  .simple-placeholder-page .memory-page-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* leilei-simple-placeholder-pages-2026-08-08:end */
