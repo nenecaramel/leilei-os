@@ -49,77 +49,79 @@ Add focused `MemoryService.updateMemory` tests that call:
 await service.updateMemory({
   userId: "user-1",
   id: "memory-1",
-  key: "new_key",
+  key: " new_key ",
   category: "project",
-  content: "updated content",
-  tags: ["one", "two"],
+  content: " updated content ",
+  tags: ["one", " two "],
 });
 ```
 
-Assert the repository receives trimmed/validated `key`, legal `category`, trimmed `content`, and normalized tags. Add failure cases for blank/over-100-char key and an unsupported category, expecting the existing `INVALID_MEMORY_KEY` and `INVALID_MEMORY_CATEGORY` domain codes.
+Assert the repository receives normalized `key: "new_key"`, legal `category: "project"`, normalized `content: "updated content"`, and normalized tags. Add failure cases for blank/over-100-char key and unsupported category, expecting `INVALID_MEMORY_KEY` and `INVALID_MEMORY_CATEGORY`.
 
-- [ ] **Step 2: Run the service tests and verify RED**
-
-Run:
+- [ ] **Step 2: Run service tests and verify RED**
 
 ```bash
 npx tsx --test --test-name-pattern="updateMemory" tests/memory-service.test.ts
 ```
 
-Expected: FAIL because `UpdateMemoryInput` and `updateMemory` do not yet accept/forward `key` and `category`.
+Expected: FAIL because `UpdateMemoryInput` and service forwarding do not yet support `key/category`.
 
-- [ ] **Step 3: Extend service and repository types minimally**
+- [ ] **Step 3: Implement only the service/type layer needed for GREEN**
 
-Change both update input types to:
+Change repository/service update input types to include:
 
 ```ts
-export type UpdateMemoryInput = {
+{
   userId: string;
   id: string;
   key: string;
   category: MemoryCategory;
   content: string;
   tags?: readonly string[];
-};
+}
 ```
 
-In `MemoryService.updateMemory`, normalize key with `normalizeRequiredText(..., MAX_KEY_LENGTH, "INVALID_MEMORY_KEY")`, validate the one category through the existing category validator, normalize content with `normalizeRequiredText(..., MAX_CONTENT_LENGTH, "INVALID_MEMORY_CONTENT")`, and normalize tags when supplied. Preserve `MEMORY_NOT_FOUND` behavior.
+In `MemoryService.updateMemory`, normalize key with `normalizeRequiredText(..., MAX_KEY_LENGTH, "INVALID_MEMORY_KEY")`, validate the single category through the existing category validator, normalize content with `normalizeRequiredText(..., MAX_CONTENT_LENGTH, "INVALID_MEMORY_CONTENT")`, normalize tags when supplied, and forward all fields to the repository. Do not yet change the Drizzle `.set(...)` implementation.
 
-In `DrizzleMemoryRepository.updateMemory`, set:
+- [ ] **Step 4: Re-run service tests and verify GREEN**
+
+Run Step 2 again. Expected: PASS.
+
+- [ ] **Step 5: Write repository RED integration coverage before changing persistence**
+
+Add a test that calls repository `updateMemory` with new key/category/content/tags and then reads the record back. Assert all four values changed. Also assert an archived record and a different user's record are not changed.
+
+- [ ] **Step 6: Run repository test and verify RED**
+
+```bash
+npx tsx --test --test-name-pattern="updateMemory|updates.*key.*category" tests/memory-lifecycle-repository.integration.test.ts
+```
+
+Expected: FAIL because the Drizzle update still writes only content/tags.
+
+- [ ] **Step 7: Extend Drizzle update minimally**
+
+Update only the existing `.set(...)` payload:
 
 ```ts
 .set({
   key: input.key,
   category: input.category,
   content: input.content,
-  ...(input.tags === undefined ? {} : { tags: input.tags }),
+  ...(input.tags === undefined ? {} : { tags: [...input.tags] }),
   updatedAt: new Date(),
 })
 ```
 
 Keep the existing `id + userId + status=active + visibility=assistant` predicate unchanged.
 
-- [ ] **Step 4: Run service tests and verify GREEN**
+- [ ] **Step 8: Re-run repository test and verify GREEN**
 
-Run the command from Step 2. Expected: PASS.
+Run Step 6 again. Expected: PASS.
 
-- [ ] **Step 5: Write repository integration RED test**
+- [ ] **Step 9: Write Web API RED test for expanded PATCH forwarding**
 
-Add a test that creates/uses an active assistant Memory, calls repository `updateMemory` with a new key/category/content/tags, then reads it back and asserts all four fields changed. Also assert an archived or other-user record is not changed by the same method.
-
-- [ ] **Step 6: Run repository integration test and verify behavior**
-
-Run:
-
-```bash
-npx tsx --test --test-name-pattern="updates.*key.*category|updateMemory" tests/memory-lifecycle-repository.integration.test.ts
-```
-
-Expected after Step 3: PASS. If the test reveals a real persistence constraint, stop and diagnose before changing behavior.
-
-- [ ] **Step 7: Write Web API RED test for the expanded PATCH body**
-
-In `tests/web-memory-api.test.ts`, assert authenticated `PATCH /memory` forwards:
+Assert authenticated `PATCH /memory` forwards:
 
 ```ts
 {
@@ -132,21 +134,21 @@ In `tests/web-memory-api.test.ts`, assert authenticated `PATCH /memory` forwards
 }
 ```
 
-Also keep the existing unauthenticated/404/error mappings intact.
+Keep existing unauthenticated/404/error mapping assertions.
 
-- [ ] **Step 8: Run Web API test and verify RED**
+- [ ] **Step 10: Run Web API test and verify RED**
 
 ```bash
 npx tsx --test --test-name-pattern="PATCH|update" tests/web-memory-api.test.ts
 ```
 
-Expected: FAIL because the router currently forwards only `id/content/tags`.
+Expected: FAIL because the router forwards only `id/content/tags`.
 
-- [ ] **Step 9: Extend the router dependency contract and PATCH forwarding**
+- [ ] **Step 11: Extend router contract and forwarding**
 
-Update `MemoryApiDependencies.memoryService.updateMemory` and `createUpdateMemoryApiHandler` to pass `request.body.key` and `request.body.category` in addition to existing fields. Do not add a route.
+Update `MemoryApiDependencies.memoryService.updateMemory` and `createUpdateMemoryApiHandler` to pass `request.body.key` and `request.body.category` with existing fields. Do not add a route.
 
-- [ ] **Step 10: Run Task 1 verification and commit**
+- [ ] **Step 12: Run Task 1 verification and commit**
 
 ```bash
 npx tsx --test tests/memory-service.test.ts tests/memory-lifecycle-repository.integration.test.ts tests/web-memory-api.test.ts && git diff --check
@@ -171,7 +173,7 @@ git commit -m "feat: expand Memory web editing fields"
 
 - [ ] **Step 1: Write header structure RED tests**
 
-Add assertions that `MemoryPageHeader` renders, in order, buttons with accessible names `筛选分类`, `筛选标签`, `搜索记忆`, `查看归档`, `新增记忆`; that category contains an SVG/data marker representing four independent square elements; and that search/archive/create use SVG icons instead of the current text glyphs `⌕`, `▣`, `✎`.
+Assert tool order/accessibility remains `筛选分类`, `筛选标签`, `搜索记忆`, `查看归档`, `新增记忆`; category renders four independent square shapes; search/archive/create use SVG icons instead of current text glyphs `⌕`, `▣`, `✎`.
 
 - [ ] **Step 2: Run focused header test and verify RED**
 
@@ -179,29 +181,33 @@ Add assertions that `MemoryPageHeader` renders, in order, buttons with accessibl
 npx tsx --test --test-name-pattern="Memory.*header|header.*Memory" tests/memory-page.test.ts
 ```
 
-Expected: FAIL on current text glyph implementation.
+Expected: FAIL on current text glyphs.
 
-- [ ] **Step 3: Add/refine shared icon components and wire the header**
+- [ ] **Step 3: Implement SVG tool icons**
 
-In `icons.tsx`, add a Memory category-grid icon made from four separate small `<rect>` elements. Reuse/refine `SearchIcon` and `ArchiveIcon` so the archive reads as a storage box/tray. Add a pen icon if no suitable shared icon exists. In `MemoryPageHeader`, render the SVG components. Apply horizontal mirroring to only the pen glyph with a Memory-specific class or SVG transform; do not reverse button order or hit-box geometry.
+In `icons.tsx`, add a Memory category-grid icon from four separate small `<rect>` elements. Reuse/refine `SearchIcon` and `ArchiveIcon` so Archive reads as a storage box/tray. Add a pen icon if needed. Wire them into `MemoryPageHeader`. Horizontally mirror only the pen glyph; do not reverse tool order or button hit boxes.
 
-- [ ] **Step 4: Write search-surface CSS RED assertions**
+- [ ] **Step 4: Re-run header test and verify GREEN**
 
-Lock that `.memory-page-search` owns the light-gray surface and its inner `input[type="search"]` has transparent background, no border, no box-shadow, and no outline/focus ring rectangle. Lock a larger search SVG size/visual weight that matches neighboring glyphs while all parent buttons stay `44px` hit targets.
+Run Step 2 again. Expected: PASS.
 
-- [ ] **Step 5: Run style test and verify RED**
+- [ ] **Step 5: Write search-surface CSS RED assertions**
+
+Lock `.memory-page-search` as the only visible light-gray field surface. Assert its `input[type="search"]` has transparent background, `border: 0`, no box-shadow, and no second focus rectangle. Lock search SVG visual size/weight while tool buttons retain 44px hit targets.
+
+- [ ] **Step 6: Run style test and verify RED**
 
 ```bash
 npx tsx --test tests/memory-list-styles.test.ts
 ```
 
-Expected: FAIL because the current native search input still creates a second visible field/focus surface and current glyph sizing is not locked.
+Expected: FAIL until the inner search control is visually neutralized.
 
-- [ ] **Step 6: Implement minimal mobile CSS**
+- [ ] **Step 7: Implement minimal mobile search/icon CSS**
 
-Keep `.memory-page-search` as the sole visible rounded/light-gray field. Set the child search input to transparent/no border/no shadow, suppress WebKit search-decoration chrome where needed, and keep keyboard focus discoverable by applying focus-visible treatment to the outer search shell rather than drawing a second inner rectangle.
+Keep the outer search shell as the one rounded/light-gray field. Remove visible native inner search chrome and apply keyboard focus treatment to the outer shell. Keep neighboring glyphs balanced and smaller than global top-bar icons.
 
-- [ ] **Step 7: Run Task 2 verification and commit**
+- [ ] **Step 8: Run Task 2 verification and commit**
 
 ```bash
 npx tsx --test tests/memory-page.test.ts tests/memory-list-styles.test.ts && npm --prefix web run typecheck && git diff --check
@@ -219,16 +225,16 @@ git commit -m "style: refine Memory mobile tools"
 - Modify: `tests/memory-scroll-restoration.test.ts`
 
 **Interfaces:**
-- Consumes: existing list `state`, `location.memoryId`, `PaperDetailDialog`, `createMemoryDetailLocation`, scroll storage helpers.
-- Produces: active list remains mounted during active detail; detail fetch overlays it without calling `window.scrollTo({ top: 0 })`; closing detail returns to the same filtered/scrolled list without forcing a list reload.
+- Consumes: active list `state`, `location.memoryId`, `PaperDetailDialog`, Memory URL helpers, scroll storage helpers.
+- Produces: active list stays mounted during active detail; opening detail does not reset page scroll; closing returns to the unchanged filtered/scrolled list without an unnecessary list reload.
 
 - [ ] **Step 1: Write DOM RED test for stationary background**
 
-Render an active list with at least two month groups, open a row, resolve `/memory/:id`, then assert the DOM simultaneously contains the active `.memory-page-header`, `.memory-months`/clicked row, and `#memory-detail-paper`. Assert no legacy detail `PageHeader`/`返回记忆列表` button appears.
+Render an active list with at least two month groups, open a row, resolve `/memory/:id`, then assert the DOM simultaneously contains `.memory-page-header`, `.memory-months`/clicked row, and `#memory-detail-paper`. Assert no detail-only `PageHeader` or `返回记忆列表` appears.
 
 - [ ] **Step 2: Write scroll RED test**
 
-Start at a non-zero `window.scrollY`, click a row, resolve detail, and assert opening detail does not call/reset scroll to `0`. Close the paper and assert the list remains at/restores the saved position without refetching merely because detail closed.
+Start at non-zero `window.scrollY`, click a row, resolve detail, and assert opening detail does not reset scroll to zero. Close the paper and assert the saved list position/state remains without a detail-close-only refetch.
 
 - [ ] **Step 3: Run focused tests and verify RED**
 
@@ -236,19 +242,19 @@ Start at a non-zero `window.scrollY`, click a row, resolve detail, and assert op
 npx tsx --test --test-name-pattern="stationary|background|scroll" tests/memory-page.test.ts tests/memory-scroll-restoration.test.ts
 ```
 
-Expected: FAIL because current rendering replaces the active list with the detail branch and the detail effect calls `window.scrollTo({ top: 0 })`.
+Expected: FAIL because current detail replaces the list and calls `window.scrollTo({ top: 0 })`.
 
-- [ ] **Step 4: Keep active list request/state alive while active detail is open**
+- [ ] **Step 4: Keep active list state/request alive during active detail**
 
-Change the active-list request effect so `isDetail` alone does not abort or suppress the list. It may still suppress active list requests when Archive or archived detail owns the page. Remove `isDetail` from conditions/dependencies that cause an unnecessary list reset.
+Do not abort/suppress the active list merely because `isDetail` is true. Archive/archived-detail may still own a separate page. Remove `isDetail` dependencies that trigger unnecessary active-list reset.
 
-- [ ] **Step 5: Render active list first and overlay detail second**
+- [ ] **Step 5: Render active list first, detail overlay second**
 
-For the active Memory context, always render `MemoryPageHeader` plus active loading/error/empty/month content. Render `MemoryDetail` as an additional sibling overlay when `isDetail` is true. Remove the detail-only `PageHeader` branch. Keep `paperTriggerRef` focus restoration.
+For active Memory context, render `MemoryPageHeader` plus active loading/error/empty/month content regardless of active detail. Render `MemoryDetail` as an additional sibling overlay when `isDetail`. Remove the detail-only `PageHeader` branch. Preserve focus restoration to `paperTriggerRef`.
 
-- [ ] **Step 6: Stop detail fetch from changing page scroll**
+- [ ] **Step 6: Stop active-detail fetch from moving page scroll**
 
-Remove the active-detail `window.scrollTo({ top: 0 })`. Let `PaperDetailDialog` lock body overflow while open. On close, restore URL/history and state without setting the already-valid active list to `loading` solely because the overlay closed.
+Remove active-detail `window.scrollTo({ top: 0 })`. Let `PaperDetailDialog` lock body overflow. Close detail by restoring URL/history and overlay state without forcing an already-valid list to loading.
 
 - [ ] **Step 7: Run Task 3 verification and commit**
 
@@ -269,10 +275,10 @@ git commit -m "fix: keep Memory list behind detail paper"
 - Modify: `tests/memory-paper-styles.test.ts`
 
 **Interfaces:**
-- Consumes: `MemoryCategory = "profile" | "preference" | "goal" | "project"` and the existing paper slots.
-- Produces: reusable controlled editor for `key`, `category`, `content`, `tags`; an imperative `focusKey()` handle for quick-create; no conventional boxed form chrome.
+- Consumes: `MemoryCategory = "profile" | "preference" | "goal" | "project"` and shared paper slots.
+- Produces: controlled editor for key/category/content/tags and imperative `focusKey()` for quick-create.
 
-Define the editor contract as:
+Use this contract:
 
 ```ts
 export type MemoryPaperEditorHandle = {
@@ -294,39 +300,41 @@ export type MemoryPaperEditorProps = {
 
 - [ ] **Step 1: Write component RED tests**
 
-Test that the editor exposes a title-position key textarea/input, body-position content textarea, bottom-left metadata controls, and a category menu with exactly Profile/Preference/Goal/Project. Assert the component source/DOM contains no `<select>` and no generic stacked `.memory-paper-form` field wrappers. Assert changing each field calls the corresponding controlled callback.
+Assert a title-position key editor, body content editor, bottom-left metadata controls, and a category menu containing exactly Profile/Preference/Goal/Project. Assert no `<select>` and no stacked `.memory-paper-form` field wrapper. Assert each controlled callback fires.
 
-- [ ] **Step 2: Run the new component test and verify RED**
+- [ ] **Step 2: Run component test and verify RED**
 
 ```bash
 npx tsx --test tests/memory-paper-editor.test.ts
 ```
 
-Expected: FAIL because `MemoryPaperEditor` does not exist.
+Expected: FAIL because the component does not exist.
 
-- [ ] **Step 3: Implement the controlled paper editor**
+- [ ] **Step 3: Implement controlled paper editor**
 
-Create a dedicated component rather than reusing `TodoPaperEditor` row/status semantics. Key is always the first/title region and uses title typography even when it wraps. Content is a transparent borderless textarea in the paper body. Bottom-left metadata shows category and tags; category opens a lightweight anchored menu of the four legal values; tags switch to a small transparent inline editor in the same metadata position. No visible rectangular input/select/textarea borders are allowed.
+Create a Memory-specific component instead of reusing Todo row/status semantics. Key stays in the first/title region and retains title typography when wrapping. Content is a transparent borderless textarea in the body. Bottom-left metadata shows category/tags; category opens a lightweight anchored menu of four legal values; tags edit inline in the same metadata position. Expose `focusKey()` via `forwardRef/useImperativeHandle`.
 
-Expose `focusKey()` with `forwardRef/useImperativeHandle` so quick-create can focus the title position once.
+- [ ] **Step 4: Re-run component test and verify GREEN**
 
-- [ ] **Step 4: Write CSS RED assertions for paper-native controls**
+Run Step 2 again. Expected: PASS.
 
-Lock transparent background, `border: 0`, `box-shadow: none`, inherited font/color, `resize: none`, and title typography for the key editor. Lock long-key wrapping without font-size reduction. Lock category popover as lightweight/anchored and metadata-sized.
+- [ ] **Step 5: Write paper-native CSS RED assertions**
 
-- [ ] **Step 5: Run style test and verify RED**
+Lock transparent background, `border: 0`, no box-shadow, inherited color/font, `resize: none`, title typography for key, long-key wrapping without font shrink, and lightweight metadata/category-menu styling.
+
+- [ ] **Step 6: Run style test and verify RED**
 
 ```bash
 npx tsx --test tests/memory-paper-styles.test.ts
 ```
 
-Expected: FAIL until the new classes are styled.
+Expected: FAIL until new editor classes are styled.
 
-- [ ] **Step 6: Implement styles without changing shared paper geometry**
+- [ ] **Step 7: Implement editor styles without touching shared paper geometry**
 
-Add only Memory field/editor styles. Do not modify `.paper-detail-paper`, `.paper-detail-date`, `.paper-detail-signature` geometry for Memory-specific reasons.
+Add only Memory editor/metadata styles. Do not alter shared `.paper-detail-paper`, `.paper-detail-date`, or `.paper-detail-signature` geometry.
 
-- [ ] **Step 7: Run Task 4 verification and commit**
+- [ ] **Step 8: Run Task 4 verification and commit**
 
 ```bash
 npx tsx --test tests/memory-paper-editor.test.ts tests/memory-paper-styles.test.ts && npm --prefix web run typecheck && git diff --check
@@ -345,11 +353,11 @@ git commit -m "feat: add Memory paper-native editor"
 
 **Interfaces:**
 - Consumes: Task 1 expanded PATCH contract and Task 4 `MemoryPaperEditor`.
-- Produces: active edit and create happen directly on the paper; edit sends `{ id, key, category, content, tags }`; dirty-state protection includes key/category/content/tags; quick-create focuses the key title.
+- Produces: active edit/create directly on paper; PATCH sends `{ id, key, category, content, tags }`; dirty protection covers all four fields; quick-create focuses key title once.
 
 - [ ] **Step 1: Write active-edit RED test**
 
-Open an active detail, click `编辑`, and assert the same `#memory-detail-paper` remains open while key/category/content/tags become editable through `MemoryPaperEditor`. Assert no `.memory-paper-form`, boxed `select`, or legacy labeled field stack appears. Change all four fields, click Save, and assert PATCH body equals:
+Open active detail, click `编辑`, and assert the same `#memory-detail-paper` remains while key/category/content/tags become editable. Assert no stacked form/select. Change all four fields and assert Save PATCH body is:
 
 ```ts
 {
@@ -363,27 +371,27 @@ Open an active detail, click `编辑`, and assert the same `#memory-detail-paper
 
 - [ ] **Step 2: Write dirty-state RED coverage**
 
-Assert changing only key or only category marks edit dirty and triggers the existing unsaved-close confirmation. Cancel must restore the fetched values. Save failure must keep the paper open with the inline paper error.
+Changing only key or only category must mark the edit dirty and trigger existing unsaved-close confirmation. Cancel restores fetched values. Save failure keeps the paper open with inline paper error.
 
-- [ ] **Step 3: Run active-edit tests and verify RED**
+- [ ] **Step 3: Run edit tests and verify RED**
 
 ```bash
 npx tsx --test --test-name-pattern="Memory.*edit|editing|PATCH|unsaved" tests/memory-page.test.ts tests/memory-detail-service.test.ts
 ```
 
-Expected: FAIL because current edit tracks only content/tags and renders a conventional form.
+Expected: FAIL because current edit tracks only content/tags and renders conventional fields.
 
-- [ ] **Step 4: Expand edit controller state**
+- [ ] **Step 4: Expand edit controller state and render editor**
 
-Track `editingKey` and `editingCategory` alongside content/tags. Include all four values in `editDirty`, discard/reset paths, popstate cleanup, and `handleUpdate`. Keep content and key required before Save; category must always be one legal enum.
+Track `editingKey` and `editingCategory` with content/tags. Include all four in dirty/reset/popstate paths and `handleUpdate`. Key/content are required. Read-only detail keeps title/body/bottom-left metadata; edit mode swaps those same positions to `MemoryPaperEditor`; top-right becomes `取消 · 保存`.
 
-- [ ] **Step 5: Replace detail edit form with `MemoryPaperEditor`**
+- [ ] **Step 5: Re-run edit tests and verify GREEN**
 
-Read-only detail still renders title/body and bottom-left metadata. Edit mode swaps those same paper positions to the controlled editor, while top-right becomes `取消 · 保存`. Keep top-left date and bottom-right `N` provided by the same `PaperDetailDialog`.
+Run Step 3 again. Expected: PASS.
 
 - [ ] **Step 6: Write create RED test**
 
-Click the mirrored pen and assert `#memory-create-paper` opens directly in editor mode: first/title area key, body content, editable bottom-left category/tags, no boxed field stack. Assert key/content are required, create POST remains `{ category, key, content, tags }`, and quick-create calls the editor's key focus once.
+Click the pen and assert `#memory-create-paper` opens directly in editor mode with title key, body content, editable bottom-left category/tags, no stacked form. Assert key/content required, POST remains `{ category, key, content, tags }`, and quick-create focuses key once.
 
 - [ ] **Step 7: Run create test and verify RED**
 
@@ -391,11 +399,11 @@ Click the mirrored pen and assert `#memory-create-paper` opens directly in edito
 npx tsx --test --test-name-pattern="create|quick-create|新增" tests/memory-page.test.ts
 ```
 
-Expected: FAIL against the current `<select>` + labeled input/textarea form.
+Expected: FAIL against current `<select>` + labeled input/textarea form.
 
 - [ ] **Step 8: Replace create form with `MemoryPaperEditor`**
 
-Reuse existing create state values and mutation protections. Use `MemoryPaperEditorHandle.focusKey()` in the existing one-shot quick-create focus effect. Bottom-right remains `N` and top-right remains concise `取消 · 保存`.
+Reuse existing create values/mutation protections. Use `MemoryPaperEditorHandle.focusKey()` in the one-shot focus effect. Bottom-right remains `N`; top-right remains `取消 · 保存`.
 
 - [ ] **Step 9: Run Task 5 verification and commit**
 
@@ -416,16 +424,16 @@ git commit -m "feat: edit Memory directly on paper"
 - Modify: `tests/memory-list-styles.test.ts`
 
 **Interfaces:**
-- Consumes: existing `ArchivedMemoryList`, active `.memory-page-heading`, `.memory-page-title`, `.memory-page-count`, `.memory-months`, `.memory-month-card`, `.memory-row` styles.
-- Produces: title `Archive`, identical title/count geometry to active Memory, compact borderless return text with a 44px tap target, and identical first-month/card vertical start.
+- Consumes: active Memory heading/month classes and existing `ArchivedMemoryList`.
+- Produces: title `Archive`, identical title/count geometry, compact borderless return text with 44px tap target, identical first-month/card vertical start, and return control present in ready/loading/empty/error archive states.
 
 - [ ] **Step 1: Write Archive header RED tests**
 
-Open Archive and assert title text is exactly `Archive`, subtitle is `${count}条记忆`, and the return control is text-only with an accessible name. Assert Archive does not render active category/tag/search/archive/create tools.
+Open Archive and assert title exactly `Archive`, subtitle `${count}条记忆`, borderless text return control, and absence of active filter/search/create tools. Assert the same header/return shell is present for loading, empty, and request-error states.
 
-- [ ] **Step 2: Write geometry RED style assertions**
+- [ ] **Step 2: Write geometry RED assertions**
 
-Assert Archive reuses the active heading/title/count classes or an explicitly shared class set. Assert the return control has no border/background but keeps `min-width`/`min-height: 44px` or equivalent tap geometry. Assert Archive month content uses `.memory-months`, `.memory-month-section`, `.memory-month-card`, `.memory-row` without archive-specific top padding/margins that shift the first month/card.
+Assert Archive reuses active heading/title/count classes (or one shared class set). Assert return has no visible border/background while retaining 44px tap geometry. Assert Archive uses `.memory-months`, `.memory-month-section`, `.memory-month-card`, `.memory-row` without archive-only top offsets.
 
 - [ ] **Step 3: Run focused tests and verify RED**
 
@@ -433,17 +441,13 @@ Assert Archive reuses the active heading/title/count classes or an explicitly sh
 npx tsx --test --test-name-pattern="Archive|archive" tests/memory-page.test.ts tests/memory-list-styles.test.ts
 ```
 
-Expected: FAIL on current `已归档记忆` copy and archive-specific header spacing.
+Expected: FAIL on current `已归档记忆`, header spacing, and non-ready return-control gap.
 
-- [ ] **Step 4: Refactor Archive header to shared Memory geometry**
+- [ ] **Step 4: Implement shared Archive heading/list geometry**
 
-Render the same heading structure as active Memory with title `Archive` and count below it. Place the borderless return text control on the right at the same visual level as active tools. Keep loading/empty/error Archive states inside the same header shell so the user never loses the return control.
+Render title `Archive` and count with the active heading structure. Put small text-only return on the right. Keep the header in loading/empty/error/ready states. Reuse active month-list classes and remove archive-only vertical offsets.
 
-- [ ] **Step 5: Remove archive-only list offsets**
-
-Use the same active month-list classes and vertical padding for ready/loading/empty/error families where applicable. Do not change card row typography or archived detail behavior.
-
-- [ ] **Step 6: Run Task 6 verification and commit**
+- [ ] **Step 5: Run Task 6 verification and commit**
 
 ```bash
 npx tsx --test tests/memory-page.test.ts tests/memory-list-styles.test.ts tests/memory-scroll-restoration.test.ts && npm --prefix web run typecheck && git diff --check
@@ -453,7 +457,7 @@ git commit -m "style: align Memory archive with active view"
 
 ---
 
-### Task 7: Lock shared paper geometry and remove obsolete Memory form/detail presentation
+### Task 7: Lock shared paper geometry and remove obsolete Memory presentation
 
 **Files:**
 - Modify: `tests/memory-paper-styles.test.ts`
@@ -463,33 +467,34 @@ git commit -m "style: align Memory archive with active view"
 - Modify: `web/src/styles.css`
 
 **Interfaces:**
-- Consumes: shared `PaperDetailDialog` and Tasks 3–6 UI.
-- Produces: no Memory-specific paper geometry overrides, no legacy stacked paper form, no detail-only page header, no obsolete edit CSS paths.
+- Consumes: shared `PaperDetailDialog` and Tasks 3–6.
+- Produces: no Memory-specific paper geometry overrides, no legacy stacked paper form, no active-detail page header, no obsolete edit CSS.
 
-- [ ] **Step 1: Add geometry regression assertions**
+- [ ] **Step 1: Add geometry/obsolete-path RED assertions**
 
-Assert detail, edit, create, and archived detail all render `PaperDetailDialog` with `.paper-detail-date` and `.paper-detail-signature`. In CSS/source tests assert Memory selectors do not redefine `.paper-detail-paper` width/height/inset/transform, `.paper-detail-date` corner coordinates, or `.paper-detail-signature` corner coordinates.
+Assert detail/edit/create/archived detail all use `PaperDetailDialog` with shared `.paper-detail-date` and `.paper-detail-signature`. Assert Memory selectors do not redefine paper width/height/inset/transform or date/signature corner coordinates. Assert no legacy `.memory-paper-form`, conventional `.memory-form-field`, detail `PageHeader`, or `返回记忆列表` remains.
 
-- [ ] **Step 2: Add obsolete-path regression assertions**
-
-Assert active/detail/create source and rendered DOM contain no legacy `.memory-paper-form`, conventional `.memory-form-field`, detail `PageHeader`, `返回记忆列表`, or boxed select/input presentation paths. Keep any shared `.memory-grid/.memory-card` selectors that are still used by Diary/Task/Global Search.
-
-- [ ] **Step 3: Run tests and observe failures**
+- [ ] **Step 2: Run tests and verify any remaining stale paths fail**
 
 ```bash
 npx tsx --test tests/memory-page.test.ts tests/memory-paper-styles.test.ts tests/paper-detail-memory-slots.test.ts
 ```
 
-If stale paths remain, expected: FAIL on the exact obsolete selector/markup.
+Expected: FAIL only if stale presentation remains; if already green, do not invent cleanup.
 
-- [ ] **Step 4: Remove only proven-obsolete Memory code/styles**
+- [ ] **Step 3: Remove only proven-obsolete Memory code/styles**
 
-Delete dead form/detail CSS and unreachable/unused component branches exposed by the regression tests. Do not globally delete selectors used by other pages.
+Delete only selectors/branches identified by Step 2. Keep shared `.memory-grid/.memory-card` selectors still used by Diary/Task/Global Search.
 
-- [ ] **Step 5: Run focused Memory regression gate and commit**
+- [ ] **Step 4: Run focused Memory regression gate and commit only if tracked cleanup exists**
 
 ```bash
 npx tsx --test tests/memory-presentation.test.ts tests/memory-page.test.ts tests/memory-detail-service.test.ts tests/memory-filter-history.test.ts tests/memory-location.test.ts tests/memory-scroll-restoration.test.ts tests/memory-list-styles.test.ts tests/memory-paper-editor.test.ts tests/memory-paper-styles.test.ts tests/paper-detail-memory-slots.test.ts tests/todo-paper-dialog.test.ts tests/web-memory-api.test.ts tests/memory-service.test.ts && npm --prefix web run typecheck && git diff --check
+```
+
+If tracked cleanup exists:
+
+```bash
 git add tests/memory-paper-styles.test.ts tests/paper-detail-memory-slots.test.ts tests/memory-page.test.ts web/src/pages/MemoryPage.tsx web/src/styles.css
 git commit -m "refactor: remove obsolete Memory form presentation"
 ```
@@ -501,11 +506,7 @@ git commit -m "refactor: remove obsolete Memory form presentation"
 **Files:**
 - Local-only, untracked if needed: `web/preview.html`
 - Local-only, untracked if needed: `web/src/preview-main.tsx`
-- Modify tracked files only when a visual defect is first captured by a failing automated test.
-
-**Interfaces:**
-- Consumes: Tasks 1–7 complete behavior.
-- Produces: accepted 393 × 852 mobile presentation with no tracked preview helpers.
+- Modify tracked files only after a visual defect is captured by a failing automated test.
 
 - [ ] **Step 1: Confirm preview files remain untracked**
 
@@ -513,58 +514,32 @@ git commit -m "refactor: remove obsolete Memory form presentation"
 git status --short
 ```
 
-Expected entries may include only:
+Expected local-only entries may include exactly:
 
 ```text
 ?? web/preview.html
 ?? web/src/preview-main.tsx
 ```
 
-Never add them to a commit.
+- [ ] **Step 2: Extend local preview mock only as needed**
 
-- [ ] **Step 2: Extend the local preview mock only as needed for visual interaction**
+If interaction cannot be exercised because the current mock supports only GET, add local-only `POST /memory`, `PATCH /memory`, `DELETE /memory`, and restore handlers inside `web/src/preview-main.tsx`. Keep the helper untracked.
 
-If edit/create/archive/restore cannot be exercised because the current local mock supports only GET, add local-only handlers for `POST /memory`, `PATCH /memory`, `DELETE /memory`, and archived restore inside `web/src/preview-main.tsx`. Keep the helper untracked.
+- [ ] **Step 3: Accept active Memory header/list**
 
-- [ ] **Step 3: Accept active Memory header/list at 393 × 852**
-
-Visually confirm:
-
-- Home-style white page shell and spacing remain accepted;
-- category reads as four small squares;
-- create pen is horizontally mirrored;
-- search glyph visually matches neighboring tools;
-- archive glyph clearly reads as archive storage;
-- expanded search shows exactly one light-gray field surface with no second focus rectangle;
-- month labels/cards/rows remain compact, with long title/meta truncation and whole-row click.
+At `393 × 852`, confirm Home-style white shell, four-square category icon, mirrored pen, balanced search icon, clear archive icon, exactly one search field surface, compact month cards, long title/meta truncation, and whole-row click.
 
 - [ ] **Step 4: Accept active detail/edit/create paper**
 
-Visually compare directly with Home Todo paper:
-
-- same paper size, viewport position, and overlay behavior;
-- underlying Memory list does not jump or disappear;
-- top-left date/time position and typography match Todo;
-- bottom-right `N` position/typography match Todo;
-- read-only key/body/meta feel like paper content;
-- Edit changes the same positions into borderless key/category/content/tags editing;
-- long key wraps while retaining title typography;
-- Create is the same paper-native editor, not a form;
-- long content scrolls inside the paper while paper corners stay fixed.
+Compare directly with Home Todo: same paper size/viewport placement, stationary Memory list behind it, same top-left date and bottom-right `N` coordinates/typography, borderless paper-native key/category/content/tags editing, long key retaining title typography, create using the same editor, and long body scrolling inside fixed paper corners.
 
 - [ ] **Step 5: Accept Archive**
 
-Visually confirm:
+Confirm title `Archive`, count position/font matching Memory, small borderless return text, first month/card aligned with active Memory, read-only archived detail on the same paper geometry, and restore returning to active Memory.
 
-- title is `Archive`;
-- count position/font matches active Memory;
-- return control is small borderless text aligned with active tool height;
-- first month label/card starts at the same vertical position as active Memory;
-- archived detail uses the same paper geometry, has no edit action, and restore returns to active Memory.
+- [ ] **Step 6: For every visual defect, return to RED first**
 
-- [ ] **Step 6: For every visual defect, return to TDD before editing tracked production code**
-
-Add a focused failing test that demonstrates the defect, verify RED, make the minimum tracked fix, re-run GREEN, then repeat the affected visual check.
+Add a focused failing automated test, verify RED, implement the smallest tracked fix, verify GREEN, then repeat the affected visual check.
 
 ---
 
@@ -573,7 +548,7 @@ Add a focused failing test that demonstrates the defect, verify RED, make the mi
 **Files:**
 - No new implementation files expected.
 
-- [ ] **Step 1: Run the complete focused Memory suite**
+- [ ] **Step 1: Run complete focused Memory suite**
 
 ```bash
 npx tsx --test tests/memory-presentation.test.ts tests/memory-page.test.ts tests/memory-detail-service.test.ts tests/memory-filter-history.test.ts tests/memory-location.test.ts tests/memory-scroll-restoration.test.ts tests/memory-list-styles.test.ts tests/memory-paper-editor.test.ts tests/memory-paper-styles.test.ts tests/paper-detail-memory-slots.test.ts tests/todo-paper-dialog.test.ts tests/web-memory-api.test.ts tests/memory-service.test.ts
@@ -587,7 +562,7 @@ Expected: all relevant tests PASS.
 npm --prefix web run typecheck && npm test
 ```
 
-Expected: typecheck PASS and full suite has zero failures (existing intentional skips may remain).
+Expected: typecheck PASS and full suite has zero failures; existing intentional skips may remain.
 
 - [ ] **Step 3: Run diff/staging safety checks**
 
@@ -595,12 +570,12 @@ Expected: typecheck PASS and full suite has zero failures (existing intentional 
 git diff --check && git status --short && git diff --stat codex/phase-6-web-ui-foundation...HEAD && git diff --check codex/phase-6-web-ui-foundation...HEAD
 ```
 
-Expected: no diff-check errors; `web/preview.html` and `web/src/preview-main.tsx` remain untracked and unstaged.
+Expected: no diff-check errors; preview helpers remain untracked/unstaged.
 
 - [ ] **Step 4: Use verification-before-completion and finishing-a-development-branch**
 
-Re-read the required skills before claiming completion or integrating. Follow the established fast-forward integration flow only after fresh evidence: feature branch clean except the two preview helpers, fast-forward into `codex/phase-6-web-ui-foundation`, post-merge verification, push base, remote SHA verification, then delete the feature branch according to the finishing skill.
+Re-read the required skills before claiming completion or integrating. Follow the established fast-forward integration flow only after fresh evidence: feature branch clean except preview helpers, fast-forward into `codex/phase-6-web-ui-foundation`, post-merge verification, push base, remote SHA verification, then delete the feature branch according to the finishing skill.
 
-- [ ] **Step 5: Sync the Notion `UI` control page after integration**
+- [ ] **Step 5: Sync Notion `UI` after integration**
 
-Mark Memory redesign complete only after the merged/pushed base is remotely verified, then record the next roadmap step: use Memory as the mobile visual/interaction template for Diary, Task, and Chat Archive.
+Mark Memory redesign complete only after merged/pushed base is remotely verified, then record the next roadmap step: use Memory as the mobile visual/interaction template for Diary, Task, and Chat Archive.
