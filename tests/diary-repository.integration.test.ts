@@ -124,6 +124,13 @@ test(
               }),
             ),
           );
+          const limited = await service.listDiaries({
+            userId: owner,
+            limit: 1,
+          });
+          assert.equal(limited.diaries.length, 1);
+          assert.equal(limited.metadata.count, 53);
+
           assert.deepEqual(
             (await list({ q: "Japan private journal" }))
               .map(({ id }) => id),

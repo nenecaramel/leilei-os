@@ -104,6 +104,11 @@ export interface DiaryRepository {
     query?: DiaryListQuery,
   ): Promise<DiaryEntryRecord[]>;
 
+  countDiaryEntries(
+    userId: string,
+    query?: DiaryListQuery,
+  ): Promise<number>;
+
   findDiaryById(
     userId: string,
     id: string,
@@ -124,6 +129,10 @@ export interface DiaryRepository {
     limit: number,
   ): Promise<DiaryEntryRecord[]>;
 
+  countArchivedDiaries(
+    userId: string,
+  ): Promise<number>;
+
   findArchivedDiaryById(
     userId: string,
     id: string,
@@ -132,6 +141,43 @@ export interface DiaryRepository {
   archiveDiary(input: DiaryLifecycleMutationInput): Promise<boolean>;
 
   restoreDiary(input: DiaryLifecycleMutationInput): Promise<boolean>;
+}
+
+function buildActiveDiaryConditions(
+  userId: string,
+  query: DiaryListQuery,
+) {
+  const conditions = [
+    eq(diaryEntries.userId, userId),
+    eq(diaryEntries.status, "active"),
+  ];
+
+  if (query.q) {
+    const escaped = query.q.replace(/[\\%_]/g, "\\$&");
+    const pattern = `%${escaped}%`;
+    conditions.push(
+      or(
+        ilike(diaryEntries.title, pattern),
+        ilike(diaryEntries.content, pattern),
+      )!,
+    );
+  }
+  if (query.tag) {
+    conditions.push(
+      sql`${query.tag}::text = any(${diaryEntries.tags})`,
+    );
+  }
+  if (query.mood) {
+    conditions.push(eq(diaryEntries.mood, query.mood));
+  }
+  if (query.dateFrom) {
+    conditions.push(gte(diaryEntries.date, query.dateFrom));
+  }
+  if (query.dateTo) {
+    conditions.push(lte(diaryEntries.date, query.dateTo));
+  }
+
+  return conditions;
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -162,35 +208,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
     limit: number,
     query: DiaryListQuery = {},
   ): Promise<DiaryEntryRecord[]> {
-    const conditions = [
-      eq(diaryEntries.userId, userId),
-      eq(diaryEntries.status, "active"),
-    ];
-
-    if (query.q) {
-      const escaped = query.q.replace(/[\\%_]/g, "\\$&");
-      const pattern = `%${escaped}%`;
-      conditions.push(
-        or(
-          ilike(diaryEntries.title, pattern),
-          ilike(diaryEntries.content, pattern),
-        )!,
-      );
-    }
-    if (query.tag) {
-      conditions.push(
-        sql`${query.tag}::text = any(${diaryEntries.tags})`,
-      );
-    }
-    if (query.mood) {
-      conditions.push(eq(diaryEntries.mood, query.mood));
-    }
-    if (query.dateFrom) {
-      conditions.push(gte(diaryEntries.date, query.dateFrom));
-    }
-    if (query.dateTo) {
-      conditions.push(lte(diaryEntries.date, query.dateTo));
-    }
+    const conditions = buildActiveDiaryConditions(userId, query);
 
     return this.db
       .select({
@@ -210,6 +228,18 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         desc(diaryEntries.createdAt),
       )
       .limit(limit);
+  }
+
+  async countDiaryEntries(
+    userId: string,
+    query: DiaryListQuery = {},
+  ): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(diaryEntries)
+      .where(and(...buildActiveDiaryConditions(userId, query)));
+
+    return row?.count ?? 0;
   }
 
   async findDiaryById(
@@ -487,6 +517,22 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         desc(diaryEntries.createdAt),
       )
       .limit(limit);
+  }
+
+  async countArchivedDiaries(
+    userId: string,
+  ): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(diaryEntries)
+      .where(
+        and(
+          eq(diaryEntries.userId, userId),
+          eq(diaryEntries.status, "archived"),
+        ),
+      );
+
+    return row?.count ?? 0;
   }
 
   async findArchivedDiaryById(

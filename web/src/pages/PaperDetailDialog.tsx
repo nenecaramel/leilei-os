@@ -11,7 +11,7 @@ export type PaperDetailDialogProps = {
   id: string;
   open: boolean;
   label: string;
-  dateLabel: string;
+  dateLabel: ReactNode;
   signature: string;
   triggerRef: RefObject<HTMLElement | null>;
   onRequestClose: () => boolean | Promise<boolean>;

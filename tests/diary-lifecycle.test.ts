@@ -25,6 +25,7 @@ const entry: DiaryEntryRecord = {
 class LifecycleRepository implements DiaryRepository {
   user: DiaryUserRecord | null = { status: "active" };
   archived: DiaryEntryRecord[] = [entry];
+  archivedCount = 1;
   archivedDetail: DiaryEntryRecord | null = entry;
   archiveResult = true;
   restoreResult = true;
@@ -35,6 +36,7 @@ class LifecycleRepository implements DiaryRepository {
     return this.user;
   }
   async findDiaryEntries() { return []; }
+  async countDiaryEntries() { return 0; }
   async findDiaryById() { return null; }
   async createDiaryWithAudit(): Promise<never> {
     throw new Error("not used");
@@ -43,6 +45,9 @@ class LifecycleRepository implements DiaryRepository {
   async findArchivedDiaries() {
     this.queries += 1;
     return this.archived;
+  }
+  async countArchivedDiaries() {
+    return this.archivedCount;
   }
   async findArchivedDiaryById() {
     this.queries += 1;
@@ -70,6 +75,18 @@ test("Diary archived list and detail validate the active user and return full co
   assert.equal(list.metadata.count, 1);
   assert.equal(detail.content, entry.content);
   assert.equal(repository.queries, 2);
+});
+
+test("Diary archived metadata uses the repository true count", async () => {
+  const repository = new LifecycleRepository();
+  repository.archivedCount = 7;
+  const result = await new DiaryService(repository).listArchivedDiaries({
+    userId: "user-a",
+    limit: 1,
+  });
+
+  assert.equal(result.diaries.length, 1);
+  assert.equal(result.metadata.count, 7);
 });
 
 for (const state of ["missing", "disabled"] as const) {

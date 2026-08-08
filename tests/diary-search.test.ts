@@ -38,12 +38,7 @@ class SearchRepository implements DiaryRepository {
   async findUserById() {
     return { status: "active" as const };
   }
-  async findDiaryEntries(
-    userId: string,
-    limit: number,
-    query: DiaryListQuery = {},
-  ) {
-    this.calls.push({ userId, limit, query });
+  private matchingEntries(query: DiaryListQuery) {
     return entries.filter((entry) => {
       const q = query.q?.toLocaleLowerCase();
       return (
@@ -55,8 +50,24 @@ class SearchRepository implements DiaryRepository {
         (!query.dateFrom || entry.date >= query.dateFrom) &&
         (!query.dateTo || entry.date <= query.dateTo)
       );
-    }).slice(0, limit);
+    });
   }
+
+  async findDiaryEntries(
+    userId: string,
+    limit: number,
+    query: DiaryListQuery = {},
+  ) {
+    this.calls.push({ userId, limit, query });
+    return this.matchingEntries(query).slice(0, limit);
+  }
+  async countDiaryEntries(
+    _userId: string,
+    query: DiaryListQuery = {},
+  ) {
+    return this.matchingEntries(query).length;
+  }
+  async countArchivedDiaries() { return 0; }
   async findDiaryById() { return null; }
   async createDiaryWithAudit(): Promise<never> { throw new Error("unused"); }
   async updateDiary() { return null; }
@@ -73,6 +84,18 @@ test("diary list without parameters preserves authenticated ownership and defaul
     limit: 50,
     query: {},
   });
+});
+
+
+test("Diary metadata count is independent of the returned row limit", async () => {
+  const repository = new SearchRepository();
+  const result = await new DiaryService(repository).listDiaries({
+    userId: "user-1",
+    limit: 1,
+  });
+
+  assert.equal(result.diaries.length, 1);
+  assert.equal(result.metadata.count, 2);
 });
 
 test("diary q searches normalized title and content case-insensitively", async () => {

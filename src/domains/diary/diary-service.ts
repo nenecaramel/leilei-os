@@ -197,18 +197,24 @@ export class DiaryService {
     const limit = this.resolveLimit(input.limit);
     const query = this.normalizeListQuery(input.query ?? {});
 
-    const diaries = await this.repository.findDiaryEntries(
-      userId,
-      limit,
-      query,
-    );
+    const [diaries, count] = await Promise.all([
+      this.repository.findDiaryEntries(
+        userId,
+        limit,
+        query,
+      ),
+      this.repository.countDiaryEntries(
+        userId,
+        query,
+      ),
+    ]);
 
     return {
       diaries: diaries.map((diary) =>
         this.toEntryResult(diary),
       ),
       metadata: {
-        count: diaries.length,
+        count,
       },
     };
   }
@@ -247,14 +253,17 @@ export class DiaryService {
   }): Promise<ListDiariesResult> {
     const userId = await this.requireActiveUser(input.userId);
     const limit = this.resolveLimit(input.limit);
-    const diaries = await this.repository.findArchivedDiaries(
-      userId,
-      limit,
-    );
+    const [diaries, count] = await Promise.all([
+      this.repository.findArchivedDiaries(
+        userId,
+        limit,
+      ),
+      this.repository.countArchivedDiaries(userId),
+    ]);
 
     return {
       diaries: diaries.map((diary) => this.toEntryResult(diary)),
-      metadata: { count: diaries.length },
+      metadata: { count },
     };
   }
 

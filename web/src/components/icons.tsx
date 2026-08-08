@@ -71,6 +71,20 @@ export const PenIcon = (props: IconProps) => (
   </IconBase>
 );
 
+export const CalendarIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <rect x="3.5" y="5.5" width="17" height="15" rx="2.5" />
+    <path d="M7.5 3v5M16.5 3v5M3.5 10h17" />
+  </IconBase>
+);
+
+export const MoodIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M9 10h.01M15 10h.01M9.5 15h5" />
+  </IconBase>
+);
+
 export const UniverseIcon = (props: IconProps) => (
   <IconBase {...props}>
     <circle cx="12" cy="12" r="3" />

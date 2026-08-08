@@ -3,10 +3,25 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { DiaryIcon } from "../components/icons";
 import { NativeDateInput } from "../components/NativeDateInput";
+import { DiaryPageHeader } from "./DiaryPageHeader";
+import {
+  DiaryPaperDateEditor,
+  DiaryPaperEditor,
+  DiaryPaperMetadataEditor,
+  type DiaryPaperEditorHandle,
+} from "./DiaryPaperEditor";
+import { PaperDetailDialog } from "./PaperDetailDialog";
+import {
+  formatDiaryPaperDate,
+  formatDiaryRowDate,
+  formatDiaryRowMeta,
+  groupDiariesByMonth,
+} from "./diary-presentation";
 import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
 import { isSearchLocation, navigateWithinApp } from "./app-navigation";
@@ -108,6 +123,33 @@ function initialArchivedDetailLocation() {
 function hasFilters(filters: DiaryFilters): boolean {
   return Object.values(filters).some((value) => value.trim() !== "");
 }
+function sameDiaryFilters(left: DiaryFilters, right: DiaryFilters): boolean {
+  return left.q === right.q &&
+    left.tag === right.tag &&
+    left.mood === right.mood &&
+    left.dateFrom === right.dateFrom &&
+    left.dateTo === right.dateTo;
+}
+
+function useMobileDiaryLayout(): boolean {
+  const [mobile, setMobile] = useState(() =>
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(max-width: 760px)").matches
+  );
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 760px)");
+    const update = () => setMobile(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  return mobile;
+}
+
 export function DiaryPageContent({
   api,
   settings,
@@ -115,6 +157,9 @@ export function DiaryPageContent({
   api: WebApiClient;
   settings: SettingsData;
 }) {
+  const isMobile = useMobileDiaryLayout();
+  const isMobileRef = useRef(isMobile);
+  isMobileRef.current = isMobile;
   const [filters, setFilters] = useState(initialFilters);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
@@ -151,8 +196,11 @@ export function DiaryPageContent({
     useState<DiaryEntry | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [archiveReloadKey, setArchiveReloadKey] = useState(0);
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
   const tracker = useRef(createLatestDiaryRequestTracker());
   const listController = useRef<AbortController | null>(null);
+  const listAvailableRef = useRef(false);
+  const loadedListUrlRef = useRef("");
   const pendingScrollRestore = useRef<number | null>(null);
   const mutationGate = useRef(createSubmissionGate());
   const mutationOwnership = useRef(createMutationOwnership());
@@ -162,6 +210,8 @@ export function DiaryPageContent({
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const createTitleInput = useRef<HTMLInputElement | null>(null);
+  const createEditorRef = useRef<DiaryPaperEditorHandle | null>(null);
+  const paperTriggerRef = useRef<HTMLElement | null>(null);
   const focusCreateRef = useRef(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -215,7 +265,10 @@ export function DiaryPageContent({
   useEffect(() => {
     if (!showCreate || !focusCreateRef.current) return;
     focusCreateRef.current = false;
-    (window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0)))(() => createTitleInput.current?.focus());
+    (window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0)))(() => {
+      if (isMobileRef.current) createEditorRef.current?.focusTitle();
+      else createTitleInput.current?.focus();
+    });
   }, [showCreate]);
 
   function discardDraft(): void {
@@ -285,6 +338,8 @@ export function DiaryPageContent({
     }
     setFilterError("");
     pendingScrollRestore.current = null;
+    listAvailableRef.current = false;
+    loadedListUrlRef.current = "";
     invalidateList();
     setState({ status: "loading" });
     pushDiaryFilterHistory(window, next);
@@ -376,12 +431,24 @@ export function DiaryPageContent({
     ) {
       const listUrl =
         `/diary${buildDiaryListRequest(restored).search}`;
-      pendingScrollRestore.current =
-        readDiaryScrollPosition(
-          getDiaryScrollStorage(window),
-          listUrl,
-        );
-      setState({ status: "loading" });
+      const position = readDiaryScrollPosition(
+        getDiaryScrollStorage(window),
+        listUrl,
+      );
+      const canReuse =
+        isMobileRef.current &&
+        listAvailableRef.current &&
+        loadedListUrlRef.current === listUrl;
+
+      if (canReuse) {
+        pendingScrollRestore.current = null;
+        if (position !== null) {
+          requestAnimationFrame(() => window.scrollTo({ top: position }));
+        }
+      } else {
+        pendingScrollRestore.current = position;
+        setState({ status: "loading" });
+      }
     }
   }), []);
 
@@ -394,22 +461,51 @@ export function DiaryPageContent({
   }, []);
 
   useEffect(() => {
-    if (isDetail || isArchived || isArchivedDetail) {
+    const listUrl = buildDiaryListRequest(filters).url;
+
+    if (isDetail) {
+      if (
+        !isMobileRef.current ||
+        !listAvailableRef.current ||
+        loadedListUrlRef.current !== listUrl
+      ) {
+        invalidateList();
+      }
+      return;
+    }
+
+    if (isArchived || isArchivedDetail) {
       invalidateList();
       return;
     }
+
+    if (
+      isMobileRef.current &&
+      listAvailableRef.current &&
+      loadedListUrlRef.current === listUrl
+    ) {
+      const position = pendingScrollRestore.current;
+      pendingScrollRestore.current = null;
+      if (position !== null) {
+        requestAnimationFrame(() => window.scrollTo({ top: position }));
+      }
+      return;
+    }
+
     const controller = new AbortController();
     listController.current = controller;
     const ticket = tracker.current.begin();
     setState({ status: "loading" });
     void settleLatestDiaryRequest({
       request: api.request<DiaryListResponse>(
-        buildDiaryListRequest(filters).url,
+        listUrl,
         { signal: controller.signal },
       ),
       ticket,
       signal: controller.signal,
       onSuccess: (response) => {
+        listAvailableRef.current = true;
+        loadedListUrlRef.current = listUrl;
         setState({
           status: "ready",
           diaries: response.data.diaries,
@@ -477,7 +573,7 @@ export function DiaryPageContent({
       if (controller.signal.aborted) return;
       setArchivedDiary(response.data);
       setArchivedDetailState("ready");
-      window.scrollTo({ top: 0 });
+      if (!isMobileRef.current) window.scrollTo({ top: 0 });
     }).catch(() => {
       if (!controller.signal.aborted) setArchivedDetailState("error");
     });
@@ -502,28 +598,34 @@ export function DiaryPageContent({
       if (controller.signal.aborted) return;
       setSelectedDiary(response.data);
       setDetailState("ready");
-      window.scrollTo({ top: 0 });
+      if (!isMobileRef.current) window.scrollTo({ top: 0 });
     }).catch(() => {
       if (controller.signal.aborted) return;
       setDetailState("error");
       setActionError("读取日记详情失败，请稍后重试。");
     });
     return () => controller.abort();
-  }, [api, location]);
+  }, [api, detailReloadKey, location]);
 
   function updateSearch(value: string): void {
+    listAvailableRef.current = false;
+    loadedListUrlRef.current = "";
     invalidateList();
     setState({ status: "loading" });
     setSearchDraft(value);
     searchDebouncer.current?.schedule(value);
   }
   function updateTag(value: string): void {
+    listAvailableRef.current = false;
+    loadedListUrlRef.current = "";
     invalidateList();
     setState({ status: "loading" });
     setTagDraft(value);
     tagDebouncer.current?.schedule(value);
   }
   function updateMood(value: string): void {
+    listAvailableRef.current = false;
+    loadedListUrlRef.current = "";
     invalidateList();
     setState({ status: "loading" });
     setMoodDraft(value);
@@ -554,27 +656,52 @@ export function DiaryPageContent({
       navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
     }
+    const hadList =
+      isMobileRef.current &&
+      listAvailableRef.current &&
+      loadedListUrlRef.current === returnTo;
     window.history.pushState(null, "", returnTo);
     const restored = readDiaryFilters(new URL(returnTo, window.location.origin).search);
-    pendingScrollRestore.current =
-      readDiaryScrollPosition(
-        getDiaryScrollStorage(window),
-        returnTo,
-      );
-    setFilters(restored);
+    const position = readDiaryScrollPosition(
+      getDiaryScrollStorage(window),
+      returnTo,
+    );
+    pendingScrollRestore.current = hadList ? null : position;
+    setFilters((current) =>
+      isMobileRef.current && sameDiaryFilters(current, restored)
+        ? current
+        : restored
+    );
     setSearchDraft(restored.q);
     setTagDraft(restored.tag);
     setMoodDraft(restored.mood);
     setLocation({ diaryId: null, returnTo: "/diary" });
     setSelectedDiary(null);
     setEditing(false);
-    setState({ status: "loading" });
+    if (hadList) {
+      if (position !== null) {
+        requestAnimationFrame(() => window.scrollTo({ top: position }));
+      }
+    } else {
+      setState({ status: "loading" });
+      setReloadKey((value) => value + 1);
+    }
   }
 
   function openArchive(): void {
     if (!confirmAndDiscardDraft()) return;
     invalidateMutationContext();
     const returnTo = `/diary${buildDiaryListRequest(filters).search}`;
+    if (isMobileRef.current) {
+      searchDebouncer.current?.cancel();
+      tagDebouncer.current?.cancel();
+      moodDebouncer.current?.cancel();
+      saveDiaryScrollPosition(
+        getDiaryScrollStorage(window),
+        returnTo,
+        window.scrollY,
+      );
+    }
     const next = createDiaryArchiveLocation(returnTo);
     window.history.pushState(null, "", next);
     setArchiveLocation(getDiaryArchiveLocation(window.location.search));
@@ -587,6 +714,14 @@ export function DiaryPageContent({
 
   function closeArchive(): void {
     const returnTo = getSafeDiaryReturnTo(archiveLocation.returnTo);
+    if (isMobileRef.current) {
+      navigateWithinApp(
+        returnTo,
+        window.history.state,
+        { resetScroll: false },
+      );
+      return;
+    }
     window.history.pushState(null, "", returnTo);
     const restored = readDiaryFilters(
       new URL(returnTo, window.location.origin).search,
@@ -608,7 +743,9 @@ export function DiaryPageContent({
     );
     const next = createArchivedDiaryDetailLocation(id, archiveUrl);
     window.history.pushState(null, "", next);
-    setArchiveLocation({ archived: false, returnTo: "/diary" });
+    if (!isMobileRef.current) {
+      setArchiveLocation({ archived: false, returnTo: "/diary" });
+    }
     setArchivedDetailLocation(
       getArchivedDiaryDetailLocation(window.location.search),
     );
@@ -622,9 +759,28 @@ export function DiaryPageContent({
       navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
     }
+    const hadArchiveList =
+      isMobileRef.current &&
+      isArchived &&
+      archivedState.status === "ready";
     window.history.pushState(null, "", returnTo);
     setArchivedDetailLocation({ diaryId: null, returnTo });
     setArchiveLocation(getDiaryArchiveLocation(window.location.search));
+
+    if (isMobileRef.current) {
+      const position = readDiaryScrollPosition(
+        getDiaryScrollStorage(window),
+        returnTo,
+      );
+      if (hadArchiveList) {
+        if (position !== null) {
+          requestAnimationFrame(() => window.scrollTo({ top: position }));
+        }
+      } else {
+        setArchivedState({ status: "loading" });
+        setArchiveReloadKey((value) => value + 1);
+      }
+    }
   }
 
   async function archiveDiary(id: string): Promise<void> {
@@ -637,6 +793,8 @@ export function DiaryPageContent({
         method: "DELETE",
       });
       if (!mutationOwnership.current.owns(ticket)) return;
+      listAvailableRef.current = false;
+      loadedListUrlRef.current = "";
       closeDiary(true);
       setReloadKey((value) => value + 1);
     } catch {
@@ -666,6 +824,12 @@ export function DiaryPageContent({
         ).search,
       ).returnTo;
       window.history.replaceState(null, "", activeReturnTo);
+      listAvailableRef.current = false;
+      loadedListUrlRef.current = "";
+      pendingScrollRestore.current = readDiaryScrollPosition(
+        getDiaryScrollStorage(window),
+        activeReturnTo,
+      );
       const restored = readDiaryFilters(
         new URL(activeReturnTo, window.location.origin).search,
       );
@@ -714,6 +878,8 @@ export function DiaryPageContent({
       setTags("");
       setMood("");
       setShowCreate(false);
+      listAvailableRef.current = false;
+      loadedListUrlRef.current = "";
       setReloadKey((value) => value + 1);
       openDiary(response.data.id, true);
     } catch {
@@ -758,6 +924,8 @@ export function DiaryPageContent({
       if (!mutationOwnership.current.owns(ticket)) return;
       setSelectedDiary(response.data);
       setEditing(false);
+      listAvailableRef.current = false;
+      loadedListUrlRef.current = "";
       setReloadKey((value) => value + 1);
     } catch {
       if (mutationOwnership.current.owns(ticket)) {
@@ -768,6 +936,308 @@ export function DiaryPageContent({
       if (mutationOwnership.current.owns(ticket)) setUpdating(false);
     }
   }
+
+
+if (isMobile) {
+  const busy = creating || updating || archiving;
+  const showActiveBackground =
+    !isDetail ||
+    (
+      listAvailableRef.current &&
+      loadedListUrlRef.current === buildDiaryListRequest(filters).url
+    );
+
+  return (
+    <div className="page memory-page diary-page">
+      {!isArchived && !isArchivedDetail ? (
+        <>
+          {showActiveBackground ? (
+            <DiaryPageHeader
+              count={state.status === "ready" ? state.count : 0}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              moodDraft={moodDraft}
+              tagDraft={tagDraft}
+              searchDraft={searchDraft}
+              filterError={filterError}
+              busy={busy}
+              onDateFromChange={(value) =>
+                commitFilters({
+                  ...filters,
+                  q: searchDraft,
+                  tag: tagDraft,
+                  mood: moodDraft,
+                  dateFrom: value,
+                })
+              }
+              onDateToChange={(value) =>
+                commitFilters({
+                  ...filters,
+                  q: searchDraft,
+                  tag: tagDraft,
+                  mood: moodDraft,
+                  dateTo: value,
+                })
+              }
+              onMoodChange={updateMood}
+              onTagChange={updateTag}
+              onSearchChange={updateSearch}
+              onOpenArchive={(trigger) => {
+                paperTriggerRef.current = trigger;
+                openArchive();
+              }}
+              onCreate={(trigger) => {
+                paperTriggerRef.current = trigger;
+                if (showCreate) {
+                  if (!confirmAndDiscardDraft()) return;
+                  invalidateMutationContext();
+                  setShowCreate(false);
+                } else {
+                  focusCreateRef.current = true;
+                  setShowCreate(true);
+                }
+                setActionError("");
+              }}
+            />
+          ) : null}
+
+          {actionError && !isDetail && !showCreate ? (
+            <section className="memory-message">
+              <h2>操作没有完成</h2>
+              <p>{actionError}</p>
+            </section>
+          ) : null}
+
+          {showActiveBackground ? (
+            <>
+              {showCreate ? (
+                <PaperDetailDialog
+                  id="diary-create-paper"
+                  open
+                  label="创建 Diary"
+                  dateLabel={
+                    <DiaryPaperDateEditor
+                      value={date}
+                      disabled={creating}
+                      onChange={(value) => {
+                        setDate(value);
+                        setActionError("");
+                      }}
+                    />
+                  }
+                  signature="N"
+                  triggerRef={paperTriggerRef}
+                  onRequestClose={() => {
+                    if (!confirmAndDiscardDraft()) return false;
+                    setShowCreate(false);
+                    setActionError("");
+                    return true;
+                  }}
+                  topRight={
+                    <>
+                      <button
+                        className="memory-paper-control"
+                        disabled={creating}
+                        onClick={() => {
+                          if (!confirmAndDiscardDraft()) return;
+                          setShowCreate(false);
+                          setActionError("");
+                        }}
+                      >
+                        取消
+                      </button>
+                      <span>·</span>
+                      <button
+                        className="memory-paper-control"
+                        disabled={creating || createInvalid}
+                        onClick={() => void handleCreate()}
+                      >
+                        {creating ? "保存中…" : "保存"}
+                      </button>
+                    </>
+                  }
+                  bottomLeft={
+                    <DiaryPaperMetadataEditor
+                      moodValue={mood}
+                      tagsValue={tags}
+                      disabled={creating}
+                      onMoodChange={(value) => {
+                        setMood(value);
+                        setActionError("");
+                      }}
+                      onTagsChange={(value) => {
+                        setTags(value);
+                        setActionError("");
+                      }}
+                    />
+                  }
+                  errorMessage={actionError || null}
+                >
+                  <DiaryPaperEditor
+                    ref={createEditorRef}
+                    title={title}
+                    content={content}
+                    disabled={creating}
+                    onTitleChange={(value) => {
+                      setTitle(value);
+                      setActionError("");
+                    }}
+                    onContentChange={(value) => {
+                      setContent(value);
+                      setActionError("");
+                    }}
+                  />
+                </PaperDetailDialog>
+              ) : null}
+
+              {state.status === "ready" ? (
+                state.diaries.length > 0 ? (
+                  <MobileDiaryRows
+                    diaries={state.diaries}
+                    busy={busy}
+                    label="Diary 列表"
+                    onOpen={(id, trigger) => {
+                      paperTriggerRef.current = trigger;
+                      openDiary(id);
+                    }}
+                  />
+                ) : (
+                  <section className="memory-empty-state">
+                    <p>
+                      {hasFilters(filters)
+                        ? "没有符合条件的日记"
+                        : "还没有日记"}
+                    </p>
+                    {hasFilters(filters) ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={clearFilters}
+                      >
+                        清除条件
+                      </button>
+                    ) : null}
+                  </section>
+                )
+              ) : null}
+
+              {state.status === "loading" ? (
+                <MobileDiaryLoading label="Diary 加载中" />
+              ) : null}
+
+              {state.status === "error" ? (
+                <DiaryMessage
+                  title="暂时无法读取日记"
+                  description="筛选条件已保留，请稍后重试。"
+                  action={
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        listAvailableRef.current = false;
+                        loadedListUrlRef.current = "";
+                        setReloadKey((value) => value + 1);
+                      }}
+                    >
+                      重新加载
+                    </button>
+                  }
+                />
+              ) : null}
+            </>
+          ) : null}
+
+          {isDetail ? (
+            <MobileDiaryDetail
+              state={detailState}
+              diary={selectedDiary}
+              triggerRef={paperTriggerRef}
+              errorMessage={actionError || null}
+              editing={editing}
+              updating={updating}
+              archiving={archiving}
+              values={{
+                title: editingTitle,
+                content: editingContent,
+                date: editingDate,
+                tags: editingTags,
+                mood: editingMood,
+              }}
+              setValues={{
+                title: (value) => {
+                  setEditingTitle(value);
+                  setActionError("");
+                },
+                content: (value) => {
+                  setEditingContent(value);
+                  setActionError("");
+                },
+                date: (value) => {
+                  setEditingDate(value);
+                  setActionError("");
+                },
+                tags: (value) => {
+                  setEditingTags(value);
+                  setActionError("");
+                },
+                mood: (value) => {
+                  setEditingMood(value);
+                  setActionError("");
+                },
+              }}
+              invalid={updateInvalid}
+              onEdit={beginEditing}
+              onCancel={() => {
+                if (!confirmAndDiscardDraft()) return;
+                invalidateMutationContext();
+                setEditing(false);
+                setActionError("");
+              }}
+              onSave={() => void handleUpdate()}
+              onArchive={(id) => void archiveDiary(id)}
+              onRetry={() => setDetailReloadKey((value) => value + 1)}
+              onRequestClose={() => {
+                if (!confirmAndDiscardDraft()) return false;
+                closeDiary(true);
+                return true;
+              }}
+            />
+          ) : null}
+        </>
+      ) : (
+        <>
+          {isArchived ? (
+            <MobileArchivedDiaryList
+              state={archivedState}
+              onBack={closeArchive}
+              onOpen={(id, trigger) => {
+                paperTriggerRef.current = trigger;
+                openArchivedDiary(id);
+              }}
+              onRetry={() =>
+                setArchiveReloadKey((value) => value + 1)
+              }
+            />
+          ) : null}
+
+          {isArchivedDetail ? (
+            <MobileArchivedDiaryDetail
+              state={archivedDetailState}
+              diary={archivedDiary}
+              triggerRef={paperTriggerRef}
+              errorMessage={actionError || null}
+              restoring={restoring}
+              onRestore={(id) => void restoreDiary(id)}
+              onRetry={() =>
+                setArchiveReloadKey((value) => value + 1)
+              }
+              onBack={closeArchivedDiary}
+            />
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
 
   return (
     <div className="page memory-page">
@@ -1186,5 +1656,397 @@ function DiaryMessage({
       <p>{description}</p>
       {action}
     </section>
+  );
+}
+
+function MobileDiaryLoading({ label }: { label: string }) {
+  return (
+    <section className="memory-months" aria-label={label}>
+      {[0, 1].map((index) => (
+        <div className="memory-month-skeleton" key={index}>
+          <span className="memory-month-skeleton-label" />
+          <div className="memory-month-skeleton-card">
+            <span />
+            <span />
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function MobileDiaryRows({
+  diaries,
+  busy,
+  label,
+  onOpen,
+}: {
+  diaries: DiaryEntry[];
+  busy: boolean;
+  label: string;
+  onOpen(id: string, trigger: HTMLElement): void;
+}) {
+  const groups = groupDiariesByMonth(diaries);
+
+  return (
+    <section className="memory-months" aria-label={label}>
+      {groups.map((group) => (
+        <section className="memory-month-section" key={group.key}>
+          <h2 className="memory-month-label">{group.label}</h2>
+          <div className="memory-month-card">
+            {group.diaries.map((diary) => {
+              const metadata = formatDiaryRowMeta(diary);
+              return (
+                <button
+                  key={diary.id}
+                  type="button"
+                  className="memory-row"
+                  data-diary-id={diary.id}
+                  disabled={busy}
+                  onClick={(event) => onOpen(diary.id, event.currentTarget)}
+                >
+                  <span className="memory-row-title">{diary.title}</span>
+                  <span className="memory-row-meta">
+                    <span>{formatDiaryRowDate(diary.date)}</span>
+                    {metadata ? <span>{metadata}</span> : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </section>
+  );
+}
+
+function MobileDiaryDetail({
+  state,
+  diary,
+  triggerRef,
+  errorMessage,
+  editing,
+  updating,
+  archiving,
+  values,
+  setValues,
+  invalid,
+  onEdit,
+  onCancel,
+  onSave,
+  onArchive,
+  onRetry,
+  onRequestClose,
+}: {
+  state: DetailState;
+  diary: DiaryEntry | null;
+  triggerRef: RefObject<HTMLElement | null>;
+  errorMessage: string | null;
+  editing: boolean;
+  updating: boolean;
+  archiving: boolean;
+  values: Record<"title" | "content" | "date" | "tags" | "mood", string>;
+  setValues: Record<
+    "title" | "content" | "date" | "tags" | "mood",
+    (value: string) => void
+  >;
+  invalid: boolean;
+  onEdit(diary: DiaryEntry): void;
+  onCancel(): void;
+  onSave(): void;
+  onArchive(id: string): void;
+  onRetry(): void;
+  onRequestClose(): boolean;
+}) {
+  if (state === "loading") {
+    return (
+      <PaperDetailDialog
+        id="diary-detail-paper"
+        open
+        label="正在读取 Diary"
+        dateLabel=""
+        signature="N"
+        triggerRef={triggerRef}
+        onRequestClose={onRequestClose}
+      >
+        <p className="memory-paper-status">正在读取日记…</p>
+      </PaperDetailDialog>
+    );
+  }
+
+  if (state === "error" || !diary) {
+    return (
+      <PaperDetailDialog
+        id="diary-detail-paper"
+        open
+        label="无法读取 Diary"
+        dateLabel=""
+        signature="N"
+        triggerRef={triggerRef}
+        onRequestClose={onRequestClose}
+        topRight={
+          <button className="memory-paper-control" onClick={onRetry}>
+            重试
+          </button>
+        }
+      >
+        <p className="memory-paper-status">无法读取日记</p>
+        <p className="memory-paper-content">
+          该日记不存在、无权访问或暂时不可用。
+        </p>
+      </PaperDetailDialog>
+    );
+  }
+
+  return (
+    <PaperDetailDialog
+      id="diary-detail-paper"
+      open
+      label={`Diary ${diary.title}`}
+      dateLabel={
+        editing ? (
+          <DiaryPaperDateEditor
+            value={values.date}
+            disabled={updating}
+            onChange={setValues.date}
+          />
+        ) : formatDiaryPaperDate(diary.date)
+      }
+      signature="N"
+      triggerRef={triggerRef}
+      errorMessage={errorMessage}
+      onRequestClose={onRequestClose}
+      topRight={
+        editing ? (
+          <>
+            <button
+              className="memory-paper-control"
+              disabled={updating}
+              onClick={onCancel}
+            >
+              取消
+            </button>
+            <span>·</span>
+            <button
+              className="memory-paper-control"
+              disabled={updating || invalid}
+              onClick={onSave}
+            >
+              {updating ? "保存中…" : "保存"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="memory-paper-control"
+              disabled={archiving}
+              onClick={() => {
+                if (window.confirm(`确定归档“${diary.title}”吗？`)) {
+                  onArchive(diary.id);
+                }
+              }}
+            >
+              {archiving ? "归档中…" : "归档"}
+            </button>
+            <span>·</span>
+            <button
+              className="memory-paper-control"
+              disabled={archiving}
+              onClick={() => onEdit(diary)}
+            >
+              编辑
+            </button>
+          </>
+        )
+      }
+      bottomLeft={
+        editing ? (
+          <DiaryPaperMetadataEditor
+            moodValue={values.mood}
+            tagsValue={values.tags}
+            disabled={updating}
+            onMoodChange={setValues.mood}
+            onTagsChange={setValues.tags}
+          />
+        ) : (formatDiaryRowMeta(diary) || null)
+      }
+    >
+      {editing ? (
+        <DiaryPaperEditor
+          title={values.title}
+          content={values.content}
+          disabled={updating}
+          onTitleChange={setValues.title}
+          onContentChange={setValues.content}
+        />
+      ) : (
+        <>
+          <h2 className="memory-paper-title">{diary.title}</h2>
+          <p className="memory-paper-content">{diary.content}</p>
+        </>
+      )}
+    </PaperDetailDialog>
+  );
+}
+
+function MobileArchivedDiaryList({
+  state,
+  onBack,
+  onOpen,
+  onRetry,
+}: {
+  state: LoadState;
+  onBack(): void;
+  onOpen(id: string, trigger: HTMLElement): void;
+  onRetry(): void;
+}) {
+  const count = state.status === "ready" ? state.count : 0;
+
+  let body: ReactNode;
+  if (state.status === "loading") {
+    body = <MobileDiaryLoading label="已归档 Diary 加载中" />;
+  } else if (state.status === "error") {
+    body = (
+      <DiaryMessage
+        title="暂时无法读取归档日记"
+        description="请稍后重试。"
+        action={
+          <button className="secondary-button" onClick={onRetry}>
+            重新加载
+          </button>
+        }
+      />
+    );
+  } else if (state.diaries.length === 0) {
+    body = (
+      <section className="memory-empty-state">
+        <p>还没有归档日记</p>
+      </section>
+    );
+  } else {
+    body = (
+      <MobileDiaryRows
+        diaries={state.diaries}
+        busy={false}
+        label="已归档 Diary 列表"
+        onOpen={onOpen}
+      />
+    );
+  }
+
+  return (
+    <>
+      <header className="memory-page-header memory-archive-header diary-archive-header">
+        <div className="memory-page-heading">
+          <div className="memory-page-title">Archive</div>
+          <div className="memory-page-count">{count}篇日记</div>
+        </div>
+        <button
+          type="button"
+          className="memory-archive-back"
+          onClick={onBack}
+        >
+          Return
+        </button>
+      </header>
+      {body}
+    </>
+  );
+}
+
+function MobileArchivedDiaryDetail({
+  state,
+  diary,
+  triggerRef,
+  errorMessage,
+  restoring,
+  onRestore,
+  onRetry,
+  onBack,
+}: {
+  state: DetailState;
+  diary: DiaryEntry | null;
+  triggerRef: RefObject<HTMLElement | null>;
+  errorMessage: string | null;
+  restoring: boolean;
+  onRestore(id: string): void;
+  onRetry(): void;
+  onBack(): void;
+}) {
+  if (state === "loading") {
+    return (
+      <PaperDetailDialog
+        id="diary-archive-detail-paper"
+        open
+        label="正在读取已归档 Diary"
+        dateLabel=""
+        signature="N"
+        triggerRef={triggerRef}
+        onRequestClose={() => {
+          if (restoring) return false;
+          onBack();
+          return true;
+        }}
+      >
+        <p className="memory-paper-status">正在读取归档日记…</p>
+      </PaperDetailDialog>
+    );
+  }
+
+  if (state === "error" || !diary) {
+    return (
+      <PaperDetailDialog
+        id="diary-archive-detail-paper"
+        open
+        label="无法读取已归档 Diary"
+        dateLabel=""
+        signature="N"
+        triggerRef={triggerRef}
+        onRequestClose={() => {
+          onBack();
+          return true;
+        }}
+        topRight={
+          <button className="memory-paper-control" onClick={onRetry}>
+            重试
+          </button>
+        }
+      >
+        <p className="memory-paper-status">无法读取归档日记</p>
+        <p className="memory-paper-content">
+          该日记不存在、无权访问或暂时不可用。
+        </p>
+      </PaperDetailDialog>
+    );
+  }
+
+  return (
+    <PaperDetailDialog
+      id="diary-archive-detail-paper"
+      open
+      label={`已归档 Diary ${diary.title}`}
+      dateLabel={formatDiaryPaperDate(diary.date)}
+      signature="N"
+      triggerRef={triggerRef}
+      errorMessage={errorMessage}
+      onRequestClose={() => {
+        if (restoring) return false;
+        onBack();
+        return true;
+      }}
+      topRight={
+        <button
+          className="memory-paper-control"
+          disabled={restoring}
+          onClick={() => onRestore(diary.id)}
+        >
+          {restoring ? "恢复中…" : "恢复"}
+        </button>
+      }
+      bottomLeft={formatDiaryRowMeta(diary) || null}
+    >
+      <h2 className="memory-paper-title">{diary.title}</h2>
+      <p className="memory-paper-content">{diary.content}</p>
+    </PaperDetailDialog>
   );
 }

@@ -3253,3 +3253,208 @@ body:has(.home-prototype) {
     top: -0.5px;
   }
 }
+
+/* Diary mobile redesign */
+@media (max-width: 760px) {
+  .diary-page-date-icon,
+  .diary-page-mood-icon {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  .diary-page-tools button[aria-pressed="true"] {
+    background: #f2f2f2;
+  }
+
+  .diary-filter-popover {
+    display: grid;
+    gap: 8px;
+  }
+
+  .diary-date-popover {
+    right: auto;
+    left: 0;
+    width: 244px;
+    padding: 8px;
+  }
+
+  .diary-text-popover {
+    width: 184px;
+    padding: 7px;
+  }
+
+  .diary-filter-field {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    color: #777777;
+    font-size: 12px;
+  }
+
+  .diary-filter-popover input,
+  .diary-filter-popover .native-date-input {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 7px;
+    outline: 0;
+    color: #171717;
+    background: #f4f4f4;
+    box-shadow: none;
+    font: inherit;
+    font-size: 13px;
+  }
+
+  .diary-filter-popover .native-date-field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .diary-filter-error {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #8b3f3a;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .diary-paper-date-editor {
+    position: relative;
+    display: inline-block;
+    min-width: 78px;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .diary-paper-date-editor > span {
+    display: block;
+    white-space: nowrap;
+  }
+
+  .diary-paper-date-editor input[type="date"] {
+    position: absolute;
+    inset: -8px;
+    width: calc(100% + 16px);
+    height: calc(100% + 16px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .paper-detail-paper[id^="diary-"] .memory-paper-title,
+  .paper-detail-paper[id^="diary-"] .diary-paper-title-input {
+    display: block;
+    width: 100%;
+    height: 23px;
+    min-height: 23px;
+    margin: 0 0 14px;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    color: #171717;
+    background: transparent;
+    box-shadow: none;
+    font-size: 17px;
+    font-weight: 500;
+    line-height: 23px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .paper-detail-paper[id^="diary-"] .memory-paper-content,
+  .paper-detail-paper[id^="diary-"] .diary-paper-content-editor {
+    display: block;
+    width: 100%;
+    min-height: 240px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    color: #252525;
+    background: transparent;
+    box-shadow: none;
+    resize: none;
+    font-size: 14px;
+    line-height: 30px;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .paper-detail-paper[id^="diary-"] input,
+  .paper-detail-paper[id^="diary-"] textarea,
+  .paper-detail-paper[id^="diary-"] select,
+  .paper-detail-paper[id^="diary-"] input:focus,
+  .paper-detail-paper[id^="diary-"] textarea:focus,
+  .paper-detail-paper[id^="diary-"] select:focus {
+    border-color: transparent;
+    outline: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .paper-detail-paper[id^="diary-"] .paper-detail-bottom-left {
+    z-index: 3;
+    overflow: visible;
+    line-height: 20px;
+  }
+
+  .diary-paper-metadata {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .diary-paper-metadata-separator {
+    flex: 0 0 auto;
+    opacity: 0.62;
+  }
+
+  .diary-paper-mood,
+  .diary-paper-tags {
+    width: min(120px, 28vw);
+    min-width: 48px;
+    height: 20px;
+    min-height: 20px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    color: inherit;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    font-size: 13px;
+    line-height: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .diary-paper-tags {
+    width: min(160px, 38vw);
+  }
+
+  .diary-paper-mood::placeholder,
+  .diary-paper-tags::placeholder {
+    color: #9a9a9a;
+  }
+
+  .diary-archive-header {
+    position: relative;
+    z-index: 4;
+    pointer-events: auto;
+    isolation: isolate;
+  }
+}
