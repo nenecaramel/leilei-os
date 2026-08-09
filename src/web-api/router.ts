@@ -16,22 +16,19 @@ import {
   type HealthApiDependencies,
 } from "./health-router.js";
 import {
-  createSettingsApiRouter,
-  type SettingsApiDependencies,
-} from "./settings-router.js";
-import {
   createToyUserRouter,
   type ToyApiDependencies,
 } from "./toy-router.js";
 import { createGlobalSearchApiRouter, type GlobalSearchApiDependencies } from "./global-search-router.js";
+import { createSystemApiRouter, type SystemApiDependencies } from "./system-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
   diary: DiaryApiDependencies;
   task: TaskApiDependencies;
   health: HealthApiDependencies;
-  settings: SettingsApiDependencies;
   toy: ToyApiDependencies;
+  system: SystemApiDependencies;
   globalSearch?: GlobalSearchApiDependencies;
 };
 
@@ -80,12 +77,8 @@ export function createWebApiRouter(
     createHealthApiRouter(dependencies.health),
   );
 
-  router.use(
-    "/settings",
-    createSettingsApiRouter(dependencies.settings),
-  );
-
   router.use("/toy", createToyUserRouter(dependencies.toy));
+  router.use("/system", createSystemApiRouter(dependencies.system));
   if (dependencies.globalSearch) router.use("/search", createGlobalSearchApiRouter(dependencies.globalSearch));
 
   return router;

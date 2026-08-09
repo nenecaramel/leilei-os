@@ -56,7 +56,22 @@ test("missing or partial Toy configuration fails closed without affecting existi
       } as never,
     },
     health: { healthService: {} as never },
-    settings: { settingsService: {} as never },
+    system: {
+      systemService: {
+        readConnections() {
+          return { web_api: "online", public_mcp: "available", internal_mcp: "not_enabled" };
+        },
+        async readDataSummary() {
+          return {
+            memory: { active: 0, archived: 0 },
+            diary: { active: 0, archived: 0 },
+            task: { active: 0, archived: 0 },
+            health: { total: 0 },
+          };
+        },
+        async readActivity() { return []; },
+      },
+    },
     toy: { toyService: disabledToy },
   }));
 

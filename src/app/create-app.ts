@@ -30,9 +30,6 @@ import { DrizzleHealthRepository } from "../domains/health/health-repository.js"
 import { HealthService } from "../domains/health/health-service.js";
 import type { HealthApiDependencies } from "../web-api/health-router.js";
 
-import { DrizzleSettingsRepository } from "../domains/settings/settings-repository.js";
-import { SettingsService } from "../domains/settings/settings-service.js";
-import type { SettingsApiDependencies } from "../web-api/settings-router.js";
 import { DrizzleToyCommandRepository } from "../domains/toy/toy-command-repository.js";
 import { ToyCommandService } from "../domains/toy/toy-command-service.js";
 import {
@@ -42,6 +39,9 @@ import {
 import { DrizzleGlobalSearchRepository } from "../domains/global-search/global-search-repository.js";
 import { GlobalSearchService } from "../domains/global-search/global-search-service.js";
 import type { GlobalSearchApiDependencies } from "../web-api/global-search-router.js";
+import { DrizzleSystemRepository } from "../domains/system/system-repository.js";
+import { SystemService } from "../domains/system/system-service.js";
+import type { SystemApiDependencies } from "../web-api/system-router.js";
 
 export type AppDependencies = {
   verifyAccessToken?: AccessTokenVerifier;
@@ -50,7 +50,7 @@ export type AppDependencies = {
   webDiaryService?: DiaryApiDependencies["diaryService"];
   webTaskService?: TaskApiDependencies["taskService"];
   webHealthService?: HealthApiDependencies["healthService"];
-  webSettingsService?: SettingsApiDependencies["settingsService"];
+  webSystemService?: SystemApiDependencies["systemService"];
   toyService?: ToyApiDependencies["toyService"];
   webGlobalSearchService?: GlobalSearchApiDependencies["globalSearchService"];
 };
@@ -129,8 +129,7 @@ export function createApp(
     let webHealthService =
       dependencies.webHealthService;
 
-    let webSettingsService =
-      dependencies.webSettingsService;
+    let webSystemService = dependencies.webSystemService;
     let toyService = dependencies.toyService;
     let webGlobalSearchService = dependencies.webGlobalSearchService;
 
@@ -139,7 +138,7 @@ export function createApp(
       !webDiaryService ||
       !webTaskService ||
       !webHealthService ||
-      !webSettingsService ||
+      !webSystemService ||
       !toyService ||
       !webGlobalSearchService
     ) {
@@ -175,9 +174,10 @@ export function createApp(
         );
       }
 
-      if (!webSettingsService) {
-        webSettingsService = new SettingsService(
-          new DrizzleSettingsRepository(db),
+      if (!webSystemService) {
+        webSystemService = new SystemService(
+          new DrizzleSystemRepository(db),
+          { internalMcpEnabled: Boolean(config.MCP_AUTH_TOKEN) },
         );
       }
 
@@ -197,7 +197,7 @@ export function createApp(
       !webDiaryService ||
       !webTaskService ||
       !webHealthService ||
-      !webSettingsService ||
+      !webSystemService ||
       !toyService ||
       !webGlobalSearchService
     ) {
@@ -236,9 +236,7 @@ export function createApp(
         health: {
           healthService: webHealthService,
         },
-        settings: {
-          settingsService: webSettingsService,
-        },
+        system: { systemService: webSystemService },
         toy: {
           toyService,
         },
