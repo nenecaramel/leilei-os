@@ -285,23 +285,28 @@ test("Global Search date fields share NativeDateInput and its constrained class"
   assert.match(styles, /\.global-search-filters > \.native-date-field/);
 });
 
-test("Web shell reserves the iPhone safe area and declares a theme color", () => {
+test("Web shell reserves the iPhone safe area and uses a static theme color", () => {
   assert.match(indexHtml, /viewport-fit=cover/);
   assert.match(indexHtml, /<meta name="theme-color" content="#ebeae4"/);
-  assert.match(indexHtml, /--theme-page-background/);
+  assert.doesNotMatch(
+    indexHtml,
+    /leilei-os\.settings\.v1|leilei-os\.theme\.v1|--theme-page-background/,
+  );
   assert.match(styles, /env\(safe-area-inset-top, 0px\)/);
   assert.match(styles, /html,[\s\S]*body,[\s\S]*#root/);
 });
 
 test("grouped navigation keeps every entry reachable in the mobile drawer", () => {
-  assert.equal((navigationSource.match(/\{ label: "/g) ?? []).length, 12);
-  assert.match(navigationSource, /label: "Appearance"/);
-  assert.match(navigationSource, /label: "Data & Backup"/);
+  assert.match(navigationSource, /label: "Account"/);
+  assert.match(navigationSource, /label: "Connections"/);
+  assert.match(navigationSource, /label: "Data"/);
+  assert.match(navigationSource, /label: "Activity"/);
   assert.match(navigationSource, /label: "About"/);
   assert.match(navigationSource, /label: "Home"/);
   assert.match(navigationSource, /label: "Global Search"/);
   assert.match(navigationSource, /label: "System"/);
   assert.match(navigationSource, /label: "Day Space"[\s\S]*disabled: true/);
+  assert.doesNotMatch(navigationSource, /General|Appearance|Data & Backup|includeSecondarySystemItems/);
   assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?width:\s*min\(82vw,\s*280px\)/);
   assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?padding:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 8px\)[\s\S]*?max\(18px,\s*env\(safe-area-inset-bottom,\s*0px\)\)/);
   assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?env\(safe-area-inset-bottom/);

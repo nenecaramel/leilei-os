@@ -5,7 +5,6 @@ import React, {
 import { useAuth0 } from "@auth0/auth0-react";
 import { Outlet } from "react-router-dom";
 import { useWebApiClient } from "../api/useWebApiClient";
-import { useSettings } from "../settings/SettingsProvider";
 import { MobileNavigationDrawer } from "./MobileNavigationDrawer";
 import { MobileTopBar } from "./MobileTopBar";
 import { NavigationGroups } from "./NavigationGroups";
@@ -16,7 +15,6 @@ export { NAV_ITEMS } from "./NavigationGroups";
 
 export function AppShell() {
   const { logout, user } = useAuth0();
-  const { settings } = useSettings();
   const api = useWebApiClient();
 
   const [mobileMenuOpen, setMobileMenuOpen] =
@@ -30,7 +28,6 @@ export function AppShell() {
     useRef<HTMLButtonElement>(null);
 
   const displayName =
-    settings.preferred_name ||
     user?.name ||
     user?.email ||
     "Leilei";

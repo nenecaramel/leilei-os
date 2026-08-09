@@ -7,7 +7,6 @@ import {
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
-import type { SettingsData } from "../settings/types";
 import { MemoryPageHeader } from "./MemoryPageHeader";
 import {
   MemoryPaperEditor,
@@ -169,7 +168,6 @@ export function MemoryPageContent({
   api,
 }: {
   api: WebApiClient;
-  settings: SettingsData;
 }) {
   const [location, setLocation] = useState(initialLocation);
   const isDetail = location.memoryId !== null;

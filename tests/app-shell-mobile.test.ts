@@ -40,7 +40,11 @@ test("navigation groups expose the Home, Utilities, System and disabled Day Spac
     assert.match(container.textContent ?? "", /System/);
     assert.ok(container.querySelector('a[href="/"]')?.textContent?.includes("Home"));
     assert.ok(container.querySelector('a[href="/search"]')?.textContent?.includes("Global Search"));
-    assert.ok(container.querySelector('a[href="/settings"]')?.textContent?.includes("System"));
+    assert.ok(container.querySelector('a[href="/system/account"]')?.textContent?.includes("Account"));
+    assert.ok(container.querySelector('a[href="/system/connections"]')?.textContent?.includes("Connections"));
+    assert.ok(container.querySelector('a[href="/system/data"]')?.textContent?.includes("Data"));
+    assert.ok(container.querySelector('a[href="/system/activity"]')?.textContent?.includes("Activity"));
+    assert.ok(container.querySelector('a[href="/system/about"]')?.textContent?.includes("About"));
     assert.ok(container.querySelector('[aria-disabled="true"]')?.textContent?.includes("Day Space"));
     root.unmount();
     env.restore();
@@ -68,10 +72,12 @@ test("mobile drawer closes on Escape and restores focus and body scrolling", asy
   assert.equal(dialog?.getAttribute("tabindex"), "-1");
   assert.equal(env.dom.window.document.activeElement, dialog);
   assert.equal(container.querySelector(".mobile-drawer-header .icon-button"), null);
-  assert.match(container.textContent ?? "", /General/);
-  assert.match(container.textContent ?? "", /Appearance/);
-  assert.match(container.textContent ?? "", /Data & Backup/);
+  assert.match(container.textContent ?? "", /Account/);
+  assert.match(container.textContent ?? "", /Connections/);
+  assert.match(container.textContent ?? "", /Data/);
+  assert.match(container.textContent ?? "", /Activity/);
   assert.match(container.textContent ?? "", /About/);
+  assert.doesNotMatch(container.textContent ?? "", /General|Appearance|Data & Backup/);
   env.dom.window.document.dispatchEvent(new env.dom.window.KeyboardEvent("keydown", { key: "Escape" }));
   await waitForPaint();
   assert.equal(container.querySelector('[role="dialog"]'), null);

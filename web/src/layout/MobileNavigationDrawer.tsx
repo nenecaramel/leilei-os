@@ -40,7 +40,7 @@ export function MobileNavigationDrawer({
           <strong id="mobile-drawer-title">Leilei OS</strong>
         </div>
         <nav aria-label="Mobile navigation">
-          <NavigationGroups onNavigate={onClose} includeSecondarySystemItems />
+          <NavigationGroups onNavigate={onClose} />
         </nav>
       </aside>
     </div>

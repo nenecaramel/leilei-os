@@ -1,7 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
-import type { SettingsData } from "../settings/types";
 import { CalendarPreview } from "./CalendarPreview";
 import {
   G_HOME_NOTES,
@@ -27,13 +26,10 @@ export function formatHomeDate(date: Date = new Date()): string {
 
 export function DashboardPageContent({
   api,
-  settings,
 }: {
   api?: WebApiClient;
-  settings?: SettingsData;
 }) {
   void api;
-  void settings;
 
   const [today] = useState(() => new Date());
   const dateKey = formatTodoStorageDate(today);

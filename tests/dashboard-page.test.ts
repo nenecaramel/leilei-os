@@ -6,7 +6,6 @@ import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { BrowserRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
 import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
-import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const taskSource = readFileSync(new URL("../web/src/pages/TaskPage.tsx", import.meta.url), "utf8");
@@ -60,7 +59,6 @@ test("Dashboard renders the fixture-backed Home view without API requests", asyn
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
     api,
-    settings: DEFAULT_SETTINGS,
   })));
   await waitForPaint();
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
@@ -88,7 +86,6 @@ test("L and G panels open a modal with their own fixture notes", async () => {
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
     api: { request: async () => { throw new Error("unexpected request"); } },
-    settings: DEFAULT_SETTINGS,
   })));
   await waitForPaint();
   const panels = [...container.querySelectorAll<HTMLButtonElement>(".today-panel")];

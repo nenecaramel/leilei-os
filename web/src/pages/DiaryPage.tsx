@@ -22,7 +22,6 @@ import {
   formatDiaryRowMeta,
   groupDiariesByMonth,
 } from "./diary-presentation";
-import type { SettingsData } from "../settings/types";
 import { PageHeader } from "./PageHeader";
 import { isSearchLocation, navigateWithinApp } from "./app-navigation";
 import { consumeQuickCreateTarget } from "./quick-create";
@@ -152,10 +151,8 @@ function useMobileDiaryLayout(): boolean {
 
 export function DiaryPageContent({
   api,
-  settings,
 }: {
   api: WebApiClient;
-  settings: SettingsData;
 }) {
   const isMobile = useMobileDiaryLayout();
   const isMobileRef = useRef(isMobile);
@@ -1244,7 +1241,7 @@ if (isMobile) {
       <PageHeader
         eyebrow="Personal journal"
         title="Diary"
-        description={settings.page_copy.diary_subtitle ?? "按时间记录、查看和整理属于蕾蕾的日常。"}
+        description="按时间记录、查看和整理属于蕾蕾的日常。"
         action={isArchivedDetail ? (
           <button className="secondary-button" onClick={closeArchivedDiary}>
             返回归档列表

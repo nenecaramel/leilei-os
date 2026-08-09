@@ -119,3 +119,39 @@ export const SettingsIcon = (props: IconProps) => (
     <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
   </IconBase>
 );
+
+export const AccountIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+  </IconBase>
+);
+
+export const ConnectionsIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <path d="M9.5 14.5 14.5 9.5" />
+    <path d="M7.5 16.5 6 18a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0" />
+    <path d="m16.5 7.5 1.5-1.5a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 0" />
+  </IconBase>
+);
+
+export const DataIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <ellipse cx="12" cy="5.5" rx="7.5" ry="3" />
+    <path d="M4.5 5.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6" />
+    <path d="M4.5 11.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6" />
+  </IconBase>
+);
+
+export const ActivityIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <path d="M3 12h4l2.2-5.5 4.1 11 2.2-5.5H21" />
+  </IconBase>
+);
+
+export const AboutIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 10.5V17M12 7h.01" />
+  </IconBase>
+);

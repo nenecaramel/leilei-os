@@ -10,7 +10,6 @@ import {
   type HomeNote,
 } from "../web/src/pages/home-prototype-data.js";
 import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
-import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 const bootstrapDom = new JSDOM(
   "<!doctype html><html><body></body></html>",
@@ -107,7 +106,6 @@ test("Home renders compact L/G Todo panels, Calendar, and no authenticated modul
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
     api: { request: async (path: string) => { requests.push(path); return { data: {} }; } },
-    settings: DEFAULT_SETTINGS,
   })));
   await waitForPaint();
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
@@ -156,7 +154,6 @@ test("Home saves an edited L paper, updates only L preview, and restores trigger
       BrowserRouter,
       null,
       React.createElement(DashboardPageContent, {
-        settings: DEFAULT_SETTINGS,
       }),
     ),
   );

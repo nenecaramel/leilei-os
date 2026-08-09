@@ -1,12 +1,16 @@
 import React, { type ComponentType } from "react";
 import { NavLink } from "react-router-dom";
 import {
+  AboutIcon,
+  AccountIcon,
+  ActivityIcon,
   ArchiveIcon,
+  ConnectionsIcon,
   DashboardIcon,
+  DataIcon,
   DiaryIcon,
   MemoryIcon,
   SearchIcon,
-  SettingsIcon,
   TaskIcon,
   UniverseIcon,
 } from "../components/icons";
@@ -41,69 +45,112 @@ export const NAV_GROUPS: NavigationGroup[] = [
   },
   {
     label: "Utilities",
-    entries: [{ label: "Global Search", to: "/search", icon: SearchIcon }],
+    entries: [
+      {
+        label: "Global Search",
+        to: "/search",
+        icon: SearchIcon,
+      },
+    ],
   },
   {
     label: "System",
-    entries: [{ label: "System", to: "/settings", icon: SettingsIcon }],
+    entries: [
+      {
+        label: "Account",
+        to: "/system/account",
+        icon: AccountIcon,
+      },
+      {
+        label: "Connections",
+        to: "/system/connections",
+        icon: ConnectionsIcon,
+      },
+      {
+        label: "Data",
+        to: "/system/data",
+        icon: DataIcon,
+      },
+      {
+        label: "Activity",
+        to: "/system/activity",
+        icon: ActivityIcon,
+      },
+      {
+        label: "About",
+        to: "/system/about",
+        icon: AboutIcon,
+      },
+    ],
   },
 ];
 
-export const NAV_ITEMS = NAV_GROUPS.flatMap(({ entries }) => entries);
+export const NAV_ITEMS = NAV_GROUPS.flatMap(
+  ({ entries }) => entries,
+);
 
 export function NavigationGroups({
   onNavigate,
-  includeSecondarySystemItems = false,
 }: {
   onNavigate?: () => void;
-  includeSecondarySystemItems?: boolean;
 }) {
-  const groups: NavigationGroup[] = includeSecondarySystemItems
-    ? NAV_GROUPS.map((group) => group.label === "System"
-      ? {
-          ...group,
-          entries: [
-            ...group.entries.map((entry, index) => group.label === "System" && index === 0
-              ? { ...entry, label: "General" }
-              : entry),
-            { label: "Appearance", icon: SettingsIcon, disabled: true },
-            { label: "Data & Backup", icon: SettingsIcon, disabled: true },
-            { label: "About", icon: SettingsIcon, disabled: true },
-          ],
-        }
-      : group)
-    : NAV_GROUPS;
-
   return (
     <div className="navigation-groups">
-      {groups.map((group) => (
-        <section className="navigation-group" key={group.label} aria-labelledby={`navigation-${group.label.toLowerCase()}`}>
-          <h2 id={`navigation-${group.label.toLowerCase()}`}>{group.label}</h2>
+      {NAV_GROUPS.map((group) => (
+        <section
+          className="navigation-group"
+          key={group.label}
+          aria-labelledby={`navigation-${group.label.toLowerCase()}`}
+        >
+          <h2 id={`navigation-${group.label.toLowerCase()}`}>
+            {group.label}
+          </h2>
+
           <div className="navigation-group-items">
-            {group.entries.map(({ disabled, end, icon: Icon, label, to }) => {
-              if (disabled || !to) {
+            {group.entries.map(
+              ({
+                disabled,
+                end,
+                icon: Icon,
+                label,
+                to,
+              }) => {
+                if (disabled || !to) {
+                  return (
+                    <button
+                      className="nav-item nav-item-disabled"
+                      type="button"
+                      disabled
+                      aria-disabled="true"
+                      key={label}
+                    >
+                      <Icon />
+                      <span>{label}</span>
+                      <small>soon</small>
+                    </button>
+                  );
+                }
+
                 return (
-                  <button className="nav-item nav-item-disabled" type="button" disabled aria-disabled="true" key={label}>
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={end}
+                    className={({ isActive }) =>
+                      `nav-item${isActive ? " active" : ""}`
+                    }
+                    onClick={onNavigate}
+                  >
                     <Icon />
                     <span>{label}</span>
-                    <small>soon</small>
-                  </button>
+                    {(label === "Chat Archive" ||
+                      label === "Universe") && (
+                      <small>soon</small>
+                    )}
+                  </NavLink>
                 );
-              }
-              return (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
-                  onClick={onNavigate}
-                >
-                  <Icon />
-                  <span>{label}</span>
-                  {(label === "Chat Archive" || label === "Universe") && <small>soon</small>}
-                </NavLink>
-              );
-            })}
+              },
+            )}
           </div>
         </section>
       ))}

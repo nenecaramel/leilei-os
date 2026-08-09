@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { createThemeVariables } from "../web/src/settings/theme.js";
 
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const navigationSource = readFileSync(new URL("../web/src/layout/NavigationGroups.tsx", import.meta.url), "utf8");
@@ -85,16 +84,22 @@ test("brand mark and Hero consume dedicated theme variables", () => {
   assert.doesNotMatch(heroBlock, /rgba\(255,\s*255,\s*255/);
 });
 
-test("default CSS theme variables match the generated default accent", () => {
-  const variables = createThemeVariables("#405f4d");
-  assert.ok(variables);
-  for (const name of [
-    "--theme", "--theme-strong", "--theme-deep", "--theme-soft", "--theme-pale",
-    "--theme-brand", "--theme-on-brand", "--theme-hero-start", "--theme-hero-end",
-    "--theme-on-hero", "--theme-on-hero-muted", "--theme-hero-glow", "--theme-hero-overlay",
-    "--theme-hero-border", "--theme-page-background", "--theme-surface", "--theme-sidebar",
-  ]) {
-    const match = stylesSource.match(new RegExp(`${name}:\\s*([^;]+);`));
-    assert.equal(match?.[1].trim(), variables[name], `${name} must match generated defaults`);
+test("default CSS keeps the accepted fixed visual tokens after Settings retirement", () => {
+  const expected = {
+    "--theme": "#405f4d",
+    "--theme-strong": "#344e3f",
+    "--theme-deep": "#23332a",
+    "--theme-brand": "#405f4d",
+    "--theme-on-brand": "#f8f5ec",
+    "--theme-page-background": "#ebeae4",
+    "--theme-surface": "#f3f3ed",
+    "--theme-sidebar": "#f0efe9",
+    "--theme-hero-start": "#c2cac1",
+    "--theme-hero-end": "#d3d7cf",
+  } as const;
+
+  for (const [name, value] of Object.entries(expected)) {
+    const match = stylesSource.match(new RegExp(`${name}:\s*([^;]+);`));
+    assert.equal(match?.[1].trim(), value, `${name} must remain fixed`);
   }
 });

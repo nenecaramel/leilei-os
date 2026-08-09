@@ -14,7 +14,6 @@ import {
 } from "../web/src/pages/task-location.js";
 import { readTaskFilterHistorySnapshot } from "../web/src/pages/task-filter-history.js";
 import { buildTaskListRequest } from "../web/src/pages/task-list-request.js";
-import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 type RequestRecord = {
   init: RequestInit | undefined;
@@ -183,7 +182,6 @@ async function renderTaskPage(
   await React.act(async () => {
     root.render(React.createElement(TaskPageContent, {
       api,
-      settings: DEFAULT_SETTINGS,
     }));
   });
 

@@ -8,8 +8,7 @@ import {
   import type { WebApiClient } from "../api/useWebApiClient";
   import { TaskIcon } from "../components/icons";
   import { NativeDateInput } from "../components/NativeDateInput";
-  import type { SettingsData } from "../settings/types";
-  import { PageHeader } from "./PageHeader";
+    import { PageHeader } from "./PageHeader";
   import { PaperDetailDialog } from "./PaperDetailDialog";
   import { TaskPageHeader } from "./TaskPageHeader";
   import { TaskDeadlineEditor, TaskPaperEditor, TaskPaperMetadataEditor, TaskPaperMetadataRead, type TaskPaperAction } from "./TaskPaperEditor";
@@ -187,6 +186,8 @@ import {
       ),
     ];
   }
+  const TASK_TIMEZONE = "Asia/Shanghai";
+
   function initialFilters() {
     return readTaskFilterHistorySnapshot(window.location.search);
   }
@@ -197,10 +198,8 @@ import {
 
   export function TaskPageContent({
     api,
-    settings,
   }: {
     api: WebApiClient;
-    settings: SettingsData;
   }) {
     const isMobile =
       typeof window.matchMedia === "function" &&
@@ -600,7 +599,7 @@ import {
               description: description.trim(),
               priority,
               dueTime: withoutDueTime ? null : dueTime,
-              timezone: settings.timezone,
+              timezone: TASK_TIMEZONE,
               tags: parseTags(tags),
             }),
           },
@@ -902,7 +901,7 @@ import {
               description: editingDescription.trim(),
               priority: editingPriority,
               dueTime: editingWithoutDueTime ? null : editingDueTime,
-              timezone: settings.timezone,
+              timezone: TASK_TIMEZONE,
               tags: parseTags(editingTags),
             }),
           },
@@ -977,7 +976,7 @@ import {
         <PageHeader
           eyebrow="Focus & execution"
           title="Task"
-          description={settings.page_copy.task_subtitle ?? "管理待办事项、截止时间与完成状态。"}
+          description="管理待办事项、截止时间与完成状态。"
           action={
             isDetailMode && isArchivedMode ? (
               <button className="secondary-button" disabled={restoring} onClick={() => {
@@ -1063,7 +1062,7 @@ import {
                 <span>无截止时间</span>
               </label>
             </div>
-            <p>当前账户时区：{settings.timezone}</p>
+            <p>当前账户时区：{TASK_TIMEZONE}</p>
             <input
               placeholder="标签，用逗号分隔（可选）"
               value={tags}
@@ -1152,7 +1151,7 @@ import {
                 </div>
 
                 <p>
-                  当前账户时区：{settings.timezone}
+                  当前账户时区：{TASK_TIMEZONE}
                 </p>
 
                 <input

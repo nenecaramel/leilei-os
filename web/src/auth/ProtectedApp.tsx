@@ -1,7 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, type PropsWithChildren } from "react";
-import { SettingsProvider } from "../settings/SettingsProvider";
-import { syncThemeColorMeta } from "../settings/theme";
+import { syncThemeColorMeta } from "./theme-color";
 
 export function ProtectedApp({
   children,
@@ -101,9 +100,5 @@ export function ProtectedApp({
     );
   }
 
-  return (
-    <SettingsProvider>
-      {children}
-    </SettingsProvider>
-  );
+  return <>{children}</>;
 }

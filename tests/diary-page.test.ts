@@ -11,7 +11,6 @@ import {
   createDiaryDetailLocation,
 } from "../web/src/pages/diary-location.js";
 import { saveDiaryScrollPosition } from "../web/src/pages/diary-scroll-restoration.js";
-import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 type Request = { path: string; init?: RequestInit };
 type Deferred<T> = {
@@ -91,7 +90,6 @@ async function render(path: string, api: WebApiClient, historyState?: unknown) {
   await React.act(async () => {
     root.render(React.createElement(DiaryPageContent, {
       api,
-      settings: DEFAULT_SETTINGS,
     }));
   });
   return {

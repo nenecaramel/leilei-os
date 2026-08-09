@@ -8,43 +8,6 @@
       name="description"
       content="Leilei OS personal operations dashboard"
     />
-    <script>
-      (() => {
-        const settingsCacheKey = "leilei-os.settings.v1";
-        const legacyThemeCacheKey = "leilei-os.theme.v1";
-        const version = 2;
-        const accentPattern = /^#[0-9A-Fa-f]{6}$/;
-        const allowedPrefix = /^(--theme|--green|--line|--cream|--focus|--shadow)/;
-
-        try {
-          const raw = window.localStorage.getItem(settingsCacheKey);
-          const legacyRaw = raw ? null : window.localStorage.getItem(legacyThemeCacheKey);
-          if (!raw && !legacyRaw) return;
-          const parsed = JSON.parse(raw ?? legacyRaw);
-          const cached = raw ? parsed?.theme : parsed;
-          if (
-            cached?.version !== version ||
-            !accentPattern.test(cached?.accentColor ?? "") ||
-            !cached?.variables ||
-            typeof cached.variables !== "object" ||
-            Array.isArray(cached.variables) ||
-            typeof cached.variables["--theme"] !== "string"
-          ) return;
-
-          Object.entries(cached.variables).forEach(([name, value]) => {
-            if (allowedPrefix.test(name) && typeof value === "string") {
-              document.documentElement.style.setProperty(name, value);
-            }
-          });
-          const pageBackground = cached.variables["--theme-page-background"];
-          if (typeof pageBackground === "string") {
-            document.querySelector('meta[name="theme-color"]')?.setAttribute("content", pageBackground);
-          }
-        } catch {
-          // Theme cache is optional and must never block initial rendering.
-        }
-      })();
-    </script>
     <title>Leilei OS</title>
   </head>
   <body>

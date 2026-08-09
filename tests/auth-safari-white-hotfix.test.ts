@@ -59,10 +59,10 @@ test("Auth0 text action never paints a tap, focus, or active box", async () => {
   );
 });
 
-test("auth login copy sits 10px lower than the previous accepted position", async () => {
+test("auth login composition matches the screenshot-approved vertical position", async () => {
   const css = await readFile("web/src/styles.css", "utf8");
   assert.match(
     css,
-    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(-26px\)/,
+    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(68px\)/,
   );
 });

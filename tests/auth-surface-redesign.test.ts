@@ -27,11 +27,11 @@ test("Auth surfaces use the minimal pure-white Leilei OS composition", async () 
 });
 
 
-test("auth title gets the accepted small optical lift", async () => {
+test("auth title keeps the screenshot-approved composition offset", async () => {
   const css = await readFile("web/src/styles.css", "utf8");
   assert.match(
     css,
-    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(-26px\)/,
+    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(68px\)/,
   );
   assert.match(
     css,

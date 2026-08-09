@@ -16,7 +16,6 @@ import {
 import {
   saveMemoryScrollPosition,
 } from "../web/src/pages/memory-scroll-restoration.js";
-import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 type Request = { path: string; init?: RequestInit };
 type Deferred<T> = {
@@ -203,7 +202,6 @@ async function render(path: string, api: WebApiClient, historyState?: unknown) {
   await React.act(async () => {
     root.render(React.createElement(MemoryPageContent, {
       api,
-      settings: DEFAULT_SETTINGS,
     }));
   });
 

@@ -6,7 +6,6 @@ import { createRoot } from "../web/node_modules/react-dom/client.js";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
 import { DiaryPageContent } from "../web/src/pages/DiaryPage.js";
 import { createDiaryArchiveLocation } from "../web/src/pages/diary-location.js";
-import { DEFAULT_SETTINGS } from "../web/src/settings/types.js";
 
 const diary = {
   id: "diary-1",
@@ -98,7 +97,6 @@ async function renderMobile(path: string, api: WebApiClient) {
   await React.act(async () => {
     root.render(React.createElement(DiaryPageContent, {
       api,
-      settings: DEFAULT_SETTINGS,
     }));
   });
   await React.act(async () => {
