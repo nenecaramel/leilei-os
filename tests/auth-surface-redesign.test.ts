@@ -31,7 +31,7 @@ test("auth title keeps the screenshot-approved composition offset", async () => 
   const css = await readFile("web/src/styles.css", "utf8");
   assert.match(
     css,
-    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(68px\)/,
+    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(100px\)/,
   );
   assert.match(
     css,

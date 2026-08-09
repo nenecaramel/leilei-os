@@ -63,6 +63,6 @@ test("auth login composition matches the screenshot-approved vertical position",
   const css = await readFile("web/src/styles.css", "utf8");
   assert.match(
     css,
-    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(68px\)/,
+    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(100px\)/,
   );
 });

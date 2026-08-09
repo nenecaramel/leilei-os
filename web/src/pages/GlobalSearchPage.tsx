@@ -648,13 +648,13 @@ export function GlobalSearchPageContent({ api }: Props) {
       ) : null}
 
       {state === "empty" ? (
-        <p className="global-search-state-line">
+        <p className="global-search-state-line global-search-state-line-offset">
           没有找到匹配内容
         </p>
       ) : null}
 
       {state === "error" ? (
-        <div className="global-search-state-line global-search-error-line">
+        <div className="global-search-state-line global-search-error-line global-search-state-line-offset">
           <span>搜索暂时失败</span>
           <button
             type="button"

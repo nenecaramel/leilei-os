@@ -7,12 +7,26 @@ const css = readFileSync(
   "utf8",
 );
 
-test("login composition matches the screenshot-approved vertical position", () => {
-  assert.match(
-    css,
-    /\.auth-minimal\s*\{[^}]*transform:\s*translateY\(68px\)/,
-  );
-});
+test(
+  "login composition has one authoritative 100px vertical transform",
+  () => {
+    const blocks = [
+      ...css.matchAll(/\.auth-minimal\s*\{([^}]*)\}/g),
+    ].map((match) => match[1]);
+
+    const transforms = blocks.flatMap((block) => [
+      ...block.matchAll(
+        /transform:\s*translateY\((-?\d+)px\)/g,
+      ),
+    ]).map((match) => Number(match[1]));
+
+    assert.deepEqual(transforms, [100]);
+    assert.doesNotMatch(
+      css,
+      /\.auth-minimal\s*\{[^}]*translateY\(-26px\)/,
+    );
+  },
+);
 
 test("accepted title size remains unchanged", () => {
   assert.match(

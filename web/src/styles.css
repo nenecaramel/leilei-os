@@ -1266,7 +1266,7 @@ textarea:disabled {
   width: 44px;
   height: 44px;
   border: 3px solid #d8e1d8;
-  border-top-color: var(--green);
+  border-top-color: #8a8a8a;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -4749,7 +4749,7 @@ body:has(.home-prototype) {
 .auth-minimal {
   display: grid;
   justify-items: center;
-  transform: translateY(68px);
+  transform: translateY(100px);
   text-align: center;
 }
 
@@ -5167,10 +5167,6 @@ body:has(.home-prototype) {
     width: 18px;
     height: 18px;
   }
-}
-
-.auth-minimal {
-  transform: translateY(-26px);
 }
 
 .auth-minimal h1 {
@@ -5654,3 +5650,16 @@ body:has(.system-page) {
   pointer-events: none;
   content: "";
 }
+
+
+/* auth-search-state-polish-2026-08-09:start */
+@media (max-width: 760px) {
+  .memory-empty-state:has(> .memory-empty-clear) {
+    margin-top: 96px;
+  }
+
+  .global-search-state-line-offset {
+    margin-top: 96px;
+  }
+}
+/* auth-search-state-polish-2026-08-09:end */

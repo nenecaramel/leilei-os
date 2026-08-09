@@ -133,22 +133,23 @@ Run the same test and require PASS.
 ### Task 3: Move Global Search result-state messaging
 
 **Files:**
+- Modify: `web/src/pages/GlobalSearchPage.tsx`
 - Modify: `web/src/styles.css`
 - Create: `tests/global-search-state-spacing.test.ts`
 
 **Interfaces:**
 - Consumes: existing mobile `.global-search-state-line`.
-- Produces: 96px mobile spacing for Global Search visible result-state copy; Quick Search remains unchanged.
+- Produces: a dedicated 96px mobile offset for Global Search empty/error result states only; idle/loading and Quick Search remain unchanged.
 
 - [ ] **Step 1: Write the failing Global Search spacing test**
 
-Create `tests/global-search-state-spacing.test.ts` that asserts the mobile `.global-search-state-line` rule uses:
+Create `tests/global-search-state-spacing.test.ts` that proves:
 
-```css
-margin: 96px 2px 0;
-```
-
-and captures the existing `.quick-search-state` block so the test can assert its spacing is not changed to 96px.
+- the `empty` state receives `global-search-state-line-offset`;
+- the `error` state receives `global-search-state-line-offset`;
+- the `loading` state does not receive that class;
+- the mobile offset class uses `margin-top: 96px`;
+- `.quick-search-state` is not changed to 96px.
 
 - [ ] **Step 2: Run the test and confirm RED**
 
@@ -156,27 +157,24 @@ and captures the existing `.quick-search-state` block so the test can assert its
 pnpm exec tsx --test tests/global-search-state-spacing.test.ts
 ```
 
-Expected: FAIL because the current mobile Global Search state line uses a 14px top margin.
+Expected: FAIL because the dedicated empty/error offset class does not exist yet.
 
-- [ ] **Step 3: Change only Global Search mobile state spacing**
+- [ ] **Step 3: Change only Global Search empty/error spacing**
 
-Replace:
+In `web/src/pages/GlobalSearchPage.tsx`, add
+`global-search-state-line-offset` only to the visible `empty` and `error`
+state elements.
+
+Inside the mobile stylesheet add:
 
 ```css
-.global-search-state-line {
-  margin: 14px 2px 0;
+.global-search-state-line-offset {
+  margin-top: 96px;
 }
 ```
 
-with:
-
-```css
-.global-search-state-line {
-  margin: 96px 2px 0;
-}
-```
-
-Do not edit `.quick-search-state`.
+Do not change the base `.global-search-state-line` rule and do not edit
+`.quick-search-state`.
 
 - [ ] **Step 4: Run the test and confirm GREEN**
 
@@ -199,13 +197,14 @@ Run the same test and require PASS.
 ```bash
 pnpm exec tsx --test --test-concurrency=1 \
   tests/auth-accepted-position-regression.test.ts \
+  tests/auth-surface-redesign.test.ts \
+  tests/auth-safari-white-hotfix.test.ts \
   tests/auth-loading-neutral-regression.test.ts \
   tests/filtered-empty-mobile-spacing.test.ts \
+  tests/mobile-empty-clear-parity.test.ts \
   tests/global-search-state-spacing.test.ts \
-  tests/global-search-auth-ui.test.ts \
-  tests/memory-mobile-visual.test.ts \
-  tests/diary-mobile-visual.test.ts \
-  tests/task-mobile-visual.test.ts
+  tests/global-search-mobile-redesign.test.ts \
+  tests/quick-search.test.ts
 ```
 
 Expected: all PASS.
