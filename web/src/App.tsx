@@ -18,6 +18,7 @@ import { SystemConnectionsPage } from "./pages/SystemConnectionsPage";
 import { SystemDataPage } from "./pages/SystemDataPage";
 import { TaskPage } from "./pages/TaskPageContainer";
 
+import { DaySpacePage } from "./pages/DaySpacePage.js";
 export default function App() {
   return (
     <BrowserRouter>
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="memory" element={<MemoryPage />} />
             <Route path="diary" element={<DiaryPage />} />
             <Route path="task" element={<TaskPage />} />
+            <Route path="day-space" element={<DaySpacePage />} />
             <Route path="search" element={<GlobalSearchPage />} />
 
             <Route

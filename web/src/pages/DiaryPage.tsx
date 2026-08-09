@@ -1647,7 +1647,7 @@ function DiaryMessage({
   title: string;
 }) {
   return (
-    <section className="memory-message">
+    <section className="memory-message memory-module-state">
       <div className="placeholder-icon"><DiaryIcon /></div>
       <h2>{title}</h2>
       <p>{description}</p>

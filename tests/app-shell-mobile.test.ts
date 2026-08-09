@@ -29,7 +29,7 @@ function installDom() {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-test("navigation groups expose the Home, Utilities, System and disabled Day Space contracts", () => {
+test("navigation groups expose the Home, Utilities, System and active Day Space contracts", () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
@@ -45,7 +45,7 @@ test("navigation groups expose the Home, Utilities, System and disabled Day Spac
     assert.ok(container.querySelector('a[href="/system/data"]')?.textContent?.includes("Data"));
     assert.ok(container.querySelector('a[href="/system/activity"]')?.textContent?.includes("Activity"));
     assert.ok(container.querySelector('a[href="/system/about"]')?.textContent?.includes("About"));
-    assert.ok(container.querySelector('[aria-disabled="true"]')?.textContent?.includes("Day Space"));
+    assert.ok(container.querySelector('a[href="/day-space"]')?.textContent?.includes("Day Space"));
     root.unmount();
     env.restore();
   });

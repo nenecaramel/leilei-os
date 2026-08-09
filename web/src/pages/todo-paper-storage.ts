@@ -77,3 +77,27 @@ export function createTodoPaperEntryId(author: HomeAuthor): string {
 
   return `${author.toLowerCase()}-${suffix}`;
 }
+
+
+export function listPersistedTodoPaperDates(
+  storage: Pick<Storage, "length" | "key" | "getItem">,
+): string[] {
+  const candidates = new Set<string>();
+  const pattern = /^leilei\.home\.todo-paper\.v1:(\d{4}-\d{2}-\d{2}):(L|G)$/;
+
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key) continue;
+    const match = pattern.exec(key);
+    if (!match) continue;
+    candidates.add(match[1]);
+  }
+
+  return [...candidates]
+    .filter((dateKey) =>
+      (["L", "G"] as const).some(
+        (author) => readTodoPaperEntries(storage, author, dateKey, []).length > 0,
+      ),
+    )
+    .sort();
+}

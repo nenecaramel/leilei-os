@@ -1475,7 +1475,7 @@ function MobileArchivedTaskDetail(props: { state: DetailLoadState; task: TaskEnt
     title: string;
   }) {
     return (
-      <section className="memory-message">
+      <section className="memory-message memory-module-state">
         <div className="placeholder-icon">
           <TaskIcon />
         </div>

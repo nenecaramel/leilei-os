@@ -305,7 +305,7 @@ test("grouped navigation keeps every entry reachable in the mobile drawer", () =
   assert.match(navigationSource, /label: "Home"/);
   assert.match(navigationSource, /label: "Global Search"/);
   assert.match(navigationSource, /label: "System"/);
-  assert.match(navigationSource, /label: "Day Space"[\s\S]*disabled: true/);
+  assert.match(navigationSource, /label: "Day Space"[\s\S]{0,160}?to: "\/day-space"/);
   assert.doesNotMatch(navigationSource, /General|Appearance|Data & Backup|includeSecondarySystemItems/);
   assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?width:\s*min\(82vw,\s*280px\)/);
   assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?padding:\s*calc\(env\(safe-area-inset-top,\s*0px\) \+ 8px\)[\s\S]*?max\(18px,\s*env\(safe-area-inset-bottom,\s*0px\)\)/);
