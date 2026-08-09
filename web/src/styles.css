@@ -4749,7 +4749,7 @@ body:has(.home-prototype) {
 .auth-minimal {
   display: grid;
   justify-items: center;
-  transform: translateY(100px);
+  transform: translateY(6px);
   text-align: center;
 }
 

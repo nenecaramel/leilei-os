@@ -8,7 +8,7 @@ const css = readFileSync(
 );
 
 test(
-  "login composition has one authoritative 100px vertical transform",
+  "login composition has one authoritative 6px vertical transform",
   () => {
     const blocks = [
       ...css.matchAll(/\.auth-minimal\s*\{([^}]*)\}/g),
@@ -20,7 +20,7 @@ test(
       ),
     ]).map((match) => Number(match[1]));
 
-    assert.deepEqual(transforms, [100]);
+    assert.deepEqual(transforms, [6]);
     assert.doesNotMatch(
       css,
       /\.auth-minimal\s*\{[^}]*translateY\(-26px\)/,

@@ -10,6 +10,7 @@ import { navigateWithinApp } from "./app-navigation";
 import { GlobalSearchPageHeader } from "./GlobalSearchPageHeader";
 import {
   createGlobalSearchLocation,
+  DEFAULT_GLOBAL_SEARCH_FILTERS,
   hasValidGlobalSearchDateRange,
   hasSearchableGlobalSearchQuery,
   isGlobalSearchQueryWithinLimit,
@@ -648,9 +649,20 @@ export function GlobalSearchPageContent({ api }: Props) {
       ) : null}
 
       {state === "empty" ? (
-        <p className="global-search-state-line global-search-state-line-offset">
-          没有找到匹配内容
-        </p>
+        <section className="memory-empty-state global-search-empty-state">
+          <p>没有找到匹配内容</p>
+          <button
+            type="button"
+            className="secondary-button memory-empty-clear"
+            onClick={() =>
+              updateFilter({
+                ...DEFAULT_GLOBAL_SEARCH_FILTERS,
+              })
+            }
+          >
+            清除条件
+          </button>
+        </section>
       ) : null}
 
       {state === "error" ? (

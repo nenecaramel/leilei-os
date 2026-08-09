@@ -16,11 +16,11 @@ const source = readFileSync(
 );
 
 test(
-  "Global Search offsets only empty and error result states",
+  "Global Search offsets empty group and error, but not loading",
   () => {
     assert.match(
       source,
-      /\{state === "empty" \? \(\s*<p className="global-search-state-line global-search-state-line-offset">/,
+      /\{state === "empty" \? \(\s*<section className="memory-empty-state global-search-empty-state">/,
     );
 
     assert.match(
@@ -41,7 +41,37 @@ test(
 );
 
 test(
-  "Global Search empty/error offset is 96px on mobile",
+  "Global Search empty state offers one clear-all conditions action",
+  () => {
+    assert.match(
+      source,
+      />\s*没有找到匹配内容\s*</,
+    );
+
+    assert.match(
+      source,
+      /className="secondary-button memory-empty-clear"[\s\S]*?>\s*清除条件\s*</,
+    );
+
+    assert.match(
+      source,
+      /onClick=\{\(\) =>[\s\S]*?updateFilter\(\{\s*\.\.\.DEFAULT_GLOBAL_SEARCH_FILTERS,?\s*\}\)[\s\S]*?\}/,
+    );
+  },
+);
+
+test(
+  "Global Search empty group gets the shared 96px mobile safety gap",
+  () => {
+    assert.match(
+      css,
+      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.memory-empty-state:has\(>\s*\.memory-empty-clear\)\s*\{[^}]*margin-top:\s*96px;/,
+    );
+  },
+);
+
+test(
+  "Global Search error keeps its dedicated 96px mobile offset",
   () => {
     assert.match(
       css,
