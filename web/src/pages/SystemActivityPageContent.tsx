@@ -188,7 +188,12 @@ export function SystemActivityPageContent({
       />
 
       <section
-        className="system-section"
+        className={
+          state.status === "ready" &&
+          state.events.length > 0
+            ? "system-section system-activity-list-section"
+            : "system-section"
+        }
         aria-label="System activity"
       >
         {state.status === "loading" ? (
