@@ -165,7 +165,7 @@ test("global search page does not request empty q, passes filters, paginates, an
   resolve(response([result("00000000-0000-4000-8000-000000000001")], "cursor"));
   await React.act(async () => { await pending; });
   assert.match(dom.window.document.body.textContent ?? "", /目标/);
-  assert.match(dom.window.document.body.textContent ?? "", /正文/);
+  assert.match(dom.window.document.body.textContent ?? "", /命中目标/);
   await React.act(async () => root.unmount()); dom.window.close();
   for (const [name, descriptor] of previous) descriptor ? Object.defineProperty(globalThis, name, descriptor) : Reflect.deleteProperty(globalThis, name);
 });
@@ -192,8 +192,7 @@ test("global search restores its URL-bound snapshot after detail navigation", as
       root.render(React.createElement(GlobalSearchPageContent, { api }));
       await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
     });
-    const detail = [...dom.window.document.querySelectorAll("button")]
-      .find((button) => button.textContent === "查看详情");
+    const detail = dom.window.document.querySelector<HTMLButtonElement>(".global-search-result-button");
     assert.ok(detail);
     dom.window.scrollY = 180;
     await React.act(async () => {
@@ -211,7 +210,7 @@ test("global search restores its URL-bound snapshot after detail navigation", as
     assert.equal(requests.length, 1);
     assert.match(dom.window.document.body.textContent ?? "", /目标/);
     assert.ok(scrolls.includes(180));
-    assert.equal(dom.window.document.activeElement?.textContent, "查看详情");
+    assert.ok(dom.window.document.activeElement?.classList.contains("global-search-result-button"));
   } finally {
     await React.act(async () => root.unmount());
     dom.window.close();
@@ -230,8 +229,7 @@ test("global search opens active and archived detail routes for every module", a
     const api: WebApiClient = { async request<T>() { return response([{ ...result(entityId), entity_type: module, lifecycle_status: archived ? "archived" : "active" }]) as T; } };
     const page = await renderSearch(`/search?q=goal&modules=${module}`, api);
     try {
-      const button = [...page.dom.window.document.querySelectorAll("button")]
-        .find((candidate) => candidate.textContent === "查看详情");
+      const button = page.dom.window.document.querySelector<HTMLButtonElement>(".global-search-result-button");
       assert.ok(button);
       await React.act(async () => { button.dispatchEvent(new page.dom.window.MouseEvent("click", { bubbles: true })); });
       const location = new URL(page.dom.window.location.href);
@@ -297,13 +295,13 @@ test("global search blocks an invalid date range and preserves paged results for
     await React.act(async () => { loadMore.dispatchEvent(new page.dom.window.MouseEvent("click", { bubbles: true })); });
     await page.settle();
     assert.match(page.dom.window.document.body.textContent ?? "", /加载更多失败，请重试。/);
-    assert.equal(page.dom.window.document.querySelectorAll(".memory-card").length, 1);
+    assert.equal(page.dom.window.document.querySelectorAll(".global-search-result-button").length, 1);
     const retry = [...page.dom.window.document.querySelectorAll("button")]
       .find((button) => button.textContent === "加载更多");
     assert.ok(retry);
     await React.act(async () => { retry.dispatchEvent(new page.dom.window.MouseEvent("click", { bubbles: true })); });
     await page.settle();
-    assert.equal(page.dom.window.document.querySelectorAll(".memory-card").length, 2);
+    assert.equal(page.dom.window.document.querySelectorAll(".global-search-result-button").length, 2);
     assert.equal(loadMoreAttempt, 2);
   } finally {
     await page.cleanup();
@@ -343,7 +341,7 @@ test("global search debounces input, aborts stale reads, and never renders stale
     await React.act(async () => { resolveOld(response([{ ...result("00000000-0000-4000-8000-000000000006"), stable_name: "旧结果" }])); await new Promise((resolve) => page.dom.window.setTimeout(resolve, 0)); });
     assert.match(page.dom.window.document.body.textContent ?? "", /新结果/);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /旧结果/);
-    assert.equal(page.dom.window.document.querySelectorAll(".memory-card").length, 1);
+    assert.equal(page.dom.window.document.querySelectorAll(".global-search-result-button").length, 1);
     assert.match(requests[1]?.path ?? "", /query=new/);
   } finally {
     await page.cleanup();
@@ -371,7 +369,7 @@ test("clearing a query returns to idle without requesting or restoring the old s
     assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search");
     assert.equal(page.dom.window.history.state?.globalSearch, undefined);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /目标/);
-    assert.match(page.dom.window.document.body.textContent ?? "", /输入关键词后开始搜索/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary 与 Task 中保存的内容/);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
     assert.equal(page.dom.window.document.querySelector("[role=alert]"), null);
   } finally {
@@ -399,7 +397,7 @@ test("clearing an overlong initial URL normalizes the address without requesting
     assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=memory&scope=all&mode=phrase&date_from=2026-08-01");
     assert.equal(page.dom.window.history.state?.globalSearch, undefined);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
-    assert.match(page.dom.window.document.body.textContent ?? "", /输入关键词后开始搜索/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary 与 Task 中保存的内容/);
   } finally {
     await page.cleanup();
   }
@@ -429,7 +427,7 @@ test("empty query filter changes update URL without requesting", async () => {
     await React.act(async () => { reactChange(from, "2026-08-01"); });
     assert.equal(requests.length, 0);
     assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=diary%2Ctask&scope=all&mode=phrase&date_from=2026-08-01");
-    assert.match(page.dom.window.document.body.textContent ?? "", /输入关键词后开始搜索/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary 与 Task 中保存的内容/);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
   } finally {
     await page.cleanup();
@@ -541,8 +539,7 @@ test("invalid date drafts never enter a detail return target", async () => {
     const invalidTo = page.dom.window.document.querySelector<HTMLInputElement>("#global-search-date-to");
     assert.ok(invalidTo);
     await React.act(async () => { reactChange(invalidTo, "2026-08-09"); });
-    const button = [...page.dom.window.document.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "查看详情");
+    const button = page.dom.window.document.querySelector<HTMLButtonElement>(".global-search-result-button");
     assert.ok(button);
     await React.act(async () => { button.dispatchEvent(new page.dom.window.MouseEvent("click", { bubbles: true })); });
     const detailUrl = new URL(page.dom.window.location.href);

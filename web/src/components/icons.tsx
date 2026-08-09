@@ -92,6 +92,13 @@ export const StatusIcon = (props: IconProps) => (
   </IconBase>
 );
 
+export const ScopeIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <rect x="4" y="6" width="14" height="13" rx="2.5" />
+    <path d="M7 3h10a3 3 0 0 1 3 3v10" />
+  </IconBase>
+);
+
 export const UniverseIcon = (props: IconProps) => (
   <IconBase {...props}>
     <circle cx="12" cy="12" r="3" />

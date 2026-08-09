@@ -96,21 +96,32 @@ test("mobile drawer closes on Escape and restores focus and body scrolling", asy
   env.restore();
 });
 
-test("mobile top bar exposes the menu state and Global Search link", async () => {
+test("mobile top bar exposes menu state and a Quick Search trigger while navigation keeps Global Search", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const menuButtonRef = { current: null as HTMLButtonElement | null };
+  const searchButtonRef = { current: null as HTMLButtonElement | null };
   const root = createRoot(container);
   root.render(React.createElement(MemoryRouter, null, React.createElement(MobileTopBar, {
     menuOpen: false,
     menuButtonRef,
     onMenuClick: () => undefined,
+    searchOpen: false,
+    searchButtonRef,
+    onSearchClick: () => undefined,
   })));
   await waitForPaint();
   const menuButton = container.querySelector<HTMLButtonElement>(".mobile-menu-button");
   assert.equal(menuButton?.getAttribute("aria-expanded"), "false");
   assert.equal(menuButton?.getAttribute("aria-controls"), "mobile-navigation-drawer");
-  assert.equal(container.querySelector('a[href="/search"]')?.getAttribute("aria-label"), "打开 Global Search");
+
+  const searchButton = container.querySelector<HTMLButtonElement>(".mobile-search-link");
+  assert.equal(searchButton?.tagName, "BUTTON");
+  assert.equal(searchButton?.getAttribute("aria-expanded"), "false");
+  assert.equal(searchButton?.getAttribute("aria-controls"), "quick-search-panel");
+  assert.equal(searchButton?.getAttribute("aria-label"), "打开快速搜索");
+  assert.equal(container.querySelector('a[href="/search"]'), null);
+
   root.unmount();
   await waitForPaint();
   env.restore();
