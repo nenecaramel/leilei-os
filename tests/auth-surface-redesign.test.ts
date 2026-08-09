@@ -31,7 +31,7 @@ test("auth title gets the accepted small optical lift", async () => {
   const css = await readFile("web/src/styles.css", "utf8");
   assert.match(
     css,
-    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(-36px\)/,
+    /\.auth-minimal\s*\{[\s\S]*?transform:\s*translateY\(-26px\)/,
   );
   assert.match(
     css,

@@ -1,6 +1,7 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import type { PropsWithChildren } from "react";
+import { useEffect, type PropsWithChildren } from "react";
 import { SettingsProvider } from "../settings/SettingsProvider";
+import { syncThemeColorMeta } from "../settings/theme";
 
 export function ProtectedApp({
   children,
@@ -11,6 +12,36 @@ export function ProtectedApp({
     isLoading,
     loginWithRedirect,
   } = useAuth0();
+
+  const authSurfaceVisible =
+    isLoading || Boolean(error) || !isAuthenticated;
+
+  useEffect(() => {
+    if (!authSurfaceVisible || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const root = document.documentElement;
+    const themeMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="theme-color"]',
+    );
+    const previousThemeColor =
+      themeMeta?.getAttribute("content") ?? null;
+
+    root.classList.add("auth-surface-active");
+    syncThemeColorMeta(document, "#ffffff");
+
+    return () => {
+      root.classList.remove("auth-surface-active");
+
+      if (!themeMeta) return;
+      if (previousThemeColor) {
+        themeMeta.setAttribute("content", previousThemeColor);
+      } else {
+        themeMeta.removeAttribute("content");
+      }
+    };
+  }, [authSurfaceVisible]);
 
   if (isLoading) {
     return (

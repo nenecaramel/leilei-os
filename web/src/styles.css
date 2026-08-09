@@ -5172,7 +5172,7 @@ body:has(.home-prototype) {
 }
 
 .auth-minimal {
-  transform: translateY(-36px);
+  transform: translateY(-26px);
 }
 
 .auth-minimal h1 {
@@ -5188,3 +5188,28 @@ body:has(.home-prototype) {
   background: transparent !important;
 }
 /* global-search-tool-no-tile-2026-08-09:end */
+
+/* auth-safari-white-hotfix-2026-08-09:start */
+html.auth-surface-active,
+html.auth-surface-active body,
+html.auth-surface-active #root {
+  background: #fff !important;
+  background-color: #fff !important;
+  background-image: none !important;
+}
+
+.auth-text-action,
+.auth-text-action:hover,
+.auth-text-action:active,
+.auth-text-action:focus,
+.auth-text-action:focus-visible {
+  border-color: transparent !important;
+  outline: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent !important;
+}
+/* auth-safari-white-hotfix-2026-08-09:end */
