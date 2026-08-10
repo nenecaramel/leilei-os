@@ -976,6 +976,16 @@ if (isMobile) {
                   dateTo: value,
                 })
               }
+              onDateRangeClear={() =>
+                commitFilters({
+                  ...filters,
+                  q: searchDraft,
+                  tag: tagDraft,
+                  mood: moodDraft,
+                  dateFrom: "",
+                  dateTo: "",
+                })
+              }
               onMoodChange={updateMood}
               onTagChange={updateTag}
               onSearchChange={updateSearch}

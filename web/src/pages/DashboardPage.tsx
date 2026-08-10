@@ -15,6 +15,11 @@ import {
 } from "./todo-paper-storage";
 import { TodayPanel } from "./TodayPanel";
 import { TodoPaperDialog } from "./TodoPaperDialog";
+import { navigateWithinApp } from "./app-navigation";
+import {
+  createQuickCreateState,
+  type QuickCreateTarget,
+} from "./quick-create";
 
 export function formatHomeDate(date: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -56,6 +61,17 @@ export function DashboardPageContent({
   const handleSaved =
     dialogAuthor === "L" ? setLNotes : setGNotes;
 
+  const openQuickCreate = (
+    target: QuickCreateTarget,
+    event: React.MouseEvent<HTMLAnchorElement>,
+  ) => {
+    event.preventDefault();
+    navigateWithinApp(
+      `/${target}`,
+      createQuickCreateState(window.history.state, target),
+    );
+  };
+
   return (
     <div className="page home-prototype">
       <h1 className="home-page-title">Todo</h1>
@@ -83,9 +99,24 @@ export function DashboardPageContent({
           </div>
 
           <nav className="home-bottom-nav" aria-label="模块入口">
-            <Link to="/memory">Memory</Link>
-            <Link to="/diary">Diary</Link>
-            <Link to="/task">Task</Link>
+            <a
+              href="/memory"
+              onClick={(event) => openQuickCreate("memory", event)}
+            >
+              Memory
+            </a>
+            <a
+              href="/diary"
+              onClick={(event) => openQuickCreate("diary", event)}
+            >
+              Diary
+            </a>
+            <a
+              href="/task"
+              onClick={(event) => openQuickCreate("task", event)}
+            >
+              Task
+            </a>
             <Link to="/universe">Universe</Link>
           </nav>
         </section>

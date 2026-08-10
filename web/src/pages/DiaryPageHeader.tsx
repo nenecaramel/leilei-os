@@ -19,6 +19,7 @@ type DiaryPageHeaderProps = {
   busy: boolean;
   onDateFromChange(value: string): void;
   onDateToChange(value: string): void;
+  onDateRangeClear(): void;
   onMoodChange(value: string): void;
   onTagChange(value: string): void;
   onSearchChange(value: string): void;
@@ -39,6 +40,7 @@ export function DiaryPageHeader({
   busy,
   onDateFromChange,
   onDateToChange,
+  onDateRangeClear,
   onMoodChange,
   onTagChange,
   onSearchChange,
@@ -88,6 +90,14 @@ export function DiaryPageHeader({
               className="memory-page-popover diary-filter-popover diary-date-popover"
               aria-label="Diary 日期筛选"
             >
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={!dateFrom && !dateTo}
+                onClick={onDateRangeClear}
+              >
+                全部时间
+              </button>
               <div className="diary-filter-field">
                 <span>开始日期</span>
                 <NativeDateInput
