@@ -89,7 +89,7 @@ For existing authored records:
 - if the edit request explicitly supplies `L` or `G`, allow the user to correct/reassign the content owner in the same content edit.
 
 For legacy-null records:
-- an edit request without author fails safely with an `AUTHOR_REQUIRED`-style domain error;
+- an edit request without author fails safely with domain error code `AUTHOR_REQUIRED`;
 - an explicit `L` or `G` allows the content edit and sets author atomically with that edit.
 
 The Web UI will always send its visible author selection during an edit, but the domain rule above preserves compatibility for existing authored clients.
@@ -124,7 +124,7 @@ Missing or invalid author is a safe client error and must create no business row
 
 Content-edit endpoints accept optional `author: "L" | "G"`.
 
-If the target record currently has `author = NULL` and author is omitted, return a safe `AUTHOR_REQUIRED` client error and make no mutation.
+If the target record currently has `author = NULL` and author is omitted, return safe error code `AUTHOR_REQUIRED` and make no mutation.
 
 If author is provided, the content fields and author change commit together through the existing write boundary.
 
@@ -182,9 +182,12 @@ Existing approval annotations, authenticated server-owned identity, safe errors,
 
 ### Reads
 
-The existing module-specific Memory, Diary, and Task read tools may add `author` additively to their record outputs so G can observe ownership without a new tool.
+All seven existing module-specific Memory, Diary, and Task read tools add `author: "L" | "G" | null` additively to each returned record where that tool returns a Memory/Diary/Task record:
+- Memory: `read_memory`, `search_memory`, `get_memory`;
+- Diary: `search_diary`, `get_diary`;
+- Task: `list_tasks`, `get_task`.
 
-`global_search` is not changed in this package; adding author filtering or search-result ranking is a separate product decision.
+`global_search` is not changed in this package; adding author filtering, author result fields, or author-aware ranking there is a separate product decision.
 
 Toy tools are untouched.
 
@@ -214,8 +217,8 @@ Required coverage includes:
 
 ### Migration/schema
 - migration chain from the current `0014` state to the new migration;
-- existing Memory/Diary/Task rows remain present and receive `author = NULL`;
-- only L/G/non-null-or-null values are representable as intended;
+- existing Memory/Diary/Task rows remain present and have `author = NULL` after migration;
+- the database author type allows only `L`/`G` while each of the three legacy-compatible columns remains nullable;
 - Drizzle schema matches the migration;
 - no Todo table is introduced by Package A.
 
@@ -248,7 +251,7 @@ For Memory, Diary, and Task:
 - strict schemas continue rejecting client-supplied user identity;
 - same idempotency key + same author replays;
 - same idempotency key + different author conflicts;
-- read tools expose author additively where implemented;
+- all seven module-specific read tools expose nullable author on returned records;
 - tool count stays 16 and write-tool count stays 5;
 - Toy behavior is unchanged.
 
