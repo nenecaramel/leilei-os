@@ -36,6 +36,7 @@ class MockMemoryReadService {
           key: "leilei-os",
           content: "Bounded Memory search result.",
           tags: ["MCP", "Memory"],
+          author: null,
           ...(this.includeSyntheticSource
             ? { source: "must-not-leak" }
             : {}),
@@ -62,12 +63,13 @@ class MockMemoryReadService {
       source: "web",
       updated_at: UPDATED_AT,
       lifecycle_status: "active",
+      author: null,
     };
   }
 
   async readArchivedMemoryDetail(input: { userId: string; id: string }): Promise<ReadMemoryDetailResult> {
     this.archivedDetailCalls.push(input);
-    return { id: input.id, category: "project", key: "archived", content: "Archived complete content", tags: [], source: "web", updated_at: UPDATED_AT };
+    return { id: input.id, category: "project", key: "archived", content: "Archived complete content", tags: [], source: "web", updated_at: UPDATED_AT, author: null };
   }
 }
 
@@ -161,7 +163,8 @@ test("search_memory injects identity and forces updated ordering without source"
           key: "leilei-os",
           content: "Bounded Memory search result.",
           tags: ["MCP", "Memory"],
-          updated_at: UPDATED_AT,
+    updated_at: UPDATED_AT,
+    author: null,
         },
       ],
       metadata: { count: 1 },
@@ -260,6 +263,7 @@ test("get_memory injects identity, trims id, and returns only safe fields", asyn
       source: "web",
       updated_at: UPDATED_AT,
       lifecycle_status: "active",
+      author: null,
     },
   });
 });
@@ -401,6 +405,7 @@ test("legacy read_memory contract and default ordering remain unchanged", async 
           content: "Bounded Memory search result.",
           tags: ["MCP", "Memory"],
           updated_at: UPDATED_AT,
+          author: null,
         },
       ],
       metadata: { count: 1 },

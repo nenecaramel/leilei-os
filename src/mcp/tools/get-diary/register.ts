@@ -8,6 +8,7 @@ import {
 import { DiaryReadAuthenticationError } from "../search-diary/register.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const contentAuthorSchema = z.enum(["L", "G"]);
 
 const getDiaryInputSchema = z
   .object({
@@ -32,6 +33,7 @@ const getDiaryOutputSchema = z.object({
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
     lifecycle_status: z.enum(["active", "archived"]),
+    author: contentAuthorSchema.nullable(),
   }),
 });
 

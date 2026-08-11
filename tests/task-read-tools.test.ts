@@ -30,6 +30,7 @@ const TASK: TaskEntryResult = {
   updated_at: "2026-07-29T08:00:00.000Z",
   completed_at: null,
   allowed_actions: ["complete", "cancel"],
+  author: null,
 };
 
 class MockTaskService {
@@ -178,6 +179,7 @@ test("list_tasks maps identity, filters, and limit while omitting description", 
         updated_at: TASK.updated_at,
         completed_at: TASK.completed_at,
         allowed_actions: TASK.allowed_actions,
+        author: TASK.author,
       }],
       metadata: { count: 1 },
     },
@@ -428,6 +430,7 @@ test("shared Task dependency preserves create_task behavior", async (t) => {
       description: "This still uses the shared Task Service.",
       priority: "high",
       tags: ["MCP"],
+      author: "G",
       idempotency_key: "task-read-regression-0001",
     },
   });

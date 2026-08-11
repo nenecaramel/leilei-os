@@ -25,6 +25,7 @@ const ENTRY: DiaryEntryResult = {
   mood: "开心",
   created_at: "2026-07-28T08:00:00.000Z",
   updated_at: "2026-07-29T08:00:00.000Z",
+  author: "G",
 };
 
 class MockDiaryService {
@@ -64,6 +65,7 @@ class MockDiaryService {
         tags: [...input.tags],
         mood: input.mood ?? null,
         created_at: ENTRY.created_at,
+        author: input.author,
       },
       metadata: { created: true, idempotent_replay: false },
     };
@@ -164,6 +166,7 @@ test("search_diary maps filters and identity but omits content", async (t) => {
         mood: ENTRY.mood,
         created_at: ENTRY.created_at,
         updated_at: ENTRY.updated_at,
+        author: ENTRY.author,
       }],
       metadata: { count: 1 },
     },
@@ -347,6 +350,7 @@ test("Diary reads require auth and shared write_diary remains compatible", async
       content: "现有写入契约保持不变。",
       date: "2026-07-29",
       tags: [],
+      author: "L",
       idempotency_key: "diary-read-regression-0001",
     },
   });
