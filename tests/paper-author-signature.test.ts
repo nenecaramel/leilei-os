@@ -75,22 +75,21 @@ test("editable author signature offers exactly L and G and closes after selectio
   );
 });
 
-test("disabled signature cannot open choices and renders an inline error", async () => {
+test("missing-author validation does not render a persistent paper-chrome prompt", async () => {
   await withDom(
     React.createElement(PaperAuthorSignature, {
-      value: "L",
+      value: null,
       editable: true,
-      disabled: true,
+      disabled: false,
       error: "请选择作者",
       onChange() {},
     }),
     async (root) => {
       const trigger = root.querySelector<HTMLButtonElement>("button");
       assert.ok(trigger);
-      assert.equal(trigger.disabled, true);
-      await React.act(async () => trigger.click());
-      assert.equal(root.querySelector('[role="menu"]'), null);
-      assert.equal(root.querySelector('[role="alert"]')?.textContent, "请选择作者");
+      assert.equal(trigger.textContent, "—");
+      assert.equal(root.querySelector('[role="alert"]'), null);
+      assert.equal(root.textContent, "—");
     },
   );
 });
