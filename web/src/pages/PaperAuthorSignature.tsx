@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type PaperAuthorValue = "L" | "G" | null;
 
@@ -18,8 +19,18 @@ export function PaperAuthorSignature({
   error = null,
 }: PaperAuthorSignatureProps) {
   const [open, setOpen] = useState(false);
+  const [signatureSlot, setSignatureSlot] = useState<HTMLElement | null>(null);
+  const [slotResolved, setSlotResolved] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const display = value ?? "—";
+
+  useEffect(() => {
+    const paper = anchorRef.current?.closest<HTMLElement>(".paper-detail-paper") ?? null;
+    const slot = paper?.querySelector<HTMLElement>(".paper-detail-signature") ?? null;
+    setSignatureSlot(slot);
+    setSlotResolved(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -32,15 +43,11 @@ export function PaperAuthorSignature({
     return () => document.removeEventListener("mousedown", closeOnOutsidePointer);
   }, [open]);
 
-  if (!editable) {
-    return (
-      <span className="paper-author-signature" aria-label={`作者 ${display}`}>
-        {display}
-      </span>
-    );
-  }
-
-  return (
+  const signature = !editable ? (
+    <span className="paper-author-signature" aria-label={`作者 ${display}`}>
+      {display}
+    </span>
+  ) : (
     <span className="paper-author-signature" ref={rootRef}>
       <button
         type="button"
@@ -78,5 +85,16 @@ export function PaperAuthorSignature({
         </span>
       ) : null}
     </span>
+  );
+
+  return (
+    <>
+      <span ref={anchorRef} className="paper-author-signature-anchor" aria-hidden="true" />
+      {signatureSlot
+        ? createPortal(signature, signatureSlot)
+        : slotResolved
+          ? signature
+          : null}
+    </>
   );
 }
