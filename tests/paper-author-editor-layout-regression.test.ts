@@ -15,7 +15,7 @@ const dialog = readFileSync(
   "utf8",
 );
 
-test("the production entrypoint loads only author-specific layout overrides", () => {
+test("the production entrypoint loads the paper acceptance overrides", () => {
   assert.match(main, /import\s+["']\.\/pages\/lg-author-editor-layout-fix\.css["'];/);
 });
 
@@ -30,22 +30,19 @@ test("missing author has no persistent text label in the paper chrome", () => {
   assert.match(dialog, /const visibleErrorMessage = errorMessage === "请选择作者" \? null : errorMessage;/);
 });
 
-test("author hotfix never overrides module metadata editor geometry or typography", () => {
-  for (const selector of [
-    "memory-paper-metadata",
-    "memory-paper-tags",
-    "diary-paper-metadata",
-    "diary-paper-mood",
-    "diary-paper-tags",
-    "task-paper-metadata",
-    "task-paper-tags",
-  ]) {
-    assert.doesNotMatch(css, new RegExp(`\\.${selector}\\b`));
-  }
-  assert.doesNotMatch(css, /\bzoom\s*:/);
+test("author integration never relocates the accepted bottom-left metadata slot", () => {
+  assert.doesNotMatch(css, /\.paper-detail-bottom-left:has\(/);
 });
 
-test("author anchor cannot relocate the accepted bottom-left metadata slot", () => {
-  assert.match(css, /\.paper-detail-bottom-left:has\(\.paper-author-signature-anchor\)[\s\S]*left:\s*24px\s*!important/s);
-  assert.match(css, /\.paper-detail-bottom-left:has\(\.paper-author-signature-anchor\)[\s\S]*right:\s*auto\s*!important/s);
+test("Memory metadata geometry remains untouched", () => {
+  assert.doesNotMatch(css, /\.memory-paper-metadata\b/);
+  assert.doesNotMatch(css, /\.memory-paper-tags\b/);
+});
+
+test("Diary metadata keeps 16px Safari focus safety but scales layout and hit-testing to the 13px visual baseline", () => {
+  assert.match(css, /\.diary-paper-mood,\s*\n\s*\.diary-paper-tags\s*\{[\s\S]*transform:\s*none\s*!important[\s\S]*zoom:\s*0\.8125\s*!important/s);
+});
+
+test("Task tag editor keeps the same 20px metadata baseline without transform hitbox drift", () => {
+  assert.match(css, /\.task-paper-tags\s*\{[\s\S]*transform:\s*none\s*!important[\s\S]*zoom:\s*0\.8125\s*!important/s);
 });
