@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import "./lg-author-editor-layout-fix.css";
 
 export type PaperAuthorValue = "L" | "G" | null;
 
@@ -16,7 +17,6 @@ export function PaperAuthorSignature({
   editable,
   disabled = false,
   onChange,
-  error = null,
 }: PaperAuthorSignatureProps) {
   const [open, setOpen] = useState(false);
   const [signatureSlot, setSignatureSlot] = useState<HTMLElement | null>(null);
@@ -77,11 +77,6 @@ export function PaperAuthorSignature({
               {author}
             </button>
           ))}
-        </span>
-      ) : null}
-      {error ? (
-        <span className="paper-author-signature-error" role="alert">
-          {error}
         </span>
       ) : null}
     </span>
