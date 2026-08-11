@@ -437,6 +437,13 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         };
       }
 
+      if (
+        options.mcpWriteIdempotency &&
+        (existing.author === null || existing.author === undefined || existing.author !== diary.author)
+      ) {
+        return { outcome: "conflict" };
+      }
+
       if (options.mcpWriteIdempotency) {
         await recordMcpIdempotency(transaction, {
           userId: diary.userId,

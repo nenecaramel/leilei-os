@@ -15,6 +15,7 @@ const record = {
   status: "active" as const,
   createdAt: now,
   updatedAt: now,
+  author: "L" as const,
 };
 
 function repository(overrides: Partial<MemoryRepository> = {}): MemoryRepository {
@@ -45,13 +46,14 @@ test("MCP Memory normalizes input and persists the authoritative trusted shape",
   }));
   const result = await service.createMcpMemory(
     { userId: "user-a" },
-    { category: "goal", key: "  s\u0068ip  ", content: "  Ship safely  ", tags: [" Phase 6 ", "Phase 6", "Cafe\u0301"] },
+    { category: "goal", key: "  s\u0068ip  ", content: "  Ship safely  ", tags: [" Phase 6 ", "Phase 6", "Cafe\u0301"], author: "G" },
     "  memory-request-0001  ",
   );
   assert.deepEqual(calls, [{
     userId: "user-a", category: "goal", key: "ship", content: "Ship safely",
     tags: ["Phase 6", "Caf\u00e9"], source: "mcp", idempotencyKey: "memory-request-0001",
-    requestHash: hashMcpWriteRequest({ category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6", "Caf\u00e9"] }),
+    requestHash: hashMcpWriteRequest({ category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6", "Caf\u00e9"], author: "G" }),
+    author: "G",
   }]);
   assert.equal(result.memory.source, "mcp");
   assert.deepEqual(result.metadata, { created: true, idempotent_replay: false });
@@ -63,24 +65,24 @@ test("MCP Memory reports replay and safe durable conflicts", async () => {
       async createMemoryIdempotently(): Promise<McpMemoryCreateResult> { return { outcome }; },
     }));
     await assert.rejects(
-      service.createMcpMemory({ userId: "user-a" }, { category: "goal", key: "ship", content: "Ship safely" }, "memory-request-0002"),
+      service.createMcpMemory({ userId: "user-a" }, { category: "goal", key: "ship", content: "Ship safely", author: "L" }, "memory-request-0002"),
       (error) => error instanceof MemoryDomainError && error.code === code,
     );
   }
   const service = new MemoryService(repository({
     async createMemoryIdempotently() { return { outcome: "replayed", memory: { ...record, status: "archived" } }; },
   }));
-  const replay = await service.createMcpMemory({ userId: "user-a" }, { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"] }, "memory-request-0003");
+  const replay = await service.createMcpMemory({ userId: "user-a" }, { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L" }, "memory-request-0003");
   assert.equal(replay.memory.lifecycle_status, "archived");
   assert.deepEqual(replay.metadata, { created: false, idempotent_replay: true });
 });
 
 test("invalid MCP Memory input and inactive users fail before persistence", async () => {
   const invalid = [
-    { input: { category: "goal" as const, key: " ", content: "content" }, key: "memory-request-0004", code: "INVALID_MEMORY_KEY" },
-    { input: { category: "goal" as const, key: "key", content: " " }, key: "memory-request-0005", code: "INVALID_MEMORY_CONTENT" },
-    { input: { category: "goal" as const, key: "key", content: "content", tags: Array.from({ length: 21 }, (_, i) => `t${i}`) }, key: "memory-request-0006", code: "INVALID_MEMORY_TAGS" },
-    { input: { category: "goal" as const, key: "key", content: "content" }, key: "short", code: "INVALID_IDEMPOTENCY_KEY" },
+    { input: { category: "goal" as const, key: " ", content: "content", author: "L" }, key: "memory-request-0004", code: "INVALID_MEMORY_KEY" },
+    { input: { category: "goal" as const, key: "key", content: " ", author: "L" }, key: "memory-request-0005", code: "INVALID_MEMORY_CONTENT" },
+    { input: { category: "goal" as const, key: "key", content: "content", author: "L", tags: Array.from({ length: 21 }, (_, i) => `t${i}`) }, key: "memory-request-0006", code: "INVALID_MEMORY_TAGS" },
+    { input: { category: "goal" as const, key: "key", content: "content", author: "L" }, key: "short", code: "INVALID_IDEMPOTENCY_KEY" },
   ];
   for (const item of invalid) {
     let persisted = false;
@@ -94,7 +96,7 @@ test("invalid MCP Memory input and inactive users fail before persistence", asyn
       async findUserById() { return state === "missing" ? null : { displayName: "Leilei", status: "disabled" }; },
       async createMemoryIdempotently() { persisted = true; return { outcome: "created", memory: record }; },
     }));
-    await assert.rejects(service.createMcpMemory({ userId: "user-a" }, { category: "goal", key: "key", content: "content" }, "memory-request-0007"), (error) => error instanceof MemoryDomainError && error.code === (state === "missing" ? "USER_NOT_FOUND" : "USER_DISABLED"));
+    await assert.rejects(service.createMcpMemory({ userId: "user-a" }, { category: "goal", key: "key", content: "content", author: "G" }, "memory-request-0007"), (error) => error instanceof MemoryDomainError && error.code === (state === "missing" ? "USER_NOT_FOUND" : "USER_DISABLED"));
     assert.equal(persisted, false);
   }
 });
@@ -112,13 +114,14 @@ test("MCP Memory length limits apply after NFC normalization and trim", async ()
     key: ` ${"k".repeat(100)} `,
     content: ` ${"c".repeat(4_000)} `,
     tags: [` ${"e\u0301".repeat(50)} `],
+    author: "L",
   }, "memory-boundary-0001");
   assert.deepEqual(calls[0], { key: "k".repeat(100), content: "c".repeat(4_000), tags: ["é".repeat(50)] });
 
   for (const input of [
-    { category: "goal" as const, key: ` ${"k".repeat(101)} `, content: "content" },
-    { category: "goal" as const, key: "key", content: ` ${"c".repeat(4_001)} ` },
-    { category: "goal" as const, key: "key", content: "content", tags: [` ${"e\u0301".repeat(51)} `] },
+    { category: "goal" as const, key: ` ${"k".repeat(101)} `, content: "content", author: "L" },
+    { category: "goal" as const, key: "key", content: ` ${"c".repeat(4_001)} `, author: "L" },
+    { category: "goal" as const, key: "key", content: "content", tags: [` ${"e\u0301".repeat(51)} `], author: "L" },
   ]) {
     await assert.rejects(service.createMcpMemory({ userId: "user-a" }, input, "memory-boundary-0002"), (error) => error instanceof MemoryDomainError && ["INVALID_MEMORY_KEY", "INVALID_MEMORY_CONTENT", "INVALID_MEMORY_TAGS"].includes(error.code));
   }
@@ -128,6 +131,6 @@ test("MCP Memory length limits apply after NFC normalization and trim", async ()
 test("Web Memory creation remains source web", async () => {
   const calls: unknown[] = [];
   const service = new MemoryService(repository({ async createMemory(input) { calls.push(input); } }));
-  await service.createMemory({ userId: "user-a", category: "profile", key: "name", content: "Leilei", tags: [] });
+  await service.createMemory({ userId: "user-a", category: "profile", key: "name", content: "Leilei", tags: [], author: "G" });
   assert.equal((calls[0] as { source: string }).source, "web");
 });

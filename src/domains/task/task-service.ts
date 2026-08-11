@@ -231,6 +231,7 @@ export class TaskService {
       timezone: normalized.timezone,
       tags: normalized.tags,
       completed_at: null,
+      author: normalized.author,
     });
 
     const persisted = await repository.call(this.repository, {

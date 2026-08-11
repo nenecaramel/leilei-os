@@ -20,6 +20,7 @@ const taskStatusSchema = z.enum([
   "completed",
   "cancelled",
 ]);
+const contentAuthorSchema = z.enum(["L", "G"]);
 
 const createTaskInputSchema = z
   .object({
@@ -51,6 +52,7 @@ const createTaskInputSchema = z
       .array(z.string().min(1).max(50))
       .max(20)
       .describe("Organizational labels; use an empty array when none apply."),
+    author: contentAuthorSchema.describe("The logical content author: L or G."),
     idempotency_key: z
       .string()
       .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
@@ -82,6 +84,7 @@ const createTaskOutputSchema = z.object({
       created_at: z.string().datetime(),
       updated_at: z.string().datetime(),
       completed_at: z.string().datetime().nullable(),
+      author: contentAuthorSchema.nullable(),
     }),
   }),
 });
@@ -118,7 +121,7 @@ export function registerCreateTaskTool(
         openWorldHint: false,
       },
     },
-    async ({ title, description, due_time, timezone, priority, tags, idempotency_key }) =>
+    async ({ title, description, due_time, timezone, priority, tags, author, idempotency_key }) =>
       invokeMcpWrite({
         toolName: "create_task",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
@@ -132,6 +135,7 @@ export function registerCreateTaskTool(
               timezone,
               priority,
               tags,
+              author,
             },
             idempotency_key,
           );

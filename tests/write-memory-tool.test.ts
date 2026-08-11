@@ -7,7 +7,7 @@ import type { CreateMcpMemoryResult } from "../src/domains/memory/memory-service
 
 const userId = "00000000-0000-4000-8000-000000000099";
 const result: CreateMcpMemoryResult = {
-  memory: { id: "00000000-0000-4000-8000-000000000101", category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], source: "mcp", lifecycle_status: "active", created_at: "2026-08-01T08:00:00.000Z", updated_at: "2026-08-01T08:00:00.000Z" },
+  memory: { id: "00000000-0000-4000-8000-000000000101", category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], source: "mcp", lifecycle_status: "active", created_at: "2026-08-01T08:00:00.000Z", updated_at: "2026-08-01T08:00:00.000Z", author: "L" },
   metadata: { created: true, idempotent_replay: false },
 };
 
@@ -38,9 +38,9 @@ test("write_memory exposes the confirmed idempotent server-owned contract", asyn
   assert.match(tool.description ?? "", /explicitly approves/);
   assert.match(tool.description ?? "", /get_memory/);
 
-  const response = await client.callTool({ name: "write_memory", arguments: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], idempotency_key: "memory-request-0001" } });
+  const response = await client.callTool({ name: "write_memory", arguments: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L", idempotency_key: "memory-request-0001" } });
   assert.equal(response.isError, undefined);
-  assert.deepEqual(calls, [{ context: { userId }, input: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"] }, key: "memory-request-0001" }]);
+  assert.deepEqual(calls, [{ context: { userId }, input: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L" }, key: "memory-request-0001" }]);
   assert.deepEqual(response.structuredContent, { success: true, data: result });
 });
 
@@ -48,10 +48,10 @@ test("write_memory rejects identity injection and invalid values before service"
   const { client, server, calls, authenticationCalls } = await fixture();
   t.after(async () => { await client.close(); await server.close(); });
   for (const argumentsValue of [
-    { category: "goal", key: "ship", content: "Ship safely", idempotency_key: "memory-request-0002", user_id: userId },
-    { category: "goal", key: "ship", content: "Ship safely", idempotency_key: "memory-request-0002b", userId },
-    { category: "other", key: "ship", content: "Ship safely", idempotency_key: "memory-request-0003" },
-    { category: "goal", key: "ship", content: "Ship safely", tags: Array.from({ length: 21 }, () => "x"), idempotency_key: "memory-request-0004" },
+    { category: "goal", key: "ship", content: "Ship safely", author: "L", idempotency_key: "memory-request-0002", user_id: userId },
+    { category: "goal", key: "ship", content: "Ship safely", author: "L", idempotency_key: "memory-request-0002b", userId },
+    { category: "other", key: "ship", content: "Ship safely", author: "L", idempotency_key: "memory-request-0003" },
+    { category: "goal", key: "ship", content: "Ship safely", author: "L", tags: Array.from({ length: 21 }, () => "x"), idempotency_key: "memory-request-0004" },
   ]) {
     const response = await client.callTool({ name: "write_memory", arguments: argumentsValue });
     assert.equal(response.isError, true);
@@ -69,7 +69,7 @@ test("write_memory response distinguishes creation, active replay, and archived 
   for (const [index, item] of cases.entries()) {
     const { client, server } = await fixture(item.value);
     t.after(async () => { await client.close(); await server.close(); });
-    const response = await client.callTool({ name: "write_memory", arguments: { category: "goal", key: "ship", content: "Ship safely", idempotency_key: `memory-response-000${index}` } });
+    const response = await client.callTool({ name: "write_memory", arguments: { category: "goal", key: "ship", content: "Ship safely", author: "L", idempotency_key: `memory-response-000${index}` } });
     const text = String(response.content[0] && "text" in response.content[0] ? response.content[0].text : "");
     assert.match(text, item.includes);
     assert.doesNotMatch(text, item.excludes);
@@ -84,6 +84,7 @@ test("write_memory schema defers normalized length boundaries to MemoryService",
     key: ` ${"k".repeat(100)} `,
     content: ` ${"c".repeat(4_000)} `,
     tags: [` ${"e\u0301".repeat(50)} `],
+    author: "G",
     idempotency_key: "memory-boundary-0001",
   } });
   assert.equal(response.isError, undefined);

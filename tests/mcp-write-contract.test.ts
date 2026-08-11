@@ -26,6 +26,7 @@ function taskResult(): CreateTaskResult {
       created_at: "2026-08-01T00:00:00.000Z",
       updated_at: "2026-08-01T00:00:00.000Z",
       completed_at: null,
+      author: "L",
     },
   };
 }
@@ -38,6 +39,7 @@ function diaryResult(): CreateDiaryResult {
       date: "2026-08-01",
       tags: [],
       mood: null,
+      author: "G",
       created_at: "2026-08-01T00:00:00.000Z",
     },
     metadata: { created: true, idempotent_replay: false },
@@ -56,6 +58,7 @@ function memoryResult(): CreateMcpMemoryResult {
       lifecycle_status: "active",
       created_at: "2026-08-01T00:00:00.000Z",
       updated_at: "2026-08-01T00:00:00.000Z",
+      author: "L",
     },
     metadata: { created: true, idempotent_replay: false },
   };
@@ -166,6 +169,7 @@ async function invokeAllWrites(client: Client) {
         description: "Task description",
         priority: "normal",
         tags: [],
+        author: "L",
         idempotency_key: "task-contract-20260801",
       },
     }),
@@ -176,6 +180,7 @@ async function invokeAllWrites(client: Client) {
         content: "Diary content",
         date: "2026-08-01",
         tags: [],
+        author: "G",
         idempotency_key: "diary-20260801-contract",
       },
     }),
@@ -186,6 +191,7 @@ async function invokeAllWrites(client: Client) {
         key: "confirmed_goal",
         content: "Confirmed content",
         tags: ["confirmed"],
+        author: "L",
         idempotency_key: "memory-20260801-contract",
       },
     }),
@@ -222,6 +228,10 @@ test("MCP exposes exactly five write tools and preserves every annotation", asyn
   assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "write_diary")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "write_memory")?.annotations?.idempotentHint, true);
+  for (const name of ["create_task", "write_diary", "write_memory"]) {
+    const tool = tools.find((candidate) => candidate.name === name);
+    assert.ok(tool?.inputSchema.required?.includes("author"));
+  }
   for (const name of ["toy_set", "toy_stop"]) {
     const tool = tools.find((candidate) => candidate.name === name);
     assert.equal(tool?.annotations?.destructiveHint, true);

@@ -68,6 +68,7 @@ export type CreateMcpMemoryResult = {
     tags: string[];
     source: "mcp";
     lifecycle_status: "active" | "archived";
+    author: ContentAuthor | null;
     created_at: string;
     updated_at: string;
   };
@@ -349,10 +350,10 @@ export class MemoryService {
       key,
       content,
       tags,
+      author: input.author!,
       source: "mcp",
       idempotencyKey: normalizedIdempotencyKey,
-      requestHash: hashMcpWriteRequest({ category, key, content, tags }),
-      author: input.author!,
+      requestHash: hashMcpWriteRequest({ category, key, content, tags, author: input.author! }),
     });
 
     if (persisted.outcome === "conflict") {
@@ -376,6 +377,7 @@ export class MemoryService {
         lifecycle_status: persisted.memory.status,
         created_at: persisted.memory.createdAt.toISOString(),
         updated_at: persisted.memory.updatedAt.toISOString(),
+        author: persisted.memory.author ?? null,
       },
       metadata: {
         created: persisted.outcome === "created",

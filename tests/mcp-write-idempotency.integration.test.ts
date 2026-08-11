@@ -44,9 +44,9 @@ async function withService<T>(operation: (services: {
   }
 }
 
-const taskInput = (suffix: string) => ({ title: `Task ${suffix}`, description: `private-task-${suffix}`, priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: ["mcp"] });
-const diaryInput = (key: string, suffix: string) => ({ title: `Diary ${suffix}`, content: `private-diary-${suffix}`, date: "2026-08-01", tags: ["mcp"], mood: null, idempotencyKey: key });
-const memoryInput = (suffix: string) => ({ category: "goal" as const, key: ` memory_${suffix} `, content: ` private-memory-${suffix} `, tags: [" mcp ", "mcp", "Cafe\u0301"] });
+const taskInput = (suffix: string) => ({ title: `Task ${suffix}`, description: `private-task-${suffix}`, priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: ["mcp"], author: "L" as const });
+const diaryInput = (key: string, suffix: string) => ({ title: `Diary ${suffix}`, content: `private-diary-${suffix}`, date: "2026-08-01", tags: ["mcp"], mood: null, author: "L" as const, idempotencyKey: key });
+const memoryInput = (suffix: string) => ({ category: "goal" as const, key: ` memory_${suffix} `, content: ` private-memory-${suffix} `, tags: [" mcp ", "mcp", "Cafe\u0301"], author: "L" as const });
 
 test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and atomic", { skip: !RUN }, async () => {
   const admin = connection();
@@ -125,6 +125,7 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
         content: "private-memory-same",
         tags: ["mcp", "Café"],
         source: "mcp",
+        author: "L",
         updated_at: readback.updated_at,
       });
       const [lifecycleAfterWrite] = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents);
@@ -154,8 +155,10 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
   const legacyHash = createHash("sha256").update(JSON.stringify(legacyPayload), "utf8").digest("hex");
   const [legacy] = await admin.db.insert(schema.diaryEntries).values({ userId: owner, ...legacyPayload, source: "chatgpt_mcp", status: "active", idempotencyKey: legacyKey, requestHash: legacyHash }).returning({ id: schema.diaryEntries.id });
   await admin.db.insert(schema.toolCalls).values({ userId: owner, toolName: "write_diary", operation: "create", resourceType: "diary_entry", resourceId: legacy!.id, idempotencyKey: legacyKey, requestSummary: {}, resultSummary: {}, durationMs: 1, status: "success" });
-  const bridged = await withService(({ diary }) => diary.createMcpDiary({ userId: owner }, { ...legacyPayload, idempotencyKey: legacyKey }), owner);
-  assert.equal(bridged.diary.id, legacy!.id);
+  await assert.rejects(
+    withService(({ diary }) => diary.createMcpDiary({ userId: owner }, { ...legacyPayload, author: "L", idempotencyKey: legacyKey }), owner),
+    (error: unknown) => error instanceof DiaryDomainError && error.code === "IDEMPOTENCY_CONFLICT",
+  );
   const bridgeAudit = await admin.db.select({ value: count() }).from(schema.toolCalls).where(and(eq(schema.toolCalls.userId, owner), eq(schema.toolCalls.idempotencyKey, legacyKey)));
   assert.equal(bridgeAudit[0]?.value, 1);
 

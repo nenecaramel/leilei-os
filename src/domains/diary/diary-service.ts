@@ -490,16 +490,17 @@ export class DiaryService {
       input.idempotencyKey,
     );
 
-    const hashPayload = {
+    const legacyHashPayload = {
       title: normalized.title,
       content: normalized.content,
       date: normalized.date,
       tags: normalized.tags,
       mood: normalized.mood,
     };
+    const hashPayload = { ...legacyHashPayload, author: input.author! };
 
     const requestHash = createHash("sha256")
-      .update(JSON.stringify(hashPayload), "utf8")
+      .update(JSON.stringify(legacyHashPayload), "utf8")
       .digest("hex");
 
     return {
