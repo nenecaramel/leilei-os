@@ -10,6 +10,10 @@ const main = readFileSync(
   new URL("../web/src/main.tsx", import.meta.url),
   "utf8",
 );
+const dialog = readFileSync(
+  new URL("../web/src/pages/PaperDetailDialog.tsx", import.meta.url),
+  "utf8",
+);
 
 test("the production entrypoint loads only author-specific layout overrides", () => {
   assert.match(main, /import\s+["']\.\/pages\/lg-author-editor-layout-fix\.css["'];/);
@@ -23,6 +27,7 @@ test("author edit trigger stays on the read-mode signature baseline", () => {
 
 test("missing author has no persistent text label in the paper chrome", () => {
   assert.match(css, /\.paper-author-signature-error\s*\{[\s\S]*display:\s*none\s*!important/s);
+  assert.match(dialog, /const visibleErrorMessage = errorMessage === "请选择作者" \? null : errorMessage;/);
 });
 
 test("author hotfix never overrides module metadata editor geometry or typography", () => {
