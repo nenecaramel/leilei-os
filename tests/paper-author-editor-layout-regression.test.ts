@@ -14,6 +14,10 @@ const dialog = readFileSync(
   new URL("../web/src/pages/PaperDetailDialog.tsx", import.meta.url),
   "utf8",
 );
+const authorComponent = readFileSync(
+  new URL("../web/src/pages/PaperAuthorSignature.tsx", import.meta.url),
+  "utf8",
+);
 
 test("the production entrypoint loads only author-specific layout overrides", () => {
   assert.match(main, /import\s+["']\.\/pages\/lg-author-editor-layout-fix\.css["'];/);
@@ -45,7 +49,9 @@ test("author hotfix never overrides module metadata editor geometry or typograph
   assert.doesNotMatch(css, /\bzoom\s*:/);
 });
 
-test("author anchor cannot relocate the accepted bottom-left metadata slot", () => {
-  assert.match(css, /\.paper-detail-bottom-left:has\(\.paper-author-signature-anchor\)[\s\S]*left:\s*24px\s*!important/s);
-  assert.match(css, /\.paper-detail-bottom-left:has\(\.paper-author-signature-anchor\)[\s\S]*right:\s*auto\s*!important/s);
+test("author integration contributes no DOM node to bottom-left metadata", () => {
+  assert.doesNotMatch(authorComponent, /paper-author-signature-anchor/);
+  assert.doesNotMatch(css, /paper-detail-bottom-left/);
+  assert.match(authorComponent, /querySelector<HTMLElement>\("\.paper-detail-layer \.paper-detail-signature"\)/);
+  assert.match(authorComponent, /createPortal\(signature, signatureSlot\)/);
 });

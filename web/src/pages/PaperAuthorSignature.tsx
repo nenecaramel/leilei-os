@@ -19,17 +19,14 @@ export function PaperAuthorSignature({
   onChange,
 }: PaperAuthorSignatureProps) {
   const [open, setOpen] = useState(false);
-  const [signatureSlot, setSignatureSlot] = useState<HTMLElement | null>(null);
-  const [slotResolved, setSlotResolved] = useState(false);
-  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [signatureSlot, setSignatureSlot] = useState<HTMLElement | null | undefined>(undefined);
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const display = value ?? "—";
 
   useEffect(() => {
-    const paper = anchorRef.current?.closest<HTMLElement>(".paper-detail-paper") ?? null;
-    const slot = paper?.querySelector<HTMLElement>(".paper-detail-signature") ?? null;
-    setSignatureSlot(slot);
-    setSlotResolved(true);
+    setSignatureSlot(
+      document.querySelector<HTMLElement>(".paper-detail-layer .paper-detail-signature"),
+    );
   }, []);
 
   useEffect(() => {
@@ -82,14 +79,6 @@ export function PaperAuthorSignature({
     </span>
   );
 
-  return (
-    <>
-      <span ref={anchorRef} className="paper-author-signature-anchor" aria-hidden="true" />
-      {signatureSlot
-        ? createPortal(signature, signatureSlot)
-        : slotResolved
-          ? signature
-          : null}
-    </>
-  );
+  if (signatureSlot === undefined) return null;
+  return signatureSlot ? createPortal(signature, signatureSlot) : signature;
 }
