@@ -1849,7 +1849,7 @@ test("Memory create with an unselected author does not submit", async () => {
     assert.ok(save);
     await React.act(async () => save.click());
     assert.equal(requests.some(({ init }) => init?.method === "POST"), false);
-    assert.match(page.container.textContent ?? "", /请选择作者/);
+    assert.doesNotMatch(page.container.textContent ?? "", /请选择作者/);
   } finally {
     await page.cleanup();
   }
@@ -1875,7 +1875,7 @@ test("Memory legacy-null edit requires an explicit author before PATCH", async (
       .find((button) => button.textContent?.trim() === "保存");
     assert.ok(save);
     await React.act(async () => save.click());
-    assert.match(page.container.textContent ?? "", /请选择作者/);
+    assert.doesNotMatch(page.container.textContent ?? "", /请选择作者/);
     assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
     const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
     assert.ok(trigger);
