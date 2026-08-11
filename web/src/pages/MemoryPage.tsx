@@ -16,6 +16,10 @@ import {
 } from "./MemoryPaperEditor";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import {
+  PaperAuthorSignature,
+  type PaperAuthorValue,
+} from "./PaperAuthorSignature";
+import {
   formatMemoryPaperDate,
   formatMemoryRowDate,
   formatMemoryRowMeta,
@@ -69,6 +73,7 @@ type MemoryRecord = {
   tags: string[];
   source: string;
   updated_at: string;
+  author: PaperAuthorValue;
 };
 
 type MemoryResponse = {
@@ -228,6 +233,7 @@ export function MemoryPageContent({
   const [key, setKey] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
+  const [author, setAuthor] = useState<PaperAuthorValue>(null);
   const [creating, setCreating] = useState(false);
   const createEditorRef = useRef<MemoryPaperEditorHandle | null>(null);
   const paperTriggerRef = useRef<HTMLElement | null>(null);
@@ -238,19 +244,21 @@ export function MemoryPageContent({
   const [editingCategory, setEditingCategory] = useState<MemoryCategory>("profile");
   const [editingContent, setEditingContent] = useState("");
   const [editingTags, setEditingTags] = useState("");
+  const [editingAuthor, setEditingAuthor] = useState<PaperAuthorValue>(null);
   const [updatingId, setUpdatingId] = useState("");
   const [archivingId, setArchivingId] = useState("");
   const [restoringId, setRestoringId] = useState("");
 
   const createDirty = showCreate && (
-    category !== "profile" || key !== "" || content !== "" || tags !== ""
+    category !== "profile" || key !== "" || content !== "" || tags !== "" || author !== null
   );
   const editDirty = Boolean(
     editingId && detailState.status === "ready" && (
       editingKey !== detailState.memory.key ||
       editingCategory !== detailState.memory.category ||
       editingContent !== detailState.memory.content ||
-      editingTags !== detailState.memory.tags.join(", ")
+      editingTags !== detailState.memory.tags.join(", ") ||
+      editingAuthor !== detailState.memory.author
     ),
   );
   const createDirtyRef = useRef(false);
@@ -287,6 +295,7 @@ export function MemoryPageContent({
       setKey("");
       setContent("");
       setTags("");
+      setAuthor(null);
       setShowCreate(false);
     }
     if (editDirtyRef.current) {
@@ -295,6 +304,7 @@ export function MemoryPageContent({
       setEditingCategory("profile");
       setEditingContent("");
       setEditingTags("");
+      setEditingAuthor(null);
     }
   }
 
@@ -378,6 +388,7 @@ export function MemoryPageContent({
       setEditingCategory("profile");
       setEditingContent("");
       setEditingTags("");
+      setEditingAuthor(null);
       setLocation(nextLocation);
       setArchiveLocation(nextArchiveLocation);
       setArchivedDetailLocation(nextArchivedDetailLocation);
@@ -635,7 +646,7 @@ export function MemoryPageContent({
 
   async function handleCreate() {
     if (createInvalid) {
-      setActionError("Key 和 Content 都不能为空。");
+      setActionError(author === null ? "请选择作者" : "Key 和 Content 都不能为空。");
       return;
     }
     if (!mutationGate.current.enter()) return;
@@ -653,6 +664,7 @@ export function MemoryPageContent({
           key: key.trim(),
           content: content.trim(),
           tags: parseTags(tags),
+          author,
         }),
       });
 
@@ -660,6 +672,7 @@ export function MemoryPageContent({
       setKey("");
       setContent("");
       setTags("");
+      setAuthor(null);
       setShowCreate(false);
       setReloadKey((value) => value + 1);
     } catch {
@@ -677,6 +690,10 @@ export function MemoryPageContent({
       setActionError("Key 和 Content 都不能为空。");
       return;
     }
+    if (editingAuthor == null) {
+      setActionError("请选择作者");
+      return;
+    }
 
     if (!mutationGate.current.enter()) return;
     const ticket = mutationOwnership.current.begin();
@@ -692,6 +709,7 @@ export function MemoryPageContent({
           category: editingCategory,
           content: editingContent.trim(),
           tags: parseTags(editingTags),
+          author: editingAuthor,
         }),
       });
 
@@ -701,6 +719,7 @@ export function MemoryPageContent({
       setEditingCategory("profile");
       setEditingContent("");
       setEditingTags("");
+      setEditingAuthor(null);
       setReloadKey((value) => value + 1);
       if (isDetail) setDetailReloadKey((value) => value + 1);
     } catch {
@@ -750,6 +769,7 @@ export function MemoryPageContent({
         setEditingCategory("profile");
         setEditingContent("");
         setEditingTags("");
+        setEditingAuthor(null);
       }
 
       setReloadKey((value) => value + 1);
@@ -789,6 +809,7 @@ export function MemoryPageContent({
     setEditingCategory("profile");
     setEditingContent("");
     setEditingTags("");
+    setEditingAuthor(null);
     setLocation(getMemoryDetailLocation(window.location.search));
     setDetailState({ status: "loading" });
   }
@@ -819,6 +840,7 @@ export function MemoryPageContent({
     setEditingCategory("profile");
     setEditingContent("");
     setEditingTags("");
+    setEditingAuthor(null);
     setLocation({ memoryId: null, returnTo: "/memory" });
     setDetailState({ status: "idle" });
 
@@ -1044,7 +1066,7 @@ export function MemoryPageContent({
                   open
                   label="创建 Memory"
                   dateLabel={formatMemoryPaperDate(new Date().toISOString())}
-                  signature="N"
+                  signature=""
                   triggerRef={paperTriggerRef}
                   onRequestClose={() => {
                     if (!confirmAndDiscardDraft()) return false;
@@ -1076,19 +1098,31 @@ export function MemoryPageContent({
                     </>
                   }
                   bottomLeft={
-                    <MemoryPaperMetadataEditor
-                      category={category}
-                      tagsValue={tags}
-                      disabled={creating}
-                      onCategoryChange={(value) => {
-                        setCategory(value);
-                        setActionError("");
-                      }}
-                      onTagsChange={(value) => {
-                        setTags(value);
-                        setActionError("");
-                      }}
-                    />
+                    <>
+                      <MemoryPaperMetadataEditor
+                        category={category}
+                        tagsValue={tags}
+                        disabled={creating}
+                        onCategoryChange={(value) => {
+                          setCategory(value);
+                          setActionError("");
+                        }}
+                        onTagsChange={(value) => {
+                          setTags(value);
+                          setActionError("");
+                        }}
+                      />
+                      <PaperAuthorSignature
+                        value={author}
+                        editable
+                        disabled={creating}
+                        onChange={(value) => {
+                          setAuthor(value);
+                          setActionError("");
+                        }}
+                        error={author === null ? actionError : null}
+                      />
+                    </>
                   }
                   errorMessage={actionError || null}
                 >
@@ -1198,6 +1232,7 @@ export function MemoryPageContent({
               editingCategory={editingCategory}
               editingContent={editingContent}
               editingTags={editingTags}
+              editingAuthor={editingAuthor}
               updating={updatingId === detailMemory?.id}
               archiving={archivingId === detailMemory?.id}
               onEditingKeyChange={(value) => {
@@ -1216,12 +1251,17 @@ export function MemoryPageContent({
                 setEditingTags(value);
                 setActionError("");
               }}
+              onEditingAuthorChange={(value) => {
+                setEditingAuthor(value);
+                setActionError("");
+              }}
               onEdit={(memory) => {
                 setEditingId(memory.id);
                 setEditingKey(memory.key);
                 setEditingCategory(memory.category);
                 setEditingContent(memory.content);
                 setEditingTags(memory.tags.join(", "));
+                setEditingAuthor(memory.author ?? null);
                 setActionError("");
               }}
               onCancel={() => {
@@ -1232,6 +1272,7 @@ export function MemoryPageContent({
                 setEditingCategory("profile");
                 setEditingContent("");
                 setEditingTags("");
+                setEditingAuthor(null);
                 setActionError("");
               }}
               onSave={() => {
@@ -1389,7 +1430,7 @@ function ArchivedMemoryDetail({
         open
         label="正在读取归档 Memory"
         dateLabel=""
-        signature="N"
+        signature=""
         triggerRef={triggerRef}
         onRequestClose={() => {
           onBack();
@@ -1434,7 +1475,7 @@ function ArchivedMemoryDetail({
       open
       label={`已归档 Memory ${getMemoryRowTitle(memory)}`}
       dateLabel={formatMemoryPaperDate(memory.updated_at)}
-      signature="N"
+      signature=""
       triggerRef={triggerRef}
       errorMessage={errorMessage}
       onRequestClose={() => {
@@ -1451,10 +1492,12 @@ function ArchivedMemoryDetail({
           {restoring ? "恢复中…" : "恢复"}
         </button>
       }
-      bottomLeft={formatMemoryRowMeta(
-        memory,
-        categoryLabels[memory.category],
-      )}
+      bottomLeft={
+        <>
+          <span>{formatMemoryRowMeta(memory, categoryLabels[memory.category])}</span>
+          <PaperAuthorSignature value={memory.author} editable={false} />
+        </>
+      }
     >
       {memory.key.trim() ? (
         <h2 className="memory-paper-title">
@@ -1478,12 +1521,14 @@ function MemoryDetail({
   editingCategory,
   editingContent,
   editingTags,
+  editingAuthor,
   updating,
   archiving,
   onEditingKeyChange,
   onEditingCategoryChange,
   onEditingContentChange,
   onEditingTagsChange,
+  onEditingAuthorChange,
   onEdit,
   onCancel,
   onSave,
@@ -1499,12 +1544,14 @@ function MemoryDetail({
   editingCategory: MemoryCategory;
   editingContent: string;
   editingTags: string;
+  editingAuthor: PaperAuthorValue;
   updating: boolean;
   archiving: boolean;
   onEditingKeyChange(value: string): void;
   onEditingCategoryChange(value: MemoryCategory): void;
   onEditingContentChange(value: string): void;
   onEditingTagsChange(value: string): void;
+  onEditingAuthorChange(value: "L" | "G"): void;
   onEdit(memory: MemoryRecord): void;
   onCancel(): void;
   onSave(): void;
@@ -1519,7 +1566,7 @@ function MemoryDetail({
         open
         label="正在读取 Memory"
         dateLabel=""
-        signature="N"
+        signature=""
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
@@ -1535,7 +1582,7 @@ function MemoryDetail({
         open
         label="无法读取 Memory"
         dateLabel=""
-        signature="N"
+        signature=""
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
         topRight={<button className="memory-paper-control" onClick={onRetry}>重试</button>}
@@ -1553,7 +1600,7 @@ function MemoryDetail({
       open
       label={`Memory ${getMemoryRowTitle(memory)}`}
       dateLabel={formatMemoryPaperDate(memory.updated_at)}
-      signature="N"
+      signature=""
       triggerRef={triggerRef}
       errorMessage={errorMessage}
       onRequestClose={onRequestClose}
@@ -1582,14 +1629,28 @@ function MemoryDetail({
       }
       bottomLeft={
         editing ? (
-          <MemoryPaperMetadataEditor
-            category={editingCategory}
-            tagsValue={editingTags}
-            disabled={updating}
-            onCategoryChange={onEditingCategoryChange}
-            onTagsChange={onEditingTagsChange}
-          />
-        ) : formatMemoryRowMeta(memory, categoryLabels[memory.category])
+          <>
+            <MemoryPaperMetadataEditor
+              category={editingCategory}
+              tagsValue={editingTags}
+              disabled={updating}
+              onCategoryChange={onEditingCategoryChange}
+              onTagsChange={onEditingTagsChange}
+            />
+            <PaperAuthorSignature
+              value={editingAuthor}
+              editable
+              disabled={updating}
+              onChange={onEditingAuthorChange}
+              error={editingAuthor === null ? errorMessage : null}
+            />
+          </>
+        ) : (
+          <>
+            <span>{formatMemoryRowMeta(memory, categoryLabels[memory.category])}</span>
+            <PaperAuthorSignature value={memory.author} editable={false} />
+          </>
+        )
       }
     >
       {editing ? (
