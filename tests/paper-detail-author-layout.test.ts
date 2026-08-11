@@ -42,7 +42,7 @@ async function withDom(
   }
 }
 
-test("paper metadata stays bottom-left while author owns an independent bottom-right slot", async () => {
+test("paper metadata stays bottom-left while author reuses the original signature slot", async () => {
   const triggerRef = React.createRef<HTMLElement>();
 
   await withDom(
@@ -56,23 +56,27 @@ test("paper metadata stays bottom-left while author owns an independent bottom-r
         signature: "",
         triggerRef,
         onRequestClose: () => true,
-        bottomLeft: React.createElement("span", { "data-testid": "metadata" }, "Project · #tag"),
-        bottomRight: React.createElement(PaperAuthorSignature, {
-          value: null,
-          editable: false,
-        }),
+        bottomLeft: React.createElement(
+          React.Fragment,
+          null,
+          React.createElement("span", { "data-testid": "metadata" }, "Project · #tag"),
+          React.createElement(PaperAuthorSignature, {
+            value: null,
+            editable: false,
+          }),
+        ),
       },
       React.createElement("p", null, "body"),
     ),
     (root) => {
       const bottomLeft = root.querySelector<HTMLElement>(".paper-detail-bottom-left");
-      const bottomRight = root.querySelector<HTMLElement>(".paper-detail-bottom-right");
+      const signatureSlot = root.querySelector<HTMLElement>(".paper-detail-signature");
       assert.ok(bottomLeft);
-      assert.ok(bottomRight);
+      assert.ok(signatureSlot);
       assert.equal(bottomLeft.textContent, "Project · #tag");
       assert.equal(bottomLeft.querySelector(".paper-author-signature"), null);
-      assert.equal(bottomRight.textContent, "—");
-      assert.ok(bottomRight.querySelector(".paper-author-signature"));
+      assert.equal(signatureSlot.textContent, "—");
+      assert.ok(signatureSlot.querySelector(".paper-author-signature"));
     },
   );
 });
