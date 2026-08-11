@@ -69,10 +69,29 @@ export function PaperDetailDialog({
 
     closingRef.current = false;
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const body = document.body;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const previousBodyStyle = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    };
 
-    paperRef.current?.focus();
+    // iOS Safari can move the document/visual viewport when a low paper input
+    // receives focus even while overflow is hidden. Freeze the background at
+    // its exact scroll position for the lifetime of the paper dialog.
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = `-${scrollX}px`;
+    body.style.right = "0";
+    body.style.width = "100%";
+
+    paperRef.current?.focus({ preventScroll: true });
 
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -84,8 +103,14 @@ export function PaperDetailDialog({
 
     return () => {
       document.removeEventListener("keydown", handleDocumentKeyDown);
-      document.body.style.overflow = previousOverflow;
-      triggerRef.current?.focus();
+      body.style.overflow = previousBodyStyle.overflow;
+      body.style.position = previousBodyStyle.position;
+      body.style.top = previousBodyStyle.top;
+      body.style.left = previousBodyStyle.left;
+      body.style.right = previousBodyStyle.right;
+      body.style.width = previousBodyStyle.width;
+      window.scrollTo(scrollX, scrollY);
+      triggerRef.current?.focus({ preventScroll: true });
     };
   }, [open, requestClose, triggerRef]);
 
@@ -98,7 +123,7 @@ export function PaperDetailDialog({
     const focusable = [...paper.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)];
     if (focusable.length === 0) {
       event.preventDefault();
-      paper.focus();
+      paper.focus({ preventScroll: true });
       return;
     }
 
@@ -108,10 +133,10 @@ export function PaperDetailDialog({
 
     if (event.shiftKey && (active === first || active === paper)) {
       event.preventDefault();
-      last.focus();
+      last.focus({ preventScroll: true });
     } else if (!event.shiftKey && active === last) {
       event.preventDefault();
-      first.focus();
+      first.focus({ preventScroll: true });
     }
   };
 
