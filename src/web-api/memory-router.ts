@@ -8,6 +8,7 @@ import {
 import type {
   MemoryOrdering,
 } from "../domains/memory/memory-repository.js";
+import type { ContentAuthor } from "../domains/content-author.js";
 
 export type MemoryApiDependencies = {
   memoryService: {
@@ -46,6 +47,7 @@ export type MemoryApiDependencies = {
       key: string;
       content: string;
       tags?: readonly string[];
+      author: ContentAuthor;
     }): Promise<void>;
 
     updateMemory(input: {
@@ -55,6 +57,7 @@ export type MemoryApiDependencies = {
       category: "profile" | "preference" | "goal" | "project";
       content: string;
       tags?: readonly string[];
+      author?: ContentAuthor;
     }): Promise<void>;
 
     archiveMemory(input: {
@@ -430,6 +433,7 @@ export function createCreateMemoryApiHandler(
         key: request.body.key,
         content: request.body.content,
         tags: request.body.tags,
+        author: request.body.author,
       });
 
       response.json({
@@ -485,6 +489,9 @@ export function createUpdateMemoryApiHandler(
         category: request.body.category,
         content: request.body.content,
         tags: request.body.tags,
+        ...(request.body.author === undefined
+          ? {}
+          : { author: request.body.author }),
       });
 
       response.json({
@@ -492,6 +499,17 @@ export function createUpdateMemoryApiHandler(
       });
     } catch (error) {
       if (error instanceof MemoryDomainError) {
+        if (error.code === "AUTHOR_REQUIRED") {
+          response.status(400).json({
+            success: false,
+            error: {
+              code: "AUTHOR_REQUIRED",
+              message: "Author selection is required.",
+            },
+          });
+          return;
+        }
+
         if (error.code === "MEMORY_NOT_FOUND") {
           response.status(404).json({
             success: false,

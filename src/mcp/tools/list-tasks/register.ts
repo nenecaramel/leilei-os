@@ -29,6 +29,7 @@ const taskTimeBucketSchema = z.enum([
 ]);
 const taskActionSchema = z.enum(["start", "complete", "cancel", "reopen"]);
 const dateTimeSchema = z.string().datetime();
+const contentAuthorSchema = z.enum(["L", "G"]);
 
 const listTasksInputSchema = z
   .object({
@@ -56,6 +57,7 @@ const taskListItemSchema = z.object({
   updated_at: dateTimeSchema,
   completed_at: dateTimeSchema.nullable(),
   allowed_actions: z.array(taskActionSchema),
+  author: contentAuthorSchema.nullable(),
 });
 
 const listTasksOutputSchema = z.object({
@@ -125,6 +127,7 @@ export function registerListTasksTool(
               updated_at,
               completed_at,
               allowed_actions,
+              author,
             }) => ({
               id,
               title,
@@ -138,6 +141,7 @@ export function registerListTasksTool(
               updated_at,
               completed_at,
               allowed_actions,
+              author,
             }),
           ),
           metadata: result.metadata,

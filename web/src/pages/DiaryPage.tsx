@@ -17,6 +17,10 @@ import {
 } from "./DiaryPaperEditor";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import {
+  PaperAuthorSignature,
+  type PaperAuthorValue,
+} from "./PaperAuthorSignature";
+import {
   formatDiaryPaperDate,
   formatDiaryRowDate,
   formatDiaryRowMeta,
@@ -69,6 +73,7 @@ type DiaryEntry = {
   mood: string | null;
   created_at: string;
   updated_at: string;
+  author: PaperAuthorValue;
 };
 
 type DiaryListResponse = {
@@ -215,6 +220,7 @@ export function DiaryPageContent({
   const [date, setDate] = useState(getToday());
   const [tags, setTags] = useState("");
   const [mood, setMood] = useState("");
+  const [author, setAuthor] = useState<PaperAuthorValue>(null);
   const [selectedDiary, setSelectedDiary] = useState<DiaryEntry | null>(null);
   const [editing, setEditing] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -223,19 +229,21 @@ export function DiaryPageContent({
   const [editingDate, setEditingDate] = useState("");
   const [editingTags, setEditingTags] = useState("");
   const [editingMood, setEditingMood] = useState("");
+  const [editingAuthor, setEditingAuthor] = useState<PaperAuthorValue>(null);
   const [actionError, setActionError] = useState("");
   const [filterError, setFilterError] = useState("");
 
   const createDirty = showCreate && (
     title !== "" || content !== "" || tags !== "" || mood !== "" ||
-    date !== getToday()
+    date !== getToday() || author !== null
   );
   const editDirty = Boolean(selectedDiary && editing && (
     editingTitle !== selectedDiary.title ||
     editingContent !== selectedDiary.content ||
     editingDate !== selectedDiary.date ||
     editingTags !== selectedDiary.tags.join(", ") ||
-    editingMood !== (selectedDiary.mood ?? "")
+    editingMood !== (selectedDiary.mood ?? "") ||
+    editingAuthor !== selectedDiary.author
   ));
   const createDirtyRef = useRef(false);
   const editDirtyRef = useRef(false);
@@ -275,6 +283,7 @@ export function DiaryPageContent({
       setDate(getToday());
       setTags("");
       setMood("");
+      setAuthor(null);
       setShowCreate(false);
     }
     if (editDirtyRef.current) {
@@ -284,6 +293,7 @@ export function DiaryPageContent({
       setEditingDate("");
       setEditingTags("");
       setEditingMood("");
+      setEditingAuthor(null);
     }
   }
 
@@ -414,6 +424,7 @@ export function DiaryPageContent({
     setActionError("");
     setSelectedDiary(null);
     setEditing(false);
+    setEditingAuthor(null);
     setLocation(restoredLocation);
     setArchiveLocation(restoredArchiveLocation);
     setArchivedDetailLocation(restoredArchivedDetailLocation);
@@ -675,6 +686,7 @@ export function DiaryPageContent({
     setLocation({ diaryId: null, returnTo: "/diary" });
     setSelectedDiary(null);
     setEditing(false);
+    setEditingAuthor(null);
     if (hadList) {
       if (position !== null) {
         requestAnimationFrame(() => window.scrollTo({ top: position }));
@@ -853,7 +865,15 @@ export function DiaryPageContent({
     !editingTitle.trim() || !editingContent.trim() || !editingDate.trim();
 
   async function handleCreate(): Promise<void> {
-    if (createInvalid || !mutationGate.current.enter()) return;
+    if (createInvalid) {
+      setActionError("标题、正文和日期不能为空。");
+      return;
+    }
+    if (author === null) {
+      setActionError("请选择作者");
+      return;
+    }
+    if (!mutationGate.current.enter()) return;
     const ticket = mutationOwnership.current.begin();
     setCreating(true);
     setActionError("");
@@ -866,6 +886,7 @@ export function DiaryPageContent({
           date,
           tags: parseTags(tags),
           mood: mood.trim() || null,
+          author,
         }),
       });
       if (!mutationOwnership.current.owns(ticket)) return;
@@ -874,6 +895,7 @@ export function DiaryPageContent({
       setDate(getToday());
       setTags("");
       setMood("");
+      setAuthor(null);
       setShowCreate(false);
       listAvailableRef.current = false;
       loadedListUrlRef.current = "";
@@ -896,11 +918,17 @@ export function DiaryPageContent({
     setEditingDate(diary.date);
     setEditingTags(diary.tags.join(", "));
     setEditingMood(diary.mood ?? "");
+    setEditingAuthor(diary.author ?? null);
     setActionError("");
   }
 
   async function handleUpdate(): Promise<void> {
-    if (!selectedDiary || updateInvalid || !mutationGate.current.enter()) return;
+    if (!selectedDiary || updateInvalid) return;
+    if (editingAuthor == null) {
+      setActionError("请选择作者");
+      return;
+    }
+    if (!mutationGate.current.enter()) return;
     const ticket = mutationOwnership.current.begin();
     setUpdating(true);
     setActionError("");
@@ -915,12 +943,14 @@ export function DiaryPageContent({
             date: editingDate,
             tags: parseTags(editingTags),
             mood: editingMood.trim() || null,
+            author: editingAuthor,
           }),
         },
       );
       if (!mutationOwnership.current.owns(ticket)) return;
       setSelectedDiary(response.data);
       setEditing(false);
+      setEditingAuthor(response.data.author ?? null);
       listAvailableRef.current = false;
       loadedListUrlRef.current = "";
       setReloadKey((value) => value + 1);
@@ -1032,7 +1062,7 @@ if (isMobile) {
                       }}
                     />
                   }
-                  signature="N"
+                  signature=""
                   triggerRef={paperTriggerRef}
                   onRequestClose={() => {
                     if (!confirmAndDiscardDraft()) return false;
@@ -1064,19 +1094,31 @@ if (isMobile) {
                     </>
                   }
                   bottomLeft={
-                    <DiaryPaperMetadataEditor
-                      moodValue={mood}
-                      tagsValue={tags}
-                      disabled={creating}
-                      onMoodChange={(value) => {
-                        setMood(value);
-                        setActionError("");
-                      }}
-                      onTagsChange={(value) => {
-                        setTags(value);
-                        setActionError("");
-                      }}
-                    />
+                    <>
+                      <DiaryPaperMetadataEditor
+                        moodValue={mood}
+                        tagsValue={tags}
+                        disabled={creating}
+                        onMoodChange={(value) => {
+                          setMood(value);
+                          setActionError("");
+                        }}
+                        onTagsChange={(value) => {
+                          setTags(value);
+                          setActionError("");
+                        }}
+                      />
+                      <PaperAuthorSignature
+                        value={author}
+                        editable
+                        disabled={creating}
+                        onChange={(value) => {
+                          setAuthor(value);
+                          setActionError("");
+                        }}
+                        error={author === null ? actionError : null}
+                      />
+                    </>
                   }
                   errorMessage={actionError || null}
                 >
@@ -1162,6 +1204,11 @@ if (isMobile) {
               editing={editing}
               updating={updating}
               archiving={archiving}
+              author={editingAuthor}
+              onAuthorChange={(value) => {
+                setEditingAuthor(value);
+                setActionError("");
+              }}
               values={{
                 title: editingTitle,
                 content: editingContent,
@@ -1197,6 +1244,7 @@ if (isMobile) {
                 if (!confirmAndDiscardDraft()) return;
                 invalidateMutationContext();
                 setEditing(false);
+                setEditingAuthor(null);
                 setActionError("");
               }}
               onSave={() => void handleUpdate()}
@@ -1322,6 +1370,11 @@ if (isMobile) {
           diary={selectedDiary}
           editing={editing}
           updating={updating}
+          author={editingAuthor}
+          onAuthorChange={(value) => {
+            setEditingAuthor(value);
+            setActionError("");
+          }}
           values={{
             title: editingTitle,
             content: editingContent,
@@ -1341,6 +1394,7 @@ if (isMobile) {
             if (!confirmAndDiscardDraft()) return;
             invalidateMutationContext();
             setEditing(false);
+            setEditingAuthor(null);
           }}
           onSave={handleUpdate}
           onArchive={(id) => void archiveDiary(id)}
@@ -1358,6 +1412,16 @@ if (isMobile) {
               <input aria-label="日记心情" placeholder="心情（可选）" value={mood} disabled={creating} onChange={(event) => setMood(event.target.value)} />
               <input aria-label="日记标签" placeholder="标签，用逗号分隔（可选）" value={tags} disabled={creating} onChange={(event) => setTags(event.target.value)} />
               <textarea aria-label="日记正文" placeholder="今天发生了什么？" value={content} disabled={creating} onChange={(event) => setContent(event.target.value)} />
+              <PaperAuthorSignature
+                value={author}
+                editable
+                disabled={creating}
+                onChange={(value) => {
+                  setAuthor(value);
+                  setActionError("");
+                }}
+                error={author === null ? actionError : null}
+              />
               <button className="secondary-button" disabled={creating || createInvalid} onClick={handleCreate}>
                 {creating ? "保存中…" : "保存日记"}
               </button>
@@ -1463,6 +1527,8 @@ function DiaryDetail(props: {
   diary: DiaryEntry | null;
   editing: boolean;
   updating: boolean;
+  author: PaperAuthorValue;
+  onAuthorChange(value: "L" | "G"): void;
   values: Record<"title" | "content" | "date" | "tags" | "mood", string>;
   setValues: Record<"title" | "content" | "date" | "tags" | "mood", (value: string) => void>;
   onEdit(diary: DiaryEntry): void;
@@ -1488,6 +1554,13 @@ function DiaryDetail(props: {
           <input aria-label="编辑日记心情" value={props.values.mood} disabled={props.updating} onChange={(event) => props.setValues.mood(event.target.value)} />
           <input aria-label="编辑日记标签" value={props.values.tags} disabled={props.updating} onChange={(event) => props.setValues.tags(event.target.value)} />
           <textarea aria-label="编辑日记正文" value={props.values.content} disabled={props.updating} onChange={(event) => props.setValues.content(event.target.value)} />
+          <PaperAuthorSignature
+            value={props.author}
+            editable
+            disabled={props.updating}
+            onChange={props.onAuthorChange}
+            error={props.author == null ? "请选择作者" : null}
+          />
           <button className="secondary-button" disabled={props.updating || props.invalid} onClick={props.onSave}>{props.updating ? "保存中…" : "保存修改"}</button>
           <button className="secondary-button" disabled={props.updating} onClick={props.onCancel}>取消</button>
         </>
@@ -1500,6 +1573,7 @@ function DiaryDetail(props: {
           <h2>{diary.title}</h2>
           <p>{diary.content}</p>
           {diary.tags.length > 0 && <p>{diary.tags.map((tag) => `#${tag}`).join(" ")}</p>}
+          <PaperAuthorSignature value={diary.author} editable={false} />
           <button className="secondary-button" onClick={() => props.onEdit(diary)}>编辑</button>
           <button
             className="secondary-button"
@@ -1735,6 +1809,8 @@ function MobileDiaryDetail({
   editing,
   updating,
   archiving,
+  author,
+  onAuthorChange,
   values,
   setValues,
   invalid,
@@ -1752,6 +1828,8 @@ function MobileDiaryDetail({
   editing: boolean;
   updating: boolean;
   archiving: boolean;
+  author: PaperAuthorValue;
+  onAuthorChange(value: "L" | "G"): void;
   values: Record<"title" | "content" | "date" | "tags" | "mood", string>;
   setValues: Record<
     "title" | "content" | "date" | "tags" | "mood",
@@ -1772,7 +1850,7 @@ function MobileDiaryDetail({
         open
         label="正在读取 Diary"
         dateLabel=""
-        signature="N"
+        signature=""
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
@@ -1788,7 +1866,7 @@ function MobileDiaryDetail({
         open
         label="无法读取 Diary"
         dateLabel=""
-        signature="N"
+        signature=""
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
         topRight={
@@ -1819,7 +1897,7 @@ function MobileDiaryDetail({
           />
         ) : formatDiaryPaperDate(diary.date)
       }
-      signature="N"
+      signature=""
       triggerRef={triggerRef}
       errorMessage={errorMessage}
       onRequestClose={onRequestClose}
@@ -1868,14 +1946,28 @@ function MobileDiaryDetail({
       }
       bottomLeft={
         editing ? (
-          <DiaryPaperMetadataEditor
-            moodValue={values.mood}
-            tagsValue={values.tags}
-            disabled={updating}
-            onMoodChange={setValues.mood}
-            onTagsChange={setValues.tags}
-          />
-        ) : (formatDiaryRowMeta(diary) || null)
+          <>
+            <DiaryPaperMetadataEditor
+              moodValue={values.mood}
+              tagsValue={values.tags}
+              disabled={updating}
+              onMoodChange={setValues.mood}
+              onTagsChange={setValues.tags}
+            />
+            <PaperAuthorSignature
+              value={author}
+              editable
+              disabled={updating}
+              onChange={onAuthorChange}
+              error={author == null ? "请选择作者" : null}
+            />
+          </>
+        ) : (
+          <>
+            <span>{formatDiaryRowMeta(diary)}</span>
+            <PaperAuthorSignature value={diary.author} editable={false} />
+          </>
+        )
       }
     >
       {editing ? (
@@ -1987,7 +2079,7 @@ function MobileArchivedDiaryDetail({
         open
         label="正在读取已归档 Diary"
         dateLabel=""
-        signature="N"
+        signature=""
         triggerRef={triggerRef}
         onRequestClose={() => {
           if (restoring) return false;
@@ -2007,7 +2099,7 @@ function MobileArchivedDiaryDetail({
         open
         label="无法读取已归档 Diary"
         dateLabel=""
-        signature="N"
+        signature=""
         triggerRef={triggerRef}
         onRequestClose={() => {
           onBack();
@@ -2033,7 +2125,7 @@ function MobileArchivedDiaryDetail({
       open
       label={`已归档 Diary ${diary.title}`}
       dateLabel={formatDiaryPaperDate(diary.date)}
-      signature="N"
+      signature=""
       triggerRef={triggerRef}
       errorMessage={errorMessage}
       onRequestClose={() => {
@@ -2050,7 +2142,12 @@ function MobileArchivedDiaryDetail({
           {restoring ? "恢复中…" : "恢复"}
         </button>
       }
-      bottomLeft={formatDiaryRowMeta(diary) || null}
+      bottomLeft={
+        <>
+          <span>{formatDiaryRowMeta(diary)}</span>
+          <PaperAuthorSignature value={diary.author} editable={false} />
+        </>
+      }
     >
       <h2 className="memory-paper-title">{diary.title}</h2>
       <p className="memory-paper-content">{diary.content}</p>

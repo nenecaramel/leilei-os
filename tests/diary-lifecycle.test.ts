@@ -18,6 +18,7 @@ const entry: DiaryEntryRecord = {
   date: "2026-07-29",
   tags: ["phase-6"],
   mood: "calm",
+  author: null,
   createdAt: new Date("2026-07-29T01:00:00.000Z"),
   updatedAt: new Date("2026-07-29T02:00:00.000Z"),
 };

@@ -2,10 +2,12 @@ import "dotenv/config";
 import postgres from "postgres";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import type { ContentAuthor } from "../src/domains/content-author.js";
 
-const seedEnvSchema = z.object({
+export const phase2SeedEnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   MCP_USER_ID: z.string().uuid(),
+  SEED_CONTENT_AUTHOR: z.enum(["L", "G"]),
   SEED_USER_EMAIL: z
     .string()
     .email()
@@ -48,6 +50,7 @@ export type Phase2SeedInput = {
   userId: string;
   email: string;
   displayName: string;
+  author: ContentAuthor;
 };
 
 export async function seedPhase2ValidationData(
@@ -78,6 +81,7 @@ export async function seedPhase2ValidationData(
         content,
         visibility,
         source,
+        author,
         status,
         sort_order
       )
@@ -88,6 +92,7 @@ export async function seedPhase2ValidationData(
         ${memory.content},
         ${memory.visibility}::memory_visibility,
         'phase_2_validation',
+        ${input.author}::content_author,
         'active',
         ${memory.sortOrder}
       )
@@ -95,6 +100,7 @@ export async function seedPhase2ValidationData(
         category = excluded.category,
         content = excluded.content,
         visibility = excluded.visibility,
+        author = excluded.author,
         status = 'active',
         sort_order = excluded.sort_order,
         updated_at = now()
@@ -103,7 +109,7 @@ export async function seedPhase2ValidationData(
 }
 
 async function main() {
-  const seedEnv = seedEnvSchema.parse(process.env);
+  const seedEnv = phase2SeedEnvSchema.parse(process.env);
   const sql = postgres(seedEnv.DATABASE_URL, {
     max: 1,
     prepare: false,
@@ -115,6 +121,7 @@ async function main() {
         userId: seedEnv.MCP_USER_ID,
         email: seedEnv.SEED_USER_EMAIL,
         displayName: seedEnv.SEED_USER_DISPLAY_NAME,
+        author: seedEnv.SEED_CONTENT_AUTHOR,
       }),
     );
 

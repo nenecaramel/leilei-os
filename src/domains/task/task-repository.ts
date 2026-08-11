@@ -27,6 +27,7 @@ import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
 } from "../mcp-write/mcp-write-idempotency.js";
+import type { ContentAuthor } from "../content-author.js";
 
 export type TaskPriority =
   (typeof taskPriorityEnum.enumValues)[number];
@@ -48,6 +49,7 @@ export type NormalizedTaskCreate = {
   timezone: string;
   tags: string[];
   completedAt: null;
+  author: ContentAuthor;
 };
 
 export type TaskRecord = {
@@ -64,6 +66,7 @@ export type TaskRecord = {
   completedAt: Date | null;
   resumeStatus?: TaskStatus | null;
   lifecycleStatus?: "active" | "archived";
+  author?: ContentAuthor | null;
 };
 
 export type TaskLifecycleMutationInput = LifecycleMutationInput;
@@ -108,6 +111,7 @@ export type NormalizedTaskUpdate = {
   dueTime: Date | null;
   timezone: string;
   tags: string[];
+  author?: ContentAuthor;
 };
 
 export interface TaskRepository {
@@ -240,6 +244,7 @@ export class DrizzleTaskRepository
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
         resumeStatus: tasks.resumeStatus,
+        author: tasks.author,
       })
       .from(tasks)
       .where(and(...conditions))
@@ -270,6 +275,7 @@ export class DrizzleTaskRepository
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
         resumeStatus: tasks.resumeStatus,
+        author: tasks.author,
       })
       .from(tasks)
       .where(
@@ -301,6 +307,7 @@ export class DrizzleTaskRepository
         timezone: input.timezone,
         tags: input.tags,
         completedAt: input.completedAt,
+        author: input.author,
       })
       .returning({
         id: tasks.id,
@@ -315,6 +322,7 @@ export class DrizzleTaskRepository
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
         resumeStatus: tasks.resumeStatus,
+        author: tasks.author,
       });
 
     if (!task) {
@@ -361,6 +369,7 @@ export class DrizzleTaskRepository
             updatedAt: tasks.updatedAt,
             completedAt: tasks.completedAt,
             resumeStatus: tasks.resumeStatus,
+            author: tasks.author,
           })
           .from(tasks)
           .where(and(eq(tasks.userId, input.userId), eq(tasks.id, idempotency.resourceId)))
@@ -384,6 +393,7 @@ export class DrizzleTaskRepository
           timezone: input.timezone,
           tags: input.tags,
           completedAt: input.completedAt,
+          author: input.author,
         })
         .returning({
           id: tasks.id,
@@ -398,6 +408,7 @@ export class DrizzleTaskRepository
           updatedAt: tasks.updatedAt,
           completedAt: tasks.completedAt,
           resumeStatus: tasks.resumeStatus,
+          author: tasks.author,
         });
 
       if (!task) throw new Error("Task insert did not return a record.");
@@ -447,6 +458,7 @@ export class DrizzleTaskRepository
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
         resumeStatus: tasks.resumeStatus,
+        author: tasks.author,
       });
 
     return task ?? null;
@@ -485,6 +497,7 @@ export class DrizzleTaskRepository
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
         resumeStatus: tasks.resumeStatus,
+        author: tasks.author,
       });
 
     return task ?? null;
@@ -503,6 +516,7 @@ export class DrizzleTaskRepository
         timezone: input.timezone,
         tags: input.tags,
         updatedAt: new Date(),
+        ...(input.author === undefined ? {} : { author: input.author }),
       })
       .where(
         and(
@@ -524,6 +538,7 @@ export class DrizzleTaskRepository
         updatedAt: tasks.updatedAt,
         completedAt: tasks.completedAt,
         resumeStatus: tasks.resumeStatus,
+        author: tasks.author,
       });
 
     return task ?? null;
@@ -536,6 +551,7 @@ export class DrizzleTaskRepository
       timezone: tasks.timezone, tags: tasks.tags, createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt, completedAt: tasks.completedAt,
       resumeStatus: tasks.resumeStatus,
+      author: tasks.author,
       lifecycleStatus: tasks.lifecycleStatus,
     }).from(tasks)
       .where(and(eq(tasks.userId, userId), eq(tasks.lifecycleStatus, "archived")))
@@ -550,6 +566,7 @@ export class DrizzleTaskRepository
       timezone: tasks.timezone, tags: tasks.tags, createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt, completedAt: tasks.completedAt,
       resumeStatus: tasks.resumeStatus,
+      author: tasks.author,
       lifecycleStatus: tasks.lifecycleStatus,
     }).from(tasks)
       .where(and(eq(tasks.userId, userId), eq(tasks.id, id), eq(tasks.lifecycleStatus, "archived")))

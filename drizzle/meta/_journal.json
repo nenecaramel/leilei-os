@@ -106,6 +106,13 @@
       "when": 1785871980592,
       "tag": "0014_early_ozymandias",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786415856981,
+      "tag": "0015_lg_author_foundation",
+      "breakpoints": true
     }
   ]
 }

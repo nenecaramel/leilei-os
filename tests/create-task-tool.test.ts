@@ -49,6 +49,7 @@ class MockTaskToolService {
         created_at: "2026-07-22T09:00:00.000Z",
         updated_at: "2026-07-22T09:00:00.000Z",
         completed_at: null,
+        author: input.author ?? null,
       },
     };
   }
@@ -125,6 +126,7 @@ test("create_task calls the mock service with authenticated context", async (t) 
       timezone: "Asia/Shanghai",
       priority: "high",
       tags: ["phase4", "MCP"],
+      author: "L",
       idempotency_key: "task-20260723-phase4",
     },
   });
@@ -140,6 +142,7 @@ test("create_task calls the mock service with authenticated context", async (t) 
         timezone: "Asia/Shanghai",
         priority: "high",
         tags: ["phase4", "MCP"],
+        author: "L",
       },
       idempotencyKey: "task-20260723-phase4",
     },
@@ -166,8 +169,10 @@ test("create_task accepts an omitted due time without bypassing Task Service", a
     arguments: {
       title: "开放任务",
       description: "暂时没有截止时间。",
-      priority: "normal",
-      tags: [],
+        priority: "normal",
+        tags: [],
+        author: "G",
+      author: "G",
       idempotency_key: "task-20260723-open",
     },
   });
@@ -235,6 +240,7 @@ test("create_task rejects forbidden fields before calling the service", async (t
       timezone: "Asia/Shanghai",
       priority: "normal",
       tags: [],
+      author: "L",
       idempotency_key: "task-20260723-forbidden",
       user_id: "00000000-0000-4000-8000-000000000123",
       status: "completed",
@@ -267,6 +273,7 @@ test("create_task fails safely without authenticated context", async (t) => {
       timezone: "Asia/Shanghai",
       priority: "normal",
       tags: [],
+      author: "L",
       idempotency_key: "task-20260723-unauthenticated",
     },
   });

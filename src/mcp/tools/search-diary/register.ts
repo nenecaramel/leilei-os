@@ -7,6 +7,7 @@ import {
 } from "../../../domains/diary/diary-service.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const contentAuthorSchema = z.enum(["L", "G"]);
 
 const searchDiaryInputSchema = z
   .object({
@@ -31,6 +32,7 @@ const searchDiaryOutputSchema = z.object({
         mood: z.string().nullable(),
         created_at: z.string().datetime(),
         updated_at: z.string().datetime(),
+        author: contentAuthorSchema.nullable(),
       }),
     ),
     metadata: z.object({
@@ -91,6 +93,7 @@ export function registerSearchDiaryTool(
               mood: diaryMood,
               created_at,
               updated_at,
+              author,
             }) => ({
               id,
               title,
@@ -99,6 +102,7 @@ export function registerSearchDiaryTool(
               mood: diaryMood,
               created_at,
               updated_at,
+              author,
             }),
           ),
           metadata: result.metadata,

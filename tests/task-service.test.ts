@@ -24,6 +24,7 @@ const VALID_INPUT: CreateTaskInput = {
   dueTime: "2026-07-23T16:30:00+08:00",
   timezone: " Asia/Shanghai ",
   tags: [" 项目 ", "MCP", "项目"],
+  author: "L",
 };
 
 test("Task MCP creation forwards one normalized durable idempotency claim", async () => {
@@ -83,6 +84,7 @@ class MockTaskRepository implements TaskRepository {
       createdAt: new Date("2026-07-22T09:00:00.000Z"),
       updatedAt: new Date("2026-07-22T09:00:00.000Z"),
       completedAt: input.completedAt,
+      author: input.author,
     };
 
     this.records.set(task.id, { userId: input.userId, task });
@@ -144,6 +146,7 @@ class MockTaskRepository implements TaskRepository {
       timezone: input.timezone,
       tags: input.tags,
       updatedAt: new Date("2026-07-22T10:00:00.000Z"),
+      author: input.author ?? record.task.author ?? null,
     };
     return record.task;
   }
@@ -445,10 +448,80 @@ test("creates a normalized pending task for the authenticated user", async () =>
     timezone: "Asia/Shanghai",
     tags: ["项目", "MCP"],
     completedAt: null,
+    author: "L",
   });
   assert.equal(result.task.status, "pending");
   assert.equal(result.task.completed_at, null);
   assert.equal(result.task.due_time, "2026-07-23T08:30:00.000Z");
+  assert.equal(result.task.author, "L");
+});
+
+for (const author of [undefined, "X"] as const) {
+  test("Task create rejects missing or invalid author before persistence", async () => {
+    const repository = new MockTaskRepository();
+    const service = new TaskService(repository);
+    await assert.rejects(
+      service.createTask(
+        { userId: "user-1" },
+        { ...VALID_INPUT, author: author as any },
+      ),
+      (error: unknown) =>
+        error instanceof TaskDomainError && error.code === "AUTHOR_REQUIRED",
+    );
+    assert.equal(repository.writes.length, 0);
+  });
+}
+
+test("Task legacy-null edits require an author while authored edits preserve or switch it", async () => {
+  const repository = new MockTaskRepository();
+  const legacy = seedTask(repository, "pending");
+  legacy.author = null;
+  const service = new TaskService(repository);
+  const base = {
+    userId: "user-1",
+    id: legacy.id,
+    title: "新标题",
+    description: "新正文",
+    priority: "normal",
+    dueTime: null,
+    timezone: "Asia/Shanghai",
+    tags: [],
+  };
+  await assert.rejects(
+    service.updateWebTask(base),
+    (error: unknown) =>
+      error instanceof TaskDomainError && error.code === "AUTHOR_REQUIRED",
+  );
+  assert.equal(repository.updateWrites.length, 0);
+  await service.updateWebTask({ ...base, author: "G" });
+  assert.equal(repository.records.get(legacy.id)?.task.author, "G");
+
+  const authored = seedTask(repository, "pending");
+  authored.id = "authored-task";
+  authored.author = "L";
+  repository.records.set(authored.id, { userId: "user-1", task: authored });
+  await service.updateWebTask({ ...base, id: authored.id });
+  assert.equal(repository.records.get(authored.id)?.task.author, "L");
+  await service.updateWebTask({ ...base, id: authored.id, author: "G" });
+  assert.equal(repository.records.get(authored.id)?.task.author, "G");
+});
+
+test("Task status and lifecycle mutations preserve the stored author", async () => {
+  const repository = new MockTaskRepository();
+  const service = new TaskService(repository);
+  const task = seedTask(repository, "pending");
+  task.author = "L";
+  task.lifecycleStatus = "active";
+  await service.updateWebTaskStatus({ userId: "user-1", id: task.id, status: "in_progress" });
+  assert.equal(repository.records.get(task.id)?.task.author, "L");
+  await service.updateWebTaskStatus({ userId: "user-1", id: task.id, status: "cancelled" });
+  assert.equal(repository.records.get(task.id)?.task.author, "L");
+  await service.reopenTask({ userId: "user-1", id: task.id });
+  assert.equal(repository.records.get(task.id)?.task.author, "L");
+  await service.archiveTask({ userId: "user-1", id: task.id });
+  assert.equal(repository.records.get(task.id)?.task.author, "L");
+  await service.restoreTask({ userId: "user-1", id: task.id });
+  assert.equal(repository.records.get(task.id)?.task.author, "L");
 });
 
 test("creates a task without a due date in the account timezone", async () => {
@@ -800,6 +873,7 @@ test("persists normalized task edits without changing the current status", async
     dueTime: "2026-07-24T18:00:00+08:00",
     timezone: " Asia/Shanghai ",
     tags: [" 修正 ", "修正", "任务"],
+    author: "L",
   });
 
   assert.equal(result.title, "已修正标题");

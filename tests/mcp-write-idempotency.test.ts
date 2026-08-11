@@ -34,6 +34,19 @@ test("canonical fingerprints sort object keys recursively and preserve array ord
   assert.notEqual(hashMcpWriteRequest(first), hashMcpWriteRequest({ ...reordered, a: ["second", "first"] }));
 });
 
+test("content author participates in the persistent write fingerprint", () => {
+  const base = {
+    category: "goal",
+    key: "ship",
+    content: "Ship safely",
+    tags: ["Phase 6"],
+  };
+  assert.notEqual(
+    hashMcpWriteRequest({ ...base, author: "L" }),
+    hashMcpWriteRequest({ ...base, author: "G" }),
+  );
+});
+
 test("canonical fingerprints reject values outside the normalized JSON contract", () => {
   for (const value of [undefined, 1n, Number.NaN, Number.POSITIVE_INFINITY, new Date(), { value: undefined }, new Array(1)]) {
     assert.throws(() => hashMcpWriteRequest(value), /UNSUPPORTED_MCP_FINGERPRINT_VALUE/);
@@ -41,11 +54,11 @@ test("canonical fingerprints reject values outside the normalized JSON contract"
 });
 
 test("canonical MCP fingerprint golden values are version locked", () => {
-  assert.equal(hashMcpWriteRequest({ title: "Task", description: "Body", status: "pending", priority: "normal", due_time: null, timezone: "Asia/Shanghai", tags: ["one", "two"], completed_at: null }), "0ae47c2446d85ceaca11cd37a44d93bb004b155b9121745cd7bf98bd31ef3048");
-  assert.equal(hashMcpWriteRequest({ title: "Diary", content: "Entry", date: "2026-08-01", tags: ["x"], mood: null }), "9406fe0dc56ddd6c2797d98b8bb717f25a31c151aa4f6b36a24e182dd5b415c4");
+  assert.equal(hashMcpWriteRequest({ title: "Task", description: "Body", status: "pending", priority: "normal", due_time: null, timezone: "Asia/Shanghai", tags: ["one", "two"], completed_at: null, author: "L" }), "8cad5e62c774d7e7039f746cf71bff916740abda42f3a9f36ca9659c6dafe3d9");
+  assert.equal(hashMcpWriteRequest({ title: "Diary", content: "Entry", date: "2026-08-01", tags: ["x"], mood: null, author: "G" }), "3a016eac8e5c6f4afcdf745cfb5d978c42e1aeac767ca4a39a2cd8b8b2bbef3a");
   assert.equal(hashMcpWriteRequest({ action: "set", percent: 20 }), "017533b6c7ed83aabbbbc5424753b71e15a75a6784a1c0ab689d19376efc264a");
   assert.equal(hashMcpWriteRequest({ action: "stop" }), "eea27c47047334348ce10c6ea9a150bde77cc96fe70ffe92be35bdbc5dc7627f");
-  assert.equal(hashMcpWriteRequest({ category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"] }), "158e1a3099f8bec47f0194d8f8b082bea8e49caa88c80a321ad74dcfff86f84f");
+  assert.equal(hashMcpWriteRequest({ category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L" }), "5071e610b7eb8f3e5e009ebbe189991558ae3df4beebdab43511d4556b17fdb3");
 });
 
 test("migration 0013 only extends MCP idempotency checks for Memory", async () => {

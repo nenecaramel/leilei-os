@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   DiaryAuditRequestSummary,
+  DiaryEntryRecord,
   DiaryRepository,
   DiaryUserRecord,
   NormalizedDiaryCreate,
@@ -20,6 +21,7 @@ const VALID_INPUT: CreateDiaryInput = {
   tags: [" 项目 ", "MCP", "项目"],
   mood: " 开心 ",
   idempotencyKey: "diary-20260722-0001",
+  author: "L",
 };
 
 class MockDiaryRepository implements DiaryRepository {
@@ -58,8 +60,17 @@ class MockDiaryRepository implements DiaryRepository {
         mood: diary.mood,
         createdAt: new Date("2026-07-22T08:00:00.000Z"),
         requestHash: diary.requestHash,
+        author: diary.author,
       },
     };
+  }
+
+  async findDiaryById(): Promise<DiaryEntryRecord | null> {
+    return null;
+  }
+
+  async updateDiary(): Promise<DiaryEntryRecord | null> {
+    return null;
   }
 }
 
@@ -94,6 +105,7 @@ test("creates a normalized diary using only the authenticated context user", asy
   assert.equal(write.diary.content, "完成了 Diary Domain Layer。");
   assert.deepEqual(write.diary.tags, ["项目", "MCP"]);
   assert.equal(write.diary.mood, "开心");
+  assert.equal(write.diary.author, "L");
   assert.match(write.diary.requestHash, /^[0-9a-f]{64}$/);
   assert.deepEqual(write.summary, {
     title_length: 5,
@@ -169,6 +181,99 @@ test("rejects disabled users before attempting a diary write", async () => {
       error instanceof DiaryDomainError && error.code === "USER_DISABLED",
   );
   assert.equal(repository.writes.length, 0);
+});
+
+for (const author of [undefined, "X"] as const) {
+  test("Diary create rejects missing or invalid author before persistence", async () => {
+    const repository = new MockDiaryRepository();
+    const service = new DiaryService(repository);
+
+    await assert.rejects(
+      service.createDiary(
+        { userId: "user-1" },
+        { ...VALID_INPUT, author: author as any },
+      ),
+      (error: unknown) =>
+        error instanceof DiaryDomainError &&
+        error.code === "AUTHOR_REQUIRED",
+    );
+    assert.equal(repository.writes.length, 0);
+  });
+}
+
+test("Diary legacy-null content edits require and persist an explicit author", async () => {
+  const repository = new MockDiaryRepository();
+  let entry: DiaryEntryRecord | null = {
+    id: "diary-1",
+    title: "Old title",
+    content: "Old content",
+    date: "2026-07-22",
+    tags: [],
+    mood: null,
+    author: null,
+    createdAt: new Date("2026-07-22T08:00:00.000Z"),
+    updatedAt: new Date("2026-07-22T08:00:00.000Z"),
+  };
+  const updates: unknown[] = [];
+  repository.findDiaryById = async () => entry;
+  repository.updateDiary = async (input) => {
+    updates.push(input);
+    entry = { ...entry!, ...input, author: input.author ?? entry!.author };
+    return entry;
+  };
+
+  const service = new DiaryService(repository);
+  const base = {
+    userId: "user-1",
+    id: "diary-1",
+    title: "New title",
+    content: "New content",
+    date: "2026-07-23",
+  };
+  await assert.rejects(
+    service.updateWebDiary(base),
+    (error: unknown) =>
+      error instanceof DiaryDomainError &&
+      error.code === "AUTHOR_REQUIRED",
+  );
+  assert.equal(updates.length, 0);
+
+  await service.updateWebDiary({ ...base, author: "G" });
+  assert.equal(updates[0] && (updates[0] as { author: string }).author, "G");
+  assert.equal(entry?.author, "G");
+});
+
+test("Diary authored edits preserve or explicitly switch author", async () => {
+  const repository = new MockDiaryRepository();
+  let entry: DiaryEntryRecord = {
+    id: "diary-1",
+    title: "Old title",
+    content: "Old content",
+    date: "2026-07-22",
+    tags: [],
+    mood: null,
+    author: "L",
+    createdAt: new Date("2026-07-22T08:00:00.000Z"),
+    updatedAt: new Date("2026-07-22T08:00:00.000Z"),
+  };
+  const authors: unknown[] = [];
+  repository.findDiaryById = async () => entry;
+  repository.updateDiary = async (input) => {
+    authors.push(input.author);
+    entry = { ...entry, ...input, author: input.author ?? entry.author };
+    return entry;
+  };
+  const service = new DiaryService(repository);
+  const base = {
+    userId: "user-1",
+    id: "diary-1",
+    title: "New title",
+    content: "New content",
+    date: "2026-07-23",
+  };
+  await service.updateWebDiary(base);
+  await service.updateWebDiary({ ...base, author: "G" });
+  assert.deepEqual(authors, ["L", "G"]);
 });
 
 test("requires a user identity from the authenticated context", async () => {

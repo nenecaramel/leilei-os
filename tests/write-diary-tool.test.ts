@@ -34,6 +34,7 @@ class MockDiaryToolService {
         date: input.date,
         tags: [...input.tags],
         mood: input.mood ?? null,
+        author: input.author ?? null,
         created_at: "2026-07-22T08:00:00.000Z",
       },
       metadata: {
@@ -138,6 +139,7 @@ test("write_diary calls the mock service with authenticated context", async (t) 
       date: "2026-07-22",
       tags: ["MCP", "测试"],
       mood: "开心",
+      author: "G",
       idempotency_key: "diary-20260722-test-0001",
     },
   });
@@ -153,6 +155,7 @@ test("write_diary calls the mock service with authenticated context", async (t) 
       tags: ["MCP", "测试"],
       mood: "开心",
       idempotencyKey: "diary-20260722-test-0001",
+      author: "G",
     },
   });
   assert.deepEqual(response.structuredContent, {
@@ -164,6 +167,7 @@ test("write_diary calls the mock service with authenticated context", async (t) 
         date: "2026-07-22",
         tags: ["MCP", "测试"],
         mood: "开心",
+        author: "G",
         created_at: "2026-07-22T08:00:00.000Z",
       },
       metadata: { created: true, idempotent_replay: false },
@@ -189,6 +193,7 @@ test("write_diary rejects invalid input before calling the service", async (t) =
       date: "明天",
       tags: [],
       idempotency_key: "diary-20260722-test-0002",
+      author: "L",
       user_id: "00000000-0000-4000-8000-000000000123",
     },
   });
@@ -217,6 +222,7 @@ test("write_diary fails safely when authenticated context is unavailable", async
       date: "2026-07-22",
       tags: [],
       idempotency_key: "diary-20260722-test-0003",
+      author: "L",
     },
   });
 

@@ -140,6 +140,59 @@ test(
             ]);
           }
 
+          const authorFixtureIds = [randomUUID(), randomUUID(), randomUUID()];
+          await transaction.insert(coreMemories).values([
+            {
+              id: authorFixtureIds[0]!,
+              userId: ownerId,
+              category: "goal",
+              key: "author_l_memory",
+              content: "Explicit L author fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "active",
+              author: "L",
+            },
+            {
+              id: authorFixtureIds[1]!,
+              userId: ownerId,
+              category: "goal",
+              key: "author_g_memory",
+              content: "Explicit G author fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "active",
+              author: "G",
+            },
+            {
+              id: authorFixtureIds[2]!,
+              userId: ownerId,
+              category: "goal",
+              key: "author_null_memory",
+              content: "Legacy null author fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "active",
+              author: null,
+            },
+          ]);
+          assert.deepEqual(
+            (await transaction.select({
+              id: coreMemories.id,
+              author: coreMemories.author,
+            }).from(coreMemories).where(inArray(coreMemories.id, authorFixtureIds)))
+              .sort((left, right) => left.id.localeCompare(right.id)),
+            authorFixtureIds
+              .map((id, index) => ({
+                id,
+                author: index === 0 ? "L" : index === 1 ? "G" : null,
+              }))
+              .sort((left, right) => left.id.localeCompare(right.id)),
+          );
+
           const archivedOlder =
             "00000000-0000-4000-8000-000000000201";
           const archivedTieLow =

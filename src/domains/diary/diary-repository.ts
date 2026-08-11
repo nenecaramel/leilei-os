@@ -24,6 +24,7 @@ import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
 } from "../mcp-write/mcp-write-idempotency.js";
+import type { ContentAuthor } from "../content-author.js";
 
 export type DiaryUserRecord = {
   status: "active" | "disabled";
@@ -39,6 +40,7 @@ export type NormalizedDiaryCreate = {
   idempotencyKey: string;
   requestHash: string;
   mcpRequestHash: string;
+  author: ContentAuthor;
 };
 
 export type DiaryAuditRequestSummary = {
@@ -57,6 +59,7 @@ export type DiaryRecord = {
   mood: string | null;
   createdAt: Date;
   requestHash: string;
+  author?: ContentAuthor | null;
 };
 
 export type DiaryEntryRecord = {
@@ -68,6 +71,7 @@ export type DiaryEntryRecord = {
   mood: string | null;
   createdAt: Date;
   updatedAt: Date;
+  author?: ContentAuthor | null;
 };
 
 export type DiaryListQuery = {
@@ -86,6 +90,7 @@ export type UpdateDiaryInput = {
   date: string;
   tags: string[];
   mood: string | null;
+  author?: ContentAuthor;
 };
 
 export type DiaryLifecycleMutationInput = LifecycleMutationInput;
@@ -218,6 +223,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         date: diaryEntries.date,
         tags: diaryEntries.tags,
         mood: diaryEntries.mood,
+        author: diaryEntries.author,
         createdAt: diaryEntries.createdAt,
         updatedAt: diaryEntries.updatedAt,
       })
@@ -254,6 +260,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         date: diaryEntries.date,
         tags: diaryEntries.tags,
         mood: diaryEntries.mood,
+        author: diaryEntries.author,
         createdAt: diaryEntries.createdAt,
         updatedAt: diaryEntries.updatedAt,
       })
@@ -301,6 +308,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
             date: diaryEntries.date,
             tags: diaryEntries.tags,
             mood: diaryEntries.mood,
+            author: diaryEntries.author,
             createdAt: diaryEntries.createdAt,
             requestHash: diaryEntries.requestHash,
           })
@@ -328,6 +336,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           date: diary.date,
           tags: diary.tags,
           mood: diary.mood,
+          author: diary.author,
           source: "chatgpt_mcp",
           status: "active",
           idempotencyKey: diary.idempotencyKey,
@@ -345,6 +354,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           date: diaryEntries.date,
           tags: diaryEntries.tags,
           mood: diaryEntries.mood,
+          author: diaryEntries.author,
           createdAt: diaryEntries.createdAt,
           requestHash: diaryEntries.requestHash,
         });
@@ -385,6 +395,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           date: diaryEntries.date,
           tags: diaryEntries.tags,
           mood: diaryEntries.mood,
+          author: diaryEntries.author,
           createdAt: diaryEntries.createdAt,
           requestHash: diaryEntries.requestHash,
         })
@@ -424,6 +435,13 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         return {
           outcome: "conflict",
         };
+      }
+
+      if (
+        options.mcpWriteIdempotency &&
+        (existing.author === null || existing.author === undefined || existing.author !== diary.author)
+      ) {
+        return { outcome: "conflict" };
       }
 
       if (options.mcpWriteIdempotency) {
@@ -467,6 +485,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         date: input.date,
         tags: input.tags,
         mood: input.mood,
+        ...(input.author === undefined ? {} : { author: input.author }),
         updatedAt: new Date(),
       })
       .where(
@@ -483,6 +502,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         date: diaryEntries.date,
         tags: diaryEntries.tags,
         mood: diaryEntries.mood,
+        author: diaryEntries.author,
         createdAt: diaryEntries.createdAt,
         updatedAt: diaryEntries.updatedAt,
       });
@@ -502,6 +522,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         date: diaryEntries.date,
         tags: diaryEntries.tags,
         mood: diaryEntries.mood,
+        author: diaryEntries.author,
         createdAt: diaryEntries.createdAt,
         updatedAt: diaryEntries.updatedAt,
       })
@@ -547,6 +568,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         date: diaryEntries.date,
         tags: diaryEntries.tags,
         mood: diaryEntries.mood,
+        author: diaryEntries.author,
         createdAt: diaryEntries.createdAt,
         updatedAt: diaryEntries.updatedAt,
       })

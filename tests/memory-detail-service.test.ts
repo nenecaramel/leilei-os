@@ -157,6 +157,7 @@ test("Memory archived detail validates the user and returns safe fields", async 
     content: "Archived context",
     tags: ["archive"],
     source: "web",
+    author: null,
     updated_at: "2026-07-29T03:00:00.000Z",
   });
 });
@@ -447,6 +448,7 @@ test("Memory update normalizes and forwards all editable Web fields", async () =
     category: "project",
     content: " updated content ",
     tags: ["one", " two "],
+    author: "L",
   });
 
   assert.deepEqual(writes, [{
@@ -456,6 +458,7 @@ test("Memory update normalizes and forwards all editable Web fields", async () =
     category: "project",
     content: "updated content",
     tags: ["one", "two"],
+    author: "L",
   }]);
 });
 
@@ -532,6 +535,7 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
     key: "tagged_memory",
     content: "Tagged content",
     tags: [" 计划 ", "MCP", "计划"],
+    author: "L",
   });
   await service.updateMemory({
     userId: "user-a",
@@ -540,6 +544,7 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
     category: "goal",
     content: "Updated",
     tags: ["MCP", "完成"],
+    author: "G",
   });
 
   assert.deepEqual(writes, [
@@ -551,6 +556,7 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
         content: "Tagged content",
         tags: ["计划", "MCP"],
         source: "web",
+        author: "L",
       },
     },
     {
@@ -561,9 +567,188 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
         category: "goal",
         content: "Updated",
         tags: ["MCP", "完成"],
+        author: "G",
       },
     },
   ]);
+});
+
+test("Memory create requires and persists an explicit author", async () => {
+  const writes: unknown[] = [];
+  const service = new MemoryService(repository({
+    async createMemory(input) {
+      writes.push(input);
+    },
+  }));
+
+  await service.createMemory({
+    userId: "user-a",
+    category: "goal",
+    key: "authored_memory",
+    content: "Authored content",
+    author: "G",
+  });
+
+  assert.deepEqual(writes, [{
+    userId: "user-a",
+    category: "goal",
+    key: "authored_memory",
+    content: "Authored content",
+    tags: [],
+    source: "web",
+    author: "G",
+  }]);
+});
+
+for (const author of [undefined, "X"] as const) {
+  test("Memory create rejects missing or invalid author before persistence", async () => {
+    let mutated = false;
+    const service = new MemoryService(repository({
+      async createMemory() {
+        mutated = true;
+      },
+    }));
+
+    await assert.rejects(
+      service.createMemory({
+        userId: "user-a",
+        category: "goal",
+        key: "authored_memory",
+        content: "Authored content",
+        author: author as any,
+      }),
+      (error) =>
+        error instanceof MemoryDomainError &&
+        error.code === "AUTHOR_REQUIRED",
+    );
+    assert.equal(mutated, false);
+  });
+}
+
+test("Memory legacy-null content edits require and then persist an explicit author", async () => {
+  let updateInput: unknown;
+  const service = new MemoryService(repository({
+    async findActiveAssistantMemoryById() {
+      return {
+        id: "memory-1",
+        category: "goal",
+        key: "old_key",
+        content: "Old content",
+        tags: [],
+        source: "web",
+        author: null,
+        updatedAt: new Date("2026-07-28T00:00:00.000Z"),
+      };
+    },
+    async updateMemory(input) {
+      updateInput = input;
+      return true;
+    },
+  }));
+
+  await assert.rejects(
+    service.updateMemory({
+      userId: "user-a",
+      id: "memory-1",
+      key: "new_key",
+      category: "goal",
+      content: "New content",
+    }),
+    (error) =>
+      error instanceof MemoryDomainError &&
+      error.code === "AUTHOR_REQUIRED",
+  );
+  assert.equal(updateInput, undefined);
+
+  await service.updateMemory({
+    userId: "user-a",
+    id: "memory-1",
+    key: "new_key",
+    category: "goal",
+    content: "New content",
+    author: "L",
+  });
+  assert.deepEqual(updateInput, {
+    userId: "user-a",
+    id: "memory-1",
+    key: "new_key",
+    category: "goal",
+    content: "New content",
+    author: "L",
+  });
+});
+
+test("Memory authored content edits preserve or explicitly switch author", async () => {
+  const authors: unknown[] = [];
+  const service = new MemoryService(repository({
+    async findActiveAssistantMemoryById() {
+      return {
+        id: "memory-1",
+        category: "goal",
+        key: "old_key",
+        content: "Old content",
+        tags: [],
+        source: "web",
+        author: "L",
+        updatedAt: new Date("2026-07-28T00:00:00.000Z"),
+      };
+    },
+    async updateMemory(input) {
+      authors.push(input.author);
+      return true;
+    },
+  }));
+
+  const base = {
+    userId: "user-a",
+    id: "memory-1",
+    key: "new_key",
+    category: "goal" as const,
+    content: "New content",
+  };
+  await service.updateMemory(base);
+  await service.updateMemory({ ...base, author: "G" });
+  assert.deepEqual(authors, ["L", "G"]);
+});
+
+test("Memory reads expose nullable authors without inferring legacy ownership", async () => {
+  const service = new MemoryService(repository({
+    async findActiveAssistantMemories() {
+      return [{
+        id: "memory-1",
+        category: "goal",
+        key: "authored",
+        content: "Content",
+        tags: [],
+        source: "web",
+        author: "G",
+        updatedAt: new Date("2026-07-28T00:00:00.000Z"),
+      }];
+    },
+    async findActiveAssistantMemoryById() {
+      return {
+        id: "memory-2",
+        category: "goal",
+        key: "legacy",
+        content: "Legacy content",
+        tags: [],
+        source: "web",
+        author: null,
+        updatedAt: new Date("2026-07-28T00:00:00.000Z"),
+      };
+    },
+  }));
+
+  const list = await service.readMemory({
+    userId: "user-a",
+    includeSource: true,
+  });
+  const detail = await service.readMemoryDetail({
+    userId: "user-a",
+    id: "memory-2",
+  });
+  assert.equal(list.memories[0]?.author, "G");
+  assert.equal(detail.author, null);
 });
 
 for (const operation of ["create", "update", "archive"] as const) {
@@ -589,6 +774,7 @@ for (const operation of ["create", "update", "archive"] as const) {
         category: "goal",
         key: "memory-key",
         content: "Content",
+        author: "L",
       });
     } else if (operation === "update") {
       await service.updateMemory({
@@ -597,6 +783,7 @@ for (const operation of ["create", "update", "archive"] as const) {
         key: "memory-key",
         category: "goal",
         content: "Updated",
+        author: "L",
       });
     } else {
       await service.archiveMemory({
@@ -684,6 +871,7 @@ for (const reason of [
         key: "memory-key",
         category: "goal",
         content: "Updated",
+        author: "L",
       }),
       (error) =>
         error instanceof MemoryDomainError &&
@@ -765,6 +953,7 @@ test("Memory tag validation rejects blank, oversized, and excessive tags", async
         key: "tagged_memory",
         content: "Tagged content",
         tags,
+        author: "L",
       }),
       (error) =>
         error instanceof MemoryDomainError &&
@@ -883,6 +1072,7 @@ test("Memory archived list validates the active user and returns bounded safe re
       content: "Archived context",
       tags: ["archive"],
       source: "web",
+      author: null,
       updated_at: "2026-07-29T01:00:00.000Z",
     }],
     metadata: { count: 1 },

@@ -17,4 +17,5 @@ test("Memory repository persists every editable Web field", () => {
   assert.match(update, /category:\s*input\.category/);
   assert.match(update, /content:\s*input\.content/);
   assert.match(update, /tags:\s*input\.tags/);
+  assert.match(update, /author:\s*input\.author/);
 });

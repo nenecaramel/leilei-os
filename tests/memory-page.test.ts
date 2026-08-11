@@ -42,6 +42,7 @@ const memory = {
   tags: ["MCP", "focus"],
   source: "web",
   updated_at: "2026-07-28T00:00:00.000Z",
+  author: "L" as const,
 };
 
 test("Memory archive loading shows only the new month skeleton under Archive", async () => {
@@ -1478,6 +1479,7 @@ test("Memory detail edit updates key category content and tags through PATCH", a
       category: "project",
       content: "new body",
       tags: ["alpha", "beta"],
+      author: "L",
     });
   } finally {
     await page.cleanup();
@@ -1539,6 +1541,12 @@ test("Memory dirty create confirmation, retry gate, and stale completion are saf
 
     const save = findButton("保存");
     assert.ok(save);
+    const authorTrigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(authorTrigger);
+    await React.act(async () => authorTrigger.click());
+    const authorL = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
+    assert.ok(authorL);
+    await React.act(async () => authorL.click());
     await React.act(async () => {
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -1682,7 +1690,7 @@ test("Memory active detail renders in the shared paper shell", async () => {
     const dialog = page.container.querySelector<HTMLElement>("[role=dialog]");
     assert.ok(dialog);
     assert.equal(dialog.classList.contains("paper-detail-paper"), true);
-    assert.equal(dialog.querySelector(".paper-detail-signature")?.textContent, "N");
+    assert.equal(dialog.querySelector(".paper-author-signature")?.textContent, "L");
     assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /归档.*编辑/);
     assert.match(dialog.querySelector(".paper-detail-bottom-left")?.textContent ?? "", /Goal/);
     assert.equal(page.container.querySelector(".memory-detail"), null);
@@ -1742,7 +1750,7 @@ test("Memory create opens directly in the shared paper shell", async () => {
     });
     const dialog = page.container.querySelector<HTMLElement>("#memory-create-paper");
     assert.ok(dialog);
-    assert.equal(dialog.querySelector(".paper-detail-signature")?.textContent, "N");
+    assert.equal(dialog.querySelector(".paper-author-signature-trigger")?.textContent, "—");
     assert.ok(dialog.querySelector('input[aria-label="记忆 Key"][placeholder=Key]'));
     assert.ok(dialog.querySelector('textarea[aria-label="记忆内容"][placeholder=Content]'));
     assert.ok(dialog.querySelector('button[aria-label="记忆分类"]'));
@@ -1750,6 +1758,135 @@ test("Memory create opens directly in the shared paper shell", async () => {
     assert.equal(dialog.querySelector("select"), null);
     assert.equal(dialog.querySelector(".memory-paper-form"), null);
     assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /取消.*保存/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory create starts without an author and sends the selected signature", async () => {
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (init?.method === "POST") return { success: true, data: { id: "created" } } as T;
+      return listResponse() as T;
+    },
+  };
+  const page = await render("/memory", api);
+  try {
+    const create = page.container.querySelector<HTMLButtonElement>('button[aria-label="新增记忆"]');
+    assert.ok(create);
+    await React.act(async () => create.click());
+    assert.equal(
+      page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger")?.textContent,
+      "—",
+    );
+    const key = page.container.querySelector<HTMLInputElement>('input[aria-label="记忆 Key"]');
+    const content = page.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="记忆内容"]');
+    assert.ok(key && content);
+    const setValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set?.call(element, value);
+      const change = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(change, "propertyName", { value: "value" });
+      element.dispatchEvent(change);
+    };
+    await React.act(async () => {
+      key.focus();
+      setValue(key, "new-key");
+      content.focus();
+      setValue(content, "new content");
+    });
+    const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(trigger);
+    await React.act(async () => trigger.click());
+    const g = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="G"]');
+    assert.ok(g);
+    await React.act(async () => g.click());
+    const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "保存");
+    assert.ok(save);
+    assert.equal(key.value, "new-key");
+    assert.equal(content.value, "new content");
+    assert.equal(save.disabled, false);
+    await React.act(async () => save.click());
+    const post = requests.find(({ init }) => init?.method === "POST");
+    assert.ok(post);
+    assert.equal(JSON.parse(String(post.init?.body)).author, "G");
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory create with an unselected author does not submit", async () => {
+  const requests: Request[] = [];
+  const page = await render("/memory", {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      return listResponse() as T;
+    },
+  });
+  try {
+    const create = page.container.querySelector<HTMLButtonElement>('button[aria-label="新增记忆"]');
+    assert.ok(create);
+    await React.act(async () => create.click());
+    const key = page.container.querySelector<HTMLInputElement>('input[aria-label="记忆 Key"]');
+    const content = page.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="记忆内容"]');
+    assert.ok(key && content);
+    const setValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set?.call(element, value);
+      const change = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(change, "propertyName", { value: "value" });
+      element.dispatchEvent(change);
+    };
+    await React.act(async () => {
+      key.focus();
+      setValue(key, "new-key");
+      content.focus();
+      setValue(content, "new content");
+    });
+    const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "保存");
+    assert.ok(save);
+    await React.act(async () => save.click());
+    assert.equal(requests.some(({ init }) => init?.method === "POST"), false);
+    assert.match(page.container.textContent ?? "", /请选择作者/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory legacy-null edit requires an explicit author before PATCH", async () => {
+  const requests: Request[] = [];
+  const legacy = { ...memory, author: null };
+  const page = await render(createMemoryDetailLocation("memory-1", "/memory"), {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory/memory-1") return { success: true, data: legacy } as T;
+      if (init?.method === "PATCH") return { success: true, data: legacy } as T;
+      return listResponse([legacy]) as T;
+    },
+  });
+  try {
+    const edit = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "编辑");
+    assert.ok(edit);
+    await React.act(async () => edit.click());
+    const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "保存");
+    assert.ok(save);
+    await React.act(async () => save.click());
+    assert.match(page.container.textContent ?? "", /请选择作者/);
+    assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
+    const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(trigger);
+    await React.act(async () => trigger.click());
+    const l = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
+    assert.ok(l);
+    await React.act(async () => l.click());
+    await React.act(async () => save.click());
+    const patch = requests.find(({ init }) => init?.method === "PATCH");
+    assert.ok(patch);
+    assert.equal(JSON.parse(String(patch.init?.body)).author, "L");
   } finally {
     await page.cleanup();
   }
@@ -1919,7 +2056,7 @@ test("Memory archived detail renders as a read-only paper", async () => {
     const dialog = page.container.querySelector<HTMLElement>("[role=dialog]");
     assert.ok(dialog);
     assert.equal(dialog.classList.contains("paper-detail-paper"), true);
-    assert.equal(dialog.querySelector(".paper-detail-signature")?.textContent, "N");
+    assert.equal(dialog.querySelector(".paper-author-signature")?.textContent, "L");
     assert.match(dialog.querySelector(".paper-detail-top-right")?.textContent ?? "", /恢复/);
     assert.match(dialog.querySelector(".paper-detail-bottom-left")?.textContent ?? "", /Goal/);
     assert.equal(dialog.querySelector("textarea[aria-label=记忆内容]"), null);

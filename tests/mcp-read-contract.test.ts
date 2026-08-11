@@ -36,6 +36,7 @@ const MEMORY = {
   tags: ["Memory", "MCP"],
   source: "web",
   updated_at: "2026-07-29T08:00:00.000Z",
+  author: "L" as const,
 };
 
 const DIARY: DiaryEntryResult = {
@@ -47,6 +48,7 @@ const DIARY: DiaryEntryResult = {
   mood: "focused",
   created_at: "2026-07-29T07:00:00.000Z",
   updated_at: "2026-07-29T08:10:00.000Z",
+  author: "G",
 };
 
 const TASK: TaskEntryResult = {
@@ -63,6 +65,7 @@ const TASK: TaskEntryResult = {
   updated_at: "2026-07-29T08:20:00.000Z",
   completed_at: null,
   allowed_actions: ["complete", "cancel"],
+  author: null,
 };
 
 class MemoryReads {
@@ -79,6 +82,7 @@ class MemoryReads {
         key: MEMORY.key,
         content: MEMORY.searchContent,
         tags: MEMORY.tags,
+        author: MEMORY.author,
         updated_at: MEMORY.updated_at,
       }],
       metadata: { count: 1 },
@@ -99,6 +103,7 @@ class MemoryReads {
       source: MEMORY.source,
       updated_at: MEMORY.updated_at,
       lifecycle_status: "active",
+      author: MEMORY.author,
     };
   }
 }
@@ -261,6 +266,7 @@ test("Memory, Diary, and Task discovery-to-detail flows remain isolated", async 
     key: MEMORY.key,
     content: MEMORY.searchContent,
     tags: MEMORY.tags,
+    author: MEMORY.author,
     updated_at: MEMORY.updated_at,
   });
   assert.equal("source" in memoryItem, false);
@@ -281,6 +287,7 @@ test("Memory, Diary, and Task discovery-to-detail flows remain isolated", async 
       source: MEMORY.source,
       updated_at: MEMORY.updated_at,
       lifecycle_status: "active",
+      author: MEMORY.author,
     },
   });
 

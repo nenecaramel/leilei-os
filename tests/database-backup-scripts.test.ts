@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -8,6 +8,15 @@ import test from "node:test";
 const repoRoot = resolve(import.meta.dirname, "..");
 const backupScript = join(repoRoot, "scripts/db/backup_postgres.sh");
 const restoreScript = join(repoRoot, "scripts/db/restore_verify_postgres.sh");
+
+function currentMigrationHead(): string {
+  const migration = readdirSync(join(repoRoot, "drizzle"))
+    .filter((name) => /^\d{4}_.+\.sql$/.test(name))
+    .sort()
+    .at(-1);
+  assert.ok(migration, "expected at least one Drizzle migration");
+  return migration.slice(0, -".sql".length);
+}
 
 function run(script: string, env: NodeJS.ProcessEnv) {
   return spawnSync("bash", [script], {
@@ -158,7 +167,8 @@ test("encrypted backup and local temporary restore verification work with fake P
   const match = backup.stdout.match(/Encrypted backup created: (.+)/);
   assert.ok(match);
   const backupFile = match[1].trim();
-  assert.match(backupFile, /_\d{8}T\d{6}Z_0014_early_ozymandias\.backup\.enc$/);
+  assert.match(backupFile, /_\d{8}T\d{6}Z_/);
+  assert.ok(backupFile.endsWith(`_${currentMigrationHead()}.backup.enc`));
   assert.equal(readFileSync(`${backupFile}.sha256`, "utf8").split(/\s+/)[0].length, 64);
 
   const restore = run(restoreScript, {

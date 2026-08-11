@@ -81,14 +81,33 @@ test(
             randomUUID(), randomUUID(), randomUUID(), randomUUID(),
           ];
           await transaction.insert(tasks).values([
-            task(lifecycleIds[0]!, owner, "active", { status: "pending" }),
-            task(lifecycleIds[1]!, owner, "active", { status: "in_progress" }),
+            task(lifecycleIds[0]!, owner, "active", { status: "pending", author: "L" }),
+            task(lifecycleIds[1]!, owner, "active", { status: "in_progress", author: "G" }),
             task(lifecycleIds[2]!, owner, "active", { status: "cancelled" }),
             task(lifecycleIds[3]!, owner, "active", {
               status: "completed",
               completedAt,
             }),
           ]);
+          const authorFixtureIds = [randomUUID(), randomUUID(), randomUUID()];
+          await transaction.insert(tasks).values([
+            task(authorFixtureIds[0]!, owner, "active", { author: "L" }),
+            task(authorFixtureIds[1]!, owner, "active", { author: "G" }),
+            task(authorFixtureIds[2]!, owner, "active", { author: null }),
+          ]);
+          assert.deepEqual(
+            (await transaction.select({
+              id: tasks.id,
+              author: tasks.author,
+            }).from(tasks).where(inArray(tasks.id, authorFixtureIds)))
+              .sort((left, right) => left.id.localeCompare(right.id)),
+            authorFixtureIds
+              .map((id, index) => ({
+                id,
+                author: index === 0 ? "L" : index === 1 ? "G" : null,
+              }))
+              .sort((left, right) => left.id.localeCompare(right.id)),
+          );
           const repository = new DrizzleTaskRepository(transaction as never);
 
           for (const id of lifecycleIds) {
@@ -134,6 +153,7 @@ test(
             lifecycleStatus: tasks.lifecycleStatus,
             updatedAt: tasks.updatedAt,
             completedAt: tasks.completedAt,
+            author: tasks.author,
           }).from(tasks).where(inArray(tasks.id, lifecycleIds));
           assert.ok(roundTrip.every((row) =>
             row.lifecycleStatus === "active" &&
@@ -144,6 +164,8 @@ test(
               ?.completedAt?.toISOString(),
             completedAt.toISOString(),
           );
+          assert.equal(roundTrip.find((row) => row.id === lifecycleIds[0])?.author, "L");
+          assert.equal(roundTrip.find((row) => row.id === lifecycleIds[1])?.author, "G");
           const edited = await repository.updateTask({
             id: lifecycleIds[0]!,
             userId: owner,

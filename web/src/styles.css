@@ -2261,6 +2261,72 @@ body:has(.home-prototype) {
   z-index: 2;
 }
 
+.paper-detail-bottom-left:has(.paper-author-signature) {
+  right: 24px;
+  left: auto;
+  max-width: calc(100% - 48px);
+}
+
+.paper-author-signature {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: #858585;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.paper-author-signature-trigger {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+}
+
+.paper-author-signature-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.paper-author-signature-menu button {
+  min-width: 36px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.paper-author-signature-menu button:hover,
+.paper-author-signature-menu button[aria-checked="true"] {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.paper-author-signature-error {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 52px);
+  white-space: nowrap;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .paper-detail-date {
   top: 13px;
   left: 24px;

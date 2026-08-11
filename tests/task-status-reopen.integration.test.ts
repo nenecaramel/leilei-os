@@ -60,6 +60,7 @@ test(
             createdAt: timestamp,
             updatedAt: timestamp,
             completedAt: null,
+            author: "G",
           });
           const repository = new DrizzleTaskRepository(transaction as never);
 
@@ -72,6 +73,7 @@ test(
             completedAt: null,
           });
           assert.equal(cancelled?.resumeStatus, "pending");
+          assert.equal(cancelled?.author, "G");
 
           const reopened = await repository.reopenTask({
             userId: owner,
@@ -82,6 +84,7 @@ test(
           assert.equal(reopened?.status, "pending");
           assert.equal(reopened?.resumeStatus, null);
           assert.equal(reopened?.completedAt, null);
+          assert.equal(reopened?.author, "G");
 
           const [first, second] = await Promise.all([
             repository.updateTaskStatus({

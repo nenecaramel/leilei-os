@@ -13,6 +13,7 @@ const memoryCategorySchema = z.enum([
   "goal",
   "project",
 ]);
+const contentAuthorSchema = z.enum(["L", "G"]);
 
 const searchMemoryInputSchema = z
   .object({
@@ -55,6 +56,7 @@ const searchMemoryOutputSchema = z.object({
         content: z.string(),
         tags: z.array(z.string()),
         updated_at: z.string().datetime(),
+        author: contentAuthorSchema.nullable(),
       }),
     ),
     metadata: z.object({
@@ -104,13 +106,14 @@ export function registerSearchMemoryTool(
         });
         const data = {
           memories: result.memories.map(
-            ({ id, category, key, content, tags, updated_at }) => ({
+            ({ id, category, key, content, tags, updated_at, author }) => ({
               id,
               category,
               key,
               content,
               tags,
               updated_at,
+              author,
             }),
           ),
           metadata: result.metadata,

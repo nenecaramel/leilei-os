@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   diaryEntries,
@@ -60,6 +60,7 @@ test(
             date: string;
             tags: string[];
             mood: string;
+            author?: "L" | "G" | null;
           }) => ({
             ...input,
             source: "chatgpt_mcp" as const,
@@ -97,6 +98,53 @@ test(
               mood: "happy",
             }),
           ]);
+
+          const authorFixtureIds = [randomUUID(), randomUUID(), randomUUID()];
+          await transaction.insert(diaryEntries).values([
+            record({
+              id: authorFixtureIds[0]!,
+              userId: owner,
+              title: "Diary L author",
+              content: "Explicit L author fixture",
+              date: "2026-07-08",
+              tags: [],
+              mood: "neutral",
+              author: "L",
+            }),
+            record({
+              id: authorFixtureIds[1]!,
+              userId: owner,
+              title: "Diary G author",
+              content: "Explicit G author fixture",
+              date: "2026-07-08",
+              tags: [],
+              mood: "neutral",
+              author: "G",
+            }),
+            record({
+              id: authorFixtureIds[2]!,
+              userId: owner,
+              title: "Diary null author",
+              content: "Legacy null author fixture",
+              date: "2026-07-08",
+              tags: [],
+              mood: "neutral",
+              author: null,
+            }),
+          ]);
+          assert.deepEqual(
+            (await transaction.select({
+              id: diaryEntries.id,
+              author: diaryEntries.author,
+            }).from(diaryEntries).where(inArray(diaryEntries.id, authorFixtureIds)))
+              .sort((left, right) => left.id.localeCompare(right.id)),
+            authorFixtureIds
+              .map((id, index) => ({
+                id,
+                author: index === 0 ? "L" : index === 1 ? "G" : null,
+              }))
+              .sort((left, right) => left.id.localeCompare(right.id)),
+          );
 
           const service = new DiaryService(
             new DrizzleDiaryRepository(transaction as never),

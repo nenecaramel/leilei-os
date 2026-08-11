@@ -23,6 +23,7 @@ const taskTimeBucketSchema = z.enum([
 ]);
 const taskActionSchema = z.enum(["start", "complete", "cancel", "reopen"]);
 const dateTimeSchema = z.string().datetime();
+const contentAuthorSchema = z.enum(["L", "G"]);
 
 const getTaskInputSchema = z
   .object({
@@ -52,6 +53,7 @@ const getTaskOutputSchema = z.object({
     completed_at: dateTimeSchema.nullable(),
     allowed_actions: z.array(taskActionSchema),
     lifecycle_status: z.enum(["active", "archived"]),
+    author: contentAuthorSchema.nullable(),
   }),
 });
 

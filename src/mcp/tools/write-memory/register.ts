@@ -17,11 +17,13 @@ const memoryCategorySchema = z.enum(["profile", "preference", "goal", "project"]
 const rawMemoryKeySchema = z.string().max(1_000);
 const rawMemoryContentSchema = z.string().max(20_000);
 const rawMemoryTagSchema = z.string().max(500);
+const contentAuthorSchema = z.enum(["L", "G"]);
 const writeMemoryInputSchema = z.object({
   category: memoryCategorySchema,
   key: rawMemoryKeySchema,
   content: rawMemoryContentSchema,
   tags: z.array(rawMemoryTagSchema).max(20).optional(),
+  author: contentAuthorSchema,
   idempotency_key: z.string()
     .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
     .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
@@ -41,6 +43,7 @@ const writeMemoryOutputSchema = z.object({
       lifecycle_status: z.enum(["active", "archived"]),
       created_at: z.string().datetime(),
       updated_at: z.string().datetime(),
+      author: contentAuthorSchema.nullable(),
     }),
     metadata: z.object({
       created: z.boolean(),
@@ -81,14 +84,14 @@ export function registerWriteMemoryTool(
         openWorldHint: false,
       },
     },
-    async ({ category, key, content, tags, idempotency_key }) =>
+    async ({ category, key, content, tags, author, idempotency_key }) =>
       invokeMcpWrite({
         toolName: "write_memory",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           const data = await dependencies.memoryService.createMcpMemory(
             { userId },
-            { category, key, content, tags },
+            { category, key, content, tags, author },
             idempotency_key,
           );
           return {

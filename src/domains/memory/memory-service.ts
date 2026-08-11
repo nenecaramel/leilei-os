@@ -9,6 +9,10 @@ import {
   hashMcpWriteRequest,
   normalizeMcpIdempotencyKey,
 } from "../mcp-write/mcp-write-idempotency.js";
+import {
+  isContentAuthor,
+  type ContentAuthor,
+} from "../content-author.js";
 
 const ALLOWED_CATEGORIES = [
   "profile",
@@ -42,6 +46,7 @@ export type CreateMemoryInput = {
   key: string;
   content: string;
   tags?: readonly string[];
+  author: ContentAuthor;
 };
 
 export type AuthenticatedMemoryContext = { userId: string };
@@ -51,6 +56,7 @@ export type CreateMcpMemoryInput = {
   key: string;
   content: string;
   tags?: readonly string[];
+  author?: ContentAuthor;
 };
 
 export type CreateMcpMemoryResult = {
@@ -62,6 +68,7 @@ export type CreateMcpMemoryResult = {
     tags: string[];
     source: "mcp";
     lifecycle_status: "active" | "archived";
+    author: ContentAuthor | null;
     created_at: string;
     updated_at: string;
   };
@@ -75,6 +82,7 @@ export type UpdateMemoryInput = {
   category: MemoryCategory;
   content: string;
   tags?: readonly string[];
+  author?: ContentAuthor;
 };
 
 export type ReadMemoryResult = {
@@ -88,6 +96,7 @@ export type ReadMemoryResult = {
     content: string;
     tags: string[];
     source?: string;
+    author: ContentAuthor | null;
     updated_at: string;
   }>;
   metadata: {
@@ -106,6 +115,7 @@ export type ReadArchivedMemoriesResult = {
     content: string;
     tags: string[];
     source: string;
+    author: ContentAuthor | null;
     updated_at: string;
   }>;
   metadata: {
@@ -114,6 +124,7 @@ export type ReadArchivedMemoriesResult = {
 };
 
 export type MemoryDomainErrorCode =
+  | "AUTHOR_REQUIRED"
   | "INVALID_MEMORY_CATEGORY"
   | "INVALID_MEMORY_LIMIT"
   | "INVALID_MEMORY_QUERY"
@@ -170,6 +181,7 @@ export class MemoryService {
         content: this.limitContent(memory.content),
         tags: memory.tags,
         ...(input.includeSource ? { source: memory.source } : {}),
+        author: memory.author ?? null,
         updated_at: memory.updatedAt.toISOString(),
       })),
       metadata: {
@@ -224,6 +236,7 @@ export class MemoryService {
       content: this.limitContent(memory.content),
       tags: memory.tags,
       source: memory.source,
+      author: memory.author ?? null,
       updated_at: memory.updatedAt.toISOString(),
     };
   }
@@ -248,6 +261,7 @@ export class MemoryService {
         content: this.limitContent(memory.content),
         tags: memory.tags,
         source: memory.source,
+        author: memory.author ?? null,
         updated_at: memory.updatedAt.toISOString(),
       })),
       metadata: {
@@ -290,12 +304,14 @@ export class MemoryService {
       content: memory.content,
       tags: memory.tags,
       source: memory.source,
+      author: memory.author ?? null,
       updated_at: memory.updatedAt.toISOString(),
     };
   }
 
   async createMemory(input: CreateMemoryInput): Promise<void> {
     await this.requireActiveUser(input.userId);
+    this.requireAuthor(input.author);
     await this.repository.createMemory({
       userId: input.userId,
       category: input.category,
@@ -303,6 +319,7 @@ export class MemoryService {
       content: input.content.trim(),
       tags: this.normalizeTags(input.tags ?? []),
       source: "web",
+      author: input.author,
     });
   }
 
@@ -317,6 +334,7 @@ export class MemoryService {
     const key = this.normalizeRequiredText(input.key, MAX_KEY_LENGTH, "INVALID_MEMORY_KEY");
     const content = this.normalizeRequiredText(input.content, MAX_CONTENT_LENGTH, "INVALID_MEMORY_CONTENT");
     const tags = this.normalizeTags(input.tags ?? []);
+    this.requireAuthor(input.author);
     let normalizedIdempotencyKey: string;
     try {
       normalizedIdempotencyKey = normalizeMcpIdempotencyKey(idempotencyKey);
@@ -332,9 +350,10 @@ export class MemoryService {
       key,
       content,
       tags,
+      author: input.author!,
       source: "mcp",
       idempotencyKey: normalizedIdempotencyKey,
-      requestHash: hashMcpWriteRequest({ category, key, content, tags }),
+      requestHash: hashMcpWriteRequest({ category, key, content, tags, author: input.author! }),
     });
 
     if (persisted.outcome === "conflict") {
@@ -358,6 +377,7 @@ export class MemoryService {
         lifecycle_status: persisted.memory.status,
         created_at: persisted.memory.createdAt.toISOString(),
         updated_at: persisted.memory.updatedAt.toISOString(),
+        author: persisted.memory.author ?? null,
       },
       metadata: {
         created: persisted.outcome === "created",
@@ -369,23 +389,39 @@ export class MemoryService {
   async updateMemory(input: UpdateMemoryInput): Promise<void> {
     await this.requireActiveUser(input.userId);
     const category = this.validateCategories([input.category])![0]!;
+    const key = this.normalizeRequiredText(
+      input.key,
+      MAX_KEY_LENGTH,
+      "INVALID_MEMORY_KEY",
+    );
+    const content = this.normalizeRequiredText(
+      input.content,
+      MAX_CONTENT_LENGTH,
+      "INVALID_MEMORY_CONTENT",
+    );
+    const tags = input.tags === undefined
+      ? undefined
+      : this.normalizeTags(input.tags);
+    const existing = await this.repository.findActiveAssistantMemoryById({
+      userId: input.userId,
+      id: input.id.trim(),
+    });
+    if (!existing) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+    const author = input.author ?? existing.author ?? null;
+    this.requireAuthor(author);
     const updated = await this.repository.updateMemory({
       userId: input.userId,
       id: input.id,
-      key: this.normalizeRequiredText(
-        input.key,
-        MAX_KEY_LENGTH,
-        "INVALID_MEMORY_KEY",
-      ),
+      key,
       category,
-      content: this.normalizeRequiredText(
-        input.content,
-        MAX_CONTENT_LENGTH,
-        "INVALID_MEMORY_CONTENT",
-      ),
-      ...(input.tags === undefined
-        ? {}
-        : { tags: this.normalizeTags(input.tags) }),
+      content,
+      ...(tags === undefined ? {} : { tags }),
+      author,
     });
 
     if (!updated) {
@@ -456,6 +492,15 @@ export class MemoryService {
     }
 
     return user;
+  }
+
+  private requireAuthor(value: unknown): asserts value is ContentAuthor {
+    if (!isContentAuthor(value)) {
+      throw new MemoryDomainError(
+        "AUTHOR_REQUIRED",
+        "A content author must be selected.",
+      );
+    }
   }
 
   private validateCategories(

@@ -8,6 +8,8 @@ import {
 } from "../../../domains/diary/diary-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 
+const contentAuthorSchema = z.enum(["L", "G"]);
+
 const writeDiaryInputSchema = z
   .object({
     title: z
@@ -34,6 +36,7 @@ const writeDiaryInputSchema = z
       .max(50)
       .optional()
       .describe("An optional concise mood label."),
+    author: contentAuthorSchema.describe("The logical content author: L or G."),
     idempotency_key: z
       .string()
       .min(16)
@@ -53,6 +56,7 @@ const writeDiaryOutputSchema = z.object({
       tags: z.array(z.string()),
       mood: z.string().nullable(),
       created_at: z.string().datetime(),
+      author: contentAuthorSchema.nullable(),
     }),
     metadata: z.object({
       created: z.boolean(),
@@ -92,7 +96,7 @@ export function registerWriteDiaryTool(
         openWorldHint: false,
       },
     },
-    async ({ title, content, date, tags, mood, idempotency_key }) =>
+    async ({ title, content, date, tags, mood, author, idempotency_key }) =>
       invokeMcpWrite({
         toolName: "write_diary",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
@@ -105,6 +109,7 @@ export function registerWriteDiaryTool(
               date,
               tags,
               mood,
+              author,
               idempotencyKey: idempotency_key,
             },
           );

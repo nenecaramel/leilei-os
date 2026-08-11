@@ -36,6 +36,8 @@ export const memoryStatusEnum = pgEnum("memory_status", [
 
 export const diarySourceEnum = pgEnum("diary_source", ["chatgpt_mcp"]);
 
+export const contentAuthorEnum = pgEnum("content_author", ["L", "G"]);
+
 export const diaryStatusEnum = pgEnum("diary_status", [
   "active",
   "archived",
@@ -127,6 +129,7 @@ export const coreMemories = pgTable(
       .default("assistant")
       .notNull(),
     source: varchar("source", { length: 100 }).notNull(),
+    author: contentAuthorEnum("author"),
     status: memoryStatusEnum("status").default("active").notNull(),
     sortOrder: integer("sort_order").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -187,6 +190,7 @@ export const diaryEntries = pgTable(
     tags: text("tags").array().default(sql`ARRAY[]::text[]`).notNull(),
     mood: varchar("mood", { length: 50 }),
     source: diarySourceEnum("source").default("chatgpt_mcp").notNull(),
+    author: contentAuthorEnum("author"),
     status: diaryStatusEnum("status").default("active").notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
@@ -454,6 +458,7 @@ export const tasks = pgTable(
     lifecycleStatus: taskLifecycleStatusEnum("lifecycle_status")
       .default("active")
       .notNull(),
+    author: contentAuthorEnum("author"),
     priority: taskPriorityEnum("priority").default("normal").notNull(),
     dueTime: timestamp("due_time", { withTimezone: true }),
     timezone: varchar("timezone", { length: 64 }).notNull(),

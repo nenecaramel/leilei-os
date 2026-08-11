@@ -122,6 +122,7 @@ const diary = {
   date: "2026-07-29",
   tags: ["archive"],
   mood: "calm",
+  author: "L",
   created_at: "2026-07-29T01:00:00.000Z",
   updated_at: "2026-07-29T02:00:00.000Z",
 };
@@ -767,6 +768,13 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
       content.dispatchEvent(contentChange);
     });
 
+    const authorTrigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(authorTrigger);
+    await React.act(async () => authorTrigger.click());
+    const authorL = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
+    assert.ok(authorL);
+    await React.act(async () => authorL.click());
+
     let confirmations = 0;
     page.window.confirm = () => {
       confirmations += 1;
@@ -786,6 +794,8 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 1);
+    const createRequest = requests.find(({ init }) => init?.method === "POST");
+    assert.equal(JSON.parse(String(createRequest?.init?.body)).author, "L");
     await React.act(async () => {
       first.reject(new Error("failed"));
       await first.promise.catch(() => undefined);
@@ -822,6 +832,44 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
     });
     assert.match(page.window.location.search, /diary=diary-1/);
     assert.equal(confirmations, 2);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary legacy-null edit requires selecting an author before PATCH", async () => {
+  const requests: Request[] = [];
+  const legacyDiary = { ...diary, author: null };
+  const page = await render(createDiaryDetailLocation("diary-1", "/diary"), {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/diary/diary-1") return { success: true, data: legacyDiary } as T;
+      if (init?.method === "PATCH") return { success: true, data: { ...legacyDiary, author: "G" } } as T;
+      return { success: true, data: { diaries: [legacyDiary], metadata: { count: 1 } } } as T;
+    },
+  });
+  try {
+    const edit = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "编辑");
+    assert.ok(edit);
+    await React.act(async () => edit.click());
+    const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "保存修改");
+    assert.ok(save);
+    await React.act(async () => save.click());
+    assert.match(page.container.textContent ?? "", /请选择作者/);
+    assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
+
+    const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(trigger);
+    await React.act(async () => trigger.click());
+    const g = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="G"]');
+    assert.ok(g);
+    await React.act(async () => g.click());
+    await React.act(async () => save.click());
+    const patch = requests.find(({ init }) => init?.method === "PATCH");
+    assert.ok(patch);
+    assert.equal(JSON.parse(String(patch.init?.body)).author, "G");
   } finally {
     await page.cleanup();
   }
