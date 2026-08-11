@@ -45,6 +45,7 @@ const task = {
   created_at: "2026-07-22T09:00:00.000Z",
   updated_at: "2026-07-22T09:00:00.000Z",
   completed_at: null,
+  author: null,
   allowed_actions: ["start", "cancel"] as const,
 };
 
@@ -112,6 +113,7 @@ test("task create api forwards a null due time through the authenticated service
       dueTime: null,
       timezone: "Asia/Shanghai",
       tags: [],
+      author: "L",
     },
   } as unknown as Request, response, () => {});
 
@@ -123,12 +125,35 @@ test("task create api forwards a null due time through the authenticated service
     dueTime: null,
     timezone: "Asia/Shanghai",
     tags: [],
+    author: "L",
   }]);
   assert.equal(result.status, 201);
   assert.deepEqual(
     (result.body as { data: { due_time: string | null } }).data.due_time,
     null,
   );
+});
+
+test("task create maps missing author to a safe invalid request", async () => {
+  const handler = createCreateTaskApiHandler({
+    taskService: {
+      async createWebTask() {
+        throw new TaskDomainError("AUTHOR_REQUIRED", "private author detail");
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+  await handler({
+    webUserId: "user-1",
+    body: {
+      title: "标题",
+      description: "正文",
+      priority: "normal",
+      tags: [],
+    },
+  } as unknown as Request, response, () => {});
+  assert.equal(result.status, 400);
+  assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
 });
 
 test("task list api returns a generic bad request without task content", async () => {
@@ -229,6 +254,7 @@ test("task edit api forwards only editable fields and preserves identity from co
       dueTime: "2026-07-24T10:00:00Z",
       timezone: "Asia/Shanghai",
       tags: ["项目"],
+      author: "G",
       status: "completed",
       userId: "other-user",
     },
@@ -243,6 +269,7 @@ test("task edit api forwards only editable fields and preserves identity from co
     dueTime: "2026-07-24T10:00:00Z",
     timezone: "Asia/Shanghai",
     tags: ["项目"],
+    author: "G",
   }]);
   assert.deepEqual(result.body, { success: true, data: task });
 });

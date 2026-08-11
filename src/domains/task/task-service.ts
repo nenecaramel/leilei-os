@@ -26,6 +26,10 @@ import {
   parseTaskDueTime,
   type TaskTimeBucket,
 } from "./task-time.js";
+import {
+  isContentAuthor,
+  type ContentAuthor,
+} from "../content-author.js";
 
 const ALLOWED_PRIORITIES = [
   "low",
@@ -61,6 +65,7 @@ export type CreateTaskInput = {
   dueTime?: string | null;
   timezone?: string;
   tags: readonly string[];
+  author?: ContentAuthor;
 };
 
 export type TaskEntryResult = {
@@ -78,6 +83,7 @@ export type TaskEntryResult = {
   completed_at: string | null;
   allowed_actions: TaskAction[];
   lifecycle_status?: "active" | "archived";
+  author: ContentAuthor | null;
 };
 
 export type CreateTaskResult = {
@@ -120,6 +126,7 @@ export type CreateWebTaskInput = {
   dueTime?: string | null;
   timezone?: string;
   tags?: readonly string[];
+  author?: ContentAuthor;
 };
 
 export type UpdateWebTaskStatusInput = {
@@ -137,9 +144,11 @@ export type UpdateWebTaskInput = {
   dueTime?: string | null;
   timezone?: string;
   tags?: readonly string[];
+  author?: ContentAuthor;
 };
 
 export type TaskDomainErrorCode =
+  | "AUTHOR_REQUIRED"
   | "INVALID_AUTHENTICATED_USER"
   | "USER_NOT_FOUND"
   | "USER_DISABLED"
@@ -337,6 +346,7 @@ export class TaskService {
         dueTime: input.dueTime,
         timezone: input.timezone,
         tags: input.tags ?? [],
+        author: input.author,
       },
     );
 
@@ -494,11 +504,13 @@ export class TaskService {
       timezone: input.timezone,
       tags: input.tags ?? [],
     }, accountTimezone);
+    const author = this.requireAuthor(input.author ?? existing.author ?? null);
 
     const task = await this.repository.updateTask({
       userId,
       id,
       ...normalized,
+      author,
     });
 
     if (!task) {
@@ -563,7 +575,18 @@ export class TaskService {
       ...this.normalizeTaskFields(input, accountTimezone),
       status: "pending",
       completedAt: null,
+      author: this.requireAuthor(input.author),
     };
+  }
+
+  private requireAuthor(value: unknown): ContentAuthor {
+    if (!isContentAuthor(value)) {
+      throw new TaskDomainError(
+        "AUTHOR_REQUIRED",
+        "A content author must be selected.",
+      );
+    }
+    return value;
   }
 
   private normalizeTaskFields(input: {
@@ -848,6 +871,7 @@ export class TaskService {
       updated_at: task.updatedAt.toISOString(),
       completed_at:
         task.completedAt?.toISOString() ?? null,
+      author: task.author ?? null,
       allowed_actions:
         task.lifecycleStatus === "archived"
           ? []

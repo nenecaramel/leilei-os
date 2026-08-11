@@ -8,6 +8,7 @@ import {
     type ListTasksResult,
     type TaskEntryResult,
   } from "../domains/task/task-service.js";
+  import type { ContentAuthor } from "../domains/content-author.js";
   
   export type TaskApiDependencies = {
     taskService: {
@@ -30,6 +31,7 @@ import {
         dueTime?: string | null;
         timezone?: string;
         tags?: readonly string[];
+        author?: ContentAuthor;
       }): Promise<TaskEntryResult>;
   
       updateWebTaskStatus(input: {
@@ -52,6 +54,7 @@ import {
         dueTime?: string | null;
         timezone?: string;
         tags?: readonly string[];
+        author?: ContentAuthor;
       }): Promise<TaskEntryResult>;
       listArchivedTasks?(input: { userId: string; limit?: number }): Promise<ListTasksResult>;
       readArchivedTask?(input: { userId: string; id: string }): Promise<TaskEntryResult>;
@@ -205,6 +208,7 @@ import {
           dueTime: request.body.dueTime,
           timezone: request.body.timezone,
           tags: request.body.tags,
+          author: request.body.author,
         });
   
         response.status(201).json({
@@ -263,6 +267,7 @@ import {
           dueTime: request.body.dueTime,
           timezone: request.body.timezone,
           tags: request.body.tags,
+          ...(request.body.author === undefined ? {} : { author: request.body.author }),
         });
 
         response.json({

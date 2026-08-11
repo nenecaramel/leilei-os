@@ -81,8 +81,8 @@ test(
             randomUUID(), randomUUID(), randomUUID(), randomUUID(),
           ];
           await transaction.insert(tasks).values([
-            task(lifecycleIds[0]!, owner, "active", { status: "pending" }),
-            task(lifecycleIds[1]!, owner, "active", { status: "in_progress" }),
+            task(lifecycleIds[0]!, owner, "active", { status: "pending", author: "L" }),
+            task(lifecycleIds[1]!, owner, "active", { status: "in_progress", author: "G" }),
             task(lifecycleIds[2]!, owner, "active", { status: "cancelled" }),
             task(lifecycleIds[3]!, owner, "active", {
               status: "completed",
@@ -153,6 +153,7 @@ test(
             lifecycleStatus: tasks.lifecycleStatus,
             updatedAt: tasks.updatedAt,
             completedAt: tasks.completedAt,
+            author: tasks.author,
           }).from(tasks).where(inArray(tasks.id, lifecycleIds));
           assert.ok(roundTrip.every((row) =>
             row.lifecycleStatus === "active" &&
@@ -163,6 +164,8 @@ test(
               ?.completedAt?.toISOString(),
             completedAt.toISOString(),
           );
+          assert.equal(roundTrip.find((row) => row.id === lifecycleIds[0])?.author, "L");
+          assert.equal(roundTrip.find((row) => row.id === lifecycleIds[1])?.author, "G");
           const edited = await repository.updateTask({
             id: lifecycleIds[0]!,
             userId: owner,
