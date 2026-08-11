@@ -24,6 +24,7 @@ import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
 } from "../mcp-write/mcp-write-idempotency.js";
+import type { ContentAuthor } from "../content-author.js";
 
 export type MemoryCategory = (typeof memoryCategoryEnum.enumValues)[number];
 
@@ -39,6 +40,7 @@ export type ActiveAssistantMemoryRecord = {
   content: string;
   tags: string[];
   source: string;
+  author?: ContentAuthor | null;
   updatedAt: Date;
 };
 
@@ -81,6 +83,7 @@ export type CreateMemoryInput = {
   content: string;
   tags: string[];
   source: TrustedMemorySource;
+  author: ContentAuthor;
 };
 
 export type UpdateMemoryInput = {
@@ -90,6 +93,7 @@ export type UpdateMemoryInput = {
   category: MemoryCategory;
   content: string;
   tags?: string[];
+  author?: ContentAuthor;
 };
 
 export type MemoryLifecycleMutationInput = LifecycleMutationInput;
@@ -213,6 +217,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         content: coreMemories.content,
         tags: coreMemories.tags,
         source: coreMemories.source,
+        author: coreMemories.author,
         updatedAt: coreMemories.updatedAt,
       })
       .from(coreMemories)
@@ -282,6 +287,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         content: coreMemories.content,
         tags: coreMemories.tags,
         source: coreMemories.source,
+        author: coreMemories.author,
         updatedAt: coreMemories.updatedAt,
       })
       .from(coreMemories)
@@ -309,6 +315,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         content: coreMemories.content,
         tags: coreMemories.tags,
         source: coreMemories.source,
+        author: coreMemories.author,
         updatedAt: coreMemories.updatedAt,
       })
       .from(coreMemories)
@@ -338,6 +345,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         content: coreMemories.content,
         tags: coreMemories.tags,
         source: coreMemories.source,
+        author: coreMemories.author,
         updatedAt: coreMemories.updatedAt,
       })
       .from(coreMemories)
@@ -362,6 +370,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
       content: input.content,
       tags: input.tags,
       source: input.source,
+      author: input.author,
       visibility: "assistant",
       status: "active",
     });
@@ -407,6 +416,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
           content: input.content,
           tags: input.tags,
           source: "mcp",
+          author: input.author,
           visibility: "assistant",
           status: "active",
         })
@@ -420,6 +430,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
           content: coreMemories.content,
           tags: coreMemories.tags,
           source: coreMemories.source,
+          author: coreMemories.author,
           status: coreMemories.status,
           createdAt: coreMemories.createdAt,
           updatedAt: coreMemories.updatedAt,
@@ -456,6 +467,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         content: coreMemories.content,
         tags: coreMemories.tags,
         source: coreMemories.source,
+        author: coreMemories.author,
         status: coreMemories.status,
         createdAt: coreMemories.createdAt,
         updatedAt: coreMemories.updatedAt,
@@ -476,6 +488,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         category: input.category,
         content: input.content,
         ...(input.tags ? { tags: input.tags } : {}),
+        ...(input.author === undefined ? {} : { author: input.author }),
         updatedAt: new Date(),
       })
       .where(

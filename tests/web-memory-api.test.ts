@@ -121,6 +121,7 @@ test("Memory archived detail API uses authenticated identity and safe response",
     content: "Archived content",
     tags: ["archive"],
     source: "web",
+    author: null,
     updated_at: "2026-07-29T01:00:00.000Z",
   };
   const handler = createReadArchivedMemoryDetailApiHandler({
@@ -225,6 +226,7 @@ test("reads Memory through the existing service with the Web identity", async ()
         content: "Prefer calm, structured plans.",
         tags: ["focus"],
         source: "web",
+        author: "L",
         updated_at: "2026-07-22T00:00:00.000Z",
       },
     ],
@@ -436,6 +438,7 @@ test("reads one Memory with only the authenticated Web user identity", async () 
     content: "Ship the next focused milestone.",
     tags: ["goal"],
     source: "phase_2_validation",
+    author: "L",
     updated_at: "2026-07-28T00:00:00.000Z",
   };
   const handler = createReadMemoryDetailApiHandler({
@@ -541,6 +544,7 @@ test("Memory create and update ignore client source and use only editable fields
         key: "memory_key",
         content: "Content",
         tags: ["计划", "MCP"],
+        author: "L",
         source: "chatgpt_mcp",
         userId: "attacker",
       },
@@ -557,6 +561,7 @@ test("Memory create and update ignore client source and use only editable fields
         category: "project",
         content: "Updated",
         tags: ["MCP"],
+        author: "G",
         source: "system",
         userId: "attacker",
       },
@@ -573,6 +578,7 @@ test("Memory create and update ignore client source and use only editable fields
         key: "memory_key",
         content: "Content",
         tags: ["计划", "MCP"],
+        author: "L",
       },
     },
     {
@@ -583,9 +589,43 @@ test("Memory create and update ignore client source and use only editable fields
         category: "project",
         content: "Updated",
         tags: ["MCP"],
+        author: "G",
       },
     },
   ]);
+});
+
+test("Memory create maps missing author to a safe client error", async () => {
+  let called = false;
+  const handler = createCreateMemoryApiHandler({
+    memoryService: {
+      async createMemory() {
+        called = true;
+        throw new MemoryDomainError(
+          "AUTHOR_REQUIRED",
+          "private author detail",
+        );
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+
+  await handler(
+    {
+      webUserId: "user-a",
+      body: {
+        category: "goal",
+        key: "memory-key",
+        content: "Content",
+      },
+    } as unknown as Request,
+    response,
+    (() => {}) as NextFunction,
+  );
+
+  assert.equal(called, true);
+  assert.equal(result.status, 400);
+  assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
 });
 
 for (const operation of ["update", "archive"] as const) {
@@ -700,6 +740,7 @@ test("Memory archived API reads only through the authenticated user service path
       content: "Archived content",
       tags: ["archive"],
       source: "web",
+      author: null,
       updated_at: "2026-07-29T01:00:00.000Z",
     }],
     metadata: { count: 1 },
