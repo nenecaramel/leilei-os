@@ -10,8 +10,12 @@ const main = readFileSync(
   new URL("../web/src/main.tsx", import.meta.url),
   "utf8",
 );
+const dialog = readFileSync(
+  new URL("../web/src/pages/PaperDetailDialog.tsx", import.meta.url),
+  "utf8",
+);
 
-test("the production entrypoint actually loads the author/editor layout fix", () => {
+test("the production entrypoint loads only author-specific layout overrides", () => {
   assert.match(main, /import\s+["']\.\/pages\/lg-author-editor-layout-fix\.css["'];/);
 });
 
@@ -23,17 +27,25 @@ test("author edit trigger stays on the read-mode signature baseline", () => {
 
 test("missing author has no persistent text label in the paper chrome", () => {
   assert.match(css, /\.paper-author-signature-error\s*\{[\s\S]*display:\s*none\s*!important/s);
+  assert.match(dialog, /const visibleErrorMessage = errorMessage === "请选择作者" \? null : errorMessage;/);
 });
 
-test("mobile metadata keeps 13px visual parity without transform hitbox drift", () => {
-  assert.match(css, /\.memory-paper-tags[\s\S]*font-size:\s*16px\s*!important[\s\S]*zoom:\s*0\.8125/s);
-  assert.match(css, /\.diary-paper-mood[\s\S]*zoom:\s*0\.8125/s);
-  assert.match(css, /\.diary-paper-tags[\s\S]*zoom:\s*0\.8125/s);
-  assert.match(css, /\.task-paper-tags[\s\S]*zoom:\s*0\.8125/s);
-  assert.doesNotMatch(css, /transform:\s*scale\(0\.8125\)/);
+test("author hotfix never overrides module metadata editor geometry or typography", () => {
+  for (const selector of [
+    "memory-paper-metadata",
+    "memory-paper-tags",
+    "diary-paper-metadata",
+    "diary-paper-mood",
+    "diary-paper-tags",
+    "task-paper-metadata",
+    "task-paper-tags",
+  ]) {
+    assert.doesNotMatch(css, new RegExp(`\\.${selector}\\b`));
+  }
+  assert.doesNotMatch(css, /\bzoom\s*:/);
 });
 
-test("metadata stays in the original bottom-left slot", () => {
-  assert.match(css, /\.paper-detail-bottom-left\s*\{[\s\S]*left:\s*24px\s*!important/s);
-  assert.match(css, /\.paper-detail-bottom-left\s*\{[\s\S]*right:\s*auto\s*!important/s);
+test("author anchor cannot relocate the accepted bottom-left metadata slot", () => {
+  assert.match(css, /\.paper-detail-bottom-left:has\(\.paper-author-signature-anchor\)[\s\S]*left:\s*24px\s*!important/s);
+  assert.match(css, /\.paper-detail-bottom-left:has\(\.paper-author-signature-anchor\)[\s\S]*right:\s*auto\s*!important/s);
 });
