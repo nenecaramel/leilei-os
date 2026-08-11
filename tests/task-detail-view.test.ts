@@ -50,6 +50,7 @@ const TASK_RESPONSE = {
     updated_at: "2026-07-26T00:00:00.000Z",
     completed_at: null,
     allowed_actions: ["start", "cancel"] as const,
+    author: "L" as const,
   },
 };
 
@@ -59,11 +60,35 @@ test("Dashboard quick-create intent opens Task form and focuses title once", asy
     await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const title = page.container.querySelector<HTMLInputElement>('input[placeholder="任务标题"]');
     assert.ok(title);
+    assert.equal(
+      page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger")?.textContent,
+      "—",
+    );
     assert.equal(page.window.history.state.quickCreate, undefined);
     assert.equal(page.window.history.state.preserved, true);
     assert.equal(page.window.document.activeElement, title);
   } finally {
     await page.cleanup();
+  }
+});
+
+test("Task details display the stored author or legacy unknown marker without exposing an edit control", async () => {
+  for (const [author, expected] of [["G", "G"], [null, "—"]] as const) {
+    const response = { ...TASK_RESPONSE, data: { ...TASK_RESPONSE.data, author } };
+    const page = await renderTaskPage(
+      createTaskDetailLocation(TASK_ID, "/task"),
+      createApi(async () => response).api,
+    );
+    try {
+      await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+      assert.equal(
+        page.container.querySelector(".paper-author-signature")?.textContent,
+        expected,
+      );
+      assert.equal(page.container.querySelector(".paper-author-signature-trigger"), null);
+    } finally {
+      await page.cleanup();
+    }
   }
 });
 
@@ -1002,6 +1027,12 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
       Object.defineProperty(descriptionChange, "propertyName", { value: "value" });
       description.dispatchEvent(descriptionChange);
     });
+    const authorTrigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(authorTrigger);
+    await React.act(async () => authorTrigger.click());
+    const authorL = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
+    assert.ok(authorL);
+    await React.act(async () => authorL.click());
     let confirmations = 0;
     page.window.confirm = () => {
       confirmations += 1;
@@ -1021,6 +1052,8 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 1);
+    const createRequest = requests.find(({ init }) => init?.method === "POST");
+    assert.equal(JSON.parse(String(createRequest?.init?.body)).author, "L");
     await React.act(async () => {
       first.reject(new Error("failed"));
       await first.promise.catch(() => undefined);
@@ -1061,16 +1094,66 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
   }
 });
 
+test("Task legacy-null edit requires selecting an author before PATCH", async () => {
+  const legacyResponse = {
+    ...TASK_RESPONSE,
+    data: { ...TASK_RESPONSE.data, author: null },
+  };
+  const { api, requests } = createApi((path, init) => {
+    if (path === `/task/${TASK_ID}` && !init?.method) {
+      return Promise.resolve(legacyResponse);
+    }
+    if (path === `/task/${TASK_ID}` && init?.method === "PATCH") {
+      return Promise.resolve({
+        ...legacyResponse,
+        data: { ...legacyResponse.data, author: "G" },
+      });
+    }
+    return Promise.resolve(legacyResponse);
+  });
+  const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const edit = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "编辑任务");
+    assert.ok(edit);
+    await React.act(async () => edit.click());
+    const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "保存修改");
+    assert.ok(save);
+    await React.act(async () => save.click());
+    assert.match(page.container.textContent ?? "", /请选择作者/);
+    assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
+
+    const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(trigger);
+    await React.act(async () => trigger.click());
+    const authorG = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="G"]');
+    assert.ok(authorG);
+    await React.act(async () => authorG.click());
+    await React.act(async () => save.click());
+    const patch = requests.find(({ init }) => init?.method === "PATCH");
+    assert.ok(patch);
+    assert.equal(JSON.parse(String(patch.init?.body)).author, "G");
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Task status transition is single-flight, preserves detail on failure, and retries once", async () => {
   const first = deferred<unknown>();
   const retry = deferred<unknown>();
+  const legacyStatusResponse = {
+    ...TASK_RESPONSE,
+    data: { ...TASK_RESPONSE.data, author: null },
+  };
   let attempt = 0;
   const { api, requests } = createApi((path, init) => {
     if (path.endsWith("/status") && init?.method === "PATCH") {
       attempt += 1;
       return attempt === 1 ? first.promise : retry.promise;
     }
-    return Promise.resolve(TASK_RESPONSE);
+    return Promise.resolve(legacyStatusResponse);
   });
   const page = await renderTaskPage(`/task?task=${TASK_ID}`, api);
   try {
@@ -1086,6 +1169,8 @@ test("Task status transition is single-flight, preserves detail on failure, and 
       start.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(requests.filter(({ path }) => path.endsWith("/status")).length, 1);
+    const statusRequest = requests.find(({ path }) => path.endsWith("/status"));
+    assert.deepEqual(JSON.parse(String(statusRequest?.init?.body)), { status: "in_progress" });
     await React.act(async () => {
       first.reject(new Error("failed"));
       await first.promise.catch(() => undefined);
@@ -1190,6 +1275,10 @@ test("Task dirty edit cancellation and update retry are page-level single-flight
       return input;
     };
     await startEdit();
+    assert.equal(
+      page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger")?.textContent,
+      "L",
+    );
     let title = await changeTitle("changed task");
     page.window.confirm = () => false;
     await React.act(async () => {
