@@ -89,6 +89,25 @@ test(
               completedAt,
             }),
           ]);
+          const authorFixtureIds = [randomUUID(), randomUUID(), randomUUID()];
+          await transaction.insert(tasks).values([
+            task(authorFixtureIds[0]!, owner, "active", { author: "L" }),
+            task(authorFixtureIds[1]!, owner, "active", { author: "G" }),
+            task(authorFixtureIds[2]!, owner, "active", { author: null }),
+          ]);
+          assert.deepEqual(
+            (await transaction.select({
+              id: tasks.id,
+              author: tasks.author,
+            }).from(tasks).where(inArray(tasks.id, authorFixtureIds)))
+              .sort((left, right) => left.id.localeCompare(right.id)),
+            authorFixtureIds
+              .map((id, index) => ({
+                id,
+                author: index === 0 ? "L" : index === 1 ? "G" : null,
+              }))
+              .sort((left, right) => left.id.localeCompare(right.id)),
+          );
           const repository = new DrizzleTaskRepository(transaction as never);
 
           for (const id of lifecycleIds) {
