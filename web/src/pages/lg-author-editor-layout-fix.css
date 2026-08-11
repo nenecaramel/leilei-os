@@ -1,18 +1,8 @@
 /*
  * Author-only paper layout overrides.
- * Do not style Memory / Diary / Task metadata editors here: their accepted
- * read/edit geometry and typography remain owned by styles.css.
+ * The author signature never contributes DOM to Memory / Diary / Task
+ * bottom-left metadata; module geometry stays entirely owned by styles.css.
  */
-
-.paper-detail-bottom-left:has(.paper-author-signature-anchor) {
-  left: 24px !important;
-  right: auto !important;
-  max-width: calc(100% - 92px) !important;
-}
-
-.paper-author-signature-anchor {
-  display: none;
-}
 
 .paper-detail-signature,
 .paper-author-signature,
