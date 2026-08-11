@@ -9,6 +9,10 @@ import type {
 } from "./diary-repository.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
 import { hashMcpWriteRequest } from "../mcp-write/mcp-write-idempotency.js";
+import {
+  isContentAuthor,
+  type ContentAuthor,
+} from "../content-author.js";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_CONTENT_LENGTH = 20_000;
@@ -35,6 +39,7 @@ export type CreateDiaryInput = {
   tags: readonly string[];
   mood?: string | null;
   idempotencyKey: string;
+  author?: ContentAuthor;
 };
 
 export type CreateDiaryResult = {
@@ -44,6 +49,7 @@ export type CreateDiaryResult = {
     date: string;
     tags: string[];
     mood: string | null;
+    author: ContentAuthor | null;
     created_at: string;
   };
   metadata: {
@@ -59,6 +65,7 @@ export type DiaryEntryResult = {
   date: string;
   tags: string[];
   mood: string | null;
+  author: ContentAuthor | null;
   created_at: string;
   updated_at: string;
 };
@@ -96,6 +103,7 @@ export type CreateWebDiaryInput = {
   date: string;
   tags?: readonly string[];
   mood?: string | null;
+  author?: ContentAuthor;
 };
 
 export type UpdateWebDiaryInput = {
@@ -106,9 +114,11 @@ export type UpdateWebDiaryInput = {
   date: string;
   tags?: readonly string[];
   mood?: string | null;
+  author?: ContentAuthor;
 };
 
 export type DiaryDomainErrorCode =
+  | "AUTHOR_REQUIRED"
   | "INVALID_AUTHENTICATED_USER"
   | "USER_NOT_FOUND"
   | "USER_DISABLED"
@@ -354,6 +364,7 @@ export class DiaryService {
         tags: input.tags ?? [],
         mood: input.mood,
         idempotencyKey: `web:${randomUUID()}`,
+        author: input.author,
       },
     );
 
@@ -393,6 +404,16 @@ export class DiaryService {
       mood: input.mood,
     });
 
+    const existing = await this.repository.findDiaryById(userId, id);
+    if (!existing) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+    const author = input.author ?? existing.author ?? null;
+    this.requireAuthor(author);
+
     const updated = await this.repository.updateDiary({
       userId,
       id,
@@ -401,6 +422,7 @@ export class DiaryService {
       date: normalized.date,
       tags: normalized.tags,
       mood: normalized.mood,
+      author,
     });
 
     if (!updated) {
@@ -449,11 +471,21 @@ export class DiaryService {
     return normalized;
   }
 
+  private requireAuthor(value: unknown): asserts value is ContentAuthor {
+    if (!isContentAuthor(value)) {
+      throw new DiaryDomainError(
+        "AUTHOR_REQUIRED",
+        "A content author must be selected.",
+      );
+    }
+  }
+
   private normalizeInput(
     userId: string,
     input: CreateDiaryInput,
   ): NormalizedDiaryCreate {
     const normalized = this.normalizeDiaryFields(input);
+    this.requireAuthor(input.author);
     const idempotencyKey = this.normalizeIdempotencyKey(
       input.idempotencyKey,
     );
@@ -477,6 +509,7 @@ export class DiaryService {
       date: normalized.date,
       tags: normalized.tags,
       mood: normalized.mood,
+      author: input.author,
       idempotencyKey,
       requestHash,
       mcpRequestHash: hashMcpWriteRequest(hashPayload),
@@ -489,6 +522,7 @@ export class DiaryService {
     date: string;
     tags: readonly string[];
     mood?: string | null;
+    author?: ContentAuthor;
   }): {
     title: string;
     content: string;
@@ -766,6 +800,7 @@ export class DiaryService {
         date: diary.date,
         tags: diary.tags,
         mood: diary.mood,
+        author: diary.author ?? null,
         created_at: diary.createdAt.toISOString(),
       },
       metadata: {
@@ -785,6 +820,7 @@ export class DiaryService {
       date: diary.date,
       tags: diary.tags,
       mood: diary.mood,
+      author: diary.author ?? null,
       created_at: diary.createdAt.toISOString(),
       updated_at: diary.updatedAt.toISOString(),
     };

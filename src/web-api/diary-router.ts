@@ -8,6 +8,7 @@ import {
     type DiaryEntryResult,
     type ListDiariesResult,
   } from "../domains/diary/diary-service.js";
+  import type { ContentAuthor } from "../domains/content-author.js";
   
   export type DiaryApiDependencies = {
     diaryService: {
@@ -29,6 +30,7 @@ import {
         date: string;
         tags?: readonly string[];
         mood?: string | null;
+        author?: ContentAuthor;
       }): Promise<DiaryEntryResult>;
   
       updateWebDiary(input: {
@@ -39,6 +41,7 @@ import {
         date: string;
         tags?: readonly string[];
         mood?: string | null;
+        author?: ContentAuthor;
       }): Promise<DiaryEntryResult>;
 
       listArchivedDiaries(input: {
@@ -240,6 +243,7 @@ import {
           date: request.body.date,
           tags: request.body.tags,
           mood: request.body.mood,
+          author: request.body.author,
         });
   
         response.status(201).json({
@@ -270,6 +274,9 @@ import {
           date: request.body.date,
           tags: request.body.tags,
           mood: request.body.mood,
+          ...(request.body.author === undefined
+            ? {}
+            : { author: request.body.author }),
         });
   
         response.json({

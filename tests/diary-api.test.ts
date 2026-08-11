@@ -4,10 +4,12 @@ import type { Request, Response } from "express";
 import { DiaryDomainError } from "../src/domains/diary/diary-service.js";
 import {
   createArchiveDiaryApiHandler,
+  createCreateDiaryApiHandler,
   createListArchivedDiariesApiHandler,
   createListDiariesApiHandler,
   createReadArchivedDiaryApiHandler,
   createRestoreDiaryApiHandler,
+  createUpdateDiaryApiHandler,
 } from "../src/web-api/diary-router.js";
 
 function responseRecorder() {
@@ -50,6 +52,100 @@ test("diary API forwards separate raw filters with authenticated ownership", asy
       dateTo: "2026-07-31",
     },
   }]);
+});
+
+test("Diary create and update pass explicit author while ignoring client identity", async () => {
+  const calls: unknown[] = [];
+  const service = {
+    async createWebDiary(input: unknown) {
+      calls.push({ create: input });
+      return { id: "diary-1" };
+    },
+    async updateWebDiary(input: unknown) {
+      calls.push({ update: input });
+      return { id: "diary-1" };
+    },
+  };
+  const create = createCreateDiaryApiHandler({ diaryService: service as never });
+  const update = createUpdateDiaryApiHandler({ diaryService: service as never });
+  const createResult = responseRecorder();
+  const updateResult = responseRecorder();
+
+  await create({
+    webUserId: "owner",
+    body: {
+      title: "Title",
+      content: "Content",
+      date: "2026-07-22",
+      tags: [],
+      mood: null,
+      author: "L",
+      userId: "attacker",
+    },
+  } as unknown as Request, createResult.response, () => {});
+  await update({
+    webUserId: "owner",
+    params: { id: "diary-1" },
+    body: {
+      title: "Updated",
+      content: "Updated content",
+      date: "2026-07-23",
+      tags: [],
+      mood: null,
+      author: "G",
+      userId: "attacker",
+    },
+  } as unknown as Request, updateResult.response, () => {});
+
+  assert.deepEqual(calls, [
+    {
+      create: {
+        userId: "owner",
+        title: "Title",
+        content: "Content",
+        date: "2026-07-22",
+        tags: [],
+        mood: null,
+        author: "L",
+      },
+    },
+    {
+      update: {
+        userId: "owner",
+        id: "diary-1",
+        title: "Updated",
+        content: "Updated content",
+        date: "2026-07-23",
+        tags: [],
+        mood: null,
+        author: "G",
+      },
+    },
+  ]);
+});
+
+test("Diary create maps missing author to a safe invalid request", async () => {
+  let called = false;
+  const handler = createCreateDiaryApiHandler({
+    diaryService: {
+      async createWebDiary() {
+        called = true;
+        throw new DiaryDomainError("AUTHOR_REQUIRED", "private");
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+  await handler({
+    webUserId: "owner",
+    body: {
+      title: "Title",
+      content: "Content",
+      date: "2026-07-22",
+    },
+  } as unknown as Request, response, () => {});
+  assert.equal(called, true);
+  assert.equal(result.status, 400);
+  assert.doesNotMatch(JSON.stringify(result.body), /private/);
 });
 
 test("diary API returns a generic 400 without private query content", async () => {
