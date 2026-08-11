@@ -304,6 +304,17 @@ import {
     error: unknown,
   ): void {
     if (error instanceof DiaryDomainError) {
+      if (error.code === "AUTHOR_REQUIRED") {
+        response.status(400).json({
+          success: false,
+          error: {
+            code: "AUTHOR_REQUIRED",
+            message: "Author selection is required.",
+          },
+        });
+        return;
+      }
+
       if (
         error.code === "USER_NOT_FOUND" ||
         error.code === "USER_DISABLED"

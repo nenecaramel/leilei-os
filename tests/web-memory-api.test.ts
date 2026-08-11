@@ -628,6 +628,27 @@ test("Memory create maps missing author to a safe client error", async () => {
   assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
 });
 
+test("Memory update maps AUTHOR_REQUIRED to the stable safe client error", async () => {
+  const handler = createUpdateMemoryApiHandler({
+    memoryService: {
+      async updateMemory() {
+        throw new MemoryDomainError("AUTHOR_REQUIRED", "private author detail");
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+  await handler({
+    webUserId: "user-a",
+    body: { id: "memory-1", key: "key", category: "goal", content: "content" },
+  } as unknown as Request, response, (() => {}) as NextFunction);
+  assert.equal(result.status, 400);
+  assert.deepEqual(result.body, {
+    success: false,
+    error: { code: "AUTHOR_REQUIRED", message: "Author selection is required." },
+  });
+  assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
+});
+
 for (const operation of ["update", "archive"] as const) {
   test(`Memory ${operation} returns a safe 404 for missing or inaccessible records`, async () => {
     const dependencies = {

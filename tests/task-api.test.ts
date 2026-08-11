@@ -156,6 +156,28 @@ test("task create maps missing author to a safe invalid request", async () => {
   assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
 });
 
+test("task update maps AUTHOR_REQUIRED to the stable safe client error", async () => {
+  const handler = createUpdateTaskApiHandler({
+    taskService: {
+      async updateWebTask() {
+        throw new TaskDomainError("AUTHOR_REQUIRED", "private author detail");
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+  await handler({
+    webUserId: "user-1",
+    params: { id: "task-1" },
+    body: { title: "标题", description: "正文", priority: "normal" },
+  } as unknown as Request, response, () => {});
+  assert.equal(result.status, 400);
+  assert.deepEqual(result.body, {
+    success: false,
+    error: { code: "AUTHOR_REQUIRED", message: "Author selection is required." },
+  });
+  assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
+});
+
 test("task list api returns a generic bad request without task content", async () => {
   const handler = createListTasksApiHandler({
     taskService: {

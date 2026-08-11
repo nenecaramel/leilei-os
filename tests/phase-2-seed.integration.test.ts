@@ -2,7 +2,28 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import postgres from "postgres";
-import { seedPhase2ValidationData } from "../scripts/seed-phase-2.js";
+import {
+  phase2SeedEnvSchema,
+  seedPhase2ValidationData,
+} from "../scripts/seed-phase-2.js";
+
+test("Phase 2 seed requires an explicit L/G author", () => {
+  const base = {
+    DATABASE_URL: "postgres://localhost/phase2",
+    MCP_USER_ID: randomUUID(),
+    SEED_USER_EMAIL: "seed@example.invalid",
+    SEED_USER_DISPLAY_NAME: "Seed",
+  };
+  assert.equal(phase2SeedEnvSchema.safeParse(base).success, false);
+  assert.equal(
+    phase2SeedEnvSchema.safeParse({ ...base, SEED_CONTENT_AUTHOR: "X" }).success,
+    false,
+  );
+  assert.equal(
+    phase2SeedEnvSchema.safeParse({ ...base, SEED_CONTENT_AUTHOR: "L" }).success,
+    true,
+  );
+});
 
 const databaseUrl = process.env.PHASE_2_SEED_TEST_DATABASE_URL;
 const RUN_INTEGRATION =
@@ -65,12 +86,13 @@ test(
             userId,
             email: `phase-2-seed-${userId}@example.invalid`,
             displayName: "Phase 2 seed fixture",
+            author: "G",
           });
 
           const rows = await transaction<
-            { key: string; source: string }[]
+            { key: string; source: string; author: string }[]
           >`
-            select key, source
+            select key, source, author
             from core_memories
             where user_id = ${userId}::uuid
               and key in ('preferred_name', 'response_style')
@@ -81,10 +103,12 @@ test(
             {
               key: "preferred_name",
               source: "web",
+              author: "G",
             },
             {
               key: "response_style",
               source: "phase_2_validation",
+              author: "G",
             },
           ]);
 

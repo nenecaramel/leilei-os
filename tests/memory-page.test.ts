@@ -1541,6 +1541,12 @@ test("Memory dirty create confirmation, retry gate, and stale completion are saf
 
     const save = findButton("保存");
     assert.ok(save);
+    const authorTrigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(authorTrigger);
+    await React.act(async () => authorTrigger.click());
+    const authorL = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
+    assert.ok(authorL);
+    await React.act(async () => authorL.click());
     await React.act(async () => {
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -1806,6 +1812,44 @@ test("Memory create starts without an author and sends the selected signature", 
     const post = requests.find(({ init }) => init?.method === "POST");
     assert.ok(post);
     assert.equal(JSON.parse(String(post.init?.body)).author, "G");
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Memory create with an unselected author does not submit", async () => {
+  const requests: Request[] = [];
+  const page = await render("/memory", {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      return listResponse() as T;
+    },
+  });
+  try {
+    const create = page.container.querySelector<HTMLButtonElement>('button[aria-label="新增记忆"]');
+    assert.ok(create);
+    await React.act(async () => create.click());
+    const key = page.container.querySelector<HTMLInputElement>('input[aria-label="记忆 Key"]');
+    const content = page.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="记忆内容"]');
+    assert.ok(key && content);
+    const setValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set?.call(element, value);
+      const change = new page.window.Event("propertychange", { bubbles: true });
+      Object.defineProperty(change, "propertyName", { value: "value" });
+      element.dispatchEvent(change);
+    };
+    await React.act(async () => {
+      key.focus();
+      setValue(key, "new-key");
+      content.focus();
+      setValue(content, "new content");
+    });
+    const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "保存");
+    assert.ok(save);
+    await React.act(async () => save.click());
+    assert.equal(requests.some(({ init }) => init?.method === "POST"), false);
+    assert.match(page.container.textContent ?? "", /请选择作者/);
   } finally {
     await page.cleanup();
   }

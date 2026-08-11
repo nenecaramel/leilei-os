@@ -148,6 +148,28 @@ test("Diary create maps missing author to a safe invalid request", async () => {
   assert.doesNotMatch(JSON.stringify(result.body), /private/);
 });
 
+test("Diary update maps AUTHOR_REQUIRED to the stable safe client error", async () => {
+  const handler = createUpdateDiaryApiHandler({
+    diaryService: {
+      async updateWebDiary() {
+        throw new DiaryDomainError("AUTHOR_REQUIRED", "private author detail");
+      },
+    },
+  } as never);
+  const { result, response } = responseRecorder();
+  await handler({
+    webUserId: "owner",
+    params: { id: "diary-1" },
+    body: { title: "Title", content: "Content", date: "2026-07-22" },
+  } as unknown as Request, response, () => {});
+  assert.equal(result.status, 400);
+  assert.deepEqual(result.body, {
+    success: false,
+    error: { code: "AUTHOR_REQUIRED", message: "Author selection is required." },
+  });
+  assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
+});
+
 test("diary API returns a generic 400 without private query content", async () => {
   const handler = createListDiariesApiHandler({
     diaryService: {

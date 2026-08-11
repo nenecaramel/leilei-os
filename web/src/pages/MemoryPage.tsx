@@ -649,6 +649,10 @@ export function MemoryPageContent({
       setActionError(author === null ? "请选择作者" : "Key 和 Content 都不能为空。");
       return;
     }
+    if (author === null) {
+      setActionError("请选择作者");
+      return;
+    }
     if (!mutationGate.current.enter()) return;
 
     const ticket = mutationOwnership.current.begin();

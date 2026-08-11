@@ -499,6 +499,17 @@ export function createUpdateMemoryApiHandler(
       });
     } catch (error) {
       if (error instanceof MemoryDomainError) {
+        if (error.code === "AUTHOR_REQUIRED") {
+          response.status(400).json({
+            success: false,
+            error: {
+              code: "AUTHOR_REQUIRED",
+              message: "Author selection is required.",
+            },
+          });
+          return;
+        }
+
         if (error.code === "MEMORY_NOT_FOUND") {
           response.status(404).json({
             success: false,
