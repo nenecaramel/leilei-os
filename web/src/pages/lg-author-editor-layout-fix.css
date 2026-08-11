@@ -1,14 +1,7 @@
 /*
- * Author-only paper layout overrides.
- * Do not style Memory / Diary / Task metadata editors here: their accepted
- * read/edit geometry and typography remain owned by styles.css.
+ * Production paper acceptance overrides.
+ * Keep author controls isolated from the bottom-left metadata slot.
  */
-
-.paper-detail-bottom-left:has(.paper-author-signature-anchor) {
-  left: 24px !important;
-  right: auto !important;
-  max-width: calc(100% - 92px) !important;
-}
 
 .paper-author-signature-anchor {
   display: none;
@@ -42,4 +35,30 @@
 /* The — glyph itself is the missing-author affordance. */
 .paper-author-signature-error {
   display: none !important;
+}
+
+@media (max-width: 760px) {
+  /*
+   * Diary has two editable metadata inputs. styles.css keeps their real font
+   * at 16px for Safari focus safety and used transform: scale(.8125) to make
+   * them look 13px. transform only changes paint, not flex layout or hit-test
+   * geometry, so the edit row drifts away from the read row. CSS zoom scales
+   * the control's layout and hit area together with its text.
+   */
+  .paper-detail-paper[id^="diary-"] .diary-paper-mood,
+  .paper-detail-paper[id^="diary-"] .diary-paper-tags {
+    transform: none !important;
+    zoom: 0.8125 !important;
+  }
+
+  /*
+   * Task has the same problem on its tag input, but its pre-existing
+   * 24.615385px control height was chosen so .8125 lands on a 20px metadata
+   * baseline. Preserve those module-specific dimensions and change only the
+   * scaling mechanism.
+   */
+  .paper-detail-paper[id^="task-"] .task-paper-tags {
+    transform: none !important;
+    zoom: 0.8125 !important;
+  }
 }
