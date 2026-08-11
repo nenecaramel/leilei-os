@@ -45,6 +45,7 @@ export function PaperDetailDialog({
   const paperRef = useRef<HTMLElement | null>(null);
   const closingRef = useRef(false);
   const onRequestCloseRef = useRef(onRequestClose);
+  const visibleErrorMessage = errorMessage === "请选择作者" ? null : errorMessage;
 
   useEffect(() => {
     onRequestCloseRef.current = onRequestClose;
@@ -151,9 +152,9 @@ export function PaperDetailDialog({
         {bottomLeft ? (
           <div className="paper-detail-bottom-left">{bottomLeft}</div>
         ) : null}
-        {errorMessage ? (
+        {visibleErrorMessage ? (
           <p className="paper-detail-error" role="alert">
-            {errorMessage}
+            {visibleErrorMessage}
           </p>
         ) : null}
         <span className="paper-detail-signature">{signature}</span>
