@@ -29,3 +29,9 @@ test("Calendar keeps its geometry while adding month controls, markers, retry an
   assert.match(calendarSource, /Calendar 暂时无法读取/);
   assert.match(mainSource, /home-calendar-real-data\.css/);
 });
+
+test("saving a Home Todo paper refreshes Calendar date discovery", () => {
+  const onSavedIndex = dashboardSource.indexOf("onSaved={(paper)");
+  assert.ok(onSavedIndex >= 0);
+  assert.match(dashboardSource.slice(onSavedIndex, onSavedIndex + 320), /void loadCalendar\(\)/);
+});
