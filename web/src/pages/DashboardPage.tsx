@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
-import { CalendarPreview } from "./CalendarPreview";
-import { HOME_CALENDAR_DAYS, type HomeAuthor, type HomeNote } from "./home-prototype-data";
+import { CalendarPreview, type CalendarLoadState } from "./CalendarPreview";
+import { listDiaryDates } from "./day-space-api";
+import { mergeCalendarContentDates } from "./home-calendar-data";
+import { type HomeAuthor, type HomeNote } from "./home-prototype-data";
 import { formatTodoStorageDate } from "./todo-paper-storage";
 import { TodayPanel } from "./TodayPanel";
 import { TodoPaperDialog } from "./TodoPaperDialog";
-import { loadTodoDay } from "./todo-api";
+import { loadTodoDay, listTodoDates } from "./todo-api";
 import { migrateLegacyTodoPapers } from "./todo-legacy-migration";
 import type { TodoPaper } from "./todo-types";
 import { navigateWithinApp } from "./app-navigation";
@@ -27,11 +29,14 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   const [today, setToday] = useState(() => now());
   const [papers, setPapers] = useState<{ L: TodoPaper | null; G: TodoPaper | null }>({ L: null, G: null });
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [calendarContentDates, setCalendarContentDates] = useState<string[]>([]);
+  const [calendarLoadState, setCalendarLoadState] = useState<CalendarLoadState>("loading");
   const [dialogAuthor, setDialogAuthor] = useState<HomeAuthor | null>(null);
   const [dialogDirty, setDialogDirty] = useState(false);
   const [pendingDate, setPendingDate] = useState<string | null>(null);
   const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
   const loadGeneration = useRef(0);
+  const calendarLoadGeneration = useRef(0);
   const lTriggerRef = useRef<HTMLButtonElement>(null);
   const gTriggerRef = useRef<HTMLButtonElement>(null);
 
@@ -60,7 +65,34 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
     }
   }, [api]);
 
+  const loadCalendar = useCallback(async () => {
+    const generation = ++calendarLoadGeneration.current;
+    setCalendarContentDates([]);
+    if (!api) {
+      setCalendarLoadState("error");
+      return;
+    }
+    setCalendarLoadState("loading");
+    try {
+      const [todoDates, diaryDates] = await Promise.all([
+        listTodoDates(api),
+        listDiaryDates(api),
+      ]);
+      if (generation !== calendarLoadGeneration.current) return;
+      setCalendarContentDates(mergeCalendarContentDates(todoDates, diaryDates));
+      setCalendarLoadState("ready");
+    } catch {
+      if (generation !== calendarLoadGeneration.current) return;
+      setCalendarContentDates([]);
+      setCalendarLoadState("error");
+    }
+  }, [api]);
+
   useEffect(() => { void loadDay(dateKey); }, [dateKey, loadDay]);
+  useEffect(() => {
+    void loadCalendar();
+    return () => { calendarLoadGeneration.current += 1; };
+  }, [loadCalendar]);
 
   useEffect(() => {
     const checkDate = () => {
@@ -91,7 +123,12 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
         {loadState === "error" ? <div className="home-todo-error" role="alert">Todo 暂时无法读取。<button type="button" onClick={() => void loadDay(dateKey)}>重试</button></div> : null}
         <TodayPanel author="L" notes={loadState === "ready" ? previewNotes(papers.L) : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
         <TodayPanel author="G" notes={loadState === "ready" ? previewNotes(papers.G) : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
-        <CalendarPreview days={HOME_CALENDAR_DAYS} date={today} />
+        <CalendarPreview
+          contentDates={calendarContentDates}
+          date={today}
+          status={calendarLoadState}
+          onRetry={loadCalendar}
+        />
         <section className="home-section home-preview-section records-section" aria-labelledby="records-title">
           <div className="home-section-heading records-section-heading"><h2 id="records-title">Records</h2></div>
           <nav className="home-bottom-nav" aria-label="模块入口">
