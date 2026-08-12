@@ -508,7 +508,7 @@ test("Normalized editor output trims text, drops empty rows, and reports dirty c
     });
 
     assert.deepEqual(editorRef.current?.getNormalizedEntries(), [
-      { id: "l-1", author: "L", kind: "record", text: "changed" },
+      { id: "l-1", kind: "record", text: "changed" },
     ]);
     assert.equal(dirtyValues.at(-1), true);
   } finally {
@@ -552,6 +552,7 @@ async function renderTodoPaperDialog(
   harness: ReturnType<typeof installDom>,
   options: {
     storage?: Storage;
+    failRequest?: boolean;
     entries?: Array<{
       id: string;
       author: "L" | "G";
@@ -561,6 +562,7 @@ async function renderTodoPaperDialog(
   } = {},
 ) {
   const storage = options.storage ?? new TodoDialogStorage();
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
   const saved: unknown[] = [];
   let closed = 0;
   const triggerRef = { current: harness.dom.window.document.createElement("button") };
@@ -576,9 +578,9 @@ async function renderTodoPaperDialog(
       ],
     );
 
-    const handleSaved = React.useCallback((nextEntries) => {
-      saved.push(nextEntries);
-      setEntries(nextEntries);
+    const handleSaved = React.useCallback((nextPaper) => {
+      saved.push(nextPaper.entries);
+      setEntries(nextPaper.entries.map((entry) => ({ ...entry, author: "L" })));
     }, []);
 
     const handleClosed = React.useCallback(() => {
@@ -587,6 +589,21 @@ async function renderTodoPaperDialog(
     }, []);
 
     return React.createElement(TodoPaperDialog, {
+      api: {
+        request: async <T>(path: string, init?: RequestInit) => {
+          requests.push({ path, init });
+          if (options.failRequest) throw new Error("request failed");
+          return {
+            success: true,
+            data: {
+              author: "L",
+              date: "2026-08-07",
+              revision: 1,
+              entries: JSON.parse(String(init?.body ?? "{}"))?.entries ?? [],
+            },
+          } as T;
+        },
+      },
       author: "L",
       date: paperDate,
       open,
@@ -604,6 +621,7 @@ async function renderTodoPaperDialog(
 
   return {
     storage,
+    requests,
     saved,
     get closed() {
       return closed;
@@ -691,12 +709,18 @@ test("Todo paper writes changed entries before closing and reports the saved pre
       veil.dispatchEvent(new harness.dom.window.MouseEvent("click", { bubbles: true }));
     });
 
-    assert.equal(storage.writes.length, 1);
-    assert.equal(storage.writes[0][0], "leilei.home.todo-paper.v1:2026-08-07:L");
-    assert.match(storage.writes[0][1], /Changed/);
+    assert.equal(rendered.requests.length, 1);
+    assert.equal(rendered.requests[0]?.path, "/todo/2026-08-07/L");
+    assert.deepEqual(JSON.parse(String(rendered.requests[0]?.init?.body)), {
+      revision: null,
+      entries: [
+        { id: "l-1", kind: "pending", text: "Changed" },
+        { id: "l-2", kind: "record", text: "Second" },
+      ],
+    });
     assert.deepEqual(rendered.saved, [[
-      { id: "l-1", author: "L", kind: "pending", text: "Changed" },
-      { id: "l-2", author: "L", kind: "record", text: "Second" },
+      { id: "l-1", kind: "pending", text: "Changed" },
+      { id: "l-2", kind: "record", text: "Second" },
     ]]);
     assert.equal(rendered.closed, 1);
     assert.equal(harness.container.querySelector('[role="dialog"]'), null);
@@ -711,7 +735,7 @@ test("Todo paper keeps edits open and shows an alert when storage fails", async 
   try {
     const storage = new TodoDialogStorage();
     storage.failWrites = true;
-    const rendered = await renderTodoPaperDialog(harness, { storage });
+    const rendered = await renderTodoPaperDialog(harness, { storage, failRequest: true });
     const firstLine =
       harness.container.querySelector<HTMLButtonElement>(
         "[aria-label=\"编辑 Todo 第 1 行\"]",

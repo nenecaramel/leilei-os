@@ -10,31 +10,28 @@ import React, {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import type { HomeAuthor, HomeNote, HomeNoteKind } from "./home-prototype-data";
-import {
-  createTodoPaperEntryId,
-  normalizeTodoPaperEntries,
-} from "./todo-paper-storage";
+import type { TodoAuthor, TodoEntry, TodoEntryKind } from "./todo-types";
+import { createTodoPaperEntryId } from "./todo-paper-storage";
 
-type EditableTodoRow = HomeNote & { creation?: boolean };
+type EditableTodoRow = TodoEntry & { creation?: boolean };
 
 export type TodoPaperEditorHandle = {
-  getNormalizedEntries(): HomeNote[];
+  getNormalizedEntries(): TodoEntry[];
 };
 
 export type TodoPaperEditorProps = {
-  author: HomeAuthor;
-  initialEntries: readonly HomeNote[];
+  author: TodoAuthor;
+  initialEntries: readonly TodoEntry[];
   onDirtyChange: (dirty: boolean) => void;
 };
 
-const NEXT_KIND: Record<HomeNoteKind, HomeNoteKind> = {
+const NEXT_KIND: Record<TodoEntryKind, TodoEntryKind> = {
   pending: "completed",
   completed: "record",
   record: "pending",
 };
 
-const STATUS_LABEL: Record<HomeNoteKind, string> = {
+const STATUS_LABEL: Record<TodoEntryKind, string> = {
   pending: "待办",
   completed: "已完成",
   record: "记录",
@@ -63,10 +60,9 @@ function getCaretOffsetFromPoint(
   return range?.startOffset ?? fallback;
 }
 
-function createCreationRow(author: HomeAuthor): EditableTodoRow {
+function createCreationRow(author: TodoAuthor): EditableTodoRow {
   return {
     id: createTodoPaperEntryId(author),
-    author,
     kind: "pending",
     text: "",
     creation: true,
@@ -74,8 +70,8 @@ function createCreationRow(author: HomeAuthor): EditableTodoRow {
 }
 
 function createInitialRows(
-  author: HomeAuthor,
-  entries: readonly HomeNote[],
+  author: TodoAuthor,
+  entries: readonly TodoEntry[],
 ): EditableTodoRow[] {
   const rows: EditableTodoRow[] = entries.map((entry) => ({ ...entry }));
 
@@ -91,15 +87,10 @@ function resizeTodoTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
-function normalizeRows(rows: readonly EditableTodoRow[]): HomeNote[] {
-  return normalizeTodoPaperEntries(
-    rows.map(({ id, author, kind, text }) => ({
-      id,
-      author,
-      kind,
-      text,
-    })),
-  );
+function normalizeRows(rows: readonly EditableTodoRow[]): TodoEntry[] {
+  return rows
+    .map(({ id, kind, text }) => ({ id, kind, text: text.trim() }))
+    .filter((entry) => entry.text.length > 0);
 }
 
 export const TodoPaperEditor = forwardRef<
@@ -110,7 +101,7 @@ export const TodoPaperEditor = forwardRef<
   ref,
 ) {
   const initialSnapshot = useMemo(
-    () => JSON.stringify(normalizeTodoPaperEntries(initialEntries)),
+    () => JSON.stringify(initialEntries.map(({ id, kind, text }) => ({ id, kind, text: text.trim() })).filter((entry) => entry.text.length > 0)),
     [initialEntries],
   );
   const [rows, setRows] = useState<EditableTodoRow[]>(() =>
