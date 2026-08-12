@@ -29,9 +29,15 @@ type Root = ReturnType<typeof createRoot>;
 import { PaperDetailDialog } from "../web/src/pages/PaperDetailDialog.js";
 import { TodoPaperEditor } from "../web/src/pages/TodoPaperEditor.js";
 import { TodoPaperDialog } from "../web/src/pages/TodoPaperDialog.js";
+import type { TodoEntry, TodoPaper } from "../web/src/pages/todo-types.js";
 
 const todoPaperStylesSource = readFileSync(
   new URL("../web/src/styles.css", import.meta.url),
+  "utf8",
+);
+
+const todoPaperDialogSource = readFileSync(
+  new URL("../web/src/pages/TodoPaperDialog.tsx", import.meta.url),
   "utf8",
 );
 
@@ -516,71 +522,39 @@ test("Normalized editor output trims text, drops empty rows, and reports dirty c
   }
 });
 
-class TodoDialogStorage implements Storage {
-  readonly writes: Array<[string, string]> = [];
-  failWrites = false;
-  private readonly values = new Map<string, string>();
-
-  get length() {
-    return this.values.size;
-  }
-
-  clear() {
-    this.values.clear();
-  }
-
-  getItem(key: string) {
-    return this.values.get(key) ?? null;
-  }
-
-  key(index: number) {
-    return [...this.values.keys()][index] ?? null;
-  }
-
-  removeItem(key: string) {
-    this.values.delete(key);
-  }
-
-  setItem(key: string, value: string) {
-    if (this.failWrites) throw new Error("storage unavailable");
-    this.writes.push([key, value]);
-    this.values.set(key, value);
-  }
-}
-
 async function renderTodoPaperDialog(
   harness: ReturnType<typeof installDom>,
   options: {
-    storage?: Storage;
     failRequest?: boolean;
-    entries?: Array<{
-      id: string;
-      author: "L" | "G";
-      kind: "pending" | "completed" | "record";
-      text: string;
-    }>;
+    entries?: TodoEntry[];
+    paper?: TodoPaper | null;
   } = {},
 ) {
-  const storage = options.storage ?? new TodoDialogStorage();
   const requests: Array<{ path: string; init?: RequestInit }> = [];
   const saved: unknown[] = [];
   let closed = 0;
   const triggerRef = { current: harness.dom.window.document.createElement("button") };
 
   const paperDate = new Date(2026, 7, 7, 12, 0, 0);
+  const initialPaper = options.paper === undefined
+    ? {
+        author: "L" as const,
+        date: "2026-08-07",
+        revision: 1,
+        entries: options.entries ?? [
+          { id: "l-1", kind: "pending" as const, text: "First" },
+          { id: "l-2", kind: "record" as const, text: "Second" },
+        ],
+      }
+    : options.paper;
 
   function DialogHarness() {
     const [open, setOpen] = useState(true);
-    const [entries, setEntries] = useState(
-      options.entries ?? [
-        { id: "l-1", author: "L" as const, kind: "pending" as const, text: "First" },
-        { id: "l-2", author: "L" as const, kind: "record" as const, text: "Second" },
-      ],
-    );
+    const [paper, setPaper] = useState(initialPaper);
 
-    const handleSaved = React.useCallback((nextPaper) => {
+    const handleSaved = React.useCallback((nextPaper: TodoPaper) => {
       saved.push(nextPaper.entries);
-      setEntries(nextPaper.entries.map((entry) => ({ ...entry, author: "L" })));
+      setPaper(nextPaper);
     }, []);
 
     const handleClosed = React.useCallback(() => {
@@ -598,7 +572,7 @@ async function renderTodoPaperDialog(
             data: {
               author: "L",
               date: "2026-08-07",
-              revision: 1,
+              revision: 2,
               entries: JSON.parse(String(init?.body ?? "{}"))?.entries ?? [],
             },
           } as T;
@@ -607,9 +581,8 @@ async function renderTodoPaperDialog(
       author: "L",
       date: paperDate,
       open,
-      entries,
+      paper,
       triggerRef,
-      storage,
       onSaved: handleSaved,
       onClosed: handleClosed,
     });
@@ -620,7 +593,6 @@ async function renderTodoPaperDialog(
   });
 
   return {
-    storage,
     requests,
     saved,
     get closed() {
@@ -629,15 +601,23 @@ async function renderTodoPaperDialog(
   };
 }
 
+test("Todo paper coordinator uses only the server paper contract", () => {
+  assert.doesNotMatch(todoPaperDialogSource, /@deprecated/);
+  assert.doesNotMatch(todoPaperDialogSource, /entries\?:\s*readonly TodoEntry\[\]/);
+  assert.doesNotMatch(todoPaperDialogSource, /storage\?:\s*Storage/);
+  assert.doesNotMatch(todoPaperDialogSource, /paper\?\.entries\s*\?\?\s*entries/);
+  assert.match(todoPaperDialogSource, /paper\?\.entries\s*\?\?\s*\[\]/);
+});
+
 test("Todo paper coordinator renders L metadata and entries without legacy chrome", async () => {
   const harness = installDom();
 
   try {
     await renderTodoPaperDialog(harness, {
       entries: [
-        { id: "l-1", author: "L", kind: "pending", text: "First" },
-        { id: "l-2", author: "L", kind: "completed", text: "Second" },
-        { id: "l-3", author: "L", kind: "record", text: "Third" },
+        { id: "l-1", kind: "pending", text: "First" },
+        { id: "l-2", kind: "completed", text: "Second" },
+        { id: "l-3", kind: "record", text: "Third" },
       ],
     });
 
@@ -655,12 +635,11 @@ test("Todo paper coordinator renders L metadata and entries without legacy chrom
   }
 });
 
-test("Todo paper closes without writing when nothing changed", async () => {
+test("Todo paper closes without a request when nothing changed", async () => {
   const harness = installDom();
 
   try {
-    const storage = new TodoDialogStorage();
-    const rendered = await renderTodoPaperDialog(harness, { storage });
+    const rendered = await renderTodoPaperDialog(harness);
 
     const veil = harness.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
     assert.ok(veil);
@@ -669,7 +648,7 @@ test("Todo paper closes without writing when nothing changed", async () => {
       veil.dispatchEvent(new harness.dom.window.MouseEvent("click", { bubbles: true }));
     });
 
-    assert.equal(storage.writes.length, 0);
+    assert.equal(rendered.requests.length, 0);
     assert.equal(rendered.closed, 1);
     assert.equal(harness.container.querySelector('[role="dialog"]'), null);
   } finally {
@@ -681,8 +660,7 @@ test("Todo paper writes changed entries before closing and reports the saved pre
   const harness = installDom();
 
   try {
-    const storage = new TodoDialogStorage();
-    const rendered = await renderTodoPaperDialog(harness, { storage });
+    const rendered = await renderTodoPaperDialog(harness);
     const firstLine =
       harness.container.querySelector<HTMLButtonElement>(
         "[aria-label=\"编辑 Todo 第 1 行\"]",
@@ -712,7 +690,7 @@ test("Todo paper writes changed entries before closing and reports the saved pre
     assert.equal(rendered.requests.length, 1);
     assert.equal(rendered.requests[0]?.path, "/todo/2026-08-07/L");
     assert.deepEqual(JSON.parse(String(rendered.requests[0]?.init?.body)), {
-      revision: null,
+      revision: 1,
       entries: [
         { id: "l-1", kind: "pending", text: "Changed" },
         { id: "l-2", kind: "record", text: "Second" },
@@ -729,13 +707,11 @@ test("Todo paper writes changed entries before closing and reports the saved pre
   }
 });
 
-test("Todo paper keeps edits open and shows an alert when storage fails", async () => {
+test("Todo paper keeps edits open and shows an alert when server save fails", async () => {
   const harness = installDom();
 
   try {
-    const storage = new TodoDialogStorage();
-    storage.failWrites = true;
-    const rendered = await renderTodoPaperDialog(harness, { storage, failRequest: true });
+    const rendered = await renderTodoPaperDialog(harness, { failRequest: true });
     const firstLine =
       harness.container.querySelector<HTMLButtonElement>(
         "[aria-label=\"编辑 Todo 第 1 行\"]",
