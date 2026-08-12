@@ -47,7 +47,7 @@ test("two-paper days spread across the stage with only edge-level overlap", () =
     "2026-08-07",
     [
       { id: "diary:diary-aug-07-l", density: 5 },
-      { id: "todo:L:2026-08-07", density: 1 },
+      { id: "todo:2026-08-07:L", density: 1 },
     ],
     345,
   );
@@ -62,8 +62,8 @@ test("multi-paper days stay scattered and never become a centered vertical pile"
   const layout = layoutDaySpacePapers(
     "2026-08-05",
     [
-      { id: "todo:L:2026-08-05", density: 3 },
-      { id: "todo:G:2026-08-05", density: 2 },
+      { id: "todo:2026-08-05:L", density: 3 },
+      { id: "todo:2026-08-05:G", density: 2 },
       { id: "diary:diary-aug-05-l", density: 5 },
       { id: "diary:diary-aug-05-g", density: 4 },
     ],

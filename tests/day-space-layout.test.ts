@@ -3,9 +3,9 @@ import test from "node:test";
 import { layoutDaySpacePapers } from "../web/src/pages/day-space-layout.js";
 
 const papers = [
-  { id: "todo:L:2026-08-05", density: 3 },
+  { id: "todo:2026-08-05:L", density: 3 },
   { id: "diary:rain", density: 5 },
-  { id: "todo:G:2026-08-05", density: 2 },
+  { id: "todo:2026-08-05:G", density: 2 },
   { id: "diary:late", density: 4 },
 ];
 

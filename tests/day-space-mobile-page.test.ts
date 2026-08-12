@@ -4,7 +4,6 @@ import test from "node:test";
 
 const page = readFileSync("web/src/pages/DaySpacePage.tsx", "utf8");
 const picker = readFileSync("web/src/pages/DaySpaceDatePicker.tsx", "utf8");
-const fixture = readFileSync("web/src/pages/day-space-prototype-data.ts", "utf8");
 const styles = readFileSync("web/src/styles.css", "utf8");
 const app = readFileSync("web/src/App.tsx", "utf8");
 const nav = readFileSync("web/src/layout/NavigationGroups.tsx", "utf8");
@@ -32,9 +31,11 @@ test("Day Space mixes signed Todo and Diary papers in one scatter stage", () => 
   assert.match(page, /type:\s*"todo"/);
   assert.match(page, /type:\s*"diary"/);
   assert.match(page, /day-space-paper-signature/);
-  assert.match(fixture, /author:\s*"L"/);
-  assert.match(fixture, /author:\s*"G"/);
-  assert.doesNotMatch(fixture, /TaskPage|task-prototype|from ".+Task/);
+  assert.match(page, /composeDaySpacePapers/);
+  assert.match(readFileSync("web/src/pages/day-space-data.ts", "utf8"), /todo:\$\{date\}:\$\{paper\.author\}/);
+  assert.match(readFileSync("web/src/pages/day-space-data.ts", "utf8"), /diary:\$\{diary\.id\}/);
+  assert.doesNotMatch(page, /DAY_SPACE_(?:DIARY_PROTOTYPES|TODO_SEEDS)/);
+  assert.doesNotMatch(page, /localStorage/);
 });
 
 test("date picker is compact and has no calendar content markers", () => {

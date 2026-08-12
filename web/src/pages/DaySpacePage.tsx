@@ -133,6 +133,38 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const layoutById = useMemo(() => new Map((layout?.items ?? []).map((item) => [item.id, item])), [layout]);
   const openPaper = papers.find((paper) => paper.id === openPaperId) ?? null;
 
+  const refreshDiary = useCallback(async (date: string, committed: DaySpaceDiary) => {
+    try {
+      const result = await api.loadDiariesByDate(date);
+      if (selectedDate !== date) return;
+      setDiaryState({ status: "ready", value: result.diaries });
+    } catch {
+      if (selectedDate !== date) return;
+      setDiaryState((current) => ({
+        status: "error",
+        value: current.status === "ready" ? current.value.map((entry) => entry.id === committed.id ? committed : entry) : [committed],
+        needsRetry: true,
+      }));
+    }
+  }, [api, selectedDate]);
+
+  const refreshTodo = useCallback(async (date: string, committed: TodoPaper) => {
+    try {
+      const result = await api.loadTodoDay(date);
+      if (selectedDate !== date) return;
+      setTodoState({ status: "ready", value: result });
+    } catch {
+      if (selectedDate !== date) return;
+      setTodoState((current) => ({
+        status: "error",
+        value: current.status === "ready"
+          ? { ...current.value, papers: { ...current.value.papers, [committed.author]: committed } }
+          : { date, papers: { L: committed.author === "L" ? committed : null, G: committed.author === "G" ? committed : null } },
+        needsRetry: true,
+      }));
+    }
+  }, [api, selectedDate]);
+
   const go = (date: string) => {
     setPickerOpen(false);
     navigate(buildDaySpaceLocation(date));
@@ -172,8 +204,8 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
           </section>
         )}
       </div>
-      {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => { setTodoState({ status: "ready", value: { date: selectedDate, papers: { ...(todoState.status === "ready" ? todoState.value.papers : { L: null, G: null }), [paper.author]: paper } } }); setOpenPaperId(null); }} onClosed={() => setOpenPaperId(null)} /> : null}
-      {openPaper?.type === "diary" ? <DaySpaceDiaryDialog diary={openPaper.diary} api={api} open triggerRef={paperTriggerRef} onSaved={(next) => { setDiaryState({ status: "ready", value: (diaryState.status === "ready" ? diaryState.value : []).map((entry) => entry.id === next.id ? next : entry) }); setOpenPaperId(null); }} onClosed={() => setOpenPaperId(null)} /> : null}
+      {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => { setTodoState((current) => ({ status: "ready", value: { date: selectedDate, papers: { ...(current.status === "ready" ? current.value.papers : { L: null, G: null }), [paper.author]: paper } } })); void refreshTodo(selectedDate, paper); }} onClosed={() => setOpenPaperId(null)} /> : null}
+      {openPaper?.type === "diary" ? <DaySpaceDiaryDialog diary={openPaper.diary} api={api} open triggerRef={paperTriggerRef} onSaved={(next) => { setDiaryState((current) => ({ status: "ready", value: current.status === "ready" ? current.value.map((entry) => entry.id === next.id ? next : entry) : [next] })); void refreshDiary(next.date, next); }} onClosed={() => setOpenPaperId(null)} /> : null}
     </main>
   );
 }
