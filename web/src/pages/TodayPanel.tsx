@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { HomeAuthor, HomeNote } from "./home-prototype-data";
+import type { TodoAuthor, TodoEntry } from "./todo-types";
 
 export function TodayPanel({
   author,
@@ -8,8 +8,8 @@ export function TodayPanel({
   onOpen,
   triggerRef,
 }: {
-  author: HomeAuthor;
-  notes: HomeNote[];
+  author: TodoAuthor;
+  notes: readonly TodoEntry[];
   onOpen: () => void;
   triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
