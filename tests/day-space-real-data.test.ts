@@ -99,6 +99,64 @@ const diary = {
   updated_at: "2026-08-12T02:00:00.000Z",
 };
 
+type MountedPage = Awaited<ReturnType<typeof render>>;
+
+function suppressAuthorPortal(page: MountedPage) {
+  const documentQuerySelector = page.container.ownerDocument.querySelector.bind(page.container.ownerDocument);
+  page.container.ownerDocument.querySelector = ((selector: string) => {
+    if (selector === ".paper-detail-layer .paper-detail-signature") return null;
+    return documentQuerySelector(selector);
+  }) as typeof page.container.ownerDocument.querySelector;
+}
+
+async function saveDiaryPaper(page: MountedPage, titleValue: string) {
+  suppressAuthorPortal(page);
+  const diaryPaper = page.container.querySelector<HTMLButtonElement>(".day-space-paper-diary");
+  assert.ok(diaryPaper);
+  await React.act(async () => { diaryPaper.click(); });
+  await page.settle();
+  const authorTrigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+  assert.ok(authorTrigger);
+  await React.act(async () => { authorTrigger.click(); });
+  const authorG = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="G"]');
+  assert.ok(authorG);
+  await React.act(async () => { authorG.click(); });
+  const title = page.container.querySelector<HTMLInputElement>("input[aria-label=\"日记标题\"]");
+  assert.ok(title);
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(title), "value")?.set?.call(title, titleValue);
+    const change = new page.container.ownerDocument!.defaultView!.Event("propertychange", { bubbles: true });
+    Object.defineProperty(change, "propertyName", { value: "value" });
+    title.dispatchEvent(change);
+    title.dispatchEvent(new page.container.ownerDocument!.defaultView!.InputEvent("input", { bubbles: true, inputType: "insertText", data: "x" }));
+  });
+  const save = [...page.container.querySelectorAll<HTMLButtonElement>(".memory-paper-control")]
+    .find((button) => button.textContent === "保存");
+  assert.ok(save);
+  await React.act(async () => { save.dispatchEvent(new page.container.ownerDocument!.defaultView!.MouseEvent("click", { bubbles: true })); });
+  await page.settle();
+}
+
+async function saveTodoPaper(page: MountedPage, textValue: string) {
+  const todoPaper = page.container.querySelector<HTMLButtonElement>(".day-space-paper-todo");
+  assert.ok(todoPaper);
+  await React.act(async () => { todoPaper.click(); });
+  await page.settle();
+  const edit = page.container.querySelector<HTMLButtonElement>('[aria-label="编辑 Todo 第 1 行"]');
+  assert.ok(edit);
+  await React.act(async () => { edit.click(); });
+  const textarea = page.container.querySelector<HTMLTextAreaElement>("textarea");
+  assert.ok(textarea);
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(textarea), "value")?.set?.call(textarea, textValue);
+    textarea.dispatchEvent(new page.container.ownerDocument!.defaultView!.Event("input", { bubbles: true }));
+  });
+  const veil = page.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+  assert.ok(veil);
+  await React.act(async () => { veil.click(); });
+  await page.settle();
+}
+
 test("Day Space retries only the failed Diary module", async () => {
   let todoLoads = 0;
   let diaryLoads = 0;
@@ -311,5 +369,119 @@ test("Day Space keeps an emptied committed Todo paper absent after refresh failu
   assert.equal(page.container.querySelector(".day-space-paper-todo"), null);
   assert.ok(page.container.querySelector(".day-space-paper-diary"));
   assert.ok(page.container.querySelector(".day-space-warning"));
+  await page.cleanup();
+});
+
+test("Day Space keeps both retained modules visible when both refreshes fail", async () => {
+  let todoLoads = 0;
+  let diaryLoads = 0;
+  let rejectDiaryRefresh!: (reason?: unknown) => void;
+  let rejectTodoRefresh!: (reason?: unknown) => void;
+  const committedDiary = { ...diary, title: "Committed Diary" };
+  const committedTodo = { ...todo.papers.L!, entries: [{ id: "todo-1", kind: "pending" as const, text: "Committed Todo" }] };
+  const api: DaySpaceApi = {
+    webClient: {
+      request: async <T>(path: string, init?: RequestInit) => {
+        if (path === "/todo/2026-08-12/L" && init?.method === "PUT") return { success: true, data: committedTodo } as T;
+        throw new Error(`unexpected request ${path}`);
+      },
+    },
+    listTodoDates: async () => [],
+    loadTodoDay: async () => {
+      todoLoads += 1;
+      if (todoLoads === 1) return todo;
+      return new Promise((_, reject) => { rejectTodoRefresh = reject; });
+    },
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => {
+      diaryLoads += 1;
+      if (diaryLoads === 1) return { date, diaries: [diary] };
+      return new Promise((_, reject) => { rejectDiaryRefresh = reject; });
+    },
+    updateDiary: async () => committedDiary,
+  };
+  const page = await render(api);
+  await page.settle();
+  await saveDiaryPaper(page, "Committed Diary");
+  assert.equal(typeof rejectDiaryRefresh, "function");
+  rejectDiaryRefresh(new Error("Diary refresh unavailable"));
+  await page.settle();
+  await saveTodoPaper(page, "Committed Todo");
+  assert.equal(typeof rejectTodoRefresh, "function");
+  rejectTodoRefresh(new Error("Todo refresh unavailable"));
+  await page.settle();
+  assert.match(page.container.textContent ?? "", /Committed Diary/);
+  assert.match(page.container.textContent ?? "", /Committed Todo/);
+  assert.match(page.container.textContent ?? "", /部分 Day Space 内容暂时无法读取/);
+  assert.match(page.container.textContent ?? "", /重试 Todo/);
+  assert.match(page.container.textContent ?? "", /重试 Diary/);
+  assert.doesNotMatch(page.container.textContent ?? "", /当天内容暂时无法读取/);
+  assert.equal(todoLoads, 2);
+  assert.equal(diaryLoads, 2);
+  await page.cleanup();
+});
+
+test("Day Space keeps one retained module visible when both modules fail", async () => {
+  let diaryLoads = 0;
+  let rejectDiaryRefresh!: (reason?: unknown) => void;
+  const committedDiary = { ...diary, title: "Only retained Diary" };
+  const api: DaySpaceApi = {
+    webClient: { request: async () => ({}) } as never,
+    listTodoDates: async () => [],
+    loadTodoDay: async () => { throw new Error("Todo unavailable"); },
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => {
+      diaryLoads += 1;
+      if (diaryLoads === 1) return { date, diaries: [diary] };
+      return new Promise((_, reject) => { rejectDiaryRefresh = reject; });
+    },
+    updateDiary: async () => committedDiary,
+  };
+  const page = await render(api);
+  await page.settle();
+  await saveDiaryPaper(page, "Only retained Diary");
+  assert.equal(typeof rejectDiaryRefresh, "function");
+  rejectDiaryRefresh(new Error("Diary refresh unavailable"));
+  await page.settle();
+  assert.match(page.container.textContent ?? "", /Only retained Diary/);
+  assert.match(page.container.textContent ?? "", /部分 Day Space 内容暂时无法读取/);
+  assert.match(page.container.textContent ?? "", /重试 Todo/);
+  assert.match(page.container.textContent ?? "", /重试 Diary/);
+  assert.doesNotMatch(page.container.textContent ?? "", /当天内容暂时无法读取/);
+  await page.cleanup();
+});
+
+test("Day Space shows full failure only when both modules have no retained value", async () => {
+  const api: DaySpaceApi = {
+    webClient: { request: async () => ({}) } as never,
+    listTodoDates: async () => [],
+    loadTodoDay: async () => { throw new Error("Todo unavailable"); },
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => { throw new Error("Diary unavailable"); },
+    updateDiary: async () => { throw new Error("not used"); },
+  };
+  const page = await render(api);
+  await page.settle();
+  assert.match(page.container.textContent ?? "", /当天内容暂时无法读取/);
+  assert.doesNotMatch(page.container.textContent ?? "", /部分 Day Space 内容暂时无法读取/);
+  assert.doesNotMatch(page.container.textContent ?? "", /正在读取当天内容/);
+  await page.cleanup();
+});
+
+test("Day Space does not claim complete empty or loading when one failed source meets a known empty module", async () => {
+  const api: DaySpaceApi = {
+    webClient: { request: async () => ({}) } as never,
+    listTodoDates: async () => [],
+    loadTodoDay: async () => ({ date, papers: { L: null, G: null } }),
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => { throw new Error("Diary unavailable"); },
+    updateDiary: async () => { throw new Error("not used"); },
+  };
+  const page = await render(api);
+  await page.settle();
+  assert.match(page.container.textContent ?? "", /部分 Day Space 内容暂时无法读取/);
+  assert.doesNotMatch(page.container.textContent ?? "", /这一天还没有内容/);
+  assert.doesNotMatch(page.container.textContent ?? "", /正在读取当天内容/);
+  assert.doesNotMatch(page.container.textContent ?? "", /当天内容暂时无法读取/);
   await page.cleanup();
 });

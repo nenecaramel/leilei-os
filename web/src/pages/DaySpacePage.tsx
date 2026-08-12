@@ -226,7 +226,10 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   };
 
   const moduleWarning = todoState.status === "error" || diaryState.status === "error";
-  const bothModulesFailed = todoState.status === "error" && diaryState.status === "error";
+  const bothModulesFailed = todoState.status === "error"
+    && diaryState.status === "error"
+    && todoState.value === undefined
+    && diaryState.value === undefined;
   const completeEmpty = todoState.status === "ready" && diaryState.status === "ready" && papers.length === 0;
 
   return (
@@ -246,7 +249,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       {selectedDate && bothModulesFailed ? <div className="day-space-error" role="alert"><p>当天内容暂时无法读取。</p><button type="button" onClick={() => loadDate(selectedDate)}>重试</button></div> : null}
       {selectedDate && moduleWarning && !bothModulesFailed ? <div className="day-space-warning" role="alert">部分 Day Space 内容暂时无法读取。{todoState.status === "error" ? <button type="button" onClick={() => retryTodo(selectedDate)}>重试 Todo</button> : null}{diaryState.status === "error" ? <button type="button" onClick={() => retryDiary(selectedDate)}>重试 Diary</button> : null}</div> : null}
       <div ref={stageMeasureRef} className="day-space-stage-measure">
-        {completeEmpty ? <div className="day-space-empty">这一天还没有内容</div> : bothModulesFailed ? null : papers.length === 0 ? <div className="day-space-loading" role="status">正在读取当天内容…</div> : (
+        {completeEmpty ? <div className="day-space-empty">这一天还没有内容</div> : bothModulesFailed ? null : moduleWarning && papers.length === 0 ? null : papers.length === 0 ? <div className="day-space-loading" role="status">正在读取当天内容…</div> : (
           <section className="day-space-stage" aria-label={`${selectedDate} 的内容`} style={{ height: `${layout?.stageHeight ?? 0}px` }}>
             {papers.map((paper) => {
               const item = layoutById.get(paper.id); if (!item) return null;
