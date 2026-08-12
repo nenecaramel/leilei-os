@@ -21,6 +21,7 @@ import {
 } from "./toy-router.js";
 import { createGlobalSearchApiRouter, type GlobalSearchApiDependencies } from "./global-search-router.js";
 import { createSystemApiRouter, type SystemApiDependencies } from "./system-router.js";
+import { createTodoApiRouter, type TodoApiDependencies } from "./todo-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
@@ -30,6 +31,7 @@ export type WebApiRouterDependencies = {
   toy: ToyApiDependencies;
   system: SystemApiDependencies;
   globalSearch?: GlobalSearchApiDependencies;
+  todo?: TodoApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -79,6 +81,7 @@ export function createWebApiRouter(
 
   router.use("/toy", createToyUserRouter(dependencies.toy));
   router.use("/system", createSystemApiRouter(dependencies.system));
+  if (dependencies.todo) router.use("/todo", createTodoApiRouter(dependencies.todo));
   if (dependencies.globalSearch) router.use("/search", createGlobalSearchApiRouter(dependencies.globalSearch));
 
   return router;
