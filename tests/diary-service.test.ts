@@ -68,6 +68,8 @@ class MockDiaryRepository implements DiaryRepository {
   async findDiaryById(): Promise<DiaryEntryRecord | null> {
     return null;
   }
+  async listActiveContentDates(): Promise<string[]> { return []; }
+  async findActiveByDate(): Promise<DiaryEntryRecord[]> { return []; }
 
   async updateDiary(): Promise<DiaryEntryRecord | null> {
     return null;
@@ -120,6 +122,52 @@ test("creates a normalized diary using only the authenticated context user", asy
     created: true,
     idempotent_replay: false,
   });
+});
+
+test("Diary content-date and exact-date reads validate and preserve all durable fields", async () => {
+  const repository = new MockDiaryRepository();
+  const entry: DiaryEntryRecord = {
+    id: "d-date",
+    title: "Exact",
+    content: "Body",
+    date: "2026-08-12",
+    tags: ["keep"],
+    mood: "calm",
+    author: null,
+    createdAt: new Date("2026-08-12T01:00:00Z"),
+    updatedAt: new Date("2026-08-12T02:00:00Z"),
+  };
+  repository.listActiveContentDates = async (userId) => {
+    assert.equal(userId, "user-1");
+    return ["2026-08-12", "2026-08-01"];
+  };
+  repository.findActiveByDate = async (userId, date) => {
+    assert.equal(userId, "user-1");
+    assert.equal(date, "2026-08-12");
+    return [entry];
+  };
+  const service = new DiaryService(repository);
+  assert.deepEqual(await service.listDiaryContentDates({ userId: "user-1" }), {
+    dates: ["2026-08-12", "2026-08-01"],
+  });
+  assert.deepEqual(await service.listDiariesByDate({ userId: "user-1", date: " 2026-08-12 " }), {
+    date: "2026-08-12",
+    diaries: [{
+      id: entry.id,
+      title: entry.title,
+      content: entry.content,
+      date: entry.date,
+      tags: entry.tags,
+      mood: entry.mood,
+      author: entry.author,
+      created_at: entry.createdAt.toISOString(),
+      updated_at: entry.updatedAt.toISOString(),
+    }],
+  });
+  await assert.rejects(
+    service.listDiariesByDate({ userId: "user-1", date: "2026-02-30" }),
+    (error: unknown) => error instanceof DiaryDomainError && error.code === "INVALID_DATE",
+  );
 });
 
 test("produces the same request hash for equivalent normalized input", async () => {

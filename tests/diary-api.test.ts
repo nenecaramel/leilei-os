@@ -7,6 +7,8 @@ import {
   createCreateDiaryApiHandler,
   createListArchivedDiariesApiHandler,
   createListDiariesApiHandler,
+  createListDiaryContentDatesApiHandler,
+  createListDiariesByDateApiHandler,
   createReadArchivedDiaryApiHandler,
   createRestoreDiaryApiHandler,
   createUpdateDiaryApiHandler,
@@ -20,6 +22,53 @@ function responseRecorder() {
   } as unknown as Response;
   return { result, response };
 }
+
+test("Diary exact-date routes use authenticated user and preserve route precedence", async () => {
+  const calls: unknown[] = [];
+  const service = {
+    async listDiaryContentDates(input: unknown) {
+      calls.push(["dates", input]);
+      return { dates: ["2026-08-12"] };
+    },
+    async listDiariesByDate(input: unknown) {
+      calls.push(["by-date", input]);
+      return { date: "2026-08-12", diaries: [] };
+    },
+  };
+  const dates = responseRecorder();
+  const byDate = responseRecorder();
+  await createListDiaryContentDatesApiHandler({ diaryService: service as never })({
+    webUserId: "owner",
+  } as unknown as Request, dates.response, () => {});
+  await createListDiariesByDateApiHandler({ diaryService: service as never })({
+    webUserId: "owner",
+    params: { date: "2026-08-12" },
+  } as unknown as Request, byDate.response, () => {});
+  assert.deepEqual(calls, [
+    ["dates", { userId: "owner" }],
+    ["by-date", { userId: "owner", date: "2026-08-12" }],
+  ]);
+  assert.equal(dates.result.status, undefined);
+  assert.deepEqual(dates.result.body, { success: true, data: { dates: ["2026-08-12"] } });
+  assert.deepEqual(byDate.result.body, { success: true, data: { date: "2026-08-12", diaries: [] } });
+});
+
+test("Diary exact-date route maps invalid dates to safe invalid request", async () => {
+  const handler = createListDiariesByDateApiHandler({
+    diaryService: {
+      async listDiariesByDate() {
+        throw new DiaryDomainError("INVALID_DATE", "private date detail");
+      },
+    } as never,
+  });
+  const { result, response } = responseRecorder();
+  await handler({ webUserId: "owner", params: { date: "2026-02-30" } } as unknown as Request, response, () => {});
+  assert.equal(result.status, 400);
+  assert.deepEqual(result.body, {
+    success: false,
+    error: { code: "INVALID_DIARY_REQUEST", message: "The diary request is invalid." },
+  });
+});
 
 test("diary API forwards separate raw filters with authenticated ownership", async () => {
   const calls: unknown[] = [];

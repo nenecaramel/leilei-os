@@ -12,6 +12,15 @@ import {
   
   export type DiaryApiDependencies = {
     diaryService: {
+      listDiaryContentDates(input: {
+        userId: string;
+      }): Promise<import("../domains/diary/diary-service.js").DiaryContentDatesResult>;
+
+      listDiariesByDate(input: {
+        userId: string;
+        date: string;
+      }): Promise<import("../domains/diary/diary-service.js").DiariesByDateResult>;
+
       listDiaries(input: {
         userId: string;
         limit?: number;
@@ -71,6 +80,8 @@ import {
     const router = Router();
   
     router.get("/", createListDiariesApiHandler(dependencies));
+    router.get("/dates", createListDiaryContentDatesApiHandler(dependencies));
+    router.get("/by-date/:date", createListDiariesByDateApiHandler(dependencies));
     router.get(
       "/archived",
       createListArchivedDiariesApiHandler(dependencies),
@@ -88,8 +99,47 @@ import {
     router.patch("/:id", createUpdateDiaryApiHandler(dependencies));
     router.delete("/:id", createArchiveDiaryApiHandler(dependencies));
   
-    return router;
-  }
+  return router;
+}
+
+export function createListDiaryContentDatesApiHandler(
+  dependencies: DiaryApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!request.webUserId) {
+      sendUnauthorized(response);
+      return;
+    }
+    try {
+      const data = await dependencies.diaryService.listDiaryContentDates({
+        userId: request.webUserId,
+      });
+      response.json({ success: true, data });
+    } catch (error) {
+      sendDiaryError(response, error);
+    }
+  };
+}
+
+export function createListDiariesByDateApiHandler(
+  dependencies: DiaryApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!request.webUserId) {
+      sendUnauthorized(response);
+      return;
+    }
+    try {
+      const data = await dependencies.diaryService.listDiariesByDate({
+        userId: request.webUserId,
+        date: getRouteParam(request.params.date),
+      });
+      response.json({ success: true, data });
+    } catch (error) {
+      sendDiaryError(response, error);
+    }
+  };
+}
 
   export function createListArchivedDiariesApiHandler(
     dependencies: DiaryApiDependencies,

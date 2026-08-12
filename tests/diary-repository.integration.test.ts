@@ -19,6 +19,57 @@ const RUN_INTEGRATION =
 
 class RollbackDiarySearchTest extends Error {}
 class RollbackDiaryLifecycleTest extends Error {}
+class RollbackDiaryDateReadTest extends Error {}
+
+test(
+  "real Diary exact-date read returns every active row without the generic list limit",
+  { skip: !RUN_INTEGRATION },
+  async () => {
+    const database = createDatabase(process.env.DATABASE_URL!);
+    try {
+      await assert.rejects(
+        database.db.transaction(async (transaction) => {
+          const userId = randomUUID();
+          const now = new Date("2026-08-12T08:00:00Z");
+          await transaction.insert(users).values({
+            id: userId,
+            email: `diary-date-${userId}@example.invalid`,
+            displayName: "Diary date owner",
+            status: "active",
+            createdAt: now,
+            updatedAt: now,
+          });
+          await transaction.insert(diaryEntries).values(
+            Array.from({ length: 121 }, (_, index) => ({
+              id: randomUUID(),
+              userId,
+              title: `Exact ${index}`,
+              content: "Body",
+              date: "2026-08-12",
+              tags: [],
+              mood: null,
+              source: "web" as const,
+              idempotencyKey: `date-read-${userId}-${index}`,
+              requestHash: createHash("sha256").update(`${userId}:${index}`).digest("hex"),
+              author: index % 2 === 0 ? "L" : null,
+              status: "active" as const,
+              createdAt: new Date(now.getTime() + index),
+              updatedAt: new Date(now.getTime() + index),
+            })),
+          );
+          const service = new DiaryService(new DrizzleDiaryRepository(transaction as never));
+          const result = await service.listDiariesByDate({ userId, date: "2026-08-12" });
+          assert.equal(result.diaries.length, 121);
+          assert.equal(new Set(result.diaries.map((row) => row.id)).size, 121);
+          throw new RollbackDiaryDateReadTest();
+        }),
+        RollbackDiaryDateReadTest,
+      );
+    } finally {
+      await database.close();
+    }
+  },
+);
 
 test(
   "real Diary repository applies exact tags, literal search, ownership, dates and AND filters before limit",

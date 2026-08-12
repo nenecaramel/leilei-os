@@ -91,6 +91,15 @@ export type ListDiariesResult = {
   };
 };
 
+export type DiaryContentDatesResult = {
+  dates: string[];
+};
+
+export type DiariesByDateResult = {
+  date: string;
+  diaries: DiaryEntryResult[];
+};
+
 export type ReadDiaryInput = {
   userId: string;
   id: string;
@@ -226,6 +235,27 @@ export class DiaryService {
       metadata: {
         count,
       },
+    };
+  }
+
+  async listDiaryContentDates(
+    input: { userId: string },
+  ): Promise<DiaryContentDatesResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    return {
+      dates: await this.repository.listActiveContentDates(userId),
+    };
+  }
+
+  async listDiariesByDate(
+    input: { userId: string; date: string },
+  ): Promise<DiariesByDateResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const date = this.normalizeDate(input.date);
+    const diaries = await this.repository.findActiveByDate(userId, date);
+    return {
+      date,
+      diaries: diaries.map((diary) => this.toEntryResult(diary)),
     };
   }
 

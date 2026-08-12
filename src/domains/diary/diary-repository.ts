@@ -109,6 +109,12 @@ export interface DiaryRepository {
     query?: DiaryListQuery,
   ): Promise<DiaryEntryRecord[]>;
 
+  /** All active business dates with content, newest first. */
+  listActiveContentDates(userId: string): Promise<string[]>;
+
+  /** Every active entry for one exact business date (intentionally unbounded). */
+  findActiveByDate(userId: string, date: string): Promise<DiaryEntryRecord[]>;
+
   countDiaryEntries(
     userId: string,
     query?: DiaryListQuery,
@@ -234,6 +240,47 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         desc(diaryEntries.createdAt),
       )
       .limit(limit);
+  }
+
+  async listActiveContentDates(userId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectDistinct({ date: diaryEntries.date })
+      .from(diaryEntries)
+      .where(
+        and(
+          eq(diaryEntries.userId, userId),
+          eq(diaryEntries.status, "active"),
+        ),
+      )
+      .orderBy(desc(diaryEntries.date));
+    return rows.map((row) => row.date);
+  }
+
+  async findActiveByDate(
+    userId: string,
+    date: string,
+  ): Promise<DiaryEntryRecord[]> {
+    return this.db
+      .select({
+        id: diaryEntries.id,
+        title: diaryEntries.title,
+        content: diaryEntries.content,
+        date: diaryEntries.date,
+        tags: diaryEntries.tags,
+        mood: diaryEntries.mood,
+        author: diaryEntries.author,
+        createdAt: diaryEntries.createdAt,
+        updatedAt: diaryEntries.updatedAt,
+      })
+      .from(diaryEntries)
+      .where(
+        and(
+          eq(diaryEntries.userId, userId),
+          eq(diaryEntries.status, "active"),
+          eq(diaryEntries.date, date),
+        ),
+      )
+      .orderBy(desc(diaryEntries.createdAt), desc(diaryEntries.id));
   }
 
   async countDiaryEntries(
