@@ -56,7 +56,7 @@ function installDom() {
   }};
 }
 
-const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 20));
+const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 100));
 
 test("Home fixture collections use one typed L/G note structure", () => {
   const noteShape = (note: HomeNote) => {
@@ -85,7 +85,7 @@ test("Home Todo preview uses three visual lines and a fading overflow marker", (
 });
 
 
-test("Home stays local-only and uses the Todo paper coordinator", () => {
+test("Home uses the Todo paper coordinator and server day endpoint", () => {
   assert.match(dashboardSource, />Todo</);
   assert.match(dashboardSource, />Records</);
   assert.match(dashboardSource, /records-section/);
@@ -96,7 +96,7 @@ test("Home stays local-only and uses the Todo paper coordinator", () => {
   assert.doesNotMatch(dashboardSource, /TodayPanelDialog/);
   assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
   assert.doesNotMatch(dashboardSource, /hero-panel|orbit|space-card|quickTarget/);
-  assert.doesNotMatch(dashboardSource, /api\.request\(["']\/(?:memory|diary|task)/);
+  assert.match(dashboardSource, /loadTodoDay/);
 });
 
 test("Home renders compact L/G Todo panels, Calendar, and no authenticated module requests", async () => {
@@ -105,7 +105,7 @@ test("Home renders compact L/G Todo panels, Calendar, and no authenticated modul
   const requests: string[] = [];
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
-    api: { request: async (path: string) => { requests.push(path); return { data: {} }; } },
+    api: { request: async (path: string) => { requests.push(path); return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) } } } }; } },
   })));
   await waitForPaint();
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
@@ -136,7 +136,7 @@ test("Home renders compact L/G Todo panels, Calendar, and no authenticated modul
   );
   assert.equal(container.querySelector(".hero-panel"), null);
   assert.equal(container.querySelector(".space-card"), null);
-  assert.deepEqual(requests, []);
+  assert.equal(requests.length, 1);
   root.unmount();
   await waitForPaint();
   env.restore();
@@ -154,6 +154,7 @@ test("Home saves an edited L paper, updates only L preview, and restores trigger
       BrowserRouter,
       null,
       React.createElement(DashboardPageContent, {
+        api: { request: async (path: string, init?: RequestInit) => ({ success: true, data: init?.method === "PUT" ? { author: "L", date: path.split("/").at(-2), revision: 2, entries: JSON.parse(String(init.body)).entries } : { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) } } } }) },
       }),
     ),
   );
@@ -197,16 +198,6 @@ test("Home saves an edited L paper, updates only L preview, and restores trigger
   assert.ok(lPreviewFirst?.classList.contains("today-note-completed"));
   assert.equal(gPanel.textContent, gPreviewBefore);
 
-  const savedKey = Array.from(
-    { length: env.dom.window.localStorage.length },
-    (_, index) => env.dom.window.localStorage.key(index),
-  ).find((key) => key?.endsWith(":L"));
-
-  assert.ok(savedKey);
-  assert.match(
-    env.dom.window.localStorage.getItem(savedKey) ?? "",
-    /"kind":"completed"/,
-  );
 
   root.unmount();
   await waitForPaint();

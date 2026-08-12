@@ -30,9 +30,10 @@ export type TodoPaperDialogProps = {
   triggerRef: RefObject<HTMLButtonElement | null>;
   onSaved: (paper: TodoPaper) => void;
   onClosed: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
-export function TodoPaperDialog({ api, author, date, open, paper, entries = [], triggerRef, onSaved, onClosed }: TodoPaperDialogProps) {
+export function TodoPaperDialog({ api, author, date, open, paper, entries = [], triggerRef, onSaved, onClosed, onDirtyChange }: TodoPaperDialogProps) {
   const editorRef = useRef<TodoPaperEditorHandle>(null);
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -49,8 +50,9 @@ export function TodoPaperDialog({ api, author, date, open, paper, entries = [], 
 
   const handleDirtyChange = useCallback((nextDirty: boolean) => {
     setDirty(nextDirty);
+    onDirtyChange?.(nextDirty);
     if (nextDirty) setSaveError(null);
-  }, []);
+  }, [onDirtyChange]);
 
   const handleRequestClose = useCallback((): Promise<boolean> => {
     if (savePromiseRef.current) return savePromiseRef.current;

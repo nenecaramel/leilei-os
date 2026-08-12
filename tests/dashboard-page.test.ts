@@ -19,7 +19,7 @@ test("Home prototype keeps the approved Todo, L/G, Calendar and footer structure
   assert.match(dashboardSource, /records-section/);
   assert.match(dashboardSource, /home-bottom-nav/);
   assert.doesNotMatch(dashboardSource, /hero-panel|orbit|space-card|quickTarget|Archive|Today at a glance|Wednesday, August 5|新增（预览）/);
-  assert.doesNotMatch(dashboardSource, /api\.request|fetch\(/);
+  assert.match(dashboardSource, /loadTodoDay/);
 });
 
 test("Task keeps its create form before filters and wires title focus", () => {
@@ -49,13 +49,13 @@ function installDashboardDom() {
   }};
 }
 
-const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 20));
+const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 100));
 
-test("Dashboard renders the fixture-backed Home view without API requests", async () => {
+test("Dashboard renders server-backed Home papers", async () => {
   const env = installDashboardDom();
   const container = env.dom.window.document.getElementById("root")!;
   let requestCount = 0;
-  const api = { request: async () => { requestCount += 1; throw new Error("Home must not request module APIs"); } };
+  const api = { request: async (path: string) => { requestCount += 1; return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: [{ id: "l-1", kind: "pending", text: "整理今天的事情" }] }, G: { author: "G", date: "2026-08-12", revision: 1, entries: [{ id: "g-1", kind: "record", text: "记录" }] } } } }; } };
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
     api,
@@ -74,7 +74,7 @@ test("Dashboard renders the fixture-backed Home view without API requests", asyn
   assert.equal(container.querySelectorAll(".calendar-frame").length, 1);
   assert.deepEqual([...container.querySelectorAll(".home-bottom-nav a")].map((link) => link.textContent), ["Memory", "Diary", "Task", "Universe"]);
   assert.equal(container.querySelector(".hero-panel"), null);
-  assert.equal(requestCount, 0);
+  assert.ok(requestCount >= 1);
   root.unmount();
   await waitForPaint();
   env.restore();
@@ -85,7 +85,7 @@ test("L and G panels open a modal with their own fixture notes", async () => {
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
-    api: { request: async () => { throw new Error("unexpected request"); } },
+    api: { request: async (path: string) => ({ success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: [{ id: "l-1", kind: "pending", text: "First" }] }, G: { author: "G", date: "2026-08-12", revision: 1, entries: [{ id: "g-1", kind: "record", text: "Second" }] } } } }) },
   })));
   await waitForPaint();
   const panels = [...container.querySelectorAll<HTMLButtonElement>(".today-panel")];
