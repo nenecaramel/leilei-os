@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { WebApiError } from "../api/web-api-error.js";
 import { DiaryPaperEditor } from "./DiaryPaperEditor.js";
 import { PaperAuthorSignature, type PaperAuthorValue } from "./PaperAuthorSignature.js";
 import { PaperDetailDialog } from "./PaperDetailDialog.js";
@@ -57,7 +58,7 @@ export function DaySpaceDiaryDialog({
       onClosed();
       return true;
     }).catch((cause: unknown) => {
-      setError(cause instanceof Error && cause.message.length < 200 ? cause.message : "保存失败，请重试");
+      setError(cause instanceof WebApiError && cause.code === "AUTHOR_REQUIRED" ? "请选择作者" : "保存失败，请重试");
       return false;
     }).finally(() => { setSaving(false); saveRef.current = null; });
     saveRef.current = request;
