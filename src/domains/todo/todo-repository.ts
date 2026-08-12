@@ -99,7 +99,7 @@ export class DrizzleTodoRepository implements TodoRepository {
         if (!current) {
           const [inserted] = await transaction
             .insert(todoPapers)
-            .values({ userId: input.userId, businessDate: input.date, author: input.author, revision: 0 })
+            .values({ userId: input.userId, businessDate: input.date, author: input.author, revision: 1 })
             .returning({ id: todoPapers.id });
           if (!inserted) throw new Error("Todo paper insert did not return a row.");
           paperId = inserted.id;

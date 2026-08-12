@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { createDatabase } from "../src/database/client.js";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import { users } from "../src/database/schema.js";
 import { DrizzleTodoRepository } from "../src/domains/todo/todo-repository.js";
 
@@ -14,7 +16,8 @@ test(
   "Todo repository scopes papers, revisions, empty papers and dates transactionally",
   { skip: !runIntegration },
   async () => {
-    const database = createDatabase(process.env.DATABASE_URL!);
+    const client = postgres(process.env.DATABASE_URL!, { prepare: false, ssl: false });
+    const database = { db: drizzle(client, { schema }), close: () => client.end() };
     const userA = randomUUID();
     const userB = randomUUID();
     try {
@@ -71,13 +74,14 @@ test(
           });
           assert.equal(lEmpty.outcome, "committed");
           assert.deepEqual(await repository.listContentDates(userA), []);
+          assert.deepEqual((await repository.readDay(userA, "2026-08-12")).L?.entries, []);
 
           const other = await repository.replacePaper({
             userId: userB, date: "2026-08-12", author: "L", expectedRevision: null,
             entries: [{ id: "b-1", kind: "pending", text: "other" }],
           });
           assert.equal(other.outcome, "committed");
-          assert.equal((await repository.readDay(userA, "2026-08-12")).L, null);
+          assert.equal((await repository.readDay(userA, "2026-08-12")).L?.entries.length, 0);
           throw new RollbackTodoTest();
         }),
         RollbackTodoTest,
