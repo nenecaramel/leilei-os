@@ -95,13 +95,13 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
     todoController.current = abort;
     const ticket = ++todoRequest.current;
     const current = generation.current;
-    setTodoState({ status: "loading" });
+    setTodoState((current) => ({ status: "loading", value: current.value }));
     void api.loadTodoDay(date, abort.signal).then((value) => {
       if (abort.signal.aborted || generation.current !== current || todoRequest.current !== ticket || selectedDateRef.current !== date) return;
       setTodoState({ status: "ready", value });
     }).catch(() => {
       if (abort.signal.aborted || generation.current !== current || todoRequest.current !== ticket || selectedDateRef.current !== date) return;
-      setTodoState({ status: "error" });
+      setTodoState((current) => ({ status: "error", value: current.value, needsRetry: true }));
     });
   }, [api]);
 
@@ -112,13 +112,13 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
     diaryController.current = abort;
     const ticket = ++diaryRequest.current;
     const current = generation.current;
-    setDiaryState({ status: "loading" });
+    setDiaryState((current) => ({ status: "loading", value: current.value }));
     void api.loadDiariesByDate(date, abort.signal).then((value) => {
       if (abort.signal.aborted || generation.current !== current || diaryRequest.current !== ticket || selectedDateRef.current !== date) return;
       setDiaryState({ status: "ready", value: value.diaries });
     }).catch(() => {
       if (abort.signal.aborted || generation.current !== current || diaryRequest.current !== ticket || selectedDateRef.current !== date) return;
-      setDiaryState({ status: "error" });
+      setDiaryState((current) => ({ status: "error", value: current.value, needsRetry: true }));
     });
   }, [api]);
 
@@ -167,14 +167,11 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   }, []);
 
   const papers = useMemo<DaySpacePaper[]>(() => {
-    if (!selectedDate || todoState.status === "loading" || diaryState.status === "loading") return [];
-    if (todoState.status !== "ready" || diaryState.status !== "ready") {
-      return [
-        ...(todoState.status === "ready" ? composeDaySpacePapers(selectedDate, todoState.value, []).filter((p) => p.type === "todo") : []),
-        ...(diaryState.status === "ready" ? diaryState.value.map((diary) => ({ type: "diary" as const, id: `diary:${diary.id}`, diary })) : []),
-      ];
-    }
-    return composeDaySpacePapers(selectedDate, todoState.value, diaryState.value) as DaySpacePaper[];
+    if (!selectedDate) return [];
+    return [
+      ...(todoState.value ? composeDaySpacePapers(selectedDate, todoState.value, []).filter((p) => p.type === "todo") : []),
+      ...(diaryState.value ? diaryState.value.map((diary) => ({ type: "diary" as const, id: `diary:${diary.id}`, diary })) : []),
+    ] as DaySpacePaper[];
   }, [selectedDate, todoState, diaryState]);
 
   const layout = useMemo(() => selectedDate ? layoutDaySpacePapers(selectedDate, papers.map((paper) => ({ id: paper.id, density: densityForPaper(paper) })), stageWidth) : null, [papers, selectedDate, stageWidth]);
@@ -195,7 +192,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       if (abort.signal.aborted || generation.current !== current || diaryRequest.current !== ticket || selectedDateRef.current !== date) return;
       setDiaryState((current) => ({
         status: "error",
-        value: current.status === "ready" ? current.value.map((entry) => entry.id === committed.id ? committed : entry) : [committed],
+        value: current.value ? current.value.map((entry) => entry.id === committed.id ? committed : entry) : [committed],
         needsRetry: true,
       }));
     }
@@ -215,8 +212,8 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       if (abort.signal.aborted || generation.current !== current || todoRequest.current !== ticket || selectedDateRef.current !== date) return;
       setTodoState((current) => ({
         status: "error",
-        value: current.status === "ready"
-          ? { ...current.value, papers: { ...current.value.papers, [committed.author]: committed } }
+        value: current.value
+          ? { ...current.value, papers: { ...current.value.papers, [committed.author]: committed.entries.length > 0 ? committed : null } }
           : { date, papers: { L: committed.author === "L" ? committed : null, G: committed.author === "G" ? committed : null } },
         needsRetry: true,
       }));
@@ -264,8 +261,8 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
           </section>
         )}
       </div>
-      {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => { setTodoState((current) => ({ status: "ready", value: { date: selectedDate, papers: { ...(current.status === "ready" ? current.value.papers : { L: null, G: null }), [paper.author]: paper } } })); void refreshTodo(selectedDate, paper); }} onClosed={() => setOpenPaperId(null)} /> : null}
-      {openPaper?.type === "diary" ? <DaySpaceDiaryDialog diary={openPaper.diary} api={api} open triggerRef={paperTriggerRef} onSaved={(next) => { setDiaryState((current) => ({ status: "ready", value: current.status === "ready" ? current.value.map((entry) => entry.id === next.id ? next : entry) : [next] })); void refreshDiary(next.date, next); }} onClosed={() => setOpenPaperId(null)} /> : null}
+      {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => { setTodoState((current) => ({ status: "ready", value: { date: selectedDate, papers: { ...(current.value?.papers ?? { L: null, G: null }), [paper.author]: paper.entries.length > 0 ? paper : null } } })); void refreshTodo(selectedDate, paper); }} onClosed={() => setOpenPaperId(null)} /> : null}
+      {openPaper?.type === "diary" ? <DaySpaceDiaryDialog diary={openPaper.diary} api={api} open triggerRef={paperTriggerRef} onSaved={(next) => { setDiaryState((current) => ({ status: "ready", value: current.value ? current.value.map((entry) => entry.id === next.id ? next : entry) : [next] })); void refreshDiary(next.date, next); }} onClosed={() => setOpenPaperId(null)} /> : null}
     </main>
   );
 }

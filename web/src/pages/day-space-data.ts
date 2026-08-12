@@ -29,7 +29,7 @@ export function resolveDaySpaceDefaultDate(
 }
 
 export type DaySpaceModuleState<T> =
-  | { status: "loading" }
+  | { status: "loading"; value?: T }
   | { status: "ready"; value: T }
   | { status: "error"; value?: T; needsRetry?: boolean };
 
