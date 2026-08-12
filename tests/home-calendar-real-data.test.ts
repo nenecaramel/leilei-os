@@ -6,6 +6,7 @@ const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx
 const calendarSource = readFileSync(new URL("../web/src/pages/CalendarPreview.tsx", import.meta.url), "utf8");
 const daySpaceApiSource = readFileSync(new URL("../web/src/pages/day-space-api.ts", import.meta.url), "utf8");
 const mainSource = readFileSync(new URL("../web/src/main.tsx", import.meta.url), "utf8");
+const prototypeDataSource = readFileSync(new URL("../web/src/pages/home-prototype-data.ts", import.meta.url), "utf8");
 
 test("Home Calendar discovers real Todo and Diary dates instead of fixture markers", () => {
   assert.doesNotMatch(dashboardSource, /HOME_CALENDAR_DAYS/);
@@ -15,6 +16,7 @@ test("Home Calendar discovers real Todo and Diary dates instead of fixture marke
   assert.match(dashboardSource, /contentDates=\{calendarContentDates\}/);
   assert.match(dashboardSource, /status=\{calendarLoadState\}/);
   assert.match(daySpaceApiSource, /export async function listDiaryDates/);
+  assert.doesNotMatch(prototypeDataSource, /HOME_CALENDAR_DAYS|HomeCalendarDay/);
 });
 
 test("Calendar keeps its geometry while adding month controls, markers, retry and Day Space links", () => {

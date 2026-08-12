@@ -5,7 +5,6 @@ import React from "../web/node_modules/react/index.js";
 import test from "node:test";
 import {
   G_HOME_NOTES,
-  HOME_CALENDAR_DAYS,
   L_HOME_NOTES,
   type HomeNote,
 } from "../web/src/pages/home-prototype-data.js";
@@ -58,7 +57,7 @@ function installDom() {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 100));
 
-test("Home fixture collections use one typed L/G note structure", () => {
+test("Home Todo fixture collections use one typed L/G note structure", () => {
   const noteShape = (note: HomeNote) => {
     assert.ok(note.id);
     assert.ok(note.text.trim());
@@ -72,7 +71,6 @@ test("Home fixture collections use one typed L/G note structure", () => {
   assert.match(todayPanelSource, /today-panel-overflow/);
   L_HOME_NOTES.forEach(noteShape);
   G_HOME_NOTES.forEach(noteShape);
-  assert.ok(HOME_CALENDAR_DAYS.length >= 28);
 });
 
 test("Home Todo preview uses three visual lines and a fading overflow marker", () => {
@@ -99,13 +97,19 @@ test("Home uses the Todo paper coordinator and server day endpoint", () => {
   assert.match(dashboardSource, /loadTodoDay/);
 });
 
-test("Home renders compact L/G Todo panels, Calendar, and no authenticated module requests", async () => {
+test("Home renders compact L/G Todo panels and performs real Calendar discovery", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const requests: string[] = [];
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
-    api: { request: async (path: string) => { requests.push(path); return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) } } } }; } },
+    api: { request: async (path: string) => {
+      requests.push(path);
+      if (path === "/todo/dates" || path === "/diary/dates") {
+        return { success: true, data: { dates: [] } };
+      }
+      return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) } } } };
+    } },
   })));
   await waitForPaint();
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
@@ -136,7 +140,7 @@ test("Home renders compact L/G Todo panels, Calendar, and no authenticated modul
   );
   assert.equal(container.querySelector(".hero-panel"), null);
   assert.equal(container.querySelector(".space-card"), null);
-  assert.equal(requests.length, 1);
+  assert.deepEqual(requests, ["/todo/2026-08-12", "/todo/dates", "/diary/dates"]);
   root.unmount();
   await waitForPaint();
   env.restore();

@@ -8,11 +8,6 @@ export type HomeNote = {
   text: string;
 };
 
-export type HomeCalendarDay = {
-  day: number;
-  hasContent: boolean;
-};
-
 export const L_HOME_NOTES: HomeNote[] = [
   { id: "l-1", author: "L", kind: "pending", text: "整理今天的事情" },
   { id: "l-2", author: "L", kind: "completed", text: "项目视觉方向已经确认" },
@@ -26,8 +21,3 @@ export const G_HOME_NOTES: HomeNote[] = [
   { id: "g-3", author: "G", kind: "record", text: "准备提醒蕾蕾吃午饭啦" },
   { id: "g-4", author: "G", kind: "record", text: "下一轮继续调整首页细节" },
 ];
-
-export const HOME_CALENDAR_DAYS: HomeCalendarDay[] = Array.from({ length: 31 }, (_, index) => ({
-  day: index + 1,
-  hasContent: [2, 5, 8, 14, 18, 23, 27].includes(index + 1),
-}));

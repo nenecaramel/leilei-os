@@ -56,7 +56,11 @@ test("foreground date change loads the new local day without carrying yesterday'
   let currentDate = new Date(2026, 7, 12, 9, 0);
   const now = () => currentDate;
   const requests: string[] = [];
-  const api = { request: async (path: string) => { requests.push(path); return dayResponse(path.split("/").at(-1)!, path.includes("2026-08-13") ? "today" : "yesterday"); } };
+  const api = { request: async (path: string) => {
+    requests.push(path);
+    if (path === "/todo/dates" || path === "/diary/dates") return { success: true, data: { dates: [] } };
+    return dayResponse(path.split("/").at(-1)!, path.includes("2026-08-13") ? "today" : "yesterday");
+  } };
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, { api, now })));
   await waitForPaint();
@@ -66,7 +70,7 @@ test("foreground date change loads the new local day without carrying yesterday'
   await waitForPaint();
   assert.match(container.textContent ?? "", /today/);
   assert.doesNotMatch(container.textContent ?? "", /yesterday/);
-  assert.deepEqual(requests, ["/todo/2026-08-12", "/todo/2026-08-13"]);
+  assert.deepEqual(requests, ["/todo/2026-08-12", "/todo/dates", "/diary/dates", "/todo/2026-08-13"]);
   root.unmount();
   env.restore();
 });
@@ -80,6 +84,7 @@ test("dirty paper defers date rebinding and loads the newest date after close", 
   const api = { request: async (path: string, init?: RequestInit) => {
     requests.push(`${init?.method ?? "GET"} ${path}`);
     if (init?.method === "PUT") return { success: true, data: { author: "L", date: "2026-08-12", revision: 2, entries: [{ id: "old", kind: "record", text: "saved" }] } };
+    if (path === "/todo/dates" || path === "/diary/dates") return { success: true, data: { dates: [] } };
     return dayResponse(path.split("/").at(-1)!, path.includes("2026-08-13") ? "today" : "yesterday");
   } };
   const root = createRoot(container);
@@ -99,7 +104,7 @@ test("dirty paper defers date rebinding and loads the newest date after close", 
   await waitForPaint();
   await waitForPaint();
   assert.match(container.textContent ?? "", /today/);
-  assert.deepEqual(requests, ["GET /todo/2026-08-12", "PUT /todo/2026-08-12/L", "GET /todo/2026-08-13"]);
+  assert.deepEqual(requests, ["GET /todo/2026-08-12", "GET /todo/dates", "GET /diary/dates", "PUT /todo/2026-08-12/L", "GET /todo/dates", "GET /diary/dates", "GET /todo/2026-08-13"]);
   root.unmount();
   env.restore();
 });
@@ -113,7 +118,10 @@ test("a stale old-day success cannot overwrite the newer day", async () => {
   let resolveNew!: (value: unknown) => void;
   const old = new Promise((resolve) => { resolveOld = resolve; });
   const newer = new Promise((resolve) => { resolveNew = resolve; });
-  const api = { request: (path: string) => path.endsWith("2026-08-12") ? old : newer };
+  const api = { request: (path: string) => {
+    if (path === "/todo/dates" || path === "/diary/dates") return Promise.resolve({ success: true, data: { dates: [] } });
+    return path.endsWith("2026-08-12") ? old : newer;
+  } };
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, { api, now })));
   await waitForPaint();
@@ -138,7 +146,10 @@ test("a stale old-day failure cannot turn a newer successful load into an error"
   let resolveNew!: (value: unknown) => void;
   const old = new Promise((_, reject) => { rejectOld = reject; });
   const newer = new Promise((resolve) => { resolveNew = resolve; });
-  const api = { request: (path: string) => path.endsWith("2026-08-12") ? old : newer };
+  const api = { request: (path: string) => {
+    if (path === "/todo/dates" || path === "/diary/dates") return Promise.resolve({ success: true, data: { dates: [] } });
+    return path.endsWith("2026-08-12") ? old : newer;
+  } };
   const now = () => currentDate;
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, { api, now })));
@@ -151,7 +162,7 @@ test("a stale old-day failure cannot turn a newer successful load into an error"
   rejectOld(new Error("stale failure"));
   await waitForPaint();
   assert.match(container.textContent ?? "", /new day/);
-  assert.doesNotMatch(container.textContent ?? "", /暂时无法读取/);
+  assert.equal(container.querySelector(".home-todo-error"), null);
   root.unmount();
   env.restore();
 });
