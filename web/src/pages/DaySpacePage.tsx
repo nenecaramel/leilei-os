@@ -50,29 +50,74 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const stageMeasureRef = useRef<HTMLDivElement | null>(null);
   const paperTriggerRef = useRef<HTMLButtonElement | null>(null);
   const generation = useRef(0);
-  const controller = useRef<AbortController | null>(null);
+  const todoRequest = useRef(0);
+  const diaryRequest = useRef(0);
+  const todoController = useRef<AbortController | null>(null);
+  const diaryController = useRef<AbortController | null>(null);
+  const selectedDateRef = useRef<string | null>(selectedDate);
+  selectedDateRef.current = selectedDate;
 
   const loadDate = useCallback((date: string) => {
     const current = ++generation.current;
-    controller.current?.abort();
-    const abort = new AbortController();
-    controller.current = abort;
+    todoController.current?.abort();
+    diaryController.current?.abort();
+    const todoAbort = new AbortController();
+    const diaryAbort = new AbortController();
+    todoController.current = todoAbort;
+    diaryController.current = diaryAbort;
+    const todoTicket = ++todoRequest.current;
+    const diaryTicket = ++diaryRequest.current;
+    selectedDateRef.current = date;
     setSelectedDate(date);
     setOpenPaperId(null);
     setTodoState({ status: "loading" });
     setDiaryState({ status: "loading" });
-    void api.loadTodoDay(date).then((value) => {
-      if (abort.signal.aborted || generation.current !== current) return;
+    void api.loadTodoDay(date, todoAbort.signal).then((value) => {
+      if (todoAbort.signal.aborted || generation.current !== current || todoRequest.current !== todoTicket || selectedDateRef.current !== date) return;
       setTodoState({ status: "ready", value });
     }).catch(() => {
-      if (abort.signal.aborted || generation.current !== current) return;
+      if (todoAbort.signal.aborted || generation.current !== current || todoRequest.current !== todoTicket || selectedDateRef.current !== date) return;
       setTodoState({ status: "error" });
     });
-    void api.loadDiariesByDate(date).then((value) => {
-      if (abort.signal.aborted || generation.current !== current) return;
+    void api.loadDiariesByDate(date, diaryAbort.signal).then((value) => {
+      if (diaryAbort.signal.aborted || generation.current !== current || diaryRequest.current !== diaryTicket || selectedDateRef.current !== date) return;
       setDiaryState({ status: "ready", value: value.diaries });
     }).catch(() => {
-      if (abort.signal.aborted || generation.current !== current) return;
+      if (diaryAbort.signal.aborted || generation.current !== current || diaryRequest.current !== diaryTicket || selectedDateRef.current !== date) return;
+      setDiaryState({ status: "error" });
+    });
+  }, [api]);
+
+  const retryTodo = useCallback((date: string) => {
+    if (selectedDateRef.current !== date) return;
+    todoController.current?.abort();
+    const abort = new AbortController();
+    todoController.current = abort;
+    const ticket = ++todoRequest.current;
+    const current = generation.current;
+    setTodoState({ status: "loading" });
+    void api.loadTodoDay(date, abort.signal).then((value) => {
+      if (abort.signal.aborted || generation.current !== current || todoRequest.current !== ticket || selectedDateRef.current !== date) return;
+      setTodoState({ status: "ready", value });
+    }).catch(() => {
+      if (abort.signal.aborted || generation.current !== current || todoRequest.current !== ticket || selectedDateRef.current !== date) return;
+      setTodoState({ status: "error" });
+    });
+  }, [api]);
+
+  const retryDiary = useCallback((date: string) => {
+    if (selectedDateRef.current !== date) return;
+    diaryController.current?.abort();
+    const abort = new AbortController();
+    diaryController.current = abort;
+    const ticket = ++diaryRequest.current;
+    const current = generation.current;
+    setDiaryState({ status: "loading" });
+    void api.loadDiariesByDate(date, abort.signal).then((value) => {
+      if (abort.signal.aborted || generation.current !== current || diaryRequest.current !== ticket || selectedDateRef.current !== date) return;
+      setDiaryState({ status: "ready", value: value.diaries });
+    }).catch(() => {
+      if (abort.signal.aborted || generation.current !== current || diaryRequest.current !== ticket || selectedDateRef.current !== date) return;
       setDiaryState({ status: "error" });
     });
   }, [api]);
@@ -88,10 +133,12 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
 
     let cancelled = false;
     setDiscoveryStatus("loading");
+    selectedDateRef.current = null;
     setSelectedDate(null);
     setTodoState({ status: "loading" });
     setDiaryState({ status: "loading" });
-    void Promise.allSettled([api.listTodoDates(), api.listDiaryDates()]).then((results) => {
+    const discoveryAbort = new AbortController();
+    void Promise.allSettled([api.listTodoDates(discoveryAbort.signal), api.listDiaryDates(discoveryAbort.signal)]).then((results) => {
       if (cancelled) return;
       const resolved = resolveDaySpaceDefaultDate({
         todo: results[0]?.status === "fulfilled" ? { status: "success", dates: results[0].value } : { status: "error" },
@@ -105,7 +152,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       setDiscoveryIncomplete(resolved.discoveryIncomplete);
       loadDate(resolved.date);
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; discoveryAbort.abort(); };
   }, [api, location.search, loadDate, today, discoveryRetry]);
 
   useEffect(() => {
@@ -135,27 +182,37 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const openPaper = papers.find((paper) => paper.id === openPaperId) ?? null;
 
   const refreshDiary = useCallback(async (date: string, committed: DaySpaceDiary) => {
+    const current = generation.current;
+    const ticket = ++diaryRequest.current;
+    diaryController.current?.abort();
+    const abort = new AbortController();
+    diaryController.current = abort;
     try {
-      const result = await api.loadDiariesByDate(date);
-      if (selectedDate !== date) return;
+      const result = await api.loadDiariesByDate(date, abort.signal);
+      if (abort.signal.aborted || generation.current !== current || diaryRequest.current !== ticket || selectedDateRef.current !== date) return;
       setDiaryState({ status: "ready", value: result.diaries });
     } catch {
-      if (selectedDate !== date) return;
+      if (abort.signal.aborted || generation.current !== current || diaryRequest.current !== ticket || selectedDateRef.current !== date) return;
       setDiaryState((current) => ({
         status: "error",
         value: current.status === "ready" ? current.value.map((entry) => entry.id === committed.id ? committed : entry) : [committed],
         needsRetry: true,
       }));
     }
-  }, [api, selectedDate]);
+  }, [api]);
 
   const refreshTodo = useCallback(async (date: string, committed: TodoPaper) => {
+    const current = generation.current;
+    const ticket = ++todoRequest.current;
+    todoController.current?.abort();
+    const abort = new AbortController();
+    todoController.current = abort;
     try {
-      const result = await api.loadTodoDay(date);
-      if (selectedDate !== date) return;
+      const result = await api.loadTodoDay(date, abort.signal);
+      if (abort.signal.aborted || generation.current !== current || todoRequest.current !== ticket || selectedDateRef.current !== date) return;
       setTodoState({ status: "ready", value: result });
     } catch {
-      if (selectedDate !== date) return;
+      if (abort.signal.aborted || generation.current !== current || todoRequest.current !== ticket || selectedDateRef.current !== date) return;
       setTodoState((current) => ({
         status: "error",
         value: current.status === "ready"
@@ -164,7 +221,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
         needsRetry: true,
       }));
     }
-  }, [api, selectedDate]);
+  }, [api]);
 
   const go = (date: string) => {
     setPickerOpen(false);
@@ -190,7 +247,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       {discoveryStatus === "error" ? <div className="day-space-error" role="alert"><p>Day Space 暂时无法读取。</p><button type="button" onClick={() => setDiscoveryRetry((value) => value + 1)}>重试</button></div> : null}
       {discoveryIncomplete && selectedDate ? <div className="day-space-warning" role="status">最新日期发现不完整，当前日期仍可查看。</div> : null}
       {selectedDate && bothModulesFailed ? <div className="day-space-error" role="alert"><p>当天内容暂时无法读取。</p><button type="button" onClick={() => loadDate(selectedDate)}>重试</button></div> : null}
-      {selectedDate && moduleWarning && !bothModulesFailed ? <div className="day-space-warning" role="alert">部分 Day Space 内容暂时无法读取。<button type="button" onClick={() => loadDate(selectedDate)}>重试</button></div> : null}
+      {selectedDate && moduleWarning && !bothModulesFailed ? <div className="day-space-warning" role="alert">部分 Day Space 内容暂时无法读取。{todoState.status === "error" ? <button type="button" onClick={() => retryTodo(selectedDate)}>重试 Todo</button> : null}{diaryState.status === "error" ? <button type="button" onClick={() => retryDiary(selectedDate)}>重试 Diary</button> : null}</div> : null}
       <div ref={stageMeasureRef} className="day-space-stage-measure">
         {completeEmpty ? <div className="day-space-empty">这一天还没有内容</div> : bothModulesFailed ? null : papers.length === 0 ? <div className="day-space-loading" role="status">正在读取当天内容…</div> : (
           <section className="day-space-stage" aria-label={`${selectedDate} 的内容`} style={{ height: `${layout?.stageHeight ?? 0}px` }}>

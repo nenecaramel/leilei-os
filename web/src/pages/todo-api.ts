@@ -2,12 +2,12 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import type { TodoAuthor, TodoDay, TodoEntry, TodoPaper } from "./todo-types";
 
 type Envelope<T> = { success: true; data: T };
-export async function loadTodoDay(api: WebApiClient, date: string): Promise<TodoDay> {
-  const response = await api.request<Envelope<TodoDay>>(`/todo/${encodeURIComponent(date)}`);
+export async function loadTodoDay(api: WebApiClient, date: string, signal?: AbortSignal): Promise<TodoDay> {
+  const response = await api.request<Envelope<TodoDay>>(`/todo/${encodeURIComponent(date)}`, signal ? { signal } : undefined);
   return response.data;
 }
-export async function listTodoDates(api: WebApiClient): Promise<string[]> {
-  const response = await api.request<Envelope<{ dates: string[] }>>("/todo/dates");
+export async function listTodoDates(api: WebApiClient, signal?: AbortSignal): Promise<string[]> {
+  const response = await api.request<Envelope<{ dates: string[] }>>("/todo/dates", signal ? { signal } : undefined);
   return response.data.dates;
 }
 export async function saveTodoPaper(api: WebApiClient, input: { date: string; author: TodoAuthor; revision: number | null; entries: TodoEntry[] }): Promise<TodoPaper> {
