@@ -39,6 +39,8 @@ class LifecycleRepository implements DiaryRepository {
   async findDiaryEntries() { return []; }
   async countDiaryEntries() { return 0; }
   async findDiaryById() { return null; }
+  async listActiveContentDates() { return []; }
+  async findActiveByDate() { return []; }
   async createDiaryWithAudit(): Promise<never> {
     throw new Error("not used");
   }

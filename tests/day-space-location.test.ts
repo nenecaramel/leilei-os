@@ -36,7 +36,7 @@ test("Day Space resolves the latest visible content date and otherwise today", (
   assert.equal(buildDaySpaceLocation("2026-08-05"), "/day-space?date=2026-08-05");
 });
 
-test("persisted Todo date discovery ignores malformed, unrelated and empty papers", () => {
+test("Todo storage helper ignores malformed, unrelated and empty papers", () => {
   const map = new Map<string, string>([
     [
       todoPaperStorageKey("L", "2026-08-06"),

@@ -69,6 +69,8 @@ class SearchRepository implements DiaryRepository {
   }
   async countArchivedDiaries() { return 0; }
   async findDiaryById() { return null; }
+  async listActiveContentDates() { return []; }
+  async findActiveByDate() { return []; }
   async createDiaryWithAudit(): Promise<never> { throw new Error("unused"); }
   async updateDiary() { return null; }
 }
