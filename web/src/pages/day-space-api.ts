@@ -17,6 +17,14 @@ export type DaySpaceDiary = {
 
 type Envelope<T> = { success: true; data: T };
 
+export async function listDiaryDates(api: WebApiClient, signal?: AbortSignal): Promise<string[]> {
+  const response = await api.request<Envelope<{ dates: string[] }>>(
+    "/diary/dates",
+    signal ? { signal } : undefined,
+  );
+  return response.data.dates;
+}
+
 export type DaySpaceApi = {
   webClient: WebApiClient;
   listTodoDates(signal?: AbortSignal): Promise<string[]>;
@@ -39,10 +47,7 @@ export function createDaySpaceApi(api: WebApiClient): DaySpaceApi {
     webClient: api,
     listTodoDates: (signal) => listTodoDates(api, signal),
     loadTodoDay: (date, signal) => loadTodoDay(api, date, signal),
-    async listDiaryDates(signal) {
-      const response = await api.request<Envelope<{ dates: string[] }>>("/diary/dates", signal ? { signal } : undefined);
-      return response.data.dates;
-    },
+    listDiaryDates: (signal) => listDiaryDates(api, signal),
     async loadDiariesByDate(date, signal) {
       const response = await api.request<Envelope<{ date: string; diaries: DaySpaceDiary[] }>>(
         `/diary/by-date/${encodeURIComponent(date)}`,
