@@ -18,7 +18,7 @@ import { SystemConnectionsPage } from "./pages/SystemConnectionsPage";
 import { SystemDataPage } from "./pages/SystemDataPage";
 import { TaskPage } from "./pages/TaskPageContainer";
 
-import { DaySpacePage } from "./pages/DaySpacePage.js";
+import { DaySpacePage } from "./pages/DaySpacePageContainer";
 export default function App() {
   return (
     <BrowserRouter>
