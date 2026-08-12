@@ -60,3 +60,22 @@ test("legacy discovery and parser enforce exact namespace and authorship", () =>
   assert.deepEqual(parseLegacyTodoPaper(legacy, "L"), { author: "L", entries: [{ id: "l-1", kind: "pending", text: "hello" }, { id: "l-2", kind: "completed", text: "done" }] });
   assert.equal(parseLegacyTodoPaper(legacy, "G"), null);
 });
+
+
+test("legacy prototype seed payloads stay ignored without the Home fixture module", () => {
+  const lSeed = JSON.stringify([
+    { id: "l-1", author: "L", kind: "pending", text: "整理今天的事情" },
+    { id: "l-2", author: "L", kind: "completed", text: "项目视觉方向已经确认" },
+    { id: "l-3", author: "L", kind: "record", text: "记录一个不强制完成的小念头" },
+    { id: "l-4", author: "L", kind: "record", text: "留一点空白，晚些时候再决定" },
+  ]);
+  const gSeed = JSON.stringify([
+    { id: "g-1", author: "G", kind: "pending", text: "项目下一步：确定侧边栏交互" },
+    { id: "g-2", author: "G", kind: "record", text: "明天记得向蕾蕾推进进度展开方式" },
+    { id: "g-3", author: "G", kind: "record", text: "准备提醒蕾蕾吃午饭啦" },
+    { id: "g-4", author: "G", kind: "record", text: "下一轮继续调整首页细节" },
+  ]);
+
+  assert.equal(parseLegacyTodoPaper(lSeed, "L"), null);
+  assert.equal(parseLegacyTodoPaper(gSeed, "G"), null);
+});

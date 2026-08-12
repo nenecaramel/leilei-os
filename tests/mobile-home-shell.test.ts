@@ -118,6 +118,7 @@ test("Home renders compact L/G Todo panels and performs real Calendar discovery"
   const requests: string[] = [];
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
+    now: () => new Date(2026, 7, 12, 12, 0, 0),
     api: { request: async (path: string) => {
       requests.push(path);
       if (path === "/todo/dates" || path === "/diary/dates") {

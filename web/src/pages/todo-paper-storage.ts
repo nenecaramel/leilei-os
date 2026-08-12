@@ -1,7 +1,14 @@
-import type { HomeAuthor, HomeNote, HomeNoteKind } from "./home-prototype-data";
+import type { TodoAuthor, TodoEntryKind } from "./todo-types";
+
+type LegacyTodoStoredEntry = {
+  id: string;
+  author: TodoAuthor;
+  kind: TodoEntryKind;
+  text: string;
+};
 
 const STORAGE_PREFIX = "leilei.home.todo-paper.v1";
-const KINDS = new Set<HomeNoteKind>(["pending", "completed", "record"]);
+const KINDS = new Set<TodoEntryKind>(["pending", "completed", "record"]);
 
 const twoDigits = (value: number) => String(value).padStart(2, "0");
 
@@ -13,24 +20,24 @@ export function formatTodoPaperDate(date: Date): string {
   return formatTodoStorageDate(date).replaceAll("-", ".");
 }
 
-export function todoPaperStorageKey(author: HomeAuthor, dateKey: string): string {
+export function todoPaperStorageKey(author: TodoAuthor, dateKey: string): string {
   return `${STORAGE_PREFIX}:${dateKey}:${author}`;
 }
 
-function isHomeNote(value: unknown, author: HomeAuthor): value is HomeNote {
+function isLegacyTodoStoredEntry(value: unknown, author: TodoAuthor): value is LegacyTodoStoredEntry {
   if (!value || typeof value !== "object") return false;
-  const note = value as Partial<HomeNote>;
+  const note = value as Partial<LegacyTodoStoredEntry>;
   return (
     typeof note.id === "string" &&
     note.id.length > 0 &&
     note.author === author &&
     typeof note.kind === "string" &&
-    KINDS.has(note.kind as HomeNoteKind) &&
+    KINDS.has(note.kind as TodoEntryKind) &&
     typeof note.text === "string"
   );
 }
 
-export function normalizeTodoPaperEntries(entries: readonly HomeNote[]): HomeNote[] {
+export function normalizeTodoPaperEntries(entries: readonly LegacyTodoStoredEntry[]): LegacyTodoStoredEntry[] {
   return entries
     .map((entry) => ({ ...entry, text: entry.text.trim() }))
     .filter((entry) => entry.text.length > 0);
@@ -38,16 +45,16 @@ export function normalizeTodoPaperEntries(entries: readonly HomeNote[]): HomeNot
 
 export function readTodoPaperEntries(
   storage: Pick<Storage, "getItem">,
-  author: HomeAuthor,
+  author: TodoAuthor,
   dateKey: string,
-  seed: readonly HomeNote[],
-): HomeNote[] {
+  seed: readonly LegacyTodoStoredEntry[],
+): LegacyTodoStoredEntry[] {
   try {
     const raw = storage.getItem(todoPaperStorageKey(author, dateKey));
     if (raw === null) return seed.map((entry) => ({ ...entry }));
 
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed) || !parsed.every((entry) => isHomeNote(entry, author))) {
+    if (!Array.isArray(parsed) || !parsed.every((entry) => isLegacyTodoStoredEntry(entry, author))) {
       return seed.map((entry) => ({ ...entry }));
     }
 
@@ -59,9 +66,9 @@ export function readTodoPaperEntries(
 
 export function writeTodoPaperEntries(
   storage: Pick<Storage, "setItem">,
-  author: HomeAuthor,
+  author: TodoAuthor,
   dateKey: string,
-  entries: readonly HomeNote[],
+  entries: readonly LegacyTodoStoredEntry[],
 ): void {
   storage.setItem(
     todoPaperStorageKey(author, dateKey),
@@ -69,7 +76,7 @@ export function writeTodoPaperEntries(
   );
 }
 
-export function createTodoPaperEntryId(author: HomeAuthor): string {
+export function createTodoPaperEntryId(author: TodoAuthor): string {
   const suffix =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()

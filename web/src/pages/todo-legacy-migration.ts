@@ -1,12 +1,29 @@
 import type { WebApiClient } from "../api/useWebApiClient";
 import { WebApiError } from "../api/web-api-error";
-import { G_HOME_NOTES, L_HOME_NOTES } from "./home-prototype-data";
 import { loadTodoDay, saveTodoPaper } from "./todo-api";
 import type { TodoAuthor, TodoEntry, TodoEntryKind } from "./todo-types";
 
 const LEGACY_PREFIX = "leilei.home.todo-paper.v1";
 const MARKER_PREFIX = "leilei.home.todo-paper.migration.v1";
 const KINDS = new Set<TodoEntryKind>(["pending", "completed", "record"]);
+
+const LEGACY_HOME_SEED_ENTRIES: Record<
+  TodoAuthor,
+  readonly { id: string; author: TodoAuthor; kind: TodoEntryKind; text: string }[]
+> = {
+  L: [
+    { id: "l-1", author: "L", kind: "pending", text: "整理今天的事情" },
+    { id: "l-2", author: "L", kind: "completed", text: "项目视觉方向已经确认" },
+    { id: "l-3", author: "L", kind: "record", text: "记录一个不强制完成的小念头" },
+    { id: "l-4", author: "L", kind: "record", text: "留一点空白，晚些时候再决定" },
+  ],
+  G: [
+    { id: "g-1", author: "G", kind: "pending", text: "项目下一步：确定侧边栏交互" },
+    { id: "g-2", author: "G", kind: "record", text: "明天记得向蕾蕾推进进度展开方式" },
+    { id: "g-3", author: "G", kind: "record", text: "准备提醒蕾蕾吃午饭啦" },
+    { id: "g-4", author: "G", kind: "record", text: "下一轮继续调整首页细节" },
+  ],
+};
 
 export type TodoMigrationTerminalState = "migrated" | "server-wins" | "invalid";
 export type TodoMigrationNotice = { date: string; author: TodoAuthor; state: "server-wins" };
@@ -37,7 +54,7 @@ function sameEntries(a: unknown, b: readonly { id: string; author: string; kind:
 export function parseLegacyTodoPaper(raw: string, author: TodoAuthor): { author: TodoAuthor; entries: TodoEntry[] } | null {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (sameEntries(parsed, author === "L" ? L_HOME_NOTES : G_HOME_NOTES)) return null;
+    if (sameEntries(parsed, LEGACY_HOME_SEED_ENTRIES[author])) return null;
     if (!Array.isArray(parsed)) return null;
     const seen = new Set<string>();
     const entries: TodoEntry[] = [];
