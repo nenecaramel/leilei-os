@@ -109,6 +109,10 @@ test("allows CORS only from the configured Web origin", () => {
     allowedResponse.result.headers["access-control-allow-origin"],
     config.WEB_APP_ORIGIN,
   );
+  assert.match(
+    allowedResponse.result.headers["access-control-allow-methods"] ?? "",
+    /(?:^|,)PUT(?:,|$)/,
+  );
 
   const deniedRequest = {
     method: "OPTIONS",

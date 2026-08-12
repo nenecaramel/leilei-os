@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 
 const ALLOWED_METHODS =
-  "GET,POST,PATCH,DELETE,OPTIONS";
+  "GET,POST,PATCH,PUT,DELETE,OPTIONS";
 
 const ALLOWED_HEADERS =
   "Authorization,Content-Type";
