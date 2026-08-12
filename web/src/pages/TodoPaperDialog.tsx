@@ -8,7 +8,7 @@ import React, {
 
 import type { WebApiClient } from "../api/useWebApiClient";
 import { WebApiError } from "../api/web-api-error";
-import type { TodoAuthor, TodoEntry, TodoPaper } from "./todo-types";
+import type { TodoAuthor, TodoPaper } from "./todo-types";
 import { saveTodoPaper } from "./todo-api";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import {
@@ -23,17 +23,13 @@ export type TodoPaperDialogProps = {
   date: Date;
   open: boolean;
   paper?: TodoPaper | null;
-  /** @deprecated retained only so legacy callers can migrate without storage fallback. */
-  entries?: readonly TodoEntry[];
-  /** @deprecated ignored; localStorage is no longer a source of truth. */
-  storage?: Storage;
   triggerRef: RefObject<HTMLButtonElement | null>;
   onSaved: (paper: TodoPaper) => void;
   onClosed: () => void;
   onDirtyChange?: (dirty: boolean) => void;
 };
 
-export function TodoPaperDialog({ api, author, date, open, paper, entries = [], triggerRef, onSaved, onClosed, onDirtyChange }: TodoPaperDialogProps) {
+export function TodoPaperDialog({ api, author, date, open, paper, triggerRef, onSaved, onClosed, onDirtyChange }: TodoPaperDialogProps) {
   const editorRef = useRef<TodoPaperEditorHandle>(null);
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -80,7 +76,7 @@ export function TodoPaperDialog({ api, author, date, open, paper, entries = [], 
     return request;
   }, [api, author, dateKey, dirty, onClosed, onSaved, paper?.revision]);
 
-  const initialEntries: TodoEntry[] = [...(paper?.entries ?? entries)];
+  const initialEntries = [...(paper?.entries ?? [])];
   return (
     <PaperDetailDialog
       id={`today-panel-dialog-${author.toLowerCase()}`}
