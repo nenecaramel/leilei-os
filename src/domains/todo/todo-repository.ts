@@ -95,43 +95,37 @@ export class DrizzleTodoRepository implements TodoRepository {
 
       let paperId: string;
       let revision: number;
-      try {
-        if (!current) {
-          const [inserted] = await transaction
-            .insert(todoPapers)
-            .values({ userId: input.userId, businessDate: input.date, author: input.author, revision: 1 })
-            .returning({ id: todoPapers.id });
-          if (!inserted) throw new Error("Todo paper insert did not return a row.");
-          paperId = inserted.id;
-          revision = 1;
-        } else {
-          const [row] = await transaction
-            .select({ id: todoPapers.id, revision: todoPapers.revision })
-            .from(todoPapers)
-            .where(and(eq(todoPapers.userId, input.userId), eq(todoPapers.businessDate, input.date), eq(todoPapers.author, input.author)))
-            .limit(1);
-          if (!row) return { outcome: "conflict" };
-          paperId = row.id;
-          revision = row.revision + 1;
-          await transaction.update(todoPapers).set({ revision, updatedAt: new Date() }).where(eq(todoPapers.id, paperId));
-          await transaction.delete(todoEntries).where(eq(todoEntries.paperId, paperId));
-        }
-        if (input.entries.length > 0) {
-          await transaction.insert(todoEntries).values(
-            input.entries.map((entry, position) => ({
-              paperId,
-              entryId: entry.id,
-              kind: entry.kind,
-              text: entry.text,
-              position,
-            })),
-          );
-        }
-      } catch (error) {
-        if (input.expectedRevision === null && (error as { code?: string })?.code === "23505") {
-          return { outcome: "conflict" };
-        }
-        throw error;
+      if (!current) {
+        const [inserted] = await transaction
+          .insert(todoPapers)
+          .values({ userId: input.userId, businessDate: input.date, author: input.author, revision: 1 })
+          .onConflictDoNothing({ target: [todoPapers.userId, todoPapers.businessDate, todoPapers.author] })
+          .returning({ id: todoPapers.id });
+        if (!inserted) return { outcome: "conflict" };
+        paperId = inserted.id;
+        revision = 1;
+      } else {
+        const [row] = await transaction
+          .select({ id: todoPapers.id, revision: todoPapers.revision })
+          .from(todoPapers)
+          .where(and(eq(todoPapers.userId, input.userId), eq(todoPapers.businessDate, input.date), eq(todoPapers.author, input.author)))
+          .limit(1);
+        if (!row) return { outcome: "conflict" };
+        paperId = row.id;
+        revision = row.revision + 1;
+        await transaction.update(todoPapers).set({ revision, updatedAt: new Date() }).where(eq(todoPapers.id, paperId));
+        await transaction.delete(todoEntries).where(eq(todoEntries.paperId, paperId));
+      }
+      if (input.entries.length > 0) {
+        await transaction.insert(todoEntries).values(
+          input.entries.map((entry, position) => ({
+            paperId,
+            entryId: entry.id,
+            kind: entry.kind,
+            text: entry.text,
+            position,
+          })),
+        );
       }
 
       return {

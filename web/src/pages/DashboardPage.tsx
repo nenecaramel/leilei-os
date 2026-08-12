@@ -20,28 +20,43 @@ function previewNotes(paper: TodoPaper | null): HomeNote[] {
   return (paper?.entries ?? []).map((entry) => ({ ...entry, author: paper?.author ?? "L" }));
 }
 
-export function DashboardPageContent({ api }: { api?: WebApiClient }) {
-  const [dateKey, setDateKey] = useState(() => formatTodoStorageDate(new Date()));
-  const [today, setToday] = useState(() => new Date());
+const defaultNow = () => new Date();
+
+export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiClient; now?: () => Date }) {
+  const [dateKey, setDateKey] = useState(() => formatTodoStorageDate(now()));
+  const [today, setToday] = useState(() => now());
   const [papers, setPapers] = useState<{ L: TodoPaper | null; G: TodoPaper | null }>({ L: null, G: null });
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [dialogAuthor, setDialogAuthor] = useState<HomeAuthor | null>(null);
   const [dialogDirty, setDialogDirty] = useState(false);
   const [pendingDate, setPendingDate] = useState<string | null>(null);
+  const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
   const lTriggerRef = useRef<HTMLButtonElement>(null);
   const gTriggerRef = useRef<HTMLButtonElement>(null);
 
   const loadDay = useCallback(async (nextDate: string) => {
     if (!api) { setLoadState("error"); return; }
+    const generation = ++loadGeneration.current;
     setLoadState("loading");
+    setMigrationNotice(null);
     try {
       const response = await loadTodoDay(api, nextDate);
+      if (generation !== loadGeneration.current) return;
       setPapers(response.papers);
       setLoadState("ready");
       const storage = typeof window === "undefined" ? null : window.localStorage;
-      if (storage) void migrateLegacyTodoPapers({ storage, api });
+      if (storage) void migrateLegacyTodoPapers({
+        storage,
+        api,
+        onNotice: ({ date, author }) => {
+          if (date === nextDate && generation === loadGeneration.current) {
+            setMigrationNotice(`${author} 的本地 Todo 已保留服务器内容。`);
+          }
+        },
+      }).catch(() => undefined);
     } catch {
-      setLoadState("error");
+      if (generation === loadGeneration.current) setLoadState("error");
     }
   }, [api]);
 
@@ -49,15 +64,15 @@ export function DashboardPageContent({ api }: { api?: WebApiClient }) {
 
   useEffect(() => {
     const checkDate = () => {
-      const nextDate = formatTodoStorageDate(new Date());
+      const nextDate = formatTodoStorageDate(now());
       if (nextDate === dateKey) return;
       if (dialogDirty) setPendingDate(nextDate);
-      else { setToday(new Date()); setDateKey(nextDate); }
+      else { setToday(now()); setDateKey(nextDate); }
     };
     window.addEventListener("focus", checkDate);
     document.addEventListener("visibilitychange", checkDate);
     return () => { window.removeEventListener("focus", checkDate); document.removeEventListener("visibilitychange", checkDate); };
-  }, [dateKey, dialogDirty]);
+  }, [dateKey, dialogDirty, now]);
 
   const openQuickCreate = (target: QuickCreateTarget, event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
@@ -72,6 +87,7 @@ export function DashboardPageContent({ api }: { api?: WebApiClient }) {
     <div className="page home-prototype">
       <h1 className="home-page-title">Todo</h1>
       <main className="home-prototype-content">
+        {migrationNotice ? <div className="home-todo-notice" role="status">{migrationNotice}</div> : null}
         {loadState === "error" ? <div className="home-todo-error" role="alert">Todo 暂时无法读取。<button type="button" onClick={() => void loadDay(dateKey)}>重试</button></div> : null}
         <TodayPanel author="L" notes={loadState === "ready" ? previewNotes(papers.L) : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
         <TodayPanel author="G" notes={loadState === "ready" ? previewNotes(papers.G) : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
@@ -86,7 +102,7 @@ export function DashboardPageContent({ api }: { api?: WebApiClient }) {
           </nav>
         </section>
       </main>
-      {dialogAuthor ? <TodoPaperDialog api={api} author={dialogAuthor} date={today} open paper={selectedPaper} entries={selectedNotes} triggerRef={selectedTriggerRef} onSaved={(paper) => { setPapers((current) => ({ ...current, [paper.author]: paper })); }} onDirtyChange={setDialogDirty} onClosed={() => { setDialogAuthor(null); setDialogDirty(false); setPendingDate((nextDate) => { if (nextDate) { setToday(new Date()); setDateKey(nextDate); } return null; }); }} /> : null}
+      {dialogAuthor ? <TodoPaperDialog api={api} author={dialogAuthor} date={today} open paper={selectedPaper} entries={selectedNotes} triggerRef={selectedTriggerRef} onSaved={(paper) => { setPapers((current) => ({ ...current, [paper.author]: paper })); }} onDirtyChange={setDialogDirty} onClosed={() => { setDialogAuthor(null); setDialogDirty(false); setPendingDate((nextDate) => { if (nextDate) { setToday(now()); setDateKey(nextDate); } return null; }); }} /> : null}
     </div>
   );
 }
