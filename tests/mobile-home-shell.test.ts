@@ -1,14 +1,24 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import test from "node:test";
-import {
-  G_HOME_NOTES,
-  L_HOME_NOTES,
-  type HomeNote,
-} from "../web/src/pages/home-prototype-data.js";
 import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
+import type { TodoEntry } from "../web/src/pages/todo-types.js";
+
+const L_TODO_ENTRIES: TodoEntry[] = [
+  { id: "l-1", kind: "pending", text: "整理今天的事情" },
+  { id: "l-2", kind: "completed", text: "项目视觉方向已经确认" },
+  { id: "l-3", kind: "record", text: "记录一个不强制完成的小念头" },
+  { id: "l-4", kind: "record", text: "留一点空白，晚些时候再决定" },
+];
+
+const G_TODO_ENTRIES: TodoEntry[] = [
+  { id: "g-1", kind: "pending", text: "项目下一步：确定侧边栏交互" },
+  { id: "g-2", kind: "record", text: "明天记得向蕾蕾推进进度展开方式" },
+  { id: "g-3", kind: "record", text: "准备提醒蕾蕾吃午饭啦" },
+  { id: "g-4", kind: "record", text: "下一轮继续调整首页细节" },
+];
 
 const bootstrapDom = new JSDOM(
   "<!doctype html><html><body></body></html>",
@@ -35,6 +45,7 @@ const { BrowserRouter } = await import(
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 const todayPanelSource = readFileSync(new URL("../web/src/pages/TodayPanel.tsx", import.meta.url), "utf8");
+const prototypeDataPath = new URL("../web/src/pages/home-prototype-data.ts", import.meta.url);
 
 function installDom() {
   const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "https://leilei.test/" });
@@ -57,20 +68,24 @@ function installDom() {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 100));
 
-test("Home Todo fixture collections use one typed L/G note structure", () => {
-  const noteShape = (note: HomeNote) => {
-    assert.ok(note.id);
-    assert.ok(note.text.trim());
-    assert.ok(["L", "G"].includes(note.author));
-    assert.ok(["pending", "completed", "record"].includes(note.kind));
+test("Home Todo preview uses canonical Todo entries without runtime fixtures", () => {
+  const entryShape = (entry: TodoEntry) => {
+    assert.ok(entry.id);
+    assert.ok(entry.text.trim());
+    assert.ok(["pending", "completed", "record"].includes(entry.kind));
   };
-  assert.ok(L_HOME_NOTES.length >= 4);
-  assert.ok(G_HOME_NOTES.length >= 4);
+  assert.ok(L_TODO_ENTRIES.length >= 4);
+  assert.ok(G_TODO_ENTRIES.length >= 4);
+  assert.equal(existsSync(prototypeDataPath), false);
+  assert.doesNotMatch(dashboardSource, /home-prototype-data|HomeNote|HomeAuthor|previewNotes/);
+  assert.doesNotMatch(todayPanelSource, /home-prototype-data|HomeNote|HomeAuthor/);
+  assert.match(todayPanelSource, /TodoAuthor/);
+  assert.match(todayPanelSource, /TodoEntry/);
   assert.doesNotMatch(todayPanelSource, /notes\.slice\(0,\s*3\)/);
   assert.match(todayPanelSource, /scrollHeight\s*>\s*[^;\n]*clientHeight/);
   assert.match(todayPanelSource, /today-panel-overflow/);
-  L_HOME_NOTES.forEach(noteShape);
-  G_HOME_NOTES.forEach(noteShape);
+  L_TODO_ENTRIES.forEach(entryShape);
+  G_TODO_ENTRIES.forEach(entryShape);
 });
 
 test("Home Todo preview uses three visual lines and a fading overflow marker", () => {
@@ -108,7 +123,7 @@ test("Home renders compact L/G Todo panels and performs real Calendar discovery"
       if (path === "/todo/dates" || path === "/diary/dates") {
         return { success: true, data: { dates: [] } };
       }
-      return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) } } } };
+      return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map((entry) => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map((entry) => ({ ...entry })) } } } };
     } },
   })));
   await waitForPaint();
@@ -158,7 +173,7 @@ test("Home saves an edited L paper, updates only L preview, and restores trigger
       BrowserRouter,
       null,
       React.createElement(DashboardPageContent, {
-        api: { request: async (path: string, init?: RequestInit) => ({ success: true, data: init?.method === "PUT" ? { author: "L", date: path.split("/").at(-2), revision: 2, entries: JSON.parse(String(init.body)).entries } : { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_HOME_NOTES.map(({ id, kind, text }) => ({ id, kind, text })) } } } }) },
+        api: { request: async (path: string, init?: RequestInit) => ({ success: true, data: init?.method === "PUT" ? { author: "L", date: path.split("/").at(-2), revision: 2, entries: JSON.parse(String(init.body)).entries } : { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map((entry) => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map((entry) => ({ ...entry })) } } } }) },
       }),
     ),
   );
