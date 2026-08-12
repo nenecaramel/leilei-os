@@ -1,25 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { CalendarPreview, type CalendarLoadState } from "./CalendarPreview";
 import { listDiaryDates } from "./day-space-api";
 import { mergeCalendarContentDates } from "./home-calendar-data";
-import { type HomeAuthor, type HomeNote } from "./home-prototype-data";
 import { formatTodoStorageDate } from "./todo-paper-storage";
 import { TodayPanel } from "./TodayPanel";
 import { TodoPaperDialog } from "./TodoPaperDialog";
 import { loadTodoDay, listTodoDates } from "./todo-api";
 import { migrateLegacyTodoPapers } from "./todo-legacy-migration";
-import type { TodoPaper } from "./todo-types";
+import type { TodoAuthor, TodoPaper } from "./todo-types";
 import { navigateWithinApp } from "./app-navigation";
 import { createQuickCreateState, type QuickCreateTarget } from "./quick-create";
 
 export function formatHomeDate(date: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(date);
-}
-
-function previewNotes(paper: TodoPaper | null): HomeNote[] {
-  return (paper?.entries ?? []).map((entry) => ({ ...entry, author: paper?.author ?? "L" }));
 }
 
 const defaultNow = () => new Date();
@@ -31,7 +26,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [calendarContentDates, setCalendarContentDates] = useState<string[]>([]);
   const [calendarLoadState, setCalendarLoadState] = useState<CalendarLoadState>("loading");
-  const [dialogAuthor, setDialogAuthor] = useState<HomeAuthor | null>(null);
+  const [dialogAuthor, setDialogAuthor] = useState<TodoAuthor | null>(null);
   const [dialogDirty, setDialogDirty] = useState(false);
   const [pendingDate, setPendingDate] = useState<string | null>(null);
   const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
@@ -113,7 +108,6 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
 
   const selectedPaper = dialogAuthor ? papers[dialogAuthor] : null;
   const selectedTriggerRef = dialogAuthor === "L" ? lTriggerRef : gTriggerRef;
-  const selectedNotes = useMemo(() => previewNotes(selectedPaper), [selectedPaper]);
 
   return (
     <div className="page home-prototype">
@@ -121,8 +115,8 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
       <main className="home-prototype-content">
         {migrationNotice ? <div className="home-todo-notice" role="status">{migrationNotice}</div> : null}
         {loadState === "error" ? <div className="home-todo-error" role="alert">Todo 暂时无法读取。<button type="button" onClick={() => void loadDay(dateKey)}>重试</button></div> : null}
-        <TodayPanel author="L" notes={loadState === "ready" ? previewNotes(papers.L) : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
-        <TodayPanel author="G" notes={loadState === "ready" ? previewNotes(papers.G) : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
+        <TodayPanel author="L" notes={loadState === "ready" ? papers.L?.entries ?? [] : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
+        <TodayPanel author="G" notes={loadState === "ready" ? papers.G?.entries ?? [] : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
         <CalendarPreview
           contentDates={calendarContentDates}
           date={today}
@@ -139,7 +133,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
           </nav>
         </section>
       </main>
-      {dialogAuthor ? <TodoPaperDialog api={api} author={dialogAuthor} date={today} open paper={selectedPaper} entries={selectedNotes} triggerRef={selectedTriggerRef} onSaved={(paper) => { setPapers((current) => ({ ...current, [paper.author]: paper })); void loadCalendar(); }} onDirtyChange={setDialogDirty} onClosed={() => { setDialogAuthor(null); setDialogDirty(false); setPendingDate((nextDate) => { if (nextDate) { setToday(now()); setDateKey(nextDate); } return null; }); }} /> : null}
+      {dialogAuthor ? <TodoPaperDialog api={api} author={dialogAuthor} date={today} open paper={selectedPaper} triggerRef={selectedTriggerRef} onSaved={(paper) => { setPapers((current) => ({ ...current, [paper.author]: paper })); void loadCalendar(); }} onDirtyChange={setDialogDirty} onClosed={() => { setDialogAuthor(null); setDialogDirty(false); setPendingDate((nextDate) => { if (nextDate) { setToday(now()); setDateKey(nextDate); } return null; }); }} /> : null}
     </div>
   );
 }
