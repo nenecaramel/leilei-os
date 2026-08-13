@@ -17,4 +17,4 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec tsx --test --test-concurrency=1 tests/notion-read-client.test.ts
+      - run: pnpm exec tsx --test --test-concurrency=1 tests/notion-read-client.test.ts tests/notion-mcp-tools.test.ts
