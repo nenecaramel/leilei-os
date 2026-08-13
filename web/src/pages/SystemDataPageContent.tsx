@@ -6,6 +6,8 @@ import type {
   SystemDataResponse,
   SystemDataSummary,
 } from "../system/types";
+import type { WebExportDocument, WebExportScope } from "../system/export-types";
+import { downloadExportDocument } from "../system/download-export";
 import { PageHeader } from "./PageHeader";
 
 type LoadState =
@@ -14,6 +16,11 @@ type LoadState =
       status: "ready";
       summary: SystemDataSummary;
     }
+  | { status: "error" };
+
+type ExportState =
+  | { status: "idle" }
+  | { status: "loading"; scope: WebExportScope }
   | { status: "error" };
 
 function CountCell({
@@ -68,6 +75,20 @@ export function SystemDataPageContent({
     useState<LoadState>({
       status: "loading",
     });
+  const [exportState, setExportState] = useState<ExportState>({ status: "idle" });
+  const [includeAudit, setIncludeAudit] = useState(false);
+
+  async function runExport(scope: WebExportScope): Promise<void> {
+    setExportState({ status: "loading", scope });
+    const path = `/system/export?scope=${scope}${includeAudit ? "&include_audit=true" : ""}`;
+    try {
+      const document = await api.request<WebExportDocument>(path);
+      downloadExportDocument(document);
+      setExportState({ status: "idle" });
+    } catch {
+      setExportState({ status: "error" });
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -164,6 +185,43 @@ export function SystemDataPageContent({
               </div>
             </div>
           </div>
+        ) : null}
+      </section>
+
+      <section className="system-section system-export-section" aria-label="Export data">
+        <div className="system-export-option">
+          <label>
+            <input
+              type="checkbox"
+              checked={includeAudit}
+              onChange={(event) => setIncludeAudit(event.target.checked)}
+            />
+            Include audit/lifecycle events
+          </label>
+        </div>
+        <div className="system-export-actions">
+          {([
+            ["all", "Export all"],
+            ["memory", "Export Memory"],
+            ["diary", "Export Diary"],
+            ["task", "Export Task"],
+            ["todo", "Export Todo"],
+          ] as const).map(([scope, label]) => (
+            <button
+              className="secondary-button"
+              type="button"
+              key={scope}
+              disabled={exportState.status === "loading"}
+              onClick={() => void runExport(scope)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {exportState.status === "error" ? (
+          <p className="system-export-error" role="alert">
+            Unable to export data.
+          </p>
         ) : null}
       </section>
     </div>

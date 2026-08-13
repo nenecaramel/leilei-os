@@ -5377,6 +5377,27 @@ body:has(.system-page) {
   border: 0;
 }
 
+.system-export-section {
+  display: grid;
+  gap: 16px;
+}
+
+.system-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.system-export-option label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.system-export-error {
+  color: var(--theme-danger, #a53b35);
+}
+
 .system-detail-row + .system-detail-row,
 .system-status-row + .system-status-row,
 .system-data-row + .system-data-row {

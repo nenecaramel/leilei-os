@@ -100,8 +100,6 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
     assert.match(text, new RegExp(expected));
   }
 
-  assert.doesNotMatch(text, /Export|Restore|Backup/i);
-
   root.unmount();
   await waitForPaint();
   env.restore();

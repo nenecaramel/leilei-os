@@ -1,0 +1,181 @@
+import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
+import React from "../web/node_modules/react/index.js";
+import { createRoot } from "../web/node_modules/react-dom/client.js";
+import test from "node:test";
+import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
+import { SystemDataPageContent } from "../web/src/pages/SystemDataPageContent.js";
+import type { WebExportDocument } from "../web/src/system/export-types.js";
+
+function installDom(url: string) {
+  const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url });
+  const previous = new Map<string, PropertyDescriptor | undefined>();
+  for (const key of ["window", "document", "navigator", "React", "URL"]) {
+    previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      value: key === "React" ? React : key === "URL" ? dom.window.URL : dom.window[key as keyof Window],
+    });
+  }
+  return {
+    dom,
+    restore() {
+      for (const key of ["window", "document", "navigator", "React", "URL"]) {
+        const descriptor = previous.get(key);
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+      dom.window.close();
+    },
+  };
+}
+
+const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 35));
+
+function summary() {
+  return {
+    success: true as const,
+    data: {
+      memory: { active: 1, archived: 2 },
+      diary: { active: 3, archived: 4 },
+      task: { active: 5, archived: 6 },
+      health: { total: 7 },
+    },
+  };
+}
+
+function exportDocument(): WebExportDocument {
+  return {
+    schema_version: 1,
+    exported_at: "2026-08-13T05:42:00.000Z",
+    data: { memory: [{ key: "approved" }] },
+  };
+}
+
+function render(api: WebApiClient) {
+  const container = document.getElementById("root")!;
+  const root = createRoot(container);
+  root.render(React.createElement(SystemDataPageContent, { api }));
+  return { root, container };
+}
+
+test("Data renders five export actions and audit is off by default", async () => {
+  const env = installDom("https://leilei.test/system/data");
+  const paths: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      paths.push(path);
+      return (path === "/system/data" ? summary() : exportDocument()) as T;
+    },
+  };
+  const { root, container } = render(api);
+  await waitForPaint();
+
+  assert.deepEqual(paths, ["/system/data"]);
+  const labels = Array.from(container.querySelectorAll(".system-export-actions button"), (button) => button.textContent);
+  assert.deepEqual(labels, ["Export all", "Export Memory", "Export Diary", "Export Task", "Export Todo"]);
+  const audit = container.querySelector<HTMLInputElement>("input[type=checkbox]");
+  assert.ok(audit);
+  assert.equal(audit.checked, false);
+
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
+test("export actions send scoped requests and download the exact returned JSON", async () => {
+  const env = installDom("https://leilei.test/system/data");
+  const paths: string[] = [];
+  const blobs: Blob[] = [];
+  const clicked: HTMLAnchorElement[] = [];
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  URL.createObjectURL = (blob: Blob) => {
+    blobs.push(blob);
+    return "blob:test";
+  };
+  URL.revokeObjectURL = () => {};
+  const originalClick = env.dom.window.HTMLAnchorElement.prototype.click;
+  env.dom.window.HTMLAnchorElement.prototype.click = function click() { clicked.push(this); };
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      paths.push(path);
+      return (path === "/system/data" ? summary() : exportDocument()) as T;
+    },
+  };
+  const { root, container } = render(api);
+  await waitForPaint();
+
+  const buttons = container.querySelectorAll<HTMLButtonElement>(".system-export-actions button");
+  buttons[1].click();
+  await waitForPaint();
+  const audit = container.querySelector<HTMLInputElement>("input[type=checkbox]")!;
+  audit.click();
+  buttons[0].click();
+  await waitForPaint();
+
+  assert.deepEqual(paths, ["/system/data", "/system/export?scope=memory", "/system/export?scope=all&include_audit=true"]);
+  assert.equal(blobs.length, 2);
+  assert.equal(clicked.length, 2);
+  assert.equal(clicked[0].download, "leileios-export-20260813T054200Z.json");
+  assert.deepEqual(JSON.parse(await blobs[1].text()), exportDocument());
+
+  env.dom.window.HTMLAnchorElement.prototype.click = originalClick;
+  URL.createObjectURL = originalCreate;
+  URL.revokeObjectURL = originalRevoke;
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
+test("export failures are local and do not erase the loaded summary", async () => {
+  const env = installDom("https://leilei.test/system/data");
+  let attempts = 0;
+  let clicks = 0;
+  const originalClick = env.dom.window.HTMLAnchorElement.prototype.click;
+  env.dom.window.HTMLAnchorElement.prototype.click = () => { clicks += 1; };
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      if (path === "/system/data") return summary() as T;
+      attempts += 1;
+      throw new Error("export unavailable");
+    },
+  };
+  const { root, container } = render(api);
+  await waitForPaint();
+  container.querySelector<HTMLButtonElement>(".system-export-actions button")!.click();
+  await waitForPaint();
+  assert.equal(attempts, 1);
+  assert.equal(clicks, 0);
+  assert.match(container.textContent ?? "", /Unable to export data/);
+  assert.match(container.textContent ?? "", /Health/);
+  assert.match(container.textContent ?? "", /7/);
+  env.dom.window.HTMLAnchorElement.prototype.click = originalClick;
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
+test("pending export disables all export actions without changing summary state", async () => {
+  const env = installDom("https://leilei.test/system/data");
+  let resolveExport!: (value: WebExportDocument) => void;
+  const pending = new Promise<WebExportDocument>((resolve) => { resolveExport = resolve; });
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      return (path === "/system/data" ? summary() : pending) as T;
+    },
+  };
+  const { root, container } = render(api);
+  await waitForPaint();
+  const buttons = container.querySelectorAll<HTMLButtonElement>(".system-export-actions button");
+  buttons[0].click();
+  await waitForPaint();
+  assert.equal(Array.from(buttons).every((button) => button.disabled), true);
+  assert.match(container.textContent ?? "", /Health/);
+  resolveExport(exportDocument());
+  await waitForPaint();
+  assert.equal(Array.from(buttons).some((button) => button.disabled), false);
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
