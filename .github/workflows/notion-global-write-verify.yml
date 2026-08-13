@@ -26,6 +26,7 @@ jobs:
           tests/notion-structure-client.test.ts
           tests/notion-comment-client.test.ts
           tests/notion-file-upload-client.test.ts
+          tests/notion-meeting-note-client.test.ts
           tests/notion-write-mcp-tools.test.ts
           tests/notion-write-server-wiring.test.ts
           tests/notion-mcp-tools.test.ts
