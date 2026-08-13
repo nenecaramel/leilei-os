@@ -12,7 +12,11 @@ import {
 } from "../notion-write-shared.js";
 
 const actionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("create"), body: notionBodySchema }).strict(),
+  z.object({
+    action: z.literal("create"),
+    body: notionBodySchema,
+    parent: notionBodySchema.optional(),
+  }).strict(),
   z.object({ action: z.literal("update"), page_id: notionIdSchema, body: notionBodySchema }).strict(),
   z.object({ action: z.literal("move"), page_id: notionIdSchema, parent: notionBodySchema }).strict(),
   z.object({ action: z.literal("update_content"), page_id: notionIdSchema, body: notionBodySchema }).strict(),
@@ -43,7 +47,7 @@ export function registerWriteNotionPageTool(
 ): void {
   server.registerTool("write_notion_page", {
     title: "Write Notion page",
-    description: "Create, update, move, change enhanced-Markdown content, trash, or restore a Notion page. Mutations execute immediately when Notion permits them.",
+    description: "Create, update, move, change enhanced-Markdown content, trash, or restore a Notion page. For create, provide the page fields in body and the destination parent either in body.parent or the top-level parent field. For move, parent is required. Mutations execute immediately when Notion permits them.",
     inputSchema,
     outputSchema: notionOutputSchema,
     annotations: {
@@ -70,7 +74,9 @@ export function registerWriteNotionPageTool(
       let data: NotionJsonObject;
       switch (args.action) {
         case "create":
-          data = await dependencies.notionService.createPage(args.body);
+          data = await dependencies.notionService.createPage(
+            args.parent ? { ...args.body, parent: args.parent } : args.body,
+          );
           break;
         case "update":
           data = await dependencies.notionService.updatePage(args.page_id, args.body);
