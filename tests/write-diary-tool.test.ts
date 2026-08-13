@@ -104,13 +104,16 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
       "global_search",
       "hello",
       "list_tasks",
+      "list_todo_dates",
       "read_memory",
+      "read_todo_day",
       "search_diary",
       "search_memory",
       "toy_set",
       "toy_stop",
       "write_diary",
       "write_memory",
+      "write_todo_paper",
     ],
   );
 
