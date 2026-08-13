@@ -11,7 +11,7 @@ import {
   NotionWriteAuthenticationError,
 } from "../notion-write-shared.js";
 
-const inputSchema = z.discriminatedUnion("action", [
+const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), body: notionBodySchema }).strict(),
   z.object({ action: z.literal("update"), page_id: notionIdSchema, body: notionBodySchema }).strict(),
   z.object({ action: z.literal("move"), page_id: notionIdSchema, parent: notionBodySchema }).strict(),
@@ -19,6 +19,13 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("trash"), page_id: notionIdSchema }).strict(),
   z.object({ action: z.literal("restore"), page_id: notionIdSchema }).strict(),
 ]);
+
+const inputSchema = z.object({
+  action: z.enum(["create", "update", "move", "update_content", "trash", "restore"]),
+  page_id: notionIdSchema.optional(),
+  body: notionBodySchema.optional(),
+  parent: notionBodySchema.optional(),
+}).strict();
 
 export type WriteNotionPageToolDependencies = {
   notionService: {
@@ -45,7 +52,19 @@ export function registerWriteNotionPageTool(
       idempotentHint: false,
       openWorldHint: true,
     },
-  }, async (args) => {
+  }, async (rawArgs) => {
+    const parsed = actionSchema.safeParse(rawArgs);
+    if (!parsed.success) {
+      return {
+        isError: true as const,
+        content: [{
+          type: "text" as const,
+          text: "The Notion page request is invalid for the selected action.",
+        }],
+      };
+    }
+    const args = parsed.data;
+
     try {
       dependencies.getAuthenticatedUserId();
       let data: NotionJsonObject;
