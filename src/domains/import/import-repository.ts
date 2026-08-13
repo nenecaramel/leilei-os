@@ -45,7 +45,10 @@ export class DrizzleImportRepository implements ImportRepository {
   constructor(private readonly db: DbExecutor) {}
 
   async withTransaction<T>(work: (repository: ImportRepository) => Promise<T>): Promise<T> {
-    return this.db.transaction(async (tx) => work(new DrizzleImportRepository(tx as Transaction)));
+    return this.db.transaction(
+      async (tx) => work(new DrizzleImportRepository(tx as Transaction)),
+      { isolationLevel: "serializable" },
+    );
   }
 
   async readCurrentState(userId: string): Promise<ImportCurrentState> {

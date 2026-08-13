@@ -122,6 +122,9 @@ export class ImportService {
       if (typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "23505") {
         throw new ImportValidationError("IMPORT_CONFLICT", "IMPORT_CONFLICT");
       }
+      if (typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "40001") {
+        throw new ImportValidationError("IMPORT_PREVIEW_STALE", "IMPORT_PREVIEW_STALE");
+      }
       throw error;
     }
   }

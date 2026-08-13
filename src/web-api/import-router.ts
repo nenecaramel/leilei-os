@@ -82,6 +82,7 @@ function sendImportError(response: Response, error: unknown): void {
   if (code === "IMPORT_CONFLICT") return sendError(response, 409, code, "Import contains conflicts.");
   if (code === "IMPORT_PREVIEW_STALE") return sendError(response, 409, code, "Import preview is stale.");
   if (code === "IMPORT_NOTHING_TO_RESTORE") return sendError(response, 409, code, "There is nothing new to restore.");
+  if (code === "IMPORT_TOO_LARGE") return sendError(response, 413, code, "Import package is too large.");
   if (code === "INVALID_IMPORT_FILE") return sendError(response, 400, code, "Import package is invalid.");
   sendError(response, 503, "IMPORT_UNAVAILABLE", "Import is temporarily unavailable.");
 }
@@ -95,4 +96,3 @@ function requireWebUser(response: Response, userId: string | undefined): userId 
   response.status(401).json({ success: false, error: { code: "UNAUTHORIZED", message: "Web API authentication is required." } });
   return false;
 }
-

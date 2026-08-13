@@ -26,8 +26,9 @@ type ExportState =
 
 type ImportState =
   | { status: "idle" }
-  | { status: "previewing"; filename: string }
-  | { status: "ready"; filename: string; preview: WebImportPreview; bytes: Uint8Array }
+  | { status: "selected"; filename: string; bytes: Uint8Array; size: number }
+  | { status: "previewing"; filename: string; bytes: Uint8Array; size: number }
+  | { status: "ready"; filename: string; preview: WebImportPreview; bytes: Uint8Array; size: number }
   | { status: "restoring"; filename: string }
   | { status: "error"; message: string };
 
@@ -87,6 +88,7 @@ export function SystemDataPageContent({
   const [includeAudit, setIncludeAudit] = useState(false);
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importSelectionRef = useRef(0);
 
   async function runExport(scope: WebExportScope): Promise<void> {
     setExportState({ status: "loading", scope });
@@ -100,13 +102,29 @@ export function SystemDataPageContent({
     }
   }
 
-  async function onImportFile(file: File | undefined): Promise<void> {
+  function onImportFile(file: File | undefined): void {
     if (!file) return;
-    setImportState({ status: "previewing", filename: file.name });
+    const selection = importSelectionRef.current + 1;
+    importSelectionRef.current = selection;
+    if (file.size > 10 * 1024 * 1024) {
+      setImportState({ status: "error", message: "Import package is too large." });
+      return;
+    }
+    void file.arrayBuffer().then((buffer) => {
+      if (selection !== importSelectionRef.current) return;
+      setImportState({ status: "selected", filename: file.name, bytes: new Uint8Array(buffer), size: file.size });
+    }).catch(() => {
+      if (selection === importSelectionRef.current) setImportState({ status: "error", message: "Unable to read this export file." });
+    });
+  }
+
+  async function previewSelected(): Promise<void> {
+    if (importState.status !== "selected") return;
+    const current = importState;
+    setImportState({ status: "previewing", filename: current.filename, bytes: current.bytes, size: current.size });
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const preview = await previewImport(api, bytes);
-      setImportState({ status: "ready", filename: file.name, preview, bytes });
+      const preview = await previewImport(api, current.bytes);
+      setImportState({ status: "ready", filename: current.filename, preview, bytes: current.bytes, size: current.size });
     } catch {
       setImportState({ status: "error", message: "Unable to validate this export file." });
     }
@@ -223,30 +241,6 @@ export function SystemDataPageContent({
         ) : null}
       </section>
 
-      <section className="system-section system-import-card" aria-label="Restore data">
-        <div className="system-export-header"><strong className="system-export-label">Restore</strong></div>
-        <p className="system-note">Validate an export before restoring new records. Existing records are never overwritten.</p>
-        <input
-          ref={importInputRef}
-          className="sr-only"
-          type="file"
-          accept="application/json,.json"
-          onChange={(event) => { void onImportFile(event.target.files?.[0]); event.currentTarget.value = ""; }}
-        />
-        <button className="secondary-button" type="button" disabled={importState.status === "previewing" || importState.status === "restoring"} onClick={() => importInputRef.current?.click()}>
-          {importState.status === "previewing" ? "Validating…" : "Choose export file"}
-        </button>
-        {importState.status === "ready" ? (
-          <div className="system-import-preview" aria-live="polite">
-            <p>{importState.filename}</p>
-            <p>{importState.preview.can_execute ? "Ready to restore new records." : "No new records can be restored."}</p>
-            <button className="secondary-button" type="button" disabled={!importState.preview.can_execute} onClick={() => void restoreImport()}>Restore selected data</button>
-          </div>
-        ) : null}
-        {importState.status === "restoring" ? <p className="system-state-copy" aria-live="polite">Restoring…</p> : null}
-        {importState.status === "error" ? <p className="system-export-error" role="alert">{importState.message}</p> : null}
-      </section>
-
       <section
         className="system-section system-export-card"
         aria-label="Export data"
@@ -308,6 +302,33 @@ export function SystemDataPageContent({
             Unable to export data.
           </p>
         ) : null}
+      </section>
+
+      <section className="system-section system-import-card" aria-label="Restore data">
+        <div className="system-export-header"><strong className="system-export-label">Restore</strong></div>
+        <p className="system-note">Validate an export before restoring new records. Existing records are never overwritten.</p>
+        <input
+          ref={importInputRef}
+          className="sr-only"
+          type="file"
+          accept="application/json,.json"
+          onChange={(event) => { onImportFile(event.target.files?.[0]); event.currentTarget.value = ""; }}
+        />
+        <button className="secondary-button" type="button" disabled={importState.status === "previewing" || importState.status === "restoring"} onClick={() => importInputRef.current?.click()}>
+          Choose export file
+        </button>
+        {importState.status === "selected" ? <button className="secondary-button" type="button" onClick={() => void previewSelected()}>Preview restore</button> : null}
+        {importState.status === "previewing" ? <p className="system-state-copy" aria-live="polite">Validating…</p> : null}
+        {importState.status === "ready" ? (
+          <div className="system-import-preview" aria-live="polite">
+            <p>{importState.filename} · {(importState.size / 1024).toFixed(1)} KB</p>
+            <p>{importState.preview.can_execute ? "Ready to restore new records." : "No new records can be restored."}</p>
+            {Object.entries(importState.preview.summary).map(([module, counts]) => <p key={module}>{module}: create {counts.create}, duplicate {counts.duplicate}, conflict {counts.conflict}, invalid {counts.invalid}</p>)}
+            <button className="secondary-button" type="button" disabled={!importState.preview.can_execute} onClick={() => void restoreImport()}>Restore selected data</button>
+          </div>
+        ) : null}
+        {importState.status === "restoring" ? <p className="system-state-copy" aria-live="polite">Restoring…</p> : null}
+        {importState.status === "error" ? <p className="system-export-error" role="alert">{importState.message}</p> : null}
       </section>
     </div>
   );

@@ -185,6 +185,9 @@ export type ParsedImportPackage = {
 };
 
 export function parseImportPackage(input: Uint8Array): ParsedImportPackage {
+  if (input.byteLength > 10 * 1024 * 1024) {
+    throw new ImportValidationError("IMPORT_TOO_LARGE", "IMPORT_TOO_LARGE");
+  }
   let value: unknown;
   try {
     value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(input));

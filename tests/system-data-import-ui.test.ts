@@ -39,6 +39,10 @@ test("Data restore previews a selected file and executes only after explicit con
   Object.defineProperty(input, "files", { configurable: true, value: [file] });
   input.dispatchEvent(new env.dom.window.Event("change", { bubbles: true }));
   await waitForPaint();
+  const preview = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Preview restore");
+  assert.ok(preview);
+  preview.click();
+  await waitForPaint();
   assert.match(container.textContent ?? "", /Ready to restore new records/);
   const restore = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Restore selected data");
   assert.ok(restore);
@@ -51,4 +55,3 @@ test("Data restore previews a selected file and executes only after explicit con
   await waitForPaint();
   env.restore();
 });
-
