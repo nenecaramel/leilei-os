@@ -54,4 +54,10 @@ export class NotionStructureClient {
       body,
     );
   }
+
+  deleteView(viewId: string): Promise<NotionJsonObject> {
+    return this.transport.requestJson(`/views/${encodeURIComponent(viewId)}`, {
+      method: "DELETE",
+    });
+  }
 }
