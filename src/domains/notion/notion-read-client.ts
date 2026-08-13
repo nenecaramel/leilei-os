@@ -1,5 +1,8 @@
-const NOTION_API_BASE = "https://api.notion.com/v1";
-const NOTION_API_VERSION = "2026-03-11";
+import {
+  NotionApiError,
+  NotionTransport,
+} from "./notion-transport.js";
+
 const MAX_DEPTH = 8;
 const MAX_BLOCKS = 500;
 const MAX_TEXT_LENGTH = 60_000;
@@ -147,11 +150,36 @@ function renderBlock(block: JsonObject, depth: number): string {
   }
 }
 
+function mapTransportError(error: unknown): NotionReadError {
+  if (!(error instanceof NotionApiError)) {
+    return new NotionReadError("UPSTREAM", "Notion is temporarily unavailable.");
+  }
+
+  switch (error.code) {
+    case "NOT_CONFIGURED":
+      return new NotionReadError("NOT_CONFIGURED", "Notion access is not configured.");
+    case "ACCESS_DENIED":
+      return new NotionReadError("ACCESS_DENIED", "Notion access was denied.");
+    case "NOT_FOUND":
+      return new NotionReadError("NOT_FOUND", "The Notion page was not found or is inaccessible.");
+    case "RATE_LIMITED":
+      return new NotionReadError("RATE_LIMITED", "Notion is temporarily rate limited.");
+    case "CONFLICT":
+    case "VALIDATION":
+    case "UPSTREAM":
+      return new NotionReadError("UPSTREAM", "Notion is temporarily unavailable.");
+  }
+}
+
 export class NotionReadClient {
+  private readonly transport: NotionTransport;
+
   constructor(
-    private readonly token: string | undefined,
-    private readonly fetchImpl: typeof fetch = fetch,
-  ) {}
+    token: string | undefined,
+    fetchImpl: typeof fetch = fetch,
+  ) {
+    this.transport = new NotionTransport(token, fetchImpl);
+  }
 
   async searchPages(input: NotionSearchInput): Promise<NotionSearchResult> {
     const body: Record<string, unknown> = {
@@ -258,66 +286,10 @@ export class NotionReadClient {
   }
 
   private async request(path: string, init: RequestInit = {}): Promise<JsonObject> {
-    const token = this.token?.trim();
-    if (!token) {
-      throw new NotionReadError(
-        "NOT_CONFIGURED",
-        "Notion access is not configured.",
-      );
-    }
-
-    let response: Response;
     try {
-      const headers = new Headers(init.headers);
-      headers.set("Authorization", `Bearer ${token}`);
-      headers.set("Notion-Version", NOTION_API_VERSION);
-      headers.set("Content-Type", "application/json");
-      response = await this.fetchImpl(`${NOTION_API_BASE}${path}`, {
-        ...init,
-        headers,
-      });
-    } catch {
-      throw new NotionReadError(
-        "UPSTREAM",
-        "Notion is temporarily unavailable.",
-      );
-    }
-
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new NotionReadError(
-          "ACCESS_DENIED",
-          "Notion access was denied.",
-        );
-      }
-      if (response.status === 404) {
-        throw new NotionReadError(
-          "NOT_FOUND",
-          "The Notion page was not found or is inaccessible.",
-        );
-      }
-      if (response.status === 429) {
-        throw new NotionReadError(
-          "RATE_LIMITED",
-          "Notion is temporarily rate limited.",
-        );
-      }
-      throw new NotionReadError(
-        "UPSTREAM",
-        "Notion is temporarily unavailable.",
-      );
-    }
-
-    try {
-      const value = await response.json();
-      const payload = asObject(value);
-      if (!payload) throw new Error("Invalid Notion response");
-      return payload;
-    } catch {
-      throw new NotionReadError(
-        "UPSTREAM",
-        "Notion returned an invalid response.",
-      );
+      return await this.transport.requestJson(path, init);
+    } catch (error) {
+      throw mapTransportError(error);
     }
   }
 }
