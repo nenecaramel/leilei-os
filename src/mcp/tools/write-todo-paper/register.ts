@@ -69,9 +69,9 @@ export function registerWriteTodoPaperTool(
   server.registerTool(
     "write_todo_paper",
     {
-      title: "Replace one Todo paper",
+      title: "Save one Todo paper",
       description:
-        "Replace one complete L or G Todo paper for an exact date after the user approves the full ordered entry list. revision must be null only when creating a missing paper; otherwise pass the exact current revision returned by read_todo_day.",
+        "Save one complete L or G Todo paper in Leilei OS. Supply an exact YYYY-MM-DD date, the logical author, the exact current revision returned by read_todo_day (or null only when creating a missing paper), the complete ordered entry list, and a stable idempotency key. The authenticated user is assigned by the server.",
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {
