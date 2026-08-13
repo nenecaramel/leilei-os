@@ -26,6 +26,10 @@ jobs:
           tests/notion-comment-client.test.ts
           tests/notion-file-upload-client.test.ts
           tests/notion-write-mcp-tools.test.ts
+          tests/notion-write-server-wiring.test.ts
+          tests/notion-mcp-tools.test.ts
+          tests/notion-server-wiring.test.ts
+          tests/mcp-read-contract.test.ts
       - run: pnpm typecheck
       - run: pnpm build
       - run: cd web && npm ci && npm run typecheck && npm run build
