@@ -8,11 +8,12 @@ const css = fs.readFileSync(
   "utf8",
 );
 
-test("export rows use approved vertical spacing and edge alignment", () => {
+test("export rows use approved vertical spacing and true text spacing", () => {
+  assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?display:\s*flex;/);
+  assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?justify-content:\s*space-between;/);
   assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?margin-top:\s*18px;/);
+  assert.match(css, /\.system-export-action\s*\{[\s\S]*?width:\s*auto;/);
   assert.match(css, /\.system-export-action\s*\{[\s\S]*?padding:\s*4px 0;/);
-  assert.match(css, /\.system-export-action:first-child\s*\{[\s\S]*?text-align:\s*left;/);
-  assert.match(css, /\.system-export-action:last-child\s*\{[\s\S]*?text-align:\s*right;/);
 });
 
 test("audit control has no tap or focus selection tile", () => {
