@@ -81,8 +81,10 @@ const productionNotionWriteService: NotionWriteService = {
   updateDataSource: (dataSourceId, body) => getDefaultStructureClient().updateDataSource(dataSourceId, body),
   createView: (body) => getDefaultStructureClient().createView(body),
   updateView: (viewId, body) => getDefaultStructureClient().updateView(viewId, body),
+  deleteView: (viewId) => getDefaultStructureClient().deleteView(viewId),
   createComment: (body) => getDefaultCommentClient().createComment(body),
   updateComment: (commentId, body) => getDefaultCommentClient().updateComment(commentId, body),
+  deleteComment: (commentId) => getDefaultCommentClient().deleteComment(commentId),
   createUpload: (body) => getDefaultFileUploadClient().createUpload(body),
   sendUpload: (fileUploadId, file, filename, partNumber) =>
     getDefaultFileUploadClient().sendUpload(fileUploadId, file, filename, partNumber),
