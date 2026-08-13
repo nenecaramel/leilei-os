@@ -55,12 +55,23 @@ export function registerReadNotionPageTool(
     try {
       dependencies.getAuthenticatedUserId();
       const data = await dependencies.notionService.readPage(args.page_id);
+      const structuredData = {
+        page: {
+          id: data.page.id,
+          title: data.page.title,
+          url: data.page.url,
+          last_edited_time: data.page.last_edited_time,
+        },
+        content: data.content,
+        block_count: data.block_count,
+        truncated: data.truncated,
+      };
       return {
         content: [{
           type: "text" as const,
           text: `Read Notion page "${data.page.title}".`,
         }],
-        structuredContent: { success: true as const, data },
+        structuredContent: { success: true as const, data: structuredData },
       };
     } catch (error) {
       if (error instanceof ReadNotionPageAuthenticationError) {
