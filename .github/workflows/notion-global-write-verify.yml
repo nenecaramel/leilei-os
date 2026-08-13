@@ -1,0 +1,24 @@
+name: Notion global write verification
+
+on:
+  push:
+    branches:
+      - feat/notion-global-write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsx --test --test-concurrency=1 tests/notion-transport.test.ts tests/notion-read-client.test.ts
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: cd web && npm ci && npm run typecheck && npm run build
+      - run: git diff --check
