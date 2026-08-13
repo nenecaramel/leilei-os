@@ -66,12 +66,40 @@ import {
 import { GlobalSearchService } from "../../domains/global-search/global-search-service.js";
 import { DrizzleGlobalSearchRepository } from "../../domains/global-search/global-search-repository.js";
 import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
+import { TodoService } from "../../domains/todo/todo-service.js";
+import { DrizzleTodoRepository } from "../../domains/todo/todo-repository.js";
+import {
+  registerReadTodoDayTool,
+  TodoReadAuthenticationError,
+  type ReadTodoDayToolDependencies,
+} from "../tools/read-todo-day/register.js";
+import {
+  registerListTodoDatesTool,
+  type ListTodoDatesToolDependencies,
+} from "../tools/list-todo-dates/register.js";
+import {
+  registerWriteTodoPaperTool,
+  WriteTodoPaperAuthenticationError,
+  type WriteTodoPaperToolDependencies,
+} from "../tools/write-todo-paper/register.js";
 
 let defaultMemoryService: MemoryService | undefined;
 let defaultDiaryService: DiaryService | undefined;
 let defaultTaskService: TaskService | undefined;
 let defaultToyCommandService: ToyCommandService | undefined;
 let defaultGlobalSearchService: GlobalSearchService | undefined;
+let defaultTodoService: TodoService | undefined;
+
+function getDefaultTodoService(): TodoService {
+  if (!defaultTodoService) {
+    if (!env.DATABASE_URL) {
+      throw new Error("Todo database is not configured.");
+    }
+    const { db } = createDatabase(env.DATABASE_URL);
+    defaultTodoService = new TodoService(new DrizzleTodoRepository(db));
+  }
+  return defaultTodoService;
+}
 
 function getDefaultGlobalSearchService(): GlobalSearchService {
   if (!defaultGlobalSearchService) {
@@ -258,6 +286,22 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
   getAuthenticatedUserId: () => { throw new GlobalSearchAuthenticationError(); },
 };
 
+const productionTodoService = {
+  readDay: (userId: string, date: string) =>
+    getDefaultTodoService().readDay(userId, date),
+  listDates: (userId: string) => getDefaultTodoService().listDates(userId),
+  replacePaperIdempotently: (
+    input: Parameters<TodoService["replacePaperIdempotently"]>[0],
+  ) => getDefaultTodoService().replacePaperIdempotently(input),
+};
+
+type TodoToolsDependencies = {
+  todoService: ReadTodoDayToolDependencies["todoService"] &
+    ListTodoDatesToolDependencies["todoService"] &
+    WriteTodoPaperToolDependencies["todoService"];
+  getAuthenticatedUserId: () => string;
+};
+
 export type McpServerDependencies = {
   memoryReads?: {
     memoryService: ReadMemoryToolDependencies["memoryService"] &
@@ -289,6 +333,7 @@ export type McpServerDependencies = {
   getTask?: GetTaskToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
   globalSearch?: GlobalSearchToolDependencies;
+  todoTools?: TodoToolsDependencies;
 };
 
 export function createMcpServer(
@@ -417,6 +462,27 @@ export function createMcpServer(
     ...productionGlobalSearchDependencies,
     getAuthenticatedUserId: () => {
       if (!authenticatedUserId) throw new GlobalSearchAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerReadTodoDayTool(server, dependencies.todoTools ?? {
+    todoService: productionTodoService,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new TodoReadAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerListTodoDatesTool(server, dependencies.todoTools ?? {
+    todoService: productionTodoService,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new TodoReadAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerWriteTodoPaperTool(server, dependencies.todoTools ?? {
+    todoService: productionTodoService,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new WriteTodoPaperAuthenticationError();
       return authenticatedUserId;
     },
   });

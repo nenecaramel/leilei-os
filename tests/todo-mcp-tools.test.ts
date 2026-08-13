@@ -349,6 +349,7 @@ test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
+  assert.equal(tools.length, 19, "the frozen MCP surface must contain exactly 19 tools");
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
