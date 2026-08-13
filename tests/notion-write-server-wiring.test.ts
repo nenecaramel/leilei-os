@@ -32,6 +32,7 @@ class NotionWrites {
   createUpload(_body: NotionJsonObject) { return this.result("createUpload"); }
   sendUpload(_id: string, _file: Blob, _filename: string, _partNumber?: number) { return this.result("sendUpload"); }
   completeUpload(_id: string) { return this.result("completeUpload"); }
+  createMeetingNote(_body: NotionJsonObject) { return this.result("createMeetingNote"); }
 }
 
 async function connect() {
@@ -59,9 +60,10 @@ const WRITE_TOOLS = [
   "write_notion_view",
   "write_notion_comment",
   "upload_notion_file",
+  "create_notion_meeting_note",
 ];
 
-test("Notion write registrar composes seven write tools with existing read tools", async (t) => {
+test("Notion write registrar composes eight write tools with existing read tools", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
 
