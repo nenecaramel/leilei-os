@@ -8,12 +8,12 @@ const css = fs.readFileSync(
   "utf8",
 );
 
-test("export rows use approved vertical spacing and true text spacing", () => {
-  assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?display:\s*flex;/);
-  assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?justify-content:\s*space-between;/);
-  assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?margin-top:\s*18px;/);
-  assert.match(css, /\.system-export-action\s*\{[\s\S]*?width:\s*auto;/);
-  assert.match(css, /\.system-export-action\s*\{[\s\S]*?padding:\s*4px 0;/);
+test("export rows mirror the real System data row geometry", () => {
+  assert.match(css, /\.system-export-card\s*\{[\s\S]*?padding-bottom:\s*0;/);
+  assert.match(css, /\.system-export-header\s*\{[\s\S]*?display:\s*flex;[\s\S]*?min-height:\s*60px;[\s\S]*?align-items:\s*center;[\s\S]*?padding-top:\s*0;/);
+  assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?display:\s*flex;[\s\S]*?justify-content:\s*space-between;[\s\S]*?min-height:\s*60px;[\s\S]*?margin-top:\s*0;/);
+  assert.match(css, /\.system-export-action\s*\{[\s\S]*?width:\s*auto;[\s\S]*?padding:\s*4px 0;/);
+  assert.match(css, /\.system-export-audit\s*\{[\s\S]*?min-height:\s*60px;[\s\S]*?margin-top:\s*0;/);
 });
 
 test("audit control has no tap or focus selection tile", () => {
