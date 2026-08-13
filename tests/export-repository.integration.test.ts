@@ -76,12 +76,23 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
       ]);
       await transaction.insert(schema.mcpWriteIdempotency).values([
         { id: randomUUID(), userId: owner, toolName: "write_memory", idempotencyKey: `export-mcp-key-${owner}`, requestHash: "d".repeat(64), resourceType: "memory", resourceId: ownerMemoryEarly, createdAt: now },
-        { id: randomUUID(), userId: other, toolName: "write_memory", idempotencyKey: `export-mcp-key-${other}`, requestHash: "e".repeat(64), resourceType: "memory", resourceId: randomUUID(), createdAt: now },
+        { id: randomUUID(), userId: other, toolName: "write_memory", idempotencyKey: `export-mcp-key-${other}`, requestHash: "e".repeat(64), resourceType: "memory", resourceId: otherDiary, createdAt: now },
       ]);
       await transaction.insert(schema.toolCalls).values([
-        { id: ownerToolEarly, userId: owner, toolName: "write_memory", operation: "create", resourceType: "memory", resourceId: ownerMemoryEarly, idempotencyKey: `export-mcp-key-${owner}`, requestSummary: { PRIVATE_REQUEST_SUMMARY: true }, resultSummary: { PRIVATE_RESULT_SUMMARY: true }, durationMs: 10, status: "success", errorCode: null, createdAt: early },
-        { id: ownerToolLate, userId: owner, toolName: "write_memory", operation: "create", resourceType: "memory", resourceId: ownerMemoryLate, idempotencyKey: null, requestSummary: { PRIVATE_REQUEST_SUMMARY: true }, resultSummary: { PRIVATE_RESULT_SUMMARY: true }, durationMs: 11, status: "success", errorCode: null, createdAt: now },
+        { id: ownerToolEarly, userId: owner, toolName: "write_memory", operation: "create", resourceType: "memory", resourceId: ownerDiaryEarly, idempotencyKey: `export-mcp-key-${owner}`, requestSummary: { PRIVATE_REQUEST_SUMMARY: true }, resultSummary: { PRIVATE_RESULT_SUMMARY: true }, durationMs: 10, status: "success", errorCode: null, createdAt: early },
+        { id: ownerToolLate, userId: owner, toolName: "write_memory", operation: "create", resourceType: "memory", resourceId: ownerDiaryLate, idempotencyKey: null, requestSummary: { PRIVATE_REQUEST_SUMMARY: true }, resultSummary: { PRIVATE_RESULT_SUMMARY: true }, durationMs: 11, status: "success", errorCode: null, createdAt: now },
         { id: otherTool, userId: other, toolName: "write_memory", operation: "create", resourceType: "memory", resourceId: otherDiary, idempotencyKey: `export-mcp-key-${other}`, requestSummary: {}, resultSummary: {}, durationMs: 12, status: "success", errorCode: null, createdAt: now },
+      ]);
+
+      const countsBefore = await Promise.all([
+        transaction.select({ count: count() }).from(schema.coreMemories),
+        transaction.select({ count: count() }).from(schema.diaryEntries),
+        transaction.select({ count: count() }).from(schema.tasks),
+        transaction.select({ count: count() }).from(schema.todoPapers),
+        transaction.select({ count: count() }).from(schema.todoEntries),
+        transaction.select({ count: count() }).from(schema.resourceLifecycleEvents),
+        transaction.select({ count: count() }).from(schema.toolCalls),
+        transaction.select({ count: count() }).from(schema.mcpWriteIdempotency),
       ]);
 
       const repository = new DrizzleExportRepository(transaction as never);
@@ -120,6 +131,34 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
       for (const forbidden of ["idempotency_key", "request_summary", "result_summary", "duration_ms", "PRIVATE_REQUEST_SUMMARY", "PRIVATE_RESULT_SUMMARY"]) {
         assert.equal(toolJson.includes(forbidden), false);
       }
+
+      const serializedExport = JSON.stringify({ memory: memories, diary: diaries, task: tasks, todo: papers, audit: { lifecycle, tool_activity: tools } });
+      for (const forbidden of [
+        "user_id",
+        "idempotency_key",
+        "request_hash",
+        "request_summary",
+        "result_summary",
+        "duration_ms",
+        "access_token",
+        "refresh_token",
+        "PRIVATE_LIFECYCLE_METADATA",
+        "OTHER_SECRET",
+      ]) {
+        assert.equal(serializedExport.includes(forbidden), false);
+      }
+
+      const countsAfter = await Promise.all([
+        transaction.select({ count: count() }).from(schema.coreMemories),
+        transaction.select({ count: count() }).from(schema.diaryEntries),
+        transaction.select({ count: count() }).from(schema.tasks),
+        transaction.select({ count: count() }).from(schema.todoPapers),
+        transaction.select({ count: count() }).from(schema.todoEntries),
+        transaction.select({ count: count() }).from(schema.resourceLifecycleEvents),
+        transaction.select({ count: count() }).from(schema.toolCalls),
+        transaction.select({ count: count() }).from(schema.mcpWriteIdempotency),
+      ]);
+      assert.deepEqual(countsAfter, countsBefore);
 
       throw new RollbackExportTest();
     }), RollbackExportTest);
