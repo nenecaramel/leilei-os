@@ -17,4 +17,10 @@ export class NotionCommentClient {
       body: JSON.stringify(body),
     });
   }
+
+  deleteComment(commentId: string): Promise<NotionJsonObject> {
+    return this.transport.requestJson(`/comments/${encodeURIComponent(commentId)}`, {
+      method: "DELETE",
+    });
+  }
 }
