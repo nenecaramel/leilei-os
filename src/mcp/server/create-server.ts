@@ -9,6 +9,7 @@ import { ToyCommandService } from "../../domains/toy/toy-command-service.js";
 import { DrizzleToyCommandRepository } from "../../domains/toy/toy-command-repository.js";
 import { createDatabase } from "../../database/client.js";
 import { env } from "../../config/env.js";
+import { NotionReadClient } from "../../domains/notion/notion-read-client.js";
 import { registerHelloTool } from "../tools/hello/register.js";
 import { registerGetLocalContextTool } from "../tools/get-local-context/register.js";
 import { registerGetWeatherContextTool } from "../tools/get-weather-context/register.js";
@@ -66,6 +67,16 @@ import {
 import { GlobalSearchService } from "../../domains/global-search/global-search-service.js";
 import { DrizzleGlobalSearchRepository } from "../../domains/global-search/global-search-repository.js";
 import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
+import {
+  registerSearchNotionTool,
+  SearchNotionAuthenticationError,
+  type SearchNotionToolDependencies,
+} from "../tools/search-notion/register.js";
+import {
+  ReadNotionPageAuthenticationError,
+  registerReadNotionPageTool,
+  type ReadNotionPageToolDependencies,
+} from "../tools/read-notion-page/register.js";
 import { TodoService } from "../../domains/todo/todo-service.js";
 import { DrizzleTodoRepository } from "../../domains/todo/todo-repository.js";
 import {
@@ -89,6 +100,14 @@ let defaultTaskService: TaskService | undefined;
 let defaultToyCommandService: ToyCommandService | undefined;
 let defaultGlobalSearchService: GlobalSearchService | undefined;
 let defaultTodoService: TodoService | undefined;
+let defaultNotionReadClient: NotionReadClient | undefined;
+
+function getDefaultNotionReadClient(): NotionReadClient {
+  if (!defaultNotionReadClient) {
+    defaultNotionReadClient = new NotionReadClient(env.NOTION_PAT);
+  }
+  return defaultNotionReadClient;
+}
 
 function getDefaultTodoService(): TodoService {
   if (!defaultTodoService) {
@@ -286,6 +305,12 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
   getAuthenticatedUserId: () => { throw new GlobalSearchAuthenticationError(); },
 };
 
+const productionNotionService: SearchNotionToolDependencies["notionService"] &
+  ReadNotionPageToolDependencies["notionService"] = {
+  searchPages: (input) => getDefaultNotionReadClient().searchPages(input),
+  readPage: (pageId) => getDefaultNotionReadClient().readPage(pageId),
+};
+
 const productionTodoService = {
   readDay: (userId: string, date: string) =>
     getDefaultTodoService().readDay(userId, date),
@@ -299,6 +324,12 @@ type TodoToolsDependencies = {
   todoService: ReadTodoDayToolDependencies["todoService"] &
     ListTodoDatesToolDependencies["todoService"] &
     WriteTodoPaperToolDependencies["todoService"];
+  getAuthenticatedUserId: () => string;
+};
+
+type NotionToolsDependencies = {
+  notionService: SearchNotionToolDependencies["notionService"] &
+    ReadNotionPageToolDependencies["notionService"];
   getAuthenticatedUserId: () => string;
 };
 
@@ -334,6 +365,7 @@ export type McpServerDependencies = {
   toyCommand?: ToyCommandToolDependencies;
   globalSearch?: GlobalSearchToolDependencies;
   todoTools?: TodoToolsDependencies;
+  notionTools?: NotionToolsDependencies;
 };
 
 export function createMcpServer(
@@ -462,6 +494,20 @@ export function createMcpServer(
     ...productionGlobalSearchDependencies,
     getAuthenticatedUserId: () => {
       if (!authenticatedUserId) throw new GlobalSearchAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerSearchNotionTool(server, dependencies.notionTools ?? {
+    notionService: productionNotionService,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new SearchNotionAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerReadNotionPageTool(server, dependencies.notionTools ?? {
+    notionService: productionNotionService,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new ReadNotionPageAuthenticationError();
       return authenticatedUserId;
     },
   });
