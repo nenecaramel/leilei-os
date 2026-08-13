@@ -23,6 +23,7 @@ import type {
   ReadTaskInput,
   TaskEntryResult,
 } from "../src/domains/task/task-service.js";
+import type { TodoDayPapers } from "../src/domains/todo/todo-types.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
@@ -166,13 +167,36 @@ class ToyWrites {
   }
 }
 
+class TodoTools {
+  readCalls: Array<{ userId: string; date: string }> = [];
+  listCalls: string[] = [];
+
+  async readDay(userId: string, date: string): Promise<{
+    date: string;
+    papers: TodoDayPapers;
+  }> {
+    this.readCalls.push({ userId, date });
+    return { date, papers: { L: null, G: null } };
+  }
+
+  async listDates(userId: string): Promise<string[]> {
+    this.listCalls.push(userId);
+    return ["2026-08-13"];
+  }
+
+  async replacePaperIdempotently(): Promise<never> {
+    throw new Error("write_todo_paper must not be invoked by this suite");
+  }
+}
+
 async function connect() {
   const memory = new MemoryReads();
   const diary = new DiaryTools();
   const task = new TaskTools();
   const toy = new ToyWrites();
+  const todo = new TodoTools();
   const getAuthenticatedUserId = () => USER_ID;
-  const server = createMcpServer({
+  const dependencies = {
     memoryReads: {
       memoryService: memory,
       getAuthenticatedUserId,
@@ -189,7 +213,12 @@ async function connect() {
       toyCommandService: toy,
       getAuthenticatedUserId,
     },
-  });
+    todoTools: {
+      todoService: todo,
+      getAuthenticatedUserId,
+    },
+  };
+  const server = createMcpServer(dependencies);
   const client = new Client(
     { name: "mcp-read-contract-test", version: "1.0.0" },
     { capabilities: {} },
@@ -198,7 +227,7 @@ async function connect() {
     InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  return { client, server, memory, diary, task, toy };
+  return { client, server, memory, diary, task, toy, todo };
 }
 
 test("all MCP read contracts and existing write boundaries stay registered", async (t) => {
@@ -217,6 +246,8 @@ test("all MCP read contracts and existing write boundaries stay registered", asy
     "get_diary",
     "list_tasks",
     "get_task",
+    "read_todo_day",
+    "list_todo_dates",
   ]) {
     const tool = tools.tools.find((candidate) => candidate.name === name);
     assert.ok(tool, `${name} should be registered`);
@@ -239,6 +270,8 @@ test("all MCP read contracts and existing write boundaries stay registered", asy
   assert.equal(fixture.diary.writeCalls, 0);
   assert.equal(fixture.task.writeCalls, 0);
   assert.equal(fixture.toy.writeCalls, 0);
+  assert.equal(fixture.todo.readCalls.length, 0);
+  assert.equal(fixture.todo.listCalls.length, 0);
 });
 
 test("Memory, Diary, and Task discovery-to-detail flows remain isolated", async (t) => {
@@ -420,10 +453,18 @@ test("strict schemas reject client-supplied identity before every module service
     await fixture.server.close();
   });
 
-  for (const name of ["search_memory", "search_diary", "list_tasks"]) {
+  for (const name of [
+    "search_memory",
+    "search_diary",
+    "list_tasks",
+    "read_todo_day",
+    "list_todo_dates",
+  ]) {
     const result = await fixture.client.callTool({
       name,
-      arguments: { user_id: "attacker-controlled-user" },
+      arguments: name === "read_todo_day"
+        ? { date: "2026-08-13", user_id: "attacker-controlled-user" }
+        : { user_id: "attacker-controlled-user" },
     });
     assert.equal(result.isError, true);
   }
@@ -433,4 +474,6 @@ test("strict schemas reject client-supplied identity before every module service
   assert.equal(fixture.diary.writeCalls, 0);
   assert.equal(fixture.task.writeCalls, 0);
   assert.equal(fixture.toy.writeCalls, 0);
+  assert.equal(fixture.todo.readCalls.length, 0);
+  assert.equal(fixture.todo.listCalls.length, 0);
 });

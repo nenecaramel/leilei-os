@@ -11,6 +11,13 @@ import { MCP_WRITE_TOOL_NAMES } from "../src/mcp/tools/write-context.js";
 
 const AUTHENTICATED_USER_ID = "00000000-0000-4000-8000-000000000099";
 
+const TODO_PAPER = {
+  date: "2026-08-13",
+  author: "L" as const,
+  revision: 1,
+  entries: [{ id: "todo-contract-row", kind: "pending" as const, text: "Todo contract" }],
+};
+
 function taskResult(): CreateTaskResult {
   return {
     task: {
@@ -83,13 +90,14 @@ function toyResult(action: "set" | "stop", percent: number | null): ToyCommandRe
 }
 
 function createFixture(failure?: Error) {
-  const authCalls = { task: 0, diary: 0, memory: 0, toy: 0 };
+  const authCalls = { task: 0, diary: 0, memory: 0, toy: 0, todo: 0 };
   const taskCalls: unknown[] = [];
   const diaryCalls: unknown[] = [];
   const memoryCalls: unknown[] = [];
   const toyCalls: unknown[] = [];
+  const todoCalls: unknown[] = [];
 
-  const server = createMcpServer({
+  const dependencies = {
     createTask: {
       getAuthenticatedUserId: () => {
         authCalls.task += 1;
@@ -143,9 +151,32 @@ function createFixture(failure?: Error) {
         },
       },
     },
-  });
+    todoTools: {
+      getAuthenticatedUserId: () => {
+        authCalls.todo += 1;
+        return AUTHENTICATED_USER_ID;
+      },
+      todoService: {
+        async readDay() {
+          return { date: TODO_PAPER.date, papers: { L: TODO_PAPER, G: null } };
+        },
+        async listDates() {
+          return [TODO_PAPER.date];
+        },
+        async replacePaperIdempotently(input: unknown) {
+          todoCalls.push(input);
+          if (failure) throw failure;
+          return {
+            paper: TODO_PAPER,
+            metadata: { committed: true, idempotent_replay: false },
+          };
+        },
+      },
+    },
+  };
+  const server = createMcpServer(dependencies);
 
-  return { server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls };
+  return { server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls, todoCalls };
 }
 
 async function connect(failure?: Error) {
@@ -197,10 +228,20 @@ async function invokeAllWrites(client: Client) {
     }),
     client.callTool({ name: "toy_set", arguments: { percent: 20, idempotency_key: "toy-set-contract-20260801" } }),
     client.callTool({ name: "toy_stop", arguments: { idempotency_key: "toy-stop-contract-20260801" } }),
+    client.callTool({
+      name: "write_todo_paper",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        revision: null,
+        entries: TODO_PAPER.entries,
+        idempotency_key: "todo-paper-contract-20260813",
+      },
+    }),
   ]);
 }
 
-test("MCP exposes exactly five write tools and preserves every annotation", async (t) => {
+test("MCP exposes exactly six write tools and preserves every annotation", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
@@ -209,6 +250,14 @@ test("MCP exposes exactly five write tools and preserves every annotation", asyn
 
   const tools = (await client.listTools()).tools;
   const writes = tools.filter((tool) => tool.annotations?.readOnlyHint === false);
+  assert.deepEqual(MCP_WRITE_TOOL_NAMES, [
+    "create_task",
+    "write_diary",
+    "write_memory",
+    "toy_set",
+    "toy_stop",
+    "write_todo_paper",
+  ]);
   assert.deepEqual(
     writes.map((tool) => tool.name).sort(),
     [...MCP_WRITE_TOOL_NAMES].sort(),
@@ -237,10 +286,22 @@ test("MCP exposes exactly five write tools and preserves every annotation", asyn
     assert.equal(tool?.annotations?.destructiveHint, true);
     assert.equal(tool?.annotations?.idempotentHint, true);
   }
+  const todoWrite = tools.find((tool) => tool.name === "write_todo_paper");
+  assert.ok(todoWrite);
+  assert.deepEqual(todoWrite.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  assert.deepEqual(
+    [...(todoWrite.inputSchema.required ?? [])].sort(),
+    ["date", "author", "revision", "entries", "idempotency_key"].sort(),
+  );
 });
 
 test("each write resolves server identity once and invokes its service once", async (t) => {
-  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls } = await connect();
+  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls, todoCalls } = await connect();
   t.after(async () => {
     await client.close();
     await server.close();
@@ -248,11 +309,12 @@ test("each write resolves server identity once and invokes its service once", as
 
   const responses = await invokeAllWrites(client);
   assert.equal(responses.every((response) => response.isError !== true), true);
-  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2 });
+  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2, todo: 1 });
   assert.equal(taskCalls.length, 1);
   assert.equal(diaryCalls.length, 1);
   assert.equal(memoryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
+  assert.equal(todoCalls.length, 1);
   assert.deepEqual(taskCalls[0] && (taskCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
   assert.deepEqual(diaryCalls[0] && (diaryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
   assert.deepEqual(memoryCalls[0] && (memoryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
@@ -263,7 +325,7 @@ test("each write resolves server identity once and invokes its service once", as
 });
 
 test("unexpected identity arguments are rejected before authentication or writes", async (t) => {
-  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls } = await connect();
+  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls, todoCalls } = await connect();
   t.after(async () => {
     await client.close();
     await server.close();
@@ -305,6 +367,17 @@ test("unexpected identity arguments are rejected before authentication or writes
     },
     { name: "toy_set", arguments: { percent: 20, idempotency_key: "toy-set-attacker-20260801", user_id: "attacker" } },
     { name: "toy_stop", arguments: { idempotency_key: "toy-stop-attacker-20260801", user_id: "attacker" } },
+    {
+      name: "write_todo_paper",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        revision: null,
+        entries: TODO_PAPER.entries,
+        idempotency_key: "todo-paper-attacker-20260813",
+        user_id: "attacker",
+      },
+    },
   ];
 
   for (const attempt of attempts) {
@@ -312,16 +385,17 @@ test("unexpected identity arguments are rejected before authentication or writes
     assert.equal(response.isError, true);
   }
 
-  assert.deepEqual(authCalls, { task: 0, diary: 0, memory: 0, toy: 0 });
+  assert.deepEqual(authCalls, { task: 0, diary: 0, memory: 0, toy: 0, todo: 0 });
   assert.equal(taskCalls.length, 0);
   assert.equal(diaryCalls.length, 0);
   assert.equal(memoryCalls.length, 0);
   assert.equal(toyCalls.length, 0);
+  assert.equal(todoCalls.length, 0);
 });
 
 test("write failures are safe and never retried automatically", async (t) => {
   const internalFailure = new Error("private SQL and device transport detail");
-  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls } = await connect(internalFailure);
+  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls, todoCalls } = await connect(internalFailure);
   t.after(async () => {
     await client.close();
     await server.close();
@@ -332,9 +406,10 @@ test("write failures are safe and never retried automatically", async (t) => {
     assert.equal(response.isError, true);
     assert.doesNotMatch(JSON.stringify(response), /private SQL|device transport detail/);
   }
-  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2 });
+  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2, todo: 1 });
   assert.equal(taskCalls.length, 1);
   assert.equal(diaryCalls.length, 1);
   assert.equal(memoryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
+  assert.equal(todoCalls.length, 1);
 });
