@@ -3,11 +3,9 @@ import { z } from "zod";
 import { env } from "../../config/env.js";
 import { NotionCommentClient } from "../../domains/notion/notion-comment-client.js";
 import { NotionFileUploadClient } from "../../domains/notion/notion-file-upload-client.js";
-import { NotionMeetingNoteClient } from "../../domains/notion/notion-meeting-note-client.js";
 import { NotionPageBlockClient } from "../../domains/notion/notion-page-block-client.js";
 import { NotionStructureClient } from "../../domains/notion/notion-structure-client.js";
 import { NotionTransport } from "../../domains/notion/notion-transport.js";
-import { registerCreateNotionMeetingNoteTool, type CreateNotionMeetingNoteToolDependencies } from "../tools/create-notion-meeting-note/register.js";
 import { registerUploadNotionFileTool, type UploadNotionFileToolDependencies } from "../tools/upload-notion-file/register.js";
 import { notionBodySchema, notionIdSchema, NotionWriteAuthenticationError } from "../tools/notion-write-shared.js";
 import { registerWriteNotionBlockTool, type WriteNotionBlockToolDependencies } from "../tools/write-notion-block/register.js";
@@ -24,8 +22,7 @@ type NotionWriteService =
   WriteNotionDataSourceToolDependencies["notionService"] &
   WriteNotionViewToolDependencies["notionService"] &
   WriteNotionCommentToolDependencies["notionService"] &
-  UploadNotionFileToolDependencies["notionService"] &
-  CreateNotionMeetingNoteToolDependencies["notionService"];
+  UploadNotionFileToolDependencies["notionService"];
 
 export type NotionWriteToolsDependencies = {
   notionService: NotionWriteService;
@@ -37,7 +34,6 @@ let defaultPageBlockClient: NotionPageBlockClient | undefined;
 let defaultStructureClient: NotionStructureClient | undefined;
 let defaultCommentClient: NotionCommentClient | undefined;
 let defaultFileUploadClient: NotionFileUploadClient | undefined;
-let defaultMeetingNoteClient: NotionMeetingNoteClient | undefined;
 
 function getDefaultTransport(): NotionTransport {
   if (!defaultTransport) defaultTransport = new NotionTransport(env.NOTION_PAT);
@@ -72,13 +68,6 @@ function getDefaultFileUploadClient(): NotionFileUploadClient {
   return defaultFileUploadClient;
 }
 
-function getDefaultMeetingNoteClient(): NotionMeetingNoteClient {
-  if (!defaultMeetingNoteClient) {
-    defaultMeetingNoteClient = new NotionMeetingNoteClient(getDefaultTransport());
-  }
-  return defaultMeetingNoteClient;
-}
-
 const productionNotionWriteService: NotionWriteService = {
   createPage: (body) => getDefaultPageBlockClient().createPage(body),
   updatePage: (pageId, body) => getDefaultPageBlockClient().updatePage(pageId, body),
@@ -101,7 +90,6 @@ const productionNotionWriteService: NotionWriteService = {
   sendUpload: (fileUploadId, file, filename, partNumber) =>
     getDefaultFileUploadClient().sendUpload(fileUploadId, file, filename, partNumber),
   completeUpload: (fileUploadId) => getDefaultFileUploadClient().completeUpload(fileUploadId),
-  createMeetingNote: (body) => getDefaultMeetingNoteClient().createMeetingNote(body),
 };
 
 const notionWritePublicInputSchemas: Record<string, z.ZodTypeAny> = {
@@ -204,7 +192,6 @@ export function registerNotionWriteTools(
   registerWriteNotionViewTool(compatibleServer, dependencies);
   registerWriteNotionCommentTool(compatibleServer, dependencies);
   registerUploadNotionFileTool(compatibleServer, dependencies);
-  registerCreateNotionMeetingNoteTool(compatibleServer, dependencies);
 }
 
 export function registerProductionNotionWriteTools(
