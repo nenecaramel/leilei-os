@@ -19,6 +19,8 @@ jobs:
           node-version: 24
       - run: pnpm install --frozen-lockfile
       - run: cd web && npm ci
+      - name: Run Notion write schema surface regression
+        run: pnpm exec tsx --test tests/notion-write-schema-surface.test.ts
       - run: >-
           pnpm exec tsx --test --test-concurrency=1
           tests/notion-transport.test.ts
