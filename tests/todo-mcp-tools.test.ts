@@ -2,8 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { TodoDayPapers, TodoPaper } from "../src/domains/todo/todo-types.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type {
+  ReplaceTodoPaperInput,
+  ReplaceTodoPaperResult,
+  TodoDayPapers,
+  TodoPaper,
+  TodoRepository,
+} from "../src/domains/todo/todo-types.js";
+import { TodoService } from "../src/domains/todo/todo-service.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
+import {
+  registerReadTodoDayTool,
+  TodoReadAuthenticationError,
+} from "../src/mcp/tools/read-todo-day/register.js";
+import { registerListTodoDatesTool } from "../src/mcp/tools/list-todo-dates/register.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 const DATE = "2026-08-13";
@@ -64,6 +77,123 @@ async function connect() {
   await client.connect(clientTransport);
   return { client, server, todo, authCalls: () => authCalls };
 }
+
+async function connectReadImplementations(input?: {
+  todoService?: {
+    readDay(userId: string, date: string): Promise<{ date: string; papers: TodoDayPapers }>;
+    listDates(userId: string): Promise<string[]>;
+  };
+  getAuthenticatedUserId?: () => string;
+}) {
+  const todo = input?.todoService ?? new TodoToolService();
+  const getAuthenticatedUserId = input?.getAuthenticatedUserId ?? (() => USER_ID);
+  const server = new McpServer({ name: "todo-read-tool-test", version: "1.0.0" });
+  registerReadTodoDayTool(server, { todoService: todo, getAuthenticatedUserId });
+  registerListTodoDatesTool(server, { todoService: todo, getAuthenticatedUserId });
+  const client = new Client(
+    { name: "todo-read-tool-client", version: "1.0.0" },
+    { capabilities: {} },
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  return { client, server, todo };
+}
+
+class CountingTodoRepository implements TodoRepository {
+  readCalls = 0;
+  readDay(): Promise<TodoDayPapers> {
+    this.readCalls += 1;
+    return Promise.resolve(PAPERS);
+  }
+  listContentDates(): Promise<string[]> {
+    return Promise.resolve([]);
+  }
+  replacePaper(_input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult> {
+    return Promise.resolve({ outcome: "conflict" });
+  }
+}
+
+test("Todo read tool implementations delegate once and preserve exact server truth", async (t) => {
+  const fixture = await connectReadImplementations();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const read = await fixture.client.callTool({
+    name: "read_todo_day",
+    arguments: { date: DATE },
+  });
+  assert.deepEqual(read.structuredContent, {
+    success: true,
+    data: { date: DATE, papers: PAPERS },
+  });
+  const dates = await fixture.client.callTool({
+    name: "list_todo_dates",
+    arguments: {},
+  });
+  assert.deepEqual(dates.structuredContent, {
+    success: true,
+    data: { dates: ["2026-08-11", DATE] },
+  });
+  assert.deepEqual((fixture.todo as TodoToolService).readCalls, [{ userId: USER_ID, date: DATE }]);
+  assert.deepEqual((fixture.todo as TodoToolService).listCalls, [USER_ID]);
+});
+
+test("Todo read tools reject invalid dates before repository reads and sanitize failures", async (t) => {
+  const repository = new CountingTodoRepository();
+  const service = new TodoService(repository);
+  const invalid = await connectReadImplementations({ todoService: service });
+  t.after(async () => {
+    await invalid.client.close();
+    await invalid.server.close();
+  });
+  const invalidResponse = await invalid.client.callTool({
+    name: "read_todo_day",
+    arguments: { date: "2026-02-30" },
+  });
+  assert.equal(invalidResponse.isError, true);
+  assert.equal(repository.readCalls, 0);
+
+  const unavailable = await connectReadImplementations({
+    todoService: {
+      async readDay() {
+        throw new Error("private database and Todo text detail");
+      },
+      async listDates() {
+        throw new Error("private database and Todo text detail");
+      },
+    },
+  });
+  t.after(async () => {
+    await unavailable.client.close();
+    await unavailable.server.close();
+  });
+  for (const call of [
+    { name: "read_todo_day", arguments: { date: DATE } },
+    { name: "list_todo_dates", arguments: {} },
+  ]) {
+    const response = await unavailable.client.callTool(call);
+    assert.equal(response.isError, true);
+    assert.doesNotMatch(JSON.stringify(response), /private database|Todo text detail/);
+  }
+
+  const unauthenticated = await connectReadImplementations({
+    getAuthenticatedUserId: () => {
+      throw new TodoReadAuthenticationError();
+    },
+  });
+  t.after(async () => {
+    await unauthenticated.client.close();
+    await unauthenticated.server.close();
+  });
+  const authResponse = await unauthenticated.client.callTool({
+    name: "read_todo_day",
+    arguments: { date: DATE },
+  });
+  assert.equal(authResponse.isError, true);
+});
 
 test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
   const fixture = await connect();

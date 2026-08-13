@@ -1,0 +1,58 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import {
+  toSafeTodoReadError,
+  type ReadTodoDayToolDependencies,
+} from "../read-todo-day/register.js";
+
+const listTodoDatesInputSchema = z.object({}).strict();
+const listTodoDatesOutputSchema = z.object({
+  success: z.literal(true),
+  data: z.object({ dates: z.array(z.string()) }),
+});
+
+export interface ListTodoDatesToolService {
+  listDates(userId: string): Promise<string[]>;
+}
+
+export type ListTodoDatesToolDependencies = {
+  todoService: ListTodoDatesToolService;
+  getAuthenticatedUserId: ReadTodoDayToolDependencies["getAuthenticatedUserId"];
+};
+
+export function registerListTodoDatesTool(
+  server: McpServer,
+  dependencies: ListTodoDatesToolDependencies,
+): void {
+  server.registerTool(
+    "list_todo_dates",
+    {
+      title: "List Todo dates",
+      description:
+        "List the authenticated user's business dates that contain at least one persisted Todo entry.",
+      inputSchema: listTodoDatesInputSchema,
+      outputSchema: listTodoDatesOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async () => {
+      try {
+        const userId = dependencies.getAuthenticatedUserId();
+        const dates = await dependencies.todoService.listDates(userId);
+        return {
+          content: [{ type: "text", text: `Found ${dates.length} Todo dates.` }],
+          structuredContent: {
+            success: true as const,
+            data: { dates },
+          },
+        };
+      } catch (error) {
+        return toSafeTodoReadError(error, "list_todo_dates");
+      }
+    },
+  );
+}
