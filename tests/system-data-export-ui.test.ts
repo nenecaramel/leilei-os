@@ -59,7 +59,7 @@ function render(api: WebApiClient) {
   return { root, container };
 }
 
-test("Data renders the approved export card and audit is off by default", async () => {
+test("Data renders Export title, one horizontal scope row, and inactive audit text control", async () => {
   const env = installDom("https://leilei.test/system/data");
   const paths: string[] = [];
   const api: WebApiClient = {
@@ -75,11 +75,15 @@ test("Data renders the approved export card and audit is off by default", async 
   const card = container.querySelector(".system-export-card");
   assert.ok(card);
   assert.equal(card.querySelector(".system-export-label")?.textContent, "Export");
+  assert.ok(card.querySelector(".system-export-action-row"));
   const labels = Array.from(card.querySelectorAll(".system-export-action"), (button) => button.textContent);
   assert.deepEqual(labels, ["All", "Memory", "Diary", "Task", "Todo"]);
-  assert.ok(card.querySelector(".system-export-audit"));
-  assert.equal(card.querySelector(".system-export-actions"), null);
-  const audit = card.querySelector<HTMLInputElement>("input[type=checkbox]");
+
+  const auditControl = card.querySelector<HTMLElement>(".system-export-audit");
+  assert.ok(auditControl);
+  assert.equal(auditControl.dataset.active, "false");
+  assert.equal(card.querySelector(".system-export-audit-check"), null);
+  const audit = card.querySelector<HTMLInputElement>(".system-export-audit-input");
   assert.ok(audit);
   assert.equal(audit.checked, false);
 
@@ -88,7 +92,7 @@ test("Data renders the approved export card and audit is off by default", async 
   env.restore();
 });
 
-test("export actions send scoped requests and download the exact returned JSON", async () => {
+test("audit text control becomes active with a plain check and still sends include_audit", async () => {
   const env = installDom("https://leilei.test/system/data");
   const paths: string[] = [];
   const blobs: Blob[] = [];
@@ -114,8 +118,14 @@ test("export actions send scoped requests and download the exact returned JSON",
   const buttons = container.querySelectorAll<HTMLButtonElement>(".system-export-action");
   buttons[1].click();
   await waitForPaint();
-  const audit = container.querySelector<HTMLInputElement>(".system-export-audit input[type=checkbox]")!;
+
+  const audit = container.querySelector<HTMLInputElement>(".system-export-audit-input")!;
   audit.click();
+  await waitForPaint();
+  const auditControl = container.querySelector<HTMLElement>(".system-export-audit")!;
+  assert.equal(auditControl.dataset.active, "true");
+  assert.equal(container.querySelector(".system-export-audit-check")?.textContent, "✓");
+
   buttons[0].click();
   await waitForPaint();
 
