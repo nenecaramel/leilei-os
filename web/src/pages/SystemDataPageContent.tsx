@@ -188,36 +188,44 @@ export function SystemDataPageContent({
         ) : null}
       </section>
 
-      <section className="system-section system-export-section" aria-label="Export data">
-        <div className="system-export-option">
-          <label>
-            <input
-              type="checkbox"
-              checked={includeAudit}
-              onChange={(event) => setIncludeAudit(event.target.checked)}
-            />
-            Include audit/lifecycle events
-          </label>
+      <section
+        className="system-section system-export-card"
+        aria-label="Export data"
+      >
+        <div className="system-export-row">
+          <strong className="system-export-label">
+            Export
+          </strong>
+          <div className="system-export-action-list">
+            {([
+              ["all", "All"],
+              ["memory", "Memory"],
+              ["diary", "Diary"],
+              ["task", "Task"],
+              ["todo", "Todo"],
+            ] as const).map(([scope, label]) => (
+              <button
+                className="system-export-action"
+                type="button"
+                key={scope}
+                disabled={exportState.status === "loading"}
+                onClick={() => void runExport(scope)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="system-export-actions">
-          {([
-            ["all", "Export all"],
-            ["memory", "Export Memory"],
-            ["diary", "Export Diary"],
-            ["task", "Export Task"],
-            ["todo", "Export Todo"],
-          ] as const).map(([scope, label]) => (
-            <button
-              className="secondary-button"
-              type="button"
-              key={scope}
-              disabled={exportState.status === "loading"}
-              onClick={() => void runExport(scope)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+
+        <label className="system-export-audit">
+          <span>Include audit/lifecycle events</span>
+          <input
+            type="checkbox"
+            checked={includeAudit}
+            onChange={(event) => setIncludeAudit(event.target.checked)}
+          />
+        </label>
+
         {exportState.status === "error" ? (
           <p className="system-export-error" role="alert">
             Unable to export data.
