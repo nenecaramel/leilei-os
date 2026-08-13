@@ -43,7 +43,6 @@ test("planner classifies a new record as create and produces an executable plan"
   assert.equal(plan.items[0]?.classification, "create");
   assert.match(plan.preview_fingerprint, /^[0-9a-f]{64}$/u);
 });
-
 test("planner classifies exact replay as duplicate and never executable by itself", () => {
   const plan = buildImportPlan(parsed(), USER_ID, { ...emptyState, memory: [memory] });
   assert.equal(plan.can_execute, false);
@@ -71,4 +70,3 @@ test("planner rejects owner mismatch and package-internal duplicate identities",
   assert.equal(duplicatePlan.summary.memory.invalid, 2);
   assert.equal(duplicatePlan.can_execute, false);
 });
-

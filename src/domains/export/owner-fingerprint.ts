@@ -7,4 +7,3 @@ export function createOwnerFingerprint(userId: string): string {
     .update(`${OWNER_FINGERPRINT_NAMESPACE}${userId}`, "utf8")
     .digest("hex");
 }
-

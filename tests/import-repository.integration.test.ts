@@ -9,6 +9,7 @@ import { ExportService } from "../src/domains/export/export-service.js";
 import { DrizzleExportRepository } from "../src/domains/export/export-repository.js";
 import { ImportService } from "../src/domains/import/import-service.js";
 import { DrizzleImportRepository } from "../src/domains/import/import-repository.js";
+import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const target = databaseUrl ? new URL(databaseUrl) : null;
@@ -108,5 +109,61 @@ test("isolated PostgreSQL import rolls back all modules when a later insert fail
     await db.delete(schema.diaryEntries).where(eq(schema.diaryEntries.userId, userId));
     await db.delete(schema.users).where(eq(schema.users.id, userId));
     await client.end();
+  }
+});
+
+test("isolated PostgreSQL concurrent executes commit one restore and leave one audit", { skip: !run }, async () => {
+  const setupClient = postgres(databaseUrl!, { prepare: false, ssl: false, max: 4 });
+  const firstClient = postgres(databaseUrl!, { prepare: false, ssl: false, max: 4 });
+  const secondClient = postgres(databaseUrl!, { prepare: false, ssl: false, max: 4 });
+  const setupDb = drizzle(setupClient, { schema });
+  const firstDb = drizzle(firstClient, { schema });
+  const secondDb = drizzle(secondClient, { schema });
+  const userId = randomUUID();
+  const memoryId = randomUUID();
+  const now = new Date("2026-08-14T00:00:00.000Z");
+  const raw = new TextEncoder().encode(JSON.stringify({
+    schema_version: 2,
+    owner_fingerprint: createOwnerFingerprint(userId),
+    exported_at: now.toISOString(),
+    data: {
+      memory: [{
+        id: memoryId,
+        category: "profile",
+        key: "concurrent-import",
+        content: "one winner",
+        tags: [],
+        visibility: "assistant",
+        source: "web",
+        author: "L",
+        status: "active",
+        sort_order: 0,
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      }],
+    },
+  }));
+  try {
+    await setupDb.insert(schema.users).values({ id: userId, email: `import-race-${userId}@example.invalid`, displayName: "Import race", status: "active", createdAt: now, updatedAt: now });
+    const firstService = new ImportService(new DrizzleImportRepository(firstDb as never));
+    const secondService = new ImportService(new DrizzleImportRepository(secondDb as never));
+    const preview = await firstService.preview(raw, userId);
+    const outcomes = await Promise.allSettled([
+      firstService.execute(raw, userId, preview.preview_fingerprint),
+      secondService.execute(raw, userId, preview.preview_fingerprint),
+    ]);
+    assert.equal(outcomes.filter((outcome) => outcome.status === "fulfilled").length, 1);
+    assert.equal(outcomes.filter((outcome) => outcome.status === "rejected").length, 1);
+    const rejection = outcomes.find((outcome) => outcome.status === "rejected");
+    assert.match(String((rejection as PromiseRejectedResult)?.reason?.message), /IMPORT_(?:CONFLICT|PREVIEW_STALE)/u);
+    const [memoryCount] = await setupDb.select({ count: count() }).from(schema.coreMemories).where(eq(schema.coreMemories.userId, userId));
+    const [auditCount] = await setupDb.select({ count: count() }).from(schema.dataImportRuns).where(eq(schema.dataImportRuns.userId, userId));
+    assert.equal(memoryCount?.count, 1);
+    assert.equal(auditCount?.count, 1);
+  } finally {
+    await setupDb.delete(schema.dataImportRuns).where(eq(schema.dataImportRuns.userId, userId));
+    await setupDb.delete(schema.coreMemories).where(eq(schema.coreMemories.userId, userId));
+    await setupDb.delete(schema.users).where(eq(schema.users.id, userId));
+    await Promise.all([setupClient.end(), firstClient.end(), secondClient.end()]);
   }
 });

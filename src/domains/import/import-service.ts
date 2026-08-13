@@ -64,6 +64,17 @@ function hasExactCreatedValue(item: ImportPlanItem, state: ImportCurrentState): 
   return state.todo.some((paper) => paper.date === record.date && paper.author === record.author && hashCanonical(paper) === hashCanonical(record));
 }
 
+function hasDatabaseErrorCode(error: unknown, code: string): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && (current as { code?: unknown }).code === code) return true;
+    current = "cause" in current ? (current as { cause?: unknown }).cause : undefined;
+  }
+  return false;
+}
+
 export class ImportService {
   constructor(private readonly repository: ImportRepository) {}
 
@@ -119,10 +130,10 @@ export class ImportService {
       if (error instanceof Error && error.message === "IMPORT_VERIFY_FAILED") {
         throw new ImportValidationError("IMPORT_CONFLICT", "IMPORT_CONFLICT");
       }
-      if (typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "23505") {
+      if (hasDatabaseErrorCode(error, "23505")) {
         throw new ImportValidationError("IMPORT_CONFLICT", "IMPORT_CONFLICT");
       }
-      if (typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "40001") {
+      if (hasDatabaseErrorCode(error, "40001")) {
         throw new ImportValidationError("IMPORT_PREVIEW_STALE", "IMPORT_PREVIEW_STALE");
       }
       throw error;

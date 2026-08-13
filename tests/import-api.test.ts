@@ -33,7 +33,6 @@ test("import preview requires authentication and never accepts a client user id"
   });
   assert.equal(calls, 0);
 });
-
 test("import preview uses server identity and raw bytes", async () => {
   const calls: unknown[] = [];
   await withServer({
@@ -69,4 +68,3 @@ test("import rejects JSON content type and invalid query without service access"
   });
   assert.equal(calls, 0);
 });
-

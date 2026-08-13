@@ -28,7 +28,6 @@ test("parseImportPackage accepts v2 and binds the exact package bytes", () => {
   assert.match(parsed.package_sha256, /^[0-9a-f]{64}$/u);
   assert.equal(parsed.raw_bytes, raw.length);
 });
-
 test("parseImportPackage rejects v1 with an explicit unsupported-version error", () => {
   assert.throws(
     () => parseImportPackage(bytes({ schema_version: 1, exported_at: "2026-08-14T00:00:00.000Z", data: { memory: [] } })),
@@ -69,4 +68,3 @@ test("parseImportPackage validates exported business invariants without coercion
     (error: unknown) => error instanceof ImportValidationError && error.code === "INVALID_IMPORT_FILE",
   );
 });
-
