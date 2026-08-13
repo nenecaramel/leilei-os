@@ -10,13 +10,17 @@ import type {
   TodoPaper,
   TodoRepository,
 } from "../src/domains/todo/todo-types.js";
-import { TodoService } from "../src/domains/todo/todo-service.js";
+import { TodoService, TodoServiceError } from "../src/domains/todo/todo-service.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
 import {
   registerReadTodoDayTool,
   TodoReadAuthenticationError,
 } from "../src/mcp/tools/read-todo-day/register.js";
 import { registerListTodoDatesTool } from "../src/mcp/tools/list-todo-dates/register.js";
+import {
+  registerWriteTodoPaperTool,
+  WriteTodoPaperAuthenticationError,
+} from "../src/mcp/tools/write-todo-paper/register.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 const DATE = "2026-08-13";
@@ -98,6 +102,31 @@ async function connectReadImplementations(input?: {
   await server.connect(serverTransport);
   await client.connect(clientTransport);
   return { client, server, todo };
+}
+
+async function connectWriteImplementation(input?: {
+  todoService?: { replacePaperIdempotently(input: unknown): Promise<unknown> };
+  getAuthenticatedUserId?: () => string;
+}) {
+  const todo = input?.todoService ?? new TodoToolService();
+  let authCalls = 0;
+  const getAuthenticatedUserId = input?.getAuthenticatedUserId ?? (() => {
+    authCalls += 1;
+    return USER_ID;
+  });
+  const server = new McpServer({ name: "todo-write-tool-test", version: "1.0.0" });
+  registerWriteTodoPaperTool(server, {
+    todoService: todo as never,
+    getAuthenticatedUserId,
+  });
+  const client = new Client(
+    { name: "todo-write-tool-client", version: "1.0.0" },
+    { capabilities: {} },
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  return { client, server, todo, authCalls: () => authCalls };
 }
 
 class CountingTodoRepository implements TodoRepository {
@@ -193,6 +222,123 @@ test("Todo read tools reject invalid dates before repository reads and sanitize 
     arguments: { date: DATE },
   });
   assert.equal(authResponse.isError, true);
+});
+
+test("write_todo_paper delegates normalized identity-free input and returns exact metadata", async (t) => {
+  const fixture = await connectWriteImplementation();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const response = await fixture.client.callTool({
+    name: "write_todo_paper",
+    arguments: {
+      date: DATE,
+      author: "L",
+      revision: 3,
+      entries: L_PAPER.entries,
+      idempotency_key: "todo-paper-direct-20260813",
+    },
+  });
+  assert.deepEqual(response.structuredContent, {
+    success: true,
+    data: {
+      paper: L_PAPER,
+      metadata: { committed: true, idempotent_replay: false },
+    },
+  });
+  assert.deepEqual((fixture.todo as TodoToolService).writeCalls, [{
+    userId: USER_ID,
+    date: DATE,
+    author: "L",
+    revision: 3,
+    entries: L_PAPER.entries,
+    idempotencyKey: "todo-paper-direct-20260813",
+  }]);
+  assert.equal(fixture.authCalls(), 1);
+});
+
+test("write_todo_paper strict schema rejects omissions and identity before authentication", async (t) => {
+  const fixture = await connectWriteImplementation();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  for (const argumentsValue of [
+    { date: DATE, revision: null, entries: [], idempotency_key: "todo-paper-missing-author-01" },
+    { date: DATE, author: "L", entries: [], idempotency_key: "todo-paper-missing-revision-1" },
+    {
+      date: DATE,
+      author: "L",
+      revision: null,
+      entries: [],
+      idempotency_key: "todo-paper-identity-20260813",
+      user_id: "attacker",
+    },
+    {
+      date: DATE,
+      author: "L",
+      revision: null,
+      entries: [{ id: "a", kind: "pending", text: "x", extra: true }],
+      idempotency_key: "todo-paper-entry-extra-0001",
+    },
+  ]) {
+    const response = await fixture.client.callTool({
+      name: "write_todo_paper",
+      arguments: argumentsValue,
+    });
+    assert.equal(response.isError, true);
+  }
+  assert.equal(fixture.authCalls(), 0);
+  assert.equal((fixture.todo as TodoToolService).writeCalls.length, 0);
+});
+
+test("write_todo_paper distinguishes bounded conflicts and sanitizes internal failures", async (t) => {
+  const call = {
+    name: "write_todo_paper",
+    arguments: {
+      date: DATE,
+      author: "L",
+      revision: null,
+      entries: L_PAPER.entries,
+      idempotency_key: "todo-paper-errors-20260813",
+    },
+  };
+  for (const [error, expected] of [
+    [new TodoServiceError("TODO_PAPER_CONFLICT", "private conflict detail"), /changed/i],
+    [new TodoServiceError("IDEMPOTENCY_CONFLICT", "private conflict detail"), /idempotency/i],
+    [new TodoServiceError("TODO_ENTRY_INVALID", "private entry detail"), /invalid/i],
+    [new Error("private SQL and Todo text detail"), /temporarily unavailable/i],
+  ] as const) {
+    const fixture = await connectWriteImplementation({
+      todoService: {
+        async replacePaperIdempotently() {
+          throw error;
+        },
+      },
+    });
+    const response = await fixture.client.callTool(call);
+    await fixture.client.close();
+    await fixture.server.close();
+    assert.equal(response.isError, true);
+    assert.match(JSON.stringify(response), expected);
+    assert.doesNotMatch(JSON.stringify(response), /private conflict|private entry|private SQL|Todo text/);
+  }
+
+  const unauthenticated = await connectWriteImplementation({
+    getAuthenticatedUserId: () => {
+      throw new WriteTodoPaperAuthenticationError();
+    },
+  });
+  t.after(async () => {
+    await unauthenticated.client.close();
+    await unauthenticated.server.close();
+  });
+  const response = await unauthenticated.client.callTool(call);
+  assert.equal(response.isError, true);
+  assert.match(JSON.stringify(response), /Authentication is required/);
 });
 
 test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
