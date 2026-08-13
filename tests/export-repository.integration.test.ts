@@ -51,9 +51,9 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
         { id: randomUUID(), userId: other, category: "project", key: "other-secret", content: "OTHER_MEMORY_SECRET", tags: [], visibility: "assistant", source: "web", author: "L", status: "active", createdAt: now, updatedAt: now },
       ]);
       await transaction.insert(schema.diaryEntries).values([
-        { id: ownerDiaryEarly, userId: owner, title: "early diary", content: "owner early diary", date: "2026-08-11", tags: ["a"], mood: "calm", source: "web", author: "L", status: "active", idempotencyKey: `export-diary-early-${owner}`, requestHash: "a".repeat(64), createdAt: early, updatedAt: early },
+        { id: ownerDiaryEarly, userId: owner, title: "early diary", content: "owner early diary", date: "2026-08-11", tags: ["a"], mood: "calm", source: "chatgpt_mcp", author: "L", status: "active", idempotencyKey: `export-diary-early-${owner}`, requestHash: "a".repeat(64), createdAt: early, updatedAt: early },
         { id: ownerDiaryLate, userId: owner, title: "late diary", content: "owner late diary", date: "2026-08-12", tags: ["b"], mood: null, source: "chatgpt_mcp", author: "G", status: "archived", idempotencyKey: `export-diary-late-${owner}`, requestHash: "b".repeat(64), createdAt: now, updatedAt: now },
-        { id: otherDiary, userId: other, title: "other diary", content: "OTHER_DIARY_SECRET", date: "2026-08-13", tags: [], mood: null, source: "web", author: "L", status: "active", idempotencyKey: `export-diary-other-${other}`, requestHash: "c".repeat(64), createdAt: now, updatedAt: now },
+        { id: otherDiary, userId: other, title: "other diary", content: "OTHER_DIARY_SECRET", date: "2026-08-13", tags: [], mood: null, source: "chatgpt_mcp", author: "L", status: "active", idempotencyKey: `export-diary-other-${other}`, requestHash: "c".repeat(64), createdAt: now, updatedAt: now },
       ]);
       await transaction.insert(schema.tasks).values([
         { id: ownerTaskEarly, userId: owner, title: "early task", description: "owner early task", status: "pending", resumeStatus: null, lifecycleStatus: "active", author: "L", priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: ["a"], createdAt: early, updatedAt: early, completedAt: null },
@@ -75,7 +75,7 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
         { id: otherLifecycle, userId: other, resourceType: "memory", resourceId: randomUUID(), action: "archive", actorType: "user", channel: "web", metadata: { OTHER_SECRET: true }, createdAt: now },
       ]);
       await transaction.insert(schema.mcpWriteIdempotency).values([
-        { id: randomUUID(), userId: owner, toolName: "write_memory", idempotencyKey: `export-mcp-key-${owner}`, requestHash: "d".repeat(64), resourceType: "memory", resourceId: ownerMemoryEarly, createdAt: now },
+        { id: randomUUID(), userId: owner, toolName: "write_memory", idempotencyKey: `export-mcp-key-${owner}`, requestHash: "d".repeat(64), resourceType: "memory", resourceId: ownerDiaryEarly, createdAt: now },
         { id: randomUUID(), userId: other, toolName: "write_memory", idempotencyKey: `export-mcp-key-${other}`, requestHash: "e".repeat(64), resourceType: "memory", resourceId: otherDiary, createdAt: now },
       ]);
       await transaction.insert(schema.toolCalls).values([
