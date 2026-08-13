@@ -34,8 +34,10 @@ class NotionWrites {
   updateDataSource(id: string, body: NotionJsonObject) { return this.result("updateDataSource", [id, body]); }
   createView(body: NotionJsonObject) { return this.result("createView", [body]); }
   updateView(id: string, body: NotionJsonObject) { return this.result("updateView", [id, body]); }
+  deleteView(id: string) { return this.result("deleteView", [id]); }
   createComment(body: NotionJsonObject) { return this.result("createComment", [body]); }
   updateComment(id: string, body: NotionJsonObject) { return this.result("updateComment", [id, body]); }
+  deleteComment(id: string) { return this.result("deleteComment", [id]); }
   createUpload(body: NotionJsonObject) { return this.result("createUpload", [body]); }
   sendUpload(id: string, file: Blob, filename: string, partNumber?: number) {
     return this.result("sendUpload", [id, file.size, file.type, filename, partNumber]);
@@ -129,25 +131,26 @@ test("page/block destructive actions execute immediately after authentication", 
   });
 });
 
-test("structure, comment, and upload tools dispatch action-specific payloads", async (t) => {
+test("structure, comment, and upload tools dispatch action-specific payloads including permanent deletes", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
 
   await fixture.client.callTool({ name: "write_notion_database", arguments: { action: "create", body: { parent: { type: "workspace", workspace: true } } } });
   await fixture.client.callTool({ name: "write_notion_data_source", arguments: { action: "trash", data_source_id: "source-id" } });
-  await fixture.client.callTool({ name: "write_notion_view", arguments: { action: "update", view_id: "view-id", body: { name: "New" } } });
-  await fixture.client.callTool({ name: "write_notion_comment", arguments: { action: "reply", discussion_id: "discussion-id", body: { markdown: "reply" } } });
+  await fixture.client.callTool({ name: "write_notion_view", arguments: { action: "delete", view_id: "view-id" } });
+  await fixture.client.callTool({ name: "write_notion_comment", arguments: { action: "delete", comment_id: "comment-id" } });
   await fixture.client.callTool({ name: "upload_notion_file", arguments: { action: "send", file_upload_id: "upload-id", filename: "x.txt", content_type: "text/plain", file_base64: Buffer.from("hello").toString("base64"), part_number: 1 } });
 
   assert.deepEqual(fixture.writes.calls.map((call) => call.method), [
     "createDatabase",
     "updateDataSource",
-    "updateView",
-    "createComment",
+    "deleteView",
+    "deleteComment",
     "sendUpload",
   ]);
   assert.deepEqual(fixture.writes.calls[1]?.args, ["source-id", { in_trash: true }]);
-  assert.deepEqual(fixture.writes.calls[3]?.args, [{ markdown: "reply", discussion_id: "discussion-id" }]);
+  assert.deepEqual(fixture.writes.calls[2]?.args, ["view-id"]);
+  assert.deepEqual(fixture.writes.calls[3]?.args, ["comment-id"]);
   assert.deepEqual(fixture.writes.calls[4]?.args, ["upload-id", 5, "text/plain", "x.txt", 1]);
 });
 
