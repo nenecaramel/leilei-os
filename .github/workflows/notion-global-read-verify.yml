@@ -15,6 +15,6 @@ jobs:
           version: 11.9.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsx --test --test-concurrency=1 tests/notion-read-client.test.ts
