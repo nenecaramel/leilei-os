@@ -25,6 +25,7 @@ jobs:
           tests/notion-structure-client.test.ts
           tests/notion-comment-client.test.ts
           tests/notion-file-upload-client.test.ts
+          tests/notion-write-mcp-tools.test.ts
       - run: pnpm typecheck
       - run: pnpm build
       - run: cd web && npm ci && npm run typecheck && npm run build
