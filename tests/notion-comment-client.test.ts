@@ -10,7 +10,7 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-test("NotionCommentClient creates page/block/discussion comments and updates by id", async () => {
+test("NotionCommentClient creates, updates, and deletes comments by fixed endpoints", async () => {
   const calls: Array<{ url: string; method: string; body?: unknown }> = [];
   const fakeFetch: typeof fetch = async (input, init) => {
     calls.push({
@@ -27,11 +27,13 @@ test("NotionCommentClient creates page/block/discussion comments and updates by 
   await client.createComment({ parent: { page_id: "page" }, markdown: "hello" });
   await client.createComment({ discussion_id: "discussion", markdown: "reply" });
   await client.updateComment("comment id", { markdown: "updated" });
+  await client.deleteComment("comment id");
 
   assert.deepEqual(calls.map(({ url, method }) => [url, method]), [
     ["https://api.notion.com/v1/comments", "POST"],
     ["https://api.notion.com/v1/comments", "POST"],
     ["https://api.notion.com/v1/comments/comment%20id", "PATCH"],
+    ["https://api.notion.com/v1/comments/comment%20id", "DELETE"],
   ]);
   assert.deepEqual(calls[1]?.body, { discussion_id: "discussion", markdown: "reply" });
 });
