@@ -81,7 +81,7 @@ async function connectTestClient(dependencies: ReturnType<typeof createTestDepen
   return { client, server };
 }
 
-test("tools/list includes all registered Phase 4 tools", async (t) => {
+test("tools/list includes all registered Phase 4 tools plus later read additions", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService),
@@ -106,9 +106,11 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
       "list_tasks",
       "list_todo_dates",
       "read_memory",
+      "read_notion_page",
       "read_todo_day",
       "search_diary",
       "search_memory",
+      "search_notion",
       "toy_set",
       "toy_stop",
       "write_diary",
