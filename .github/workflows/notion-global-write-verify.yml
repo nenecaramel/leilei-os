@@ -30,6 +30,7 @@ jobs:
           tests/notion-mcp-tools.test.ts
           tests/notion-server-wiring.test.ts
           tests/mcp-read-contract.test.ts
+      - run: pnpm test
       - run: pnpm typecheck
       - run: pnpm build
       - run: cd web && npm ci && npm run typecheck && npm run build
