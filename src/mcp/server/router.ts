@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { createMcpServer } from "./create-server.js";
+import { registerProductionNotionWriteTools } from "./register-notion-writes.js";
 
 type ActiveSession = {
   server: ReturnType<typeof createMcpServer>;
@@ -48,6 +49,7 @@ export function createMcpRouter(): Router {
 
       if (!activeSession && isInitializeRequest(request.body)) {
         const server = createMcpServer({}, userId);
+        registerProductionNotionWriteTools(server, userId);
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (initializedSessionId) => {
