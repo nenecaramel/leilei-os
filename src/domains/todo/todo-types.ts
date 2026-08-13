@@ -21,8 +21,20 @@ export type ReplaceTodoPaperResult =
   | { outcome: "committed"; paper: TodoPaper }
   | { outcome: "conflict" };
 
+export type ReplaceTodoPaperIdempotentlyInput = ReplaceTodoPaperInput & {
+  idempotencyKey: string;
+  requestHash: string;
+};
+
+export type ReplaceTodoPaperIdempotentlyResult =
+  | { outcome: "committed" | "replayed"; paper: TodoPaper }
+  | { outcome: "idempotency_conflict" | "revision_conflict" };
+
 export interface TodoRepository {
   readDay(userId: string, date: string): Promise<TodoDayPapers>;
   listContentDates(userId: string): Promise<string[]>;
   replacePaper(input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult>;
+  replacePaperIdempotently?(
+    input: ReplaceTodoPaperIdempotentlyInput,
+  ): Promise<ReplaceTodoPaperIdempotentlyResult>;
 }

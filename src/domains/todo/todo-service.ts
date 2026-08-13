@@ -1,5 +1,15 @@
 import { isContentAuthor, type ContentAuthor } from "../content-author.js";
-import { TODO_ENTRY_KINDS, type TodoEntry, type TodoPaper, type TodoRepository } from "./todo-types.js";
+import {
+  hashMcpWriteRequest,
+  normalizeMcpIdempotencyKey,
+} from "../mcp-write/mcp-write-idempotency.js";
+import {
+  TODO_ENTRY_KINDS,
+  type ReplaceTodoPaperInput,
+  type TodoEntry,
+  type TodoPaper,
+  type TodoRepository,
+} from "./todo-types.js";
 
 export type TodoServiceErrorCode =
   | "TODO_DATE_INVALID"
@@ -7,7 +17,9 @@ export type TodoServiceErrorCode =
   | "TODO_REVISION_INVALID"
   | "TODO_ENTRY_INVALID"
   | "TODO_ENTRY_ID_DUPLICATE"
-  | "TODO_PAPER_CONFLICT";
+  | "TODO_PAPER_CONFLICT"
+  | "INVALID_IDEMPOTENCY_KEY"
+  | "IDEMPOTENCY_CONFLICT";
 
 export class TodoServiceError extends Error {
   constructor(public readonly code: TodoServiceErrorCode, message: string) {
@@ -47,6 +59,46 @@ function normalizeEntries(value: unknown): TodoEntry[] {
   return normalized;
 }
 
+type ReplacePaperServiceInput = {
+  userId: string;
+  date: unknown;
+  author: unknown;
+  revision: unknown;
+  entries: unknown;
+};
+
+function normalizeReplacePaperInput(
+  input: ReplacePaperServiceInput,
+): ReplaceTodoPaperInput {
+  assertDate(input.date);
+  if (!isContentAuthor(input.author)) {
+    throw new TodoServiceError("TODO_AUTHOR_INVALID", "Todo author is invalid.");
+  }
+  if (
+    input.revision !== null &&
+    (typeof input.revision !== "number" ||
+      !Number.isInteger(input.revision) ||
+      input.revision < 0)
+  ) {
+    throw new TodoServiceError("TODO_REVISION_INVALID", "Todo revision is invalid.");
+  }
+  return {
+    userId: input.userId,
+    date: input.date,
+    author: input.author as ContentAuthor,
+    expectedRevision: input.revision as number | null,
+    entries: normalizeEntries(input.entries),
+  };
+}
+
+export type ReplaceTodoPaperIdempotentlyServiceResult = {
+  paper: TodoPaper;
+  metadata: {
+    committed: boolean;
+    idempotent_replay: boolean;
+  };
+};
+
 export class TodoService {
   constructor(private readonly repository: TodoRepository) {}
 
@@ -59,27 +111,62 @@ export class TodoService {
     return this.repository.listContentDates(userId);
   }
 
-  async replacePaper(input: {
-    userId: string;
-    date: unknown;
-    author: unknown;
-    revision: unknown;
-    entries: unknown;
-  }): Promise<TodoPaper> {
-    assertDate(input.date);
-    if (!isContentAuthor(input.author)) throw new TodoServiceError("TODO_AUTHOR_INVALID", "Todo author is invalid.");
-    if (input.revision !== null && (typeof input.revision !== "number" || !Number.isInteger(input.revision) || input.revision < 0)) {
-      throw new TodoServiceError("TODO_REVISION_INVALID", "Todo revision is invalid.");
-    }
-    const entries = normalizeEntries(input.entries);
-    const result = await this.repository.replacePaper({
-      userId: input.userId,
-      date: input.date,
-      author: input.author as ContentAuthor,
-      expectedRevision: input.revision as number | null,
-      entries,
-    });
+  async replacePaper(input: ReplacePaperServiceInput): Promise<TodoPaper> {
+    const result = await this.repository.replacePaper(
+      normalizeReplacePaperInput(input),
+    );
     if (result.outcome === "conflict") throw new TodoServiceError("TODO_PAPER_CONFLICT", "Todo paper changed on another device.");
     return result.paper;
+  }
+
+  async replacePaperIdempotently(
+    input: ReplacePaperServiceInput & { idempotencyKey: string },
+  ): Promise<ReplaceTodoPaperIdempotentlyServiceResult> {
+    const normalized = normalizeReplacePaperInput(input);
+    let idempotencyKey: string;
+    try {
+      idempotencyKey = normalizeMcpIdempotencyKey(input.idempotencyKey);
+    } catch {
+      throw new TodoServiceError(
+        "INVALID_IDEMPOTENCY_KEY",
+        "The idempotency key is invalid.",
+      );
+    }
+    if (!this.repository.replacePaperIdempotently) {
+      throw new Error("Todo idempotent persistence is unavailable.");
+    }
+    const requestHash = hashMcpWriteRequest({
+      date: normalized.date,
+      author: normalized.author,
+      revision: normalized.expectedRevision,
+      entries: normalized.entries,
+    });
+    const result = await this.repository.replacePaperIdempotently({
+      ...normalized,
+      idempotencyKey,
+      requestHash,
+    });
+    if (result.outcome === "committed" || result.outcome === "replayed") {
+      return {
+        paper: result.paper,
+        metadata: {
+          committed: result.outcome === "committed",
+          idempotent_replay: result.outcome === "replayed",
+        },
+      };
+    }
+    if (result.outcome === "idempotency_conflict") {
+      throw new TodoServiceError(
+        "IDEMPOTENCY_CONFLICT",
+        "The idempotency key was already used for different Todo content.",
+      );
+    }
+    if (result.outcome === "revision_conflict") {
+      throw new TodoServiceError(
+        "TODO_PAPER_CONFLICT",
+        "Todo paper changed on another device.",
+      );
+    }
+    throw new Error("Unknown Todo idempotent persistence outcome.");
   }
 }
