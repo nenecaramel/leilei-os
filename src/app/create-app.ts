@@ -45,6 +45,9 @@ import type { SystemApiDependencies } from "../web-api/system-router.js";
 import { DrizzleTodoRepository } from "../domains/todo/todo-repository.js";
 import { TodoService } from "../domains/todo/todo-service.js";
 import type { TodoApiDependencies } from "../web-api/todo-router.js";
+import { DrizzleExportRepository } from "../domains/export/export-repository.js";
+import { ExportService } from "../domains/export/export-service.js";
+import type { ExportApiDependencies } from "../web-api/export-router.js";
 
 export type AppDependencies = {
   verifyAccessToken?: AccessTokenVerifier;
@@ -57,6 +60,7 @@ export type AppDependencies = {
   toyService?: ToyApiDependencies["toyService"];
   webGlobalSearchService?: GlobalSearchApiDependencies["globalSearchService"];
   webTodoService?: TodoApiDependencies["todoService"];
+  webExportService?: ExportApiDependencies["exportService"];
 };
 
 export function createApp(
@@ -137,6 +141,7 @@ export function createApp(
     let toyService = dependencies.toyService;
     let webGlobalSearchService = dependencies.webGlobalSearchService;
     let webTodoService = dependencies.webTodoService;
+    let webExportService = dependencies.webExportService;
 
     if (
       !webMemoryService ||
@@ -146,7 +151,8 @@ export function createApp(
       !webSystemService ||
       !toyService ||
       !webGlobalSearchService ||
-      !webTodoService
+      !webTodoService ||
+      !webExportService
     ) {
       if (!env.DATABASE_URL) {
         throw new Error(
@@ -197,6 +203,7 @@ export function createApp(
         webGlobalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
       }
       if (!webTodoService) webTodoService = new TodoService(new DrizzleTodoRepository(db));
+      if (!webExportService) webExportService = new ExportService(new DrizzleExportRepository(db));
     }
 
     if (
@@ -207,7 +214,8 @@ export function createApp(
       !webSystemService ||
       !toyService ||
       !webGlobalSearchService ||
-      !webTodoService
+      !webTodoService ||
+      !webExportService
     ) {
       throw new Error(
         "Web API services are not configured.",
@@ -250,6 +258,7 @@ export function createApp(
         },
         globalSearch: { globalSearchService: webGlobalSearchService },
         todo: { todoService: webTodoService },
+        export: { exportService: webExportService },
       }),
     );
   }
