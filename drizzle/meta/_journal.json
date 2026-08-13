@@ -127,6 +127,13 @@
       "when": 1786590053042,
       "tag": "0017_mcp_todo_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786645516211,
+      "tag": "0018_nifty_power_pack",
+      "breakpoints": true
     }
   ]
 }
