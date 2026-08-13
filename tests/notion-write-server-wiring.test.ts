@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { NotionJsonObject } from "../src/domains/notion/notion-transport.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
+import { registerNotionWriteTools } from "../src/mcp/server/register-notion-writes.js";
 
 class NotionWrites {
   calls: string[] = [];
@@ -33,11 +34,10 @@ class NotionWrites {
 
 async function connect() {
   const writes = new NotionWrites();
-  const server = createMcpServer({
-    notionWrites: {
-      notionService: writes,
-      getAuthenticatedUserId: () => "00000000-0000-4000-8000-000000000099",
-    },
+  const server = createMcpServer();
+  registerNotionWriteTools(server, {
+    notionService: writes,
+    getAuthenticatedUserId: () => "00000000-0000-4000-8000-000000000099",
   });
   const client = new Client(
     { name: "notion-write-server-client", version: "1.0.0" },
@@ -59,7 +59,7 @@ const WRITE_TOOLS = [
   "upload_notion_file",
 ];
 
-test("createMcpServer wires the seven Notion write tools alongside existing read tools", async (t) => {
+test("Notion write registrar composes seven write tools with existing read tools", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
 
@@ -70,7 +70,7 @@ test("createMcpServer wires the seven Notion write tools alongside existing read
   }
 });
 
-test("createMcpServer routes Notion write execution through injected write dependencies", async (t) => {
+test("Notion write registrar routes execution through injected write dependencies", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
 
