@@ -124,18 +124,16 @@ export class DrizzleImportRepository implements ImportRepository {
   }
 
   async insertTodo(userId: string, record: ExportTodoPaper): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      const [paper] = await tx.insert(todoPapers).values({
-        userId, businessDate: record.date, author: record.author, revision: record.revision,
-        createdAt: new Date(record.created_at), updatedAt: new Date(record.updated_at),
-      }).returning({ id: todoPapers.id });
-      if (!paper) throw new Error("todo paper insert failed");
-      if (record.entries.length > 0) {
-        await tx.insert(todoEntries).values(record.entries.map((entry, position) => ({
-          paperId: paper.id, entryId: entry.id, kind: entry.kind, text: entry.text, position,
-        })));
-      }
-    });
+    const [paper] = await this.db.insert(todoPapers).values({
+      userId, businessDate: record.date, author: record.author, revision: record.revision,
+      createdAt: new Date(record.created_at), updatedAt: new Date(record.updated_at),
+    }).returning({ id: todoPapers.id });
+    if (!paper) throw new Error("todo paper insert failed");
+    if (record.entries.length > 0) {
+      await this.db.insert(todoEntries).values(record.entries.map((entry, position) => ({
+        paperId: paper.id, entryId: entry.id, kind: entry.kind, text: entry.text, position,
+      })));
+    }
   }
 
   async rereadCreatedState(userId: string, modules: Set<keyof ImportCurrentState>): Promise<ImportCurrentState> {
