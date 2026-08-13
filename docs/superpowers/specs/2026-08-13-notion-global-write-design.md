@@ -1,7 +1,7 @@
 # Notion Global Write Design
 
 Date: 2026-08-13
-Status: Approved scope, implementation pending
+Status: Approved scope, implementation in progress
 Branch: `feat/notion-global-write`
 
 ## Goal
@@ -26,13 +26,13 @@ The supported target is the official REST API surface available to a PAT with th
 
 The write surface includes:
 
-- Pages: create, update properties/content metadata, move, archive/trash, restore.
-- Blocks: append/insert children, update, delete/trash, restore where the API supports it.
-- Databases: create and update database-level metadata/location supported by the current API.
-- Data sources: create and update schema, properties, title/icon, parent, trash/restore.
-- Views: create and update supported view filters, sorts, quick filters, layout/configuration and placement.
-- Comments: create/reply and update where the API permits the authenticated actor to do so.
-- File uploads: create upload, send file bytes, complete multipart uploads where required, and attach returned file-upload IDs through page/block/database mutations.
+- Pages: create, update properties/content metadata, enhanced-Markdown content updates, move, trash, restore, lock/template/erase-content fields supported by the page update endpoint.
+- Blocks: append/insert children with the 2026-03-11 `position` object, update, delete/trash, and restore where supported.
+- Databases: create and update database-level metadata/location, lock state, trash, and restore.
+- Data sources: create and update schema, properties, title/icon, parent, trash/restore; setting a supported property schema entry to `null` removes it.
+- Views: create, update filters/sorts/quick filters/layout/configuration, and permanently delete a view when Notion permits it.
+- Comments: create/reply, update, and delete where Notion permits the authenticated connection to do so. Notion limits update/delete to comments created by that connection.
+- File uploads: create upload, send file bytes, complete multipart uploads where required, support Notion's external URL import mode through the create body, and attach returned file-upload IDs through later page/block/database mutations.
 
 Existing read/search behavior stays intact.
 
@@ -42,7 +42,7 @@ Keep Notion isolated as its own domain and avoid a raw arbitrary-URL HTTP passth
 
 ### Shared transport
 
-Add a shared Notion transport responsible for:
+A shared Notion transport is responsible for:
 
 - `Authorization: Bearer <NOTION_PAT>`
 - `Notion-Version: 2026-03-11`
@@ -51,54 +51,58 @@ Add a shared Notion transport responsible for:
 - rate-limit/upstream/error normalization
 - ensuring only relative Notion API paths are used
 
-The existing read client should reuse this transport so read and write calls share one auth/error implementation.
+The existing read client reuses this transport so read and write calls share one auth/error implementation.
 
 ### Domain clients
 
-Split resource behavior into focused modules rather than one large client:
+Resource behavior stays split into focused modules rather than one large client:
 
-- read/search client (existing behavior, migrated onto shared transport)
+- read/search client
 - page/block mutation client
 - database/data-source/view mutation client
 - comment client
 - file-upload client
 
-Each module exposes typed operations to MCP registration code and contains no authentication/user-session logic beyond the shared PAT transport.
+Each module exposes typed operations to MCP registration code and contains no MCP authentication/session logic beyond the shared PAT transport.
+
+### Server composition
+
+The existing base MCP server continues to register the established LeileiOS tools, including `search_notion` and `read_notion_page`.
+
+A focused Notion write registrar composes the seven write tools onto each authenticated production MCP session after the base server is created. It lazily constructs one shared Notion transport from `env.NOTION_PAT` and focused domain clients on top of it. This keeps the write feature isolated instead of expanding the already-large base server factory.
 
 ### MCP tools
 
-Expose explicit resource-oriented tools instead of one generic raw request tool. Tool schemas should use action enums/unions so ChatGPT has a discoverable contract and cannot accidentally send arbitrary external URLs.
-
-Planned tools:
+Expose explicit resource-oriented tools instead of one generic raw request tool. Tool schemas use discriminated action unions so ChatGPT has a discoverable contract and cannot send arbitrary endpoint URLs.
 
 1. `write_notion_page`
-   - actions: `create`, `update`, `move`, `trash`, `restore`
-   - supports page properties, title, icon/cover, parent, and supported initial/updated content payloads
+   - actions: `create`, `update`, `move`, `update_content`, `trash`, `restore`
+   - supports page properties, title, icon/cover, parent, lock/template/erase fields, and enhanced-Markdown content operations supported by Notion
 
 2. `write_notion_block`
    - actions: `append_children`, `insert_children`, `update`, `delete`, `restore`
-   - supports official block payloads and child positioning fields exposed by the API
+   - supports official block payloads and 2026-03-11 child `position` fields
 
 3. `write_notion_database`
-   - actions: `create`, `update`
-   - database-level metadata/location only; schema mutations belong to data sources under the current API model
+   - actions: `create`, `update`, `trash`, `restore`
+   - database-container metadata/location/lock/trash operations; schema mutations belong to data sources
 
 4. `write_notion_data_source`
    - actions: `create`, `update`, `trash`, `restore`
-   - supports schema/property creation, modification and removal according to Notion validation rules
+   - supports schema/property creation, modification, removal and supported moves
 
 5. `write_notion_view`
-   - actions: `create`, `update`
-   - supports the current view types and official filter/sort/configuration fields
+   - actions: `create`, `update`, `delete`
+   - supports current view types and official filter/sort/quick-filter/configuration fields; delete is permanent and Notion rejects deletion of a database's last view
 
 6. `write_notion_comment`
-   - actions: `create`, `reply`, `update`
-   - follows Notion ownership/capability restrictions; an upstream 404/403 is returned as a normalized tool error rather than hidden
+   - actions: `create`, `reply`, `update`, `delete`
+   - follows Notion ownership/capability restrictions; update/delete may only target comments that the connection created
 
 7. `upload_notion_file`
    - actions: `create`, `send`, `complete`
-   - supports single-part and multipart upload flows
-   - binary/file input is accepted only through the MCP/file-capable execution path; the PAT never crosses that boundary
+   - supports single-part, multipart, and external-URL creation flows supported by Notion
+   - `send` accepts a bounded base64 payload through MCP JSON, decodes it server-side to a `Blob`, and never accepts local filesystem paths or a token
 
 The existing `search_notion` and `read_notion_page` stay registered unchanged from the user's perspective.
 
@@ -106,14 +110,12 @@ The existing `search_notion` and `read_notion_page` stay registered unchanged fr
 
 Tool inputs mirror Notion concepts but remain typed and bounded.
 
-- IDs are strings and are passed only into known Notion endpoint templates.
-- Mutation bodies accept only fields relevant to the selected resource/action.
-- Arbitrary absolute request URLs are rejected.
+- Resource IDs are strings passed only into known Notion endpoint templates and cannot be absolute URLs or paths.
+- Mutation bodies use bounded JSON objects and are sent only to the endpoint implied by the selected tool/action.
+- No raw HTTP endpoint URL and no PAT/token field is exposed.
 - No LeileiOS confirmation flag is added.
-- Notion-generated immutable fields are not accepted as writable inputs where the API rejects them.
-- Large content/file operations respect Notion limits and surface validation errors instead of silently truncating mutations.
-
-For content-heavy page/block operations, preserve Notion's native rich-text/block JSON shapes rather than inventing a second markup language. A later convenience layer may add Markdown-to-block conversion, but it is not required for full API write coverage.
+- Large content/file operations are bounded at the MCP boundary and still surface Notion validation errors rather than silently altering payloads.
+- Generic Notion request-body fragments intentionally preserve the official API's evolving rich-text/block/property/view shapes instead of duplicating the entire Notion schema inside LeileiOS.
 
 ## Output contract
 
@@ -126,20 +128,20 @@ All Notion mutation tools return a stable LeileiOS envelope:
 }
 ```
 
-Errors return the existing MCP error style with a stable Notion error code and a safe message. Upstream response bodies are not dumped blindly if they could expose unnecessary internal data.
+Errors return the existing MCP error style with a stable safe message. Upstream response bodies and PAT values are never blindly dumped into the MCP result.
 
-Useful returned identifiers (page ID, block ID, database ID, data-source ID, view ID, comment ID, file-upload ID, URL, trash state) are preserved when present.
+Useful returned identifiers such as page ID, block ID, database ID, data-source ID, view ID, comment ID, file-upload ID, URL and trash state are preserved when present.
 
 ## Error mapping
 
-Normalize at least:
+Normalize:
 
 - `NOT_CONFIGURED` — `NOTION_PAT` missing
 - `ACCESS_DENIED` — Notion 401/403
 - `NOT_FOUND` — Notion 404 or inaccessible resource
 - `CONFLICT` — Notion 409
 - `RATE_LIMITED` — Notion 429
-- `VALIDATION` — Notion 400 validation/input rejection
+- `VALIDATION` — Notion 400/406 validation/input rejection
 - `UPSTREAM` — network/5xx/invalid response
 
 Do not retry non-idempotent writes automatically. Rate-limit/upstream errors are returned to the caller unless a later endpoint-specific idempotency strategy is explicitly designed.
@@ -150,14 +152,14 @@ The user has explicitly approved direct destructive actions without an extra con
 
 Examples that may execute immediately when requested:
 
-- move a page/block to trash
-- restore from trash
-- delete/trash a block
-- remove a data-source property by sending the API-supported null/removal form
-- move databases/data sources/pages where supported
-- replace/update content in ways that remove prior content
+- trash/restore a page, block, database, or data source where Notion exposes trash state
+- delete a view permanently
+- delete a comment created by this Notion connection
+- remove a data-source property through Notion's supported `null` property-removal form
+- move supported pages/databases/data sources
+- erase or replace page content through supported page update/Markdown operations
 
-Notion's own trash/restore behavior is preserved. LeileiOS does not pretend an operation is permanently deleted if Notion represents it as `in_trash`.
+Notion's own semantics are preserved. LeileiOS does not describe a trash operation as a permanent delete, and it does not describe a permanent view deletion as restorable.
 
 ## Testing
 
@@ -166,18 +168,20 @@ Use TDD for each resource module.
 Unit tests mock the Notion HTTP boundary and verify:
 
 - exact method/path/version/auth headers
-- no PAT leakage in returned results/errors
+- no PAT leakage in results/errors
 - correct JSON and multipart request shaping
 - error normalization for 400/401/403/404/409/429/5xx/network failures
 - destructive actions do not require a synthetic confirmation field
-- no write tool can target an arbitrary external URL
+- no write tool can target an arbitrary external endpoint URL
+- view/comment delete endpoints are represented separately from Notion trash semantics
 
 MCP contract tests verify:
 
 - all seven new write tools are registered
-- existing `search_notion` and `read_notion_page` still work
+- existing `search_notion` and `read_notion_page` remain present
 - unauthenticated MCP access is rejected before Notion mutation
 - action-specific schemas reject unrelated fields
+- token/confirm/user-id fields are not part of the public schemas
 
 Verification gate before production:
 
@@ -191,17 +195,17 @@ git diff --check
 
 ## Production smoke
 
-After CI passes and production deploy succeeds, run authenticated MCP smoke tests against disposable Notion content created specifically for verification:
+After CI passes and production deploy succeeds, run authenticated MCP smoke tests only against disposable Notion content created specifically for verification:
 
 1. Create a temporary page.
 2. Update its title/content.
 3. Append and update a block.
-4. Move/trash and restore the temporary page or block as supported.
-5. Create a temporary database/data source/view when feasible without touching existing user structures; update them, then trash the temporary resources where the API supports cleanup.
-6. Create a temporary comment and update/reply where permitted.
-7. If a tiny disposable attachment is available through the MCP file path, verify the file-upload flow and attach it to the temporary page.
+4. Trash and restore the temporary page/block.
+5. Create a temporary database/data source/view when feasible; update them, test trash/restore where applicable, and test deletion only on a disposable non-last view.
+6. Create a temporary comment, update/reply, and delete only that disposable connection-created comment.
+7. Upload a tiny disposable attachment, attach its returned file-upload ID to disposable Notion content, and read back the result.
 8. Re-read/search the temporary page to prove write/read round-trip.
-9. Clean up the disposable test content using Notion's trash semantics.
+9. Clean up disposable content using the appropriate Notion trash/permanent-delete semantics.
 
 Do not use existing user pages for destructive smoke tests.
 
@@ -212,6 +216,7 @@ Do not use existing user pages for destructive smoke tests.
 - No local replica of Notion permissions.
 - No extra confirmation workflow.
 - No browser-side Notion token or direct browser-to-Notion calls.
+- No raw arbitrary REST passthrough.
 - No promise to implement UI-only Notion features that the official API does not expose.
 
 ## Acceptance criteria
@@ -224,5 +229,5 @@ This phase is complete when:
 - destructive mutations have no LeileiOS-side confirmation requirement;
 - PAT stays server-only;
 - focused tests and full project verification pass;
-- Railway deployment succeeds;
-- a disposable end-to-end create/update/destructive/read-back smoke passes without modifying existing user content.
+- Railway deployment succeeds without Web regression;
+- disposable end-to-end create/update/destructive/read-back smoke passes without modifying existing user content.
