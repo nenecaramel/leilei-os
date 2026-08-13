@@ -5,6 +5,7 @@ on:
     branches:
       - feat/notion-global-write
       - fix/notion-write-input-schema
+      - fix/notion-write-runtime-smoke
 
 jobs:
   verify:
