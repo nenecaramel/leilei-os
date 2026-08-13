@@ -40,8 +40,15 @@ test("Data reads the approved counts endpoint and exposes the approved export ac
   }
 
   assert.match(dataContentSource, /\/system\/export\?scope=/i);
-  for (const label of ["Export all", "Export Memory", "Export Diary", "Export Task", "Export Todo"]) {
-    assert.match(dataContentSource, new RegExp(label));
+  assert.match(dataContentSource, />\s*Export\s*</);
+  for (const [scope, label] of [
+    ["all", "All"],
+    ["memory", "Memory"],
+    ["diary", "Diary"],
+    ["task", "Task"],
+    ["todo", "Todo"],
+  ]) {
+    assert.match(dataContentSource, new RegExp(`\\["${scope}", "${label}"\\]`));
   }
 });
 
