@@ -5914,7 +5914,7 @@ body:has(.system-page) {
     min-height: 260px;
   }
 
-  .day-space-empty {
+  .day-space-placeholder {
     padding-top: 94px;
     color: #aaaaaa;
     font-size: 12px;

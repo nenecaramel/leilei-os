@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
@@ -484,4 +485,42 @@ test("Day Space does not claim complete empty or loading when one failed source 
   assert.doesNotMatch(page.container.textContent ?? "", /正在读取当天内容/);
   assert.doesNotMatch(page.container.textContent ?? "", /当天内容暂时无法读取/);
   await page.cleanup();
+});
+
+
+test("Day Space loading and empty states share the accepted placeholder treatment", () => {
+  const daySpaceSource = readFileSync(
+    new URL("../web/src/pages/DaySpacePage.tsx", import.meta.url),
+    "utf8",
+  );
+  const stylesSource = readFileSync(
+    new URL("../web/src/styles.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    daySpaceSource,
+    /className="day-space-placeholder" role="status">正在读取 Day Space…<\/div>/,
+  );
+  assert.match(
+    daySpaceSource,
+    /className="day-space-placeholder" role="status">正在读取当天内容…<\/div>/,
+  );
+  assert.match(
+    daySpaceSource,
+    /className="day-space-placeholder">这一天还没有内容<\/div>/,
+  );
+  assert.doesNotMatch(daySpaceSource, /className="day-space-loading"/);
+
+  const stageStart = daySpaceSource.indexOf(
+    '<div ref={stageMeasureRef} className="day-space-stage-measure">',
+  );
+  const discoveryLoading = daySpaceSource.indexOf("正在读取 Day Space…");
+  assert.ok(stageStart >= 0);
+  assert.ok(discoveryLoading > stageStart);
+
+  assert.match(
+    stylesSource,
+    /\.day-space-placeholder\s*\{[^}]*padding-top:\s*94px[^}]*font-size:\s*12px[^}]*font-weight:\s*400[^}]*text-align:\s*center/s,
+  );
 });
