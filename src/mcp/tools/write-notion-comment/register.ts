@@ -15,12 +15,14 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), body: notionBodySchema }).strict(),
   z.object({ action: z.literal("reply"), discussion_id: notionIdSchema, body: notionBodySchema }).strict(),
   z.object({ action: z.literal("update"), comment_id: notionIdSchema, body: notionBodySchema }).strict(),
+  z.object({ action: z.literal("delete"), comment_id: notionIdSchema }).strict(),
 ]);
 
 export type WriteNotionCommentToolDependencies = {
   notionService: {
     createComment(body: NotionJsonObject): Promise<NotionJsonObject>;
     updateComment(commentId: string, body: NotionJsonObject): Promise<NotionJsonObject>;
+    deleteComment(commentId: string): Promise<NotionJsonObject>;
   };
   getAuthenticatedUserId: () => string;
 };
@@ -31,7 +33,7 @@ export function registerWriteNotionCommentTool(
 ): void {
   server.registerTool("write_notion_comment", {
     title: "Write Notion comment",
-    description: "Create a page/block comment, reply to an existing discussion, or update a comment created by this Notion connection where Notion permits it.",
+    description: "Create a page/block comment, reply to an existing discussion, or update/delete a comment created by this Notion connection where Notion permits it.",
     inputSchema,
     outputSchema: notionOutputSchema,
     annotations: {
@@ -56,6 +58,9 @@ export function registerWriteNotionCommentTool(
           break;
         case "update":
           data = await dependencies.notionService.updateComment(args.comment_id, args.body);
+          break;
+        case "delete":
+          data = await dependencies.notionService.deleteComment(args.comment_id);
           break;
       }
       return notionSuccess(data, `Notion comment ${args.action} completed.`);
