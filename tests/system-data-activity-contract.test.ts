@@ -23,7 +23,7 @@ const dataSource = dataWrapperSource + dataContentSource;
 const activitySource =
   activityWrapperSource + activityContentSource;
 
-test("Data reads only the approved counts endpoint and exposes no export action", () => {
+test("Data reads the approved counts endpoint and exposes the approved export actions", () => {
   assert.match(dataWrapperSource, /useWebApiClient/);
   assert.match(dataContentSource, /"\/system\/data"/);
 
@@ -39,14 +39,10 @@ test("Data reads only the approved counts endpoint and exposes no export action"
     assert.match(dataContentSource, new RegExp(label));
   }
 
-  assert.doesNotMatch(
-    dataSource,
-    /\/system\/export/i,
-  );
-  assert.doesNotMatch(
-    dataContentSource,
-    />\s*(?:Export|Restore|Backup|Download|Upload)\b/i,
-  );
+  assert.match(dataContentSource, /\/system\/export\?scope=/i);
+  for (const label of ["Export all", "Export Memory", "Export Diary", "Export Task", "Export Todo"]) {
+    assert.match(dataContentSource, new RegExp(label));
+  }
 });
 
 test("Activity reads the approved endpoint and renders only safe public event fields", () => {
