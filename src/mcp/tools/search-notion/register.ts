@@ -63,12 +63,25 @@ export function registerSearchNotionTool(
     try {
       dependencies.getAuthenticatedUserId();
       const data = await dependencies.notionService.searchPages(args);
+      const structuredData = {
+        results: data.results.map((page) => ({
+          id: page.id,
+          title: page.title,
+          url: page.url,
+          last_edited_time: page.last_edited_time,
+        })),
+        metadata: {
+          count: data.metadata.count,
+          has_more: data.metadata.has_more,
+          next_cursor: data.metadata.next_cursor,
+        },
+      };
       return {
         content: [{
           type: "text" as const,
           text: `Found ${data.metadata.count} Notion pages.`,
         }],
-        structuredContent: { success: true as const, data },
+        structuredContent: { success: true as const, data: structuredData },
       };
     } catch (error) {
       if (error instanceof SearchNotionAuthenticationError) {
