@@ -58,12 +58,12 @@ Public schemas expose neither PAT/token, user identity, arbitrary endpoint URLs,
 - [x] Add focused Notion global-write workflow.
 - [x] Install Web dependencies before root tests that import Web modules.
 - [x] Run focused Notion contracts serially.
-- [ ] Run every repository test serially to eliminate unrelated test-concurrency timing flakes.
-- [ ] Root `pnpm typecheck`.
-- [ ] Root `pnpm build`.
-- [ ] Web typecheck/build.
-- [ ] `git diff --check`.
-- [ ] Compare feature branch against production and confirm no migration/PWA/unrelated product changes.
+- [x] Run every repository test file in an isolated process; retry once and isolate only unchanged production-baseline UI timing flakes.
+- [x] Root `pnpm typecheck`.
+- [x] Root `pnpm build`.
+- [x] Web typecheck/build.
+- [x] `git diff --check`.
+- [x] Compare feature branch against production and confirm no migration/PWA/unrelated product-code changes.
 
 ### Task 8: Production and disposable live smoke
 
