@@ -51,6 +51,14 @@ function installDashboardDom() {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 100));
 
+async function waitForCondition(condition: () => boolean, label: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`Timed out waiting for ${label}`);
+}
+
 test("Dashboard renders server-backed Home papers", async () => {
   const env = installDashboardDom();
   const container = env.dom.window.document.getElementById("root")!;
@@ -60,7 +68,12 @@ test("Dashboard renders server-backed Home papers", async () => {
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
     api,
   })));
-  await waitForPaint();
+  await waitForCondition(() => requestCount >= 1, "Dashboard server-backed paper request");
+  await waitForCondition(
+    () => container.querySelectorAll(".today-panel").length === 2 &&
+      container.querySelector(".calendar-preview") !== null,
+    "Dashboard Home render",
+  );
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
   assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
   assert.equal(container.querySelectorAll(".today-panel").length, 2);
@@ -74,7 +87,6 @@ test("Dashboard renders server-backed Home papers", async () => {
   assert.equal(container.querySelectorAll(".calendar-frame").length, 1);
   assert.deepEqual([...container.querySelectorAll(".home-bottom-nav a")].map((link) => link.textContent), ["Memory", "Diary", "Task", "Universe"]);
   assert.equal(container.querySelector(".hero-panel"), null);
-  assert.ok(requestCount >= 1);
   root.unmount();
   await waitForPaint();
   env.restore();
@@ -87,19 +99,26 @@ test("L and G panels open a modal with their own fixture notes", async () => {
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
     api: { request: async (path: string) => ({ success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: [{ id: "l-1", kind: "pending", text: "First" }] }, G: { author: "G", date: "2026-08-12", revision: 1, entries: [{ id: "g-1", kind: "record", text: "Second" }] } } } }) },
   })));
-  await waitForPaint();
+  await waitForCondition(
+    () => container.querySelectorAll<HTMLButtonElement>(".today-panel").length === 2,
+    "Dashboard paper panels",
+  );
   const panels = [...container.querySelectorAll<HTMLButtonElement>(".today-panel")];
   panels[0]?.focus();
   panels[0]?.click();
-  await waitForPaint();
-  assert.equal(container.querySelectorAll('[role="dialog"]').length, 1);
+  await waitForCondition(
+    () => container.querySelectorAll('[role="dialog"]').length === 1 &&
+      env.dom.window.document.body.style.overflow === "hidden",
+    "paper detail modal open",
+  );
   assert.match(container.querySelector('[role="dialog"]')?.textContent ?? "", /L/);
-  assert.equal(env.dom.window.document.body.style.overflow, "hidden");
   const close = container.querySelector<HTMLButtonElement>(".paper-detail-veil");
   close?.click();
-  await waitForPaint();
-  assert.equal(container.querySelector('[role="dialog"]'), null);
-  assert.equal(env.dom.window.document.activeElement, panels[0]);
+  await waitForCondition(
+    () => container.querySelector('[role="dialog"]') === null &&
+      env.dom.window.document.activeElement === panels[0],
+    "paper detail modal close",
+  );
   root.unmount();
   await waitForPaint();
   env.restore();
