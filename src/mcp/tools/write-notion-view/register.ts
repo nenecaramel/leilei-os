@@ -32,7 +32,7 @@ export function registerWriteNotionViewTool(
 ): void {
   server.registerTool("write_notion_view", {
     title: "Write Notion view",
-    description: "Create, update, or permanently delete a Notion database view using the current API view types, filters, sorts, quick filters, and configuration fields.",
+    description: "Create, update, or permanently delete a Notion database view. For create of a normal database view, body must include database_id, data_source_id, name, and type in addition to any supported filters, sorts, quick filters, or configuration fields.",
     inputSchema,
     outputSchema: notionOutputSchema,
     annotations: {
