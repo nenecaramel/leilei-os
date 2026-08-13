@@ -137,8 +137,9 @@ function renderBlock(block: JsonObject, depth: number): string {
       return text ? `${indent}${text} ${url}`.trimEnd() : `${indent}${url}`;
     }
     case "table_row": {
-      const cells = Array.isArray(payload?.cells) ? payload.cells : [];
-      const rendered = cells.map((cell) => richTextPlain(cell));
+      const rawCells = payload?.cells;
+      const cells: unknown[] = Array.isArray(rawCells) ? rawCells : [];
+      const rendered = cells.map((cell: unknown) => richTextPlain(cell));
       return `${indent}| ${rendered.join(" | ")} |`;
     }
     default:
