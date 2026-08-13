@@ -32,11 +32,14 @@ jobs:
           tests/notion-mcp-tools.test.ts
           tests/notion-server-wiring.test.ts
           tests/mcp-read-contract.test.ts
-      - name: Run full test suite serially
+      - name: Run every test file in an isolated process
         shell: bash
         run: |
           mapfile -t test_files < <(find tests -type f -name '*.test.ts' -print | sort)
-          pnpm exec tsx --test --test-concurrency=1 "${test_files[@]}"
+          for test_file in "${test_files[@]}"; do
+            echo "==> $test_file"
+            pnpm exec tsx --test --test-concurrency=1 "$test_file"
+          done
       - run: pnpm typecheck
       - run: pnpm build
       - run: cd web && npm run typecheck && npm run build
