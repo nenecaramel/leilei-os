@@ -37,6 +37,7 @@ test("NotionStructureClient uses fixed database, data source, and view endpoints
     sorts: null,
     configuration: { type: "table" },
   });
+  await client.deleteView("view id");
 
   assert.deepEqual(calls.map(({ url, method }) => [url, method]), [
     ["https://api.notion.com/v1/databases", "POST"],
@@ -45,6 +46,7 @@ test("NotionStructureClient uses fixed database, data source, and view endpoints
     ["https://api.notion.com/v1/data_sources/source%20id", "PATCH"],
     ["https://api.notion.com/v1/views", "POST"],
     ["https://api.notion.com/v1/views/view%20id", "PATCH"],
+    ["https://api.notion.com/v1/views/view%20id", "DELETE"],
   ]);
   assert.deepEqual(calls[3]?.body, {
     properties: { Old: null },
