@@ -17,10 +17,9 @@ const WRITE_TOOL_EXPECTED_FIELDS = new Map<string, string>([
   ["write_notion_view", "action"],
   ["write_notion_comment", "action"],
   ["upload_notion_file", "action"],
-  ["create_notion_meeting_note", "body"],
 ]);
 
-test("production Notion write registrar exposes usable top-level input fields through tools/list", async (t) => {
+test("production Notion write registrar exposes only supported writable tools with usable top-level input fields", async (t) => {
   const server = new McpServer({ name: "notion-schema-surface-test", version: "1.0.0" });
   registerNotionWriteTools(server, {
     notionService: noopService,
@@ -50,4 +49,10 @@ test("production Notion write registrar exposes usable top-level input fields th
       `${name} should expose ${expectedField} in tools/list, got ${JSON.stringify(tool.inputSchema)}`,
     );
   }
+
+  assert.equal(
+    listed.tools.some((tool) => tool.name === "create_notion_meeting_note"),
+    false,
+    "meeting notes are read-only in Notion API 2026-03-11 and must not be exposed as a write tool",
+  );
 });
