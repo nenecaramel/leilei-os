@@ -16,13 +16,13 @@ The user explicitly wants no LeileiOS-side confirmation gate for destructive mut
 
 The PAT is user-scoped. LeileiOS may act only on Notion resources the PAT owner can access. LeileiOS adds no page allowlist and no additional read/write restriction layer.
 
-No second `confirm=true` field is required for destructive operations. Native Notion authorization, validation, trash semantics, and API errors are the only mutation gates.
+No second `confirm=true` field is required for destructive operations. Native Notion authorization, validation, trash semantics, capability/plan checks, and API errors are the only mutation gates.
 
 ## API baseline
 
 Use Notion API version `2026-03-11`.
 
-The supported target is the official REST API surface available to a PAT with the `Notion API` capability. “Global/full write” means all relevant write operations that the official API exposes and that the authenticated Notion user is permitted to perform. It does not promise UI-only actions that have no API endpoint.
+The supported target is the official REST API surface available to a PAT with the `Notion API` capability. “Global/full write” means all relevant write operations that the official API exposes and that the authenticated Notion user is permitted to perform. It does not promise UI-only actions or plan-gated capabilities that Notion does not make available to this workspace.
 
 The write surface includes:
 
@@ -32,7 +32,8 @@ The write surface includes:
 - Data sources: create and update schema, properties, title/icon, parent, trash/restore; setting a supported property schema entry to `null` removes it.
 - Views: create, update filters/sorts/quick filters/layout/configuration, and permanently delete a view when Notion permits it.
 - Comments: create/reply, update, and delete where Notion permits the authenticated connection to do so. Notion limits update/delete to comments created by that connection.
-- File uploads: create upload, send file bytes, complete multipart uploads where required, support Notion's external URL import mode through the create body, and attach returned file-upload IDs through later page/block/database mutations.
+- File uploads: create upload, send file bytes, complete multipart uploads where required, support Notion's external URL import mode through the create body, and attach returned file-upload IDs through later mutations.
+- AI Meeting Notes: create a Meeting Note through the current meeting-note endpoint from a supported source when the workspace/plan exposes that capability.
 
 Existing read/search behavior stays intact.
 
@@ -62,6 +63,7 @@ Resource behavior stays split into focused modules rather than one large client:
 - database/data-source/view mutation client
 - comment client
 - file-upload client
+- meeting-note client
 
 Each module exposes typed operations to MCP registration code and contains no MCP authentication/session logic beyond the shared PAT transport.
 
@@ -69,11 +71,11 @@ Each module exposes typed operations to MCP registration code and contains no MC
 
 The existing base MCP server continues to register the established LeileiOS tools, including `search_notion` and `read_notion_page`.
 
-A focused Notion write registrar composes the seven write tools onto each authenticated production MCP session after the base server is created. It lazily constructs one shared Notion transport from `env.NOTION_PAT` and focused domain clients on top of it. This keeps the write feature isolated instead of expanding the already-large base server factory.
+A focused Notion write registrar composes the eight write tools onto each authenticated production MCP session after the base server is created. It lazily constructs one shared Notion transport from `env.NOTION_PAT` and focused domain clients on top of it. This keeps the write feature isolated instead of expanding the already-large base server factory.
 
 ### MCP tools
 
-Expose explicit resource-oriented tools instead of one generic raw request tool. Tool schemas use discriminated action unions so ChatGPT has a discoverable contract and cannot send arbitrary endpoint URLs.
+Expose explicit resource-oriented tools instead of one generic raw request tool. Tool schemas use discriminated action unions or one bounded body so ChatGPT has a discoverable contract and cannot send arbitrary endpoint URLs.
 
 1. `write_notion_page`
    - actions: `create`, `update`, `move`, `update_content`, `trash`, `restore`
@@ -104,6 +106,11 @@ Expose explicit resource-oriented tools instead of one generic raw request tool.
    - supports single-part, multipart, and external-URL creation flows supported by Notion
    - `send` accepts a bounded base64 payload through MCP JSON, decodes it server-side to a `Blob`, and never accepts local filesystem paths or a token
 
+8. `create_notion_meeting_note`
+   - sends a bounded official request body to `POST /blocks/meeting_notes`
+   - supports the current Notion meeting-note source/parent/title/language/options body without inventing a separate LeileiOS format
+   - an unavailable workspace/plan capability is surfaced as a Notion error rather than treated as success
+
 The existing `search_notion` and `read_notion_page` stay registered unchanged from the user's perspective.
 
 ## Input policy
@@ -115,7 +122,7 @@ Tool inputs mirror Notion concepts but remain typed and bounded.
 - No raw HTTP endpoint URL and no PAT/token field is exposed.
 - No LeileiOS confirmation flag is added.
 - Large content/file operations are bounded at the MCP boundary and still surface Notion validation errors rather than silently altering payloads.
-- Generic Notion request-body fragments intentionally preserve the official API's evolving rich-text/block/property/view shapes instead of duplicating the entire Notion schema inside LeileiOS.
+- Generic Notion request-body fragments intentionally preserve the official API's evolving rich-text/block/property/view/meeting-note shapes instead of duplicating the entire Notion schema inside LeileiOS.
 
 ## Output contract
 
@@ -174,10 +181,11 @@ Unit tests mock the Notion HTTP boundary and verify:
 - destructive actions do not require a synthetic confirmation field
 - no write tool can target an arbitrary external endpoint URL
 - view/comment delete endpoints are represented separately from Notion trash semantics
+- meeting-note creation uses only the fixed official endpoint
 
 MCP contract tests verify:
 
-- all seven new write tools are registered
+- all eight new write tools are registered
 - existing `search_notion` and `read_notion_page` remain present
 - unauthenticated MCP access is rejected before Notion mutation
 - action-specific schemas reject unrelated fields
@@ -186,7 +194,7 @@ MCP contract tests verify:
 Verification gate before production:
 
 ```bash
-pnpm test
+pnpm exec tsx --test --test-concurrency=1 <all test files>
 pnpm typecheck
 pnpm build
 cd web && npm ci && npm run typecheck && npm run build
@@ -204,8 +212,9 @@ After CI passes and production deploy succeeds, run authenticated MCP smoke test
 5. Create a temporary database/data source/view when feasible; update them, test trash/restore where applicable, and test deletion only on a disposable non-last view.
 6. Create a temporary comment, update/reply, and delete only that disposable connection-created comment.
 7. Upload a tiny disposable attachment, attach its returned file-upload ID to disposable Notion content, and read back the result.
-8. Re-read/search the temporary page to prove write/read round-trip.
-9. Clean up disposable content using the appropriate Notion trash/permanent-delete semantics.
+8. Create a disposable Meeting Note only if the workspace exposes the capability and a disposable supported source is available; otherwise record the upstream capability/plan block explicitly.
+9. Re-read/search the temporary page to prove write/read round-trip.
+10. Clean up disposable content using the appropriate Notion trash/permanent-delete semantics.
 
 Do not use existing user pages for destructive smoke tests.
 
@@ -224,10 +233,10 @@ Do not use existing user pages for destructive smoke tests.
 This phase is complete when:
 
 - existing Notion global search/read remains operational;
-- the seven resource-oriented mutation tools are available through authenticated LeileiOS MCP;
+- the eight resource-oriented write tools are available through authenticated LeileiOS MCP;
 - they cover the current official Notion API write surface described above;
 - destructive mutations have no LeileiOS-side confirmation requirement;
 - PAT stays server-only;
 - focused tests and full project verification pass;
 - Railway deployment succeeds without Web regression;
-- disposable end-to-end create/update/destructive/read-back smoke passes without modifying existing user content.
+- disposable end-to-end create/update/destructive/read-back smoke passes without modifying existing user content; capability-gated Meeting Note creation may be recorded as unavailable only when Notion itself rejects it for this workspace/plan.
