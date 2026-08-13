@@ -2,40 +2,47 @@
 
 ## Goal
 
-Replace the visually inconsistent export controls on `System → Data` with one compact System-style card while preserving all existing export behavior.
+Keep the separate `System → Data` Export card, but make it visually consistent with the accepted System language while preserving all existing export behavior.
 
 ## Scope
 
-Only the presentation of the existing export controls changes. Export API paths, scopes, download behavior, audit query semantics, backend code, database schema, MCP behavior, and exported JSON remain unchanged.
+Only presentation changes. Export API paths, scopes, download behavior, audit query semantics, backend code, database schema, MCP behavior, and exported JSON remain unchanged.
 
 ## Layout
 
 Keep the existing Data summary card unchanged.
 
-Add a separate Export card below it. The vertical gap between the Data card and Export card is exactly `12px`, matching the spacing between Activity day cards.
+The Export card remains a separate card exactly `12px` below Data, matching the spacing between Activity cards. It reuses the existing System card geometry: full width, `13px` horizontal inset, `14px` radius, and the existing System border/background/shadow.
 
-The Export card reuses the existing System card language: full width, `13px` horizontal inset, `14px` radius, existing System border/background/shadow.
+There are no separator lines anywhere inside the Export card.
 
-Inside the Export card:
+### Row 1 — Export label
 
-- No separator lines anywhere.
-- First content row uses an Account-style two-column layout.
-- Left side: `Export`, using the same visual treatment as Account `Name` / `Email` labels: 14px, weight 500, #171717.
-- Right side: five vertically stacked pure-text actions in this order: `All`, `Memory`, `Diary`, `Task`, `Todo`.
-- These actions have no border, fill, pill, tile, or button chrome. They use Account-value-style typography: 14px, weight 400, right aligned.
-- Each action preserves its current export scope: `all`, `memory`, `diary`, `task`, `todo`.
-- While an export is pending, all five text actions remain disabled just as the current buttons are.
+- Left aligned `Export` only.
+- Typography matches Account `Name` / `Email`: 14px, weight 500, `#171717`.
+- The card starts with the existing `13px` System inset rhythm.
 
-Below the export actions, keep the audit control inside the same card:
+### Row 2 — export scopes
+
+- One horizontal row containing, in order: `All`, `Memory`, `Diary`, `Task`, `Todo`.
+- The five actions occupy five equal-width columns so their centers and overall left/right spacing remain visually even.
+- Actions are pure text: no border, fill, pill, tile, button chrome, or separators.
+- Typography remains 14px, weight 400.
+- The action row sits `10px` below the Export label.
+- Each action preserves its current scope: `all`, `memory`, `diary`, `task`, `todo`.
+- While an export is pending, all five actions remain disabled.
+
+### Row 3 — audit option
 
 - Text: `Include audit/lifecycle events`.
-- Typography must match Account `Signed in with Auth0` (`.system-note`): 12px, weight 400, #8a8a8a.
-- Use a compact checkbox aligned on the right.
-- Checkbox geometry follows the existing project compact checkbox treatment: 19×19px, 5px radius, theme accent.
-- Audit is off by default.
-- Checking it continues to append `include_audit=true` to export requests.
-
-Do not add a custom switch component or a new visual language.
+- Typography starts with the same appearance as Account `Signed in with Auth0`: 12px, weight 400, `#8a8a8a`.
+- The row sits `12px` below the scope row.
+- Do not render a visible checkbox, switch, border, circle, pill, or background.
+- The entire text control remains clickable and retains an accessible hidden checkbox for form semantics.
+- Audit is off by default: text is light gray and there is no checkmark.
+- When enabled, the text becomes darker (`#555555`) and a small plain `✓` appears immediately to the right of the text with a tight gap.
+- The `✓` has no border, container, or background.
+- Enabled audit continues to append `include_audit=true` to export requests.
 
 ## Error State
 
@@ -43,27 +50,27 @@ Existing local export error behavior remains. `Unable to export data.` stays ins
 
 ## Files
 
-Expected implementation surface:
+Implementation surface:
 
 - `web/src/pages/SystemDataPageContent.tsx`
-- `web/src/styles.css`
+- `web/src/pages/system-export-ui-polish.css`
 - `tests/system-data-export-ui.test.ts`
 
-No other production files should change unless required by an actual test failure caused by this presentation change.
+No backend or unrelated production files change.
 
 ## Tests
 
-Update focused UI tests to verify:
+Focused UI tests verify:
 
-- five export actions still exist in the approved order;
-- each pure-text action requests the correct scope;
+- `Export` is its own header row;
+- the five scope actions remain in the approved order;
+- the scope actions use the horizontal action-row structure;
 - audit remains off by default;
-- enabled audit still sends `include_audit=true`;
-- pending export disables all actions;
-- export failure stays local and preserves the loaded Data summary;
-- the component uses the new Export-card/action/control classes instead of the old `.system-export-actions button` layout.
-
-Run focused tests plus root/web typecheck and build before merge.
+- inactive audit has no visible checkmark;
+- activating audit produces the plain `✓` state and still sends `include_audit=true`;
+- scope requests and downloaded JSON behavior remain unchanged;
+- pending export disables all scope actions;
+- export failure stays local and preserves the loaded Data summary.
 
 ## Out of Scope
 
