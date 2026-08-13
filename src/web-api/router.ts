@@ -23,6 +23,7 @@ import { createGlobalSearchApiRouter, type GlobalSearchApiDependencies } from ".
 import { createSystemApiRouter, type SystemApiDependencies } from "./system-router.js";
 import { createTodoApiRouter, type TodoApiDependencies } from "./todo-router.js";
 import { createExportApiRouter, type ExportApiDependencies } from "./export-router.js";
+import { createImportApiRouter, type ImportApiDependencies } from "./import-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
@@ -34,6 +35,7 @@ export type WebApiRouterDependencies = {
   globalSearch?: GlobalSearchApiDependencies;
   todo?: TodoApiDependencies;
   export?: ExportApiDependencies;
+  import?: ImportApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -86,6 +88,7 @@ export function createWebApiRouter(
   if (dependencies.todo) router.use("/todo", createTodoApiRouter(dependencies.todo));
   if (dependencies.globalSearch) router.use("/search", createGlobalSearchApiRouter(dependencies.globalSearch));
   if (dependencies.export) router.use("/system/export", createExportApiRouter(dependencies.export));
+  if (dependencies.import) router.use("/system/import", createImportApiRouter(dependencies.import));
 
   return router;
 }
