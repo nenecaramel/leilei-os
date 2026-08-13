@@ -15,15 +15,23 @@ export type ImportErrorCode =
 export class ImportValidationError extends Error {
   constructor(
     public readonly code: ImportErrorCode,
-    message = code,
+    message?: string,
   ) {
-    super(message);
+    super(message ?? code);
     this.name = "ImportValidationError";
   }
 }
 
 const isoDateTime = z.string().datetime({ offset: true });
-const businessDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
+const businessDate = z.string().refine((value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+});
 const uuid = z.string().uuid();
 const author = z.union([z.literal("L"), z.literal("G"), z.null()]);
 const boundedTags = z.array(z.string().max(50)).max(20);
@@ -67,7 +75,7 @@ const taskRecord = z.object({
   author,
   priority: z.enum(["low", "normal", "high", "urgent"]),
   due_time: isoDateTime.nullable(),
-  timezone: z.string().min(1).max(64),
+  timezone: z.string().regex(/^[A-Za-z0-9_+.-]+(?:\/[A-Za-z0-9_+.-]+)*$/u).max(64),
   tags: boundedTags,
   created_at: isoDateTime,
   updated_at: isoDateTime,
@@ -201,4 +209,3 @@ export function parseImportPackage(input: Uint8Array): ParsedImportPackage {
     raw_bytes: input.byteLength,
   };
 }
-
