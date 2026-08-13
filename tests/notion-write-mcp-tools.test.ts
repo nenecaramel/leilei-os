@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { NotionJsonObject } from "../src/domains/notion/notion-transport.js";
+import { registerCreateNotionMeetingNoteTool } from "../src/mcp/tools/create-notion-meeting-note/register.js";
 import { registerWriteNotionPageTool } from "../src/mcp/tools/write-notion-page/register.js";
 import { registerWriteNotionBlockTool } from "../src/mcp/tools/write-notion-block/register.js";
 import { registerWriteNotionDatabaseTool } from "../src/mcp/tools/write-notion-database/register.js";
@@ -43,6 +44,7 @@ class NotionWrites {
     return this.result("sendUpload", [id, file.size, file.type, filename, partNumber]);
   }
   completeUpload(id: string) { return this.result("completeUpload", [id]); }
+  createMeetingNote(body: NotionJsonObject) { return this.result("createMeetingNote", [body]); }
 }
 
 async function connect(authenticated = true) {
@@ -62,6 +64,7 @@ async function connect(authenticated = true) {
   registerWriteNotionViewTool(server, { notionService: writes, getAuthenticatedUserId: auth });
   registerWriteNotionCommentTool(server, { notionService: writes, getAuthenticatedUserId: auth });
   registerUploadNotionFileTool(server, { notionService: writes, getAuthenticatedUserId: auth });
+  registerCreateNotionMeetingNoteTool(server, { notionService: writes, getAuthenticatedUserId: auth });
 
   const client = new Client(
     { name: "notion-write-client", version: "1.0.0" },
@@ -81,6 +84,7 @@ const WRITE_TOOLS = [
   "write_notion_view",
   "write_notion_comment",
   "upload_notion_file",
+  "create_notion_meeting_note",
 ] as const;
 
 test("all Notion write tools are registered as open-world mutations without secret or confirm inputs", async (t) => {
@@ -131,7 +135,7 @@ test("page/block destructive actions execute immediately after authentication", 
   });
 });
 
-test("structure, comment, and upload tools dispatch action-specific payloads including permanent deletes", async (t) => {
+test("structure, comment, upload, and meeting note tools dispatch action-specific payloads", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
 
@@ -140,6 +144,7 @@ test("structure, comment, and upload tools dispatch action-specific payloads inc
   await fixture.client.callTool({ name: "write_notion_view", arguments: { action: "delete", view_id: "view-id" } });
   await fixture.client.callTool({ name: "write_notion_comment", arguments: { action: "delete", comment_id: "comment-id" } });
   await fixture.client.callTool({ name: "upload_notion_file", arguments: { action: "send", file_upload_id: "upload-id", filename: "x.txt", content_type: "text/plain", file_base64: Buffer.from("hello").toString("base64"), part_number: 1 } });
+  await fixture.client.callTool({ name: "create_notion_meeting_note", arguments: { body: { source: { type: "file_upload", file_upload_id: "upload-id" }, parent: { type: "page_id", page_id: "page-id" }, title: "Sync" } } });
 
   assert.deepEqual(fixture.writes.calls.map((call) => call.method), [
     "createDatabase",
@@ -147,11 +152,17 @@ test("structure, comment, and upload tools dispatch action-specific payloads inc
     "deleteView",
     "deleteComment",
     "sendUpload",
+    "createMeetingNote",
   ]);
   assert.deepEqual(fixture.writes.calls[1]?.args, ["source-id", { in_trash: true }]);
   assert.deepEqual(fixture.writes.calls[2]?.args, ["view-id"]);
   assert.deepEqual(fixture.writes.calls[3]?.args, ["comment-id"]);
   assert.deepEqual(fixture.writes.calls[4]?.args, ["upload-id", 5, "text/plain", "x.txt", 1]);
+  assert.deepEqual(fixture.writes.calls[5]?.args, [{
+    source: { type: "file_upload", file_upload_id: "upload-id" },
+    parent: { type: "page_id", page_id: "page-id" },
+    title: "Sync",
+  }]);
 });
 
 test("strict schemas reject synthetic confirmation and secret injection before auth", async (t) => {
