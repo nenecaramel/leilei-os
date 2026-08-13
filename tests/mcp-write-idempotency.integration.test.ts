@@ -14,6 +14,8 @@ import { ToyCommandService, ToyDomainError } from "../src/domains/toy/toy-comman
 import { hashMcpWriteRequest } from "../src/domains/mcp-write/mcp-write-idempotency.js";
 import { DrizzleMemoryRepository } from "../src/domains/memory/memory-repository.js";
 import { MemoryDomainError, MemoryService } from "../src/domains/memory/memory-service.js";
+import { DrizzleTodoRepository } from "../src/domains/todo/todo-repository.js";
+import { TodoService, TodoServiceError } from "../src/domains/todo/todo-service.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const parsed = databaseUrl ? new URL(databaseUrl) : null;
@@ -30,6 +32,7 @@ async function withService<T>(operation: (services: {
   diary: DiaryService;
   toy: ToyCommandService;
   memory: MemoryService;
+  todo: TodoService;
 }) => Promise<T>, userId: string): Promise<T> {
   const { client, db } = connection();
   try {
@@ -38,6 +41,7 @@ async function withService<T>(operation: (services: {
       diary: new DiaryService(new DrizzleDiaryRepository(db as never)),
       toy: new ToyCommandService(new DrizzleToyCommandRepository(db as never), userId),
       memory: new MemoryService(new DrizzleMemoryRepository(db as never)),
+      todo: new TodoService(new DrizzleTodoRepository(db as never)),
     });
   } finally {
     await client.end();
@@ -138,6 +142,50 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
     const afterConflictRows = await admin.client.unsafe(`select count(*)::int as count from ${tableName} where user_id = $1::uuid`, [owner]);
     assert.equal(afterConflictRows[0]?.count, afterRows[0]?.count, `${item.tool} conflict must create nothing`);
   }
+
+  const todoKey = "integration-todo-paper-0001";
+  const todoInput = {
+    userId: owner,
+    date: "2026-08-13",
+    author: "L" as const,
+    revision: null,
+    entries: [{ id: "todo-integration", kind: "pending" as const, text: "private-todo-integration" }],
+    idempotencyKey: todoKey,
+  };
+  const todoResults = await Promise.all(
+    Array.from({ length: 6 }, () =>
+      withService(({ todo }) => todo.replacePaperIdempotently(todoInput), owner)
+    ),
+  );
+  assert.equal(todoResults.filter((result) => result.metadata.committed).length, 1);
+  assert.equal(todoResults.filter((result) => result.metadata.idempotent_replay).length, 5);
+  assert.equal(todoResults.every((result) => result.paper.revision === 1), true);
+  const todoRows = await admin.db
+    .select({ id: schema.todoPapers.id, revision: schema.todoPapers.revision })
+    .from(schema.todoPapers)
+    .where(and(
+      eq(schema.todoPapers.userId, owner),
+      eq(schema.todoPapers.businessDate, todoInput.date),
+      eq(schema.todoPapers.author, todoInput.author),
+    ));
+  assert.equal(todoRows.length, 1);
+  assert.equal(todoRows[0]?.revision, 1);
+  const todoIdempotency = await admin.db
+    .select({ value: count() })
+    .from(schema.mcpWriteIdempotency)
+    .where(and(
+      eq(schema.mcpWriteIdempotency.userId, owner),
+      eq(schema.mcpWriteIdempotency.toolName, "write_todo_paper"),
+      eq(schema.mcpWriteIdempotency.idempotencyKey, todoKey),
+    ));
+  assert.equal(todoIdempotency[0]?.value, 1);
+  await assert.rejects(
+    withService(({ todo }) => todo.replacePaperIdempotently({
+      ...todoInput,
+      entries: [{ ...todoInput.entries[0]!, text: "different private Todo" }],
+    }), owner),
+    (error: unknown) => error instanceof TodoServiceError && error.code === "IDEMPOTENCY_CONFLICT",
+  );
 
   const diaryAudit = await admin.db.select({ value: count() }).from(schema.toolCalls).where(and(eq(schema.toolCalls.userId, owner), eq(schema.toolCalls.idempotencyKey, "integration-diary-key-0001")));
   assert.equal(diaryAudit[0]?.value, 1, "Diary replay must not add audit rows");

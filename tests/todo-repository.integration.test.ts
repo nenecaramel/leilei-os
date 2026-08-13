@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../src/database/schema.js";
 import { todoEntries, todoPapers, users } from "../src/database/schema.js";
 import { DrizzleTodoRepository } from "../src/domains/todo/todo-repository.js";
+import { hashMcpWriteRequest } from "../src/domains/mcp-write/mcp-write-idempotency.js";
 
 const runIntegration =
   process.env.RUN_TODO_DATABASE_TEST === "1" && Boolean(process.env.DATABASE_URL);
@@ -89,6 +90,257 @@ test(
       );
     } finally {
       await database.close();
+    }
+  },
+);
+
+test(
+  "Todo MCP repository is concurrent, isolated, private, and atomic",
+  { skip: !runIntegration },
+  async () => {
+    const adminClient = postgres(process.env.DATABASE_URL!, { prepare: false, ssl: false });
+    const admin = drizzle(adminClient, { schema });
+    const userId = randomUUID();
+    const otherUserId = randomUUID();
+    const now = new Date("2026-08-13T00:00:00.000Z");
+    const clients = Array.from({ length: 6 }, () =>
+      postgres(process.env.DATABASE_URL!, { prepare: false, ssl: false, max: 1 })
+    );
+    const repositories = clients.map((client) =>
+      new DrizzleTodoRepository(drizzle(client, { schema }) as never)
+    );
+    const entries = [{
+      id: "mcp-private-entry",
+      kind: "pending" as const,
+      text: "private Todo text must not enter idempotency",
+    }];
+    const requestHash = hashMcpWriteRequest({
+      date: "2026-08-13",
+      author: "L",
+      revision: null,
+      entries,
+    });
+    const input = {
+      userId,
+      date: "2026-08-13",
+      author: "L" as const,
+      expectedRevision: null,
+      entries,
+      idempotencyKey: "todo.repository.same-key-0001",
+      requestHash,
+    };
+
+    try {
+      await admin.insert(users).values([
+        {
+          id: userId,
+          email: `${userId}@example.invalid`,
+          displayName: "Todo MCP owner",
+          status: "active",
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: otherUserId,
+          email: `${otherUserId}@example.invalid`,
+          displayName: "Todo MCP other",
+          status: "active",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+      const [toolCallsBefore] = await admin.select({ value: count() }).from(schema.toolCalls);
+      const [lifecycleBefore] = await admin.select({ value: count() }).from(schema.resourceLifecycleEvents);
+
+      const concurrent = await Promise.all(
+        repositories.map((repository) => repository.replacePaperIdempotently!(input)),
+      );
+      assert.equal(concurrent.filter((result) => result.outcome === "committed").length, 1);
+      assert.equal(concurrent.filter((result) => result.outcome === "replayed").length, 5);
+      assert.equal(concurrent.filter((result) => "paper" in result && result.paper.revision === 1).length, 6);
+
+      const [paperRow] = await admin
+        .select({ id: todoPapers.id, revision: todoPapers.revision })
+        .from(todoPapers)
+        .where(and(
+          eq(todoPapers.userId, userId),
+          eq(todoPapers.businessDate, input.date),
+          eq(todoPapers.author, input.author),
+        ));
+      assert.ok(paperRow);
+      assert.equal(paperRow.revision, 1);
+      const durableEntries = await admin
+        .select({ id: todoEntries.entryId, text: todoEntries.text })
+        .from(todoEntries)
+        .where(eq(todoEntries.paperId, paperRow.id));
+      assert.deepEqual(durableEntries, [{
+        id: "mcp-private-entry",
+        text: "private Todo text must not enter idempotency",
+      }]);
+
+      const idempotencyRows = await admin
+        .select()
+        .from(schema.mcpWriteIdempotency)
+        .where(and(
+          eq(schema.mcpWriteIdempotency.userId, userId),
+          eq(schema.mcpWriteIdempotency.toolName, "write_todo_paper"),
+          eq(schema.mcpWriteIdempotency.idempotencyKey, input.idempotencyKey),
+        ));
+      assert.equal(idempotencyRows.length, 1);
+      assert.equal(idempotencyRows[0]?.resourceType, "todo_paper");
+      assert.equal(idempotencyRows[0]?.resourceId, paperRow.id);
+      assert.equal(idempotencyRows[0]?.requestHash, requestHash);
+      assert.doesNotMatch(
+        JSON.stringify(idempotencyRows),
+        /private Todo text|mcp-private-entry|response_snapshot|payload/,
+      );
+
+      const differentRequest = await repositories[0]!.replacePaperIdempotently!({
+        ...input,
+        entries: [{ ...entries[0]!, text: "different private text" }],
+        requestHash: hashMcpWriteRequest({
+          date: input.date,
+          author: input.author,
+          revision: null,
+          entries: [{ ...entries[0]!, text: "different private text" }],
+        }),
+      });
+      assert.deepEqual(differentRequest, { outcome: "idempotency_conflict" });
+      assert.equal((await repositories[0]!.readDay(userId, input.date)).L?.revision, 1);
+
+      const otherResult = await repositories[0]!.replacePaperIdempotently!({
+        ...input,
+        userId: otherUserId,
+      });
+      assert.equal(otherResult.outcome, "committed");
+
+      const later = await repositories[0]!.replacePaper({
+        userId,
+        date: input.date,
+        author: input.author,
+        expectedRevision: 1,
+        entries: [{ id: "later", kind: "record", text: "current persisted state" }],
+      });
+      assert.equal(later.outcome, "committed");
+      const replay = await repositories[1]!.replacePaperIdempotently!(input);
+      assert.equal(replay.outcome, "replayed");
+      assert.deepEqual("paper" in replay ? replay.paper : null, {
+        author: "L",
+        date: input.date,
+        revision: 2,
+        entries: [{ id: "later", kind: "record", text: "current persisted state" }],
+      });
+
+      const raceInputs = ["a", "b"].map((suffix) => ({
+        userId,
+        date: input.date,
+        author: input.author,
+        expectedRevision: 2,
+        entries: [{ id: `race-${suffix}`, kind: "completed" as const, text: `race ${suffix}` }],
+        idempotencyKey: `todo.repository.revision-race-${suffix}-0001`,
+        requestHash: hashMcpWriteRequest({
+          date: input.date,
+          author: input.author,
+          revision: 2,
+          entries: [{ id: `race-${suffix}`, kind: "completed", text: `race ${suffix}` }],
+        }),
+      }));
+      const race = await Promise.all([
+        repositories[0]!.replacePaperIdempotently!(raceInputs[0]!),
+        repositories[1]!.replacePaperIdempotently!(raceInputs[1]!),
+      ]);
+      assert.equal(race.filter((result) => result.outcome === "committed").length, 1);
+      assert.equal(race.filter((result) => result.outcome === "revision_conflict").length, 1);
+      assert.equal((await repositories[0]!.readDay(userId, input.date)).L?.revision, 3);
+      const raceIdempotency = await admin
+        .select({ value: count() })
+        .from(schema.mcpWriteIdempotency)
+        .where(and(
+          eq(schema.mcpWriteIdempotency.userId, userId),
+          eq(schema.mcpWriteIdempotency.toolName, "write_todo_paper"),
+          sql`${schema.mcpWriteIdempotency.idempotencyKey} like 'todo.repository.revision-race-%'`,
+        ));
+      assert.equal(raceIdempotency[0]?.value, 1);
+
+      await admin.execute(sql.raw(`
+        create or replace function todo_mcp_fail_idempotency() returns trigger language plpgsql as $$
+        begin raise exception 'forced Todo MCP idempotency failure'; end; $$;
+        create trigger todo_mcp_fail_idempotency_trigger
+        before insert on mcp_write_idempotency
+        for each row execute function todo_mcp_fail_idempotency();
+      `));
+      const rollbackInput = {
+        ...input,
+        date: "2026-08-14",
+        author: "G" as const,
+        idempotencyKey: "todo.repository.rollback-idempotency-0001",
+        requestHash: hashMcpWriteRequest({
+          date: "2026-08-14",
+          author: "G",
+          revision: null,
+          entries,
+        }),
+      };
+      try {
+        await assert.rejects(repositories[0]!.replacePaperIdempotently!(rollbackInput));
+      } finally {
+        await admin.execute(sql.raw(
+          "drop trigger todo_mcp_fail_idempotency_trigger on mcp_write_idempotency; drop function todo_mcp_fail_idempotency();",
+        ));
+      }
+      assert.equal((await repositories[0]!.readDay(userId, rollbackInput.date)).G, null);
+
+      await admin.execute(sql.raw(`
+        create or replace function todo_mcp_fail_entry() returns trigger language plpgsql as $$
+        begin raise exception 'forced Todo MCP entry failure'; end; $$;
+        create trigger todo_mcp_fail_entry_trigger
+        before insert on todo_entries
+        for each row execute function todo_mcp_fail_entry();
+      `));
+      const entryRollbackInput = {
+        ...input,
+        date: "2026-08-15",
+        author: "G" as const,
+        idempotencyKey: "todo.repository.rollback-entry-0001",
+        requestHash: hashMcpWriteRequest({
+          date: "2026-08-15",
+          author: "G",
+          revision: null,
+          entries,
+        }),
+      };
+      try {
+        await assert.rejects(repositories[0]!.replacePaperIdempotently!(entryRollbackInput));
+      } finally {
+        await admin.execute(sql.raw(
+          "drop trigger todo_mcp_fail_entry_trigger on todo_entries; drop function todo_mcp_fail_entry();",
+        ));
+      }
+      assert.equal((await repositories[0]!.readDay(userId, entryRollbackInput.date)).G, null);
+      const rollbackIdempotency = await admin
+        .select({ value: count() })
+        .from(schema.mcpWriteIdempotency)
+        .where(and(
+          eq(schema.mcpWriteIdempotency.userId, userId),
+          eq(schema.mcpWriteIdempotency.toolName, "write_todo_paper"),
+          sql`${schema.mcpWriteIdempotency.idempotencyKey} like 'todo.repository.rollback-%'`,
+        ));
+      assert.equal(rollbackIdempotency[0]?.value, 0);
+
+      const [toolCallsAfter] = await admin.select({ value: count() }).from(schema.toolCalls);
+      const [lifecycleAfter] = await admin.select({ value: count() }).from(schema.resourceLifecycleEvents);
+      assert.equal(toolCallsAfter?.value, toolCallsBefore?.value);
+      assert.equal(lifecycleAfter?.value, lifecycleBefore?.value);
+    } finally {
+      await adminClient.unsafe("drop trigger if exists todo_mcp_fail_idempotency_trigger on mcp_write_idempotency");
+      await adminClient.unsafe("drop function if exists todo_mcp_fail_idempotency()");
+      await adminClient.unsafe("drop trigger if exists todo_mcp_fail_entry_trigger on todo_entries");
+      await adminClient.unsafe("drop function if exists todo_mcp_fail_entry()");
+      await adminClient`delete from mcp_write_idempotency where user_id in (${userId}, ${otherUserId})`;
+      await adminClient`delete from todo_entries where paper_id in (select id from todo_papers where user_id in (${userId}, ${otherUserId}))`;
+      await adminClient`delete from todo_papers where user_id in (${userId}, ${otherUserId})`;
+      await adminClient`delete from users where id in (${userId}, ${otherUserId})`;
+      await Promise.all([...clients.map((client) => client.end()), adminClient.end()]);
     }
   },
 );
