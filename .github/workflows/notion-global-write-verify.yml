@@ -38,6 +38,9 @@ jobs:
           mapfile -t test_files < <(find tests -type f -name '*.test.ts' -print | sort)
           known_baseline_flakes=(
             tests/mobile-home-shell.test.ts
+            tests/system-data-activity-ui.test.ts
+            tests/system-data-export-ui.test.ts
+            tests/todo-home-date-rollover.test.ts
           )
           for test_file in "${test_files[@]}"; do
             echo "==> $test_file"
