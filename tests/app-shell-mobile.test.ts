@@ -29,6 +29,14 @@ function installDom() {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 20));
 
+async function waitForCondition(condition: () => boolean, label: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`Timed out waiting for ${label}`);
+}
+
 test("navigation groups expose the Home, Utilities, System and active Day Space contracts", () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
@@ -65,12 +73,18 @@ test("mobile drawer closes on Escape and restores focus and body scrolling", asy
     menuButtonRef: { current: trigger },
   })));
   render();
-  await waitForPaint();
-  assert.equal(env.dom.window.document.body.style.overflow, "hidden");
+  await waitForCondition(
+    () => env.dom.window.document.body.style.overflow === "hidden" &&
+      container.querySelector('[role="dialog"]') !== null,
+    "mobile drawer open effect",
+  );
   const dialog = container.querySelector('[role="dialog"]');
+  await waitForCondition(
+    () => env.dom.window.document.activeElement === dialog,
+    "mobile drawer focus",
+  );
   assert.equal(dialog?.getAttribute("aria-modal"), "true");
   assert.equal(dialog?.getAttribute("tabindex"), "-1");
-  assert.equal(env.dom.window.document.activeElement, dialog);
   assert.equal(container.querySelector(".mobile-drawer-header .icon-button"), null);
   assert.match(container.textContent ?? "", /Account/);
   assert.match(container.textContent ?? "", /Connections/);
@@ -79,24 +93,36 @@ test("mobile drawer closes on Escape and restores focus and body scrolling", asy
   assert.match(container.textContent ?? "", /About/);
   assert.doesNotMatch(container.textContent ?? "", /General|Appearance|Data & Backup/);
   env.dom.window.document.dispatchEvent(new env.dom.window.KeyboardEvent("keydown", { key: "Escape" }));
-  await waitForPaint();
-  assert.equal(container.querySelector('[role="dialog"]'), null);
-  assert.equal(env.dom.window.document.body.style.overflow, "");
-  assert.equal(env.dom.window.document.activeElement, trigger);
+  await waitForCondition(
+    () => container.querySelector('[role="dialog"]') === null &&
+      env.dom.window.document.body.style.overflow === "" &&
+      env.dom.window.document.activeElement === trigger,
+    "mobile drawer Escape cleanup",
+  );
 
   open = true;
   render();
-  await waitForPaint();
+  await waitForCondition(
+    () => container.querySelector('[role="dialog"]') !== null,
+    "mobile drawer reopen",
+  );
   (container.querySelector(".mobile-drawer-backdrop") as HTMLButtonElement)?.click();
-  await waitForPaint();
-  assert.equal(container.querySelector('[role="dialog"]'), null);
+  await waitForCondition(
+    () => container.querySelector('[role="dialog"]') === null,
+    "mobile drawer backdrop close",
+  );
 
   open = true;
   render();
-  await waitForPaint();
+  await waitForCondition(
+    () => container.querySelector('[role="dialog"]') !== null,
+    "mobile drawer navigation reopen",
+  );
   (container.querySelector('a[href="/memory"]') as HTMLAnchorElement)?.dispatchEvent(new env.dom.window.MouseEvent("click", { bubbles: true }));
-  await waitForPaint();
-  assert.equal(container.querySelector('[role="dialog"]'), null);
+  await waitForCondition(
+    () => container.querySelector('[role="dialog"]') === null,
+    "mobile drawer navigation close",
+  );
   root.unmount();
   await waitForPaint();
   env.restore();
