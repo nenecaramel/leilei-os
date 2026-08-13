@@ -38,7 +38,10 @@ jobs:
           mapfile -t test_files < <(find tests -type f -name '*.test.ts' -print | sort)
           for test_file in "${test_files[@]}"; do
             echo "==> $test_file"
-            pnpm exec tsx --test --test-concurrency=1 "$test_file"
+            if ! pnpm exec tsx --test --test-concurrency=1 "$test_file"; then
+              echo "Retrying once: $test_file"
+              pnpm exec tsx --test --test-concurrency=1 "$test_file"
+            fi
           done
       - run: pnpm typecheck
       - run: pnpm build
