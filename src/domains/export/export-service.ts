@@ -1,6 +1,6 @@
 import type {
   ExportDiaryRecord,
-  ExportDocumentV1,
+  ExportDocument,
   ExportLifecycleEvent,
   ExportMemoryRecord,
   ExportScope,
@@ -8,6 +8,7 @@ import type {
   ExportToolActivity,
   ExportTodoPaper,
 } from "./export-types.js";
+import { createOwnerFingerprint } from "./owner-fingerprint.js";
 
 export interface ExportRepository {
   listMemory(userId: string): Promise<ExportMemoryRecord[]>;
@@ -28,8 +29,8 @@ export class ExportService {
     userId: string,
     scope: ExportScope,
     includeAudit: boolean,
-  ): Promise<ExportDocumentV1> {
-    const data: ExportDocumentV1["data"] = {};
+  ): Promise<ExportDocument> {
+    const data: ExportDocument["data"] = {};
     if (scope === "all" || scope === "memory") {
       data.memory = await this.repository.listMemory(userId);
     }
@@ -43,8 +44,9 @@ export class ExportService {
       data.todo = await this.repository.listTodo(userId);
     }
 
-    const document: ExportDocumentV1 = {
-      schema_version: 1,
+    const document: ExportDocument = {
+      schema_version: 2,
+      owner_fingerprint: createOwnerFingerprint(userId),
       exported_at: this.now().toISOString(),
       data,
     };
