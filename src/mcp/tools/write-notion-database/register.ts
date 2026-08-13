@@ -14,6 +14,8 @@ import {
 const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), body: notionBodySchema }).strict(),
   z.object({ action: z.literal("update"), database_id: notionIdSchema, body: notionBodySchema }).strict(),
+  z.object({ action: z.literal("trash"), database_id: notionIdSchema }).strict(),
+  z.object({ action: z.literal("restore"), database_id: notionIdSchema }).strict(),
 ]);
 
 export type WriteNotionDatabaseToolDependencies = {
@@ -30,7 +32,7 @@ export function registerWriteNotionDatabaseTool(
 ): void {
   server.registerTool("write_notion_database", {
     title: "Write Notion database",
-    description: "Create or update a Notion database container, including supported title, description, icon, cover, parent, and initial data source fields.",
+    description: "Create, update, move, trash, or restore a Notion database container, including supported title, description, icon, cover, lock state, parent, and initial data source fields.",
     inputSchema,
     outputSchema: notionOutputSchema,
     annotations: {
@@ -42,9 +44,21 @@ export function registerWriteNotionDatabaseTool(
   }, async (args) => {
     try {
       dependencies.getAuthenticatedUserId();
-      const data = args.action === "create"
-        ? await dependencies.notionService.createDatabase(args.body)
-        : await dependencies.notionService.updateDatabase(args.database_id, args.body);
+      let data: NotionJsonObject;
+      switch (args.action) {
+        case "create":
+          data = await dependencies.notionService.createDatabase(args.body);
+          break;
+        case "update":
+          data = await dependencies.notionService.updateDatabase(args.database_id, args.body);
+          break;
+        case "trash":
+          data = await dependencies.notionService.updateDatabase(args.database_id, { in_trash: true });
+          break;
+        case "restore":
+          data = await dependencies.notionService.updateDatabase(args.database_id, { in_trash: false });
+          break;
+      }
       return notionSuccess(data, `Notion database ${args.action} completed.`);
     } catch (error) {
       if (error instanceof NotionWriteAuthenticationError) return notionAuthErrorResult();
