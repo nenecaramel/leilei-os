@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add a minimal, read-only export capability to LeileiOS so the authenticated user can download a versioned JSON snapshot of selected durable business data from `System → Data`. The export format is intentionally designed to become the input contract for the later import/recovery phase without coupling it to current UI or database implementation details.
+Add a minimal, read-only export capability to LeileiOS so the authenticated user can download a versioned JSON snapshot of selected durable business data from `System → Data`. The export format is intended to become the input contract for the later import/recovery phase without coupling it to current UI or database implementation details.
 
 ## Scope
 
@@ -85,7 +85,6 @@ Version 1 top-level shape:
 {
   "schema_version": 1,
   "exported_at": "2026-08-13T05:38:00.000Z",
-  "scope": "all",
   "data": {
     "memory": [],
     "diary": [],
@@ -108,9 +107,9 @@ When audit is explicitly enabled, add:
 
 The `audit` property is absent when audit export is disabled.
 
-For a single-module export, `data` contains only that selected module. For `scope=all`, `data` contains all four supported modules.
+For a single-module export, `data` contains only that selected module. For `scope=all`, `data` contains all four supported modules. The requested scope is therefore represented by the `data` keys and is not duplicated as a top-level field.
 
-The top level intentionally does not contain redundant `counts`, `include_audit`, or application-version fields. Consumers can derive counts from `data`, audit presence from the `audit` property, and compatibility from `schema_version`.
+The top level intentionally contains only `schema_version`, `exported_at`, `data`, and optional `audit`. It does not contain redundant counts, audit flags, scope labels, or application-version fields.
 
 ## Business Data Shapes
 
@@ -209,10 +208,9 @@ Export all user-scoped lifecycle rows, ordered deterministically, with:
 - `action`
 - `actor_type`
 - `channel`
-- `metadata`
 - `created_at`
 
-Omit `user_id`.
+Omit `user_id` and raw lifecycle `metadata`. The event identity, target, action, actor, channel, and timestamp are sufficient for this audit export; implementation-specific metadata is not duplicated.
 
 ### Tool activity
 
@@ -223,7 +221,6 @@ Export user-scoped tool-call metadata with:
 - `operation`
 - `resource_type`
 - `resource_id`
-- `duration_ms`
 - `status`
 - `error_code`
 - `created_at`
@@ -234,8 +231,9 @@ Omit:
 - `idempotency_key`
 - `request_summary`
 - `result_summary`
+- `duration_ms`
 
-This keeps the optional audit useful while avoiding export of idempotency infrastructure or private request/response summaries.
+This keeps the optional audit useful while avoiding export of private request/response summaries, idempotency infrastructure, and nonessential performance telemetry.
 
 ## Deterministic Ordering
 
@@ -280,7 +278,8 @@ No progress UI, job history, server-side export history, or confirmation modal i
 - The export never contains internal `user_id`, Auth0 subject, access tokens, refresh tokens, secrets, MCP idempotency rows, or request hashes.
 - Diary idempotency fields are omitted.
 - Todo MCP idempotency records are omitted.
-- Tool audit request/result summaries and idempotency keys are omitted.
+- Lifecycle raw metadata is omitted.
+- Tool audit request/result summaries, idempotency keys, and duration telemetry are omitted.
 - Export is read-only and must not create lifecycle or MCP write audit side effects.
 
 ## Testing
@@ -294,7 +293,7 @@ Focused tests must cover:
 5. Todo includes non-empty and durable empty papers, preserves revision and entry order, and excludes missing papers
 6. infrastructure/user identity fields are absent
 7. audit property is absent by default
-8. audit property appears only when requested and excludes request/result summaries and idempotency data
+8. audit property appears only when requested and excludes lifecycle metadata, request/result summaries, idempotency data, and duration telemetry
 9. deterministic ordering and UTC timestamp serialization
 10. one user cannot export another user's data
 11. unauthenticated request returns `401`
