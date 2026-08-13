@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   WebApiClient,
 } from "../api/useWebApiClient";
@@ -8,6 +8,7 @@ import type {
 } from "../system/types";
 import type { WebExportDocument, WebExportScope } from "../system/export-types";
 import { downloadExportDocument } from "../system/download-export";
+import { executeImport, previewImport, type WebImportPreview } from "../system/import-types";
 import { PageHeader } from "./PageHeader";
 
 type LoadState =
@@ -22,6 +23,13 @@ type ExportState =
   | { status: "idle" }
   | { status: "loading"; scope: WebExportScope }
   | { status: "error" };
+
+type ImportState =
+  | { status: "idle" }
+  | { status: "previewing"; filename: string }
+  | { status: "ready"; filename: string; preview: WebImportPreview; bytes: Uint8Array }
+  | { status: "restoring"; filename: string }
+  | { status: "error"; message: string };
 
 function CountCell({
   label,
@@ -77,6 +85,8 @@ export function SystemDataPageContent({
     });
   const [exportState, setExportState] = useState<ExportState>({ status: "idle" });
   const [includeAudit, setIncludeAudit] = useState(false);
+  const [importState, setImportState] = useState<ImportState>({ status: "idle" });
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   async function runExport(scope: WebExportScope): Promise<void> {
     setExportState({ status: "loading", scope });
@@ -87,6 +97,31 @@ export function SystemDataPageContent({
       setExportState({ status: "idle" });
     } catch {
       setExportState({ status: "error" });
+    }
+  }
+
+  async function onImportFile(file: File | undefined): Promise<void> {
+    if (!file) return;
+    setImportState({ status: "previewing", filename: file.name });
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const preview = await previewImport(api, bytes);
+      setImportState({ status: "ready", filename: file.name, preview, bytes });
+    } catch {
+      setImportState({ status: "error", message: "Unable to validate this export file." });
+    }
+  }
+
+  async function restoreImport(): Promise<void> {
+    if (importState.status !== "ready") return;
+    const current = importState;
+    setImportState({ status: "restoring", filename: current.filename });
+    try {
+      await executeImport(api, current.bytes, current.preview.preview_fingerprint);
+      setImportState({ status: "idle" });
+      setReloadKey((value) => value + 1);
+    } catch {
+      setImportState({ status: "error", message: "Unable to restore this export file." });
     }
   }
 
@@ -186,6 +221,30 @@ export function SystemDataPageContent({
             </div>
           </div>
         ) : null}
+      </section>
+
+      <section className="system-section system-import-card" aria-label="Restore data">
+        <div className="system-export-header"><strong className="system-export-label">Restore</strong></div>
+        <p className="system-note">Validate an export before restoring new records. Existing records are never overwritten.</p>
+        <input
+          ref={importInputRef}
+          className="sr-only"
+          type="file"
+          accept="application/json,.json"
+          onChange={(event) => { void onImportFile(event.target.files?.[0]); event.currentTarget.value = ""; }}
+        />
+        <button className="secondary-button" type="button" disabled={importState.status === "previewing" || importState.status === "restoring"} onClick={() => importInputRef.current?.click()}>
+          {importState.status === "previewing" ? "Validating…" : "Choose export file"}
+        </button>
+        {importState.status === "ready" ? (
+          <div className="system-import-preview" aria-live="polite">
+            <p>{importState.filename}</p>
+            <p>{importState.preview.can_execute ? "Ready to restore new records." : "No new records can be restored."}</p>
+            <button className="secondary-button" type="button" disabled={!importState.preview.can_execute} onClick={() => void restoreImport()}>Restore selected data</button>
+          </div>
+        ) : null}
+        {importState.status === "restoring" ? <p className="system-state-copy" aria-live="polite">Restoring…</p> : null}
+        {importState.status === "error" ? <p className="system-export-error" role="alert">{importState.message}</p> : null}
       </section>
 
       <section

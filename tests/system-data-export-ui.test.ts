@@ -46,7 +46,8 @@ function summary() {
 
 function exportDocument(): WebExportDocument {
   return {
-    schema_version: 1,
+    schema_version: 2,
+    owner_fingerprint: "a".repeat(64),
     exported_at: "2026-08-13T05:42:00.000Z",
     data: { memory: [{ key: "approved" }] },
   };
