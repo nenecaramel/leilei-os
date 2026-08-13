@@ -152,6 +152,8 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
     entries: [{ id: "todo-integration", kind: "pending" as const, text: "private-todo-integration" }],
     idempotencyKey: todoKey,
   };
+  const [toolCallsBeforeTodo] = await admin.db.select({ value: count() }).from(schema.toolCalls);
+  const [lifecycleBeforeTodo] = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents);
   const todoResults = await Promise.all(
     Array.from({ length: 6 }, () =>
       withService(({ todo }) => todo.replacePaperIdempotently(todoInput), owner)
@@ -186,6 +188,10 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
     }), owner),
     (error: unknown) => error instanceof TodoServiceError && error.code === "IDEMPOTENCY_CONFLICT",
   );
+  const [toolCallsAfterTodo] = await admin.db.select({ value: count() }).from(schema.toolCalls);
+  const [lifecycleAfterTodo] = await admin.db.select({ value: count() }).from(schema.resourceLifecycleEvents);
+  assert.equal(toolCallsAfterTodo?.value, toolCallsBeforeTodo?.value);
+  assert.equal(lifecycleAfterTodo?.value, lifecycleBeforeTodo?.value);
 
   const diaryAudit = await admin.db.select({ value: count() }).from(schema.toolCalls).where(and(eq(schema.toolCalls.userId, owner), eq(schema.toolCalls.idempotencyKey, "integration-diary-key-0001")));
   assert.equal(diaryAudit[0]?.value, 1, "Diary replay must not add audit rows");
@@ -211,7 +217,7 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
   assert.equal(bridgeAudit[0]?.value, 1);
 
   const privateSnapshot = JSON.stringify(await admin.db.select().from(schema.mcpWriteIdempotency));
-  assert.doesNotMatch(privateSnapshot, /private-task|private-diary|private-memory|private-legacy|response_snapshot|payload/);
+  assert.doesNotMatch(privateSnapshot, /private-task|private-diary|private-memory|private-todo|private-legacy|response_snapshot|payload/);
 
   const memoryReplay = await withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("same"), "integration-memory-key-0001"), owner);
   assert.equal(memoryReplay.memory.id, createdMemoryId);
@@ -247,6 +253,20 @@ test("real PostgreSQL makes all MCP writes concurrent, durable, isolated, and at
     { tool: "write_memory", key: "rollback-memory-key-0001", call: () => withService(({ memory }) => memory.createMcpMemory({ userId: owner }, memoryInput("rollback"), "rollback-memory-key-0001"), owner), table: "core_memories", marker: "Memory rollback" },
     { tool: "toy_set", key: "rollback-toy-set-0001", call: () => withService(({ toy }) => toy.createIdempotently(owner, { action: "set", percent: 22 }, "rollback-toy-set-0001"), owner), table: "toy_commands", marker: null },
     { tool: "toy_stop", key: "rollback-toy-stop-0001", call: () => withService(({ toy }) => toy.createIdempotently(owner, { action: "stop" }, "rollback-toy-stop-0001"), owner), table: "toy_commands", marker: null },
+    {
+      tool: "write_todo_paper",
+      key: "rollback-todo-paper-0001",
+      call: () => withService(({ todo }) => todo.replacePaperIdempotently({
+        userId: owner,
+        date: "2026-08-14",
+        author: "G",
+        revision: null,
+        entries: [{ id: "todo-rollback", kind: "record", text: "private-todo-rollback" }],
+        idempotencyKey: "rollback-todo-paper-0001",
+      }), owner),
+      table: "todo_papers",
+      marker: null,
+    },
   ];
   for (const item of rollbackCases) {
     const before = await admin.client.unsafe(`select count(*)::int as count from ${item.table}`);

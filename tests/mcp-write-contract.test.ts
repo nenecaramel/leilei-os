@@ -273,13 +273,20 @@ test("MCP exposes exactly six write tools and preserves every annotation", async
     }
   }
 
-  assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.destructiveHint, false);
+  for (const name of ["create_task", "write_diary", "write_memory"]) {
+    assert.equal(tools.find((tool) => tool.name === name)?.annotations?.destructiveHint, false);
+  }
   assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "write_diary")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "write_memory")?.annotations?.idempotentHint, true);
-  for (const name of ["create_task", "write_diary", "write_memory"]) {
+  for (const name of ["create_task", "write_diary", "write_memory", "write_todo_paper"]) {
     const tool = tools.find((candidate) => candidate.name === name);
     assert.ok(tool?.inputSchema.required?.includes("author"));
+  }
+  for (const tool of tools) {
+    if (!["create_task", "write_diary", "write_memory", "write_todo_paper"].includes(tool.name)) {
+      assert.equal("author" in (tool.inputSchema.properties ?? {}), false);
+    }
   }
   for (const name of ["toy_set", "toy_stop"]) {
     const tool = tools.find((candidate) => candidate.name === name);

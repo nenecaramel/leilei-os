@@ -84,6 +84,35 @@ test("Todo MCP tool and resource literals extend only the idempotency vocabulary
   assert.match(source, /McpIdempotentResourceType[\s\S]*\| "todo_paper"/);
 });
 
+test("Todo fingerprints bind author, revision, entry identity, kind, text, and order", () => {
+  const base = {
+    date: "2026-08-13",
+    author: "L",
+    revision: 3,
+    entries: [
+      { id: "a", kind: "pending", text: "First" },
+      { id: "b", kind: "record", text: "Second" },
+    ],
+  } as const;
+  const hash = hashMcpWriteRequest(base);
+  assert.equal(hash, hashMcpWriteRequest({
+    entries: base.entries,
+    revision: 3,
+    author: "L",
+    date: "2026-08-13",
+  }));
+  for (const changed of [
+    { ...base, author: "G" },
+    { ...base, revision: 4 },
+    { ...base, entries: [{ ...base.entries[0]!, id: "changed" }, base.entries[1]!] },
+    { ...base, entries: [{ ...base.entries[0]!, kind: "completed" }, base.entries[1]!] },
+    { ...base, entries: [{ ...base.entries[0]!, text: "Changed" }, base.entries[1]!] },
+    { ...base, entries: [base.entries[1]!, base.entries[0]!] },
+  ]) {
+    assert.notEqual(hashMcpWriteRequest(changed), hash);
+  }
+});
+
 test("migration 0013 only extends MCP idempotency checks for Memory", async () => {
   const sql = await readFile(new URL("../drizzle/0013_brief_shiver_man.sql", import.meta.url), "utf8");
   assert.match(sql, /'write_memory'/);
