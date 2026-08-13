@@ -59,7 +59,7 @@ function render(api: WebApiClient) {
   return { root, container };
 }
 
-test("Data renders five export actions and audit is off by default", async () => {
+test("Data renders the approved export card and audit is off by default", async () => {
   const env = installDom("https://leilei.test/system/data");
   const paths: string[] = [];
   const api: WebApiClient = {
@@ -72,9 +72,14 @@ test("Data renders five export actions and audit is off by default", async () =>
   await waitForPaint();
 
   assert.deepEqual(paths, ["/system/data"]);
-  const labels = Array.from(container.querySelectorAll(".system-export-actions button"), (button) => button.textContent);
-  assert.deepEqual(labels, ["Export all", "Export Memory", "Export Diary", "Export Task", "Export Todo"]);
-  const audit = container.querySelector<HTMLInputElement>("input[type=checkbox]");
+  const card = container.querySelector(".system-export-card");
+  assert.ok(card);
+  assert.equal(card.querySelector(".system-export-label")?.textContent, "Export");
+  const labels = Array.from(card.querySelectorAll(".system-export-action"), (button) => button.textContent);
+  assert.deepEqual(labels, ["All", "Memory", "Diary", "Task", "Todo"]);
+  assert.ok(card.querySelector(".system-export-audit"));
+  assert.equal(card.querySelector(".system-export-actions"), null);
+  const audit = card.querySelector<HTMLInputElement>("input[type=checkbox]");
   assert.ok(audit);
   assert.equal(audit.checked, false);
 
@@ -106,10 +111,10 @@ test("export actions send scoped requests and download the exact returned JSON",
   const { root, container } = render(api);
   await waitForPaint();
 
-  const buttons = container.querySelectorAll<HTMLButtonElement>(".system-export-actions button");
+  const buttons = container.querySelectorAll<HTMLButtonElement>(".system-export-action");
   buttons[1].click();
   await waitForPaint();
-  const audit = container.querySelector<HTMLInputElement>("input[type=checkbox]")!;
+  const audit = container.querySelector<HTMLInputElement>(".system-export-audit input[type=checkbox]")!;
   audit.click();
   buttons[0].click();
   await waitForPaint();
@@ -143,7 +148,7 @@ test("export failures are local and do not erase the loaded summary", async () =
   };
   const { root, container } = render(api);
   await waitForPaint();
-  container.querySelector<HTMLButtonElement>(".system-export-actions button")!.click();
+  container.querySelector<HTMLButtonElement>(".system-export-action")!.click();
   await waitForPaint();
   assert.equal(attempts, 1);
   assert.equal(clicks, 0);
@@ -167,7 +172,7 @@ test("pending export disables all export actions without changing summary state"
   };
   const { root, container } = render(api);
   await waitForPaint();
-  const buttons = container.querySelectorAll<HTMLButtonElement>(".system-export-actions button");
+  const buttons = container.querySelectorAll<HTMLButtonElement>(".system-export-action");
   buttons[0].click();
   await waitForPaint();
   assert.equal(Array.from(buttons).every((button) => button.disabled), true);
