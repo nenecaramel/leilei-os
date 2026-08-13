@@ -17,6 +17,7 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile
+      - run: cd web && npm ci
       - run: >-
           pnpm exec tsx --test --test-concurrency=1
           tests/notion-transport.test.ts
@@ -33,5 +34,5 @@ jobs:
       - run: pnpm test
       - run: pnpm typecheck
       - run: pnpm build
-      - run: cd web && npm ci && npm run typecheck && npm run build
+      - run: cd web && npm run typecheck && npm run build
       - run: git diff --check
