@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 import { env } from "../../config/env.js";
 import { NotionCommentClient } from "../../domains/notion/notion-comment-client.js";
 import { NotionFileUploadClient } from "../../domains/notion/notion-file-upload-client.js";
@@ -8,7 +9,7 @@ import { NotionStructureClient } from "../../domains/notion/notion-structure-cli
 import { NotionTransport } from "../../domains/notion/notion-transport.js";
 import { registerCreateNotionMeetingNoteTool, type CreateNotionMeetingNoteToolDependencies } from "../tools/create-notion-meeting-note/register.js";
 import { registerUploadNotionFileTool, type UploadNotionFileToolDependencies } from "../tools/upload-notion-file/register.js";
-import { NotionWriteAuthenticationError } from "../tools/notion-write-shared.js";
+import { notionBodySchema, notionIdSchema, NotionWriteAuthenticationError } from "../tools/notion-write-shared.js";
 import { registerWriteNotionBlockTool, type WriteNotionBlockToolDependencies } from "../tools/write-notion-block/register.js";
 import { registerWriteNotionCommentTool, type WriteNotionCommentToolDependencies } from "../tools/write-notion-comment/register.js";
 import { registerWriteNotionDatabaseTool, type WriteNotionDatabaseToolDependencies } from "../tools/write-notion-database/register.js";
@@ -103,18 +104,107 @@ const productionNotionWriteService: NotionWriteService = {
   createMeetingNote: (body) => getDefaultMeetingNoteClient().createMeetingNote(body),
 };
 
+const notionWritePublicInputSchemas: Record<string, z.ZodTypeAny> = {
+  write_notion_page: z.object({
+    action: z.enum(["create", "update", "move", "update_content", "trash", "restore"]),
+    page_id: notionIdSchema.optional(),
+    body: notionBodySchema.optional(),
+    parent: notionBodySchema.optional(),
+  }).strict(),
+  write_notion_block: z.object({
+    action: z.enum(["append_children", "insert_children", "update", "delete", "restore"]),
+    block_id: notionIdSchema,
+    body: notionBodySchema.optional(),
+  }).strict(),
+  write_notion_database: z.object({
+    action: z.enum(["create", "update", "trash", "restore"]),
+    database_id: notionIdSchema.optional(),
+    body: notionBodySchema.optional(),
+  }).strict(),
+  write_notion_data_source: z.object({
+    action: z.enum(["create", "update", "trash", "restore"]),
+    data_source_id: notionIdSchema.optional(),
+    body: notionBodySchema.optional(),
+  }).strict(),
+  write_notion_view: z.object({
+    action: z.enum(["create", "update", "delete"]),
+    view_id: notionIdSchema.optional(),
+    body: notionBodySchema.optional(),
+  }).strict(),
+  write_notion_comment: z.object({
+    action: z.enum(["create", "reply", "update", "delete"]),
+    discussion_id: notionIdSchema.optional(),
+    comment_id: notionIdSchema.optional(),
+    body: notionBodySchema.optional(),
+  }).strict(),
+  upload_notion_file: z.object({
+    action: z.enum(["create", "send", "complete"]),
+    body: notionBodySchema.optional(),
+    file_upload_id: notionIdSchema.optional(),
+    filename: z.string().trim().min(1).max(900).optional(),
+    content_type: z.string().trim().min(1).max(200).optional(),
+    file_base64: z.string().min(1).max(28_000_000).optional(),
+    part_number: z.number().int().min(1).max(1000).optional(),
+  }).strict(),
+};
+
+function createNotionWriteSchemaCompatibleServer(server: McpServer): McpServer {
+  const registerTool = server.registerTool.bind(server) as (
+    name: string,
+    config: Record<string, unknown> & { inputSchema?: z.ZodTypeAny },
+    callback: (args: unknown, extra: unknown) => unknown,
+  ) => unknown;
+
+  return new Proxy(server, {
+    get(target, property, receiver) {
+      if (property !== "registerTool") return Reflect.get(target, property, receiver);
+
+      return (
+        name: string,
+        config: Record<string, unknown> & { inputSchema?: z.ZodTypeAny },
+        callback: (args: unknown, extra: unknown) => unknown,
+      ) => {
+        const publicSchema = notionWritePublicInputSchemas[name];
+        const strictSchema = config.inputSchema;
+        if (!publicSchema || !strictSchema) {
+          return registerTool(name, config, callback);
+        }
+
+        return registerTool(
+          name,
+          { ...config, inputSchema: publicSchema },
+          async (args, extra) => {
+            const parsed = await strictSchema.safeParseAsync(args);
+            if (!parsed.success) {
+              return {
+                isError: true as const,
+                content: [{
+                  type: "text" as const,
+                  text: `The ${name} request is invalid for the selected action.`,
+                }],
+              };
+            }
+            return await callback(parsed.data, extra);
+          },
+        );
+      };
+    },
+  });
+}
+
 export function registerNotionWriteTools(
   server: McpServer,
   dependencies: NotionWriteToolsDependencies,
 ): void {
-  registerWriteNotionPageTool(server, dependencies);
-  registerWriteNotionBlockTool(server, dependencies);
-  registerWriteNotionDatabaseTool(server, dependencies);
-  registerWriteNotionDataSourceTool(server, dependencies);
-  registerWriteNotionViewTool(server, dependencies);
-  registerWriteNotionCommentTool(server, dependencies);
-  registerUploadNotionFileTool(server, dependencies);
-  registerCreateNotionMeetingNoteTool(server, dependencies);
+  const compatibleServer = createNotionWriteSchemaCompatibleServer(server);
+  registerWriteNotionPageTool(compatibleServer, dependencies);
+  registerWriteNotionBlockTool(compatibleServer, dependencies);
+  registerWriteNotionDatabaseTool(compatibleServer, dependencies);
+  registerWriteNotionDataSourceTool(compatibleServer, dependencies);
+  registerWriteNotionViewTool(compatibleServer, dependencies);
+  registerWriteNotionCommentTool(compatibleServer, dependencies);
+  registerUploadNotionFileTool(compatibleServer, dependencies);
+  registerCreateNotionMeetingNoteTool(compatibleServer, dependencies);
 }
 
 export function registerProductionNotionWriteTools(
