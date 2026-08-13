@@ -25,8 +25,10 @@ class NotionWrites {
   updateDataSource(_id: string, _body: NotionJsonObject) { return this.result("updateDataSource"); }
   createView(_body: NotionJsonObject) { return this.result("createView"); }
   updateView(_id: string, _body: NotionJsonObject) { return this.result("updateView"); }
+  deleteView(_id: string) { return this.result("deleteView"); }
   createComment(_body: NotionJsonObject) { return this.result("createComment"); }
   updateComment(_id: string, _body: NotionJsonObject) { return this.result("updateComment"); }
+  deleteComment(_id: string) { return this.result("deleteComment"); }
   createUpload(_body: NotionJsonObject) { return this.result("createUpload"); }
   sendUpload(_id: string, _file: Blob, _filename: string, _partNumber?: number) { return this.result("sendUpload"); }
   completeUpload(_id: string) { return this.result("completeUpload"); }
