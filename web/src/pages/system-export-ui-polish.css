@@ -3,11 +3,14 @@
 .system-export-card {
   margin-top: 12px;
   overflow: visible;
-  padding-bottom: 13px;
+  padding-bottom: 0;
 }
 
 .system-export-header {
-  padding-top: 13px;
+  display: flex;
+  min-height: 60px;
+  align-items: center;
+  padding-top: 0;
 }
 
 .system-export-label {
@@ -20,11 +23,11 @@
 
 .system-export-action-row {
   display: flex;
+  min-width: 0;
+  min-height: 60px;
   align-items: center;
   justify-content: space-between;
-  min-width: 0;
-  min-height: 28px;
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .system-export-action {
@@ -72,10 +75,10 @@
 
 .system-export-audit {
   display: inline-flex;
-  min-height: 35px;
+  min-height: 60px;
   align-items: center;
   gap: 4px;
-  margin-top: 14px;
+  margin-top: 0;
   color: #8a8a8a;
   background: transparent;
   font-size: 12px;
