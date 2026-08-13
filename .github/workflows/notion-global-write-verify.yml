@@ -17,7 +17,14 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec tsx --test --test-concurrency=1 tests/notion-transport.test.ts tests/notion-read-client.test.ts
+      - run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/notion-transport.test.ts
+          tests/notion-read-client.test.ts
+          tests/notion-page-block-client.test.ts
+          tests/notion-structure-client.test.ts
+          tests/notion-comment-client.test.ts
+          tests/notion-file-upload-client.test.ts
       - run: pnpm typecheck
       - run: pnpm build
       - run: cd web && npm ci && npm run typecheck && npm run build
