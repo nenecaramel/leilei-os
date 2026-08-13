@@ -52,3 +52,35 @@ test("0016 Todo migration is additive and contains the required constraints", as
   );
   assert.doesNotMatch(sql, /DROP TABLE|DROP TYPE|DROP COLUMN/i);
 });
+
+test("0017 extends only the durable MCP Todo idempotency checks", async () => {
+  const sql = await readFile("drizzle/0017_mcp_todo_idempotency.sql", "utf8");
+
+  assert.match(sql, /'write_todo_paper'/);
+  assert.match(sql, /'todo_paper'/);
+  assert.equal(
+    (sql.match(/DROP CONSTRAINT "mcp_write_idempotency_tool_allowed"/g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (sql.match(/DROP CONSTRAINT "mcp_write_idempotency_resource_type_allowed"/g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (sql.match(/ADD CONSTRAINT "mcp_write_idempotency_tool_allowed"/g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (sql.match(/ADD CONSTRAINT "mcp_write_idempotency_resource_type_allowed"/g) ?? []).length,
+    1,
+  );
+  assert.doesNotMatch(
+    sql,
+    /CREATE\s+TABLE|ADD\s+COLUMN|DROP\s+COLUMN|\bUPDATE\b|\bDELETE\b|\bTRUNCATE\b|ALTER\s+TABLE\s+"todo_/i,
+  );
+  assert.equal(
+    (sql.match(/ALTER TABLE/g) ?? []).length,
+    4,
+    "only two drops and two adds are allowed",
+  );
+});

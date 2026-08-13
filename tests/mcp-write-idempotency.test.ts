@@ -6,6 +6,7 @@ import {
   hashMcpWriteRequest,
   normalizeMcpIdempotencyKey,
 } from "../src/domains/mcp-write/mcp-write-idempotency.js";
+import { MCP_WRITE_TOOL_NAMES } from "../src/mcp/tools/write-context.js";
 
 test("MCP idempotency keys are explicit bounded safe ASCII", () => {
   assert.equal(
@@ -59,6 +60,28 @@ test("canonical MCP fingerprint golden values are version locked", () => {
   assert.equal(hashMcpWriteRequest({ action: "set", percent: 20 }), "017533b6c7ed83aabbbbc5424753b71e15a75a6784a1c0ab689d19376efc264a");
   assert.equal(hashMcpWriteRequest({ action: "stop" }), "eea27c47047334348ce10c6ea9a150bde77cc96fe70ffe92be35bdbc5dc7627f");
   assert.equal(hashMcpWriteRequest({ category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L" }), "5071e610b7eb8f3e5e009ebbe189991558ae3df4beebdab43511d4556b17fdb3");
+  assert.equal(
+    hashMcpWriteRequest({
+      date: "2026-08-13",
+      author: "L",
+      revision: 3,
+      entries: [
+        { id: "a", kind: "pending", text: "First" },
+        { id: "b", kind: "record", text: "Second" },
+      ],
+    }),
+    "088c3e36b755947c59b938b4654845d346926fde71c6d0308459e6083d871aa2",
+  );
+});
+
+test("Todo MCP tool and resource literals extend only the idempotency vocabulary", async () => {
+  assert.ok(MCP_WRITE_TOOL_NAMES.includes("write_todo_paper" as never));
+  const source = await readFile(
+    new URL("../src/domains/mcp-write/mcp-write-idempotency.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /McpIdempotentToolName[\s\S]*\| "write_todo_paper"/);
+  assert.match(source, /McpIdempotentResourceType[\s\S]*\| "todo_paper"/);
 });
 
 test("migration 0013 only extends MCP idempotency checks for Memory", async () => {

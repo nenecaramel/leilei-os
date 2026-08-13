@@ -21,13 +21,15 @@ export type McpIdempotentToolName =
   | "write_diary"
   | "write_memory"
   | "toy_set"
-  | "toy_stop";
+  | "toy_stop"
+  | "write_todo_paper";
 
 export type McpIdempotentResourceType =
   | "task"
   | "diary_entry"
   | "memory"
-  | "toy_command";
+  | "toy_command"
+  | "todo_paper";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 export type McpIdempotencyTransaction = Parameters<

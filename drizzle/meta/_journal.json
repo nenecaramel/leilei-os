@@ -120,6 +120,13 @@
       "when": 1786494935368,
       "tag": "0016_todo_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786590053042,
+      "tag": "0017_mcp_todo_idempotency",
+      "breakpoints": true
     }
   ]
 }
