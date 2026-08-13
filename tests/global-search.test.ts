@@ -50,7 +50,7 @@ test("global_search is strict, read-only, server-owned, and returns detail instr
   const result:GlobalSearchResult={results:[{entity_type:"task",entity_id:TASK_ID,stable_name:"计划",snippet:"😀".repeat(240),matched_field:"title",match_reason:"exact_stable_name",lifecycle_status:"archived",business_time:"2026-08-01T00:00:00.000Z",time_basis:"created_at",updated_at:"2026-08-01T00:00:00.000Z",detail_tool:"get_task",detail_arguments:{id:TASK_ID,scope:"archived"}}],metadata:{count:1,has_more:false,next_cursor:null,searched_modules:["task"],searched_scope:"all"}};
   const server=createMcpServer({globalSearch:{globalSearchService:{async search(input){calls.push(input);return result;}},getAuthenticatedUserId:()=>USER_ID}});
   const client=new Client({name:"global-search-test",version:"1"},{capabilities:{}}); const [a,b]=InMemoryTransport.createLinkedPair(); await server.connect(b); await client.connect(a); t.after(async()=>{await client.close();await server.close();});
-  const tools=(await client.listTools()).tools; assert.equal(tools.length,19); const tool=tools.find((x)=>x.name==="global_search")!;
+  const tools=(await client.listTools()).tools; assert.equal(tools.length,21); const tool=tools.find((x)=>x.name==="global_search")!;
   assert.deepEqual(tool.annotations,{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});
   const properties=tool.inputSchema.properties as Record<string,unknown>; assert.equal("user_id" in properties,false);assert.equal("userId" in properties,false);
   const rejected=await client.callTool({name:"global_search",arguments:{query:"计划",user_id:USER_ID}}); assert.equal(rejected.isError,true); assert.equal(calls.length,0);
