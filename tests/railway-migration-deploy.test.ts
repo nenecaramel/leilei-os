@@ -77,3 +77,26 @@ test("migration emits safe network diagnostics before opening the migration clie
   assert.ok(diagnostics < client, "network diagnostics must run before the migration client is created");
   assert.match(source, /MIGRATION_NETWORK_DIAGNOSTICS=UNAVAILABLE/);
 });
+
+test("migration readiness runs before bootstrap and uses the same single-client query", () => {
+  const source = readRepoFile("src/database/migrate.ts");
+  const readiness = source.indexOf("waitForMigrationDatabaseReady(");
+  const client = source.indexOf("const client = postgres(");
+  const firstTransaction = source.indexOf("await client.begin(");
+  assert.notEqual(readiness, -1, "migration must run a readiness check");
+  assert.notEqual(client, -1, "migration must create the postgres client");
+  assert.ok(client < readiness, "readiness must use the created migration client");
+  assert.ok(readiness < firstTransaction, "readiness must precede every migration transaction");
+  assert.match(source, /migrationStage = "readiness"/);
+  assert.match(source, /client`select 1`/);
+  assert.match(source, /max: 1/);
+});
+
+test("migration readiness does not wrap or retry the existing transactions", () => {
+  const source = readRepoFile("src/database/migrate.ts");
+  const readiness = source.indexOf("waitForMigrationDatabaseReady(");
+  const firstTransaction = source.indexOf("await client.begin(");
+  assert.equal((source.match(/await client\.begin\(/g) ?? []).length, 2);
+  assert.ok(readiness < firstTransaction);
+  assert.doesNotMatch(source.slice(firstTransaction), /waitForMigrationDatabaseReady/);
+});
