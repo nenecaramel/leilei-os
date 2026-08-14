@@ -5,6 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": "node dist/database/predeploy-0018-rollback-probe.js"
+    "preDeployCommand": "node dist/database/predeploy-ledger-insert-probe.js"
   }
 }
