@@ -10,12 +10,12 @@ import { resolveRailwayMigrationDatabaseUrl } from "./railway-private-postgres.j
 const MIGRATIONS_FOLDER = "./drizzle";
 const MIGRATION_LOCK_KEY = "leilei-os-schema-migrations";
 const EXPECTED_0018_CREATED_AT = 1786645516211;
-const ROLLBACK_SIGNAL = Symbol("rollback-compatible-sql-probe");
+const ROLLBACK_SIGNAL = Symbol("rollback-compatible-ledger-write-probe");
 
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL is required for the compatible SQL probe.");
+    throw new Error("DATABASE_URL is required for the compatible ledger-write probe.");
   }
 
   const migrations = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER }) as MigrationFile[];
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
         to_regclass('public.leilei_schema_migrations')::text as custom_ledger
     `;
     if (before[0]?.import_runs) {
-      throw new Error("data_import_runs already exists before the SQL probe.");
+      throw new Error("data_import_runs already exists before the ledger-write probe.");
     }
 
     let beforeLedgerRows: Array<{ hash: string; created_at: string }> = [];
@@ -109,13 +109,10 @@ async function main(): Promise<void> {
           for (const statement of migration.sql) {
             await transaction.unsafe(statement);
           }
-        }
-
-        const during = await transaction<{ import_runs: string | null }[]>`
-          select to_regclass('public.data_import_runs')::text as import_runs
-        `;
-        if (!during[0]?.import_runs) {
-          throw new Error("0018 did not create data_import_runs inside the compatible transaction.");
+          await transaction`
+            insert into public.leilei_schema_migrations (created_at, hash)
+            values (${migration.folderMillis}, ${migration.hash})
+          `;
         }
 
         throw ROLLBACK_SIGNAL;
@@ -132,10 +129,10 @@ async function main(): Promise<void> {
         to_regclass('public.leilei_schema_migrations')::text as custom_ledger
     `;
     if (after[0]?.import_runs) {
-      throw new Error("SQL probe left data_import_runs committed.");
+      throw new Error("Ledger-write probe left data_import_runs committed.");
     }
     if (!before[0]?.custom_ledger && after[0]?.custom_ledger) {
-      throw new Error("SQL probe left compatible ledger committed.");
+      throw new Error("Ledger-write probe left compatible ledger committed.");
     }
     if (before[0]?.custom_ledger) {
       const afterLedgerRows = await client<{ hash: string; created_at: string }[]>`
@@ -144,7 +141,7 @@ async function main(): Promise<void> {
         order by created_at asc
       `;
       if (JSON.stringify(afterLedgerRows) !== JSON.stringify(beforeLedgerRows)) {
-        throw new Error("SQL probe changed the pre-existing compatible ledger.");
+        throw new Error("Ledger-write probe changed the pre-existing compatible ledger.");
       }
     }
   } finally {
@@ -153,6 +150,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(() => {
-  console.error("Compatible migration SQL probe failed.");
+  console.error("Compatible migration ledger-write probe failed.");
   process.exitCode = 1;
 });
