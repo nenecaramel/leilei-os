@@ -23,12 +23,15 @@ test("runtime image contains checked-in Drizzle migrations", () => {
   assert.match(dockerfile, /COPY\s+drizzle\s+\.\/drizzle/);
 });
 
-test("production migration entrypoint uses the Drizzle postgres-js migrator", () => {
+test("production migration entrypoint uses private Railway routing and verifies the Phase 7.4 table", () => {
   const migrateUrl = new URL("../src/database/migrate.ts", import.meta.url);
   assert.equal(existsSync(migrateUrl), true, "src/database/migrate.ts must exist");
 
   const source = readFileSync(migrateUrl, "utf8");
   assert.match(source, /drizzle-orm\/postgres-js\/migrator/);
   assert.match(source, /migrationsFolder:\s*["']\.\/drizzle["']/);
+  assert.match(source, /resolveRailwayMigrationDatabaseUrl/);
+  assert.match(source, /RAILWAY_ENVIRONMENT_ID/);
+  assert.match(source, /to_regclass\('public\.data_import_runs'\)/);
   assert.match(source, /DATABASE_URL/);
 });
