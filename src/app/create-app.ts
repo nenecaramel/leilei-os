@@ -51,6 +51,9 @@ import type { ExportApiDependencies } from "../web-api/export-router.js";
 import { DrizzleImportRepository } from "../domains/import/import-repository.js";
 import { ImportService } from "../domains/import/import-service.js";
 import type { ImportApiDependencies } from "../web-api/import-router.js";
+import { DrizzleUniverseRepository } from "../domains/universe/universe-repository-drizzle.js";
+import { UniverseService } from "../domains/universe/universe-service.js";
+import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 
 export type AppDependencies = {
   verifyAccessToken?: AccessTokenVerifier;
@@ -65,6 +68,7 @@ export type AppDependencies = {
   webTodoService?: TodoApiDependencies["todoService"];
   webExportService?: ExportApiDependencies["exportService"];
   webImportService?: ImportApiDependencies["importService"];
+  webUniverseService?: UniverseApiDependencies["universeService"];
 };
 
 export function createApp(
@@ -147,6 +151,7 @@ export function createApp(
     let webTodoService = dependencies.webTodoService;
     let webExportService = dependencies.webExportService;
     let webImportService = dependencies.webImportService;
+    let webUniverseService = dependencies.webUniverseService;
 
     if (
       !webMemoryService ||
@@ -159,6 +164,7 @@ export function createApp(
       !webTodoService ||
       !webExportService ||
       !webImportService
+      || !webUniverseService
     ) {
       if (!env.DATABASE_URL) {
         throw new Error(
@@ -211,6 +217,7 @@ export function createApp(
       if (!webTodoService) webTodoService = new TodoService(new DrizzleTodoRepository(db));
       if (!webExportService) webExportService = new ExportService(new DrizzleExportRepository(db));
       if (!webImportService) webImportService = new ImportService(new DrizzleImportRepository(db));
+      if (!webUniverseService) webUniverseService = new UniverseService(new DrizzleUniverseRepository(db));
     }
 
     if (
@@ -224,6 +231,7 @@ export function createApp(
       !webTodoService ||
       !webExportService ||
       !webImportService
+      || !webUniverseService
     ) {
       throw new Error(
         "Web API services are not configured.",
@@ -268,6 +276,7 @@ export function createApp(
         todo: { todoService: webTodoService },
         export: { exportService: webExportService },
         import: { importService: webImportService },
+        universe: { universeService: webUniverseService },
       }),
     );
   }
