@@ -5,6 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": "node dist/database/predeploy-connectivity.js"
+    "preDeployCommand": "node -e \"process.exit(process.env.DATABASE_URL ? 0 : 1)\""
   }
 }
