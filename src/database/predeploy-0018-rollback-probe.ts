@@ -1,15 +1,21 @@
-import { readFileSync } from "node:fs";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import postgres from "postgres";
 import { resolveRailwayMigrationDatabaseUrl } from "./railway-private-postgres.js";
 
-const MIGRATION_PATH = "./drizzle/0018_nifty_power_pack.sql";
-const STATEMENT_BREAKPOINT = "--> statement-breakpoint";
+const EXPECTED_0017_CREATED_AT = 1786590053042;
+const EXPECTED_0018_CREATED_AT = 1786645516211;
 const ROLLBACK_SIGNAL = Symbol("rollback-0018-probe");
 
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required for the 0018 rollback probe.");
+  }
+
+  const migration = readMigrationFiles({ migrationsFolder: "./drizzle" })
+    .find((candidate) => candidate.folderMillis === EXPECTED_0018_CREATED_AT);
+  if (!migration || migration.sql.length !== 3) {
+    throw new Error("Expected 0018 migration metadata was not found.");
   }
 
   const resolvedUrl = resolveRailwayMigrationDatabaseUrl(
@@ -19,32 +25,33 @@ async function main(): Promise<void> {
   const client = postgres(resolvedUrl, { max: 1, prepare: false, ssl: "require" });
 
   try {
-    const before = await client<{ relation: string | null }[]>`
-      select to_regclass('public.data_import_runs')::text as relation
+    const before = await client<{ relation: string | null; created_at: string | null }[]>`
+      select
+        to_regclass('public.data_import_runs')::text as relation,
+        (select created_at::text from drizzle.__drizzle_migrations order by created_at desc limit 1) as created_at
     `;
-    if (before[0]?.relation) {
-      throw new Error("data_import_runs already exists before the rollback probe.");
-    }
-
-    const statements = readFileSync(MIGRATION_PATH, "utf8")
-      .split(STATEMENT_BREAKPOINT)
-      .map((statement) => statement.trim())
-      .filter(Boolean);
-    if (statements.length !== 3) {
-      throw new Error("Unexpected 0018 statement count.");
+    if (before[0]?.relation || Number(before[0]?.created_at) !== EXPECTED_0017_CREATED_AT) {
+      throw new Error("Production is not at the expected pre-0018 state.");
     }
 
     try {
       await client.begin(async (transaction) => {
-        for (const statement of statements) {
+        for (const statement of migration.sql) {
           await transaction.unsafe(statement);
         }
 
-        const during = await transaction<{ relation: string | null }[]>`
-          select to_regclass('public.data_import_runs')::text as relation
+        await transaction`
+          insert into drizzle.__drizzle_migrations ("hash", "created_at")
+          values (${migration.hash}, ${migration.folderMillis})
         `;
-        if (!during[0]?.relation) {
-          throw new Error("0018 did not create data_import_runs inside the transaction.");
+
+        const during = await transaction<{ relation: string | null; created_at: string | null }[]>`
+          select
+            to_regclass('public.data_import_runs')::text as relation,
+            (select created_at::text from drizzle.__drizzle_migrations order by created_at desc limit 1) as created_at
+        `;
+        if (!during[0]?.relation || Number(during[0]?.created_at) !== EXPECTED_0018_CREATED_AT) {
+          throw new Error("0018 schema or ledger row was not visible inside the transaction.");
         }
 
         throw ROLLBACK_SIGNAL;
@@ -56,11 +63,13 @@ async function main(): Promise<void> {
       }
     }
 
-    const after = await client<{ relation: string | null }[]>`
-      select to_regclass('public.data_import_runs')::text as relation
+    const after = await client<{ relation: string | null; created_at: string | null }[]>`
+      select
+        to_regclass('public.data_import_runs')::text as relation,
+        (select created_at::text from drizzle.__drizzle_migrations order by created_at desc limit 1) as created_at
     `;
-    if (after[0]?.relation) {
-      throw new Error("Rollback probe left data_import_runs committed.");
+    if (after[0]?.relation || Number(after[0]?.created_at) !== EXPECTED_0017_CREATED_AT) {
+      throw new Error("Rollback probe left a schema or migration-ledger change committed.");
     }
   } finally {
     await client.end();
