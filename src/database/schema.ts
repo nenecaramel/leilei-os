@@ -589,6 +589,10 @@ export const universeNodes = pgTable(
     type: text("type").notNull(),
     tags: text("tags").array().default(sql`ARRAY[]::text[]`).notNull(),
     galaxies: text("galaxies").array().default(sql`ARRAY[]::text[]`).notNull(),
+    galaxyMemberships: jsonb("galaxy_memberships")
+      .$type<Array<{ id: string; weight: number }>>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     position: jsonb("position").$type<{ x: number; y: number }>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
@@ -599,6 +603,10 @@ export const universeNodes = pgTable(
     primaryKey({ columns: [table.userId, table.id] }),
     index("universe_nodes_user_updated_idx").on(table.userId, table.updatedAt.desc()),
     check("universe_nodes_position_object", sql`jsonb_typeof(${table.position}) = 'object'`),
+    check(
+      "universe_nodes_galaxy_memberships_array",
+      sql`jsonb_typeof(${table.galaxyMemberships}) = 'array'`,
+    ),
   ],
 );
 
