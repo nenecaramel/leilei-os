@@ -17,6 +17,7 @@ import { SystemActivityPage } from "./pages/SystemActivityPage";
 import { SystemConnectionsPage } from "./pages/SystemConnectionsPage";
 import { SystemDataPage } from "./pages/SystemDataPage";
 import { TaskPage } from "./pages/TaskPageContainer";
+import { UniversePage } from "./pages/UniversePageContainer";
 
 import { DaySpacePage } from "./pages/DaySpacePageContainer";
 export default function App() {
@@ -69,7 +70,7 @@ export default function App() {
             />
             <Route
               path="universe"
-              element={<PlaceholderPage title="Universe" />}
+              element={<UniversePage />}
             />
           </Route>
         </Routes>
