@@ -35,6 +35,7 @@ const businessDate = z.string().refine((value) => {
 const uuid = z.string().uuid();
 const author = z.union([z.literal("L"), z.literal("G"), z.null()]);
 const boundedTags = z.array(z.string().max(50)).max(20);
+const diaryTags = z.array(z.string()).max(20);
 
 const memoryRecord = z.object({
   id: uuid,
@@ -56,7 +57,7 @@ const diaryRecord = z.object({
   title: z.string().min(1).max(200),
   content: z.string().min(1),
   date: businessDate,
-  tags: boundedTags,
+  tags: diaryTags,
   mood: z.string().max(50).nullable(),
   source: z.literal("chatgpt_mcp"),
   author,
