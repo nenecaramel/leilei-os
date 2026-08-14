@@ -38,3 +38,22 @@ test("production migration entrypoint uses the compatible LeileiOS ledger", () =
   assert.match(source, /to_regclass\('public\.data_import_runs'\)/);
   assert.match(source, /DATABASE_URL/);
 });
+
+test("pending migration ledger row is written before its SQL inside the same transaction", () => {
+  const source = readRepoFile("src/database/migrate.ts");
+  const pendingLoop = source.indexOf("for (const migration of pending)");
+  assert.notEqual(pendingLoop, -1, "pending migration loop must exist");
+
+  const ledgerInsert = source.indexOf(
+    "insert into public.leilei_schema_migrations (created_at, hash)",
+    pendingLoop,
+  );
+  const sqlExecution = source.indexOf("await transaction.unsafe(statement)", pendingLoop);
+
+  assert.notEqual(ledgerInsert, -1, "pending migration ledger insert must exist");
+  assert.notEqual(sqlExecution, -1, "pending migration SQL execution must exist");
+  assert.ok(
+    ledgerInsert < sqlExecution,
+    "pending migration ledger row must be recorded before its SQL within the transaction",
+  );
+});
