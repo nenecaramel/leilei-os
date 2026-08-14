@@ -12,16 +12,27 @@ const stateCss = readFileSync(
 );
 
 test("Universe loading and empty states are plain centered text on white", () => {
-  assert.match(pageSource, /className="universe-state-stage universe-loading-state"/);
-  assert.match(pageSource, /className="universe-state-stage universe-empty-state"/);
   assert.match(pageSource, />正在读取 Universe…</);
   assert.match(pageSource, />Universe 还没有内容</);
-  assert.doesNotMatch(pageSource, /universe-loading-dots/);
-  assert.doesNotMatch(pageSource, /universe-cosmos universe-cosmos-loading/);
-  assert.doesNotMatch(pageSource, /universe-cosmos universe-cosmos-state/);
 
-  assert.match(stateCss, /\.universe-state-page[\s\S]*display:\s*flex/);
-  assert.match(stateCss, /\.universe-state-stage[\s\S]*place-items:\s*center/);
-  assert.match(stateCss, /\.universe-state-copy[\s\S]*color:\s*#8d8d8d/);
-  assert.doesNotMatch(stateCss, /universe-dot-pulse/);
+  assert.match(
+    stateCss,
+    /\.universe-page:has\(\.universe-cosmos-loading\)[\s\S]*display:\s*flex\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-page \.universe-cosmos\.universe-cosmos-loading[\s\S]*place-items:\s*center\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-page \.universe-cosmos\.universe-cosmos-loading[\s\S]*border:\s*0\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-page \.universe-loading-line,[\s\S]*color:\s*#8d8d8d\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-page \.universe-loading-dots\s*\{[\s\S]*display:\s*none\s*!important/,
+  );
 });
