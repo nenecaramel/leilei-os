@@ -41,7 +41,9 @@ async function main(): Promise<void> {
         )
       `);
 
-      let ledgerRows = await transaction<{ hash: string; created_at: string }[]>`
+      let ledgerRows: Array<{ hash: string; created_at: string }> = await transaction<
+        { hash: string; created_at: string }[]
+      >`
         select hash, created_at::text as created_at
         from public.leilei_schema_migrations
         order by created_at asc
