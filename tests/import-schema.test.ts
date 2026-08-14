@@ -68,3 +68,22 @@ test("parseImportPackage validates exported business invariants without coercion
     (error: unknown) => error instanceof ImportValidationError && error.code === "INVALID_IMPORT_FILE",
   );
 });
+
+test("parseImportPackage accepts diary tags allowed by the current text[] database contract", () => {
+  const longTag = "d".repeat(80);
+  const diary = {
+    id: "00000000-0000-4000-8000-000000000012",
+    title: "Long tag diary",
+    content: "A valid exported diary entry",
+    date: "2026-08-14",
+    tags: [longTag],
+    mood: null,
+    source: "chatgpt_mcp",
+    author: "L",
+    status: "active",
+    created_at: "2026-08-14T00:00:00.000Z",
+    updated_at: "2026-08-14T00:00:00.000Z",
+  };
+  const parsed = parseImportPackage(bytes(validDocument({ diary: [diary] })));
+  assert.equal(parsed.document.data.diary?.[0]?.tags[0], longTag);
+});
