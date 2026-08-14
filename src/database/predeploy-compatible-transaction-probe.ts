@@ -10,12 +10,12 @@ import { resolveRailwayMigrationDatabaseUrl } from "./railway-private-postgres.j
 const MIGRATIONS_FOLDER = "./drizzle";
 const MIGRATION_LOCK_KEY = "leilei-os-schema-migrations";
 const EXPECTED_0018_CREATED_AT = 1786645516211;
-const ROLLBACK_SIGNAL = Symbol("rollback-compatible-ledger-write-probe");
+const ROLLBACK_SIGNAL = Symbol("rollback-ledger-before-sql-probe");
 
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL is required for the compatible ledger-write probe.");
+    throw new Error("DATABASE_URL is required for the ledger-before-SQL probe.");
   }
 
   const migrations = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER }) as MigrationFile[];
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
         to_regclass('public.leilei_schema_migrations')::text as custom_ledger
     `;
     if (before[0]?.import_runs) {
-      throw new Error("data_import_runs already exists before the ledger-write probe.");
+      throw new Error("data_import_runs already exists before the ledger-before-SQL probe.");
     }
 
     let beforeLedgerRows: Array<{ hash: string; created_at: string }> = [];
@@ -106,13 +106,22 @@ async function main(): Promise<void> {
         }
 
         for (const migration of pending) {
-          for (const statement of migration.sql) {
-            await transaction.unsafe(statement);
-          }
           await transaction`
             insert into public.leilei_schema_migrations (created_at, hash)
             values (${migration.folderMillis}, ${migration.hash})
           `;
+          for (const statement of migration.sql) {
+            await transaction.unsafe(statement);
+          }
+        }
+
+        const during = await transaction<{ import_runs: string | null; created_at: string }[]>`
+          select
+            to_regclass('public.data_import_runs')::text as import_runs,
+            (select created_at::text from public.leilei_schema_migrations order by created_at desc limit 1) as created_at
+        `;
+        if (!during[0]?.import_runs || Number(during[0]?.created_at) !== EXPECTED_0018_CREATED_AT) {
+          throw new Error("Ledger-before-SQL transaction did not reach expected 0018 state.");
         }
 
         throw ROLLBACK_SIGNAL;
@@ -129,10 +138,10 @@ async function main(): Promise<void> {
         to_regclass('public.leilei_schema_migrations')::text as custom_ledger
     `;
     if (after[0]?.import_runs) {
-      throw new Error("Ledger-write probe left data_import_runs committed.");
+      throw new Error("Ledger-before-SQL probe left data_import_runs committed.");
     }
     if (!before[0]?.custom_ledger && after[0]?.custom_ledger) {
-      throw new Error("Ledger-write probe left compatible ledger committed.");
+      throw new Error("Ledger-before-SQL probe left compatible ledger committed.");
     }
     if (before[0]?.custom_ledger) {
       const afterLedgerRows = await client<{ hash: string; created_at: string }[]>`
@@ -141,7 +150,7 @@ async function main(): Promise<void> {
         order by created_at asc
       `;
       if (JSON.stringify(afterLedgerRows) !== JSON.stringify(beforeLedgerRows)) {
-        throw new Error("Ledger-write probe changed the pre-existing compatible ledger.");
+        throw new Error("Ledger-before-SQL probe changed the pre-existing compatible ledger.");
       }
     }
   } finally {
@@ -150,6 +159,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(() => {
-  console.error("Compatible migration ledger-write probe failed.");
+  console.error("Ledger-before-SQL migration probe failed.");
   process.exitCode = 1;
 });
