@@ -8,6 +8,10 @@ const placeholder = await readFile(
   "web/src/pages/PlaceholderPage.tsx",
   "utf8",
 );
+const universePage = await readFile(
+  "web/src/pages/UniversePage.tsx",
+  "utf8",
+);
 
 test("Memory and Diary content search stays real 16px while looking like 14px", () => {
   const start =
@@ -33,7 +37,7 @@ test("Memory and Diary content search stays real 16px while looking like 14px", 
   assert.match(input, /max-width:\s*114\.285714%\s*!important;/);
 });
 
-test("Universe and Chat Archive use only the shared Memory/Diary title geometry", () => {
+test("Chat Archive keeps its placeholder while Universe uses the spatial page", () => {
   assert.doesNotMatch(app, /ArchiveIcon|UniverseIcon/);
   assert.match(
     app,
@@ -41,8 +45,10 @@ test("Universe and Chat Archive use only the shared Memory/Diary title geometry"
   );
   assert.match(
     app,
-    /path="universe"[\s\S]*?<PlaceholderPage title="Universe"\s*\/>/,
+    /import \{ UniversePage \} from "\.\/pages\/UniversePageContainer"/,
   );
+  assert.match(app, /path="universe"[\s\S]*?<UniversePage\s*\/>/);
+  assert.match(universePage, /className="universe-cosmos"/);
 
   assert.doesNotMatch(
     placeholder,
