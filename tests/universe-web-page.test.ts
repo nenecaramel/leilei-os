@@ -15,7 +15,7 @@ test("/universe renders the spatial Universe integration instead of a placeholde
   assert.doesNotMatch(appSource, /path="universe" element=\{<PlaceholderPage/);
   assert.match(pageSource, /UniverseCanvas/);
   assert.match(pageSource, /LeileiOSUniverseService/);
-  assert.match(pageSource, /导出 JSON/);
+  assert.match(pageSource, />导出<\/button>/);
 });
 
 test("Universe UI keeps the frozen spatial primitives", () => {
