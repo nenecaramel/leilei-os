@@ -27,7 +27,7 @@ test("Data restore previews a selected file and executes only after explicit con
       calls.push({ path, init });
       if (path === "/system/data") return summary() as T;
       if (path === "/system/import/preview") return { data: { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), can_execute: true, summary: { memory: { create: 1, duplicate: 0, conflict: 0, invalid: 0 } } } } as T;
-      return { data: { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), summary: {} } } as T;
+      return { data: { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), summary: { memory: { create: 1, duplicate: 0, conflict: 0, invalid: 0 } } } } as T;
     },
   };
   const container = document.getElementById("root")!;
@@ -39,15 +39,18 @@ test("Data restore previews a selected file and executes only after explicit con
   Object.defineProperty(input, "files", { configurable: true, value: [file] });
   input.dispatchEvent(new env.dom.window.Event("change", { bubbles: true }));
   await waitForPaint();
+  assert.match(container.textContent ?? "", /backup\.json/);
+  assert.match(container.textContent ?? "", /0\.0 KB/);
   const preview = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Preview restore");
   assert.ok(preview);
   preview.click();
   await waitForPaint();
   assert.match(container.textContent ?? "", /Ready to restore new records/);
-  const restore = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Restore selected data");
+  const restore = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Restore 1 record");
   assert.ok(restore);
   restore.click();
   await waitForPaint();
+  assert.match(container.textContent ?? "", /Restored 1 record/);
   assert.deepEqual(calls.map((call) => call.path), ["/system/data", "/system/import/preview", "/system/import/execute?expected_preview_fingerprint=" + "b".repeat(64), "/system/data"]);
   assert.equal(calls[1]?.init?.headers instanceof Object, true);
   assert.equal((calls[1]?.init?.headers as Record<string, string>)["Content-Type"], "application/octet-stream");
