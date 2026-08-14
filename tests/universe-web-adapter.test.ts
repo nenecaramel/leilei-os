@@ -101,6 +101,35 @@ test("LeileiOSAdapter maps authenticated Universe commands without identity sele
   assert.deepEqual(jsonBody(requests[5]?.init), { relation, expected_version: 4 });
 });
 
+test("LeileiOSAdapter round-trips canonical node migration metadata", async () => {
+  const migratedNode = {
+    id: "legacy-node",
+    title: "迁移节点",
+    summary: "",
+    content: "",
+    type: "reflection",
+    tags: [],
+    galaxies: [],
+    position: { x: 50, y: 50 },
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    migration: { source: "mind-universe-static" as const, migratedAt: "2026-08-02T00:00:00.000Z" },
+  };
+  const migratedSnapshot = { ...snapshot, nodes: [migratedNode] };
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      return { success: true, data: { snapshot: migratedSnapshot, version: 8 } } as T;
+    },
+  };
+  const adapter = createLeileiOSUniverseAdapter(api);
+  const loaded = await adapter.loadUniverse();
+  assert.deepEqual(loaded.snapshot.nodes[0]?.migration, migratedNode.migration);
+  await adapter.saveUniverse(migratedSnapshot, 8);
+  assert.deepEqual(jsonBody(requests[1]?.init).snapshot, migratedSnapshot);
+});
+
 test("LeileiOSUniverseService replaces canonical version after each mutation and surfaces conflicts", async () => {
   let current = readResult;
   const calls: Array<{ expectedVersion: number; kind: string }> = [];

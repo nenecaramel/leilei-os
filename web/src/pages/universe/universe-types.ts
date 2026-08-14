@@ -2,6 +2,11 @@ export const UNIVERSE_SCHEMA_VERSION = 2 as const;
 
 export type UniversePosition = { x: number; y: number };
 
+export type UniverseNodeMigration = {
+  source: "mind-universe-static" | "mind-universe";
+  migratedAt: string;
+};
+
 export type UniverseNode = {
   id: string;
   title: string;
@@ -14,6 +19,7 @@ export type UniverseNode = {
   createdAt: string;
   updatedAt: string;
   importance?: string;
+  migration?: UniverseNodeMigration;
 };
 
 export type UniverseNodeCreateInput = Omit<UniverseNode, "id" | "createdAt" | "updatedAt"> & {
@@ -55,6 +61,7 @@ export type UniverseMeta = {
   name: string;
   createdAt: string;
   updatedAt: string;
+  exportedAt?: string;
 };
 
 export type UniverseRevisionSnapshot = Pick<

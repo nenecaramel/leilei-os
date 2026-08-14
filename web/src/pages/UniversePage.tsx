@@ -9,6 +9,7 @@ import {
   isUniverseNotInitialized,
   isUniverseVersionConflict,
 } from "./universe/universe-service";
+import { downloadUniverseJson } from "./universe/universe-export";
 import type {
   UniverseGalaxy,
   UniverseNode,
@@ -27,6 +28,18 @@ const relationLabels: Record<UniverseRelationType, string> = {
   part_of: "属于",
   raises: "引出",
 };
+
+export const UNIVERSE_NODE_TYPES = [
+  "concept",
+  "question",
+  "claim",
+  "experience",
+  "project",
+  "source",
+  "reflection",
+] as const;
+
+export const UNIVERSE_IMPORTANCE_OPTIONS = ["anchor", "major", "normal"] as const;
 
 type UniverseState =
   | { status: "loading" }
@@ -98,7 +111,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
             x: 16 + ((Date.now() / 17) % 68),
             y: 18 + ((Date.now() / 29) % 58),
           },
-          importance: "normal",
+          importance: values.importance,
         };
         await service.createNode(node);
         setNotice("一颗新星已经亮起。");
@@ -179,7 +192,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         eyebrow="Universe"
         title={snapshot.meta.name || "Universe"}
         description={`空间知识图谱 · ${snapshot.nodes.length} 颗星球 · v${version}`}
-        action={<button className="secondary-button" type="button" onClick={() => { setEditingNode(null); setEditorOpen(true); }}>点亮星球</button>}
+        action={<><button className="secondary-button" type="button" onClick={() => downloadUniverseJson(snapshot)}>导出 JSON</button><button className="secondary-button" type="button" onClick={() => { setEditingNode(null); setEditorOpen(true); }}>点亮星球</button></>}
       />
       <div className="universe-toolbar" aria-label="Universe filters">
         <button className={!galaxyFilter ? "universe-filter is-active" : "universe-filter"} type="button" onClick={() => setGalaxyFilter(null)}>全部</button>
@@ -285,13 +298,14 @@ export function UniverseCanvas({
   );
 }
 
-type NodeDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies">;
+type NodeDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string };
 
 function NodeEditor({ node, galaxies, saving, onCancel, onSave }: { node: UniverseNode | null; galaxies: UniverseGalaxy[]; saving: boolean; onCancel: () => void; onSave: (draft: NodeDraft) => Promise<void> }) {
   const [title, setTitle] = useState(node?.title ?? "");
   const [summary, setSummary] = useState(node?.summary ?? "");
   const [content, setContent] = useState(node?.content ?? "");
   const [type, setType] = useState(node?.type ?? "concept");
+  const [importance, setImportance] = useState(node?.importance ?? "normal");
   const [tags, setTags] = useState((node?.tags ?? []).join(", "));
   const [selectedGalaxies, setSelectedGalaxies] = useState<string[]>(node?.galaxies ?? []);
   return (
@@ -300,10 +314,11 @@ function NodeEditor({ node, galaxies, saving, onCancel, onSave }: { node: Univer
       <label>标题<input value={title} maxLength={60} autoFocus onChange={(event) => setTitle(event.target.value)} /></label>
       <label>摘要<textarea value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} /></label>
       <label>正文<textarea value={content} rows={4} onChange={(event) => setContent(event.target.value)} /></label>
-      <label>类型<select value={type} onChange={(event) => setType(event.target.value)}><option value="concept">concept</option><option value="question">question</option><option value="claim">claim</option><option value="project">project</option><option value="reflection">reflection</option></select></label>
+      <label>类型<select value={type} onChange={(event) => setType(event.target.value)}>{UNIVERSE_NODE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+      <label>重要性<select value={importance} onChange={(event) => setImportance(event.target.value)}>{UNIVERSE_IMPORTANCE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
       <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔" /></label>
       {galaxies.length ? <fieldset><legend>星系</legend>{galaxies.map((galaxy) => <label className="universe-galaxy-choice" key={galaxy.id}><input type="checkbox" checked={selectedGalaxies.includes(galaxy.id)} onChange={() => setSelectedGalaxies((current) => current.includes(galaxy.id) ? current.filter((id) => id !== galaxy.id) : [...current, galaxy.id])} />{galaxy.title}</label>)}</fieldset> : null}
-      <div className="universe-detail-actions"><button className="secondary-button" type="button" disabled={saving || !title.trim()} onClick={() => onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: selectedGalaxies })}>{saving ? "保存中…" : "保存"}</button></div>
+      <div className="universe-detail-actions"><button className="secondary-button" type="button" disabled={saving || !title.trim()} onClick={() => onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: selectedGalaxies })}>{saving ? "保存中…" : "保存"}</button></div>
     </section>
   );
 }
