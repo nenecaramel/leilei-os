@@ -519,6 +519,27 @@ export const resourceLifecycleEvents = pgTable(
   ],
 );
 
+export const dataImportRuns = pgTable(
+  "data_import_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    packageSha256: varchar("package_sha256", { length: 64 }).notNull(),
+    previewFingerprint: varchar("preview_fingerprint", { length: 64 }).notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    summary: jsonb("summary").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("data_import_runs_user_created_idx").on(table.userId, table.createdAt.desc()),
+    check("data_import_runs_package_sha256_format", sql`${table.packageSha256} ~ '^[0-9a-f]{64}$'`),
+    check("data_import_runs_preview_fingerprint_format", sql`${table.previewFingerprint} ~ '^[0-9a-f]{64}$'`),
+    check("data_import_runs_summary_object", sql`jsonb_typeof(${table.summary}) = 'object'`),
+  ],
+);
+
 export const tasks = pgTable(
   "tasks",
   {

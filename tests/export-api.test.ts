@@ -3,20 +3,21 @@ import express from "express";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
 import { createWebApiRouter } from "../src/web-api/router.js";
-import type { ExportDocumentV1, ExportScope } from "../src/domains/export/export-types.js";
+import type { ExportDocumentV2, ExportScope } from "../src/domains/export/export-types.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 
-function documentFor(scope: ExportScope, includeAudit: boolean): ExportDocumentV1 {
+function documentFor(scope: ExportScope, includeAudit: boolean): ExportDocumentV2 {
   return {
-    schema_version: 1,
+    schema_version: 2,
+    owner_fingerprint: "a".repeat(64),
     exported_at: "2026-08-13T05:42:00.000Z",
     data: scope === "all" ? { memory: [] } : { [scope]: [] },
     ...(includeAudit ? { audit: { lifecycle: [], tool_activity: [] } } : {}),
-  } as ExportDocumentV1;
+  } as ExportDocumentV2;
 }
 
-function dependencies(exportService: { createExport: (userId: string, scope: ExportScope, includeAudit: boolean) => Promise<ExportDocumentV1> }) {
+function dependencies(exportService: { createExport: (userId: string, scope: ExportScope, includeAudit: boolean) => Promise<ExportDocumentV2> }) {
   return {
     memory: { memoryService: {} as never },
     diary: { diaryService: {} as never },
@@ -29,7 +30,7 @@ function dependencies(exportService: { createExport: (userId: string, scope: Exp
 }
 
 async function withServer(
-  exportService: { createExport: (userId: string, scope: ExportScope, includeAudit: boolean) => Promise<ExportDocumentV1> },
+  exportService: { createExport: (userId: string, scope: ExportScope, includeAudit: boolean) => Promise<ExportDocumentV2> },
   callback: (baseUrl: string) => Promise<void>,
 ) {
   const app = express();

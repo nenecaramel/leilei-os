@@ -96,3 +96,16 @@ export type ExportDocumentV1 = {
     tool_activity: ExportToolActivity[];
   };
 };
+
+export type ExportDocumentV2 = {
+  schema_version: 2;
+  owner_fingerprint: string;
+  exported_at: string;
+  data: ExportDataV1;
+  audit?: {
+    lifecycle: ExportLifecycleEvent[];
+    tool_activity: ExportToolActivity[];
+  };
+};
+
+export type ExportDocument = ExportDocumentV2;

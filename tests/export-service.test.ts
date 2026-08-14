@@ -12,6 +12,7 @@ import type {
   ExportToolActivity,
   ExportTodoPaper,
 } from "../src/domains/export/export-types.js";
+import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
 
 const USER_ID = "user-export-service";
 const EXPORTED_AT = "2026-08-13T05:42:00.000Z";
@@ -98,17 +99,32 @@ function createRepository(calls: string[] = []): ExportRepository {
   };
 }
 
-test("ExportService emits the minimal versioned contract with a fixed UTC timestamp", async () => {
+test("ExportService emits the v2 owner-bound contract with a fixed UTC timestamp", async () => {
   const document = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
   ).createExport(USER_ID, "memory", false);
 
-  assert.deepEqual(Object.keys(document), ["schema_version", "exported_at", "data"]);
-  assert.equal(document.schema_version, 1);
+  assert.deepEqual(Object.keys(document), ["schema_version", "owner_fingerprint", "exported_at", "data"]);
+  assert.equal(document.schema_version, 2);
+  assert.equal(document.owner_fingerprint, createOwnerFingerprint(USER_ID));
   assert.equal(document.exported_at, EXPORTED_AT);
   assert.deepEqual(document.data, { memory });
   assert.equal("audit" in document, false);
+});
+
+test("ExportService owner fingerprint is deterministic and does not expose the user id", async () => {
+  const first = await new ExportService(createRepository(), () => new Date(EXPORTED_AT))
+    .createExport(USER_ID, "memory", false);
+  const second = await new ExportService(createRepository(), () => new Date(EXPORTED_AT))
+    .createExport(USER_ID, "memory", false);
+  const other = await new ExportService(createRepository(), () => new Date(EXPORTED_AT))
+    .createExport("another-user", "memory", false);
+
+  assert.equal(first.owner_fingerprint, second.owner_fingerprint);
+  assert.notEqual(first.owner_fingerprint, other.owner_fingerprint);
+  assert.match(first.owner_fingerprint, /^[0-9a-f]{64}$/u);
+  assert.equal(JSON.stringify(first).includes(USER_ID), false);
 });
 
 test("ExportService reads only the selected single-module scope", async () => {
