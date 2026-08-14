@@ -7,16 +7,9 @@ test("leaves the database URL unchanged outside Railway", () => {
   assert.equal(resolveRailwayMigrationDatabaseUrl(source, undefined), source);
 });
 
-test("rewrites a Railway TCP proxy URL to the Postgres private endpoint during Railway deploys", () => {
+test("uses Railway DATABASE_URL unchanged during Railway deploys", () => {
   const source = "postgresql://user:p%40ss@roundhouse.proxy.rlwy.net:12345/app?sslmode=require";
-  const resolved = new URL(resolveRailwayMigrationDatabaseUrl(source, "production-env"));
-
-  assert.equal(resolved.hostname, "postgres.railway.internal");
-  assert.equal(resolved.port, "5432");
-  assert.equal(resolved.username, "user");
-  assert.equal(resolved.password, "p%40ss");
-  assert.equal(resolved.pathname, "/app");
-  assert.equal(resolved.searchParams.get("sslmode"), "require");
+  assert.equal(resolveRailwayMigrationDatabaseUrl(source, "production-env"), source);
 });
 
 test("does not rewrite non-Railway database hosts", () => {
