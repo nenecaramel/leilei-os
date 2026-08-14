@@ -23,13 +23,16 @@ test("runtime image contains checked-in Drizzle migrations", () => {
   assert.match(dockerfile, /COPY\s+drizzle\s+\.\/drizzle/);
 });
 
-test("production migration entrypoint uses private Railway routing and verifies the Phase 7.4 table", () => {
+test("production migration entrypoint uses the compatible LeileiOS ledger", () => {
   const migrateUrl = new URL("../src/database/migrate.ts", import.meta.url);
   assert.equal(existsSync(migrateUrl), true, "src/database/migrate.ts must exist");
 
   const source = readFileSync(migrateUrl, "utf8");
-  assert.match(source, /drizzle-orm\/postgres-js\/migrator/);
-  assert.match(source, /migrationsFolder:\s*["']\.\/drizzle["']/);
+  assert.match(source, /drizzle-orm\/migrator/);
+  assert.doesNotMatch(source, /postgres-js\/migrator/);
+  assert.match(source, /readMigrationFiles/);
+  assert.match(source, /leilei_schema_migrations/);
+  assert.match(source, /pg_advisory_xact_lock/);
   assert.match(source, /resolveRailwayMigrationDatabaseUrl/);
   assert.match(source, /RAILWAY_ENVIRONMENT_ID/);
   assert.match(source, /to_regclass\('public\.data_import_runs'\)/);
