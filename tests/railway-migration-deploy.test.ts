@@ -39,6 +39,16 @@ test("production migration entrypoint uses the compatible LeileiOS ledger", () =
   assert.match(source, /DATABASE_URL/);
 });
 
+test("migration ledger bootstrap commits separately from schema advancement", () => {
+  const source = readRepoFile("src/database/migrate.ts");
+  const transactionCount = source.match(/await client\.begin\(/g)?.length ?? 0;
+  assert.equal(
+    transactionCount,
+    2,
+    "migration runner must use separate bootstrap and schema-advance transactions",
+  );
+});
+
 test("pending migration ledger row is written before its SQL inside the same transaction", () => {
   const source = readRepoFile("src/database/migrate.ts");
   const pendingLoop = source.indexOf("for (const migration of pending)");

@@ -5,6 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": "node dist/database/predeploy-bootstrap-ledger.js"
+    "preDeployCommand": "node dist/database/migrate.js"
   }
 }
