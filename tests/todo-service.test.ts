@@ -19,6 +19,7 @@ class FakeTodoRepository implements TodoRepository {
     outcome: "committed",
     paper: { author: "L", date: "2026-08-12", revision: 1, entries: [] },
   };
+  findUserById() { return Promise.resolve({ status: "active" as const }); }
   readDay(_userId: string, _date: string): Promise<TodoDayPapers> { return Promise.resolve({ L: null, G: null }); }
   listContentDates(_userId: string): Promise<string[]> { return Promise.resolve([]); }
   replacePaper(input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult> { this.replacements.push(input); return Promise.resolve(this.result); }

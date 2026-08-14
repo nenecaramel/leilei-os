@@ -8,6 +8,7 @@ import {
   resourceLifecycleEvents,
   tasks,
   toolCalls,
+  users,
 } from "../../database/schema.js";
 
 export type SystemDataSummary = {
@@ -35,8 +36,10 @@ export type SystemToolActivityRecord = {
   errorCode: string | null;
   createdAt: Date;
 };
+export type SystemUserRecord = { status: "active" | "disabled" };
 
 export interface SystemRepository {
+  findUserById(userId: string): Promise<SystemUserRecord | null>;
   readDataSummary(userId: string): Promise<SystemDataSummary>;
   listLifecycleActivity(
     userId: string,
@@ -60,6 +63,15 @@ const MCP_WRITE_TOOL_NAMES = [
 
 export class DrizzleSystemRepository implements SystemRepository {
   constructor(private readonly db: Database) {}
+
+  async findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null> {
+    const [user] = await this.db
+      .select({ status: users.status })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ?? null;
+  }
 
   async readDataSummary(userId: string): Promise<SystemDataSummary> {
     const [memoryRows, diaryRows, taskRows, healthRows] = await Promise.all([

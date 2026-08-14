@@ -9,6 +9,7 @@ import {
   todoEntries,
   todoPapers,
   toolCalls,
+  users,
 } from "../../database/schema.js";
 import type { ExportRepository } from "./export-service.js";
 import type {
@@ -25,6 +26,15 @@ const toIso = (value: Date) => value.toISOString();
 
 export class DrizzleExportRepository implements ExportRepository {
   constructor(private readonly db: Database) {}
+
+  async findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null> {
+    const [user] = await this.db
+      .select({ status: users.status })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ?? null;
+  }
 
   async listMemory(userId: string): Promise<ExportMemoryRecord[]> {
     const rows = await this.db.select({

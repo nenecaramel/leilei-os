@@ -7,6 +7,7 @@ import {
   tasks,
   todoEntries,
   todoPapers,
+  users,
 } from "../../database/schema.js";
 import type {
   ExportDiaryRecord,
@@ -29,6 +30,7 @@ export type ImportAuditRun = {
 };
 
 export interface ImportRepository {
+  findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   withTransaction<T>(work: (repository: ImportRepository) => Promise<T>): Promise<T>;
   readCurrentState(userId: string): Promise<ImportCurrentState>;
   insertMemory(userId: string, record: ExportMemoryRecord): Promise<void>;
@@ -43,6 +45,15 @@ const toIso = (value: Date): string => value.toISOString();
 
 export class DrizzleImportRepository implements ImportRepository {
   constructor(private readonly db: DbExecutor) {}
+
+  async findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null> {
+    const [user] = await this.db
+      .select({ status: users.status })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ?? null;
+  }
 
   async withTransaction<T>(work: (repository: ImportRepository) => Promise<T>): Promise<T> {
     return this.db.transaction(

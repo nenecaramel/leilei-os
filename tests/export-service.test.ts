@@ -90,6 +90,7 @@ const toolActivity: ExportToolActivity[] = [{
 
 function createRepository(calls: string[] = []): ExportRepository {
   return {
+    async findUserById() { return { status: "active" }; },
     async listMemory(userId) { calls.push(`memory:${userId}`); return memory; },
     async listDiary(userId) { calls.push(`diary:${userId}`); return diary; },
     async listTasks(userId) { calls.push(`task:${userId}`); return task; },

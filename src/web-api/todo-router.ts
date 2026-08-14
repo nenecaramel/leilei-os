@@ -56,6 +56,10 @@ function routeParam(value: string | string[] | undefined): string {
 
 function mapError(response: Response, error: unknown): void {
   if (error instanceof TodoServiceError) {
+    if (error.code === "USER_NOT_FOUND" || error.code === "USER_DISABLED") {
+      response.status(403).json({ success: false, error: { code: "TODO_UNAVAILABLE", message: "Todo is unavailable for the authenticated user." } });
+      return;
+    }
     if (error.code === "TODO_PAPER_CONFLICT") {
       response.status(409).json({ success: false, error: { code: error.code, message: "Todo paper changed on another device." } });
       return;

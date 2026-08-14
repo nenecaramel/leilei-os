@@ -4,6 +4,10 @@ import type {
   SystemRepository,
   SystemToolActivityRecord,
 } from "./system-repository.js";
+import {
+  ActiveUserAuthorizationError,
+  requireActiveUser,
+} from "../require-active-user.js";
 
 export type {
   SystemDataSummary,
@@ -26,6 +30,15 @@ export type SystemActivityItem = {
   outcome: "success" | "failed";
 };
 
+export type SystemServiceErrorCode = "USER_NOT_FOUND" | "USER_DISABLED";
+
+export class SystemServiceError extends Error {
+  constructor(public readonly code: SystemServiceErrorCode) {
+    super("System data is unavailable for the authenticated user.");
+    this.name = "SystemServiceError";
+  }
+}
+
 const ACTIVITY_CANDIDATE_LIMIT = 100;
 const FINAL_ACTIVITY_LIMIT = 50;
 
@@ -35,7 +48,8 @@ export class SystemService {
     private readonly options: { internalMcpEnabled?: boolean } = {},
   ) {}
 
-  readConnections(): SystemConnections {
+  async readConnections(userId: string): Promise<SystemConnections> {
+    await this.requireActiveUser(userId);
     return {
       web_api: "online",
       public_mcp: "available",
@@ -45,11 +59,13 @@ export class SystemService {
     };
   }
 
-  readDataSummary(userId: string): Promise<SystemDataSummary> {
+  async readDataSummary(userId: string): Promise<SystemDataSummary> {
+    await this.requireActiveUser(userId);
     return this.repository.readDataSummary(userId);
   }
 
   async readActivity(userId: string): Promise<SystemActivityItem[]> {
+    await this.requireActiveUser(userId);
     const [lifecycle, tools] = await Promise.all([
       this.repository.listLifecycleActivity(userId, ACTIVITY_CANDIDATE_LIMIT),
       this.repository.listToolActivity(userId, ACTIVITY_CANDIDATE_LIMIT),
@@ -61,6 +77,17 @@ export class SystemService {
         return time || right.id.localeCompare(left.id);
       })
       .slice(0, FINAL_ACTIVITY_LIMIT);
+  }
+
+  private async requireActiveUser(userId: string): Promise<void> {
+    try {
+      await requireActiveUser(this.repository, userId);
+    } catch (error) {
+      if (error instanceof ActiveUserAuthorizationError) {
+        throw new SystemServiceError(error.code);
+      }
+      throw error;
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import type { SyncHealthInput } from "../domains/health/health-service.js";
+import { HealthServiceError } from "../domains/health/health-service.js";
 
 export type HealthApiDependencies = {
   healthService: {
@@ -50,6 +51,16 @@ export function createSyncHealthApiHandler(
         data,
       });
     } catch (error) {
+      if (error instanceof HealthServiceError && (error.code === "USER_NOT_FOUND" || error.code === "USER_DISABLED")) {
+        response.status(403).json({
+          success: false,
+          error: {
+            code: "HEALTH_UNAVAILABLE",
+            message: "Health is unavailable for the authenticated user.",
+          },
+        });
+        return;
+      }
       console.error(
         "Web Health API failed",
         error instanceof Error ? error.name : "UnknownError",
@@ -64,4 +75,4 @@ export function createSyncHealthApiHandler(
       });
     }
   };
-} 
+}

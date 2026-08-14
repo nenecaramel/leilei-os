@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { healthRecords } from "../../database/schema.js";
+import { healthRecords, users } from "../../database/schema.js";
 
 export type HealthRecord = {
   id: string;
@@ -17,16 +17,27 @@ export type UpsertHealthInput = {
   periodStartDate?: string | null;
   cycleDay?: number | null;
 };
+export type HealthUserRecord = { status: "active" | "disabled" };
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export interface HealthRepository {
+  findUserById(userId: string): Promise<HealthUserRecord | null>;
   upsertHealth(input: UpsertHealthInput): Promise<HealthRecord>;
   getLatestHealth(userId: string): Promise<HealthRecord | null>;
 }
 
 export class DrizzleHealthRepository implements HealthRepository {
   constructor(private readonly db: Database) {}
+
+  async findUserById(userId: string): Promise<HealthUserRecord | null> {
+    const [user] = await this.db
+      .select({ status: users.status })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ?? null;
+  }
 
   async upsertHealth(input: UpsertHealthInput): Promise<HealthRecord> {
     const [record] = await this.db
