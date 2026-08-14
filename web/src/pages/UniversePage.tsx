@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { PageHeader } from "./PageHeader";
+import "./universe-state-polish.css";
 import {
   createLeileiOSUniverseAdapter,
 } from "./universe/universe-adapter";
@@ -171,10 +172,10 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   }
 
   if (state.status === "loading") {
-    return <UniverseFrame><UniverseStatus message="正在读取 Universe…" busy /></UniverseFrame>;
+    return <UniverseFrame><UniverseLoadingState /></UniverseFrame>;
   }
   if (state.status === "not-initialized") {
-    return <UniverseFrame><UniverseStatus message="Universe 尚未初始化。LeileiOS 模式不会自动导入本地数据或创建种子内容。" onRetry={() => setReload((value) => value + 1)} /></UniverseFrame>;
+    return <UniverseFrame><UniverseEmptyState /></UniverseFrame>;
   }
   if (state.status === "error") {
     return <UniverseFrame><UniverseStatus message={state.message} onRetry={() => setReload((value) => value + 1)} /></UniverseFrame>;
@@ -255,8 +256,30 @@ function UniverseFrame({ children }: { children: ReactNode }) {
   return <div className="page universe-page"><PageHeader eyebrow="Universe" title="Universe" description="你的空间知识图谱。" />{children}</div>;
 }
 
-function UniverseStatus({ message, onRetry, busy }: { message: string; onRetry?: () => void; busy?: boolean }) {
-  return <section className="universe-state" aria-live="polite"><p>{message}</p>{onRetry ? <button className="secondary-button" type="button" onClick={onRetry}>重新读取</button> : null}{busy ? <span className="sr-only">读取中</span> : null}</section>;
+function UniverseLoadingState() {
+  return (
+    <section className="universe-cosmos universe-cosmos-loading" aria-label="Universe 加载中" aria-live="polite">
+      <div className="universe-loading-field" aria-hidden="true">
+        <span className="universe-loading-star" style={{ left: "19%", top: "30%" }} />
+        <span className="universe-loading-star" style={{ left: "68%", top: "23%" }} />
+        <span className="universe-loading-star" style={{ left: "42%", top: "62%" }} />
+        <span className="universe-loading-star" style={{ left: "78%", top: "70%" }} />
+      </div>
+      <span className="sr-only">正在读取 Universe…</span>
+    </section>
+  );
+}
+
+function UniverseEmptyState() {
+  return (
+    <section className="universe-cosmos universe-cosmos-state" aria-live="polite">
+      <p className="universe-empty-copy">Universe 还没有内容</p>
+    </section>
+  );
+}
+
+function UniverseStatus({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return <section className="universe-cosmos universe-cosmos-state" aria-live="polite"><div className="universe-state-inline"><p>{message}</p>{onRetry ? <button className="secondary-button" type="button" onClick={onRetry}>重新加载</button> : null}</div></section>;
 }
 
 export function UniverseCanvas({
