@@ -5,6 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": "node dist/database/predeploy-compatible-transaction-probe.js"
+    "preDeployCommand": "node dist/database/migrate.js"
   }
 }
