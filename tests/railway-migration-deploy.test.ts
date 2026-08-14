@@ -67,3 +67,13 @@ test("pending migration ledger row is written before its SQL inside the same tra
     "pending migration ledger row must be recorded before its SQL within the transaction",
   );
 });
+
+test("migration emits safe network diagnostics before opening the migration client", () => {
+  const source = readRepoFile("src/database/migrate.ts");
+  const diagnostics = source.indexOf("collectMigrationNetworkDiagnostics(");
+  const client = source.indexOf("const client = postgres(");
+  assert.notEqual(diagnostics, -1, "migration must collect network diagnostics");
+  assert.notEqual(client, -1, "migration must create the postgres client");
+  assert.ok(diagnostics < client, "network diagnostics must run before the migration client is created");
+  assert.match(source, /MIGRATION_NETWORK_DIAGNOSTICS=UNAVAILABLE/);
+});

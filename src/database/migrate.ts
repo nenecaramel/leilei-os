@@ -5,6 +5,10 @@ import {
   type AppliedMigration,
   type MigrationFile,
 } from "./migration-plan.js";
+import {
+  collectMigrationNetworkDiagnostics,
+  logMigrationNetworkDiagnostics,
+} from "./migration-network-diagnostics.js";
 import { resolveRailwayMigrationDatabaseUrl } from "./railway-private-postgres.js";
 
 const MIGRATIONS_FOLDER = "./drizzle";
@@ -49,7 +53,18 @@ async function main(): Promise<void> {
     databaseUrl,
     process.env.RAILWAY_ENVIRONMENT_ID,
   );
-
+  migrationStage = "network_diagnostics";
+  try {
+    const diagnostics = await collectMigrationNetworkDiagnostics(
+      databaseUrl,
+      process.env.RAILWAY_ENVIRONMENT_ID,
+      migrationDatabaseUrl,
+    );
+    logMigrationNetworkDiagnostics(diagnostics);
+  } catch {
+    // Diagnostics are best-effort and must never replace the migration error.
+    console.error("MIGRATION_NETWORK_DIAGNOSTICS=UNAVAILABLE");
+  }
   migrationStage = "create_client";
   const client = postgres(migrationDatabaseUrl, {
     max: 1,
