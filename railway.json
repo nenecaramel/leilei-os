@@ -5,6 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": "node dist/database/predeploy-apply-0018-schema.js"
+    "preDeployCommand": "node dist/database/predeploy-record-0018-ledger.js"
   }
 }
