@@ -4,6 +4,7 @@ import { resolveRailwayMigrationDatabaseUrl } from "./railway-private-postgres.j
 
 const MIGRATION_PATH = "./drizzle/0018_nifty_power_pack.sql";
 const STATEMENT_BREAKPOINT = "--> statement-breakpoint";
+const ROLLBACK_SIGNAL = Symbol("rollback-0018-probe");
 
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
@@ -16,7 +17,6 @@ async function main(): Promise<void> {
     process.env.RAILWAY_ENVIRONMENT_ID,
   );
   const client = postgres(resolvedUrl, { max: 1, prepare: false, ssl: "require" });
-  let transactionOpen = false;
 
   try {
     const before = await client<{ relation: string | null }[]>`
@@ -34,21 +34,27 @@ async function main(): Promise<void> {
       throw new Error("Unexpected 0018 statement count.");
     }
 
-    await client.unsafe("begin");
-    transactionOpen = true;
-    for (const statement of statements) {
-      await client.unsafe(statement);
-    }
+    try {
+      await client.begin(async (transaction) => {
+        for (const statement of statements) {
+          await transaction.unsafe(statement);
+        }
 
-    const during = await client<{ relation: string | null }[]>`
-      select to_regclass('public.data_import_runs')::text as relation
-    `;
-    if (!during[0]?.relation) {
-      throw new Error("0018 did not create data_import_runs inside the transaction.");
-    }
+        const during = await transaction<{ relation: string | null }[]>`
+          select to_regclass('public.data_import_runs')::text as relation
+        `;
+        if (!during[0]?.relation) {
+          throw new Error("0018 did not create data_import_runs inside the transaction.");
+        }
 
-    await client.unsafe("rollback");
-    transactionOpen = false;
+        throw ROLLBACK_SIGNAL;
+      });
+      throw new Error("0018 rollback probe transaction unexpectedly committed.");
+    } catch (error) {
+      if (error !== ROLLBACK_SIGNAL) {
+        throw error;
+      }
+    }
 
     const after = await client<{ relation: string | null }[]>`
       select to_regclass('public.data_import_runs')::text as relation
@@ -56,15 +62,6 @@ async function main(): Promise<void> {
     if (after[0]?.relation) {
       throw new Error("Rollback probe left data_import_runs committed.");
     }
-  } catch (error) {
-    if (transactionOpen) {
-      try {
-        await client.unsafe("rollback");
-      } catch {
-        // Preserve the original failure while still attempting cleanup.
-      }
-    }
-    throw error;
   } finally {
     await client.end();
   }
