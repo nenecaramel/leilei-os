@@ -10,6 +10,7 @@ export type TodoPaper = {
   entries: TodoEntry[];
 };
 export type TodoDayPapers = { L: TodoPaper | null; G: TodoPaper | null };
+export type TodoUserRecord = { status: "active" | "disabled" };
 export type ReplaceTodoPaperInput = {
   userId: string;
   date: string;
@@ -31,6 +32,7 @@ export type ReplaceTodoPaperIdempotentlyResult =
   | { outcome: "idempotency_conflict" | "revision_conflict" };
 
 export interface TodoRepository {
+  findUserById(userId: string): Promise<TodoUserRecord | null>;
   readDay(userId: string, date: string): Promise<TodoDayPapers>;
   listContentDates(userId: string): Promise<string[]>;
   replacePaper(input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult>;

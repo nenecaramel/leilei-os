@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { todoEntries, todoPapers } from "../../database/schema.js";
+import { todoEntries, todoPapers, users } from "../../database/schema.js";
 import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
@@ -37,6 +37,15 @@ function toPaper(
 
 export class DrizzleTodoRepository implements TodoRepository {
   constructor(private readonly db: Database) {}
+
+  async findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null> {
+    const [user] = await this.db
+      .select({ status: users.status })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ?? null;
+  }
 
   private async readPaper(
     database: Database,

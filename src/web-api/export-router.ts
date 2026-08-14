@@ -1,5 +1,5 @@
 import { Router, type RequestHandler, type Response } from "express";
-import type { ExportService } from "../domains/export/export-service.js";
+import { ExportServiceError, type ExportService } from "../domains/export/export-service.js";
 import type { ExportScope } from "../domains/export/export-types.js";
 
 export type ExportApiDependencies = {
@@ -57,8 +57,8 @@ export function createExportApiHandler(
         `attachment; filename="${toExportFilename(document.exported_at)}"`,
       );
       response.type("application/json").json(document);
-    } catch {
-      sendExportUnavailable(response);
+    } catch (error) {
+      sendExportError(response, error);
     }
   };
 }
@@ -102,8 +102,9 @@ function sendInvalidExportRequest(response: Response): void {
   });
 }
 
-function sendExportUnavailable(response: Response): void {
-  response.status(503).json({
+function sendExportError(response: Response, error: unknown): void {
+  const forbidden = error instanceof ExportServiceError && (error.code === "USER_NOT_FOUND" || error.code === "USER_DISABLED");
+  response.status(forbidden ? 403 : 503).json({
     success: false,
     error: {
       code: "EXPORT_UNAVAILABLE",

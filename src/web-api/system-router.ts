@@ -1,9 +1,9 @@
 import { Router, type RequestHandler, type Response } from "express";
-import type { SystemActivityItem, SystemConnections, SystemDataSummary } from "../domains/system/system-service.js";
+import { SystemServiceError, type SystemActivityItem, type SystemConnections, type SystemDataSummary } from "../domains/system/system-service.js";
 
 export type SystemApiDependencies = {
   systemService: {
-    readConnections(): SystemConnections;
+    readConnections(userId: string): Promise<SystemConnections>;
     readDataSummary(userId: string): Promise<SystemDataSummary>;
     readActivity(userId: string): Promise<SystemActivityItem[]>;
   };
@@ -22,12 +22,12 @@ export function createSystemApiRouter(
 export function createConnectionsSystemApiHandler(
   dependencies: SystemApiDependencies,
 ): RequestHandler {
-  return (request, response) => {
+  return async (request, response) => {
     if (!requireWebUser(response, request.webUserId)) return;
     try {
-      response.json({ success: true, data: dependencies.systemService.readConnections() });
-    } catch {
-      sendSystemUnavailable(response);
+      response.json({ success: true, data: await dependencies.systemService.readConnections(request.webUserId!) });
+    } catch (error) {
+      sendSystemError(response, error);
     }
   };
 }
@@ -40,8 +40,8 @@ export function createDataSystemApiHandler(
     try {
       const data = await dependencies.systemService.readDataSummary(request.webUserId!);
       response.json({ success: true, data });
-    } catch {
-      sendSystemUnavailable(response);
+    } catch (error) {
+      sendSystemError(response, error);
     }
   };
 }
@@ -54,8 +54,8 @@ export function createActivitySystemApiHandler(
     try {
       const events = await dependencies.systemService.readActivity(request.webUserId!);
       response.json({ success: true, data: { events } });
-    } catch {
-      sendSystemUnavailable(response);
+    } catch (error) {
+      sendSystemError(response, error);
     }
   };
 }
@@ -72,8 +72,9 @@ function requireWebUser(response: Response, userId: string | undefined): userId 
   return false;
 }
 
-function sendSystemUnavailable(response: Response): void {
-  response.status(503).json({
+function sendSystemError(response: Response, error: unknown): void {
+  const forbidden = error instanceof SystemServiceError && (error.code === "USER_NOT_FOUND" || error.code === "USER_DISABLED");
+  response.status(forbidden ? 403 : 503).json({
     success: false,
     error: {
       code: "SYSTEM_UNAVAILABLE",

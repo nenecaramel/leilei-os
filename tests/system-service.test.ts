@@ -13,6 +13,9 @@ const USER_ID = "00000000-0000-4000-8000-000000000099";
 
 function createRepository(overrides: Partial<SystemRepository> = {}): SystemRepository {
   return {
+    async findUserById() {
+      return { status: "active" as const };
+    },
     async readDataSummary() {
       return {
         memory: { active: 2, archived: 1 },
@@ -31,7 +34,7 @@ function createRepository(overrides: Partial<SystemRepository> = {}): SystemRepo
   };
 }
 
-test("connections expose only truthful safe channel statuses", () => {
+test("connections expose only truthful safe channel statuses", async () => {
   const enabled = new SystemService(createRepository(), {
     internalMcpEnabled: true,
   });
@@ -39,17 +42,17 @@ test("connections expose only truthful safe channel statuses", () => {
     internalMcpEnabled: false,
   });
 
-  assert.deepEqual(enabled.readConnections(), {
+  assert.deepEqual(await enabled.readConnections(USER_ID), {
     web_api: "online",
     public_mcp: "available",
     internal_mcp: "available",
   });
-  assert.deepEqual(disabled.readConnections(), {
+  assert.deepEqual(await disabled.readConnections(USER_ID), {
     web_api: "online",
     public_mcp: "available",
     internal_mcp: "not_enabled",
   });
-  assert.equal(JSON.stringify(enabled.readConnections()).includes("token"), false);
+  assert.equal(JSON.stringify(await enabled.readConnections(USER_ID)).includes("token"), false);
 });
 
 test("data summary forwards the authenticated user id and preserves real counts", async () => {

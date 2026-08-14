@@ -9,14 +9,28 @@ import type {
   ExportTodoPaper,
 } from "./export-types.js";
 import { createOwnerFingerprint } from "./owner-fingerprint.js";
+import {
+  ActiveUserAuthorizationError,
+  requireActiveUser,
+} from "../require-active-user.js";
 
 export interface ExportRepository {
+  findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   listMemory(userId: string): Promise<ExportMemoryRecord[]>;
   listDiary(userId: string): Promise<ExportDiaryRecord[]>;
   listTasks(userId: string): Promise<ExportTaskRecord[]>;
   listTodo(userId: string): Promise<ExportTodoPaper[]>;
   listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>;
   listToolActivity(userId: string): Promise<ExportToolActivity[]>;
+}
+
+export type ExportServiceErrorCode = "USER_NOT_FOUND" | "USER_DISABLED";
+
+export class ExportServiceError extends Error {
+  constructor(public readonly code: ExportServiceErrorCode) {
+    super("Export is unavailable for the authenticated user.");
+    this.name = "ExportServiceError";
+  }
 }
 
 export class ExportService {
@@ -30,6 +44,14 @@ export class ExportService {
     scope: ExportScope,
     includeAudit: boolean,
   ): Promise<ExportDocument> {
+    try {
+      await requireActiveUser(this.repository, userId);
+    } catch (error) {
+      if (error instanceof ActiveUserAuthorizationError) {
+        throw new ExportServiceError(error.code);
+      }
+      throw error;
+    }
     const data: ExportDocument["data"] = {};
     if (scope === "all" || scope === "memory") {
       data.memory = await this.repository.listMemory(userId);

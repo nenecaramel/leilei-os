@@ -40,6 +40,7 @@ class FakeImportRepository implements ImportRepository {
   writes = 0;
   audits: ImportAuditRun[] = [];
   constructor(public state: ImportCurrentState = cloneState(empty)) {}
+  async findUserById() { return { status: "active" as const }; }
   async withTransaction<T>(work: (repository: ImportRepository) => Promise<T>): Promise<T> {
     const transaction = new FakeImportRepository(cloneState(this.state));
     const result = await work(transaction);

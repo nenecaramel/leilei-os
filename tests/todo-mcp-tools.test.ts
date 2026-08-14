@@ -131,6 +131,7 @@ async function connectWriteImplementation(input?: {
 
 class CountingTodoRepository implements TodoRepository {
   readCalls = 0;
+  findUserById() { return Promise.resolve({ status: "active" as const }); }
   readDay(): Promise<TodoDayPapers> {
     this.readCalls += 1;
     return Promise.resolve(PAPERS);
@@ -168,6 +169,38 @@ test("Todo read tool implementations delegate once and preserve exact server tru
   });
   assert.deepEqual((fixture.todo as TodoToolService).readCalls, [{ userId: USER_ID, date: DATE }]);
   assert.deepEqual((fixture.todo as TodoToolService).listCalls, [USER_ID]);
+});
+
+test("MCP Todo reads recheck the durable user status for an established context", async (t) => {
+  let status: "active" | "disabled" = "active";
+  let reads = 0;
+  const service = new TodoService({
+    findUserById: async () => ({ status }),
+    readDay: async () => {
+      reads += 1;
+      return PAPERS;
+    },
+    listContentDates: async () => [],
+    replacePaper: async () => ({ outcome: "conflict" }),
+  });
+  const fixture = await connectReadImplementations({ todoService: service });
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const first = await fixture.client.callTool({
+    name: "read_todo_day",
+    arguments: { date: DATE },
+  });
+  assert.equal(first.isError, undefined);
+  status = "disabled";
+  const second = await fixture.client.callTool({
+    name: "read_todo_day",
+    arguments: { date: DATE },
+  });
+  assert.equal(second.isError, true);
+  assert.equal(reads, 1);
 });
 
 test("Todo read tools reject invalid dates before repository reads and sanitize failures", async (t) => {

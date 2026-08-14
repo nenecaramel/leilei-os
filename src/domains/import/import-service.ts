@@ -20,6 +20,10 @@ import {
   type ParsedImportPackage,
 } from "./import-schema.js";
 import type { ImportRepository } from "./import-repository.js";
+import {
+  ActiveUserAuthorizationError,
+  requireActiveUser,
+} from "../require-active-user.js";
 
 export type ImportPreview = {
   package_sha256: string;
@@ -33,6 +37,13 @@ export type ImportExecution = {
   preview_fingerprint: string;
   summary: ImportSummary;
 };
+
+export class ImportAuthorizationError extends Error {
+  constructor(public readonly code: "USER_NOT_FOUND" | "USER_DISABLED") {
+    super("Import is unavailable for the authenticated user.");
+    this.name = "ImportAuthorizationError";
+  }
+}
 
 function toPreview(plan: ImportPlan): ImportPreview {
   return {
@@ -79,18 +90,21 @@ export class ImportService {
   constructor(private readonly repository: ImportRepository) {}
 
   async preview(raw: Uint8Array, userId: string): Promise<ImportPreview> {
+    await this.requireActiveUser(this.repository, userId);
     const parsed = parseImportPackage(raw);
     const current = await this.repository.readCurrentState(userId);
     return toPreview(buildImportPlan(parsed, userId, current));
   }
 
   async execute(raw: Uint8Array, userId: string, expectedPreviewFingerprint: string): Promise<ImportExecution> {
+    await this.requireActiveUser(this.repository, userId);
     const parsed = parseImportPackage(raw);
     if (!/^[0-9a-f]{64}$/u.test(expectedPreviewFingerprint)) {
       throw new ImportValidationError("IMPORT_PREVIEW_STALE", "IMPORT_PREVIEW_STALE");
     }
     try {
       return await this.repository.withTransaction(async (transaction) => {
+        await this.requireActiveUser(transaction, userId);
         const current = await transaction.readCurrentState(userId);
         const plan = buildImportPlan(parsed, userId, current);
         if (plan.preview_fingerprint !== expectedPreviewFingerprint) {
@@ -135,6 +149,20 @@ export class ImportService {
       }
       if (hasDatabaseErrorCode(error, "40001")) {
         throw new ImportValidationError("IMPORT_PREVIEW_STALE", "IMPORT_PREVIEW_STALE");
+      }
+      throw error;
+    }
+  }
+
+  private async requireActiveUser(
+    repository: ImportRepository,
+    userId: string,
+  ): Promise<void> {
+    try {
+      await requireActiveUser(repository, userId);
+    } catch (error) {
+      if (error instanceof ActiveUserAuthorizationError) {
+        throw new ImportAuthorizationError(error.code);
       }
       throw error;
     }

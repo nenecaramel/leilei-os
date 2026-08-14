@@ -10,6 +10,10 @@ import {
   type TodoPaper,
   type TodoRepository,
 } from "./todo-types.js";
+import {
+  ActiveUserAuthorizationError,
+  requireActiveUser,
+} from "../require-active-user.js";
 
 export type TodoServiceErrorCode =
   | "TODO_DATE_INVALID"
@@ -19,7 +23,9 @@ export type TodoServiceErrorCode =
   | "TODO_ENTRY_ID_DUPLICATE"
   | "TODO_PAPER_CONFLICT"
   | "INVALID_IDEMPOTENCY_KEY"
-  | "IDEMPOTENCY_CONFLICT";
+  | "IDEMPOTENCY_CONFLICT"
+  | "USER_NOT_FOUND"
+  | "USER_DISABLED";
 
 export class TodoServiceError extends Error {
   constructor(public readonly code: TodoServiceErrorCode, message: string) {
@@ -103,15 +109,18 @@ export class TodoService {
   constructor(private readonly repository: TodoRepository) {}
 
   async readDay(userId: string, date: string) {
+    await this.requireActiveUser(userId);
     assertDate(date);
     return { date, papers: await this.repository.readDay(userId, date) };
   }
 
-  listDates(userId: string): Promise<string[]> {
+  async listDates(userId: string): Promise<string[]> {
+    await this.requireActiveUser(userId);
     return this.repository.listContentDates(userId);
   }
 
   async replacePaper(input: ReplacePaperServiceInput): Promise<TodoPaper> {
+    await this.requireActiveUser(input.userId);
     const result = await this.repository.replacePaper(
       normalizeReplacePaperInput(input),
     );
@@ -122,6 +131,7 @@ export class TodoService {
   async replacePaperIdempotently(
     input: ReplacePaperServiceInput & { idempotencyKey: string },
   ): Promise<ReplaceTodoPaperIdempotentlyServiceResult> {
+    await this.requireActiveUser(input.userId);
     const normalized = normalizeReplacePaperInput(input);
     let idempotencyKey: string;
     try {
@@ -168,5 +178,16 @@ export class TodoService {
       );
     }
     throw new Error("Unknown Todo idempotent persistence outcome.");
+  }
+
+  private async requireActiveUser(userId: string): Promise<void> {
+    try {
+      await requireActiveUser(this.repository, userId);
+    } catch (error) {
+      if (error instanceof ActiveUserAuthorizationError) {
+        throw new TodoServiceError(error.code, "Todo is unavailable for the authenticated user.");
+      }
+      throw error;
+    }
   }
 }

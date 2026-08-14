@@ -1,5 +1,5 @@
 import express, { Router, type RequestHandler, type Response } from "express";
-import type { ImportService } from "../domains/import/import-service.js";
+import { ImportAuthorizationError, type ImportService } from "../domains/import/import-service.js";
 import { ImportValidationError } from "../domains/import/import-schema.js";
 
 export type ImportApiDependencies = {
@@ -83,6 +83,7 @@ function sendImportError(response: Response, error: unknown): void {
   if (code === "IMPORT_PREVIEW_STALE") return sendError(response, 409, code, "Import preview is stale.");
   if (code === "IMPORT_NOTHING_TO_RESTORE") return sendError(response, 409, code, "There is nothing new to restore.");
   if (code === "IMPORT_TOO_LARGE") return sendError(response, 413, code, "Import package is too large.");
+  if (code === "USER_NOT_FOUND" || code === "USER_DISABLED" || error instanceof ImportAuthorizationError) return sendError(response, 403, "IMPORT_UNAVAILABLE", "Import is unavailable for the authenticated user.");
   if (code === "INVALID_IMPORT_FILE") return sendError(response, 400, code, "Import package is invalid.");
   sendError(response, 503, "IMPORT_UNAVAILABLE", "Import is temporarily unavailable.");
 }
