@@ -1,0 +1,38 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const pageSource = readFileSync(
+  new URL("../web/src/pages/UniversePage.tsx", import.meta.url),
+  "utf8",
+);
+const stateCss = readFileSync(
+  new URL("../web/src/pages/universe-state-polish.css", import.meta.url),
+  "utf8",
+);
+
+test("Universe loading and empty states are plain centered text on white", () => {
+  assert.match(pageSource, />正在读取 Universe…</);
+  assert.match(pageSource, />Universe 还没有内容</);
+
+  assert.match(
+    stateCss,
+    /\.universe-page:has\(\.universe-cosmos-loading\)[\s\S]*display:\s*flex\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-page \.universe-cosmos\.universe-cosmos-loading[\s\S]*place-items:\s*center\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-page \.universe-cosmos\.universe-cosmos-loading[\s\S]*border:\s*0\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-page \.universe-loading-line,[\s\S]*color:\s*#8d8d8d\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-page \.universe-loading-dots\s*\{[\s\S]*display:\s*none\s*!important/,
+  );
+});
