@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
-import { PageHeader } from "./PageHeader";
 import "./universe-state-polish.css";
 import {
   createLeileiOSUniverseAdapter,
@@ -181,34 +180,38 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     return <UniverseFrame><UniverseStatus message={state.message} onRetry={() => setReload((value) => value + 1)} /></UniverseFrame>;
   }
 
-  const { snapshot, version } = state;
+  const { snapshot } = state;
   const visibleNodes = galaxyFilter
     ? snapshot.nodes.filter((node) => node.galaxies.includes(galaxyFilter))
     : snapshot.nodes;
   const selectedNode = snapshot.nodes.find((node) => node.id === selectedId) ?? null;
 
   return (
-    <div className="page universe-page">
-      <PageHeader
-        eyebrow="Universe"
-        title={snapshot.meta.name || "Universe"}
-        description={`空间知识图谱 · ${snapshot.nodes.length} 颗星球 · v${version}`}
-        action={<><button className="secondary-button" type="button" onClick={() => downloadUniverseJson(snapshot)}>导出 JSON</button><button className="secondary-button" type="button" onClick={() => { setEditingNode(null); setEditorOpen(true); }}>点亮星球</button></>}
+    <div className="page memory-page universe-page">
+      <UniverseHeader
+        actions={(
+          <>
+            <button className="universe-header-action" type="button" onClick={() => downloadUniverseJson(snapshot)}>导出</button>
+            <button className="universe-header-action" type="button" onClick={() => { setEditingNode(null); setEditorOpen(true); }}>新增</button>
+          </>
+        )}
       />
-      <div className="universe-toolbar" aria-label="Universe filters">
-        <button className={!galaxyFilter ? "universe-filter is-active" : "universe-filter"} type="button" onClick={() => setGalaxyFilter(null)}>全部</button>
-        {snapshot.galaxies.slice().sort((a, b) => a.order - b.order).map((galaxy) => (
-          <button
-            className={galaxyFilter === galaxy.id ? "universe-filter is-active" : "universe-filter"}
-            key={galaxy.id}
-            type="button"
-            onClick={() => setGalaxyFilter(galaxy.id)}
-          >
-            <span className="universe-filter-dot" style={{ background: galaxy.color }} />
-            {galaxy.title}
-          </button>
-        ))}
-      </div>
+      {snapshot.galaxies.length ? (
+        <div className="universe-toolbar" aria-label="Universe filters">
+          <button className={!galaxyFilter ? "universe-filter is-active" : "universe-filter"} type="button" onClick={() => setGalaxyFilter(null)}>全部</button>
+          {snapshot.galaxies.slice().sort((a, b) => a.order - b.order).map((galaxy) => (
+            <button
+              className={galaxyFilter === galaxy.id ? "universe-filter is-active" : "universe-filter"}
+              key={galaxy.id}
+              type="button"
+              onClick={() => setGalaxyFilter(galaxy.id)}
+            >
+              <span className="universe-filter-dot" />
+              {galaxy.title}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {notice ? <p className="universe-notice" role="status">{notice}</p> : null}
       <UniverseCanvas
         nodes={visibleNodes}
@@ -252,20 +255,28 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   );
 }
 
+function UniverseHeader({ actions }: { actions?: ReactNode }) {
+  return (
+    <header className="memory-page-header universe-page-header">
+      <div className="memory-page-heading">
+        <div className="memory-page-title">Universe</div>
+      </div>
+      {actions ? <div className="universe-page-tools">{actions}</div> : null}
+    </header>
+  );
+}
+
 function UniverseFrame({ children }: { children: ReactNode }) {
-  return <div className="page universe-page"><PageHeader eyebrow="Universe" title="Universe" description="你的空间知识图谱。" />{children}</div>;
+  return <div className="page memory-page universe-page"><UniverseHeader />{children}</div>;
 }
 
 function UniverseLoadingState() {
   return (
     <section className="universe-cosmos universe-cosmos-loading" aria-label="Universe 加载中" aria-live="polite">
-      <div className="universe-loading-field" aria-hidden="true">
-        <span className="universe-loading-star" style={{ left: "19%", top: "30%" }} />
-        <span className="universe-loading-star" style={{ left: "68%", top: "23%" }} />
-        <span className="universe-loading-star" style={{ left: "42%", top: "62%" }} />
-        <span className="universe-loading-star" style={{ left: "78%", top: "70%" }} />
+      <div className="universe-loading-line">
+        <span>正在读取 Universe…</span>
+        <span className="universe-loading-dots" aria-hidden="true"><i /><i /><i /></span>
       </div>
-      <span className="sr-only">正在读取 Universe…</span>
     </section>
   );
 }
