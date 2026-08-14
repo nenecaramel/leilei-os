@@ -8,7 +8,7 @@ import type {
 } from "../system/types";
 import type { WebExportDocument, WebExportScope } from "../system/export-types";
 import { downloadExportDocument } from "../system/download-export";
-import { executeImport, previewImport, type WebImportPreview } from "../system/import-types";
+import { executeImport, previewImport, type WebImportModuleSummary, type WebImportPreview } from "../system/import-types";
 import { PageHeader } from "./PageHeader";
 
 type LoadState =
@@ -30,6 +30,7 @@ type ImportState =
   | { status: "previewing"; filename: string; bytes: Uint8Array; size: number }
   | { status: "ready"; filename: string; preview: WebImportPreview; bytes: Uint8Array; size: number }
   | { status: "restoring"; filename: string }
+  | { status: "success"; message: string }
   | { status: "error"; message: string };
 
 function CountCell({
@@ -71,6 +72,18 @@ function ArchivedCountRow({
       </div>
     </div>
   );
+}
+
+function countImport(summary: Record<string, WebImportModuleSummary>, key: keyof WebImportModuleSummary): number {
+  return Object.values(summary).reduce((total, counts) => total + counts[key], 0);
+}
+
+function recordLabel(count: number): string {
+  return `${count} ${count === 1 ? "record" : "records"}`;
+}
+
+function fileSummary(filename: string, size: number): string {
+  return `${filename} · ${(size / 1024).toFixed(1)} KB`;
 }
 
 export function SystemDataPageContent({
@@ -135,8 +148,11 @@ export function SystemDataPageContent({
     const current = importState;
     setImportState({ status: "restoring", filename: current.filename });
     try {
-      await executeImport(api, current.bytes, current.preview.preview_fingerprint);
-      setImportState({ status: "idle" });
+      const result = await executeImport(api, current.bytes, current.preview.preview_fingerprint);
+      const created = countImport(result.summary, "create");
+      const duplicates = countImport(result.summary, "duplicate");
+      const duplicateCopy = duplicates > 0 ? ` Skipped ${recordLabel(duplicates)} already present.` : "";
+      setImportState({ status: "success", message: `Restored ${recordLabel(created)}.${duplicateCopy}` });
       setReloadKey((value) => value + 1);
     } catch {
       setImportState({ status: "error", message: "Unable to restore this export file." });
@@ -167,6 +183,10 @@ export function SystemDataPageContent({
       active = false;
     };
   }, [api, reloadKey]);
+
+  const readyCreateCount = importState.status === "ready"
+    ? countImport(importState.preview.summary, "create")
+    : 0;
 
   return (
     <div className="page system-page system-data-page">
@@ -317,17 +337,21 @@ export function SystemDataPageContent({
         <button className="secondary-button" type="button" disabled={importState.status === "previewing" || importState.status === "restoring"} onClick={() => importInputRef.current?.click()}>
           Choose export file
         </button>
+        {importState.status === "selected" || importState.status === "previewing" ? (
+          <p className="system-state-copy">{fileSummary(importState.filename, importState.size)}</p>
+        ) : null}
         {importState.status === "selected" ? <button className="secondary-button" type="button" onClick={() => void previewSelected()}>Preview restore</button> : null}
         {importState.status === "previewing" ? <p className="system-state-copy" aria-live="polite">Validating…</p> : null}
         {importState.status === "ready" ? (
           <div className="system-import-preview" aria-live="polite">
-            <p>{importState.filename} · {(importState.size / 1024).toFixed(1)} KB</p>
+            <p>{fileSummary(importState.filename, importState.size)}</p>
             <p>{importState.preview.can_execute ? "Ready to restore new records." : "No new records can be restored."}</p>
             {Object.entries(importState.preview.summary).map(([module, counts]) => <p key={module}>{module}: create {counts.create}, duplicate {counts.duplicate}, conflict {counts.conflict}, invalid {counts.invalid}</p>)}
-            <button className="secondary-button" type="button" disabled={!importState.preview.can_execute} onClick={() => void restoreImport()}>Restore selected data</button>
+            <button className="secondary-button" type="button" disabled={!importState.preview.can_execute} onClick={() => void restoreImport()}>Restore {recordLabel(readyCreateCount)}</button>
           </div>
         ) : null}
         {importState.status === "restoring" ? <p className="system-state-copy" aria-live="polite">Restoring…</p> : null}
+        {importState.status === "success" ? <p className="system-state-copy" role="status">{importState.message}</p> : null}
         {importState.status === "error" ? <p className="system-export-error" role="alert">{importState.message}</p> : null}
       </section>
     </div>
