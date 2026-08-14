@@ -18,6 +18,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 ENV PNPM_CONFIG_ONLY_BUILT_DEPENDENCIES=esbuild
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=build /app/dist ./dist
+COPY drizzle ./drizzle
 
 USER node
 EXPOSE 3000
