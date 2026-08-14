@@ -85,13 +85,16 @@ async function main(): Promise<void> {
       const pending = planPendingMigrations(migrations, applied);
 
       for (const migration of pending) {
-        for (const statement of migration.sql) {
-          await transaction.unsafe(statement);
-        }
+        // The ledger row and migration SQL are committed by the same PostgreSQL
+        // transaction. Recording first avoids the production write-path issue
+        // observed after 0018 DDL while preserving all-or-nothing semantics.
         await transaction`
           insert into public.leilei_schema_migrations (created_at, hash)
           values (${migration.folderMillis}, ${migration.hash})
         `;
+        for (const statement of migration.sql) {
+          await transaction.unsafe(statement);
+        }
       }
     });
 
