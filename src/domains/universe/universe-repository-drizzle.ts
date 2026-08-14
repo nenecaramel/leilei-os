@@ -66,6 +66,8 @@ export class DrizzleUniverseRepository implements UniverseRepository {
         await repository.replaceCanonical(userId, snapshot);
         await repository.db.update(universeMeta).set({
           name: snapshot.meta.name,
+          schemaVersion: 2,
+          createdAt: new Date(snapshot.meta.createdAt),
           updatedAt: new Date(snapshot.meta.updatedAt),
           version: expectedVersion + 1,
         }).where(eq(universeMeta.userId, userId));
@@ -104,7 +106,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
         nodeId: node.id,
         createdAt: new Date(node.updatedAt),
         reason,
-        snapshot: toRevisionSnapshot(node),
+        snapshot: toRevisionSnapshot(existing),
       });
       await repository.db.update(universeNodes).set(toNodeInsert(userId, node)).where(
         and(eq(universeNodes.userId, userId), eq(universeNodes.id, node.id)),
@@ -248,6 +250,8 @@ export class DrizzleUniverseRepository implements UniverseRepository {
       await repository.replaceCanonical(userId, snapshot);
       await repository.db.update(universeMeta).set({
         name: snapshot.meta.name,
+        schemaVersion: 2,
+        createdAt: new Date(snapshot.meta.createdAt),
         updatedAt: new Date(snapshot.meta.updatedAt),
         version: expectedVersion + 1,
       }).where(eq(universeMeta.userId, userId));

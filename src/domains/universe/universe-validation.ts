@@ -243,7 +243,7 @@ export function normalizeRelationCreate(value: unknown, now = new Date().toISOSt
   const candidate = {
     ...record,
     id: record.id ? record.id : `edge-${randomUUID()}`,
-    createdAt: now,
+    createdAt: record.createdAt ? record.createdAt : now,
   };
   return validateUniverseRelation(candidate);
 }

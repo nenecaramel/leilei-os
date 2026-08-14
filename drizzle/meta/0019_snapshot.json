@@ -2004,7 +2004,7 @@
         },
         "order": {
           "name": "order",
-          "type": "real",
+          "type": "double precision",
           "primaryKey": false,
           "notNull": true
         }
@@ -2300,7 +2300,7 @@
         },
         "strength": {
           "name": "strength",
-          "type": "real",
+          "type": "double precision",
           "primaryKey": false,
           "notNull": true
         },

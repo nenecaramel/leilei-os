@@ -91,3 +91,15 @@ test("create normalization generates string IDs and preserves only documented de
   assert.match(relation.id, /^edge-[0-9a-f-]{36}$/u);
   assert.equal(relation.createdAt, timestamp);
 });
+
+test("relation create normalization preserves a supplied createdAt", () => {
+  const suppliedCreatedAt = "2025-01-02T03:04:05.000Z";
+  const relation = normalizeRelationCreate({
+    source: "node-1",
+    target: "node-1",
+    relationType: "raises",
+    strength: 0.5,
+    createdAt: suppliedCreatedAt,
+  }, timestamp);
+  assert.equal(relation.createdAt, suppliedCreatedAt);
+});

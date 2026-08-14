@@ -15,7 +15,7 @@ CREATE TABLE "universe_galaxies" (
 	"title" text NOT NULL,
 	"description" text NOT NULL,
 	"color" text NOT NULL,
-	"order" real NOT NULL,
+	"order" double precision NOT NULL,
 	CONSTRAINT "universe_galaxies_user_id_id_pk" PRIMARY KEY("user_id","id")
 );
 --> statement-breakpoint
@@ -55,7 +55,7 @@ CREATE TABLE "universe_relations" (
 	"source" text NOT NULL,
 	"target" text NOT NULL,
 	"relation_type" text NOT NULL,
-	"strength" real NOT NULL,
+	"strength" double precision NOT NULL,
 	"created_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "universe_relations_user_id_id_pk" PRIMARY KEY("user_id","id"),
 	CONSTRAINT "universe_relations_type_allowed" CHECK ("universe_relations"."relation_type" IN ('related_to', 'supports', 'contradicts', 'extends', 'part_of', 'raises'))

@@ -2,13 +2,13 @@ import { sql } from "drizzle-orm";
 import {
   check,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
   primaryKey,
-  real,
   text,
   timestamp,
   uniqueIndex,
@@ -571,7 +571,7 @@ export const universeGalaxies = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull(),
     color: text("color").notNull(),
-    order: real("order").notNull(),
+    order: doublePrecision("order").notNull(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.id] })],
 );
@@ -612,7 +612,7 @@ export const universeRelations = pgTable(
     source: text("source").notNull(),
     target: text("target").notNull(),
     relationType: text("relation_type").notNull(),
-    strength: real("strength").notNull(),
+    strength: doublePrecision("strength").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => [
