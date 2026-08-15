@@ -21,11 +21,19 @@ test("Universe loading and empty states are plain centered text on white", () =>
   );
   assert.match(
     stateCss,
+    /\.universe-page:has\(\.universe-import-flow\)[\s\S]*display:\s*flex\s*!important/,
+  );
+  assert.match(
+    stateCss,
     /\.universe-page \.universe-cosmos\.universe-cosmos-loading[\s\S]*place-items:\s*center\s*!important/,
   );
   assert.match(
     stateCss,
     /\.universe-page \.universe-cosmos\.universe-cosmos-loading[\s\S]*border:\s*0\s*!important/,
+  );
+  assert.match(
+    stateCss,
+    /\.universe-import-flow\s*\{[\s\S]*flex:\s*1 1 auto[\s\S]*align-content:\s*center/,
   );
   assert.match(
     stateCss,
