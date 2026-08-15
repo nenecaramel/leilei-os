@@ -30,7 +30,16 @@ test("ready controls use compact header actions and a non-destructive galaxy pic
   assert.match(pageSource, /downloadUniverseJson/);
   assert.doesNotMatch(pageSource, /universe-toolbar/);
   assert.doesNotMatch(pageSource, /UniverseCanvas|universe-detail-card|universe-node-editor/);
-  assert.match(readFileSync(new URL("../web/src/pages/universe/UniverseGalaxyPicker.tsx", import.meta.url), "utf8"), /universe-galaxy-backdrop/);
+  const galaxySource = readFileSync(new URL("../web/src/pages/universe/UniverseGalaxyPicker.tsx", import.meta.url), "utf8");
+  assert.match(galaxySource, /UniverseFloatingPopover/);
+  assert.doesNotMatch(galaxySource, /universe-galaxy-backdrop/);
   assert.match(polishCss, /prefers-reduced-motion/);
-  assert.match(polishCss, /\.universe-galaxy-menu\s*\{[\s\S]*position:\s*fixed/);
+  assert.doesNotMatch(polishCss, /\.universe-galaxy-menu\s*\{[\s\S]*position:\s*fixed/);
+  assert.match(polishCss, /\.universe-galaxy-menu\s*\{[\s\S]*position:\s*absolute/);
+});
+
+test("placement instruction lives only in the anchored add popover", () => {
+  assert.doesNotMatch(pageSource, /setNotice\("点击地图选择新星球的位置/);
+  assert.match(pageSource, /UniverseFloatingPopover/);
+  assert.match(pageSource, /点击地图选择新星球的位置/);
 });

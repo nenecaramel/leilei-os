@@ -42,7 +42,7 @@ export function UniverseFloatingPopover({
 
   if (!open) return null;
   return (
-    <div ref={rootRef} className={className ?? "universe-floating-popover"} role="menu" aria-label={ariaLabel}>
+    <div ref={rootRef} className={`universe-floating-popover${className ? ` ${className}` : ""}`} role="menu" aria-label={ariaLabel}>
       {children}
     </div>
   );

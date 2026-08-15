@@ -19,6 +19,32 @@ body:has(.universe-page),
   gap: 0;
 }
 
+.universe-popover-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.universe-floating-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 50%;
+  min-width: 112px;
+  padding: 5px;
+  border: 1px solid #e7e7e7;
+  border-radius: 10px;
+  color: #555555;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+  transform: translateX(-50%);
+}
+
+.universe-floating-popover > span {
+  display: block;
+  padding: 6px 8px;
+  text-align: center;
+}
+
 .universe-header-action {
   all: unset;
   display: grid;
@@ -48,17 +74,13 @@ body:has(.universe-page),
 }
 
 .universe-overflow-menu {
-  position: absolute;
-  z-index: 8;
-  top: 74px;
-  right: 20px;
   display: grid;
   min-width: 96px;
-  padding: 4px;
-  border: 1px solid #e5e5e5;
-  border-radius: 10px;
-  background: #ffffff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.universe-placement-popover {
+  min-width: 188px;
+  font-size: 12px;
 }
 
 .universe-overflow-menu button,
@@ -123,28 +145,12 @@ body:has(.universe-page),
 }
 
 .universe-galaxy-menu {
-  position: fixed;
-  z-index: 20;
-  right: 0;
-  bottom: 0;
+  top: calc(100% + 4px);
   left: 0;
   display: grid;
   gap: 2px;
   min-width: 160px;
-  padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px));
-  border: 1px solid #e5e5e5;
-  border-bottom: 0;
-  border-radius: 18px 18px 0 0;
-  background: #ffffff;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.12);
-}
-
-.universe-galaxy-backdrop {
-  position: fixed;
-  z-index: 19;
-  inset: 0;
-  border: 0;
-  background: rgba(0, 0, 0, 0.12);
+  padding: 5px;
 }
 
 .universe-notice {
@@ -576,20 +582,7 @@ body:has(.universe-page),
 }
 
 @media (min-width: 761px) {
-  .universe-galaxy-backdrop {
-    display: none;
-  }
-
-  .universe-galaxy-menu {
-    position: absolute;
-    top: 40px;
-    right: auto;
-    bottom: auto;
-    left: 0;
-    border-bottom: 1px solid #e5e5e5;
-    border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  }
+  .universe-galaxy-menu { top: calc(100% + 4px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
