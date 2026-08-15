@@ -36,6 +36,11 @@ async function cleanup(client: postgres.Sql<{}>, id: string): Promise<void> {
   await client`DELETE FROM users WHERE id = ${id}`;
 }
 
+async function teardown(client: postgres.Sql<{}>, id: string): Promise<void> {
+  await cleanup(client, id).catch(() => undefined);
+  await reset(client).catch(() => undefined);
+}
+
 async function prepare(client: postgres.Sql<{}>, id: string): Promise<void> {
   await reset(client);
   await user(client, id);
@@ -63,7 +68,7 @@ test("0021 succeeds for empty legacy state and rejects stale legacy writes", { s
     const [row] = await client<{ value: unknown }[]>`SELECT galaxy_memberships AS value FROM universe_nodes WHERE user_id=${id} AND id='weighted'`;
     assert.deepEqual(row?.value, [{ id: "g", weight: 1.23456789012345 }]);
   } finally {
-    await cleanup(client, id).catch(() => undefined);
+    await teardown(client, id);
     await client.end();
   }
 });
@@ -112,7 +117,7 @@ for (const unsafeCase of unsafeCases) {
       `;
       assert.equal(constraint?.present, false);
     } finally {
-      await cleanup(client, id).catch(() => undefined);
+      await teardown(client, id);
       await client.end();
     }
   });
