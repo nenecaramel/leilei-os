@@ -3,6 +3,7 @@ import { PaperDetailDialog } from "../PaperDetailDialog";
 import type { UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
 import type { UniversePoint } from "./universe-map-transform";
 import { relationTypeLabel } from "./universe-map-presentation";
+import { UniverseNodeMetadata, toCanonicalMemberships, type MembershipDraft } from "./UniverseNodeMetadata";
 
 export type UniverseNodePaperMode =
   | { kind: "detail"; nodeId: string }
@@ -10,9 +11,6 @@ export type UniverseNodePaperMode =
   | { kind: "create"; position: UniversePoint };
 
 export type UniverseNodePaperDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string };
-
-const NODE_TYPES = ["concept", "question", "claim", "experience", "project", "source", "reflection"] as const;
-const IMPORTANCE_OPTIONS = ["anchor", "major", "normal"] as const;
 
 export function formatUniverseNodeTimestamp(value: string, timeZone?: string): string {
   const date = new Date(value);
@@ -71,8 +69,7 @@ export function UniverseNodePaper({
   const [type, setType] = useState(effectiveNode?.type ?? "concept");
   const [importance, setImportance] = useState(effectiveNode?.importance ?? "normal");
   const [tags, setTags] = useState((effectiveNode?.tags ?? []).join(", "));
-  const [membershipIds, setMembershipIds] = useState<string[]>(() => (effectiveNode?.galaxies ?? []).map((membership) => membership.id));
-  const [membershipWeights, setMembershipWeights] = useState<Record<string, string>>(() => Object.fromEntries((effectiveNode?.galaxies ?? []).map((membership) => [membership.id, String(membership.weight)])));
+  const [memberships, setMemberships] = useState<MembershipDraft[]>(() => (effectiveNode?.galaxies ?? []).map((membership) => ({ id: membership.id, weightText: String(membership.weight) })));
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [detailOverflowOpen, setDetailOverflowOpen] = useState(false);
 
@@ -84,8 +81,7 @@ export function UniverseNodePaper({
     setImportance(effectiveNode?.importance ?? "normal");
     setTags((effectiveNode?.tags ?? []).join(", "));
     const nextMemberships = effectiveNode?.galaxies ?? [];
-    setMembershipIds(nextMemberships.map((membership) => membership.id));
-    setMembershipWeights(Object.fromEntries(nextMemberships.map((membership) => [membership.id, String(membership.weight)])));
+    setMemberships(nextMemberships.map((membership) => ({ id: membership.id, weightText: String(membership.weight) })));
     setMembershipError(null);
   }, [effectiveNode, mode?.kind]);
 
@@ -93,21 +89,15 @@ export function UniverseNodePaper({
   const id = isCreate ? "universe-node-create-paper" : `universe-node-paper-${effectiveNode!.id}`;
   const label = isCreate ? "点亮一颗新星" : isEdit ? "调整星球" : "Universe 节点";
 
-  const toggleMembership = (galaxyId: string) => {
-    setMembershipError(null);
-    setMembershipIds((current) => current.includes(galaxyId)
-      ? current.filter((id) => id !== galaxyId)
-      : [...current, galaxyId]);
-  };
-
   const buildMemberships = () => {
-    const next = membershipIds.map((id) => ({ id, weight: Number(membershipWeights[id]) }));
-    if (next.some((membership) => !Number.isFinite(membership.weight))) {
+    const next = toCanonicalMemberships(memberships);
+    if (!next) {
       setMembershipError("请为每个星系成员填写权重。");
       return null;
     }
     return next;
   };
+  const canonicalMemberships = toCanonicalMemberships(memberships);
 
   return (
     <PaperDetailDialog
@@ -142,16 +132,20 @@ export function UniverseNodePaper({
           <label>标题<input autoFocus value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} /></label>
           <label>摘要<textarea value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} /></label>
           <label>正文<textarea value={content} rows={6} onChange={(event) => setContent(event.target.value)} /></label>
-          <label>类型<select value={type} onChange={(event) => setType(event.target.value)}>{NODE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-          <label>重要性<select value={importance} onChange={(event) => setImportance(event.target.value)}>{IMPORTANCE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-          <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔" /></label>
-          {galaxies.length ? <fieldset><legend>星系成员与权重</legend>{galaxies.map((galaxy) => {
-            const selected = membershipIds.includes(galaxy.id);
-            const updateWeight = (value: string) => setMembershipWeights((current) => ({ ...current, [galaxy.id]: value }));
-            return <label className="universe-galaxy-choice" key={galaxy.id}><input type="checkbox" checked={selected} onChange={() => toggleMembership(galaxy.id)} />{galaxy.title}{selected ? <input aria-label={`${galaxy.title} 权重`} type="number" step="any" value={membershipWeights[galaxy.id] ?? ""} onInput={(event) => updateWeight(event.currentTarget.value)} onChange={(event) => updateWeight(event.target.value)} /> : null}</label>;
-          })}</fieldset> : null}
-          {membershipError ? <p className="universe-paper-inline-error" role="alert">{membershipError}</p> : null}
-          <button type="button" className="secondary-button" disabled={saving || !title.trim()} onClick={() => {
+          <UniverseNodeMetadata
+            galaxies={galaxies}
+            type={type as UniverseNode["type"]}
+            importance={importance}
+            tags={tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean)}
+            memberships={memberships}
+            editable
+            onTypeChange={(value) => setType(value)}
+            onImportanceChange={setImportance}
+            onTagsChange={(value) => setTags(value)}
+            onMembershipsChange={(value) => { setMembershipError(null); setMemberships(value); }}
+          />
+          {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-paper-inline-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
+          <button type="button" className="secondary-button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={() => {
             const nextMemberships = buildMemberships();
             if (!nextMemberships) return;
             void onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: nextMemberships });
@@ -164,6 +158,7 @@ export function UniverseNodePaper({
           {effectiveNode!.summary ? <p>{effectiveNode!.summary}</p> : null}
           {effectiveNode!.content ? <p>{effectiveNode!.content}</p> : null}
           {connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button></div>)}</section> : null}
+          <UniverseNodeMetadata galaxies={galaxies} type={effectiveNode!.type} importance={effectiveNode!.importance ?? "normal"} tags={effectiveNode!.tags} memberships={effectiveNode!.galaxies.map((membership) => ({ id: membership.id, weightText: String(membership.weight) }))} editable={false} />
         </div>
       )}
     </PaperDetailDialog>

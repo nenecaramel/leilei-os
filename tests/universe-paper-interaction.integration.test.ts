@@ -47,13 +47,15 @@ test("mounted node paper preserves weighted memberships and exposes exact type/i
         onSave: async (draft: unknown) => { saves.push(draft); },
       }));
     });
-    const selects = [...context.dom.window.document.querySelectorAll<HTMLSelectElement>("select")];
-    assert.deepEqual([...selects[0]!.options].map((option) => option.value), ["concept", "question", "claim", "experience", "project", "source", "reflection"]);
-    assert.equal(selects[0]!.value, "experience");
-    assert.deepEqual([...selects[1]!.options].map((option) => option.value), ["anchor", "major", "normal"]);
-    assert.equal(selects[1]!.value, "major");
-    const checks = [...context.dom.window.document.querySelectorAll<HTMLInputElement>("input[type='checkbox']")];
-    await React.act(async () => { checks[1]!.click(); });
+    const typeTrigger = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "experience")!;
+    await React.act(async () => { typeTrigger.click(); });
+    assert.deepEqual([...context.dom.window.document.querySelectorAll<HTMLButtonElement>(".universe-metadata-popover button")].map((button) => button.textContent), ["concept", "question", "claim", "experience", "project", "source", "reflection"]);
+    const importanceTrigger = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "major")!;
+    await React.act(async () => { importanceTrigger.click(); });
+    assert.deepEqual([...context.dom.window.document.querySelectorAll<HTMLButtonElement>(".universe-metadata-popover button")].map((button) => button.textContent), ["anchor", "major", "normal"]);
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋")?.click(); });
+    const galaxyOption = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>(".universe-metadata-popover button")].find((button) => button.textContent === "副星系")!;
+    await React.act(async () => galaxyOption.click());
     const weight = context.dom.window.document.querySelector<HTMLInputElement>("input[aria-label='副星系 权重']")!;
     assert.equal(weight.value, "");
     await React.act(async () => {
@@ -67,7 +69,7 @@ test("mounted node paper preserves weighted memberships and exposes exact type/i
     const draft = saves[0] as { galaxies: Array<{ id: string; weight: number }> };
     assert.deepEqual(draft.galaxies, [{ id: "g1", weight: 0.31 }, { id: "g2", weight: 0.42 }]);
     saves.length = 0;
-    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLInputElement>("input[type='checkbox']")][1]!.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].filter((button) => button.textContent === "移出")[1]?.click(); });
     await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "保存")?.click(); });
     assert.equal(saves.length, 1);
     assert.deepEqual((saves[0] as { galaxies: Array<{ id: string; weight: number }> }).galaxies, [{ id: "g1", weight: 0.31 }]);
@@ -101,11 +103,9 @@ test("mounted node paper keeps save errors inside the PaperDetailDialog and rest
     });
     assert.equal(context.dom.window.document.querySelector(".paper-detail-error")?.textContent, "保存失败，请稍后重试。");
     const relatedButton = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("关联节点"));
-    const deleteButton = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "移除连接");
     relatedButton?.click();
-    deleteButton?.click();
     assert.deepEqual(opened, ["n2"]);
-    assert.deepEqual(deleted, ["r1"]);
+    assert.deepEqual(deleted, []);
   } finally {
     await React.act(async () => root.unmount());
     restoreDom(context.dom, context.previous);

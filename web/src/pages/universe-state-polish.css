@@ -256,6 +256,92 @@ body:has(.universe-page),
   font-size: 11px;
 }
 
+.universe-node-metadata {
+  display: grid;
+  gap: 6px;
+  color: #8d8d8d;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.universe-node-metadata-edit {
+  color: #757575;
+}
+
+.universe-metadata-row,
+.universe-metadata-memberships,
+.universe-membership-editor {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.universe-metadata-popover-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.universe-metadata-trigger,
+.universe-metadata-add,
+.universe-metadata-remove {
+  min-height: 28px;
+  padding: 2px 4px;
+  border: 0;
+  color: #666666;
+  background: transparent;
+  font: inherit;
+}
+
+.universe-metadata-tags,
+.universe-metadata-weight {
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 16px;
+}
+
+.universe-metadata-tags {
+  width: 130px;
+}
+
+.universe-metadata-weight {
+  width: 46px;
+}
+
+.universe-metadata-popover {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 3px);
+  left: 0;
+  display: grid;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid #e7e7e7;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.07);
+}
+
+.universe-metadata-popover button {
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 0;
+  color: #555555;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.universe-metadata-popover button:hover,
+.universe-metadata-popover button:focus-visible {
+  background: #f5f5f5;
+}
+
 /* Preserve the accepted uninitialized/importer state. */
 .universe-import-flow {
   display: grid;

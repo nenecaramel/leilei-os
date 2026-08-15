@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { formatUniverseNodeTimestamp } from "../web/src/pages/universe/UniverseNodePaper.js";
+import { toCanonicalMemberships } from "../web/src/pages/universe/UniverseNodeMetadata.js";
 
 const paperPath = new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url);
 const relationPaperPath = new URL("../web/src/pages/universe/UniverseRelationPaper.tsx", import.meta.url);
@@ -61,6 +62,24 @@ test("Universe detail paper is reading-first with lightweight connection rows", 
   assert.match(source, /relatedNode\.title/);
   assert.match(source, /relationTypeLabel/);
   assert.doesNotMatch(source, /移除连接<\/button>[\s\S]*connections\.map/);
+});
+
+test("weighted metadata conversion preserves exact finite values and rejects pending weights", () => {
+  assert.deepEqual(toCanonicalMemberships([]), []);
+  assert.deepEqual(toCanonicalMemberships([{ id: "g1", weightText: "0.55" }]), [{ id: "g1", weight: 0.55 }]);
+  assert.deepEqual(toCanonicalMemberships([{ id: "g1", weightText: "-2" }]), [{ id: "g1", weight: -2 }]);
+  assert.equal(toCanonicalMemberships([{ id: "g1", weightText: "" }]), null);
+  assert.equal(toCanonicalMemberships([{ id: "g1", weightText: "abc" }]), null);
+});
+
+test("Universe metadata editing avoids native select/fieldset matrices", () => {
+  const source = readFileSync(paperPath, "utf8");
+  const metadata = readFileSync(new URL("../web/src/pages/universe/UniverseNodeMetadata.tsx", import.meta.url), "utf8");
+  assert.match(source, /UniverseNodeMetadata/);
+  assert.doesNotMatch(source, /<select/);
+  assert.doesNotMatch(source, /<fieldset/);
+  assert.match(metadata, /weightText/);
+  assert.doesNotMatch(metadata, /weight:\s*1(?:\.0)?/);
 });
 
 test("Galaxy entry is label-only when inactive and names the active galaxy", () => {
