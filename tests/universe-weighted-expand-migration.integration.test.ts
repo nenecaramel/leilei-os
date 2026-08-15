@@ -99,7 +99,7 @@ test("0020 succeeds for empty-only legacy data and preserves old inserts", { ski
     userId = await seedOwner(client, async (transaction, seededUserId) => {
       await transaction`
         insert into universe_revisions (user_id, id, node_id, created_at, reason, snapshot)
-        values (${seededUserId}, 'empty-revision', 'node', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify({ galaxies: [] })})
+        values (${seededUserId}, 'empty-revision', 'node', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify({ galaxies: [] })}::jsonb)
       `;
       await transaction`
         insert into universe_backups (user_id, id, created_at, reason, data)
@@ -108,7 +108,7 @@ test("0020 succeeds for empty-only legacy data and preserves old inserts", { ski
           'empty-backup',
           '2026-08-15T00:00:00Z',
           'test',
-          ${JSON.stringify({ nodes: [{ galaxies: [] }], revisions: [{ snapshot: { galaxies: [] } }] })}
+          ${JSON.stringify({ nodes: [{ galaxies: [] }], revisions: [{ snapshot: { galaxies: [] } }] })}::jsonb
         )
       `;
     });
@@ -186,7 +186,7 @@ test("0020 rejects non-empty or malformed revision memberships and rolls back", 
       userId = await seedOwner(client, async (transaction, seededUserId) => {
         await transaction`
           insert into universe_revisions (user_id, id, node_id, created_at, reason, snapshot)
-          values (${seededUserId}, 'revision', 'node', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(snapshot)})
+          values (${seededUserId}, 'revision', 'node', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(snapshot)}::jsonb)
         `;
       });
       await assert.rejects(applyExpand(client), /UNIVERSE_WEIGHTED_MEMBERSHIP_LEGACY_DATA_PRESENT/);
@@ -214,7 +214,7 @@ test("0020 rejects non-empty or malformed backup node memberships and rolls back
       userId = await seedOwner(client, async (transaction, seededUserId) => {
         await transaction`
           insert into universe_backups (user_id, id, created_at, reason, data)
-          values (${seededUserId}, 'backup', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(data)})
+          values (${seededUserId}, 'backup', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(data)}::jsonb)
         `;
       });
       await assert.rejects(applyExpand(client), /UNIVERSE_WEIGHTED_MEMBERSHIP_LEGACY_DATA_PRESENT/);
@@ -242,7 +242,7 @@ test("0020 rejects non-empty or malformed backup revision memberships and rolls 
       userId = await seedOwner(client, async (transaction, seededUserId) => {
         await transaction`
           insert into universe_backups (user_id, id, created_at, reason, data)
-          values (${seededUserId}, 'backup', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(data)})
+          values (${seededUserId}, 'backup', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(data)}::jsonb)
         `;
       });
       await assert.rejects(applyExpand(client), /UNIVERSE_WEIGHTED_MEMBERSHIP_LEGACY_DATA_PRESENT/);
