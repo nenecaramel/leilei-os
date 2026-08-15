@@ -194,11 +194,66 @@ body:has(.universe-page),
   font-weight: 600;
 }
 
+.universe-node-paper-top-actions,
+.universe-node-paper-overflow {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.universe-node-paper-overflow-menu {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  min-width: 132px;
+  padding: 4px;
+  border: 1px solid #e7e7e7;
+  border-radius: 9px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+}
+
+.universe-node-paper-overflow-menu button {
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 0;
+  color: #555555;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.universe-node-paper-overflow-menu button:hover,
+.universe-node-paper-overflow-menu button:focus-visible {
+  background: #f5f5f5;
+}
+
 .universe-node-connection {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.universe-node-connection-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  color: #555555;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.universe-node-connection-link small {
+  color: #9a9a9a;
+  font-size: 11px;
 }
 
 /* Preserve the accepted uninitialized/importer state. */

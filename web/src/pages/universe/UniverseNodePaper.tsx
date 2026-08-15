@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { PaperDetailDialog } from "../PaperDetailDialog";
 import type { UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
 import type { UniversePoint } from "./universe-map-transform";
+import { relationTypeLabel } from "./universe-map-presentation";
 
 export type UniverseNodePaperMode =
   | { kind: "detail"; nodeId: string }
@@ -73,6 +74,7 @@ export function UniverseNodePaper({
   const [membershipIds, setMembershipIds] = useState<string[]>(() => (effectiveNode?.galaxies ?? []).map((membership) => membership.id));
   const [membershipWeights, setMembershipWeights] = useState<Record<string, string>>(() => Object.fromEntries((effectiveNode?.galaxies ?? []).map((membership) => [membership.id, String(membership.weight)])));
   const [membershipError, setMembershipError] = useState<string | null>(null);
+  const [detailOverflowOpen, setDetailOverflowOpen] = useState(false);
 
   useEffect(() => {
     setTitle(effectiveNode?.title ?? "");
@@ -115,6 +117,21 @@ export function UniverseNodePaper({
       dateLabel={formatUniverseNodeTimestamp(isCreate ? new Date().toISOString() : effectiveNode!.createdAt)}
       signature=""
       showRules={false}
+      topRight={!isEdit && effectiveNode ? (
+        <div className="universe-node-paper-top-actions">
+          <button type="button" className="tertiary-button" onClick={() => onEdit?.(effectiveNode)}>编辑</button>
+          <span className="universe-node-paper-overflow">
+            <button type="button" className="tertiary-button" aria-label="更多星球操作" aria-expanded={detailOverflowOpen} onClick={() => setDetailOverflowOpen((value) => !value)}>···</button>
+            {detailOverflowOpen ? (
+              <span className="universe-node-paper-overflow-menu" role="menu">
+                <button type="button" onClick={() => { setDetailOverflowOpen(false); onCreateRelation?.(effectiveNode); }}>建立连接</button>
+                <button type="button" disabled={!revisionsAvailable || saving} onClick={() => { setDetailOverflowOpen(false); onRestore?.(effectiveNode); }}>恢复上一版本</button>
+                {onDelete ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); onDelete(effectiveNode); }}>移除星球</button> : null}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
       triggerRef={triggerRef}
       onRequestClose={onRequestClose}
       errorMessage={errorMessage}
@@ -146,18 +163,7 @@ export function UniverseNodePaper({
           <h2>{effectiveNode!.title}</h2>
           {effectiveNode!.summary ? <p>{effectiveNode!.summary}</p> : null}
           {effectiveNode!.content ? <p>{effectiveNode!.content}</p> : null}
-          <dl>
-            <dt>类型</dt><dd>{effectiveNode!.type}</dd>
-            <dt>重要性</dt><dd>{effectiveNode!.importance ?? "normal"}</dd>
-            <dt>标签</dt><dd>{effectiveNode!.tags.join("、") || "无"}</dd>
-            <dt>星系</dt><dd>{effectiveNode!.galaxies.map((membership) => `${membership.id} (${membership.weight})`).join("、") || "无"}</dd>
-          </dl>
-          <div className="universe-node-paper-actions">
-            <button type="button" className="secondary-button" onClick={() => onCreateRelation?.(effectiveNode!)}>建立连接</button>
-            <button type="button" className="secondary-button" onClick={() => onRestore?.(effectiveNode!)} disabled={!revisionsAvailable || saving}>恢复上一版本</button>
-            <button type="button" className="tertiary-button" onClick={() => onEdit?.(effectiveNode!)}>编辑</button>
-          </div>
-          {connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="tertiary-button" onClick={() => onOpenRelatedNode?.(relatedNode.id)}>{relation.relationType} · {relatedNode.title}</button><button type="button" className="tertiary-button" disabled={saving} onClick={() => onDeleteRelation?.(relation)}>移除连接</button></div>)}</section> : null}
+          {connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button></div>)}</section> : null}
         </div>
       )}
     </PaperDetailDialog>

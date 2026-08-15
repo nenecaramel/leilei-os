@@ -52,6 +52,17 @@ test("Universe node timestamps use a readable local date format", () => {
   assert.equal(formatUniverseNodeTimestamp("not-a-date", "UTC"), "时间未知");
 });
 
+test("Universe detail paper is reading-first with lightweight connection rows", () => {
+  const source = readFileSync(paperPath, "utf8");
+  assert.doesNotMatch(source, /<dl>/);
+  assert.doesNotMatch(source, /<dt>类型|<dt>重要性|<dt>标签|<dt>星系/);
+  assert.match(source, /编辑/);
+  assert.match(source, /universe-node-paper-overflow/);
+  assert.match(source, /relatedNode\.title/);
+  assert.match(source, /relationTypeLabel/);
+  assert.doesNotMatch(source, /移除连接<\/button>[\s\S]*connections\.map/);
+});
+
 test("Galaxy entry is label-only when inactive and names the active galaxy", () => {
   const source = readFileSync(new URL("../web/src/pages/universe/UniverseGalaxyPicker.tsx", import.meta.url), "utf8");
   assert.match(source, /universe-galaxy-entry-label.*星系/);
