@@ -44,7 +44,7 @@
     display: flex;
     align-items: center;
     gap: 0;
-    transform: translate(8px, 3px);
+    transform: translate(8px, -3px);
   }
 
   .universe-page:has(.universe-mobile-map) .universe-header-action {
