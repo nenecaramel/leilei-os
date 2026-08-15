@@ -20,3 +20,13 @@ test("ready map has no bordered engineering canvas or pill toolbar", () => {
   assert.doesNotMatch(polishCss, /\.universe-cosmos\s*\{[\s\S]*border:/);
   assert.doesNotMatch(polishCss, /\.universe-toolbar/);
 });
+
+test("ready controls use compact header actions and a non-destructive galaxy picker", () => {
+  assert.doesNotMatch(pageSource, />新增<\/button>/);
+  assert.match(pageSource, /＋|\+/);
+  assert.match(pageSource, /···|\.\.\./);
+  assert.match(pageSource, /UniverseGalaxyPicker/);
+  assert.match(pageSource, /universe-overflow-menu[\s\S]*导出/);
+  assert.match(pageSource, /downloadUniverseJson/);
+  assert.doesNotMatch(pageSource, /universe-toolbar/);
+});

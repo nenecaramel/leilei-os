@@ -12,6 +12,7 @@ import {
 import { downloadUniverseJson } from "./universe/universe-export";
 import { UniverseImportFlow } from "./universe/UniverseImportFlow";
 import { UniverseMobileMap } from "./universe/UniverseMobileMap";
+import { UniverseGalaxyPicker } from "./universe/UniverseGalaxyPicker";
 import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
@@ -64,6 +65,8 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [galaxyFilter, setGalaxyFilter] = useState<string | null>(null);
+  const [galaxyPickerOpen, setGalaxyPickerOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<UniverseNode | null>(null);
@@ -204,27 +207,13 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       <UniverseHeader
         actions={(
           <>
-            <button className="universe-header-action" type="button" onClick={() => downloadUniverseJson(snapshot)}>导出</button>
-            <button className="universe-header-action" type="button" onClick={() => { setEditingNode(null); setEditorOpen(true); }}>新增</button>
+            <button className="universe-header-action" type="button" aria-label="新增星球" onClick={() => { setMapMode({ kind: "placing-node" }); setNotice("点击地图选择新星球的位置。"); }}>＋</button>
+            <button className="universe-header-action" type="button" aria-label="更多 Universe 操作" aria-expanded={overflowOpen} onClick={() => setOverflowOpen((value) => !value)}>···</button>
           </>
         )}
       />
-      {snapshot.galaxies.length ? (
-        <div className="universe-toolbar" aria-label="Universe filters">
-          <button className={!galaxyFilter ? "universe-filter is-active" : "universe-filter"} type="button" onClick={() => setGalaxyFilter(null)}>全部</button>
-          {snapshot.galaxies.slice().sort((a, b) => a.order - b.order).map((galaxy) => (
-            <button
-              className={galaxyFilter === galaxy.id ? "universe-filter is-active" : "universe-filter"}
-              key={galaxy.id}
-              type="button"
-              onClick={() => setGalaxyFilter(galaxy.id)}
-            >
-              <span className="universe-filter-dot" />
-              {galaxy.title}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {overflowOpen ? <div className="universe-overflow-menu" role="menu"><button type="button" onClick={() => { downloadUniverseJson(snapshot); setOverflowOpen(false); }}>导出</button></div> : null}
+      <UniverseGalaxyPicker galaxies={snapshot.galaxies} activeGalaxyId={galaxyFilter} open={galaxyPickerOpen} onOpenChange={setGalaxyPickerOpen} onSelect={setGalaxyFilter} />
       {notice ? <p className="universe-notice" role="status">{notice}</p> : null}
       <UniverseMobileMap
         galaxies={snapshot.galaxies}
