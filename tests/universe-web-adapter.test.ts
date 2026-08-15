@@ -49,7 +49,7 @@ test("LeileiOSAdapter maps authenticated Universe commands without identity sele
     content: "正文",
     type: "concept",
     tags: [],
-    galaxies: [],
+    galaxies: [{ id: "galaxy-1", weight: 1.75 }],
     position: { x: 50, y: 50 },
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
@@ -109,7 +109,7 @@ test("LeileiOSAdapter round-trips canonical node migration metadata", async () =
     content: "",
     type: "reflection",
     tags: [],
-    galaxies: [],
+    galaxies: [{ id: "galaxy-1", weight: 0.125 }],
     position: { x: 50, y: 50 },
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
@@ -126,6 +126,7 @@ test("LeileiOSAdapter round-trips canonical node migration metadata", async () =
   const adapter = createLeileiOSUniverseAdapter(api);
   const loaded = await adapter.loadUniverse();
   assert.deepEqual(loaded.snapshot.nodes[0]?.migration, migratedNode.migration);
+  assert.deepEqual(loaded.snapshot.nodes[0]?.galaxies, migratedNode.galaxies);
   await adapter.saveUniverse(migratedSnapshot, 8);
   assert.deepEqual(jsonBody(requests[1]?.init).snapshot, migratedSnapshot);
 });
