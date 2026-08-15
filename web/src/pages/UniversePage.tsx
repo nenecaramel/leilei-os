@@ -182,7 +182,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
 
   const { snapshot } = state;
   const visibleNodes = galaxyFilter
-    ? snapshot.nodes.filter((node) => node.galaxies.includes(galaxyFilter))
+    ? snapshot.nodes.filter((node) => node.galaxies.some((membership) => membership.id === galaxyFilter))
     : snapshot.nodes;
   const selectedNode = snapshot.nodes.find((node) => node.id === selectedId) ?? null;
 
@@ -334,6 +334,16 @@ export function UniverseCanvas({
 
 type NodeDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string };
 
+export function toggleUniverseGalaxyMemberships(
+  current: UniverseNode["galaxies"],
+  galaxyId: string,
+): UniverseNode["galaxies"] {
+  if (current.some((membership) => membership.id === galaxyId)) {
+    return current.filter((membership) => membership.id !== galaxyId);
+  }
+  return [...current, { id: galaxyId, weight: current.length === 0 ? 1 : 0.72 }];
+}
+
 function NodeEditor({ node, galaxies, saving, onCancel, onSave }: { node: UniverseNode | null; galaxies: UniverseGalaxy[]; saving: boolean; onCancel: () => void; onSave: (draft: NodeDraft) => Promise<void> }) {
   const [title, setTitle] = useState(node?.title ?? "");
   const [summary, setSummary] = useState(node?.summary ?? "");
@@ -341,7 +351,7 @@ function NodeEditor({ node, galaxies, saving, onCancel, onSave }: { node: Univer
   const [type, setType] = useState(node?.type ?? "concept");
   const [importance, setImportance] = useState(node?.importance ?? "normal");
   const [tags, setTags] = useState((node?.tags ?? []).join(", "));
-  const [selectedGalaxies, setSelectedGalaxies] = useState<string[]>(node?.galaxies ?? []);
+  const [selectedGalaxies, setSelectedGalaxies] = useState(node?.galaxies ?? []);
   return (
     <section className="universe-node-editor" role="dialog" aria-modal="true" aria-label={node ? "调整星球" : "点亮星球"}>
       <div className="universe-detail-heading"><div><p className="eyebrow">{node ? "ADJUST ORBIT" : "NEW STAR"}</p><h2>{node ? "调整这颗星球" : "点亮一颗新星"}</h2></div><button className="tertiary-button" type="button" onClick={onCancel}>取消</button></div>
@@ -351,7 +361,7 @@ function NodeEditor({ node, galaxies, saving, onCancel, onSave }: { node: Univer
       <label>类型<select value={type} onChange={(event) => setType(event.target.value)}>{UNIVERSE_NODE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
       <label>重要性<select value={importance} onChange={(event) => setImportance(event.target.value)}>{UNIVERSE_IMPORTANCE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
       <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔" /></label>
-      {galaxies.length ? <fieldset><legend>星系</legend>{galaxies.map((galaxy) => <label className="universe-galaxy-choice" key={galaxy.id}><input type="checkbox" checked={selectedGalaxies.includes(galaxy.id)} onChange={() => setSelectedGalaxies((current) => current.includes(galaxy.id) ? current.filter((id) => id !== galaxy.id) : [...current, galaxy.id])} />{galaxy.title}</label>)}</fieldset> : null}
+      {galaxies.length ? <fieldset><legend>星系</legend>{galaxies.map((galaxy) => <label className="universe-galaxy-choice" key={galaxy.id}><input type="checkbox" checked={selectedGalaxies.some((membership) => membership.id === galaxy.id)} onChange={() => setSelectedGalaxies((current) => toggleUniverseGalaxyMemberships(current, galaxy.id))} />{galaxy.title}</label>)}</fieldset> : null}
       <div className="universe-detail-actions"><button className="secondary-button" type="button" disabled={saving || !title.trim()} onClick={() => onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: selectedGalaxies })}>{saving ? "保存中…" : "保存"}</button></div>
     </section>
   );

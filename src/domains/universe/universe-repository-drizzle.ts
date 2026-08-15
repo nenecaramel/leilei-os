@@ -298,7 +298,8 @@ export class DrizzleUniverseRepository implements UniverseRepository {
     return row ? fromNodeRow(row) : null;
   }
 
-  private async assertGalaxyReferences(userId: string, galaxyIds: string[]): Promise<void> {
+  private async assertGalaxyReferences(userId: string, memberships: UniverseNode["galaxies"]): Promise<void> {
+    const galaxyIds = memberships.map((membership) => membership.id);
     if (galaxyIds.length === 0) return;
     const rows = await this.db.select({ id: universeGalaxies.id }).from(universeGalaxies).where(
       and(eq(universeGalaxies.userId, userId), inArray(universeGalaxies.id, galaxyIds)),
@@ -365,7 +366,8 @@ function toNodeInsert(userId: string, node: UniverseNode) {
     content: node.content,
     type: node.type,
     tags: node.tags,
-    galaxies: node.galaxies,
+    galaxies: [],
+    galaxyMemberships: node.galaxies,
     position: node.position,
     createdAt: new Date(node.createdAt),
     updatedAt: new Date(node.updatedAt),
@@ -419,7 +421,7 @@ function fromNodeRow(row: typeof universeNodes.$inferSelect): UniverseNode {
     content: row.content,
     type: row.type,
     tags: row.tags,
-    galaxies: row.galaxies,
+    galaxies: row.galaxyMemberships,
     position: row.position,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
