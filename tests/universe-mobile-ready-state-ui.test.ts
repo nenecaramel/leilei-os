@@ -86,12 +86,13 @@ test("Universe home popovers reuse the accepted compact mobile language", () => 
   assert.match(homePolishCss, /content:\s*"点击地图选择新星球的位置"/);
 });
 
-test("Universe home micro controls share exact dimensions and optical alignment", () => {
+test("Universe home micro controls keep a compact export and shared vertical rhythm", () => {
   assert.match(homePolishCss, /--universe-home-popover-width:\s*206px/);
   assert.match(homePolishCss, /--universe-home-popover-content-height:\s*36px/);
-  assert.match(homePolishCss, /\.universe-overflow-menu,\s*\.universe-placement-popover\s*\{[\s\S]*width:\s*var\(--universe-home-popover-width\)/);
+  assert.match(homePolishCss, /\.universe-placement-popover\s*\{[\s\S]*width:\s*var\(--universe-home-popover-width\)/);
+  assert.match(homePolishCss, /\.universe-overflow-menu\s*\{[\s\S]*width:\s*max-content[\s\S]*min-width:\s*78px/);
   assert.match(homePolishCss, /\.universe-overflow-menu button,\s*\.universe-placement-popover > span\s*\{[\s\S]*height:\s*var\(--universe-home-popover-content-height\)/);
-  assert.match(homePolishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-tools\s*\{[\s\S]*transform:\s*translateY\(1px\)/);
+  assert.match(homePolishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-tools\s*\{[\s\S]*transform:\s*translateY\(3px\)/);
   assert.match(homePolishCss, /aria-label="新增星球"\][\s\S]*font-weight:\s*300/);
   assert.match(homePolishCss, /aria-label="更多 Universe 操作"\][\s\S]*letter-spacing:\s*-0\.04em/);
   assert.match(homePolishCss, /\.universe-galaxy-entry,\s*\.universe-page:has\(\.universe-mobile-map\) \.universe-map-fit\s*\{[\s\S]*color:\s*#858585[\s\S]*font-size:\s*13px[\s\S]*font-weight:\s*400/);
