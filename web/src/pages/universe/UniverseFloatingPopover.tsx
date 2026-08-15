@@ -6,6 +6,7 @@ export type UniverseFloatingPopoverProps = {
   className?: string;
   ariaLabel: string;
   onRequestClose(): void;
+  shouldIgnoreOutside?(target: EventTarget | null): boolean;
   children: ReactNode;
 };
 
@@ -16,6 +17,7 @@ export function UniverseFloatingPopover({
   className,
   ariaLabel,
   onRequestClose,
+  shouldIgnoreOutside,
   children,
 }: UniverseFloatingPopoverProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -26,6 +28,7 @@ export function UniverseFloatingPopover({
     let ignorePointerUntil = 0;
     const handleOutside = (event: MouseEvent | PointerEvent) => {
       const target = event.target as Node | null;
+      if (shouldIgnoreOutside?.(target)) return;
       if (target && (rootRef.current?.contains(target) || anchorRef.current?.contains(target))) return;
       onRequestClose();
     };
@@ -40,17 +43,20 @@ export function UniverseFloatingPopover({
       handleOutside(event);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onRequestClose();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onRequestClose();
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("mousedown", handleMouseDown);
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("mousedown", handleMouseDown);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [anchorRef, onRequestClose, open]);
+  }, [anchorRef, onRequestClose, open, shouldIgnoreOutside]);
 
   if (!open) return null;
   return (

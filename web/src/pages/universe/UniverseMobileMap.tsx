@@ -292,9 +292,7 @@ export function UniverseMobileMap({
   const activeSelectedNodeId = interaction.selectedNodeId;
   const directNeighbors = getDirectNeighborIds(activeSelectedNodeId, relations);
   const screenPosition = (node: UniverseNode) => canonicalPositionToWorld(dragPositions[node.id] ?? node.position);
-  const modeHint = activeMode.kind === "placing-node"
-    ? "点一下星图，选择新星球的位置"
-    : activeMode.kind === "relation-target"
+  const modeHint = activeMode.kind === "relation-target"
       ? `选择目标星球：从「${nodeMap.get(activeMode.sourceNodeId)?.title ?? "当前星球"}」出发`
       : activeMode.kind === "moving-node"
         ? "拖动星球调整位置，松手保存"
@@ -339,7 +337,7 @@ export function UniverseMobileMap({
             onClick={(event) => handlePlanetClick(event, node)}
             style={{ left: point.x, top: point.y, width: visual.radius * 2, height: visual.radius * 2, opacity: focus.opacity, "--planet-color": color } as CSSProperties}
           >
-            {memberships.slice(1).map((membership, index) => <span className="universe-map-membership-ring" key={membership.id} style={{ inset: -5 - index * 4, opacity: Math.min(0.9, 0.25 + membership.weight * 0.5), borderColor: galaxies.find((galaxy) => galaxy.id === membership.id)?.color ?? "#bdbdbd" }} />)}
+            {memberships.slice(1).map((membership, index) => <span className="universe-map-membership-ring" key={membership.id} style={{ inset: -5 - index * 4, opacity: Math.min(0.34, 0.1 + Math.max(0, membership.weight) * 0.18), borderColor: galaxies.find((galaxy) => galaxy.id === membership.id)?.color ?? "#bdbdbd" }} />)}
             <span className="universe-map-planet-core" />
             {visual.showTitle ? <span className="universe-map-planet-title">{node.title}</span> : null}
           </button>;

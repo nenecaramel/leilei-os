@@ -181,10 +181,8 @@ test("placing mode shows a cancellable instruction and opens create only after m
   const placements: Array<{ x: number; y: number }> = [];
   const mounted = await mount({ kind: "placing-node" }, { onPlaceNode: (position: { x: number; y: number }) => placements.push(position) });
   try {
-    assert.match(mounted.map.textContent ?? "", /点一下星图/);
-    const cancel = mounted.map.querySelector<HTMLButtonElement>("button[aria-label='取消']")!;
-    await React.act(async () => { cancel.click(); });
-    assert.deepEqual(placements, []);
+    assert.doesNotMatch(mounted.map.textContent ?? "", /点一下星图/);
+    assert.equal(mounted.map.querySelector(".universe-map-mode-hint"), null);
   } finally {
     await mounted.unmount();
   }
@@ -198,6 +196,136 @@ test("placing mode shows a cancellable instruction and opens create only after m
     assert.equal(placements.length, 1);
   } finally {
     await placementMounted.unmount();
+  }
+});
+
+function PlacementHarness() {
+  const [placementOpen, setPlacementOpen] = React.useState(false);
+  const [overflowOpen, setOverflowOpen] = React.useState(false);
+  const [galaxyOpen, setGalaxyOpen] = React.useState(false);
+  const [mode, setMode] = React.useState<UniverseMapMode>({ kind: "browse" });
+  const [created, setCreated] = React.useState(false);
+  const addRef = React.useRef<HTMLButtonElement | null>(null);
+  const cancelPlacement = () => {
+    setMode({ kind: "browse" });
+    setPlacementOpen(false);
+  };
+  return React.createElement(React.Fragment, null,
+    React.createElement("button", { ref: addRef, type: "button", "aria-label": "新增星球", "aria-expanded": placementOpen, onClick: () => {
+      if (placementOpen || mode.kind === "placing-node") { cancelPlacement(); return; }
+      setOverflowOpen(false);
+      setGalaxyOpen(false);
+      setPlacementOpen(true);
+      setMode({ kind: "placing-node" });
+    } }, "＋"),
+    React.createElement("button", { type: "button", "aria-label": "更多 Universe 操作", "aria-expanded": overflowOpen, onClick: () => { cancelPlacement(); setOverflowOpen(true); } }, "···"),
+    React.createElement("button", { type: "button", "aria-label": "选择星系", "aria-expanded": galaxyOpen, onClick: () => { cancelPlacement(); setGalaxyOpen(true); } }, "星系"),
+    React.createElement(UniverseFloatingPopover, {
+      open: placementOpen,
+      anchorRef: addRef,
+      ariaLabel: "放置新星球",
+      className: "universe-placement-popover",
+      shouldIgnoreOutside: (target: EventTarget | null) => Boolean((target as Element | null)?.closest?.(".universe-mobile-map")),
+      onRequestClose: cancelPlacement,
+      children: React.createElement("span", null, "点击地图选择新星球的位置。"),
+    }),
+    React.createElement(UniverseMobileMap, {
+      galaxies,
+      nodes: nodes.slice(0, 1),
+      relations: [],
+      selectedNodeId: null,
+      activeGalaxyId: null,
+      mode,
+      initialViewport: { x: 0, y: 0, scale: 1 },
+      onViewportChange: () => {},
+      onSelectNode: () => {},
+      onOpenNode: () => {},
+      onPlaceNode: () => { setCreated(true); setMode({ kind: "browse" }); setPlacementOpen(false); },
+      onChooseRelationTarget: () => {},
+      onMoveNode: async () => {},
+      onModeChange: setMode,
+    }),
+    created ? React.createElement("div", { id: "universe-node-create-paper" }, "create") : null,
+  );
+}
+
+async function mountPlacementHarness() {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  await React.act(async () => { root.render(React.createElement(PlacementHarness)); });
+  const map = context.dom.window.document.querySelector<HTMLElement>(".universe-mobile-map")!;
+  Object.defineProperty(map, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, top: 0, width: 390, height: 520, right: 390, bottom: 520 }) });
+  return { context, root, map, unmount: async () => { await React.act(async () => root.unmount()); restoreDom(context.dom, context.previous); } };
+}
+
+async function assertPlacementCancelledByPageChrome(trigger: string) {
+  const mounted = await mountPlacementHarness();
+  try {
+    const add = mounted.context.dom.window.document.querySelector<HTMLButtonElement>("button[aria-label='新增星球']")!;
+    await React.act(async () => add.click());
+    assert.equal(add.getAttribute("aria-expanded"), "true");
+    if (trigger === "outside") {
+      const outside = mounted.context.dom.window.document.createElement("button");
+      mounted.context.dom.window.document.body.append(outside);
+      await React.act(async () => outside.dispatchEvent(new mounted.context.dom.window.Event("pointerdown", { bubbles: true })));
+    } else if (trigger === "plus") {
+      await React.act(async () => add.click());
+    } else {
+      const chrome = mounted.context.dom.window.document.querySelector<HTMLButtonElement>(trigger)!;
+      await React.act(async () => chrome.click());
+    }
+    assert.equal(add.getAttribute("aria-expanded"), "false");
+    const map = mounted.map;
+    await React.act(async () => {
+      pointer(map, "pointerdown", 200, 200);
+      pointer(map, "pointerup", 200, 200);
+      map.click();
+    });
+    assert.equal(mounted.context.dom.window.document.querySelector("#universe-node-create-paper"), null);
+  } finally {
+    await mounted.unmount();
+  }
+}
+
+test("Universe placement keeps map tap alive and opens exactly one create paper", async () => {
+  const mounted = await mountPlacementHarness();
+  try {
+    const add = mounted.context.dom.window.document.querySelector<HTMLButtonElement>("button[aria-label='新增星球']")!;
+    await React.act(async () => add.click());
+    assert.equal(mounted.context.dom.window.document.querySelectorAll(".universe-placement-popover").length, 1);
+    assert.equal(mounted.map.querySelector(".universe-map-mode-hint"), null);
+    await React.act(async () => {
+      pointer(mounted.map, "pointerdown", 200, 200);
+      pointer(mounted.map, "pointerup", 200, 200);
+      mounted.map.click();
+    });
+    assert.equal(mounted.context.dom.window.document.querySelectorAll("#universe-node-create-paper").length, 1);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("Universe placement cancels on non-map outside and on a second plus click", async () => {
+  await assertPlacementCancelledByPageChrome("outside");
+  await assertPlacementCancelledByPageChrome("plus");
+  await assertPlacementCancelledByPageChrome("button[aria-label='更多 Universe 操作']");
+  await assertPlacementCancelledByPageChrome("button[aria-label='选择星系']");
+});
+
+test("Universe placement remains active through map pointerdown and creates once", async () => {
+  const mounted = await mountPlacementHarness();
+  try {
+    const add = mounted.context.dom.window.document.querySelector<HTMLButtonElement>("button[aria-label='新增星球']")!;
+    await React.act(async () => add.click());
+    await React.act(async () => {
+      pointer(mounted.map, "pointerdown", 200, 200);
+      pointer(mounted.map, "pointerup", 200, 200);
+      mounted.map.click();
+    });
+    assert.equal(mounted.context.dom.window.document.querySelectorAll("#universe-node-create-paper").length, 1);
+    assert.equal(add.getAttribute("aria-expanded"), "false");
+  } finally {
+    await mounted.unmount();
   }
 });
 

@@ -79,6 +79,10 @@ body:has(.universe-page),
   min-width: 96px;
 }
 
+.universe-overflow-menu button {
+  text-align: center;
+}
+
 .universe-placement-popover {
   min-width: 188px;
   font-size: 12px;
@@ -148,6 +152,7 @@ body:has(.universe-page),
 .universe-galaxy-menu {
   top: calc(100% + 4px);
   left: 0;
+  transform: none;
   display: grid;
   gap: 2px;
   min-width: 160px;
@@ -362,17 +367,86 @@ body:has(.universe-page),
 }
 
 .universe-metadata-popover {
-  position: absolute;
   z-index: 6;
   top: calc(100% + 3px);
   left: 0;
-  display: grid;
   min-width: 120px;
+  transform: none;
+  display: grid;
   padding: 4px;
   border: 1px solid #e7e7e7;
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 5px 16px rgba(0, 0, 0, 0.07);
+}
+
+.universe-membership-trigger {
+  min-height: 28px;
+  padding: 2px 4px;
+  border: 0;
+  color: #666666;
+  background: transparent;
+  font: inherit;
+}
+
+.universe-membership-editor-popover,
+.universe-connection-popover {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+.universe-membership-editor-popover {
+  top: auto;
+  bottom: calc(100% + 4px);
+  left: 0;
+  transform: none;
+}
+
+.universe-connection-actions {
+  position: relative;
+  display: inline-flex;
+}
+
+.universe-connection-popover {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: auto;
+  transform: none;
+}
+
+.universe-connection-popover button {
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 0;
+  color: #555555;
+  background: transparent;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.paper-detail-paper:has(.universe-node-metadata) .paper-detail-scroll {
+  inset: 42px 0 92px;
+  padding-bottom: 12px;
+}
+
+.paper-detail-paper:has(.universe-node-metadata) .paper-detail-bottom-left {
+  right: 20px;
+  bottom: 12px;
+  left: 20px;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.paper-detail-paper:has(.universe-node-metadata) .paper-detail-error {
+  right: 20px;
+  bottom: 82px;
+  left: 20px;
 }
 
 .universe-metadata-popover button {
@@ -739,20 +813,27 @@ body:has(.universe-page),
   inset: 15%;
   border-radius: 50%;
   background: var(--planet-color, #9a9a9a);
-  opacity: 0.72;
+  opacity: 0.5;
+  filter: saturate(0.55);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .universe-map-planet.is-selected .universe-map-planet-core {
-  box-shadow: 0 0 0 3px #ffffff, 0 0 0 5px var(--planet-color, #6d6d6d);
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 5px color-mix(in srgb, var(--planet-color, #6d6d6d) 38%, #ffffff);
 }
 
 .universe-map-membership-ring {
   position: absolute;
   border: 1px solid;
-  opacity: 0.42;
+  opacity: 0.28;
+  filter: saturate(0.45);
   border-radius: 50%;
   pointer-events: none;
+}
+
+.universe-map-planet.is-selected .universe-map-membership-ring {
+  opacity: 0.32 !important;
+  filter: saturate(0.35);
 }
 
 .universe-map-planet-title {
@@ -800,7 +881,7 @@ body:has(.universe-page),
 }
 
 @media (min-width: 761px) {
-  .universe-galaxy-menu { top: calc(100% + 4px); }
+  .universe-galaxy-menu { top: calc(100% + 4px); left: 0; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

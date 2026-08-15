@@ -44,4 +44,17 @@ test("placement instruction lives only in the anchored add popover", () => {
   assert.doesNotMatch(pageSource, /setNotice\("点击地图选择新星球的位置/);
   assert.match(pageSource, /UniverseFloatingPopover/);
   assert.match(pageSource, /点击地图选择新星球的位置/);
+  const mapSource = readFileSync(componentPath, "utf8");
+  assert.doesNotMatch(mapSource, /activeMode\.kind === "placing-node"[\s\S]*点一下星图/);
+});
+
+test("ready chrome keeps top-level menus centered and the galaxy menu inside the viewport", () => {
+  assert.match(polishCss, /\.universe-overflow-menu button\s*\{[\s\S]*text-align:\s*center/);
+  assert.match(polishCss, /\.universe-galaxy-menu\s*\{[\s\S]*left:\s*0[\s\S]*transform:\s*none/);
+});
+
+test("ready star map uses a restrained pale core and lighter secondary rings", () => {
+  assert.match(polishCss, /\.universe-map-planet-core\s*\{[\s\S]*opacity:\s*0\.5/);
+  assert.match(polishCss, /\.universe-map-membership-ring\s*\{[\s\S]*opacity:\s*0\.28/);
+  assert.match(polishCss, /\.universe-map-planet\.is-selected \.universe-map-membership-ring\s*\{[\s\S]*opacity:\s*0\.32/);
 });

@@ -61,7 +61,9 @@ test("Universe detail paper is reading-first with lightweight connection rows", 
   assert.match(source, /universe-node-paper-overflow/);
   assert.match(source, /relatedNode\.title/);
   assert.match(source, /relationTypeLabel/);
-  assert.doesNotMatch(source, /移除连接<\/button>[\s\S]*connections\.map/);
+  assert.match(source, /universe-node-connection-actions/);
+  assert.match(source, /移除连接/);
+  assert.doesNotMatch(source, /className="danger-button"/);
 });
 
 test("weighted metadata conversion preserves exact finite values and rejects pending weights", () => {
@@ -89,12 +91,19 @@ test("Universe create/edit paper uses the same content-first transparent editors
   assert.match(source, /universe-paper-content-editor/);
   assert.match(source, /placeholder="星球标题"/);
   assert.doesNotMatch(source, /<label[^>]*>标题/);
-  assert.doesNotMatch(source, /<label[^>]*>摘要/);
+  assert.doesNotMatch(source, /placeholder="摘要"/);
   assert.doesNotMatch(source, /<label[^>]*>正文/);
   assert.match(source, /topRight=/);
   assert.match(source, /取消/);
   assert.match(source, /保存/);
   assert.match(source, /universe-node-connection-overflow/);
+});
+
+test("Universe metadata lives in the fixed footer and create time is captured once", () => {
+  const source = readFileSync(paperPath, "utf8");
+  assert.match(source, /bottomLeft=\{metadata\}/);
+  assert.match(source, /createTimestampRef/);
+  assert.doesNotMatch(source, /dateLabel=\{formatUniverseNodeTimestamp\(isCreate \? new Date\(\)\.toISOString\(\)/);
 });
 
 test("Galaxy entry is label-only when inactive and names the active galaxy", () => {

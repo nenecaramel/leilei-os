@@ -79,6 +79,15 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const overflowActionRef = useRef<HTMLButtonElement | null>(null);
   const generation = useRef(0);
 
+  const cancelPlacement = () => {
+    if (mapMode.kind === "placing-node" || placementOpen) {
+      setMapMode({ kind: "browse" });
+      setPlacementOpen(false);
+      setPendingPosition(null);
+      setNotice(null);
+    }
+  };
+
   useEffect(() => {
     const requestGeneration = ++generation.current;
     let active = true;
@@ -241,13 +250,13 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         actions={(
           <>
             <span className="universe-popover-anchor">
-              <button ref={addActionRef} className="universe-header-action" type="button" aria-label="新增星球" aria-expanded={placementOpen} onClick={() => { setPaperError(null); setOverflowOpen(false); setGalaxyPickerOpen(false); setPlacementOpen((value) => !value); setMapMode({ kind: "placing-node" }); setNotice(null); }}>＋</button>
-              <UniverseFloatingPopover open={placementOpen} anchorRef={addActionRef} className="universe-placement-popover" ariaLabel="放置新星球" onRequestClose={() => { setPlacementOpen(false); setMapMode({ kind: "browse" }); setPendingPosition(null); setNotice(null); }}>
+              <button ref={addActionRef} className="universe-header-action" type="button" aria-label="新增星球" aria-expanded={placementOpen} onClick={() => { if (placementOpen || mapMode.kind === "placing-node") { cancelPlacement(); return; } setPaperError(null); setOverflowOpen(false); setGalaxyPickerOpen(false); setPlacementOpen(true); setMapMode({ kind: "placing-node" }); setNotice(null); }}>＋</button>
+              <UniverseFloatingPopover open={placementOpen} anchorRef={addActionRef} className="universe-placement-popover" ariaLabel="放置新星球" shouldIgnoreOutside={(target) => Boolean((target as Element | null)?.closest?.(".universe-mobile-map"))} onRequestClose={cancelPlacement}>
                 <span>点击地图选择新星球的位置。</span>
               </UniverseFloatingPopover>
             </span>
             <span className="universe-popover-anchor">
-              <button ref={overflowActionRef} className="universe-header-action" type="button" aria-label="更多 Universe 操作" aria-expanded={overflowOpen} onClick={() => { setPlacementOpen(false); setGalaxyPickerOpen(false); setOverflowOpen((value) => !value); }}>···</button>
+              <button ref={overflowActionRef} className="universe-header-action" type="button" aria-label="更多 Universe 操作" aria-expanded={overflowOpen} onClick={() => { cancelPlacement(); setGalaxyPickerOpen(false); setOverflowOpen((value) => !value); }}>···</button>
               <UniverseFloatingPopover open={overflowOpen} anchorRef={overflowActionRef} className="universe-overflow-menu" ariaLabel="更多 Universe 操作" onRequestClose={() => setOverflowOpen(false)}>
                 <button type="button" onClick={() => { downloadUniverseJson(snapshot); setOverflowOpen(false); }}>导出</button>
               </UniverseFloatingPopover>
@@ -255,7 +264,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
           </>
         )}
       />
-      <UniverseGalaxyPicker galaxies={snapshot.galaxies} activeGalaxyId={galaxyFilter} open={galaxyPickerOpen} onOpenChange={(open) => { setPlacementOpen(false); setOverflowOpen(false); setGalaxyPickerOpen(open); }} onSelect={setGalaxyFilter} />
+      <UniverseGalaxyPicker galaxies={snapshot.galaxies} activeGalaxyId={galaxyFilter} open={galaxyPickerOpen} onOpenChange={(open) => { if (open) cancelPlacement(); setOverflowOpen(false); setGalaxyPickerOpen(open); }} onSelect={setGalaxyFilter} />
       {notice ? <p className="universe-notice" role="status">{notice}</p> : null}
       <UniverseMobileMap
         galaxies={snapshot.galaxies}

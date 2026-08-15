@@ -3,7 +3,8 @@ import { PaperDetailDialog } from "../PaperDetailDialog";
 import type { UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
 import type { UniversePoint } from "./universe-map-transform";
 import { relationTypeLabel } from "./universe-map-presentation";
-import { UniverseNodeMetadata, toCanonicalMemberships, type MembershipDraft } from "./UniverseNodeMetadata";
+import { UniverseNodeMetadata, parseUniverseTags, toCanonicalMemberships, type MembershipDraft } from "./UniverseNodeMetadata";
+import { UniverseFloatingPopover } from "./UniverseFloatingPopover";
 
 export type UniverseNodePaperMode =
   | { kind: "detail"; nodeId: string }
@@ -72,6 +73,11 @@ export function UniverseNodePaper({
   const [memberships, setMemberships] = useState<MembershipDraft[]>(() => (effectiveNode?.galaxies ?? []).map((membership) => ({ id: membership.id, weightText: String(membership.weight) })));
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [detailOverflowOpen, setDetailOverflowOpen] = useState(false);
+  const [connectionMenuId, setConnectionMenuId] = useState<string | null>(null);
+  const connectionAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const createTimestampRef = useRef<string | null>(null);
+
+  if (isCreate && !createTimestampRef.current) createTimestampRef.current = new Date().toISOString();
 
   useEffect(() => {
     setTitle(effectiveNode?.title ?? "");
@@ -83,6 +89,8 @@ export function UniverseNodePaper({
     const nextMemberships = effectiveNode?.galaxies ?? [];
     setMemberships(nextMemberships.map((membership) => ({ id: membership.id, weightText: String(membership.weight) })));
     setMembershipError(null);
+    setConnectionMenuId(null);
+    if (!isCreate) createTimestampRef.current = null;
   }, [effectiveNode, mode?.kind]);
 
   if (!effectiveNode && !isCreate) return null;
@@ -101,15 +109,31 @@ export function UniverseNodePaper({
   const submit = () => {
     const nextMemberships = buildMemberships();
     if (!nextMemberships) return;
-    void onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: nextMemberships });
+    void onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: parseUniverseTags(tags), galaxies: nextMemberships });
   };
+
+  const metadata = (
+    <UniverseNodeMetadata
+      galaxies={galaxies}
+      type={type as UniverseNode["type"]}
+      importance={importance}
+      tags={isEdit ? parseUniverseTags(tags) : (effectiveNode?.tags ?? [])}
+      tagsValue={isEdit ? tags : undefined}
+      memberships={memberships}
+      editable={isEdit}
+      onTypeChange={(value) => setType(value)}
+      onImportanceChange={setImportance}
+      onTagsChange={setTags}
+      onMembershipsChange={(value) => { setMembershipError(null); setMemberships(value); }}
+    />
+  );
 
   return (
     <PaperDetailDialog
       id={id}
       open={open}
       label={label}
-      dateLabel={formatUniverseNodeTimestamp(isCreate ? new Date().toISOString() : effectiveNode!.createdAt)}
+      dateLabel={formatUniverseNodeTimestamp(isCreate ? (createTimestampRef.current ?? new Date().toISOString()) : effectiveNode!.createdAt)}
       signature=""
       showRules={false}
       topRight={isEdit ? (
@@ -135,27 +159,15 @@ export function UniverseNodePaper({
       triggerRef={triggerRef}
       onRequestClose={onRequestClose}
       errorMessage={errorMessage}
+      bottomLeft={metadata}
     >
       {isEdit ? (
         <div className="universe-node-paper-body">
           <input className="universe-paper-title-editor" aria-label="星球标题" placeholder="星球标题" autoFocus value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} />
-          <textarea className="universe-paper-summary-editor" aria-label="星球摘要" placeholder="摘要" value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} />
+          <textarea className="universe-paper-summary-editor" aria-label="星球摘要" placeholder=" " value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} />
           <textarea className="universe-paper-content-editor" aria-label="星球正文" placeholder="记录这颗星球的想法" value={content} rows={6} onChange={(event) => setContent(event.target.value)} />
-          <UniverseNodeMetadata
-            galaxies={galaxies}
-            type={type as UniverseNode["type"]}
-            importance={importance}
-            tags={tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean)}
-            memberships={memberships}
-            editable
-            onTypeChange={(value) => setType(value)}
-            onImportanceChange={setImportance}
-            onTagsChange={(value) => setTags(value)}
-            onMembershipsChange={(value) => { setMembershipError(null); setMemberships(value); }}
-          />
-          {!isCreate && connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button>{onDeleteRelation ? <button type="button" className="universe-node-connection-overflow" aria-label="连接操作" disabled={saving} onClick={() => onDeleteRelation(relation)}>···</button> : null}</div>)}</section> : null}
+          {!isCreate && connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button>{onDeleteRelation ? <span className="universe-node-connection-actions"><button type="button" className="universe-node-connection-overflow" aria-label="连接操作" disabled={saving} onClick={(event) => { connectionAnchorRef.current = event.currentTarget; setConnectionMenuId((current) => current === relation.id ? null : relation.id); }}>···</button>{connectionMenuId === relation.id ? <UniverseFloatingPopover open anchorRef={connectionAnchorRef} className="universe-connection-popover" ariaLabel="连接操作" onRequestClose={() => setConnectionMenuId(null)}><button type="button" disabled={saving} onClick={() => { setConnectionMenuId(null); onDeleteRelation(relation); }}>移除连接</button></UniverseFloatingPopover> : null}</span> : null}</div>)}</section> : null}
           {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-paper-inline-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
-          {!isCreate && effectiveNode && onDelete ? <button type="button" className="danger-button" disabled={saving} onClick={() => onDelete(effectiveNode)}>移除星球</button> : null}
         </div>
       ) : (
         <div className="universe-node-paper-body">
@@ -163,7 +175,6 @@ export function UniverseNodePaper({
           {effectiveNode!.summary ? <p>{effectiveNode!.summary}</p> : null}
           {effectiveNode!.content ? <p>{effectiveNode!.content}</p> : null}
           {connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button></div>)}</section> : null}
-          <UniverseNodeMetadata galaxies={galaxies} type={effectiveNode!.type} importance={effectiveNode!.importance ?? "normal"} tags={effectiveNode!.tags} memberships={effectiveNode!.galaxies.map((membership) => ({ id: membership.id, weightText: String(membership.weight) }))} editable={false} />
         </div>
       )}
     </PaperDetailDialog>
