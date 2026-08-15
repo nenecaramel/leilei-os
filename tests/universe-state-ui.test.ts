@@ -10,7 +10,7 @@ const pageSource = readFileSync(
 test("Universe loading and uninitialized states use lightweight in-canvas presentation", () => {
   assert.match(pageSource, /UniverseLoadingState/);
   assert.match(pageSource, /className="universe-cosmos universe-cosmos-loading"/);
-  assert.match(pageSource, /Universe 还没有内容/);
+  assert.match(pageSource, /UniverseImportFlow/);
   assert.match(pageSource, /正在读取 Universe…/);
   assert.doesNotMatch(
     pageSource,
