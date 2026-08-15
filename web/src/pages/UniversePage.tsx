@@ -13,6 +13,7 @@ import { downloadUniverseJson } from "./universe/universe-export";
 import { UniverseImportFlow } from "./universe/UniverseImportFlow";
 import { UniverseMobileMap } from "./universe/UniverseMobileMap";
 import { UniverseGalaxyPicker } from "./universe/UniverseGalaxyPicker";
+import { UniverseNodePaper, type UniverseNodePaperDraft, type UniverseNodePaperMode } from "./universe/UniverseNodePaper";
 import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
@@ -75,6 +76,8 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [mapMode, setMapMode] = useState<UniverseMapMode>({ kind: "browse" });
   const [viewport, setViewport] = useState<UniverseViewport | null>(null);
   const [pendingPosition, setPendingPosition] = useState<UniversePoint | null>(null);
+  const [paperMode, setPaperMode] = useState<UniverseNodePaperMode | null>(null);
+  const paperTriggerRef = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
 
   useEffect(() => {
@@ -102,7 +105,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     if (current) setState({ status: "ready", ...current });
   };
 
-  async function saveNode(values: NodeDraft) {
+  async function saveNode(values: UniverseNodePaperDraft) {
     if (saving) return;
     setSaving(true);
     try {
@@ -225,8 +228,8 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         initialViewport={viewport}
         onViewportChange={setViewport}
         onSelectNode={setSelectedId}
-        onOpenNode={setSelectedId}
-        onPlaceNode={(position) => { setPendingPosition(position); setEditingNode(null); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
+        onOpenNode={(nodeId) => { setSelectedId(nodeId); setPaperMode({ kind: "detail", nodeId }); setEditorOpen(true); }}
+        onPlaceNode={(position) => { setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
         onChooseRelationTarget={(nodeId) => { setSelectedId(nodeId); setMapMode({ kind: "browse" }); }}
         onMoveNode={async (nodeId, position) => {
           try {
@@ -238,38 +241,21 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
           }
         }}
       />
-      {selectedNode ? (
-        <section className="universe-detail-card" aria-label="Selected universe node">
-          <div className="universe-detail-heading">
-            <div>
-              <p className="eyebrow">{selectedNode.type}</p>
-              <h2>{selectedNode.title}</h2>
-            </div>
-            <button className="tertiary-button" type="button" onClick={() => setSelectedId(null)}>关闭</button>
-          </div>
-          {selectedNode.summary ? <p>{selectedNode.summary}</p> : null}
-          {selectedNode.content ? <p className="universe-detail-content">{selectedNode.content}</p> : null}
-          <div className="universe-detail-actions">
-            <button className="secondary-button" type="button" onClick={() => { setEditingNode(selectedNode); setEditorOpen(true); }}>调整轨道</button>
-            {snapshot.nodes.length > 1 ? <button className="secondary-button" type="button" onClick={() => setRelationEditorOpen(true)}>建立连接</button> : null}
-            {snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) ? <button className="tertiary-button" type="button" disabled={saving} onClick={() => { void service.restoreLatestRevision(selectedNode.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => setNotice(safeUniverseError(error))); }}>恢复上一版本</button> : null}
-            <button className="danger-button" type="button" disabled={saving} onClick={() => void removeNode(selectedNode)}>移除星球</button>
-          </div>
-          <div className="universe-relation-list">
-            {snapshot.relations.filter((relation) => relation.source === selectedNode.id || relation.target === selectedNode.id).map((relation) => <div className="universe-relation-item" key={relation.id}><span>{relationLabels[relation.relationType]}</span><button className="tertiary-button" type="button" disabled={saving} onClick={() => void removeRelation(relation)}>移除连接</button></div>)}
-          </div>
-        </section>
-      ) : null}
-      {editorOpen ? (
-        <NodeEditor
-          node={editingNode}
-          galaxies={snapshot.galaxies}
-          saving={saving}
-          onCancel={() => { setEditorOpen(false); setEditingNode(null); }}
-          onSave={saveNode}
-        />
-      ) : null}
-      {relationEditorOpen && selectedNode ? <RelationEditor source={selectedNode} nodes={snapshot.nodes} saving={saving} onCancel={() => setRelationEditorOpen(false)} onSave={saveRelation} /> : null}
+      <UniverseNodePaper
+        node={selectedNode}
+        galaxies={snapshot.galaxies}
+        mode={paperMode}
+        open={editorOpen}
+        saving={saving}
+        triggerRef={paperTriggerRef}
+        revisionsAvailable={selectedNode ? snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) : false}
+        onRequestClose={() => { setEditorOpen(false); setPaperMode(null); return true; }}
+        onSave={saveNode}
+        onDelete={(node) => void removeNode(node)}
+        onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => setNotice(safeUniverseError(error))); }}
+        onCreateRelation={(node) => { setSelectedId(node.id); setRelationEditorOpen(true); setEditorOpen(false); setPaperMode(null); }}
+        onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
+      />
     </div>
   );
 }
