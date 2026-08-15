@@ -7,14 +7,26 @@ const polishCss = readFileSync(new URL("../web/src/pages/universe-state-polish.c
 const homePolishCss = readFileSync(new URL("../web/src/pages/universe/universe-home-polish.css", import.meta.url), "utf8");
 const sharedStylesCss = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 
-test("Universe mobile header matches the loading-page title baseline", () => {
+test("Universe ready header reuses the loading-page Memory header geometry", () => {
   assert.match(
     sharedStylesCss,
     /\.memory-page\s*\{[\s\S]*padding:\s*18px 0 max\(20px, env\(safe-area-inset-bottom, 0px\)\)/,
   );
   assert.match(
+    sharedStylesCss,
+    /\.memory-page-header\s*\{[\s\S]*display:\s*grid[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto[\s\S]*align-items:\s*start/,
+  );
+  assert.match(
+    sharedStylesCss,
+    /\.memory-page-heading\s*\{[\s\S]*padding-top:\s*2px/,
+  );
+  assert.match(
     homePolishCss,
-    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-header\s*\{[\s\S]*top:\s*18px[\s\S]*right:\s*24px[\s\S]*left:\s*24px/,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-header\s*\{[\s\S]*top:\s*18px[\s\S]*right:\s*24px[\s\S]*left:\s*24px[\s\S]*display:\s*grid\s*!important[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto[\s\S]*align-items:\s*start\s*!important/,
+  );
+  assert.doesNotMatch(
+    homePolishCss,
+    /\.universe-page:has\(\.universe-mobile-map\) \.memory-page-heading,\s*\.universe-page:has\(\.universe-mobile-map\) \.universe-page-tools\s*\{[\s\S]*height:\s*34px/,
   );
   assert.match(
     homePolishCss,
