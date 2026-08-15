@@ -29,4 +29,5 @@ test("ready controls use compact header actions and a non-destructive galaxy pic
   assert.match(pageSource, /universe-overflow-menu[\s\S]*导出/);
   assert.match(pageSource, /downloadUniverseJson/);
   assert.doesNotMatch(pageSource, /universe-toolbar/);
+  assert.doesNotMatch(pageSource, /UniverseCanvas|universe-detail-card|universe-node-editor/);
 });

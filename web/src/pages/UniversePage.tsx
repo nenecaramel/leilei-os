@@ -21,20 +21,9 @@ import type {
   UniverseGalaxy,
   UniverseNode,
   UniverseNodeCreateInput,
-  UniverseRelation,
   UniverseRelationCreateInput,
-  UniverseRelationType,
   UniverseSnapshot,
 } from "./universe/universe-types";
-
-const relationLabels: Record<UniverseRelationType, string> = {
-  related_to: "相关",
-  supports: "支持",
-  contradicts: "矛盾",
-  extends: "延伸",
-  part_of: "属于",
-  raises: "引出",
-};
 
 export const UNIVERSE_NODE_TYPES = [
   "concept",
@@ -108,6 +97,17 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     if (current) setState({ status: "ready", ...current });
   };
 
+  const reconcileAfterMutationFailure = async () => {
+    try {
+      const fresh = await service.load();
+      setState({ status: "ready", ...fresh });
+    } catch {
+      // Keep the last known canonical state visible when the recovery read is
+      // itself unavailable; never invent an optimistic result.
+      refreshFromService();
+    }
+  };
+
   async function saveNode(values: UniverseNodePaperDraft) {
     if (saving) return;
     setSaving(true);
@@ -135,6 +135,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       refreshFromService();
     } catch (error) {
       setNotice(safeUniverseError(error));
+      void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
     }
@@ -150,6 +151,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       refreshFromService();
     } catch (error) {
       setNotice(safeUniverseError(error));
+      void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
     }
@@ -168,20 +170,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       refreshFromService();
     } catch (error) {
       setNotice(safeUniverseError(error));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function removeRelation(relation: UniverseRelation) {
-    if (saving) return;
-    setSaving(true);
-    try {
-      await service.deleteRelation(relation.id);
-      setNotice("思想连接已移除。");
-      refreshFromService();
-    } catch (error) {
-      setNotice(safeUniverseError(error));
+      void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
     }
@@ -244,6 +233,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
             refreshFromService();
           } catch (error) {
             setNotice(safeUniverseError(error));
+            await reconcileAfterMutationFailure();
           }
         }}
       />
@@ -258,7 +248,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         onRequestClose={() => { setEditorOpen(false); setPaperMode(null); return true; }}
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}
-        onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => setNotice(safeUniverseError(error))); }}
+        onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { setNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
         onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setRelationTargetId(null); setMapMode({ kind: "relation-target", sourceNodeId: node.id }); setEditorOpen(false); setPaperMode(null); }}
         onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
       />
@@ -305,47 +295,6 @@ function UniverseStatus({ message, onRetry }: { message: string; onRetry?: () =>
   return <section className="universe-cosmos universe-cosmos-state" aria-live="polite"><div className="universe-state-inline"><p>{message}</p>{onRetry ? <button className="secondary-button" type="button" onClick={onRetry}>重新加载</button> : null}</div></section>;
 }
 
-export function UniverseCanvas({
-  nodes,
-  relations,
-  selectedId,
-  onSelect,
-}: {
-  nodes: UniverseNode[];
-  relations: UniverseRelation[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  return (
-    <section className="universe-cosmos" aria-label="Universe spatial canvas">
-      <div className="universe-relation-layer" aria-hidden="true">
-        {relations.map((relation) => {
-          const source = nodeMap.get(relation.source);
-          const target = nodeMap.get(relation.target);
-          if (!source || !target) return null;
-          const dx = target.position.x - source.position.x;
-          const dy = target.position.y - source.position.y;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-          return <span className="universe-relation-line" key={relation.id} title={relationLabels[relation.relationType]} style={{ left: `${source.position.x}%`, top: `${source.position.y}%`, width: `${length}%`, transform: `rotate(${angle}deg)`, opacity: Math.max(0.25, relation.strength) }} />;
-        })}
-      </div>
-      <div className="universe-node-layer">
-        {nodes.map((node) => (
-          <button className={selectedId === node.id ? "universe-node is-selected" : "universe-node"} key={node.id} type="button" style={{ left: `${node.position.x}%`, top: `${node.position.y}%` }} onClick={() => onSelect(node.id)} aria-label={`查看节点：${node.title}`}>
-            <span className="universe-node-orb" />
-            <span className="universe-node-copy"><strong>{node.title}</strong><small>{node.type}</small></span>
-          </button>
-        ))}
-        {nodes.length === 0 ? <p className="universe-cosmos-empty">当前筛选没有星球。</p> : null}
-      </div>
-    </section>
-  );
-}
-
-type NodeDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string };
-
 export function toggleUniverseGalaxyMemberships(
   current: UniverseNode["galaxies"],
   galaxyId: string,
@@ -354,36 +303,6 @@ export function toggleUniverseGalaxyMemberships(
     return current.filter((membership) => membership.id !== galaxyId);
   }
   return [...current, { id: galaxyId, weight: current.length === 0 ? 1 : 0.72 }];
-}
-
-function NodeEditor({ node, galaxies, saving, onCancel, onSave }: { node: UniverseNode | null; galaxies: UniverseGalaxy[]; saving: boolean; onCancel: () => void; onSave: (draft: NodeDraft) => Promise<void> }) {
-  const [title, setTitle] = useState(node?.title ?? "");
-  const [summary, setSummary] = useState(node?.summary ?? "");
-  const [content, setContent] = useState(node?.content ?? "");
-  const [type, setType] = useState(node?.type ?? "concept");
-  const [importance, setImportance] = useState(node?.importance ?? "normal");
-  const [tags, setTags] = useState((node?.tags ?? []).join(", "));
-  const [selectedGalaxies, setSelectedGalaxies] = useState(node?.galaxies ?? []);
-  return (
-    <section className="universe-node-editor" role="dialog" aria-modal="true" aria-label={node ? "调整星球" : "点亮星球"}>
-      <div className="universe-detail-heading"><div><p className="eyebrow">{node ? "ADJUST ORBIT" : "NEW STAR"}</p><h2>{node ? "调整这颗星球" : "点亮一颗新星"}</h2></div><button className="tertiary-button" type="button" onClick={onCancel}>取消</button></div>
-      <label>标题<input value={title} maxLength={60} autoFocus onChange={(event) => setTitle(event.target.value)} /></label>
-      <label>摘要<textarea value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} /></label>
-      <label>正文<textarea value={content} rows={4} onChange={(event) => setContent(event.target.value)} /></label>
-      <label>类型<select value={type} onChange={(event) => setType(event.target.value)}>{UNIVERSE_NODE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-      <label>重要性<select value={importance} onChange={(event) => setImportance(event.target.value)}>{UNIVERSE_IMPORTANCE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-      <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔" /></label>
-      {galaxies.length ? <fieldset><legend>星系</legend>{galaxies.map((galaxy) => <label className="universe-galaxy-choice" key={galaxy.id}><input type="checkbox" checked={selectedGalaxies.some((membership) => membership.id === galaxy.id)} onChange={() => setSelectedGalaxies((current) => toggleUniverseGalaxyMemberships(current, galaxy.id))} />{galaxy.title}</label>)}</fieldset> : null}
-      <div className="universe-detail-actions"><button className="secondary-button" type="button" disabled={saving || !title.trim()} onClick={() => onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: selectedGalaxies })}>{saving ? "保存中…" : "保存"}</button></div>
-    </section>
-  );
-}
-
-function RelationEditor({ source, nodes, saving, onCancel, onSave }: { source: UniverseNode; nodes: UniverseNode[]; saving: boolean; onCancel: () => void; onSave: (relation: UniverseRelationCreateInput) => Promise<void> }) {
-  const [target, setTarget] = useState(nodes.find((node) => node.id !== source.id)?.id ?? "");
-  const [relationType, setRelationType] = useState<UniverseRelationType>("related_to");
-  const [strength, setStrength] = useState(0.7);
-  return <section className="universe-node-editor" role="dialog" aria-modal="true" aria-label="建立思想连接"><div className="universe-detail-heading"><div><p className="eyebrow">NEW CONNECTION</p><h2>建立思想连接</h2></div><button className="tertiary-button" type="button" onClick={onCancel}>取消</button></div><p className="universe-notice">从「{source.title}」连接到另一颗星球。</p><label>目标<select value={target} onChange={(event) => setTarget(event.target.value)}>{nodes.filter((node) => node.id !== source.id).map((node) => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label><label>关系<select value={relationType} onChange={(event) => setRelationType(event.target.value as UniverseRelationType)}>{Object.entries(relationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>强度<input type="range" min="0.1" max="1" step="0.1" value={strength} onChange={(event) => setStrength(Number(event.target.value))} /><span>{Math.round(strength * 100)}%</span></label><div className="universe-detail-actions"><button className="secondary-button" type="button" disabled={saving || !target} onClick={() => onSave({ source: source.id, target, relationType, strength })}>{saving ? "保存中…" : "建立连接"}</button></div></section>;
 }
 
 function safeUniverseError(error: unknown): string {
