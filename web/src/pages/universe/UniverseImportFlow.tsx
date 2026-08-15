@@ -28,7 +28,12 @@ export function UniverseImportFlow({
   const [committing, setCommitting] = useState(false);
   const [uncertain, setUncertain] = useState(false);
 
-  const selectFile = () => inputRef.current?.click();
+  const selectFile = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  };
   const onFileChange = async (file: File | undefined) => {
     const generation = ++readGeneration.current;
     setPreview(null);
@@ -99,7 +104,7 @@ export function UniverseImportFlow({
       {committing ? <p className="universe-import-preview">正在迁移…</p> : null}
       <div className="universe-import-actions">
         {!uncertain ? <>
-          <button className="universe-import-action" type="button" disabled={committing} onClick={selectFile}>选择旧 Universe JSON</button>
+          {!fileName ? <button className="universe-import-action" type="button" disabled={committing} onClick={selectFile}>选择旧 Universe JSON</button> : null}
           {preview ? <button className="universe-import-action" data-action="confirm-import" type="button" disabled={committing} onClick={() => { void confirm(); }}>确认迁移</button> : null}
           {fileName ? <button className="universe-import-action" type="button" disabled={committing} onClick={selectFile}>重新选择</button> : null}
         </> : <button className="universe-import-action" data-action="recheck-import" type="button" onClick={onRecheck}>重新读取</button>}
