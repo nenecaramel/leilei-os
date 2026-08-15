@@ -29,7 +29,7 @@
   .universe-page:has(.universe-mobile-map) .universe-page-header {
     position: absolute;
     z-index: 12;
-    top: 13px;
+    top: 18px;
     right: 24px;
     left: 24px;
     display: flex !important;
