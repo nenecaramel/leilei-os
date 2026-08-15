@@ -40,7 +40,7 @@ export function UniverseMobileMap({
   onChooseRelationTarget,
   onMoveNode,
 }: UniverseMobileMapProps) {
-  const mapRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<HTMLElement>(null);
   const pointers = useRef(new Map<number, PointerPoint>());
   const panRef = useRef<{ pointerId: number; start: UniversePoint; viewport: UniverseViewport } | null>(null);
   const pinchRef = useRef<{ distance: number; viewport: UniverseViewport } | null>(null);
@@ -89,11 +89,11 @@ export function UniverseMobileMap({
   }, []);
 
   const fitAll = () => updateViewport(fitViewportToPositions(nodes.map((node) => node.position), mapSize));
-  const pointFromEvent = (event: ReactPointerEvent<HTMLDivElement>): UniversePoint => {
+  const pointFromEvent = (event: ReactPointerEvent<HTMLElement>): UniversePoint => {
     const rect = event.currentTarget.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
-  const clearGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const clearGesture = (event: ReactPointerEvent<HTMLElement>) => {
     pointers.current.delete(event.pointerId);
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (pointers.current.size < 2) pinchRef.current = null;
@@ -102,7 +102,7 @@ export function UniverseMobileMap({
     if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
   };
 
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     const point = pointFromEvent(event);
     pointers.current.set(event.pointerId, { ...point, pointerId: event.pointerId });
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -116,7 +116,7 @@ export function UniverseMobileMap({
     }
   };
 
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const point = pointFromEvent(event);
     pointers.current.set(event.pointerId, { ...point, pointerId: event.pointerId });
     const moving = movingRef.current;
@@ -138,7 +138,7 @@ export function UniverseMobileMap({
     }
   };
 
-  const handlePointerUp = async (event: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = async (event: ReactPointerEvent<HTMLElement>) => {
     const moving = movingRef.current;
     if (moving?.pointerId === event.pointerId) {
       const point = pointFromEvent(event);
@@ -150,7 +150,7 @@ export function UniverseMobileMap({
     clearGesture(event);
   };
 
-  const handleMapClick = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const handleMapClick = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget) return;
     const world = screenToWorld(pointFromEvent(event), viewport);
     if (mode.kind === "placing-node") onPlaceNode(worldToCanonicalPosition(world));
