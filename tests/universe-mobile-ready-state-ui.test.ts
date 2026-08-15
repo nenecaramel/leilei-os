@@ -36,6 +36,8 @@ test("ready controls use compact header actions and a non-destructive galaxy pic
   assert.match(polishCss, /prefers-reduced-motion/);
   assert.doesNotMatch(polishCss, /\.universe-galaxy-menu\s*\{[\s\S]*position:\s*fixed/);
   assert.match(polishCss, /\.universe-galaxy-menu\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\)[\s\S]*width:\s*100%/);
+  assert.match(polishCss, /universe-page:has\(\.universe-mobile-map\)[\s\S]*universe-galaxy-picker/);
 });
 
 test("placement instruction lives only in the anchored add popover", () => {

@@ -8,6 +8,7 @@ body:has(.universe-page),
 }
 
 .universe-page {
+  position: relative;
   --universe-surface: #ffffff;
   color: #171717;
   background: #ffffff;
@@ -465,14 +466,14 @@ body:has(.universe-page),
   width: 2px;
   height: 2px;
   border-radius: 50%;
-  background: #ededed;
+  background: #f1f1f1;
 }
 
 .universe-map-relation {
   position: absolute;
   transform-origin: 0 50%;
   border-radius: 99px;
-  background: #d8d8d8;
+  background: #e4e4e4;
 }
 
 .universe-map-relation.is-muted {
@@ -517,7 +518,7 @@ body:has(.universe-page),
 }
 
 .universe-map-relation.is-emphasized {
-  background: #8f8f8f;
+  background: #b8b8b8;
 }
 
 .universe-map-planet {
@@ -549,7 +550,8 @@ body:has(.universe-page),
   inset: 15%;
   border-radius: 50%;
   background: var(--planet-color, #9a9a9a);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  opacity: 0.72;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .universe-map-planet.is-selected .universe-map-planet-core {
@@ -559,6 +561,7 @@ body:has(.universe-page),
 .universe-map-membership-ring {
   position: absolute;
   border: 1px solid;
+  opacity: 0.42;
   border-radius: 50%;
   pointer-events: none;
 }
@@ -576,8 +579,34 @@ body:has(.universe-page),
 }
 
 @media (max-width: 760px) {
+  .universe-page:has(.universe-mobile-map) {
+    width: 100%;
+    margin-right: 0;
+    margin-left: 0;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-page-header {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-galaxy-picker {
+    position: absolute;
+    top: 52px;
+    left: 20px;
+    margin: 0;
+  }
+
   .universe-mobile-map {
+    width: 100vw;
     min-height: min(68vh, 560px);
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-mobile-map-toolbar {
+    top: 2px;
+    right: 20px;
   }
 }
 

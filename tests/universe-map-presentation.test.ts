@@ -90,8 +90,8 @@ test("a selection fades ordinary planets even when no galaxy is active", () => {
 test("relation strength changes only bounded line weight/opacity", () => {
   const weak = deriveRelationPresentation(relation({ strength: 0 }), null);
   const strong = deriveRelationPresentation(relation({ strength: 100 }), null);
-  assert.ok(weak.width >= 1 && strong.width <= 4);
-  assert.ok(weak.opacity >= 0.18 && strong.opacity <= 0.8);
+  assert.ok(weak.width >= 0.75 && strong.width <= 2.1);
+  assert.ok(weak.opacity >= 0.1 && strong.opacity <= 0.38);
   assert.ok(strong.width > weak.width);
   assert.ok(strong.opacity > weak.opacity);
 });
