@@ -13,7 +13,7 @@ const stateCss = readFileSync(
 
 test("Universe loading and empty states are plain centered text on white", () => {
   assert.match(pageSource, />正在读取 Universe…</);
-  assert.match(pageSource, />Universe 还没有内容</);
+  assert.match(pageSource, /UniverseImportFlow/);
 
   assert.match(
     stateCss,
@@ -35,4 +35,8 @@ test("Universe loading and empty states are plain centered text on white", () =>
     stateCss,
     /\.universe-page \.universe-loading-dots\s*\{[\s\S]*display:\s*none\s*!important/,
   );
+  const loadingStart = pageSource.indexOf('if (state.status === "loading")');
+  const emptyStart = pageSource.indexOf('if (state.status === "not-initialized")');
+  assert.ok(loadingStart >= 0 && emptyStart > loadingStart);
+  assert.doesNotMatch(pageSource.slice(loadingStart, emptyStart), /UniverseImportFlow/);
 });

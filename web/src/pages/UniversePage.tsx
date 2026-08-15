@@ -10,6 +10,7 @@ import {
   isUniverseVersionConflict,
 } from "./universe/universe-service";
 import { downloadUniverseJson } from "./universe/universe-export";
+import { UniverseImportFlow } from "./universe/UniverseImportFlow";
 import type {
   UniverseGalaxy,
   UniverseNode,
@@ -174,7 +175,18 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     return <UniverseFrame><UniverseLoadingState /></UniverseFrame>;
   }
   if (state.status === "not-initialized") {
-    return <UniverseFrame><UniverseEmptyState /></UniverseFrame>;
+    return (
+      <UniverseFrame>
+        <UniverseImportFlow
+          service={service}
+          onReady={(result, message) => {
+            setNotice(message);
+            setState({ status: "ready", ...result });
+          }}
+          onRecheck={() => setReload((value) => value + 1)}
+        />
+      </UniverseFrame>
+    );
   }
   if (state.status === "error") {
     return <UniverseFrame><UniverseStatus message={state.message} onRetry={() => setReload((value) => value + 1)} /></UniverseFrame>;
@@ -277,14 +289,6 @@ function UniverseLoadingState() {
         <span>正在读取 Universe…</span>
         <span className="universe-loading-dots" aria-hidden="true"><i /><i /><i /></span>
       </div>
-    </section>
-  );
-}
-
-function UniverseEmptyState() {
-  return (
-    <section className="universe-cosmos universe-cosmos-state" aria-live="polite">
-      <p className="universe-empty-copy">Universe 还没有内容</p>
     </section>
   );
 }
