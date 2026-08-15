@@ -11,24 +11,20 @@ import {
 } from "./universe/universe-service";
 import { downloadUniverseJson } from "./universe/universe-export";
 import { UniverseImportFlow } from "./universe/UniverseImportFlow";
+import { UniverseMobileMap } from "./universe/UniverseMobileMap";
+import { UniverseGalaxyPicker } from "./universe/UniverseGalaxyPicker";
+import { UniverseNodePaper, type UniverseNodePaperDraft, type UniverseNodePaperMode } from "./universe/UniverseNodePaper";
+import { UniverseRelationPaper } from "./universe/UniverseRelationPaper";
+import type { UniverseMapMode } from "./universe/universe-map-interaction";
+import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
   UniverseGalaxy,
   UniverseNode,
   UniverseNodeCreateInput,
   UniverseRelation,
   UniverseRelationCreateInput,
-  UniverseRelationType,
   UniverseSnapshot,
 } from "./universe/universe-types";
-
-const relationLabels: Record<UniverseRelationType, string> = {
-  related_to: "相关",
-  supports: "支持",
-  contradicts: "矛盾",
-  extends: "延伸",
-  part_of: "属于",
-  raises: "引出",
-};
 
 export const UNIVERSE_NODE_TYPES = [
   "concept",
@@ -61,11 +57,22 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [galaxyFilter, setGalaxyFilter] = useState<string | null>(null);
+  const [galaxyPickerOpen, setGalaxyPickerOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<UniverseNode | null>(null);
   const [saving, setSaving] = useState(false);
+  const [paperError, setPaperError] = useState<string | null>(null);
   const [relationEditorOpen, setRelationEditorOpen] = useState(false);
+  const [relationSourceId, setRelationSourceId] = useState<string | null>(null);
+  const [relationTargetId, setRelationTargetId] = useState<string | null>(null);
+  const [mapMode, setMapMode] = useState<UniverseMapMode>({ kind: "browse" });
+  const [viewport, setViewport] = useState<UniverseViewport | null>(null);
+  const [pendingPosition, setPendingPosition] = useState<UniversePoint | null>(null);
+  const [revealNodeId, setRevealNodeId] = useState<string | null>(null);
+  const [paperMode, setPaperMode] = useState<UniverseNodePaperMode | null>(null);
+  const paperTriggerRef = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
 
   useEffect(() => {
@@ -93,14 +100,30 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     if (current) setState({ status: "ready", ...current });
   };
 
-  async function saveNode(values: NodeDraft) {
+  const reconcileAfterMutationFailure = async () => {
+    try {
+      const fresh = await service.load();
+      setState({ status: "ready", ...fresh });
+    } catch {
+      // Keep the last known canonical state visible when the recovery read is
+      // itself unavailable; never invent an optimistic result.
+      refreshFromService();
+    }
+  };
+
+  async function saveNode(values: UniverseNodePaperDraft) {
     if (saving) return;
     setSaving(true);
+    setPaperError(null);
     try {
       if (editingNode) {
         await service.updateNode(editingNode.id, values, "Universe Web 编辑");
         setNotice("星球已更新。");
       } else {
+        if (!pendingPosition) {
+          setPaperError("请先在星图上选择新星球的位置。");
+          return;
+        }
         const node: UniverseNodeCreateInput = {
           title: values.title,
           summary: values.summary,
@@ -108,10 +131,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
           type: values.type,
           tags: values.tags,
           galaxies: values.galaxies,
-          position: {
-            x: 16 + ((Date.now() / 17) % 68),
-            y: 18 + ((Date.now() / 29) % 58),
-          },
+          position: pendingPosition,
           importance: values.importance,
         };
         await service.createNode(node);
@@ -119,9 +139,11 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       }
       setEditorOpen(false);
       setEditingNode(null);
+      setPendingPosition(null);
       refreshFromService();
     } catch (error) {
-      setNotice(safeUniverseError(error));
+      setPaperError(safeUniverseError(error));
+      void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
     }
@@ -137,6 +159,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       refreshFromService();
     } catch (error) {
       setNotice(safeUniverseError(error));
+      void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
     }
@@ -145,27 +168,18 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   async function saveRelation(relation: UniverseRelationCreateInput) {
     if (saving) return;
     setSaving(true);
+    setPaperError(null);
     try {
       await service.createRelation(relation);
       setRelationEditorOpen(false);
+      setRelationSourceId(null);
+      setRelationTargetId(null);
+      setMapMode({ kind: "browse" });
       setNotice("新的思想连接已经出现。");
       refreshFromService();
     } catch (error) {
-      setNotice(safeUniverseError(error));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function removeRelation(relation: UniverseRelation) {
-    if (saving) return;
-    setSaving(true);
-    try {
-      await service.deleteRelation(relation.id);
-      setNotice("思想连接已移除。");
-      refreshFromService();
-    } catch (error) {
-      setNotice(safeUniverseError(error));
+      setPaperError(safeUniverseError(error));
+      void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
     }
@@ -193,76 +207,99 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   }
 
   const { snapshot } = state;
-  const visibleNodes = galaxyFilter
-    ? snapshot.nodes.filter((node) => node.galaxies.some((membership) => membership.id === galaxyFilter))
-    : snapshot.nodes;
   const selectedNode = snapshot.nodes.find((node) => node.id === selectedId) ?? null;
+  const selectedConnections = selectedNode
+    ? snapshot.relations.filter((relation) => relation.source === selectedNode.id || relation.target === selectedNode.id).map((relation) => ({
+      relation,
+      node: snapshot.nodes.find((node) => node.id === (relation.source === selectedNode.id ? relation.target : relation.source)) ?? null,
+    })).filter((connection): connection is { relation: typeof snapshot.relations[number]; node: UniverseNode } => connection.node !== null)
+    : [];
+
+  async function removeRelation(relation: UniverseRelation) {
+    if (!relation.id || saving) return;
+    setSaving(true);
+    setPaperError(null);
+    try {
+      await service.deleteRelation(relation.id);
+      setNotice("思想连接已移除。");
+      refreshFromService();
+    } catch (error) {
+      setPaperError(safeUniverseError(error));
+      void reconcileAfterMutationFailure();
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="page memory-page universe-page">
       <UniverseHeader
         actions={(
           <>
-            <button className="universe-header-action" type="button" onClick={() => downloadUniverseJson(snapshot)}>导出</button>
-            <button className="universe-header-action" type="button" onClick={() => { setEditingNode(null); setEditorOpen(true); }}>新增</button>
+            <button className="universe-header-action" type="button" aria-label="新增星球" onClick={() => { setPaperError(null); setMapMode({ kind: "placing-node" }); setNotice("点击地图选择新星球的位置。"); }}>＋</button>
+            <button className="universe-header-action" type="button" aria-label="更多 Universe 操作" aria-expanded={overflowOpen} onClick={() => setOverflowOpen((value) => !value)}>···</button>
           </>
         )}
       />
-      {snapshot.galaxies.length ? (
-        <div className="universe-toolbar" aria-label="Universe filters">
-          <button className={!galaxyFilter ? "universe-filter is-active" : "universe-filter"} type="button" onClick={() => setGalaxyFilter(null)}>全部</button>
-          {snapshot.galaxies.slice().sort((a, b) => a.order - b.order).map((galaxy) => (
-            <button
-              className={galaxyFilter === galaxy.id ? "universe-filter is-active" : "universe-filter"}
-              key={galaxy.id}
-              type="button"
-              onClick={() => setGalaxyFilter(galaxy.id)}
-            >
-              <span className="universe-filter-dot" />
-              {galaxy.title}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {overflowOpen ? <div className="universe-overflow-menu" role="menu"><button type="button" onClick={() => { downloadUniverseJson(snapshot); setOverflowOpen(false); }}>导出</button></div> : null}
+      <UniverseGalaxyPicker galaxies={snapshot.galaxies} activeGalaxyId={galaxyFilter} open={galaxyPickerOpen} onOpenChange={setGalaxyPickerOpen} onSelect={setGalaxyFilter} />
       {notice ? <p className="universe-notice" role="status">{notice}</p> : null}
-      <UniverseCanvas
-        nodes={visibleNodes}
+      <UniverseMobileMap
+        galaxies={snapshot.galaxies}
+        nodes={snapshot.nodes}
         relations={snapshot.relations}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
+        selectedNodeId={selectedId}
+        activeGalaxyId={galaxyFilter}
+        mode={mapMode}
+        initialViewport={viewport}
+        onViewportChange={setViewport}
+        onSelectNode={setSelectedId}
+        onModeChange={(next) => { const previous = mapMode; setMapMode(next); if (previous.kind === "placing-node" && next.kind === "browse") setNotice(null); }}
+        revealNodeId={revealNodeId}
+        onRevealNodeHandled={() => setRevealNodeId(null)}
+        onOpenNode={(nodeId) => { setPaperError(null); setSelectedId(nodeId); setPaperMode({ kind: "detail", nodeId }); setEditorOpen(true); }}
+        onPlaceNode={(position) => { setPaperError(null); setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
+        onChooseRelationTarget={(nodeId) => { setRelationTargetId(nodeId); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); }}
+        onMoveNode={async (nodeId, position) => {
+          try {
+            await service.updateNode(nodeId, { position }, "Universe Web 移动星球");
+            setNotice("星球位置已更新。");
+            refreshFromService();
+          } catch (error) {
+            setNotice(safeUniverseError(error));
+            await reconcileAfterMutationFailure();
+          }
+        }}
       />
-      {selectedNode ? (
-        <section className="universe-detail-card" aria-label="Selected universe node">
-          <div className="universe-detail-heading">
-            <div>
-              <p className="eyebrow">{selectedNode.type}</p>
-              <h2>{selectedNode.title}</h2>
-            </div>
-            <button className="tertiary-button" type="button" onClick={() => setSelectedId(null)}>关闭</button>
-          </div>
-          {selectedNode.summary ? <p>{selectedNode.summary}</p> : null}
-          {selectedNode.content ? <p className="universe-detail-content">{selectedNode.content}</p> : null}
-          <div className="universe-detail-actions">
-            <button className="secondary-button" type="button" onClick={() => { setEditingNode(selectedNode); setEditorOpen(true); }}>调整轨道</button>
-            {snapshot.nodes.length > 1 ? <button className="secondary-button" type="button" onClick={() => setRelationEditorOpen(true)}>建立连接</button> : null}
-            {snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) ? <button className="tertiary-button" type="button" disabled={saving} onClick={() => { void service.restoreLatestRevision(selectedNode.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => setNotice(safeUniverseError(error))); }}>恢复上一版本</button> : null}
-            <button className="danger-button" type="button" disabled={saving} onClick={() => void removeNode(selectedNode)}>移除星球</button>
-          </div>
-          <div className="universe-relation-list">
-            {snapshot.relations.filter((relation) => relation.source === selectedNode.id || relation.target === selectedNode.id).map((relation) => <div className="universe-relation-item" key={relation.id}><span>{relationLabels[relation.relationType]}</span><button className="tertiary-button" type="button" disabled={saving} onClick={() => void removeRelation(relation)}>移除连接</button></div>)}
-          </div>
-        </section>
-      ) : null}
-      {editorOpen ? (
-        <NodeEditor
-          node={editingNode}
-          galaxies={snapshot.galaxies}
-          saving={saving}
-          onCancel={() => { setEditorOpen(false); setEditingNode(null); }}
-          onSave={saveNode}
-        />
-      ) : null}
-      {relationEditorOpen && selectedNode ? <RelationEditor source={selectedNode} nodes={snapshot.nodes} saving={saving} onCancel={() => setRelationEditorOpen(false)} onSave={saveRelation} /> : null}
+      <UniverseNodePaper
+        node={selectedNode}
+        galaxies={snapshot.galaxies}
+        mode={paperMode}
+        open={editorOpen}
+        saving={saving}
+        errorMessage={paperError}
+        triggerRef={paperTriggerRef}
+        revisionsAvailable={selectedNode ? snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) : false}
+        connections={selectedConnections}
+        onRequestClose={() => { setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
+        onSave={saveNode}
+        onDelete={(node) => void removeNode(node)}
+        onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { setNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
+        onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setRelationTargetId(null); setMapMode({ kind: "relation-target", sourceNodeId: node.id }); setEditorOpen(false); setPaperMode(null); }}
+        onDeleteRelation={(relation) => void removeRelation(relation)}
+        onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setRevealNodeId(nodeId); setPaperError(null); }}
+        onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
+      />
+      <UniverseRelationPaper
+        source={snapshot.nodes.find((node) => node.id === relationSourceId) ?? null}
+        target={snapshot.nodes.find((node) => node.id === relationTargetId) ?? null}
+        open={relationEditorOpen}
+        saving={saving}
+        errorMessage={paperError}
+        triggerRef={paperTriggerRef}
+        onRequestClose={() => { setRelationEditorOpen(false); setRelationSourceId(null); setRelationTargetId(null); setPaperError(null); setMapMode({ kind: "browse" }); return true; }}
+        onSave={saveRelation}
+      />
     </div>
   );
 }
@@ -297,85 +334,16 @@ function UniverseStatus({ message, onRetry }: { message: string; onRetry?: () =>
   return <section className="universe-cosmos universe-cosmos-state" aria-live="polite"><div className="universe-state-inline"><p>{message}</p>{onRetry ? <button className="secondary-button" type="button" onClick={onRetry}>重新加载</button> : null}</div></section>;
 }
 
-export function UniverseCanvas({
-  nodes,
-  relations,
-  selectedId,
-  onSelect,
-}: {
-  nodes: UniverseNode[];
-  relations: UniverseRelation[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  return (
-    <section className="universe-cosmos" aria-label="Universe spatial canvas">
-      <div className="universe-relation-layer" aria-hidden="true">
-        {relations.map((relation) => {
-          const source = nodeMap.get(relation.source);
-          const target = nodeMap.get(relation.target);
-          if (!source || !target) return null;
-          const dx = target.position.x - source.position.x;
-          const dy = target.position.y - source.position.y;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-          return <span className="universe-relation-line" key={relation.id} title={relationLabels[relation.relationType]} style={{ left: `${source.position.x}%`, top: `${source.position.y}%`, width: `${length}%`, transform: `rotate(${angle}deg)`, opacity: Math.max(0.25, relation.strength) }} />;
-        })}
-      </div>
-      <div className="universe-node-layer">
-        {nodes.map((node) => (
-          <button className={selectedId === node.id ? "universe-node is-selected" : "universe-node"} key={node.id} type="button" style={{ left: `${node.position.x}%`, top: `${node.position.y}%` }} onClick={() => onSelect(node.id)} aria-label={`查看节点：${node.title}`}>
-            <span className="universe-node-orb" />
-            <span className="universe-node-copy"><strong>{node.title}</strong><small>{node.type}</small></span>
-          </button>
-        ))}
-        {nodes.length === 0 ? <p className="universe-cosmos-empty">当前筛选没有星球。</p> : null}
-      </div>
-    </section>
-  );
-}
-
-type NodeDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string };
-
 export function toggleUniverseGalaxyMemberships(
   current: UniverseNode["galaxies"],
   galaxyId: string,
+  weight?: number,
 ): UniverseNode["galaxies"] {
   if (current.some((membership) => membership.id === galaxyId)) {
     return current.filter((membership) => membership.id !== galaxyId);
   }
-  return [...current, { id: galaxyId, weight: current.length === 0 ? 1 : 0.72 }];
-}
-
-function NodeEditor({ node, galaxies, saving, onCancel, onSave }: { node: UniverseNode | null; galaxies: UniverseGalaxy[]; saving: boolean; onCancel: () => void; onSave: (draft: NodeDraft) => Promise<void> }) {
-  const [title, setTitle] = useState(node?.title ?? "");
-  const [summary, setSummary] = useState(node?.summary ?? "");
-  const [content, setContent] = useState(node?.content ?? "");
-  const [type, setType] = useState(node?.type ?? "concept");
-  const [importance, setImportance] = useState(node?.importance ?? "normal");
-  const [tags, setTags] = useState((node?.tags ?? []).join(", "));
-  const [selectedGalaxies, setSelectedGalaxies] = useState(node?.galaxies ?? []);
-  return (
-    <section className="universe-node-editor" role="dialog" aria-modal="true" aria-label={node ? "调整星球" : "点亮星球"}>
-      <div className="universe-detail-heading"><div><p className="eyebrow">{node ? "ADJUST ORBIT" : "NEW STAR"}</p><h2>{node ? "调整这颗星球" : "点亮一颗新星"}</h2></div><button className="tertiary-button" type="button" onClick={onCancel}>取消</button></div>
-      <label>标题<input value={title} maxLength={60} autoFocus onChange={(event) => setTitle(event.target.value)} /></label>
-      <label>摘要<textarea value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} /></label>
-      <label>正文<textarea value={content} rows={4} onChange={(event) => setContent(event.target.value)} /></label>
-      <label>类型<select value={type} onChange={(event) => setType(event.target.value)}>{UNIVERSE_NODE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-      <label>重要性<select value={importance} onChange={(event) => setImportance(event.target.value)}>{UNIVERSE_IMPORTANCE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-      <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔" /></label>
-      {galaxies.length ? <fieldset><legend>星系</legend>{galaxies.map((galaxy) => <label className="universe-galaxy-choice" key={galaxy.id}><input type="checkbox" checked={selectedGalaxies.some((membership) => membership.id === galaxy.id)} onChange={() => setSelectedGalaxies((current) => toggleUniverseGalaxyMemberships(current, galaxy.id))} />{galaxy.title}</label>)}</fieldset> : null}
-      <div className="universe-detail-actions"><button className="secondary-button" type="button" disabled={saving || !title.trim()} onClick={() => onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: selectedGalaxies })}>{saving ? "保存中…" : "保存"}</button></div>
-    </section>
-  );
-}
-
-function RelationEditor({ source, nodes, saving, onCancel, onSave }: { source: UniverseNode; nodes: UniverseNode[]; saving: boolean; onCancel: () => void; onSave: (relation: UniverseRelationCreateInput) => Promise<void> }) {
-  const [target, setTarget] = useState(nodes.find((node) => node.id !== source.id)?.id ?? "");
-  const [relationType, setRelationType] = useState<UniverseRelationType>("related_to");
-  const [strength, setStrength] = useState(0.7);
-  return <section className="universe-node-editor" role="dialog" aria-modal="true" aria-label="建立思想连接"><div className="universe-detail-heading"><div><p className="eyebrow">NEW CONNECTION</p><h2>建立思想连接</h2></div><button className="tertiary-button" type="button" onClick={onCancel}>取消</button></div><p className="universe-notice">从「{source.title}」连接到另一颗星球。</p><label>目标<select value={target} onChange={(event) => setTarget(event.target.value)}>{nodes.filter((node) => node.id !== source.id).map((node) => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label><label>关系<select value={relationType} onChange={(event) => setRelationType(event.target.value as UniverseRelationType)}>{Object.entries(relationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>强度<input type="range" min="0.1" max="1" step="0.1" value={strength} onChange={(event) => setStrength(Number(event.target.value))} /><span>{Math.round(strength * 100)}%</span></label><div className="universe-detail-actions"><button className="secondary-button" type="button" disabled={saving || !target} onClick={() => onSave({ source: source.id, target, relationType, strength })}>{saving ? "保存中…" : "建立连接"}</button></div></section>;
+  if (typeof weight !== "number" || !Number.isFinite(weight)) return current;
+  return [...current, { id: galaxyId, weight }];
 }
 
 function safeUniverseError(error: unknown): string {

@@ -13,8 +13,10 @@ test("Universe importer is wired only into the uninitialized state", () => {
   assert.doesNotMatch(readyStateSource, /UniverseImportFlow/);
 });
 
-test("ready state retains only the existing export and create actions", () => {
-  assert.match(readyStateSource, />导出<\/button>/);
-  assert.match(readyStateSource, />新增<\/button>/);
+test("ready state keeps compact actions while importer remains uninitialized-only", () => {
+  assert.match(readyStateSource, /＋/);
+  assert.match(readyStateSource, /···/);
+  assert.match(readyStateSource, /universe-overflow-menu[\s\S]*导出/);
+  assert.doesNotMatch(readyStateSource, />新增<\/button>/);
   assert.doesNotMatch(readyStateSource, /选择旧 Universe JSON|确认迁移|UniverseImportFlow/);
 });

@@ -48,7 +48,8 @@ test("Chat Archive keeps its placeholder while Universe uses the spatial page", 
     /import \{ UniversePage \} from "\.\/pages\/UniversePageContainer"/,
   );
   assert.match(app, /path="universe"[\s\S]*?<UniversePage\s*\/>/);
-  assert.match(universePage, /className="universe-cosmos"/);
+  assert.match(universePage, /import \{ UniverseMobileMap \}/);
+  assert.match(universePage, /className="universe-cosmos universe-cosmos-loading"/);
 
   assert.doesNotMatch(
     placeholder,
