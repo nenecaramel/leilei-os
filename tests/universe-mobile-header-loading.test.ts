@@ -28,9 +28,20 @@ test("Universe ready header reuses the loading-page Memory header geometry", () 
     homePolishCss,
     /\.universe-page:has\(\.universe-mobile-map\) \.memory-page-heading,\s*\.universe-page:has\(\.universe-mobile-map\) \.universe-page-tools\s*\{[\s\S]*height:\s*34px/,
   );
+});
+
+test("Universe mobile controls share the same visual page-edge inset", () => {
   assert.match(
     homePolishCss,
-    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-tools\s*\{[\s\S]*transform:\s*translateY\(3px\)/,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-galaxy-picker\s*\{[\s\S]*left:\s*24px/,
+  );
+  assert.match(
+    homePolishCss,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-mobile-map-toolbar\s*\{[\s\S]*right:\s*24px/,
+  );
+  assert.match(
+    homePolishCss,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-tools\s*\{[\s\S]*transform:\s*translate\(8px,\s*-3px\)/,
   );
 });
 

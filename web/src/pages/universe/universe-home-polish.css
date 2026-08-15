@@ -44,7 +44,7 @@
     display: flex;
     align-items: center;
     gap: 0;
-    transform: translateY(3px);
+    transform: translate(8px, -3px);
   }
 
   .universe-page:has(.universe-mobile-map) .universe-header-action {
@@ -86,7 +86,7 @@
     position: absolute;
     z-index: 11;
     top: 48px;
-    left: 20px;
+    left: 24px;
     margin: 0;
   }
 
@@ -94,7 +94,7 @@
     position: absolute;
     z-index: 11;
     top: 48px;
-    right: 20px;
+    right: 24px;
   }
 
   .universe-page:has(.universe-mobile-map) .universe-galaxy-entry,
