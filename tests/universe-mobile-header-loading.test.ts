@@ -9,7 +9,7 @@ const homePolishCss = readFileSync(new URL("../web/src/pages/universe/universe-h
 test("Universe mobile header returns to the shared Memory title baseline", () => {
   assert.match(
     homePolishCss,
-    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-header\s*\{[\s\S]*top:\s*13px/,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-header\s*\{[\s\S]*top:\s*13px[\s\S]*right:\s*24px[\s\S]*left:\s*24px/,
   );
   assert.match(
     homePolishCss,
