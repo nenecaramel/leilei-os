@@ -120,13 +120,13 @@ test("0020 succeeds for empty-only legacy data and preserves old inserts", { ski
       from information_schema.columns
       where table_schema = 'public' and table_name = 'universe_nodes' and column_name = 'galaxy_memberships'
     `;
-    assert.deepEqual(column, [{ data_type: "jsonb", is_nullable: "NO", column_default: "'[]'::jsonb" }]);
+    assert.deepEqual(column[0], { data_type: "jsonb", is_nullable: "NO", column_default: "'[]'::jsonb" });
     const legacyColumn = await client<{ data_type: string; is_nullable: string }[]>`
       select data_type, is_nullable
       from information_schema.columns
       where table_schema = 'public' and table_name = 'universe_nodes' and column_name = 'galaxies'
     `;
-    assert.deepEqual(legacyColumn, [{ data_type: "ARRAY", is_nullable: "NO" }]);
+    assert.deepEqual(legacyColumn[0], { data_type: "ARRAY", is_nullable: "NO" });
     const constraint = await client<{ present: boolean }[]>`
       select exists (
         select 1 from pg_constraint where conname = 'universe_nodes_galaxy_memberships_array'
