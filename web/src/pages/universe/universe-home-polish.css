@@ -30,8 +30,8 @@
     position: absolute;
     z-index: 12;
     top: 13px;
-    right: 20px;
-    left: 20px;
+    right: 24px;
+    left: 24px;
     display: flex !important;
     height: 34px;
     align-items: center !important;
