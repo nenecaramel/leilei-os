@@ -82,6 +82,21 @@ test("Universe metadata editing avoids native select/fieldset matrices", () => {
   assert.doesNotMatch(metadata, /weight:\s*1(?:\.0)?/);
 });
 
+test("Universe create/edit paper uses the same content-first transparent editors", () => {
+  const source = readFileSync(paperPath, "utf8");
+  assert.match(source, /universe-paper-title-editor/);
+  assert.match(source, /universe-paper-summary-editor/);
+  assert.match(source, /universe-paper-content-editor/);
+  assert.match(source, /placeholder="星球标题"/);
+  assert.doesNotMatch(source, /<label[^>]*>标题/);
+  assert.doesNotMatch(source, /<label[^>]*>摘要/);
+  assert.doesNotMatch(source, /<label[^>]*>正文/);
+  assert.match(source, /topRight=/);
+  assert.match(source, /取消/);
+  assert.match(source, /保存/);
+  assert.match(source, /universe-node-connection-overflow/);
+});
+
 test("Galaxy entry is label-only when inactive and names the active galaxy", () => {
   const source = readFileSync(new URL("../web/src/pages/universe/UniverseGalaxyPicker.tsx", import.meta.url), "utf8");
   assert.match(source, /universe-galaxy-entry-label.*星系/);

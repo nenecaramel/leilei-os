@@ -231,6 +231,44 @@ body:has(.universe-page),
   background: #f5f5f5;
 }
 
+.universe-paper-title-editor,
+.universe-paper-summary-editor,
+.universe-paper-content-editor {
+  display: block;
+  width: 100%;
+  border: 0;
+  color: #171717;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.55;
+  outline: none;
+}
+
+.universe-paper-title-editor {
+  margin-bottom: 8px;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.universe-paper-summary-editor {
+  min-height: 48px;
+  color: #777777;
+}
+
+.universe-paper-content-editor {
+  min-height: 180px;
+  resize: vertical;
+}
+
+.universe-paper-title-editor::placeholder,
+.universe-paper-summary-editor::placeholder,
+.universe-paper-content-editor::placeholder {
+  color: #b3b3b3;
+}
+
 .universe-node-connection {
   display: flex;
   align-items: center;
@@ -254,6 +292,16 @@ body:has(.universe-page),
 .universe-node-connection-link small {
   color: #9a9a9a;
   font-size: 11px;
+}
+
+.universe-node-connection-overflow {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  color: #8d8d8d;
+  background: transparent;
+  font: inherit;
 }
 
 .universe-node-metadata {

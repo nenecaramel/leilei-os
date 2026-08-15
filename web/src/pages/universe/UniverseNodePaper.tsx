@@ -98,6 +98,11 @@ export function UniverseNodePaper({
     return next;
   };
   const canonicalMemberships = toCanonicalMemberships(memberships);
+  const submit = () => {
+    const nextMemberships = buildMemberships();
+    if (!nextMemberships) return;
+    void onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: nextMemberships });
+  };
 
   return (
     <PaperDetailDialog
@@ -107,7 +112,12 @@ export function UniverseNodePaper({
       dateLabel={formatUniverseNodeTimestamp(isCreate ? new Date().toISOString() : effectiveNode!.createdAt)}
       signature=""
       showRules={false}
-      topRight={!isEdit && effectiveNode ? (
+      topRight={isEdit ? (
+        <div className="universe-node-paper-top-actions">
+          <button type="button" className="tertiary-button" onClick={() => void onRequestClose()}>取消</button>
+          <button type="button" className="tertiary-button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : "保存"}</button>
+        </div>
+      ) : effectiveNode ? (
         <div className="universe-node-paper-top-actions">
           <button type="button" className="tertiary-button" onClick={() => onEdit?.(effectiveNode)}>编辑</button>
           <span className="universe-node-paper-overflow">
@@ -128,10 +138,9 @@ export function UniverseNodePaper({
     >
       {isEdit ? (
         <div className="universe-node-paper-body">
-          <h2>{isCreate ? "点亮一颗新星" : "调整这颗星球"}</h2>
-          <label>标题<input autoFocus value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} /></label>
-          <label>摘要<textarea value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} /></label>
-          <label>正文<textarea value={content} rows={6} onChange={(event) => setContent(event.target.value)} /></label>
+          <input className="universe-paper-title-editor" aria-label="星球标题" placeholder="星球标题" autoFocus value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} />
+          <textarea className="universe-paper-summary-editor" aria-label="星球摘要" placeholder="摘要" value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} />
+          <textarea className="universe-paper-content-editor" aria-label="星球正文" placeholder="记录这颗星球的想法" value={content} rows={6} onChange={(event) => setContent(event.target.value)} />
           <UniverseNodeMetadata
             galaxies={galaxies}
             type={type as UniverseNode["type"]}
@@ -144,12 +153,8 @@ export function UniverseNodePaper({
             onTagsChange={(value) => setTags(value)}
             onMembershipsChange={(value) => { setMembershipError(null); setMemberships(value); }}
           />
+          {!isCreate && connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button>{onDeleteRelation ? <button type="button" className="universe-node-connection-overflow" aria-label="连接操作" disabled={saving} onClick={() => onDeleteRelation(relation)}>···</button> : null}</div>)}</section> : null}
           {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-paper-inline-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
-          <button type="button" className="secondary-button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={() => {
-            const nextMemberships = buildMemberships();
-            if (!nextMemberships) return;
-            void onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: tags.split(/[,，]/).map((value) => value.trim()).filter(Boolean), galaxies: nextMemberships });
-          }}>{saving ? "保存中…" : "保存"}</button>
           {!isCreate && effectiveNode && onDelete ? <button type="button" className="danger-button" disabled={saving} onClick={() => onDelete(effectiveNode)}>移除星球</button> : null}
         </div>
       ) : (
