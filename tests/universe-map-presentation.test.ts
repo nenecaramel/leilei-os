@@ -87,11 +87,19 @@ test("a selection fades ordinary planets even when no galaxy is active", () => {
   assert.equal(ordinary.opacity, 0.28);
 });
 
-test("relation strength changes only bounded line weight/opacity", () => {
+test("idle topology stays visible while relation strength remains bounded", () => {
   const weak = deriveRelationPresentation(relation({ strength: 0 }), null);
   const strong = deriveRelationPresentation(relation({ strength: 100 }), null);
-  assert.ok(weak.width >= 0.75 && strong.width <= 2.1);
-  assert.ok(weak.opacity >= 0.1 && strong.opacity <= 0.38);
+  assert.ok(weak.width >= 0.75 && strong.width <= 1.7);
+  assert.ok(weak.opacity >= 0.18 && strong.opacity <= 0.4);
   assert.ok(strong.width > weak.width);
   assert.ok(strong.opacity > weak.opacity);
+});
+
+test("selected topology is clearly stronger without hiding unrelated relations", () => {
+  const direct = deriveRelationPresentation(relation({ strength: 0.5 }), "n1");
+  const unrelated = deriveRelationPresentation(relation({ source: "n3", target: "n4", strength: 0.5 }), "n1");
+  assert.ok(direct.opacity >= 0.5);
+  assert.ok(unrelated.opacity > 0);
+  assert.ok(direct.opacity > unrelated.opacity);
 });

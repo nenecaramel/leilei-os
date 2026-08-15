@@ -115,8 +115,8 @@ export function deriveRelationPresentation(
   const strength = Number.isFinite(relation.strength) ? Math.min(1, Math.max(0, relation.strength)) : 0;
   const emphasized = selectedNodeId !== null && (relation.source === selectedNodeId || relation.target === selectedNodeId);
   return {
-    width: 0.75 + strength * (emphasized ? 1.25 : 1.0),
-    opacity: emphasized ? 0.36 + strength * 0.4 : selectedNodeId === null ? 0.1 + strength * 0.28 : 0.06,
+    width: 0.75 + strength * (emphasized ? 1.15 : 0.85),
+    opacity: emphasized ? 0.52 + strength * 0.28 : selectedNodeId === null ? 0.18 + strength * 0.22 : 0.1,
     isEmphasized: emphasized,
   };
 }

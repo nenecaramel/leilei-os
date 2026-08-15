@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import "./universe-home-polish.css";
 import { UniverseFloatingPopover } from "./UniverseFloatingPopover";
 import type { UniverseGalaxy } from "./universe-types";
 

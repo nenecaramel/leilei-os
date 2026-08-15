@@ -1,0 +1,328 @@
+/* Universe ready-state home only. Keep Paper/detail/edit styles isolated elsewhere. */
+
+@media (max-width: 760px) {
+  .universe-page:has(.universe-mobile-map) {
+    position: relative;
+    width: 100%;
+    max-width: none;
+    height: calc(100dvh - (44px + env(safe-area-inset-top, 0px)));
+    min-height: calc(100dvh - (44px + env(safe-area-inset-top, 0px)));
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #ffffff;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-mobile-map {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    background: #ffffff;
+  }
+
+  /* First row: Universe title + two compact actions on one center line. */
+  .universe-page:has(.universe-mobile-map) .universe-page-header {
+    position: absolute;
+    z-index: 12;
+    top: 8px;
+    right: 20px;
+    left: 20px;
+    display: flex !important;
+    height: 34px;
+    align-items: center !important;
+    justify-content: space-between;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .memory-page-heading,
+  .universe-page:has(.universe-mobile-map) .universe-page-tools {
+    display: flex;
+    height: 34px;
+    align-items: center;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-page-tools {
+    gap: 0;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-header-action {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    color: #666666;
+    background: transparent !important;
+    box-shadow: none !important;
+    line-height: 1;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-header-action[aria-label="新增星球"] {
+    font-size: 19px;
+    font-weight: 400;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-header-action[aria-label="更多 Universe 操作"] {
+    font-size: 16px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-header-action:hover,
+  .universe-page:has(.universe-mobile-map) .universe-header-action:active,
+  .universe-page:has(.universe-mobile-map) .universe-header-action[aria-expanded="true"] {
+    color: #454545;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Second row: galaxy and fit controls are the same visual control. */
+  .universe-page:has(.universe-mobile-map) .universe-galaxy-picker {
+    position: absolute;
+    z-index: 11;
+    top: 48px;
+    left: 20px;
+    margin: 0;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-mobile-map-toolbar {
+    position: absolute;
+    z-index: 11;
+    top: 48px;
+    right: 20px;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-galaxy-entry,
+  .universe-page:has(.universe-mobile-map) .universe-map-fit {
+    display: inline-flex;
+    min-width: 0;
+    height: 32px;
+    min-height: 32px;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    color: #858585;
+    background: transparent !important;
+    box-shadow: none !important;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 32px;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-galaxy-entry {
+    gap: 8px;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-galaxy-entry-label {
+    color: inherit;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-galaxy-entry:hover,
+  .universe-page:has(.universe-mobile-map) .universe-galaxy-entry:active,
+  .universe-page:has(.universe-mobile-map) .universe-map-fit:hover,
+  .universe-page:has(.universe-mobile-map) .universe-map-fit:active {
+    color: #555555;
+    background: transparent !important;
+  }
+
+  /* Reuse the accepted compact Memory/Diary popover language. */
+  .universe-page-tools .universe-floating-popover,
+  .universe-galaxy-picker .universe-floating-popover {
+    top: calc(100% + 4px);
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    padding: 5px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 10px;
+    color: #777777;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  .universe-page-tools .universe-floating-popover {
+    right: 0;
+    left: auto;
+    transform: none;
+  }
+
+  .universe-page-tools .universe-floating-popover button,
+  .universe-galaxy-menu button {
+    min-height: 36px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 7px;
+    color: #777777;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.3;
+  }
+
+  .universe-overflow-menu {
+    min-width: 78px;
+  }
+
+  .universe-overflow-menu button {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .universe-placement-popover {
+    min-width: 0;
+  }
+
+  .universe-placement-popover > span {
+    display: block;
+    padding: 7px 10px;
+    color: #777777;
+    font-size: 0;
+    font-weight: 400;
+    line-height: 1.4;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .universe-placement-popover > span::before {
+    content: "点击地图选择新星球的位置";
+    font-size: 13px;
+  }
+
+  .universe-galaxy-picker .universe-galaxy-menu {
+    top: calc(100% + 4px);
+    right: auto;
+    left: 0;
+    display: grid;
+    width: 150px;
+    min-width: 0;
+    max-width: calc(100vw - 32px);
+    max-height: min(52dvh, 330px);
+    gap: 1px;
+    overflow-y: auto;
+    transform: none;
+  }
+
+  .universe-galaxy-menu button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .universe-galaxy-menu button.is-active {
+    border-radius: 7px;
+    color: #555555;
+    background: #f2f2f2;
+  }
+
+  .universe-galaxy-menu button:hover,
+  .universe-galaxy-menu button:active {
+    color: #555555;
+    background: #f6f6f6;
+  }
+
+  .universe-galaxy-entry-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+  }
+
+  /* The map should read as pale colour, not transparent colour. */
+  .universe-map-planet-core {
+    background: color-mix(in srgb, var(--planet-color, #9a9a9a) 28%, #ffffff 72%);
+    opacity: 1;
+    filter: none;
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--planet-color, #9a9a9a) 10%, #ffffff 90%),
+      0 2px 8px rgba(0, 0, 0, 0.035);
+  }
+
+  .universe-map-planet.is-selected .universe-map-planet-core {
+    background: color-mix(in srgb, var(--planet-color, #9a9a9a) 38%, #ffffff 62%);
+    box-shadow:
+      0 0 0 2px #ffffff,
+      0 0 0 3px color-mix(in srgb, var(--planet-color, #9a9a9a) 30%, #ffffff 70%),
+      0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .universe-map-membership-ring {
+    border-width: 1px;
+    opacity: 0.34 !important;
+    filter: saturate(0.72) brightness(1.08);
+  }
+
+  .universe-map-planet.is-selected .universe-map-membership-ring {
+    opacity: 0.42 !important;
+    filter: saturate(0.76) brightness(1.06);
+  }
+
+  .universe-map-reference-dots i {
+    background: #f5f5f5;
+  }
+
+  /* Idle topology remains visible; selection raises only the connected lines. */
+  .universe-map-relation {
+    background: #d0d0d0;
+  }
+
+  .universe-map-relation.is-muted {
+    filter: none;
+  }
+
+  .universe-map-relation.is-emphasized {
+    background: #ababab;
+  }
+
+  .universe-map-relation-label {
+    top: -16px;
+    padding: 0;
+    color: #7d7d7d;
+    background: transparent;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.2;
+    text-shadow:
+      0 0 2px #ffffff,
+      0 0 4px #ffffff;
+  }
+
+  .universe-map-relation.is-emphasized .universe-map-relation-label {
+    color: #666666;
+    font-weight: 500;
+  }
+
+  .universe-map-planet-title {
+    color: #6f6f6f;
+    font-weight: 400;
+  }
+
+  .universe-map-planet.is-selected .universe-map-planet-title {
+    color: #3f3f3f;
+    font-weight: 500;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-notice {
+    position: absolute;
+    z-index: 10;
+    top: 84px;
+    right: 20px;
+    left: 20px;
+    margin: 0;
+    color: #8d8d8d;
+    font-size: 12px;
+    text-align: center;
+    pointer-events: none;
+  }
+}
