@@ -41,7 +41,7 @@ test("Universe mobile controls share the same visual page-edge inset", () => {
   );
   assert.match(
     homePolishCss,
-    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-tools\s*\{[\s\S]*transform:\s*translate\(8px,\s*3px\)/,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-tools\s*\{[\s\S]*transform:\s*translate\(8px,\s*-3px\)/,
   );
 });
 
