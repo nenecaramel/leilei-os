@@ -226,6 +226,8 @@ test("Universe floating popover closes only for outside pointer events and Escap
     assert.equal(closeCount, 0);
     outside.dispatchEvent(new context.dom.window.MouseEvent("mousedown", { bubbles: true }));
     assert.equal(closeCount, 1);
+    outside.dispatchEvent(new context.dom.window.Event("pointerdown", { bubbles: true }));
+    assert.equal(closeCount, 1);
     context.dom.window.document.dispatchEvent(new context.dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     assert.equal(closeCount, 2);
   } finally {
