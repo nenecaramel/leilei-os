@@ -101,6 +101,36 @@ test("LeileiOSAdapter maps authenticated Universe commands without identity sele
   assert.deepEqual(jsonBody(requests[5]?.init), { relation, expected_version: 4 });
 });
 
+test("LeileiOSAdapter sends weighted snapshot import with version zero unchanged", async () => {
+  const weightedSnapshot: UniverseSnapshot = {
+    ...snapshot,
+    galaxies: [{ id: "galaxy-a", title: "A", color: "#111111", order: 0 }],
+    nodes: [{
+      id: "node-weighted",
+      title: "Weighted",
+      summary: "",
+      content: "",
+      type: "concept",
+      tags: [],
+      galaxies: [{ id: "galaxy-a", weight: 0.125 }],
+      position: { x: 1.25, y: 98.75 },
+      createdAt: "2026-08-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    }],
+  };
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      return { success: true, data: { snapshot: weightedSnapshot, version: 1 } } as T;
+    },
+  };
+  await createLeileiOSUniverseAdapter(api).saveUniverse(weightedSnapshot, 0);
+  assert.equal(requests[0]?.path, "/universe");
+  assert.equal(requests[0]?.init?.method, "PUT");
+  assert.deepEqual(jsonBody(requests[0]?.init), { snapshot: weightedSnapshot, expected_version: 0 });
+});
+
 test("LeileiOSAdapter round-trips canonical node migration metadata", async () => {
   const migratedNode = {
     id: "legacy-node",
