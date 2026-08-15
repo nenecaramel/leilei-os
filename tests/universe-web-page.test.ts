@@ -4,7 +4,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { UniversePage, UNIVERSE_IMPORTANCE_OPTIONS, UNIVERSE_NODE_TYPES } from "../web/src/pages/UniversePage.js";
+import { UniversePage, UNIVERSE_IMPORTANCE_OPTIONS, UNIVERSE_NODE_TYPES, toggleUniverseGalaxyMemberships } from "../web/src/pages/UniversePage.js";
 
 const appSource = readFileSync(new URL("../web/src/App.tsx", import.meta.url), "utf8");
 const pageSource = readFileSync(new URL("../web/src/pages/UniversePage.tsx", import.meta.url), "utf8");
@@ -36,6 +36,14 @@ test("Universe editor preserves the standalone node type and importance option s
     "reflection",
   ]);
   assert.deepEqual([...UNIVERSE_IMPORTANCE_OPTIONS], ["anchor", "major", "normal"]);
+});
+
+test("Universe editor adds deliberate weights, preserves order, and never renormalizes", () => {
+  const first = toggleUniverseGalaxyMemberships([], "g1");
+  assert.deepEqual(first, [{ id: "g1", weight: 1 }]);
+  const second = toggleUniverseGalaxyMemberships(first, "g2");
+  assert.deepEqual(second, [{ id: "g1", weight: 1 }, { id: "g2", weight: 0.72 }]);
+  assert.deepEqual(toggleUniverseGalaxyMemberships(second, "g1"), [{ id: "g2", weight: 0.72 }]);
 });
 
 test("mounted Universe page loads the server snapshot into the spatial canvas", async () => {
@@ -79,8 +87,8 @@ test("mounted Universe editor preserves and edits standalone type and importance
     Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: name === "window" ? dom.window : name === "document" ? dom.window.document : name === "navigator" ? dom.window.navigator : name === "HTMLElement" ? dom.window.HTMLElement : name === "Node" ? dom.window.Node : name === "Event" ? dom.window.Event : name === "MouseEvent" ? dom.window.MouseEvent : name === "React" ? React : true });
   }
   const root = createRoot(dom.window.document.querySelector("#root")!);
-  const node = { id: "node-1", title: "经验", summary: "摘要", content: "正文", type: "experience", importance: "major", tags: [], galaxies: [], position: { x: 50, y: 50 }, createdAt: "2026-08-01", updatedAt: "2026-08-01" };
-  const snapshot = { schemaVersion: 2 as const, meta: { name: "我的宇宙", createdAt: "2026-08-01", updatedAt: "2026-08-01" }, galaxies: [], nodes: [node], relations: [], revisions: [] };
+  const node = { id: "node-1", title: "经验", summary: "摘要", content: "正文", type: "experience", importance: "major", tags: [], galaxies: [{ id: "g1", weight: 0.31 }], position: { x: 50, y: 50 }, createdAt: "2026-08-01", updatedAt: "2026-08-01" };
+  const snapshot = { schemaVersion: 2 as const, meta: { name: "我的宇宙", createdAt: "2026-08-01", updatedAt: "2026-08-01" }, galaxies: [{ id: "g1", title: "主星系", description: "", color: "#fff", order: 0 }, { id: "g2", title: "副星系", description: "", color: "#000", order: 1 }], nodes: [node], relations: [], revisions: [] };
   const requests: Array<{ path: string; init?: RequestInit }> = [];
   const api = { request: async <T,>(path: string, init?: RequestInit) => { requests.push({ path, init }); return { success: true, data: { snapshot, version: 3 } } as T; } };
   try {
@@ -106,14 +114,18 @@ test("mounted Universe editor preserves and edits standalone type and importance
       selects[1]!.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
       await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
     });
+    const galaxyChecks = [...dom.window.document.querySelectorAll<HTMLInputElement>(".universe-galaxy-choice input")];
+    galaxyChecks[1]!.click();
+    galaxyChecks[0]!.click();
     await React.act(async () => {
       [...dom.window.document.querySelectorAll("button")].find((button) => button.textContent === "保存")?.click();
       await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
     });
     const update = requests.find((request) => request.path === "/universe/nodes/node-1");
-    const body = JSON.parse(String(update?.init?.body ?? "{}")) as { patch?: { type?: string; importance?: string } };
+    const body = JSON.parse(String(update?.init?.body ?? "{}")) as { patch?: { type?: string; importance?: string; galaxies?: Array<{ id: string; weight: number }> } };
     assert.equal(body.patch?.type, "source");
     assert.equal(body.patch?.importance, "anchor");
+    assert.deepEqual(body.patch?.galaxies, [{ id: "g2", weight: 0.72 }]);
   } finally {
     await React.act(async () => root.unmount());
     dom.window.close();
