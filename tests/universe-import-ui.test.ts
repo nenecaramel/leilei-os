@@ -88,12 +88,22 @@ test("initial importer shows empty copy and only the select action", async () =>
   env.restore();
 });
 
-test("valid file preview shows filename, counts, and confirm action", async () => {
+test("valid file preview shows filename, counts, confirm, and one reselect action", async () => {
   const env = await render({ initializeUniverse: async () => ({ state: { snapshot, version: 1 }, writeFailed: false }) });
   await selectFile(env.container, file(env, sourceJson, "old-universe.json"));
   assert.match(env.container.textContent ?? "", /old-universe\.json/);
   assert.match(env.container.textContent ?? "", /1 星系 · 0 星球 · 0 连接 · 0 历史版本/);
-  assert.ok(Array.from(env.container.querySelectorAll("button")).some((button) => button.textContent === "确认迁移"));
+  const buttons = Array.from(env.container.querySelectorAll<HTMLButtonElement>("button"));
+  assert.deepEqual(buttons.map((button) => button.textContent), ["确认迁移", "重新选择"]);
+
+  const input = env.container.querySelector<HTMLInputElement>("input[type=file]")!;
+  Object.defineProperty(input, "value", { configurable: true, writable: true, value: "stale-selection" });
+  let pickerClicks = 0;
+  Object.defineProperty(input, "click", { configurable: true, value: () => { pickerClicks += 1; } });
+  await click(buttons[1]!);
+  assert.equal(input.value, "");
+  assert.equal(pickerClicks, 1);
+
   await React.act(async () => env.root.unmount());
   await waitForPaint();
   env.restore();
