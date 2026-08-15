@@ -108,6 +108,11 @@ body:has(.universe-page),
 
 .universe-import-flow {
   display: grid;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-content: center;
+  align-self: center;
   justify-items: center;
   gap: 10px;
   max-width: min(420px, calc(100vw - 48px));
@@ -449,14 +454,16 @@ body:has(.universe-page),
 
 /* universe-minimal-state-2026-08-15:start */
 .universe-page:has(.universe-cosmos-loading),
-.universe-page:has(.universe-cosmos-state) {
+.universe-page:has(.universe-cosmos-state),
+.universe-page:has(.universe-import-flow) {
   display: flex !important;
   min-height: calc(100dvh - (44px + env(safe-area-inset-top, 0px))) !important;
   flex-direction: column !important;
 }
 
 .universe-page:has(.universe-cosmos-loading) .universe-page-header,
-.universe-page:has(.universe-cosmos-state) .universe-page-header {
+.universe-page:has(.universe-cosmos-state) .universe-page-header,
+.universe-page:has(.universe-import-flow) .universe-page-header {
   flex: 0 0 auto;
 }
 
