@@ -16,9 +16,9 @@ test("Universe migration is additive and creates the six logical stores", async 
   assert.match(sql, /"strength" double precision NOT NULL/u);
 });
 
-test("migration journal ends at Universe 0019", async () => {
+test("migration journal ends at Universe weighted membership expand", async () => {
   const journal = JSON.parse(await readFile(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8")) as { entries: Array<{ tag: string }> };
-  assert.equal(journal.entries.at(-1)?.tag, "0019_universe_domain");
+  assert.equal(journal.entries.at(-1)?.tag, "0020_weighted_galaxy_expand");
 });
 
 test("migration snapshot records canonical double precision columns", async () => {

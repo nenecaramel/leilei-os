@@ -141,6 +141,13 @@
       "when": 1786714396976,
       "tag": "0019_universe_domain",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786732731392,
+      "tag": "0020_weighted_galaxy_expand",
+      "breakpoints": true
     }
   ]
 }
