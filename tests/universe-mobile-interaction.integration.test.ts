@@ -4,6 +4,7 @@ import test from "node:test";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { UniverseMobileMap } from "../web/src/pages/universe/UniverseMobileMap.js";
+import { UniverseFloatingPopover } from "../web/src/pages/universe/UniverseFloatingPopover.js";
 import type { UniverseGalaxy, UniverseNode, UniverseRelation } from "../web/src/pages/universe/universe-types.js";
 import type { UniverseMapMode } from "../web/src/pages/universe/universe-map-interaction.js";
 
@@ -197,5 +198,38 @@ test("placing mode shows a cancellable instruction and opens create only after m
     assert.equal(placements.length, 1);
   } finally {
     await placementMounted.unmount();
+  }
+});
+
+test("Universe floating popover closes only for outside pointer events and Escape", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const anchor = context.dom.window.document.createElement("button");
+  anchor.textContent = "anchor";
+  context.dom.window.document.body.append(anchor);
+  let closeCount = 0;
+  await React.act(async () => {
+    root.render(React.createElement(UniverseFloatingPopover, {
+      open: true,
+      anchorRef: { current: anchor },
+      ariaLabel: "测试菜单",
+      onRequestClose: () => { closeCount += 1; },
+      children: React.createElement("button", { type: "button" }, "inside"),
+    }));
+  });
+  try {
+    const popover = context.dom.window.document.querySelector<HTMLElement>("[role='menu']")!;
+    const inside = popover.querySelector("button")!;
+    const outside = context.dom.window.document.createElement("button");
+    context.dom.window.document.body.append(outside);
+    inside.dispatchEvent(new context.dom.window.MouseEvent("mousedown", { bubbles: true }));
+    assert.equal(closeCount, 0);
+    outside.dispatchEvent(new context.dom.window.MouseEvent("mousedown", { bubbles: true }));
+    assert.equal(closeCount, 1);
+    context.dom.window.document.dispatchEvent(new context.dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    assert.equal(closeCount, 2);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
   }
 });
