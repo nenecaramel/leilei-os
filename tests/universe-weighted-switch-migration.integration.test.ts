@@ -89,6 +89,13 @@ const unsafeCases: Array<{ name: string; seed: (client: postgres.Sql<{}>, id: st
     `.then(() => undefined),
   },
   {
+    name: "malformed revision membership",
+    seed: (client, id) => client`
+      INSERT INTO universe_revisions (user_id,id,node_id,created_at,reason,snapshot)
+      VALUES (${id},'revision-malformed','node',now(),'test',${client.json({ galaxies: "malformed" })})
+    `.then(() => undefined),
+  },
+  {
     name: "backup node membership",
     seed: (client, id) => client`
       INSERT INTO universe_backups (user_id,id,created_at,reason,data)
@@ -96,10 +103,24 @@ const unsafeCases: Array<{ name: string; seed: (client: postgres.Sql<{}>, id: st
     `.then(() => undefined),
   },
   {
+    name: "malformed backup node membership",
+    seed: (client, id) => client`
+      INSERT INTO universe_backups (user_id,id,created_at,reason,data)
+      VALUES (${id},'backup-node-malformed',now(),'test',${client.json({ nodes: [{}], revisions: [] })})
+    `.then(() => undefined),
+  },
+  {
     name: "backup revision membership",
     seed: (client, id) => client`
       INSERT INTO universe_backups (user_id,id,created_at,reason,data)
       VALUES (${id},'backup-revision',now(),'test',${client.json({ nodes: [], revisions: [{ snapshot: { galaxies: [{ id: "g", weight: 1 }] } }] })})
+    `.then(() => undefined),
+  },
+  {
+    name: "malformed backup revision membership",
+    seed: (client, id) => client`
+      INSERT INTO universe_backups (user_id,id,created_at,reason,data)
+      VALUES (${id},'backup-revision-malformed',now(),'test',${client.json({ nodes: [], revisions: [{ snapshot: "malformed" }] })})
     `.then(() => undefined),
   },
 ];
