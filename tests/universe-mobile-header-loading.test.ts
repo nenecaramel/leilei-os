@@ -5,11 +5,16 @@ import test from "node:test";
 const pageSource = readFileSync(new URL("../web/src/pages/UniversePage.tsx", import.meta.url), "utf8");
 const polishCss = readFileSync(new URL("../web/src/pages/universe-state-polish.css", import.meta.url), "utf8");
 const homePolishCss = readFileSync(new URL("../web/src/pages/universe/universe-home-polish.css", import.meta.url), "utf8");
+const sharedStylesCss = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
 
-test("Universe mobile header returns to the shared Memory title baseline", () => {
+test("Universe mobile header matches the loading-page title baseline", () => {
+  assert.match(
+    sharedStylesCss,
+    /\.memory-page\s*\{[\s\S]*padding:\s*18px 0 max\(20px, env\(safe-area-inset-bottom, 0px\)\)/,
+  );
   assert.match(
     homePolishCss,
-    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-header\s*\{[\s\S]*top:\s*13px[\s\S]*right:\s*24px[\s\S]*left:\s*24px/,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-page-header\s*\{[\s\S]*top:\s*18px[\s\S]*right:\s*24px[\s\S]*left:\s*24px/,
   );
   assert.match(
     homePolishCss,
