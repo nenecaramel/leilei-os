@@ -13,6 +13,17 @@ export type UniverseNodePaperDraft = Pick<UniverseNode, "title" | "summary" | "c
 const NODE_TYPES = ["concept", "question", "claim", "experience", "project", "source", "reflection"] as const;
 const IMPORTANCE_OPTIONS = ["anchor", "major", "normal"] as const;
 
+export function formatUniverseNodeTimestamp(value: string, timeZone?: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}.${get("month")}.${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
 export function UniverseNodePaper({
   node,
   galaxies,
@@ -101,8 +112,9 @@ export function UniverseNodePaper({
       id={id}
       open={open}
       label={label}
-      dateLabel={isCreate ? "NEW STAR" : effectiveNode!.createdAt}
-      signature="Universe"
+      dateLabel={formatUniverseNodeTimestamp(isCreate ? new Date().toISOString() : effectiveNode!.createdAt)}
+      signature=""
+      showRules={false}
       triggerRef={triggerRef}
       onRequestClose={onRequestClose}
       errorMessage={errorMessage}

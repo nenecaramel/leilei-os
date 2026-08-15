@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
+import { formatUniverseNodeTimestamp } from "../web/src/pages/universe/UniverseNodePaper.js";
 
 const paperPath = new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url);
 const relationPaperPath = new URL("../web/src/pages/universe/UniverseRelationPaper.tsx", import.meta.url);
@@ -35,6 +36,20 @@ test("Universe paper forms use transparent, iOS-safe controls", () => {
     assert.match(css, new RegExp(`${selector.replace(/[.]/g, "\\.")}[^}]*box-shadow:\\s*none`));
     assert.match(css, new RegExp(`${selector.replace(/[.]/g, "\\.")}[^}]*font-size:\\s*16px`));
   }
+});
+
+test("Universe node papers locally opt out of rules and signature while shared papers keep defaults", () => {
+  const source = readFileSync(paperPath, "utf8");
+  assert.match(source, /showRules=\{false\}/);
+  assert.match(source, /signature=""/);
+  const dialogSource = readFileSync(new URL("../web/src/pages/PaperDetailDialog.tsx", import.meta.url), "utf8");
+  assert.match(dialogSource, /showRules\??:\s*boolean/);
+  assert.match(dialogSource, /showRules = true/);
+});
+
+test("Universe node timestamps use a readable local date format", () => {
+  assert.equal(formatUniverseNodeTimestamp("2026-08-15T09:07:00.000Z", "UTC"), "2026.08.15 09:07");
+  assert.equal(formatUniverseNodeTimestamp("not-a-date", "UTC"), "时间未知");
 });
 
 test("Galaxy entry is label-only when inactive and names the active galaxy", () => {
