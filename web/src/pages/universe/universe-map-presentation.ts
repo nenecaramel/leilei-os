@@ -113,13 +113,10 @@ export function deriveRelationPresentation(
   selectedNodeId: string | null,
 ): RelationPresentation {
   const strength = Number.isFinite(relation.strength) ? Math.min(1, Math.max(0, relation.strength)) : 0;
+  const emphasized = selectedNodeId !== null && (relation.source === selectedNodeId || relation.target === selectedNodeId);
   return {
-    width: 1 + strength * 3,
-    opacity: selectedNodeId === null
-      ? 0.18 + strength * 0.62
-      : relation.source === selectedNodeId || relation.target === selectedNodeId
-        ? 0.35 + strength * 0.65
-        : 0.08,
-    isEmphasized: selectedNodeId !== null && (relation.source === selectedNodeId || relation.target === selectedNodeId),
+    width: 0.75 + strength * (emphasized ? 1.25 : 1.0),
+    opacity: emphasized ? 0.36 + strength * 0.4 : selectedNodeId === null ? 0.1 + strength * 0.28 : 0.06,
+    isEmphasized: emphasized,
   };
 }

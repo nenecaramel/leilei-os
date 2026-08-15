@@ -28,11 +28,14 @@ test("ready state keeps the spatial map and paper structure", () => {
 });
 
 test("map wiring preserves explicit interaction modes and closes placement notices", () => {
-  assert.match(mapSource, /placing-node/);
+  assert.match(mapSource, /activeMode\.kind/);
   assert.match(mapSource, /relation-target/);
   assert.match(mapSource, /aria-label="取消"/);
+  assert.doesNotMatch(mapSource, /点一下星图，选择新星球的位置/);
   assert.match(pageSource, /onModeChange=\{\(next\) => \{/);
   assert.match(pageSource, /setNotice\(null\)/);
+  assert.match(pageSource, /const cancelPlacement = \(\) =>/);
+  assert.match(pageSource, /mapMode\.kind === "placing-node"/);
 });
 
 test("related-node navigation closes the paper and asks the map to reveal without reopening it", () => {

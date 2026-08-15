@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
+import { formatUniverseNodeTimestamp } from "../web/src/pages/universe/UniverseNodePaper.js";
+import { toCanonicalMemberships } from "../web/src/pages/universe/UniverseNodeMetadata.js";
 
 const paperPath = new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url);
 const relationPaperPath = new URL("../web/src/pages/universe/UniverseRelationPaper.tsx", import.meta.url);
@@ -35,6 +37,73 @@ test("Universe paper forms use transparent, iOS-safe controls", () => {
     assert.match(css, new RegExp(`${selector.replace(/[.]/g, "\\.")}[^}]*box-shadow:\\s*none`));
     assert.match(css, new RegExp(`${selector.replace(/[.]/g, "\\.")}[^}]*font-size:\\s*16px`));
   }
+});
+
+test("Universe node papers locally opt out of rules and signature while shared papers keep defaults", () => {
+  const source = readFileSync(paperPath, "utf8");
+  assert.match(source, /showRules=\{false\}/);
+  assert.match(source, /signature=""/);
+  const dialogSource = readFileSync(new URL("../web/src/pages/PaperDetailDialog.tsx", import.meta.url), "utf8");
+  assert.match(dialogSource, /showRules\??:\s*boolean/);
+  assert.match(dialogSource, /showRules = true/);
+});
+
+test("Universe node timestamps use a readable local date format", () => {
+  assert.equal(formatUniverseNodeTimestamp("2026-08-15T09:07:00.000Z", "UTC"), "2026.08.15 09:07");
+  assert.equal(formatUniverseNodeTimestamp("not-a-date", "UTC"), "时间未知");
+});
+
+test("Universe detail paper is reading-first with lightweight connection rows", () => {
+  const source = readFileSync(paperPath, "utf8");
+  assert.doesNotMatch(source, /<dl>/);
+  assert.doesNotMatch(source, /<dt>类型|<dt>重要性|<dt>标签|<dt>星系/);
+  assert.match(source, /编辑/);
+  assert.match(source, /universe-node-paper-overflow/);
+  assert.match(source, /relatedNode\.title/);
+  assert.match(source, /relationTypeLabel/);
+  assert.match(source, /universe-node-connection-actions/);
+  assert.match(source, /移除连接/);
+  assert.doesNotMatch(source, /className="danger-button"/);
+});
+
+test("weighted metadata conversion preserves exact finite values and rejects pending weights", () => {
+  assert.deepEqual(toCanonicalMemberships([]), []);
+  assert.deepEqual(toCanonicalMemberships([{ id: "g1", weightText: "0.55" }]), [{ id: "g1", weight: 0.55 }]);
+  assert.deepEqual(toCanonicalMemberships([{ id: "g1", weightText: "-2" }]), [{ id: "g1", weight: -2 }]);
+  assert.equal(toCanonicalMemberships([{ id: "g1", weightText: "" }]), null);
+  assert.equal(toCanonicalMemberships([{ id: "g1", weightText: "abc" }]), null);
+});
+
+test("Universe metadata editing avoids native select/fieldset matrices", () => {
+  const source = readFileSync(paperPath, "utf8");
+  const metadata = readFileSync(new URL("../web/src/pages/universe/UniverseNodeMetadata.tsx", import.meta.url), "utf8");
+  assert.match(source, /UniverseNodeMetadata/);
+  assert.doesNotMatch(source, /<select/);
+  assert.doesNotMatch(source, /<fieldset/);
+  assert.match(metadata, /weightText/);
+  assert.doesNotMatch(metadata, /weight:\s*1(?:\.0)?/);
+});
+
+test("Universe create/edit paper uses the same content-first transparent editors", () => {
+  const source = readFileSync(paperPath, "utf8");
+  assert.match(source, /universe-paper-title-editor/);
+  assert.match(source, /universe-paper-summary-editor/);
+  assert.match(source, /universe-paper-content-editor/);
+  assert.match(source, /placeholder="星球标题"/);
+  assert.doesNotMatch(source, /<label[^>]*>标题/);
+  assert.doesNotMatch(source, /placeholder="摘要"/);
+  assert.doesNotMatch(source, /<label[^>]*>正文/);
+  assert.match(source, /topRight=/);
+  assert.match(source, /取消/);
+  assert.match(source, /保存/);
+  assert.match(source, /universe-node-connection-overflow/);
+});
+
+test("Universe metadata lives in the fixed footer and create time is captured once", () => {
+  const source = readFileSync(paperPath, "utf8");
+  assert.match(source, /bottomLeft=\{metadata\}/);
+  assert.match(source, /createTimestampRef/);
+  assert.doesNotMatch(source, /dateLabel=\{formatUniverseNodeTimestamp\(isCreate \? new Date\(\)\.toISOString\(\)/);
 });
 
 test("Galaxy entry is label-only when inactive and names the active galaxy", () => {

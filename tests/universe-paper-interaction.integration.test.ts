@@ -4,6 +4,7 @@ import test from "node:test";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { UniverseNodePaper } from "../web/src/pages/universe/UniverseNodePaper.js";
+import { parseUniverseTags } from "../web/src/pages/universe/UniverseNodeMetadata.js";
 import type { UniverseNode, UniverseRelation } from "../web/src/pages/universe/universe-types.js";
 
 const node: UniverseNode = {
@@ -47,13 +48,15 @@ test("mounted node paper preserves weighted memberships and exposes exact type/i
         onSave: async (draft: unknown) => { saves.push(draft); },
       }));
     });
-    const selects = [...context.dom.window.document.querySelectorAll<HTMLSelectElement>("select")];
-    assert.deepEqual([...selects[0]!.options].map((option) => option.value), ["concept", "question", "claim", "experience", "project", "source", "reflection"]);
-    assert.equal(selects[0]!.value, "experience");
-    assert.deepEqual([...selects[1]!.options].map((option) => option.value), ["anchor", "major", "normal"]);
-    assert.equal(selects[1]!.value, "major");
-    const checks = [...context.dom.window.document.querySelectorAll<HTMLInputElement>("input[type='checkbox']")];
-    await React.act(async () => { checks[1]!.click(); });
+    const typeTrigger = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "experience")!;
+    await React.act(async () => { typeTrigger.click(); });
+    assert.deepEqual([...context.dom.window.document.querySelectorAll<HTMLButtonElement>(".universe-metadata-popover button")].map((button) => button.textContent), ["concept", "question", "claim", "experience", "project", "source", "reflection"]);
+    const importanceTrigger = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "major")!;
+    await React.act(async () => { importanceTrigger.click(); });
+    assert.deepEqual([...context.dom.window.document.querySelectorAll<HTMLButtonElement>(".universe-metadata-popover button")].map((button) => button.textContent), ["anchor", "major", "normal"]);
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋")?.click(); });
+    const galaxyOption = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>(".universe-metadata-popover button")].find((button) => button.textContent === "副星系")!;
+    await React.act(async () => galaxyOption.click());
     const weight = context.dom.window.document.querySelector<HTMLInputElement>("input[aria-label='副星系 权重']")!;
     assert.equal(weight.value, "");
     await React.act(async () => {
@@ -67,7 +70,11 @@ test("mounted node paper preserves weighted memberships and exposes exact type/i
     const draft = saves[0] as { galaxies: Array<{ id: string; weight: number }> };
     assert.deepEqual(draft.galaxies, [{ id: "g1", weight: 0.31 }, { id: "g2", weight: 0.42 }]);
     saves.length = 0;
-    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLInputElement>("input[type='checkbox']")][1]!.click(); });
+    await React.act(async () => context.dom.window.document.dispatchEvent(new context.dom.window.MouseEvent("mousedown", { bubbles: true })));
+    const g2Trigger = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "副星系 0.42")!;
+    await React.act(async () => { g2Trigger.click(); });
+    assert.ok(context.dom.window.document.querySelector("input[aria-label='副星系 权重']"));
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "移出星系")?.click(); });
     await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "保存")?.click(); });
     assert.equal(saves.length, 1);
     assert.deepEqual((saves[0] as { galaxies: Array<{ id: string; weight: number }> }).galaxies, [{ id: "g1", weight: 0.31 }]);
@@ -101,11 +108,140 @@ test("mounted node paper keeps save errors inside the PaperDetailDialog and rest
     });
     assert.equal(context.dom.window.document.querySelector(".paper-detail-error")?.textContent, "保存失败，请稍后重试。");
     const relatedButton = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("关联节点"));
-    const deleteButton = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "移除连接");
     relatedButton?.click();
-    deleteButton?.click();
     assert.deepEqual(opened, ["n2"]);
+    assert.deepEqual(deleted, []);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("metadata keeps raw tag drafts and parses comma variants only at save", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const saves: Array<{ tags: string[] }> = [];
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [{ id: "g1", title: "主星系", description: "", color: "#111", order: 0 }],
+        mode: { kind: "edit", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        onRequestClose: () => true,
+        onSave: async (draft: { tags: string[] }) => { saves.push(draft); },
+      }));
+    });
+    const tags = context.dom.window.document.querySelector<HTMLInputElement>("input[aria-label='标签']")!;
+    const setter = Object.getOwnPropertyDescriptor(context.dom.window.HTMLInputElement.prototype, "value")?.set;
+    await React.act(async () => {
+      setter?.call(tags, "foo,");
+      tags.dispatchEvent(new context.dom.window.Event("input", { bubbles: true }));
+      setter?.call(tags, "foo, bar");
+      tags.dispatchEvent(new context.dom.window.Event("input", { bubbles: true }));
+    });
+    assert.equal(tags.value, "foo, bar");
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "保存")?.click(); });
+    assert.deepEqual(saves.at(-1)?.tags, ["foo", "bar"]);
+    assert.deepEqual(parseUniverseTags("foo，bar"), ["foo", "bar"]);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("type and importance popovers close without changing the current value", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "edit", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        onRequestClose: () => true,
+        onSave: async () => {},
+      }));
+    });
+    const type = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "experience")!;
+    await React.act(async () => type.click());
+    assert.ok(context.dom.window.document.querySelector("[aria-label='选择星球类型']"));
+    await React.act(async () => context.dom.window.document.dispatchEvent(new context.dom.window.MouseEvent("mousedown", { bubbles: true })));
+    assert.equal(context.dom.window.document.querySelector("[aria-label='选择星球类型']"), null);
+    assert.equal(type.textContent, "experience");
+    const importance = [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "major")!;
+    await React.act(async () => importance.click());
+    await React.act(async () => context.dom.window.document.dispatchEvent(new context.dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    assert.equal(context.dom.window.document.querySelector("[aria-label='选择重要性']"), null);
+    assert.equal(importance.textContent, "major");
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("connection overflow requires an explicit remove action and closes on Escape", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const deleted: string[] = [];
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "edit", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        connections: [{ relation, node: related }],
+        onRequestClose: () => true,
+        onSave: async () => {},
+        onDeleteRelation: (value: UniverseRelation) => deleted.push(value.id),
+      }));
+    });
+    const action = context.dom.window.document.querySelector<HTMLButtonElement>("button[aria-label='连接操作']")!;
+    await React.act(async () => action.click());
+    assert.deepEqual(deleted, []);
+    assert.ok(context.dom.window.document.querySelector("[role='menu'][aria-label='连接操作']"));
+    await React.act(async () => context.dom.window.document.dispatchEvent(new context.dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    assert.deepEqual(deleted, []);
+    await React.act(async () => action.click());
+    await React.act(async () => context.dom.window.document.dispatchEvent(new context.dom.window.MouseEvent("mousedown", { bubbles: true })));
+    assert.equal(context.dom.window.document.querySelector("[role='menu'][aria-label='连接操作']"), null);
+    await React.act(async () => action.click());
+    await React.act(async () => [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "移除连接")?.click());
     assert.deepEqual(deleted, ["r1"]);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("Universe metadata is fixed in the paper footer while connections stay in the scroll body", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [{ id: "g1", title: "主星系", description: "", color: "#111", order: 0 }],
+        mode: { kind: "detail", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        connections: [{ relation, node: related }],
+        onRequestClose: () => true,
+        onSave: async () => {},
+      }));
+    });
+    assert.ok(context.dom.window.document.querySelector(".paper-detail-bottom-left .universe-node-metadata"));
+    assert.equal(context.dom.window.document.querySelector(".paper-detail-body > .universe-node-metadata"), null);
+    assert.ok(context.dom.window.document.querySelector(".paper-detail-body .universe-node-connections"));
   } finally {
     await React.act(async () => root.unmount());
     restoreDom(context.dom, context.previous);

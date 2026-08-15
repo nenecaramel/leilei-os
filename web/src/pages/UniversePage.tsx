@@ -15,6 +15,7 @@ import { UniverseMobileMap } from "./universe/UniverseMobileMap";
 import { UniverseGalaxyPicker } from "./universe/UniverseGalaxyPicker";
 import { UniverseNodePaper, type UniverseNodePaperDraft, type UniverseNodePaperMode } from "./universe/UniverseNodePaper";
 import { UniverseRelationPaper } from "./universe/UniverseRelationPaper";
+import { UniverseFloatingPopover } from "./universe/UniverseFloatingPopover";
 import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
@@ -59,6 +60,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [galaxyFilter, setGalaxyFilter] = useState<string | null>(null);
   const [galaxyPickerOpen, setGalaxyPickerOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [placementOpen, setPlacementOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<UniverseNode | null>(null);
@@ -73,7 +75,18 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [revealNodeId, setRevealNodeId] = useState<string | null>(null);
   const [paperMode, setPaperMode] = useState<UniverseNodePaperMode | null>(null);
   const paperTriggerRef = useRef<HTMLElement | null>(null);
+  const addActionRef = useRef<HTMLButtonElement | null>(null);
+  const overflowActionRef = useRef<HTMLButtonElement | null>(null);
   const generation = useRef(0);
+
+  const cancelPlacement = () => {
+    if (mapMode.kind === "placing-node" || placementOpen) {
+      setMapMode({ kind: "browse" });
+      setPlacementOpen(false);
+      setPendingPosition(null);
+      setNotice(null);
+    }
+  };
 
   useEffect(() => {
     const requestGeneration = ++generation.current;
@@ -236,13 +249,22 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       <UniverseHeader
         actions={(
           <>
-            <button className="universe-header-action" type="button" aria-label="新增星球" onClick={() => { setPaperError(null); setMapMode({ kind: "placing-node" }); setNotice("点击地图选择新星球的位置。"); }}>＋</button>
-            <button className="universe-header-action" type="button" aria-label="更多 Universe 操作" aria-expanded={overflowOpen} onClick={() => setOverflowOpen((value) => !value)}>···</button>
+            <span className="universe-popover-anchor">
+              <button ref={addActionRef} className="universe-header-action" type="button" aria-label="新增星球" aria-expanded={placementOpen} onClick={() => { if (placementOpen || mapMode.kind === "placing-node") { cancelPlacement(); return; } setPaperError(null); setOverflowOpen(false); setGalaxyPickerOpen(false); setPlacementOpen(true); setMapMode({ kind: "placing-node" }); setNotice(null); }}>＋</button>
+              <UniverseFloatingPopover open={placementOpen} anchorRef={addActionRef} className="universe-placement-popover" ariaLabel="放置新星球" shouldIgnoreOutside={(target) => Boolean((target as Element | null)?.closest?.(".universe-mobile-map"))} onRequestClose={cancelPlacement}>
+                <span>点击地图选择新星球的位置。</span>
+              </UniverseFloatingPopover>
+            </span>
+            <span className="universe-popover-anchor">
+              <button ref={overflowActionRef} className="universe-header-action" type="button" aria-label="更多 Universe 操作" aria-expanded={overflowOpen} onClick={() => { cancelPlacement(); setGalaxyPickerOpen(false); setOverflowOpen((value) => !value); }}>···</button>
+              <UniverseFloatingPopover open={overflowOpen} anchorRef={overflowActionRef} className="universe-overflow-menu" ariaLabel="更多 Universe 操作" onRequestClose={() => setOverflowOpen(false)}>
+                <button type="button" onClick={() => { downloadUniverseJson(snapshot); setOverflowOpen(false); }}>导出</button>
+              </UniverseFloatingPopover>
+            </span>
           </>
         )}
       />
-      {overflowOpen ? <div className="universe-overflow-menu" role="menu"><button type="button" onClick={() => { downloadUniverseJson(snapshot); setOverflowOpen(false); }}>导出</button></div> : null}
-      <UniverseGalaxyPicker galaxies={snapshot.galaxies} activeGalaxyId={galaxyFilter} open={galaxyPickerOpen} onOpenChange={setGalaxyPickerOpen} onSelect={setGalaxyFilter} />
+      <UniverseGalaxyPicker galaxies={snapshot.galaxies} activeGalaxyId={galaxyFilter} open={galaxyPickerOpen} onOpenChange={(open) => { if (open) cancelPlacement(); setOverflowOpen(false); setGalaxyPickerOpen(open); }} onSelect={setGalaxyFilter} />
       {notice ? <p className="universe-notice" role="status">{notice}</p> : null}
       <UniverseMobileMap
         galaxies={snapshot.galaxies}
@@ -254,11 +276,11 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         initialViewport={viewport}
         onViewportChange={setViewport}
         onSelectNode={setSelectedId}
-        onModeChange={(next) => { const previous = mapMode; setMapMode(next); if (previous.kind === "placing-node" && next.kind === "browse") setNotice(null); }}
+        onModeChange={(next) => { const previous = mapMode; setMapMode(next); if (previous.kind === "placing-node" && next.kind === "browse") { setPlacementOpen(false); setNotice(null); } }}
         revealNodeId={revealNodeId}
         onRevealNodeHandled={() => setRevealNodeId(null)}
         onOpenNode={(nodeId) => { setPaperError(null); setSelectedId(nodeId); setPaperMode({ kind: "detail", nodeId }); setEditorOpen(true); }}
-        onPlaceNode={(position) => { setPaperError(null); setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
+        onPlaceNode={(position) => { setPlacementOpen(false); setPaperError(null); setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
         onChooseRelationTarget={(nodeId) => { setRelationTargetId(nodeId); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); }}
         onMoveNode={async (nodeId, position) => {
           try {
