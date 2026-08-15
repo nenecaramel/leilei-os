@@ -2,6 +2,11 @@ export const UNIVERSE_SCHEMA_VERSION = 2 as const;
 
 export type UniversePosition = { x: number; y: number };
 
+export type UniverseGalaxyMembership = {
+  id: string;
+  weight: number;
+};
+
 export type UniverseMigration = {
   source: "mind-universe-static" | "mind-universe";
   migratedAt: string;
@@ -14,7 +19,7 @@ export type UniverseNode = {
   content: string;
   type: string;
   tags: string[];
-  galaxies: string[];
+  galaxies: UniverseGalaxyMembership[];
   position: UniversePosition;
   createdAt: string;
   updatedAt: string;

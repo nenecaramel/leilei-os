@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   UniverseBackup,
   UniverseGalaxy,
+  UniverseGalaxyMembership,
   UniverseMeta,
   UniverseMigration,
   UniverseNode,
@@ -79,6 +80,16 @@ function stringArray(value: unknown, label: string, max = 500): string[] {
   return array(value, label, max).map((item, index) => nonBlankString(item, `${label}[${index}]`, 512));
 }
 
+function weightedMembershipArray(value: unknown, label: string, max = 500): UniverseGalaxyMembership[] {
+  return array(value, label, max).map((item, index) => {
+    const record = object(item, `${label}[${index}]`);
+    return {
+      id: nonBlankString(record.id, `${label}[${index}].id`, 256),
+      weight: finiteNumber(record.weight, `${label}[${index}].weight`),
+    };
+  });
+}
+
 function readPosition(value: unknown): { x: number; y: number } {
   const record = object(value, "position");
   return {
@@ -110,7 +121,7 @@ export function validateUniverseNode(value: unknown): UniverseNode {
     content: string(record.content, "node.content"),
     type: nonBlankString(record.type, "node.type", 128),
     tags: stringArray(record.tags, "node.tags"),
-    galaxies: stringArray(record.galaxies, "node.galaxies"),
+    galaxies: weightedMembershipArray(record.galaxies, "node.galaxies"),
     position: readPosition(record.position),
     createdAt: timestamp(record.createdAt, "node.createdAt"),
     updatedAt: timestamp(record.updatedAt, "node.updatedAt"),
@@ -162,7 +173,7 @@ function validateRevisionSnapshot(value: unknown): UniverseRevisionSnapshot {
     content: string(record.content, "revision.snapshot.content"),
     type: nonBlankString(record.type, "revision.snapshot.type", 128),
     tags: stringArray(record.tags, "revision.snapshot.tags"),
-    galaxies: stringArray(record.galaxies, "revision.snapshot.galaxies"),
+    galaxies: weightedMembershipArray(record.galaxies, "revision.snapshot.galaxies"),
   };
 }
 
@@ -202,7 +213,8 @@ export function validateUniverseSnapshot(value: unknown): UniverseSnapshot {
   const galaxyIds = new Set(galaxies.map((item) => item.id));
   const nodeIds = new Set(nodes.map((item) => item.id));
   for (const node of nodes) {
-    if (node.galaxies.some((id) => !galaxyIds.has(id))) {
+    assertUnique(node.galaxies.map((membership) => membership.id), `node ${node.id} galaxies`);
+    if (node.galaxies.some((membership) => !galaxyIds.has(membership.id))) {
       throw new UniverseValidationError("node references an unknown galaxy.");
     }
   }
