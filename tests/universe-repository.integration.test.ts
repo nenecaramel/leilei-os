@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import test from "node:test";
+import { eq } from "drizzle-orm";
 import * as schema from "../src/database/schema.js";
 import { DrizzleUniverseRepository } from "../src/domains/universe/universe-repository-drizzle.js";
 import { UniverseService } from "../src/domains/universe/universe-service.js";
@@ -74,8 +75,8 @@ test("Universe save and backup restore preserve canonical metadata and double pr
     meta: { name: "First", createdAt, updatedAt },
     galaxies: [{ id: "g", title: "Galaxy", description: "d", color: "#fff", order: preciseOrder }],
     nodes: [
-      { id: "a", title: "A", summary: "a", content: "a", type: "concept", tags: [], galaxies: ["g"], position: { x: 0, y: 0 }, createdAt, updatedAt },
-      { id: "b", title: "B", summary: "b", content: "b", type: "concept", tags: [], galaxies: ["g"], position: { x: 1, y: 1 }, createdAt, updatedAt },
+      { id: "a", title: "A", summary: "a", content: "a", type: "concept", tags: [], galaxies: [{ id: "g", weight: 1.23456789012345 }], position: { x: 0, y: 0 }, createdAt, updatedAt },
+      { id: "b", title: "B", summary: "b", content: "b", type: "concept", tags: [], galaxies: [{ id: "g", weight: 0.2718281828459 }], position: { x: 1, y: 1 }, createdAt, updatedAt },
     ],
     relations: [{ id: "r", source: "a", target: "b", relationType: "supports" as const, strength: preciseStrength, createdAt }],
     revisions: [],
@@ -93,6 +94,12 @@ test("Universe save and backup restore preserve canonical metadata and double pr
       assert.deepEqual(result.snapshot.meta, secondSnapshot.meta);
       assert.equal(result.snapshot.galaxies[0]?.order, preciseOrder);
       assert.equal(result.snapshot.relations[0]?.strength, preciseStrength);
+      assert.deepEqual(result.snapshot.nodes[0]?.galaxies, firstSnapshot.nodes[0]?.galaxies);
+      assert.deepEqual(result.snapshot.nodes[1]?.galaxies, firstSnapshot.nodes[1]?.galaxies);
+      const legacyRows = await tx.select({ galaxies: schema.universeNodes.galaxies }).from(schema.universeNodes).where(
+        eq(schema.universeNodes.userId, userId),
+      );
+      assert.deepEqual(legacyRows.map((row) => row.galaxies), [[], []]);
       const backup = await service.createBackup(userId, "metadata");
       const thirdSnapshot = { ...secondSnapshot, meta: { name: "Third", createdAt: "2022-05-06T07:08:09.000Z", updatedAt: "2022-06-07T08:09:10.000Z" } };
       result = await service.saveUniverse(userId, thirdSnapshot, result.version);

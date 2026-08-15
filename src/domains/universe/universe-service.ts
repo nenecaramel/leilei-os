@@ -3,6 +3,7 @@ import {
   requireActiveUser,
 } from "../require-active-user.js";
 import type {
+  UniverseGalaxyMembership,
   UniverseBackup,
   UniverseNode,
   UniverseRelation,
@@ -49,7 +50,7 @@ export type UniverseNodeUpdate = Partial<Omit<UniverseNode, "id" | "createdAt" |
   content?: string;
   type?: string;
   tags?: string[];
-  galaxies?: string[];
+  galaxies?: UniverseGalaxyMembership[];
   position?: { x: number; y: number };
   importance?: string;
   migration?: UniverseNode["migration"];
