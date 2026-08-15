@@ -607,6 +607,10 @@ export const universeNodes = pgTable(
       "universe_nodes_galaxy_memberships_array",
       sql`jsonb_typeof(${table.galaxyMemberships}) = 'array'`,
     ),
+    check(
+      "universe_nodes_legacy_galaxies_empty",
+      sql`cardinality(${table.galaxies}) = 0`,
+    ),
   ],
 );
 
