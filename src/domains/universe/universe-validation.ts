@@ -81,13 +81,15 @@ function stringArray(value: unknown, label: string, max = 500): string[] {
 }
 
 function weightedMembershipArray(value: unknown, label: string, max = 500): UniverseGalaxyMembership[] {
-  return array(value, label, max).map((item, index) => {
+  const memberships = array(value, label, max).map((item, index) => {
     const record = object(item, `${label}[${index}]`);
     return {
       id: nonBlankString(record.id, `${label}[${index}].id`, 256),
       weight: finiteNumber(record.weight, `${label}[${index}].weight`),
     };
   });
+  assertUnique(memberships.map((membership) => membership.id), label);
+  return memberships;
 }
 
 function readPosition(value: unknown): { x: number; y: number } {
