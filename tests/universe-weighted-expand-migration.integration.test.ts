@@ -76,8 +76,10 @@ async function cleanupOwner(client: postgres.Sql<{}>, userId: string): Promise<v
 test("0020 expand migration is additive and fail-closed for every legacy membership source", () => {
   const migration = readFileSync(migrationPath, "utf8");
   const schema = readFileSync(schemaPath, "utf8");
+  const fixtureSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
   const statements = migrationStatements();
   assert.equal(statements.length, 1, "guard and DDL must be one migration operation");
+  assert.doesNotMatch(fixtureSource, /JSON\.stringify\([^;\n]*::jsonb/);
   assert.match(migration, /LOCK TABLE[\s\S]*universe_nodes[\s\S]*SHARE ROW EXCLUSIVE MODE/);
   assert.match(migration, /ADD COLUMN "galaxy_memberships" jsonb DEFAULT '\[\]'::jsonb NOT NULL/);
   assert.match(migration, /jsonb_typeof\("universe_nodes"\."galaxy_memberships"\) = 'array'/);
@@ -99,7 +101,7 @@ test("0020 succeeds for empty-only legacy data and preserves old inserts", { ski
     userId = await seedOwner(client, async (transaction, seededUserId) => {
       await transaction`
         insert into universe_revisions (user_id, id, node_id, created_at, reason, snapshot)
-        values (${seededUserId}, 'empty-revision', 'node', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify({ galaxies: [] })}::jsonb)
+        values (${seededUserId}, 'empty-revision', 'node', '2026-08-15T00:00:00Z', 'test', ${transaction.json({ galaxies: [] })})
       `;
       await transaction`
         insert into universe_backups (user_id, id, created_at, reason, data)
@@ -108,7 +110,7 @@ test("0020 succeeds for empty-only legacy data and preserves old inserts", { ski
           'empty-backup',
           '2026-08-15T00:00:00Z',
           'test',
-          ${JSON.stringify({ nodes: [{ galaxies: [] }], revisions: [{ snapshot: { galaxies: [] } }] })}::jsonb
+          ${transaction.json({ nodes: [{ galaxies: [] }], revisions: [{ snapshot: { galaxies: [] } }] })}
         )
       `;
     });
@@ -186,7 +188,7 @@ test("0020 rejects non-empty or malformed revision memberships and rolls back", 
       userId = await seedOwner(client, async (transaction, seededUserId) => {
         await transaction`
           insert into universe_revisions (user_id, id, node_id, created_at, reason, snapshot)
-          values (${seededUserId}, 'revision', 'node', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(snapshot)}::jsonb)
+          values (${seededUserId}, 'revision', 'node', '2026-08-15T00:00:00Z', 'test', ${transaction.json(snapshot)})
         `;
       });
       await assert.rejects(applyExpand(client), /UNIVERSE_WEIGHTED_MEMBERSHIP_LEGACY_DATA_PRESENT/);
@@ -214,7 +216,7 @@ test("0020 rejects non-empty or malformed backup node memberships and rolls back
       userId = await seedOwner(client, async (transaction, seededUserId) => {
         await transaction`
           insert into universe_backups (user_id, id, created_at, reason, data)
-          values (${seededUserId}, 'backup', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(data)}::jsonb)
+          values (${seededUserId}, 'backup', '2026-08-15T00:00:00Z', 'test', ${transaction.json(data)})
         `;
       });
       await assert.rejects(applyExpand(client), /UNIVERSE_WEIGHTED_MEMBERSHIP_LEGACY_DATA_PRESENT/);
@@ -242,7 +244,7 @@ test("0020 rejects non-empty or malformed backup revision memberships and rolls 
       userId = await seedOwner(client, async (transaction, seededUserId) => {
         await transaction`
           insert into universe_backups (user_id, id, created_at, reason, data)
-          values (${seededUserId}, 'backup', '2026-08-15T00:00:00Z', 'test', ${JSON.stringify(data)}::jsonb)
+          values (${seededUserId}, 'backup', '2026-08-15T00:00:00Z', 'test', ${transaction.json(data)})
         `;
       });
       await assert.rejects(applyExpand(client), /UNIVERSE_WEIGHTED_MEMBERSHIP_LEGACY_DATA_PRESENT/);
