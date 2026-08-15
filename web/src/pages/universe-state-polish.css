@@ -79,10 +79,6 @@ body:has(.universe-page),
   min-width: 96px;
 }
 
-.universe-overflow-menu button {
-  text-align: center;
-}
-
 .universe-placement-popover {
   min-width: 188px;
   font-size: 12px;
@@ -98,6 +94,10 @@ body:has(.universe-page),
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.universe-overflow-menu button {
+  text-align: center;
 }
 
 .universe-overflow-menu button:hover,

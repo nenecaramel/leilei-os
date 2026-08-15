@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
+import { JSDOM } from "jsdom";
 import test from "node:test";
 
 const componentPath = new URL("../web/src/pages/universe/UniverseMobileMap.tsx", import.meta.url);
@@ -51,6 +52,18 @@ test("placement instruction lives only in the anchored add popover", () => {
 test("ready chrome keeps top-level menus centered and the galaxy menu inside the viewport", () => {
   assert.match(polishCss, /\.universe-overflow-menu button\s*\{[\s\S]*text-align:\s*center/);
   assert.match(polishCss, /\.universe-galaxy-menu\s*\{[\s\S]*left:\s*0[\s\S]*transform:\s*none/);
+});
+
+test("ready chrome computes distinct export and galaxy button alignment", () => {
+  const dom = new JSDOM(`<!doctype html><style>${polishCss}</style><div class="universe-overflow-menu"><button>导出</button></div><div class="universe-galaxy-menu"><button>星系</button></div>`);
+  try {
+    const exportButton = dom.window.document.querySelector<HTMLButtonElement>(".universe-overflow-menu button")!;
+    const galaxyButton = dom.window.document.querySelector<HTMLButtonElement>(".universe-galaxy-menu button")!;
+    assert.equal(dom.window.getComputedStyle(exportButton).textAlign, "center");
+    assert.equal(dom.window.getComputedStyle(galaxyButton).textAlign, "left");
+  } finally {
+    dom.window.close();
+  }
 });
 
 test("ready star map uses a restrained pale core and lighter secondary rings", () => {
