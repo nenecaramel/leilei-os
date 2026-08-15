@@ -11,6 +11,9 @@ import {
 } from "./universe/universe-service";
 import { downloadUniverseJson } from "./universe/universe-export";
 import { UniverseImportFlow } from "./universe/UniverseImportFlow";
+import { UniverseMobileMap } from "./universe/UniverseMobileMap";
+import type { UniverseMapMode } from "./universe/universe-map-interaction";
+import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
   UniverseGalaxy,
   UniverseNode,
@@ -66,6 +69,9 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [editingNode, setEditingNode] = useState<UniverseNode | null>(null);
   const [saving, setSaving] = useState(false);
   const [relationEditorOpen, setRelationEditorOpen] = useState(false);
+  const [mapMode, setMapMode] = useState<UniverseMapMode>({ kind: "browse" });
+  const [viewport, setViewport] = useState<UniverseViewport | null>(null);
+  const [pendingPosition, setPendingPosition] = useState<UniversePoint | null>(null);
   const generation = useRef(0);
 
   useEffect(() => {
@@ -108,10 +114,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
           type: values.type,
           tags: values.tags,
           galaxies: values.galaxies,
-          position: {
-            x: 16 + ((Date.now() / 17) % 68),
-            y: 18 + ((Date.now() / 29) % 58),
-          },
+            position: pendingPosition ?? { x: 50, y: 50 },
           importance: values.importance,
         };
         await service.createNode(node);
@@ -119,6 +122,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       }
       setEditorOpen(false);
       setEditingNode(null);
+      setPendingPosition(null);
       refreshFromService();
     } catch (error) {
       setNotice(safeUniverseError(error));
@@ -193,9 +197,6 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   }
 
   const { snapshot } = state;
-  const visibleNodes = galaxyFilter
-    ? snapshot.nodes.filter((node) => node.galaxies.some((membership) => membership.id === galaxyFilter))
-    : snapshot.nodes;
   const selectedNode = snapshot.nodes.find((node) => node.id === selectedId) ?? null;
 
   return (
@@ -225,11 +226,28 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         </div>
       ) : null}
       {notice ? <p className="universe-notice" role="status">{notice}</p> : null}
-      <UniverseCanvas
-        nodes={visibleNodes}
+      <UniverseMobileMap
+        galaxies={snapshot.galaxies}
+        nodes={snapshot.nodes}
         relations={snapshot.relations}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
+        selectedNodeId={selectedId}
+        activeGalaxyId={galaxyFilter}
+        mode={mapMode}
+        initialViewport={viewport}
+        onViewportChange={setViewport}
+        onSelectNode={setSelectedId}
+        onOpenNode={setSelectedId}
+        onPlaceNode={(position) => { setPendingPosition(position); setEditingNode(null); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
+        onChooseRelationTarget={(nodeId) => { setSelectedId(nodeId); setMapMode({ kind: "browse" }); }}
+        onMoveNode={async (nodeId, position) => {
+          try {
+            await service.updateNode(nodeId, { position }, "Universe Web 移动星球");
+            setNotice("星球位置已更新。");
+            refreshFromService();
+          } catch (error) {
+            setNotice(safeUniverseError(error));
+          }
+        }}
       />
       {selectedNode ? (
         <section className="universe-detail-card" aria-label="Selected universe node">

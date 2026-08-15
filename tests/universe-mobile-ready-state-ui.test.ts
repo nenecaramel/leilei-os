@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import test from "node:test";
+
+const componentPath = new URL("../web/src/pages/universe/UniverseMobileMap.tsx", import.meta.url);
+const pageSource = readFileSync(new URL("../web/src/pages/UniversePage.tsx", import.meta.url), "utf8");
+const polishCss = readFileSync(new URL("../web/src/pages/universe-state-polish.css", import.meta.url), "utf8");
+
+test("ready state uses a mobile map renderer and fit action", () => {
+  assert.equal(existsSync(componentPath), true);
+  const mapSource = readFileSync(componentPath, "utf8");
+  assert.match(pageSource, /UniverseMobileMap/);
+  assert.match(mapSource, /查看全部/);
+  assert.match(mapSource, /universe-map-presentation/);
+  assert.match(mapSource, /membership\.weight/);
+  assert.doesNotMatch(mapSource, /node\.type/);
+});
+
+test("ready map has no bordered engineering canvas or pill toolbar", () => {
+  assert.doesNotMatch(polishCss, /\.universe-cosmos\s*\{[\s\S]*border:/);
+  assert.doesNotMatch(polishCss, /\.universe-toolbar/);
+});
