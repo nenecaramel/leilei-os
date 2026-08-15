@@ -16,6 +16,7 @@ export function UniverseRelationPaper({
   target,
   open,
   saving,
+  errorMessage,
   triggerRef,
   onRequestClose,
   onSave,
@@ -24,6 +25,7 @@ export function UniverseRelationPaper({
   target: UniverseNode | null;
   open: boolean;
   saving: boolean;
+  errorMessage?: string | null;
   triggerRef: RefObject<HTMLElement | null>;
   onRequestClose(): boolean | Promise<boolean>;
   onSave(relation: UniverseRelationCreateInput): Promise<void>;
@@ -40,6 +42,7 @@ export function UniverseRelationPaper({
       signature="Universe"
       triggerRef={triggerRef}
       onRequestClose={onRequestClose}
+      errorMessage={errorMessage}
     >
       <div className="universe-relation-paper-body">
         <h2>建立思想连接</h2>

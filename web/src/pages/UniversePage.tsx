@@ -21,6 +21,7 @@ import type {
   UniverseGalaxy,
   UniverseNode,
   UniverseNodeCreateInput,
+  UniverseRelation,
   UniverseRelationCreateInput,
   UniverseSnapshot,
 } from "./universe/universe-types";
@@ -62,6 +63,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<UniverseNode | null>(null);
   const [saving, setSaving] = useState(false);
+  const [paperError, setPaperError] = useState<string | null>(null);
   const [relationEditorOpen, setRelationEditorOpen] = useState(false);
   const [relationSourceId, setRelationSourceId] = useState<string | null>(null);
   const [relationTargetId, setRelationTargetId] = useState<string | null>(null);
@@ -111,11 +113,16 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   async function saveNode(values: UniverseNodePaperDraft) {
     if (saving) return;
     setSaving(true);
+    setPaperError(null);
     try {
       if (editingNode) {
         await service.updateNode(editingNode.id, values, "Universe Web 编辑");
         setNotice("星球已更新。");
       } else {
+        if (!pendingPosition) {
+          setPaperError("请先在星图上选择新星球的位置。");
+          return;
+        }
         const node: UniverseNodeCreateInput = {
           title: values.title,
           summary: values.summary,
@@ -123,7 +130,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
           type: values.type,
           tags: values.tags,
           galaxies: values.galaxies,
-            position: pendingPosition ?? { x: 50, y: 50 },
+          position: pendingPosition,
           importance: values.importance,
         };
         await service.createNode(node);
@@ -134,7 +141,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       setPendingPosition(null);
       refreshFromService();
     } catch (error) {
-      setNotice(safeUniverseError(error));
+      setPaperError(safeUniverseError(error));
       void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
@@ -160,6 +167,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   async function saveRelation(relation: UniverseRelationCreateInput) {
     if (saving) return;
     setSaving(true);
+    setPaperError(null);
     try {
       await service.createRelation(relation);
       setRelationEditorOpen(false);
@@ -169,7 +177,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       setNotice("新的思想连接已经出现。");
       refreshFromService();
     } catch (error) {
-      setNotice(safeUniverseError(error));
+      setPaperError(safeUniverseError(error));
       void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
@@ -199,13 +207,35 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
 
   const { snapshot } = state;
   const selectedNode = snapshot.nodes.find((node) => node.id === selectedId) ?? null;
+  const selectedConnections = selectedNode
+    ? snapshot.relations.filter((relation) => relation.source === selectedNode.id || relation.target === selectedNode.id).map((relation) => ({
+      relation,
+      node: snapshot.nodes.find((node) => node.id === (relation.source === selectedNode.id ? relation.target : relation.source)) ?? null,
+    })).filter((connection): connection is { relation: typeof snapshot.relations[number]; node: UniverseNode } => connection.node !== null)
+    : [];
+
+  async function removeRelation(relation: UniverseRelation) {
+    if (!relation.id || saving) return;
+    setSaving(true);
+    setPaperError(null);
+    try {
+      await service.deleteRelation(relation.id);
+      setNotice("思想连接已移除。");
+      refreshFromService();
+    } catch (error) {
+      setPaperError(safeUniverseError(error));
+      void reconcileAfterMutationFailure();
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="page memory-page universe-page">
       <UniverseHeader
         actions={(
           <>
-            <button className="universe-header-action" type="button" aria-label="新增星球" onClick={() => { setMapMode({ kind: "placing-node" }); setNotice("点击地图选择新星球的位置。"); }}>＋</button>
+            <button className="universe-header-action" type="button" aria-label="新增星球" onClick={() => { setPaperError(null); setMapMode({ kind: "placing-node" }); setNotice("点击地图选择新星球的位置。"); }}>＋</button>
             <button className="universe-header-action" type="button" aria-label="更多 Universe 操作" aria-expanded={overflowOpen} onClick={() => setOverflowOpen((value) => !value)}>···</button>
           </>
         )}
@@ -223,8 +253,9 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         initialViewport={viewport}
         onViewportChange={setViewport}
         onSelectNode={setSelectedId}
-        onOpenNode={(nodeId) => { setSelectedId(nodeId); setPaperMode({ kind: "detail", nodeId }); setEditorOpen(true); }}
-        onPlaceNode={(position) => { setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
+        onModeChange={setMapMode}
+        onOpenNode={(nodeId) => { setPaperError(null); setSelectedId(nodeId); setPaperMode({ kind: "detail", nodeId }); setEditorOpen(true); }}
+        onPlaceNode={(position) => { setPaperError(null); setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
         onChooseRelationTarget={(nodeId) => { setRelationTargetId(nodeId); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); }}
         onMoveNode={async (nodeId, position) => {
           try {
@@ -243,13 +274,17 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         mode={paperMode}
         open={editorOpen}
         saving={saving}
+        errorMessage={paperError}
         triggerRef={paperTriggerRef}
         revisionsAvailable={selectedNode ? snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) : false}
-        onRequestClose={() => { setEditorOpen(false); setPaperMode(null); return true; }}
+        connections={selectedConnections}
+        onRequestClose={() => { setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}
         onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { setNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
         onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setRelationTargetId(null); setMapMode({ kind: "relation-target", sourceNodeId: node.id }); setEditorOpen(false); setPaperMode(null); }}
+        onDeleteRelation={(relation) => void removeRelation(relation)}
+        onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setPaperError(null); }}
         onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
       />
       <UniverseRelationPaper
@@ -257,8 +292,9 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         target={snapshot.nodes.find((node) => node.id === relationTargetId) ?? null}
         open={relationEditorOpen}
         saving={saving}
+        errorMessage={paperError}
         triggerRef={paperTriggerRef}
-        onRequestClose={() => { setRelationEditorOpen(false); setRelationSourceId(null); setRelationTargetId(null); setMapMode({ kind: "browse" }); return true; }}
+        onRequestClose={() => { setRelationEditorOpen(false); setRelationSourceId(null); setRelationTargetId(null); setPaperError(null); setMapMode({ kind: "browse" }); return true; }}
         onSave={saveRelation}
       />
     </div>
@@ -298,11 +334,13 @@ function UniverseStatus({ message, onRetry }: { message: string; onRetry?: () =>
 export function toggleUniverseGalaxyMemberships(
   current: UniverseNode["galaxies"],
   galaxyId: string,
+  weight?: number,
 ): UniverseNode["galaxies"] {
   if (current.some((membership) => membership.id === galaxyId)) {
     return current.filter((membership) => membership.id !== galaxyId);
   }
-  return [...current, { id: galaxyId, weight: current.length === 0 ? 1 : 0.72 }];
+  if (typeof weight !== "number" || !Number.isFinite(weight)) return current;
+  return [...current, { id: galaxyId, weight }];
 }
 
 function safeUniverseError(error: unknown): string {

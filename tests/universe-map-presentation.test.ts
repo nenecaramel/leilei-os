@@ -7,6 +7,7 @@ import {
   getDirectNeighborIds,
   getPrimaryGalaxy,
   getPlanetRadius,
+  relationTypeLabel,
   sortMembershipsByVisualPriority,
 } from "../web/src/pages/universe/universe-map-presentation.js";
 import type { UniverseGalaxy, UniverseNode, UniverseRelation } from "../web/src/pages/universe/universe-types.js";
@@ -72,6 +73,8 @@ test("selected node brightens only direct relations and neighbors", () => {
   assert.equal(deriveGalaxyFocus(node({ id: "n4" }), null, "n1", new Set(["n2"])).isNeighbor, false);
   assert.equal(deriveRelationPresentation(relations[0]!, "n1").isEmphasized, true);
   assert.equal(deriveRelationPresentation(relations[1]!, "n1").isEmphasized, false);
+  assert.ok(deriveRelationPresentation(relations[0]!, "n1").opacity > deriveRelationPresentation(relations[1]!, "n1").opacity);
+  assert.equal(relationTypeLabel("supports"), "支持");
 });
 
 test("relation strength changes only bounded line weight/opacity", () => {

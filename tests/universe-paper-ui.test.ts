@@ -23,6 +23,8 @@ test("Universe page delegates selected node rendering to the paper without reset
   assert.match(pageSource, /UniverseNodePaper/);
   assert.doesNotMatch(pageSource, /className="universe-detail-card"/);
   assert.match(pageSource, /viewport/);
+  assert.doesNotMatch(pageSource, /position:\s*pendingPosition\s*\?\?/);
+  assert.match(pageSource, /请先在星图上选择新星球的位置/);
 });
 
 test("relation flow uses a shared paper and only edits canonical type and strength", () => {
@@ -34,4 +36,6 @@ test("relation flow uses a shared paper and only edits canonical type and streng
   assert.doesNotMatch(source, /<select[^>]+name=["']target|drag|drop/);
   assert.match(pageSource, /relation-target/);
   assert.match(pageSource, /UniverseRelationPaper/);
+  assert.match(pageSource, /onDeleteRelation/);
+  assert.match(pageSource, /onOpenRelatedNode/);
 });

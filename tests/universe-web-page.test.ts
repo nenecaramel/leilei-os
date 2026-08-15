@@ -38,12 +38,12 @@ test("Universe editor preserves the standalone node type and importance option s
   assert.deepEqual([...UNIVERSE_IMPORTANCE_OPTIONS], ["anchor", "major", "normal"]);
 });
 
-test("Universe editor adds deliberate weights, preserves order, and never renormalizes", () => {
+test("Universe editor requires deliberate weights and never invents defaults", () => {
   const first = toggleUniverseGalaxyMemberships([], "g1");
-  assert.deepEqual(first, [{ id: "g1", weight: 1 }]);
-  const second = toggleUniverseGalaxyMemberships(first, "g2");
-  assert.deepEqual(second, [{ id: "g1", weight: 1 }, { id: "g2", weight: 0.72 }]);
-  assert.deepEqual(toggleUniverseGalaxyMemberships(second, "g1"), [{ id: "g2", weight: 0.72 }]);
+  assert.deepEqual(first, []);
+  const second = toggleUniverseGalaxyMemberships(first, "g1", 0.42);
+  assert.deepEqual(second, [{ id: "g1", weight: 0.42 }]);
+  assert.deepEqual(toggleUniverseGalaxyMemberships(second, "g1"), []);
 });
 
 test("mounted Universe page loads the server snapshot into the spatial canvas", async () => {
@@ -116,6 +116,11 @@ test("mounted Universe editor preserves and edits standalone type and importance
     });
     const galaxyChecks = [...dom.window.document.querySelectorAll<HTMLInputElement>(".universe-galaxy-choice input")];
     galaxyChecks[1]!.click();
+    const newWeight = [...dom.window.document.querySelectorAll<HTMLInputElement>("input[type='number']")].find((input) => input.getAttribute("aria-label") === "副星系 权重");
+    assert.ok(newWeight);
+    newWeight!.value = "0.42";
+    newWeight!.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    newWeight!.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
     galaxyChecks[0]!.click();
     await React.act(async () => {
       [...dom.window.document.querySelectorAll("button")].find((button) => button.textContent === "保存")?.click();
@@ -125,7 +130,7 @@ test("mounted Universe editor preserves and edits standalone type and importance
     const body = JSON.parse(String(update?.init?.body ?? "{}")) as { patch?: { type?: string; importance?: string; galaxies?: Array<{ id: string; weight: number }> } };
     assert.equal(body.patch?.type, "source");
     assert.equal(body.patch?.importance, "anchor");
-    assert.deepEqual(body.patch?.galaxies, [{ id: "g2", weight: 0.72 }]);
+    assert.deepEqual(body.patch?.galaxies, [{ id: "g2", weight: 0.42 }]);
   } finally {
     await React.act(async () => root.unmount());
     dom.window.close();

@@ -21,14 +21,17 @@ export function UniverseGalaxyPicker({
         {active ? <><span className="universe-galaxy-entry-dot" style={{ background: active.color }} />{active.title}</> : <span>全部</span>}
       </button>
       {open ? (
-        <div className="universe-galaxy-menu" role="dialog" aria-label="选择星系">
-          <button type="button" className={!activeGalaxyId ? "is-active" : ""} onClick={() => { onSelect(null); onOpenChange(false); }}>全部</button>
-          {galaxies.slice().sort((left, right) => left.order - right.order).map((galaxy) => (
-            <button type="button" className={activeGalaxyId === galaxy.id ? "is-active" : ""} key={galaxy.id} onClick={() => { onSelect(galaxy.id); onOpenChange(false); }}>
-              <span className="universe-galaxy-entry-dot" style={{ background: galaxy.color }} />{galaxy.title}
-            </button>
-          ))}
-        </div>
+        <>
+          <button className="universe-galaxy-backdrop" type="button" aria-label="关闭星系选择" onClick={() => onOpenChange(false)} />
+          <div className="universe-galaxy-menu" role="dialog" aria-modal="true" aria-label="选择星系">
+            <button type="button" className={!activeGalaxyId ? "is-active" : ""} onClick={() => { onSelect(null); onOpenChange(false); }}>全部</button>
+            {galaxies.slice().sort((left, right) => left.order - right.order).map((galaxy) => (
+              <button type="button" className={activeGalaxyId === galaxy.id ? "is-active" : ""} key={galaxy.id} onClick={() => { onSelect(galaxy.id); onOpenChange(false); }}>
+                <span className="universe-galaxy-entry-dot" style={{ background: galaxy.color }} />{galaxy.title}
+              </button>
+            ))}
+          </div>
+        </>
       ) : null}
     </div>
   );

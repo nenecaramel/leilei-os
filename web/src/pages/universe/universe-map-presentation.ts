@@ -19,6 +19,17 @@ export type RelationPresentation = {
   isEmphasized: boolean;
 };
 
+export function relationTypeLabel(type: UniverseRelation["relationType"]): string {
+  switch (type) {
+    case "supports": return "支持";
+    case "contradicts": return "矛盾";
+    case "extends": return "延伸";
+    case "part_of": return "属于";
+    case "raises": return "引出";
+    default: return "相关";
+  }
+}
+
 export function sortMembershipsByVisualPriority(
   memberships: readonly UniverseGalaxyMembership[],
   galaxies: readonly UniverseGalaxy[],
@@ -101,7 +112,11 @@ export function deriveRelationPresentation(
   const strength = Number.isFinite(relation.strength) ? Math.min(1, Math.max(0, relation.strength)) : 0;
   return {
     width: 1 + strength * 3,
-    opacity: 0.18 + strength * 0.62,
+    opacity: selectedNodeId === null
+      ? 0.18 + strength * 0.62
+      : relation.source === selectedNodeId || relation.target === selectedNodeId
+        ? 0.35 + strength * 0.65
+        : 0.08,
     isEmphasized: selectedNodeId !== null && (relation.source === selectedNodeId || relation.target === selectedNodeId),
   };
 }

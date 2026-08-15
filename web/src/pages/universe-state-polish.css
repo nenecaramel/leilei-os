@@ -123,16 +123,28 @@ body:has(.universe-page),
 }
 
 .universe-galaxy-menu {
-  position: absolute;
-  top: 40px;
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
   left: 0;
   display: grid;
+  gap: 2px;
   min-width: 160px;
-  padding: 4px;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px));
   border: 1px solid #e5e5e5;
-  border-radius: 10px;
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
   background: #ffffff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.universe-galaxy-backdrop {
+  position: fixed;
+  z-index: 19;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .universe-notice {
@@ -140,6 +152,46 @@ body:has(.universe-page),
   color: #8d8d8d;
   font-size: 13px;
   line-height: 1.55;
+}
+
+.universe-paper-inline-error {
+  margin: 8px 0;
+  color: #9a3333;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.universe-galaxy-choice {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.universe-galaxy-choice input[type="number"] {
+  width: 78px;
+  min-height: 32px;
+  margin-left: auto;
+}
+
+.universe-node-connections {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.universe-node-connections h3 {
+  margin: 0;
+  color: #555555;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.universe-node-connection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 /* Preserve the accepted uninitialized/importer state. */
@@ -329,6 +381,49 @@ body:has(.universe-page),
   right: 10px;
 }
 
+.universe-map-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.universe-map-mode-hint {
+  position: absolute;
+  z-index: 7;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  color: #555555;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.universe-map-mode-hint button {
+  min-width: 44px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  color: #555555;
+  background: #f2f2f2;
+  font: inherit;
+  cursor: pointer;
+}
+
+.universe-map-mode-hint button:focus-visible {
+  outline: 1px solid #777777;
+  outline-offset: 2px;
+}
+
 .universe-map-fit {
   min-width: 44px;
   min-height: 36px;
@@ -372,6 +467,47 @@ body:has(.universe-page),
   transform-origin: 0 50%;
   border-radius: 99px;
   background: #d8d8d8;
+}
+
+.universe-map-relation.is-muted {
+  filter: opacity(0.45);
+}
+
+.universe-map-relation-label {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  display: none;
+  padding: 2px 4px;
+  color: #757575;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  transform: translateX(-50%) rotate(0deg);
+}
+
+.universe-map-relation.is-emphasized .universe-map-relation-label {
+  display: block;
+  color: #333333;
+  font-weight: 600;
+}
+
+.universe-map-relation-arrow {
+  position: absolute;
+  top: 50%;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  color: #8f8f8f;
+  display: none;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.universe-map-relation.is-emphasized .universe-map-relation-arrow {
+  display: block;
 }
 
 .universe-map-relation.is-emphasized {
@@ -436,5 +572,31 @@ body:has(.universe-page),
 @media (max-width: 760px) {
   .universe-mobile-map {
     min-height: min(68vh, 560px);
+  }
+}
+
+@media (min-width: 761px) {
+  .universe-galaxy-backdrop {
+    display: none;
+  }
+
+  .universe-galaxy-menu {
+    position: absolute;
+    top: 40px;
+    right: auto;
+    bottom: auto;
+    left: 0;
+    border-bottom: 1px solid #e5e5e5;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .universe-map-planet,
+  .universe-map-relation,
+  .universe-galaxy-menu {
+    transition: none !important;
+    animation: none !important;
   }
 }
