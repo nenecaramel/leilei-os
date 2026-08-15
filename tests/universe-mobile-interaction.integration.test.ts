@@ -13,6 +13,7 @@ const galaxies: UniverseGalaxy[] = [
 const nodes: UniverseNode[] = [
   { id: "n1", title: "第一颗星", summary: "", content: "", type: "concept", tags: [], galaxies: [{ id: "g1", weight: 1 }], position: { x: 30, y: 40 }, createdAt: "2026-01-01", updatedAt: "2026-01-01" },
   { id: "n2", title: "第二颗星", summary: "", content: "", type: "concept", tags: [], galaxies: [{ id: "g1", weight: 1 }], position: { x: 70, y: 60 }, createdAt: "2026-01-01", updatedAt: "2026-01-01" },
+  { id: "n3", title: "普通星", summary: "", content: "", type: "concept", tags: [], galaxies: [{ id: "g1", weight: 1 }], position: { x: 52, y: 82 }, createdAt: "2026-01-01", updatedAt: "2026-01-01" },
 ];
 const relations: UniverseRelation[] = [
   { id: "r1", source: "n1", target: "n2", relationType: "supports", strength: 0.7, createdAt: "2026-01-01" },
@@ -49,7 +50,7 @@ function pointer(target: Element, type: string, x: number, y: number, pointerId 
   target.dispatchEvent(event);
 }
 
-async function mount(mode: UniverseMapMode, callbacks: Record<string, (...args: any[]) => void>) {
+async function mount(mode: UniverseMapMode, callbacks: Record<string, (...args: any[]) => void>, selectedNodeId: string | null = null, activeGalaxyId: string | null = null, revealNodeId: string | null = null) {
   const context = installDom();
   const root = createRoot(context.dom.window.document.querySelector("#root")!);
   const onViewportChange = () => {};
@@ -58,11 +59,12 @@ async function mount(mode: UniverseMapMode, callbacks: Record<string, (...args: 
       galaxies,
       nodes,
       relations,
-      selectedNodeId: null,
-      activeGalaxyId: null,
+      selectedNodeId,
+      activeGalaxyId,
       mode,
       initialViewport: { x: 0, y: 0, scale: 1 },
-      onViewportChange,
+      onViewportChange: callbacks.onViewportChange ?? onViewportChange,
+      revealNodeId,
       onSelectNode: callbacks.onSelectNode ?? (() => {}),
       onOpenNode: callbacks.onOpenNode ?? (() => {}),
       onPlaceNode: callbacks.onPlaceNode ?? (() => {}),
@@ -114,6 +116,35 @@ test("a map movement beyond tolerance does not become an empty-space tap", async
       mounted.map.click();
     });
     assert.deepEqual(selected, []);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("mounted map fades ordinary planets around a selected node without a galaxy filter", async () => {
+  const mounted = await mount({ kind: "browse" }, {}, "n1", null);
+  try {
+    const selected = mounted.map.querySelector<HTMLButtonElement>("button[aria-label='查看节点：第一颗星']")!;
+    const neighbor = mounted.map.querySelector<HTMLButtonElement>("button[aria-label='查看节点：第二颗星']")!;
+    const ordinary = mounted.map.querySelector<HTMLButtonElement>("button[aria-label='查看节点：普通星']")!;
+    assert.equal(selected.classList.contains("is-faded"), false);
+    assert.equal(neighbor.classList.contains("is-faded"), false);
+    assert.equal(ordinary.classList.contains("is-faded"), true);
+    assert.equal(ordinary.style.opacity, "0.28");
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("related-node reveal keeps zoom and pans only when the target is outside the map", async () => {
+  const changes: Array<{ x: number; y: number; scale: number }> = [];
+  const mounted = await mount({ kind: "browse" }, { onViewportChange: (viewport: { x: number; y: number; scale: number }) => changes.push(viewport) }, null, null, "n2");
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const revealed = changes.at(-1);
+    assert.ok(revealed);
+    assert.equal(revealed?.scale, 1);
+    assert.ok((revealed?.x ?? 0) < 0 || (revealed?.y ?? 0) < 0);
   } finally {
     await mounted.unmount();
   }

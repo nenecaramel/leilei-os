@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
-import { canonicalPositionToWorld, fitViewportToPositions, parseUniverseViewport, screenToWorld, serializeUniverseViewport, worldToCanonicalPosition, zoomAroundScreenPoint, type UniversePoint, type UniverseViewport } from "./universe-map-transform";
+import { canonicalPositionToWorld, fitViewportToPositions, parseUniverseViewport, revealWorldPoint, screenToWorld, serializeUniverseViewport, worldToCanonicalPosition, zoomAroundScreenPoint, type UniversePoint, type UniverseViewport } from "./universe-map-transform";
 import { deriveGalaxyFocus, derivePlanetPresentation, deriveRelationPresentation, getDirectNeighborIds, getPrimaryGalaxy, relationTypeLabel, sortMembershipsByVisualPriority } from "./universe-map-presentation";
 import { initialUniverseMapInteraction, reduceUniverseMapInteraction, type UniverseMapAction, type UniverseMapInteractionState, type UniverseMapMode } from "./universe-map-interaction";
 
@@ -19,6 +19,8 @@ export type UniverseMobileMapProps = {
   onChooseRelationTarget(nodeId: string): void;
   onMoveNode(nodeId: string, position: UniversePoint): Promise<void>;
   onModeChange?(mode: UniverseMapMode): void;
+  revealNodeId?: string | null;
+  onRevealNodeHandled?(): void;
 };
 
 type PointerPoint = UniversePoint & { pointerId: number };
@@ -49,6 +51,8 @@ export function UniverseMobileMap({
   onChooseRelationTarget,
   onMoveNode,
   onModeChange,
+  revealNodeId = null,
+  onRevealNodeHandled,
 }: UniverseMobileMapProps) {
   const mapRef = useRef<HTMLElement>(null);
   const pointers = useRef(new Map<number, PointerPoint>());
@@ -111,6 +115,18 @@ export function UniverseMobileMap({
     didFit.current = true;
     updateViewport(next);
   }, [mapSize, nodes, updateViewport]);
+
+  useEffect(() => {
+    if (!revealNodeId) return;
+    const node = nodes.find((candidate) => candidate.id === revealNodeId);
+    if (!node) {
+      onRevealNodeHandled?.();
+      return;
+    }
+    const next = revealWorldPoint(viewport, canonicalPositionToWorld(dragPositions[node.id] ?? node.position), mapSize);
+    if (next.x !== viewport.x || next.y !== viewport.y) updateViewport(next);
+    onRevealNodeHandled?.();
+  }, [dragPositions, mapSize, nodes, onRevealNodeHandled, revealNodeId, updateViewport, viewport]);
 
   useEffect(() => () => {
     if (longPressRef.current) clearTimeout(longPressRef.current);

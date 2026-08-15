@@ -82,7 +82,10 @@ export function deriveGalaxyFocus(
   const isSelected = node.id === selectedNodeId;
   const isNeighbor = directNeighborIds.has(node.id);
   const isInFocus = activeGalaxyId === null || node.galaxies.some((membership) => membership.id === activeGalaxyId);
-  const isFaded = !isSelected && !isNeighbor && !isInFocus;
+  // Once a node is selected, topology is the focus regardless of whether a
+  // galaxy filter is active: only the node and its direct neighbours remain
+  // fully legible. With no selection, the active galaxy controls fading.
+  const isFaded = !isSelected && !isNeighbor && (selectedNodeId !== null || !isInFocus);
   return {
     isSelected,
     isNeighbor,

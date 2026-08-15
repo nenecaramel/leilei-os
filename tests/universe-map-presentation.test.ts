@@ -77,6 +77,16 @@ test("selected node brightens only direct relations and neighbors", () => {
   assert.equal(relationTypeLabel("supports"), "支持");
 });
 
+test("a selection fades ordinary planets even when no galaxy is active", () => {
+  const selected = deriveGalaxyFocus(node({ id: "n1" }), null, "n1");
+  const ordinary = deriveGalaxyFocus(node({ id: "n3" }), null, "n1");
+  const neighbor = deriveGalaxyFocus(node({ id: "n2" }), null, "n1", new Set(["n2"]));
+  assert.equal(selected.opacity, 1);
+  assert.equal(neighbor.opacity, 1);
+  assert.equal(ordinary.isFaded, true);
+  assert.equal(ordinary.opacity, 0.28);
+});
+
 test("relation strength changes only bounded line weight/opacity", () => {
   const weak = deriveRelationPresentation(relation({ strength: 0 }), null);
   const strong = deriveRelationPresentation(relation({ strength: 100 }), null);

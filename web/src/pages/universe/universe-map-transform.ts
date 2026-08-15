@@ -23,6 +23,18 @@ export const UNIVERSE_VIEWPORT_STORAGE_KEY = "leileios.universe.viewport.v1";
 // without changing the persisted Universe contract.
 const WORLD_UNITS_PER_CANONICAL_UNIT = 10;
 
+export function clampUniverseCoordinate(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
+export function clampUniversePosition(position: UniversePoint): UniversePoint {
+  return {
+    x: clampUniverseCoordinate(position.x),
+    y: clampUniverseCoordinate(position.y),
+  };
+}
+
 export function canonicalPositionToWorld(position: UniversePoint): UniversePoint {
   return {
     x: position.x * WORLD_UNITS_PER_CANONICAL_UNIT,
@@ -31,10 +43,10 @@ export function canonicalPositionToWorld(position: UniversePoint): UniversePoint
 }
 
 export function worldToCanonicalPosition(world: UniversePoint): UniversePoint {
-  return {
+  return clampUniversePosition({
     x: world.x / WORLD_UNITS_PER_CANONICAL_UNIT,
     y: world.y / WORLD_UNITS_PER_CANONICAL_UNIT,
-  };
+  });
 }
 
 export function clampUniverseScale(scale: number): number {
@@ -47,6 +59,24 @@ export function worldToScreen(world: UniversePoint, viewport: UniverseViewport):
     x: world.x * clampUniverseScale(viewport.scale) + viewport.x,
     y: world.y * clampUniverseScale(viewport.scale) + viewport.y,
   };
+}
+
+/** Keep the current zoom while applying the smallest pan that reveals a point. */
+export function revealWorldPoint(
+  viewport: UniverseViewport,
+  world: UniversePoint,
+  mapSize: UniverseMapSize,
+  padding = 48,
+): UniverseViewport {
+  if (mapSize.width <= 0 || mapSize.height <= 0) return viewport;
+  const screen = worldToScreen(world, viewport);
+  let x = viewport.x;
+  let y = viewport.y;
+  if (screen.x < padding) x += padding - screen.x;
+  else if (screen.x > mapSize.width - padding) x -= screen.x - (mapSize.width - padding);
+  if (screen.y < padding) y += padding - screen.y;
+  else if (screen.y > mapSize.height - padding) y -= screen.y - (mapSize.height - padding);
+  return { ...viewport, x, y };
 }
 
 export function screenToWorld(screen: UniversePoint, viewport: UniverseViewport): UniversePoint {

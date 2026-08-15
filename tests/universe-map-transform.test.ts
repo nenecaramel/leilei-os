@@ -4,6 +4,7 @@ import {
   canonicalPositionToWorld,
   fitViewportToPositions,
   parseUniverseViewport,
+  revealWorldPoint,
   screenToWorld,
   serializeUniverseViewport,
   worldToCanonicalPosition,
@@ -52,6 +53,19 @@ test("canonical/world conversion preserves valid node positions", () => {
   const roundTrip = worldToCanonicalPosition(canonicalPositionToWorld(canonical));
   close(roundTrip.x, canonical.x);
   close(roundTrip.y, canonical.y);
+});
+
+test("world writes clamp canonical positions to the legal 0..100 domain", () => {
+  assert.deepEqual(worldToCanonicalPosition({ x: -10, y: 1010 }), { x: 0, y: 100 });
+  assert.deepEqual(worldToCanonicalPosition({ x: 1200, y: -5 }), { x: 100, y: 0 });
+});
+
+test("reveal pan preserves zoom and leaves an already visible point alone", () => {
+  const viewport = { x: 0, y: 0, scale: 2 };
+  assert.deepEqual(revealWorldPoint(viewport, { x: 100, y: 100 }, { width: 400, height: 300 }), viewport);
+  const revealed = revealWorldPoint(viewport, { x: 300, y: 200 }, { width: 400, height: 300 });
+  assert.equal(revealed.scale, viewport.scale);
+  assert.ok(revealed.x < viewport.x || revealed.y < viewport.y);
 });
 
 test("invalid stored viewport data is rejected", () => {

@@ -70,6 +70,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [mapMode, setMapMode] = useState<UniverseMapMode>({ kind: "browse" });
   const [viewport, setViewport] = useState<UniverseViewport | null>(null);
   const [pendingPosition, setPendingPosition] = useState<UniversePoint | null>(null);
+  const [revealNodeId, setRevealNodeId] = useState<string | null>(null);
   const [paperMode, setPaperMode] = useState<UniverseNodePaperMode | null>(null);
   const paperTriggerRef = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
@@ -253,7 +254,9 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         initialViewport={viewport}
         onViewportChange={setViewport}
         onSelectNode={setSelectedId}
-        onModeChange={setMapMode}
+        onModeChange={(next) => { const previous = mapMode; setMapMode(next); if (previous.kind === "placing-node" && next.kind === "browse") setNotice(null); }}
+        revealNodeId={revealNodeId}
+        onRevealNodeHandled={() => setRevealNodeId(null)}
         onOpenNode={(nodeId) => { setPaperError(null); setSelectedId(nodeId); setPaperMode({ kind: "detail", nodeId }); setEditorOpen(true); }}
         onPlaceNode={(position) => { setPaperError(null); setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
         onChooseRelationTarget={(nodeId) => { setRelationTargetId(nodeId); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); }}
@@ -284,7 +287,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { setNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
         onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setRelationTargetId(null); setMapMode({ kind: "relation-target", sourceNodeId: node.id }); setEditorOpen(false); setPaperMode(null); }}
         onDeleteRelation={(relation) => void removeRelation(relation)}
-        onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setPaperError(null); }}
+        onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setRevealNodeId(nodeId); setPaperError(null); }}
         onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
       />
       <UniverseRelationPaper

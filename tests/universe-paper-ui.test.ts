@@ -27,6 +27,23 @@ test("Universe page delegates selected node rendering to the paper without reset
   assert.match(pageSource, /请先在星图上选择新星球的位置/);
 });
 
+test("Universe paper forms use transparent, iOS-safe controls", () => {
+  const css = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
+  for (const selector of [".universe-node-paper-body input", ".universe-node-paper-body textarea", ".universe-node-paper-body select", ".universe-relation-paper-body input", ".universe-relation-paper-body select"]) {
+    assert.match(css, new RegExp(`${selector.replace(/[.]/g, "\\.")}[^}]*border:\\s*0`));
+    assert.match(css, new RegExp(`${selector.replace(/[.]/g, "\\.")}[^}]*background:\\s*transparent`));
+    assert.match(css, new RegExp(`${selector.replace(/[.]/g, "\\.")}[^}]*box-shadow:\\s*none`));
+    assert.match(css, new RegExp(`${selector.replace(/[.]/g, "\\.")}[^}]*font-size:\\s*16px`));
+  }
+});
+
+test("Galaxy entry is label-only when inactive and names the active galaxy", () => {
+  const source = readFileSync(new URL("../web/src/pages/universe/UniverseGalaxyPicker.tsx", import.meta.url), "utf8");
+  assert.match(source, /universe-galaxy-entry-label.*星系/);
+  assert.match(source, /active \? <><span className="universe-galaxy-entry-dot"/);
+  assert.doesNotMatch(source, /: <span>全部<\/span>/);
+});
+
 test("relation flow uses a shared paper and only edits canonical type and strength", () => {
   assert.equal(existsSync(relationPaperPath), true);
   const source = readFileSync(relationPaperPath, "utf8");

@@ -18,7 +18,7 @@ export function UniverseGalaxyPicker({
     <div className="universe-galaxy-picker">
       <button className="universe-galaxy-entry" type="button" aria-expanded={open} onClick={() => onOpenChange(!open)}>
         <span className="universe-galaxy-entry-label">星系</span>
-        {active ? <><span className="universe-galaxy-entry-dot" style={{ background: active.color }} />{active.title}</> : <span>全部</span>}
+        {active ? <><span className="universe-galaxy-entry-dot" style={{ background: active.color }} />{active.title}</> : null}
       </button>
       {open ? (
         <>
