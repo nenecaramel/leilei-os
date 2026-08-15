@@ -87,6 +87,27 @@ test("Universe API forwards weighted membership payloads without normalization",
   assert.deepEqual(calls[0]?.[1], { title: "weighted", galaxies: memberships });
 });
 
+test("Universe whole-snapshot PUT forwards version zero and weighted payload", async () => {
+  const calls: unknown[][] = [];
+  const importedSnapshot = {
+    ...snapshot,
+    nodes: [{ id: "node-1", galaxies: [{ id: "galaxy-a", weight: 0.125 }] }],
+  };
+  await withServer({
+    async saveUniverse(...args: never[]) { calls.push(args); return { snapshot: importedSnapshot, version: 1 }; },
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/universe`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-test-user": "yes" },
+      body: JSON.stringify({ snapshot: importedSnapshot, expected_version: 0 }),
+    });
+    assert.equal(response.status, 200);
+  });
+  assert.equal(calls[0]?.[0], USER_ID);
+  assert.deepEqual(calls[0]?.[1], importedSnapshot);
+  assert.equal(calls[0]?.[2], 0);
+});
+
 test("Universe API maps version, invalid, missing, and unavailable errors safely", async () => {
   const errors: Array<[string, number, string]> = [
     ["VERSION_CONFLICT", 409, "VERSION_CONFLICT"],
