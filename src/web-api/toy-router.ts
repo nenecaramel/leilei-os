@@ -100,6 +100,7 @@ function serializeUserCommand(command: ToyCommandRecord) {
     id: command.id,
     action: command.action,
     percent: command.percent,
+    durationSeconds: command.durationSeconds,
     status: command.status,
     createdAt: command.createdAt.toISOString(),
     expiresAt: command.expiresAt.toISOString(),
@@ -110,7 +111,9 @@ function serializeBridgeCommand(command: ToyCommandRecord) {
   return {
     id: command.id,
     action: command.action,
-    ...(command.action === "set" ? { percent: command.percent } : {}),
+    ...(command.action === "set"
+      ? { percent: command.percent, durationSeconds: command.durationSeconds }
+      : {}),
     expiresAt: command.expiresAt.toISOString(),
   };
 }

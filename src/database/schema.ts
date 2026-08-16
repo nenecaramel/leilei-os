@@ -772,6 +772,7 @@ export const toyCommands = pgTable(
       }),
     action: toyCommandActionEnum("action").notNull(),
     percent: integer("percent"),
+    durationSeconds: integer("duration_seconds").default(60),
     status: toyCommandStatusEnum("status").default("pending").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

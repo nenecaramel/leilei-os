@@ -34,6 +34,7 @@ test(
           user_id uuid NOT NULL,
           action "${schemaName}".toy_command_action NOT NULL,
           percent integer,
+          duration_seconds integer DEFAULT 60,
           status "${schemaName}".toy_command_status NOT NULL DEFAULT 'pending',
           created_at timestamptz NOT NULL DEFAULT now(),
           expires_at timestamptz NOT NULL,
@@ -48,6 +49,10 @@ test(
           CONSTRAINT action_percent CHECK (
             (action = 'set' AND percent IS NOT NULL AND percent BETWEEN 1 AND 40)
             OR (action = 'stop' AND percent IS NULL)
+          ),
+          CONSTRAINT action_duration CHECK (
+            (action = 'set' AND duration_seconds BETWEEN 1 AND 1200)
+            OR (action = 'stop' AND duration_seconds IS NULL)
           ),
           CONSTRAINT expiry_after_creation CHECK (expires_at > created_at),
           CONSTRAINT error_length CHECK (error IS NULL OR char_length(error) <= 500)
@@ -164,6 +169,7 @@ test(
           userId: owner,
           action: "stop",
           status: "pending",
+          durationSeconds: null,
           createdAt: new Date(priorityFixtureNow),
           expiresAt: new Date(priorityFixtureNow + 300_000),
         });
@@ -174,6 +180,7 @@ test(
           userId: owner,
           action: "stop",
           status: "pending",
+          durationSeconds: null,
           createdAt: new Date(Date.now() - 20_000),
           expiresAt: new Date(Date.now() - 10_000),
         });
@@ -201,6 +208,7 @@ test(
             userId: owner,
             action: "stop",
             status: "pending",
+            durationSeconds: null,
             createdAt: new Date(lockFixtureNow),
             expiresAt: new Date(lockFixtureNow + 300_000),
           },
@@ -209,6 +217,7 @@ test(
             userId: owner,
             action: "stop",
             status: "pending",
+            durationSeconds: null,
             createdAt: new Date(lockFixtureNow + 1_000),
             expiresAt: new Date(lockFixtureNow + 300_000),
           },
@@ -344,6 +353,7 @@ test(
           userId: owner,
           action: "stop",
           status: "claimed",
+          durationSeconds: null,
           createdAt: new Date(Date.now() - 20_000),
           expiresAt: new Date(Date.now() - 10_000),
           claimedAt: new Date(Date.now() - 15_000),
