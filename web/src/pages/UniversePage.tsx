@@ -323,7 +323,19 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         saving={saving}
         errorMessage={paperError}
         triggerRef={paperTriggerRef}
-        onRequestClose={() => { setRelationEditorOpen(false); setRelationSourceId(null); setPaperError(null); setMapMode({ kind: "browse" }); return true; }}
+        onRequestClose={() => {
+          const sourceId = relationSourceId;
+          setRelationEditorOpen(false);
+          setRelationSourceId(null);
+          setPaperError(null);
+          setMapMode({ kind: "browse" });
+          if (sourceId) {
+            setSelectedId(sourceId);
+            setPaperMode({ kind: "detail", nodeId: sourceId });
+            setEditorOpen(true);
+          }
+          return true;
+        }}
         onSave={saveRelation}
       />
     </div>
