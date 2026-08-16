@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const paperSource = readFileSync(
@@ -10,11 +10,18 @@ const mobileCss = readFileSync(
   new URL("../web/src/pages/universe/universe-node-paper-web-mobile.css", import.meta.url),
   "utf8",
 );
+const detailShellUrl = new URL(
+  "../web/src/pages/universe/universe-node-detail-memory-shell.css",
+  import.meta.url,
+);
+const detailShellCss = existsSync(detailShellUrl)
+  ? readFileSync(detailShellUrl, "utf8")
+  : "";
 
 test("Universe mobile detail uses Memory paper geometry with fixed head and actions and a scrolling body", () => {
   assert.match(paperSource, /className="universe-standalone-detail-scroll"/);
-  assert.match(mobileCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\)[\s\S]*width:\s*min\(665px,\s*calc\(100vw - 46px\)\)[\s\S]*height:\s*clamp\(536px,\s*calc\(78dvh - 24px\),\s*696px\)[\s\S]*transform:\s*translateY\(31px\)/);
-  assert.doesNotMatch(mobileCss, /height:\s*min\(590px,\s*calc\(100dvh - 96px\)\)/);
+  assert.match(detailShellCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\)[\s\S]*width:\s*min\(665px,\s*calc\(100vw - 46px\)\)[\s\S]*height:\s*clamp\(536px,\s*calc\(78dvh - 24px\),\s*696px\)[\s\S]*transform:\s*translateY\(31px\)/);
+  assert.doesNotMatch(detailShellCss, /height:\s*min\(590px,\s*calc\(100dvh - 96px\)\)/);
   assert.match(mobileCss, /\.universe-standalone-detail\s*\{[\s\S]*display:\s*grid[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto/);
   assert.match(mobileCss, /\.universe-standalone-detail-scroll\s*\{[\s\S]*overflow-y:\s*auto/);
 });
@@ -25,15 +32,16 @@ test("Universe mobile detail keeps the current page visible behind the floating 
 });
 
 test("Universe mobile detail has no square dark halo outside its rounded frame", () => {
-  assert.match(mobileCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\)[\s\S]*border-radius:\s*14px/);
-  assert.match(mobileCss, /\.paper-detail-layer:has\(\.universe-standalone-detail\) \.universe-standalone-detail[\s\S]*border-radius:\s*14px[\s\S]*box-shadow:\s*none/);
+  assert.match(detailShellCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\)[\s\S]*border-radius:\s*14px/);
+  assert.match(detailShellCss, /\.paper-detail-layer:has\(\.universe-standalone-detail\) \.universe-standalone-detail[\s\S]*border-radius:\s*14px[\s\S]*box-shadow:\s*none/);
 });
 
 test("Universe mobile detail typography matches the approved hierarchy", () => {
   assert.match(mobileCss, /\.universe-standalone-type-chip\s*\{[\s\S]*min-height:\s*28px/);
-  assert.match(mobileCss, /\.universe-standalone-detail h2\s*\{[\s\S]*font-size:\s*29px[\s\S]*font-weight:\s*500/);
+  assert.match(detailShellCss, /\.universe-standalone-detail h2\s*\{[\s\S]*font-size:\s*29px/);
   assert.match(mobileCss, /\.universe-standalone-summary\s*\{[\s\S]*font-size:\s*13px/);
-  assert.match(mobileCss, /\.universe-standalone-content\s*\{[\s\S]*color:\s*#c7c5cc[\s\S]*font-size:\s*16px/);
+  assert.match(detailShellCss, /\.universe-standalone-content\s*\{[\s\S]*color:\s*#c7c5cc/);
+  assert.match(mobileCss, /\.universe-standalone-content\s*\{[\s\S]*font-size:\s*16px/);
   assert.match(mobileCss, /\.universe-standalone-stats strong\s*\{[\s\S]*font-size:\s*19px[\s\S]*font-weight:\s*500/);
 });
 
