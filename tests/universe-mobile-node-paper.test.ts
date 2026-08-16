@@ -12,7 +12,8 @@ const mobileWebCss = readFileSync(
   "utf8",
 );
 
-test("Universe detail restores the original web detail-card UI", () => {
+test("Universe mobile detail restores the original web detail-card UI", () => {
+  assert.match(paperSource, /className="universe-node-original-web-mobile"/);
   assert.match(paperSource, /className="universe-detail-card"/);
   assert.match(paperSource, /className="eyebrow">\{effectiveNode!\.type\}<\/p>/);
   assert.match(paperSource, /<h2>\{effectiveNode!\.title\}<\/h2>/);
@@ -25,7 +26,7 @@ test("Universe detail restores the original web detail-card UI", () => {
   assert.doesNotMatch(paperSource, /className="danger-button"[^>]*>移除星球/);
 });
 
-test("Universe create and edit restore the original web node-editor form", () => {
+test("Universe mobile create and edit restore the original web node-editor form", () => {
   assert.match(paperSource, /className="universe-node-editor"/);
   assert.match(paperSource, /\{isCreate \? "NEW STAR" : "ADJUST ORBIT"\}/);
   assert.match(paperSource, /\{isCreate \? "点亮一颗新星" : "调整这颗星球"\}/);
@@ -54,15 +55,18 @@ test("Universe edit save returns to the same detail paper while create still clo
   );
 });
 
-test("Universe original web inner UI keeps the shared dialog shell visually invisible", () => {
+test("Universe mobile original-web presentation does not change desktop or the home map", () => {
   assert.match(paperSource, /import "\.\/universe-node-paper-web-mobile\.css";/);
-  assert.doesNotMatch(paperSource, /UniverseNodeMetadata/);
-  assert.doesNotMatch(paperSource, /bottomLeft=\{/);
+  assert.match(paperSource, /className="universe-node-paper-desktop"/);
+  assert.match(paperSource, /bottomLeft=\{metadata\}/);
+  assert.match(mobileWebCss, /\.universe-node-original-web-mobile\s*\{[\s\S]*display:\s*none/);
+  assert.match(mobileWebCss, /@media \(max-width:\s*760px\)/);
+  assert.match(mobileWebCss, /\.universe-node-paper-desktop\s*\{[\s\S]*display:\s*none/);
+  assert.match(mobileWebCss, /\.universe-node-original-web-mobile\s*\{[\s\S]*display:\s*block/);
   assert.match(
     mobileWebCss,
-    /\.paper-detail-paper:has\(\.universe-detail-card\),[\s\S]*\.paper-detail-paper:has\(\.universe-node-editor\)[\s\S]*background:\s*transparent/,
+    /\.paper-detail-paper:has\(\.universe-node-original-web-mobile\)[\s\S]*background:\s*transparent/,
   );
-  assert.match(mobileWebCss, /\.paper-detail-paper:has\(\.universe-detail-card\) \.paper-detail-scroll/);
-  assert.match(mobileWebCss, /\.universe-detail-card,[\s\S]*\.universe-node-editor/);
+  assert.match(mobileWebCss, /\.paper-detail-paper:has\(\.universe-node-original-web-mobile\) \.paper-detail-scroll/);
   assert.doesNotMatch(mobileWebCss, /\.universe-mobile-map\b|\.universe-map-|\.universe-page-header|\.universe-galaxy-picker/);
 });
