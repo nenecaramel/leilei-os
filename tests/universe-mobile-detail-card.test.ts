@@ -40,7 +40,8 @@ test("Universe mobile detail typography matches the approved hierarchy", () => {
   assert.match(mobileCss, /\.universe-standalone-type-chip\s*\{[\s\S]*min-height:\s*28px/);
   assert.match(detailShellCss, /\.universe-standalone-detail h2\s*\{[\s\S]*font-size:\s*29px/);
   assert.match(mobileCss, /\.universe-standalone-summary\s*\{[\s\S]*font-size:\s*13px/);
-  assert.match(detailShellCss, /\.universe-standalone-content\s*\{[\s\S]*color:\s*#c7c5cc/);
+  assert.match(detailShellCss, /\.universe-standalone-summary\s*\{[\s\S]*margin-top:\s*6px[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-content\s*\{[\s\S]*color:\s*#f5f2e9/);
   assert.match(mobileCss, /\.universe-standalone-content\s*\{[\s\S]*font-size:\s*16px/);
   assert.match(mobileCss, /\.universe-standalone-stats strong\s*\{[\s\S]*font-size:\s*19px[\s\S]*font-weight:\s*500/);
 });
@@ -56,7 +57,9 @@ test("Universe mobile detail removes the fake revision count and compacts relati
   assert.doesNotMatch(mobileCss, /\.universe-standalone-relation-remove\s*\{[^}]*border-left:/);
 });
 
-test("Universe mobile detail gives both bottom actions the same secondary color", () => {
-  assert.match(mobileCss, /\.universe-standalone-detail-actions button\s*\{[\s\S]*color:\s*#777986/);
-  assert.doesNotMatch(mobileCss, /\.universe-standalone-detail-actions button:last-child/);
+test("Universe mobile detail uses one neutral gray and one warm white for text hierarchy", () => {
+  assert.match(mobileCss, /\.universe-standalone-tag\s*\{[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-updated,[\s\S]*\.universe-standalone-detail-actions button\s*\{[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-stats strong\s*\{[\s\S]*color:\s*#f5f2e9/);
+  assert.doesNotMatch(detailShellCss, /#c7c5cc|#777986|#737582|#656773|#5e606d|#858793/);
 });
