@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useState, type CSSProperties, type RefObject } from "react";
 import { PaperDetailDialog } from "../PaperDetailDialog";
 import type { UniverseNode, UniverseRelationCreateInput, UniverseRelationType } from "./universe-types";
 import "./universe-node-paper-web-mobile.css";
@@ -67,37 +67,54 @@ export function UniverseRelationPaper({
     </div>
   );
 
+  const strengthStyle = { "--strength-progress": `${Math.round(strength * 100)}%` } as CSSProperties;
+
   const mobileStandaloneBody = (
     <section className="universe-standalone-connection" aria-label="建立思想连接">
-      <header className="universe-standalone-connection-header">
-        <div>
-          <div className="universe-standalone-eyebrow"><i aria-hidden="true" /><span>CREATE CONNECTION</span></div>
-          <h2>让两个思想相遇</h2>
-        </div>
-        <button className="universe-standalone-close" type="button" aria-label="关闭" onClick={() => { void onRequestClose(); }}>×</button>
+      <header className="universe-standalone-connection-heading">
+        <p className="universe-standalone-connection-context">当前思想 · {source.title}</p>
+        <h2>让两个思想相遇</h2>
+        <p className="universe-standalone-connection-intro">选择另一个思想，并定义它们之间的关系。</p>
       </header>
-      <p className="universe-standalone-connection-intro">从当前星球出发，选择它与另一个节点之间的关系。</p>
 
-      <div className="universe-standalone-form-field">
-        <label htmlFor="universe-standalone-relation-target">连接到</label>
-        <select id="universe-standalone-relation-target" aria-label="连接到" value={selectedTargetId} onChange={(event) => setSelectedTargetId(event.target.value)}>
-          {targetOptions}
-        </select>
+      <div className="universe-standalone-connection-body">
+        <div className="universe-standalone-form-field">
+          <label htmlFor="universe-standalone-relation-target">连接到</label>
+          <select
+            id="universe-standalone-relation-target"
+            className={selectedTargetId ? undefined : "is-empty"}
+            aria-label="连接到"
+            value={selectedTargetId}
+            onChange={(event) => setSelectedTargetId(event.target.value)}
+          >
+            {targetOptions}
+          </select>
+        </div>
+
+        <div className="universe-standalone-form-field">
+          <label htmlFor="universe-standalone-relation-type">它们如何彼此影响？</label>
+          <select id="universe-standalone-relation-type" value={relationType} onChange={(event) => setRelationType(event.target.value as UniverseRelationType)}>
+            {RELATION_TYPES.map((option) => <option key={option.value} value={option.value}>{option.standaloneLabel}</option>)}
+          </select>
+        </div>
+
+        <div className="universe-standalone-strength">
+          <div className="universe-standalone-strength-label"><span>连接强度</span><strong>{Math.round(strength * 100)}%</strong></div>
+          <input
+            aria-label="连接强度"
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.1"
+            value={strength}
+            style={strengthStyle}
+            onChange={(event) => setStrength(Number(event.target.value))}
+          />
+        </div>
+
+        {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
       </div>
 
-      <div className="universe-standalone-form-field">
-        <label htmlFor="universe-standalone-relation-type">它们如何彼此影响?</label>
-        <select id="universe-standalone-relation-type" value={relationType} onChange={(event) => setRelationType(event.target.value as UniverseRelationType)}>
-          {RELATION_TYPES.map((option) => <option key={option.value} value={option.value}>{option.standaloneLabel}</option>)}
-        </select>
-      </div>
-
-      <div className="universe-standalone-strength">
-        <div className="universe-standalone-strength-label"><span>连接强度</span><strong>{Math.round(strength * 100)}%</strong></div>
-        <input aria-label="连接强度" type="range" min="0.1" max="1" step="0.1" value={strength} onChange={(event) => setStrength(Number(event.target.value))} />
-      </div>
-
-      {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
       <footer className="universe-standalone-connection-footer">
         <button className="universe-standalone-cancel" type="button" onClick={() => { void onRequestClose(); }}>取消</button>
         <button className="universe-standalone-primary" type="button" disabled={saving || !target} onClick={saveSelectedRelation}>{saving ? "保存中…" : "建立连接"}</button>
