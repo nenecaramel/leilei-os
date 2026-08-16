@@ -69,7 +69,7 @@ test("Mobile recovery and removal management lives in edit instead of detail", (
 test("Create edit and connection footers match the detail footer treatment", () => {
   assert.match(polishCss, /\.universe-standalone-editor-footer,[\s\S]*?\.universe-standalone-connection-footer\s*\{[\s\S]*?justify-content:\s*space-between !important;[\s\S]*?margin:\s*0 !important;[\s\S]*?padding:\s*12px 0 0 !important/);
   assert.match(polishCss, /\.universe-standalone-editor-footer button,[\s\S]*?\.universe-standalone-connection-footer button\s*\{[\s\S]*?color:\s*#777986 !important;[\s\S]*?font-size:\s*12px !important;[\s\S]*?font-weight:\s*400 !important;[\s\S]*?line-height:\s*1\.35 !important/);
-  assert.doesNotMatch(shellCss, /\.universe-standalone-connection\s*\{[\s\S]*?padding-bottom:\s*24px/);
+  assert.match(polishCss, /\.universe-standalone-connection\s*\{[\s\S]*?padding-bottom:\s*14px !important/);
 });
 
 test("Universe action feedback is viewport-centered and expires after three seconds", () => {
@@ -96,7 +96,7 @@ test("Day Space uses the Memory-style sticky white mobile top bar above its cont
 
 test("Create and edit native select arrows use the same dark color scheme as connection selects", () => {
   assert.match(shellCss, /\.universe-standalone-connection \.universe-standalone-form-field select\s*\{[\s\S]*?color-scheme:\s*dark/);
-  assert.match(shellCss, /\.universe-standalone-editor \.universe-standalone-form-field select\s*\{[\s\S]*?color-scheme:\s*dark/);
+  assert.match(polishCss, /\.universe-standalone-editor \.universe-standalone-form-field select\s*\{[\s\S]*?color-scheme:\s*dark/);
   assert.match(polishCss, /\.universe-standalone-editor \.universe-standalone-form-field input,[\s\S]*?\.universe-standalone-editor \.universe-standalone-form-field select,[\s\S]*?font-size:\s*16px !important/);
 });
 
