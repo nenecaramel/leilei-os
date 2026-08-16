@@ -34,6 +34,9 @@ test("Universe mobile editor matches the standalone Mind Universe form language"
   assert.match(paperSource, />保存星球</);
   assert.match(paperSource, /type="number"[^>]*step="any"/);
   assert.match(paperSource, /Number\.isFinite\(membership\.weight\)/);
+  assert.match(paperSource, /revisionReason\?:\s*string/);
+  assert.match(pageSource, /const \{\s*revisionReason,\s*\.\.\.nodeValues\s*\} = values/);
+  assert.match(pageSource, /service\.updateNode\(editedNodeId, nodeValues, revisionReason\?\.trim\(\) \|\| "Universe Web 编辑"\)/);
 });
 
 test("Universe mobile detail matches the standalone dark detail card hierarchy", () => {
@@ -42,6 +45,8 @@ test("Universe mobile detail matches the standalone dark detail card hierarchy",
   assert.match(paperSource, /effectiveNode!\.updatedAt/);
   assert.match(paperSource, /一阶关联/);
   assert.match(paperSource, /认知修订/);
+  assert.match(paperSource, /revisionCount/);
+  assert.match(pageSource, /revisionCount=\{selectedNode \? snapshot\.revisions\.filter\(\(revision\) => revision\.nodeId === selectedNode\.id\)\.length : 0\}/);
   assert.match(paperSource, /连接另一个思想/);
   assert.match(paperSource, /调整这颗星球/);
   assert.match(paperSource, /universe-standalone-tag/);
