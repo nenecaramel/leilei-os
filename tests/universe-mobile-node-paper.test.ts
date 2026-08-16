@@ -6,37 +6,69 @@ const paperSource = readFileSync(
   new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url),
   "utf8",
 );
+const relationSource = readFileSync(
+  new URL("../web/src/pages/universe/UniverseRelationPaper.tsx", import.meta.url),
+  "utf8",
+);
 const pageSource = readFileSync(new URL("../web/src/pages/UniversePage.tsx", import.meta.url), "utf8");
-const mobileWebCss = readFileSync(
+const mobileCss = readFileSync(
   new URL("../web/src/pages/universe/universe-node-paper-web-mobile.css", import.meta.url),
   "utf8",
 );
 
-test("Universe mobile detail restores the original web detail-card UI", () => {
-  assert.match(paperSource, /className="universe-node-original-web-mobile"/);
-  assert.match(paperSource, /className="universe-detail-card"/);
-  assert.match(paperSource, /className="eyebrow">\{effectiveNode!\.type\}<\/p>/);
-  assert.match(paperSource, /<h2>\{effectiveNode!\.title\}<\/h2>/);
-  assert.match(paperSource, />关闭<\/button>/);
-  assert.match(paperSource, />调整轨道<\/button>/);
-  assert.match(paperSource, />建立连接<\/button>/);
-  assert.match(paperSource, />恢复上一版本<\/button>/);
-  assert.match(paperSource, />移除星球<\/button>/);
-  assert.match(paperSource, /className="universe-relation-list"/);
-  assert.doesNotMatch(paperSource, /className="danger-button"[^>]*>移除星球/);
-});
-
-test("Universe mobile create and edit restore the original web node-editor form", () => {
-  assert.match(paperSource, /className="universe-node-editor"/);
-  assert.match(paperSource, /\{isCreate \? "NEW STAR" : "ADJUST ORBIT"\}/);
-  assert.match(paperSource, /\{isCreate \? "点亮一颗新星" : "调整这颗星球"\}/);
-  for (const label of ["标题", "摘要", "正文", "类型", "重要性", "标签"]) {
-    assert.match(paperSource, new RegExp(`<label>${label}`));
+test("Universe mobile editor matches the standalone Mind Universe form language", () => {
+  assert.match(paperSource, /className="universe-standalone-editor"/);
+  assert.match(paperSource, />NEW STAR</);
+  assert.match(paperSource, />点亮一颗新星</);
+  for (const label of [
+    "它叫什么？",
+    "一句话描述",
+    "此刻的理解",
+    "这次认知为什么改变？",
+    "节点性质",
+    "标签",
+    "它同时闪耀在哪些星系？",
+  ]) {
+    assert.match(paperSource, new RegExp(label.replace(/[？?]/g, "[？?]")));
   }
-  assert.match(paperSource, /<legend>星系成员与权重<\/legend>/);
+  assert.match(paperSource, />保存星球</);
   assert.match(paperSource, /type="number"[^>]*step="any"/);
   assert.match(paperSource, /Number\.isFinite\(membership\.weight\)/);
-  assert.match(paperSource, />\{saving \? "保存中…" : "保存"\}<\/button>/);
+});
+
+test("Universe mobile detail matches the standalone dark detail card hierarchy", () => {
+  assert.match(paperSource, /className="universe-standalone-detail"/);
+  assert.match(paperSource, /更新于/);
+  assert.match(paperSource, /effectiveNode!\.updatedAt/);
+  assert.match(paperSource, /一阶关联/);
+  assert.match(paperSource, /认知修订/);
+  assert.match(paperSource, /连接另一个思想/);
+  assert.match(paperSource, /调整这颗星球/);
+  assert.match(paperSource, /universe-standalone-tag/);
+  assert.match(paperSource, /universe-standalone-membership/);
+  assert.match(paperSource, /universe-standalone-relation-chip/);
+});
+
+test("Universe mobile connection matches the standalone connection modal", () => {
+  assert.match(relationSource, /className="universe-standalone-connection"/);
+  assert.match(relationSource, />CREATE CONNECTION</);
+  assert.match(relationSource, />让两个思想相遇</);
+  assert.match(relationSource, /从当前星球出发，选择它与另一个节点之间的关系。/);
+  assert.match(relationSource, />连接到</);
+  assert.match(relationSource, /它们如何彼此影响[？?]/);
+  assert.match(relationSource, /连接强度/);
+  assert.match(relationSource, />建立连接</);
+});
+
+test("Universe standalone mobile styling uses the captured dark visual language only on inner pages", () => {
+  assert.match(mobileCss, /@media \(max-width:\s*760px\)/);
+  assert.match(mobileCss, /#101119/i);
+  assert.match(mobileCss, /#090a10/i);
+  assert.match(mobileCss, /#d9ff70/i);
+  assert.match(mobileCss, /\.universe-standalone-editor/);
+  assert.match(mobileCss, /\.universe-standalone-detail/);
+  assert.match(mobileCss, /\.universe-standalone-connection/);
+  assert.doesNotMatch(mobileCss, /\.universe-mobile-map\b|\.universe-map-|\.universe-page-header|\.universe-galaxy-picker/);
 });
 
 test("Universe edit Cancel returns to the same detail while create Cancel closes", () => {
@@ -55,18 +87,8 @@ test("Universe edit save returns to the same detail paper while create still clo
   );
 });
 
-test("Universe mobile original-web presentation does not change desktop or the home map", () => {
-  assert.match(paperSource, /import "\.\/universe-node-paper-web-mobile\.css";/);
+test("Universe mobile presentation keeps desktop Paper and homepage implementation intact", () => {
   assert.match(paperSource, /className="universe-node-paper-desktop"/);
   assert.match(paperSource, /bottomLeft=\{metadata\}/);
-  assert.match(mobileWebCss, /\.universe-node-original-web-mobile\s*\{[\s\S]*display:\s*none/);
-  assert.match(mobileWebCss, /@media \(max-width:\s*760px\)/);
-  assert.match(mobileWebCss, /\.universe-node-paper-desktop\s*\{[\s\S]*display:\s*none/);
-  assert.match(mobileWebCss, /\.universe-node-original-web-mobile\s*\{[\s\S]*display:\s*block/);
-  assert.match(
-    mobileWebCss,
-    /\.paper-detail-paper:has\(\.universe-node-original-web-mobile\)[\s\S]*background:\s*transparent/,
-  );
-  assert.match(mobileWebCss, /\.paper-detail-paper:has\(\.universe-node-original-web-mobile\) \.paper-detail-scroll/);
-  assert.doesNotMatch(mobileWebCss, /\.universe-mobile-map\b|\.universe-map-|\.universe-page-header|\.universe-galaxy-picker/);
+  assert.match(mobileCss, /\.universe-node-paper-desktop\s*\{[\s\S]*display:\s*none/);
 });

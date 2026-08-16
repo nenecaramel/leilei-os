@@ -16,6 +16,15 @@ export type UniverseNodePaperDraft = Pick<UniverseNode, "title" | "summary" | "c
 
 const NODE_TYPES: UniverseNode["type"][] = ["concept", "question", "claim", "experience", "project", "source", "reflection"];
 const IMPORTANCE_OPTIONS = ["anchor", "major", "normal"];
+const NODE_TYPE_LABELS: Record<string, string> = {
+  concept: "概念",
+  question: "问题",
+  claim: "观点",
+  experience: "经历",
+  project: "项目",
+  source: "来源",
+  reflection: "反思",
+};
 
 export function formatUniverseNodeTimestamp(value: string, timeZone?: string): string {
   const date = new Date(value);
@@ -26,6 +35,17 @@ export function formatUniverseNodeTimestamp(value: string, timeZone?: string): s
   }).formatToParts(date);
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
   return `${get("year")}.${get("month")}.${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
+function formatStandaloneDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "numeric", day: "numeric" }).format(date);
+}
+
+function formatMembershipWeight(weight: number): string {
+  if (weight >= 0 && weight <= 1) return `${Math.round(weight * 100)}%`;
+  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(weight);
 }
 
 export function UniverseNodePaper({
@@ -195,49 +215,126 @@ export function UniverseNodePaper({
     </div>
   );
 
-  const mobileWebBody = isEdit ? (
-    <section className="universe-node-editor" aria-label={isCreate ? "点亮星球" : "调整星球"}>
-      <div className="universe-detail-heading">
+  const mobileStandaloneBody = isEdit ? (
+    <section className="universe-standalone-editor" aria-label={isCreate ? "点亮星球" : "调整星球"}>
+      <header className="universe-standalone-editor-header">
         <div>
-          <p className="eyebrow">{isCreate ? "NEW STAR" : "ADJUST ORBIT"}</p>
+          <div className="universe-standalone-eyebrow"><i aria-hidden="true" /><span>{isCreate ? "NEW STAR" : "EDIT STAR"}</span></div>
           <h2>{isCreate ? "点亮一颗新星" : "调整这颗星球"}</h2>
         </div>
-        <button className="tertiary-button" type="button" onClick={cancelEditor}>取消</button>
+        <button className="universe-standalone-close" type="button" aria-label="关闭" onClick={cancelEditor}>×</button>
+      </header>
+
+      <div className="universe-standalone-form-field">
+        <label htmlFor={`${id}-title`}>它叫什么？</label>
+        <input id={`${id}-title`} value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="一个概念、问题或经历" />
       </div>
-      <label>标题<input value={title} maxLength={60} autoFocus onChange={(event) => setTitle(event.target.value)} /></label>
-      <label>摘要<textarea value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} /></label>
-      <label>正文<textarea value={content} rows={4} onChange={(event) => setContent(event.target.value)} /></label>
-      <label>类型<select value={type} onChange={(event) => setType(event.target.value as UniverseNode["type"])}>{NODE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-      <label>重要性<select value={importance} onChange={(event) => setImportance(event.target.value)}>{IMPORTANCE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-      <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔" /></label>
-      {galaxies.length ? <fieldset><legend>星系成员与权重</legend>{galaxies.map((galaxy) => {
-        const membership = memberships.find((item) => item.id === galaxy.id);
-        const selected = Boolean(membership);
-        return <label className="universe-galaxy-choice" key={galaxy.id}><input type="checkbox" checked={selected} onChange={() => toggleMembership(galaxy.id)} />{galaxy.title}{selected ? <input aria-label={`${galaxy.title} 权重`} type="number" step="any" inputMode="decimal" value={membership?.weightText ?? ""} onInput={(event) => updateMembershipWeight(galaxy.id, event.currentTarget.value)} onChange={(event) => updateMembershipWeight(galaxy.id, event.target.value)} /> : null}</label>;
-      })}</fieldset> : null}
-      {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-paper-inline-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
-      {errorMessage ? <p className="universe-paper-inline-error" role="alert">{errorMessage}</p> : null}
-      <div className="universe-detail-actions"><button className="secondary-button" type="button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : "保存"}</button></div>
+
+      <div className="universe-standalone-form-field">
+        <label htmlFor={`${id}-summary`}>一句话描述 <small>可选</small></label>
+        <textarea id={`${id}-summary`} value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} placeholder="为什么它值得留在你的宇宙？也可以以后再写。" />
+      </div>
+
+      <div className="universe-standalone-form-field">
+        <label htmlFor={`${id}-content`}>此刻的理解</label>
+        <textarea id={`${id}-content`} value={content} rows={4} onChange={(event) => setContent(event.target.value)} placeholder="写下当前理解。未来改变时，这一刻会成为认知轨迹。" />
+      </div>
+
+      <div className="universe-standalone-form-field">
+        <label htmlFor={`${id}-reason`}>这次认知为什么改变？</label>
+        <input id={`${id}-reason`} value="" disabled placeholder={isCreate ? "第一次点亮无需填写" : "当前数据契约暂未保存这一字段"} />
+      </div>
+
+      <div className="universe-standalone-form-field">
+        <label htmlFor={`${id}-type`}>节点性质</label>
+        <select id={`${id}-type`} value={type} onChange={(event) => setType(event.target.value as UniverseNode["type"])}>
+          {NODE_TYPES.map((option) => <option key={option} value={option}>{NODE_TYPE_LABELS[option] ?? option}</option>)}
+        </select>
+      </div>
+
+      <div className="universe-standalone-form-field">
+        <label htmlFor={`${id}-tags`}>标签</label>
+        <input id={`${id}-tags`} value={tags} onChange={(event) => setTags(event.target.value)} placeholder="哲学, AI, 自我" />
+      </div>
+
+      {galaxies.length ? (
+        <fieldset className="universe-standalone-galaxies">
+          <legend>它同时闪耀在哪些星系？</legend>
+          <div className="universe-standalone-galaxy-grid">
+            {galaxies.slice().sort((a, b) => a.order - b.order).map((galaxy) => {
+              const membership = memberships.find((item) => item.id === galaxy.id);
+              const selected = Boolean(membership);
+              return (
+                <label className={selected ? "universe-standalone-galaxy-chip is-selected" : "universe-standalone-galaxy-chip"} key={galaxy.id} style={selected ? { borderColor: galaxy.color, color: galaxy.color } : undefined}>
+                  <input type="checkbox" checked={selected} onChange={() => toggleMembership(galaxy.id)} />
+                  <span>{galaxy.title}</span>
+                  {selected ? <input className="universe-standalone-weight" aria-label={`${galaxy.title} 权重`} type="number" step="any" inputMode="decimal" value={membership?.weightText ?? ""} onInput={(event) => updateMembershipWeight(galaxy.id, event.currentTarget.value)} onChange={(event) => updateMembershipWeight(galaxy.id, event.target.value)} placeholder="权重" /> : null}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      ) : null}
+
+      {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-standalone-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
+      {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
+
+      <footer className="universe-standalone-editor-footer">
+        {!isCreate && effectiveNode ? (
+          <div className="universe-standalone-editor-secondary-actions">
+            {revisionsAvailable && onRestore ? <button type="button" disabled={saving} onClick={() => onRestore(effectiveNode)}>恢复上一版本</button> : null}
+            {onDelete ? <button type="button" disabled={saving} onClick={() => onDelete(effectiveNode)}>让它离开宇宙</button> : null}
+          </div>
+        ) : <span />}
+        <div className="universe-standalone-editor-primary-actions">
+          <button className="universe-standalone-cancel" type="button" onClick={cancelEditor}>取消</button>
+          <button className="universe-standalone-primary" type="button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : "保存星球"}</button>
+        </div>
+      </footer>
     </section>
   ) : (
-    <section className="universe-detail-card" aria-label="Selected universe node">
-      <div className="universe-detail-heading">
-        <div>
-          <p className="eyebrow">{effectiveNode!.type}</p>
-          <h2>{effectiveNode!.title}</h2>
+    <section className="universe-standalone-detail" aria-label="Selected universe node">
+      <div className="universe-standalone-detail-head">
+        <span className="universe-standalone-type-chip">{NODE_TYPE_LABELS[effectiveNode!.type] ?? effectiveNode!.type}</span>
+        <span className="universe-standalone-updated">更新于 {formatStandaloneDate(effectiveNode!.updatedAt)}</span>
+      </div>
+      <h2>{effectiveNode!.title}</h2>
+      {effectiveNode!.summary ? <p className="universe-standalone-summary">{effectiveNode!.summary}</p> : null}
+      {effectiveNode!.content ? <p className="universe-standalone-content">{effectiveNode!.content}</p> : null}
+
+      {effectiveNode!.tags.length ? <div className="universe-standalone-tags">{effectiveNode!.tags.map((tag) => <span className="universe-standalone-tag" key={tag}># {tag}</span>)}</div> : null}
+
+      {effectiveNode!.galaxies.length ? (
+        <div className="universe-standalone-memberships">
+          {effectiveNode!.galaxies.map((membership) => {
+            const galaxy = galaxies.find((item) => item.id === membership.id);
+            return <span className="universe-standalone-membership" key={membership.id} style={{ borderLeftColor: galaxy?.color ?? "#9a8cff", color: galaxy?.color ?? "#aeb0bf" }}>{galaxy?.title ?? membership.id} · {formatMembershipWeight(membership.weight)}</span>;
+          })}
         </div>
-        <button className="tertiary-button" type="button" onClick={() => { void onRequestClose(); }}>关闭</button>
+      ) : null}
+
+      <div className="universe-standalone-divider" />
+      <div className="universe-standalone-stats">
+        <span>一阶关联 <strong>{connections.length}</strong> 条</span>
+        <span>认知修订 <strong>{revisionsAvailable ? "1+" : "0"}</strong> 次</span>
       </div>
-      {effectiveNode!.summary ? <p>{effectiveNode!.summary}</p> : null}
-      {effectiveNode!.content ? <p className="universe-detail-content">{effectiveNode!.content}</p> : null}
-      {errorMessage ? <p className="universe-paper-inline-error" role="alert">{errorMessage}</p> : null}
-      <div className="universe-detail-actions">
-        <button className="secondary-button" type="button" onClick={() => onEdit?.(effectiveNode!)}>调整轨道</button>
-        {onCreateRelation ? <button className="secondary-button" type="button" onClick={() => onCreateRelation(effectiveNode!)}>建立连接</button> : null}
-        <button className="tertiary-button" type="button" disabled={!revisionsAvailable || saving} onClick={() => onRestore?.(effectiveNode!)}>恢复上一版本</button>
-        {onDelete ? <button className="tertiary-button" type="button" disabled={saving} onClick={() => onDelete(effectiveNode!)}>移除星球</button> : null}
+
+      {connections.length ? (
+        <div className="universe-standalone-relations" aria-label="思想连接">
+          {connections.map(({ relation, node: relatedNode }) => (
+            <div className="universe-standalone-relation-chip" key={relation.id}>
+              <button type="button" className="universe-standalone-relation-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}>{relationTypeLabel(relation.relationType)} · {relatedNode.title}</button>
+              {onDeleteRelation ? <button type="button" className="universe-standalone-relation-remove" aria-label={`移除与 ${relatedNode.title} 的连接`} disabled={saving} onClick={() => onDeleteRelation(relation)}>×</button> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
+      <div className="universe-standalone-detail-actions">
+        {onCreateRelation ? <button type="button" onClick={() => onCreateRelation(effectiveNode!)}>连接另一个思想</button> : <span />}
+        <button type="button" onClick={() => onEdit?.(effectiveNode!)}>调整这颗星球</button>
       </div>
-      {connections.length ? <div className="universe-relation-list" aria-label="思想连接">{connections.map(({ relation, node: relatedNode }) => <div className="universe-relation-item" key={relation.id}><button className="tertiary-button" type="button" onClick={() => onOpenRelatedNode?.(relatedNode.id)}>{relationTypeLabel(relation.relationType)} · {relatedNode.title}</button>{onDeleteRelation ? <button className="tertiary-button" type="button" disabled={saving} onClick={() => onDeleteRelation(relation)}>移除连接</button> : null}</div>)}</div> : null}
     </section>
   );
 
@@ -256,7 +353,7 @@ export function UniverseNodePaper({
       bottomLeft={metadata}
     >
       <div className="universe-node-paper-desktop">{desktopBody}</div>
-      <div className="universe-node-original-web-mobile">{mobileWebBody}</div>
+      <div className="universe-node-original-web-mobile">{mobileStandaloneBody}</div>
     </PaperDetailDialog>
   );
 }
