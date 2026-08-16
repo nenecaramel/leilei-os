@@ -22,6 +22,15 @@
     margin-top: 5px;
   }
 
+  /*
+   * The old relation shell carried 24px bottom padding while detail/edit use
+   * 14px. Normalize the parent inset first so all three action footers land
+   * on the exact same bottom baseline as detail.
+   */
+  .universe-standalone-connection {
+    padding-bottom: 14px !important;
+  }
+
   /* Match create/edit/relation footer geometry and typography to the detail footer. */
   .universe-standalone-editor-footer,
   .universe-standalone-connection-footer {
@@ -30,8 +39,8 @@
     align-items: center !important;
     justify-content: space-between !important;
     gap: 14px !important;
-    margin-top: 0 !important;
-    padding-top: 12px !important;
+    margin: 0 !important;
+    padding: 12px 0 0 !important;
     border-top: 0 !important;
     background: #101119 !important;
   }
@@ -44,7 +53,7 @@
     padding: 0 !important;
     border: 0 !important;
     border-radius: 0 !important;
-    color: #7d7f8c !important;
+    color: #777986 !important;
     background: transparent !important;
     box-shadow: none !important;
     font-size: 12px !important;
@@ -71,6 +80,11 @@
   .universe-standalone-connection .universe-standalone-form-field select {
     font-size: 16px !important;
     touch-action: manipulation;
+  }
+
+  /* Match the relation form's native dark select arrow on create/edit. */
+  .universe-standalone-editor .universe-standalone-form-field select {
+    color-scheme: dark;
   }
 
   .universe-standalone-editor .universe-standalone-weight {
@@ -159,7 +173,7 @@
     border-top: 1px solid #2a2c35;
   }
 
-  /* Mutation feedback stays on the page but is horizontally centered. */
+  /* Mutation feedback is centered against the viewport, not the title wrapper. */
   .universe-page-heading {
     display: flex;
     min-width: 0;
@@ -171,12 +185,12 @@
   }
 
   .universe-page:has(.universe-mobile-map) .universe-header-notice {
-    position: absolute;
-    z-index: 13;
-    top: 3px;
-    left: 50%;
+    position: fixed;
+    z-index: 42;
+    top: calc(50px + env(safe-area-inset-top, 0px));
+    left: 50vw;
     width: max-content;
-    max-width: 56vw;
+    max-width: calc(100vw - 48px);
     overflow: hidden;
     color: #8d8d8d;
     font-size: 11px;
@@ -189,19 +203,64 @@
     pointer-events: none;
   }
 
-  /* Ready-state guidance uses the same quiet, centered status language instead of framed popovers. */
-  .universe-page:has(.universe-mobile-map) .universe-placement-popover,
+  /*
+   * Add-planet guidance is a real placement popover, not a transient notice.
+   * Fixed viewport geometry avoids toolbar/map clipping; the max-width keeps
+   * at least 16px of horizontal safe space on both sides.
+   */
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover {
+    position: fixed !important;
+    z-index: 41 !important;
+    top: calc(64px + env(safe-area-inset-top, 0px)) !important;
+    right: auto !important;
+    left: 50vw !important;
+    width: max-content !important;
+    min-width: 188px !important;
+    max-width: calc(100vw - 32px) !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 5px !important;
+    overflow: visible !important;
+    box-sizing: border-box;
+    border: 1px solid #e7e7e7 !important;
+    border-radius: 10px !important;
+    color: #555555 !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07) !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 1.35 !important;
+    text-align: center !important;
+    white-space: normal;
+    transform: translateX(-50%) !important;
+    animation: none !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover > span {
+    display: block;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    padding: 6px 8px;
+    color: inherit;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  /* Move-mode guidance remains a lightweight three-second status. */
   .universe-page:has(.universe-mobile-map) .universe-map-mode-hint {
     position: fixed !important;
     z-index: 31 !important;
     top: calc(64px + env(safe-area-inset-top, 0px)) !important;
     right: auto !important;
-    left: 50% !important;
+    left: 50vw !important;
     width: max-content !important;
     min-width: 0 !important;
     max-width: calc(100vw - 48px) !important;
     height: auto !important;
     min-height: 0 !important;
+    gap: 8px;
     margin: 0 !important;
     padding: 0 !important;
     border: 0 !important;
@@ -215,28 +274,7 @@
     text-align: center !important;
     white-space: nowrap;
     transform: translateX(-50%) !important;
-  }
-
-  .universe-page:has(.universe-mobile-map) .universe-placement-popover {
-    pointer-events: none;
     animation: universe-transient-status-fade 3s ease forwards;
-  }
-
-  .universe-page:has(.universe-mobile-map) .universe-map-mode-hint {
-    gap: 8px;
-    animation: universe-transient-status-fade 3s ease forwards;
-  }
-
-  .universe-page:has(.universe-mobile-map) .universe-placement-popover > span {
-    width: auto;
-    height: auto;
-    min-height: 0;
-    padding: 0;
-    color: inherit;
-  }
-
-  .universe-page:has(.universe-mobile-map) .universe-placement-popover > span::before {
-    font-size: 11px;
   }
 
   .universe-page:has(.universe-mobile-map) .universe-map-mode-hint button {
@@ -270,14 +308,14 @@
     -webkit-touch-callout: none;
   }
 
-  /* Day Space matches Memory: sticky white top bar, no gray separator. */
+  /* Day Space matches Memory: sticky white top bar, above all Day Space content. */
   .app-shell:has(.day-space-page) .mobile-top-bar {
     position: sticky !important;
-    z-index: 20 !important;
+    z-index: 40 !important;
     top: 0 !important;
     min-height: calc(44px + env(safe-area-inset-top, 0px));
     height: calc(44px + env(safe-area-inset-top, 0px));
-    border-bottom: 0;
+    border-bottom: 0 !important;
     background: #ffffff !important;
     background-image: none !important;
     box-shadow: 0 1px 0 #ffffff;
