@@ -12,21 +12,38 @@ const mobileWebCss = readFileSync(
   "utf8",
 );
 
-test("Universe detail actions keep overflow before Edit and removal neutral", () => {
-  const detailActions = paperSource.match(
-    /const detailTopRight = [\s\S]*?const editTopRight =/,
-  )?.[0] ?? "";
-
-  assert.match(detailActions, /universe-node-paper-overflow[\s\S]*>编辑<\/button>/);
-  assert.match(detailActions, />建立连接<[\s\S]*>恢复上一版本<[\s\S]*>移除星球</);
-  assert.doesNotMatch(paperSource, /移除星球[\s\S]{0,100}(?:danger|destructive|color:\s*(?:red|#f))/i);
+test("Universe mobile detail restores the original web detail-card UI", () => {
+  assert.match(paperSource, /className="universe-node-original-web-mobile"/);
+  assert.match(paperSource, /className="universe-detail-card"/);
+  assert.match(paperSource, /className="eyebrow">\{effectiveNode!\.type\}<\/p>/);
+  assert.match(paperSource, /<h2>\{effectiveNode!\.title\}<\/h2>/);
+  assert.match(paperSource, />关闭<\/button>/);
+  assert.match(paperSource, />调整轨道<\/button>/);
+  assert.match(paperSource, />建立连接<\/button>/);
+  assert.match(paperSource, />恢复上一版本<\/button>/);
+  assert.match(paperSource, />移除星球<\/button>/);
+  assert.match(paperSource, /className="universe-relation-list"/);
+  assert.doesNotMatch(paperSource, /className="danger-button"[^>]*>移除星球/);
 });
 
-test("Universe edit controls use the web Paper buttons and Cancel returns to detail", () => {
+test("Universe mobile create and edit restore the original web node-editor form", () => {
+  assert.match(paperSource, /className="universe-node-editor"/);
+  assert.match(paperSource, /\{isCreate \? "NEW STAR" : "ADJUST ORBIT"\}/);
+  assert.match(paperSource, /\{isCreate \? "点亮一颗新星" : "调整这颗星球"\}/);
+  for (const label of ["标题", "摘要", "正文", "类型", "重要性", "标签"]) {
+    assert.match(paperSource, new RegExp(`<label>${label}`));
+  }
+  assert.match(paperSource, /<legend>星系成员与权重<\/legend>/);
+  assert.match(paperSource, /type="number"[^>]*step="any"/);
+  assert.match(paperSource, /Number\.isFinite\(membership\.weight\)/);
+  assert.match(paperSource, />\{saving \? "保存中…" : "保存"\}<\/button>/);
+});
+
+test("Universe edit Cancel returns to the same detail while create Cancel closes", () => {
   assert.match(paperSource, /onCancelEdit\?:\s*\(node:\s*UniverseNode\)\s*=>\s*void/);
   assert.match(
     paperSource,
-    /className="tertiary-button"[\s\S]*>取消<\/button>[\s\S]*className="tertiary-button"[\s\S]*>\{saving \? "保存中…" : "保存"\}<\/button>/,
+    /if \(isCreate \|\| !effectiveNode \|\| !onCancelEdit\) \{[\s\S]*onRequestClose\(\)[\s\S]*return;[\s\S]*\}[\s\S]*onCancelEdit\(effectiveNode\)/,
   );
   assert.match(pageSource, /onCancelEdit=\{\(node\)\s*=>\s*\{[\s\S]*setPaperMode\(\{\s*kind:\s*"detail",\s*nodeId:\s*node\.id\s*\}\)[\s\S]*setEditorOpen\(true\)/);
 });
@@ -38,30 +55,18 @@ test("Universe edit save returns to the same detail paper while create still clo
   );
 });
 
-test("Universe detail create and edit keep the exact web Paper DOM and metadata placement", () => {
+test("Universe mobile original-web presentation does not change desktop or the home map", () => {
   assert.match(paperSource, /import "\.\/universe-node-paper-web-mobile\.css";/);
-  assert.doesNotMatch(paperSource, /<details className="universe-node-paper-properties">/);
-  assert.doesNotMatch(paperSource, /universe-node-paper-(?:title|summary|content|body-detail|body-edit)/);
+  assert.match(paperSource, /className="universe-node-paper-desktop"/);
   assert.match(paperSource, /bottomLeft=\{metadata\}/);
-  assert.match(
-    paperSource,
-    /\{isEdit \? \([\s\S]*<div className="universe-node-paper-body">[\s\S]*\) : \([\s\S]*<div className="universe-node-paper-body">/,
-  );
-});
-
-test("Universe mobile inner pages cancel shared mobile Paper restyling instead of redesigning the web UI", () => {
+  assert.match(mobileWebCss, /\.universe-node-original-web-mobile\s*\{[\s\S]*display:\s*none/);
   assert.match(mobileWebCss, /@media \(max-width:\s*760px\)/);
+  assert.match(mobileWebCss, /\.universe-node-paper-desktop\s*\{[\s\S]*display:\s*none/);
+  assert.match(mobileWebCss, /\.universe-node-original-web-mobile\s*\{[\s\S]*display:\s*block/);
   assert.match(
     mobileWebCss,
-    /\.paper-detail-paper\[id\^="universe-node-"\]\s*\{[\s\S]*transform:\s*translateY\(31px\)\s*!important/,
+    /\.paper-detail-paper:has\(\.universe-node-original-web-mobile\)[\s\S]*background:\s*transparent/,
   );
-  assert.match(
-    mobileWebCss,
-    /\.paper-detail-paper\[id\^="universe-node-"\] \.paper-detail-top-right\s*\{[\s\S]*display:\s*block[\s\S]*height:\s*auto\s*!important/,
-  );
-  assert.match(
-    mobileWebCss,
-    /\.paper-detail-paper\[id\^="universe-node-"\] \.paper-detail-top-right button\s*\{[\s\S]*height:\s*auto\s*!important[\s\S]*min-height:\s*44px\s*!important[\s\S]*padding:\s*0 4px\s*!important[\s\S]*line-height:\s*normal\s*!important/,
-  );
-  assert.doesNotMatch(mobileWebCss, /\.universe-page\b|\.universe-mobile-map\b|\.universe-map-/);
+  assert.match(mobileWebCss, /\.paper-detail-paper:has\(\.universe-node-original-web-mobile\) \.paper-detail-scroll/);
+  assert.doesNotMatch(mobileWebCss, /\.universe-mobile-map\b|\.universe-map-|\.universe-page-header|\.universe-galaxy-picker/);
 });
