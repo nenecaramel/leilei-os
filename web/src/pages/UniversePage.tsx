@@ -310,7 +310,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}
         onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { setNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
-        onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setPaperError(null); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); setEditorOpen(false); setPaperMode(null); }}
+        onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setPaperError(null); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); }}
         onDeleteRelation={(relation) => void removeRelation(relation)}
         onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setRevealNodeId(nodeId); setPaperError(null); }}
         onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
