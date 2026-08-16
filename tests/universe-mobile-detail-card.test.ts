@@ -40,7 +40,8 @@ test("Universe mobile detail typography matches the approved hierarchy", () => {
   assert.match(mobileCss, /\.universe-standalone-type-chip\s*\{[\s\S]*min-height:\s*28px/);
   assert.match(detailShellCss, /\.universe-standalone-detail h2\s*\{[\s\S]*font-size:\s*27px/);
   assert.match(mobileCss, /\.universe-standalone-summary\s*\{[\s\S]*font-size:\s*13px/);
-  assert.match(detailShellCss, /\.universe-standalone-summary\s*\{[\s\S]*margin-top:\s*6px[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-summary\s*\{[\s\S]*margin-top:\s*5px[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-updated\s*\{[\s\S]*font-size:\s*12px/);
   assert.match(detailShellCss, /\.universe-standalone-content\s*\{[\s\S]*color:\s*#f5f2e9/);
   assert.match(mobileCss, /\.universe-standalone-content\s*\{[\s\S]*font-size:\s*16px/);
   assert.match(mobileCss, /\.universe-standalone-stats strong\s*\{[\s\S]*font-size:\s*19px[\s\S]*font-weight:\s*500/);
