@@ -32,8 +32,8 @@ const toySetInputSchema = z
       .number()
       .int()
       .min(1)
-      .max(40)
-      .describe("Toy intensity as an integer from 1 to 40."),
+      .max(50)
+      .describe("Toy intensity as an integer from 1 to 50."),
     duration_seconds: z
       .number()
       .int()
@@ -67,7 +67,7 @@ const toySetOutputSchema = z.object({
     command: z.object({
       id: z.string().uuid(),
       action: z.literal("set"),
-      percent: z.number().int().min(1).max(40),
+      percent: z.number().int().min(1).max(50),
       duration_seconds: z.number().int().min(1).max(TOY_MAX_DURATION_SECONDS),
       status: toyCommandStatusSchema,
       created_at: z.string().datetime(),
@@ -112,7 +112,7 @@ export function registerToyCommandTools(
     {
       title: "Set toy intensity",
       description:
-        "Queue one short-lived toy intensity command in Leilei OS. Percent must be an integer from 1 to 40 and duration_seconds must be 1 to 1200 (default 60). The authenticated user and device binding are assigned by the server. This tool never accepts BLE bytes, URLs, scripts, or arbitrary payloads.",
+        "Queue one short-lived toy intensity command in Leilei OS. Percent must be an integer from 1 to 50 and duration_seconds must be 1 to 1200 (default 60). The authenticated user and device binding are assigned by the server. This tool never accepts BLE bytes, URLs, scripts, or arbitrary payloads.",
       inputSchema: toySetInputSchema,
       outputSchema: toySetOutputSchema,
       annotations: {

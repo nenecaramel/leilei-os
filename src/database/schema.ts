@@ -806,7 +806,7 @@ export const toyCommands = pgTable(
     ),
     check(
       "toy_commands_action_percent_consistency",
-      sql`(${table.action} = 'set' AND ${table.percent} IS NOT NULL AND ${table.percent} BETWEEN 1 AND 40) OR (${table.action} = 'stop' AND ${table.percent} IS NULL)`,
+      sql`(${table.action} = 'set' AND ${table.percent} IS NOT NULL AND ${table.percent} BETWEEN 1 AND 50) OR (${table.action} = 'stop' AND ${table.percent} IS NULL)`,
     ),
     check(
       "toy_commands_error_length",

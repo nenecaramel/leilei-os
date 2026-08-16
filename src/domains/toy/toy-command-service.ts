@@ -21,7 +21,7 @@ import {
 const createSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("set"),
-    percent: z.number().int().min(1).max(40),
+    percent: z.number().int().min(1).max(50),
     durationSeconds: z.number().int().min(1).max(TOY_MAX_DURATION_SECONDS).default(TOY_DEFAULT_DURATION_SECONDS),
   }).strict(),
   z.object({ action: z.literal("stop") }).strict(),

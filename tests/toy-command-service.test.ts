@@ -72,10 +72,12 @@ test("creates only strict high-level set and stop commands for the bound user", 
   const service = new ToyCommandService(repository, USER_ID);
   await service.create(USER_ID, { action: "set", percent: 1 });
   await service.create(USER_ID, { action: "set", percent: 40 });
+  await service.create(USER_ID, { action: "set", percent: 50 });
   await service.create(USER_ID, { action: "stop" });
   assert.deepEqual(repository.creates.map(({ input }) => input), [
     { action: "set", percent: 1, durationSeconds: 60 },
     { action: "set", percent: 40, durationSeconds: 60 },
+    { action: "set", percent: 50, durationSeconds: 60 },
     { action: "stop" },
   ]);
 });
@@ -87,11 +89,13 @@ test("normalizes omitted duration to 60 seconds and accepts the bounded endpoint
   await service.create(USER_ID, { action: "set", percent: 20 });
   await service.create(USER_ID, { action: "set", percent: 1, durationSeconds: 1 });
   await service.create(USER_ID, { action: "set", percent: 40, durationSeconds: 1200 });
+  await service.create(USER_ID, { action: "set", percent: 50, durationSeconds: 1200 });
 
   assert.deepEqual(repository.creates.map(({ input }) => input), [
     { action: "set", percent: 20, durationSeconds: 60 },
     { action: "set", percent: 1, durationSeconds: 1 },
     { action: "set", percent: 40, durationSeconds: 1200 },
+    { action: "set", percent: 50, durationSeconds: 1200 },
   ]);
 });
 
@@ -126,7 +130,7 @@ test("rejects duration outside 1 through 1200 without changing the percent contr
     );
   }
   await assert.rejects(
-    service.create(USER_ID, { action: "set", percent: 41, durationSeconds: 60 }),
+    service.create(USER_ID, { action: "set", percent: 51, durationSeconds: 60 }),
     (error: unknown) => error instanceof ToyDomainError && error.code === "INVALID_INPUT",
   );
 });
@@ -136,7 +140,7 @@ test("rejects invalid intensity, coercion, stop percent and arbitrary payload fi
   const invalid = [
     { action: "set", percent: 0 },
     { action: "set", percent: -1 },
-    { action: "set", percent: 41 },
+    { action: "set", percent: 51 },
     { action: "set", percent: 1.5 },
     { action: "set", percent: Number.NaN },
     { action: "set", percent: Number.POSITIVE_INFINITY },
