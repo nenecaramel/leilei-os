@@ -191,34 +191,38 @@ export function UniverseNodePaper({
     />
   );
 
+  const renderManagementMenu = (className?: string) => effectiveNode ? (
+    <span className={className ? `universe-node-paper-overflow ${className}` : "universe-node-paper-overflow"}>
+      <button type="button" className="tertiary-button" aria-label="更多星球操作" aria-expanded={detailOverflowOpen} onClick={() => { setDetailOverflowOpen((value) => !value); setDeleteConfirmPending(false); }}>···</button>
+      {detailOverflowOpen ? (
+        <span className="universe-node-paper-overflow-menu" role="menu">
+          {revisionsAvailable && onRestore ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); setDeleteConfirmPending(false); onRestore(effectiveNode); }}>恢复上一版本</button> : null}
+          {onDelete ? (
+            <button
+              type="button"
+              className={deleteConfirmPending ? "universe-node-paper-delete is-confirming" : "universe-node-paper-delete"}
+              disabled={saving}
+              onClick={() => {
+                if (!deleteConfirmPending) {
+                  setDeleteConfirmPending(true);
+                  return;
+                }
+                setDetailOverflowOpen(false);
+                setDeleteConfirmPending(false);
+                onDelete(effectiveNode);
+              }}
+            >
+              {deleteConfirmPending ? "确认让它离开" : "让它离开宇宙"}
+            </button>
+          ) : null}
+        </span>
+      ) : null}
+    </span>
+  ) : null;
+
   const detailTopRight = effectiveNode ? (
     <div className="universe-node-paper-top-actions">
-      <span className="universe-node-paper-overflow">
-        <button type="button" className="tertiary-button" aria-label="更多星球操作" aria-expanded={detailOverflowOpen} onClick={() => { setDetailOverflowOpen((value) => !value); setDeleteConfirmPending(false); }}>···</button>
-        {detailOverflowOpen ? (
-          <span className="universe-node-paper-overflow-menu" role="menu">
-            {revisionsAvailable && onRestore ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); setDeleteConfirmPending(false); onRestore(effectiveNode); }}>恢复上一版本</button> : null}
-            {onDelete ? (
-              <button
-                type="button"
-                className={deleteConfirmPending ? "universe-node-paper-delete is-confirming" : "universe-node-paper-delete"}
-                disabled={saving}
-                onClick={() => {
-                  if (!deleteConfirmPending) {
-                    setDeleteConfirmPending(true);
-                    return;
-                  }
-                  setDetailOverflowOpen(false);
-                  setDeleteConfirmPending(false);
-                  onDelete(effectiveNode);
-                }}
-              >
-                {deleteConfirmPending ? "确认让它离开" : "让它离开宇宙"}
-              </button>
-            ) : null}
-          </span>
-        ) : null}
-      </span>
+      {renderManagementMenu()}
       <button type="button" className="tertiary-button" onClick={() => onEdit?.(effectiveNode)}>编辑</button>
     </div>
   ) : null;
@@ -252,6 +256,7 @@ export function UniverseNodePaper({
       <header className="universe-standalone-editor-heading">
         <p className="universe-standalone-editor-context">{isCreate ? "新星 · 待点亮" : <>当前思想 · {effectiveNode!.title}</>}</p>
         <h2>{isCreate ? "点亮一颗新星" : "调整这颗星球"}</h2>
+        {!isCreate ? renderManagementMenu("universe-standalone-editor-management") : null}
       </header>
 
       <div className="universe-standalone-editor-body">

@@ -1,41 +1,69 @@
 /* Focused mobile polish: Universe detail/edit flows + Day Space header only. */
 @media (max-width: 760px) {
-  /* Keep the existing shared 20px card edge spacing; change only flex order. */
   .universe-standalone-detail-head .universe-standalone-updated {
     order: -1;
   }
 
-  /* The detail title belongs to the scroll container; keep it non-sticky and lift title + summary together by 10px. */
+  /* Detail title remains part of the scrolling content. */
   .universe-standalone-detail-scroll > h2 {
     position: static;
     top: auto;
     margin-top: 5px;
-    padding-right: 34px;
+    padding-right: 0;
   }
 
   .universe-standalone-summary {
     margin-top: 4px;
   }
 
-  /* Lift the create/edit and connection titles by the same 10px. */
+  /* The accepted shell used 15px; all three action-page titles move up by 10px. */
   .universe-standalone-editor h2,
   .universe-standalone-connection h2 {
-    margin-top: 14px;
+    margin-top: 5px;
   }
 
-  /* Keep create/edit footer actions on opposite sides on narrow phones too. */
-  .universe-standalone-editor-footer {
+  /* Match create/edit/relation footer geometry and typography to the detail footer. */
+  .universe-standalone-editor-footer,
+  .universe-standalone-connection-footer {
+    display: flex !important;
     width: 100%;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 14px !important;
+    margin-top: 0 !important;
+    padding-top: 12px !important;
+    border-top: 0 !important;
+    background: #101119 !important;
+  }
+
+  .universe-standalone-editor-footer button,
+  .universe-standalone-connection-footer button {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: #7d7f8c !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 1.35 !important;
+    white-space: nowrap;
+  }
+
+  .universe-standalone-editor-footer button:disabled,
+  .universe-standalone-connection-footer button:disabled {
+    color: #555763 !important;
+    opacity: 1 !important;
   }
 
   /*
    * Safari focus safety, matching Memory's established rule: focused form
    * controls keep a real/computed font size of at least 16px so iOS does not
    * zoom the viewport. The tiny galaxy-weight field is optically scaled back
-   * to its accepted 12px appearance while retaining a real 16px input font.
+   * while retaining a real 16px input font.
    */
   .universe-standalone-editor .universe-standalone-form-field input,
   .universe-standalone-editor .universe-standalone-form-field select,
@@ -51,33 +79,42 @@
     height: 32px !important;
     min-height: 32px !important;
     margin: 0 -12.666667px 0 0 !important;
+    padding: 0 4px 0 0 !important;
     font-size: 16px !important;
+    text-align: right !important;
     transform: scale(0.75);
-    transform-origin: right center;
+    transform-origin: left center;
     touch-action: manipulation;
+    appearance: textfield;
+    -moz-appearance: textfield;
   }
 
-  /* Detail-only management lives in the top-right overflow, not the editor. */
+  .universe-standalone-editor .universe-standalone-weight::-webkit-inner-spin-button,
+  .universe-standalone-editor .universe-standalone-weight::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  /* Mobile detail has no management overflow. Management belongs to edit. */
   .paper-detail-paper:has(.universe-standalone-detail) .paper-detail-top-right {
-    display: flex !important;
-    top: 43px !important;
-    right: 18px !important;
-    z-index: 6;
-    width: auto !important;
-    height: auto !important;
-    align-items: flex-start;
-    overflow: visible !important;
-  }
-
-  .paper-detail-paper:has(.universe-standalone-detail)
-    .universe-node-paper-top-actions
-    > .tertiary-button {
     display: none !important;
   }
 
-  .paper-detail-paper:has(.universe-standalone-detail)
-    .universe-node-paper-overflow
-    > .tertiary-button {
+  .universe-standalone-editor-heading {
+    position: relative;
+    padding-right: 34px;
+  }
+
+  .universe-standalone-editor-management {
+    position: absolute;
+    z-index: 8;
+    top: -4px;
+    right: 0;
+    display: inline-flex;
+  }
+
+  .universe-standalone-editor-management > .tertiary-button {
     display: grid !important;
     width: 28px !important;
     min-width: 28px !important;
@@ -85,14 +122,16 @@
     min-height: 28px !important;
     padding: 0 !important;
     place-items: center;
+    border: 0 !important;
     color: #7d7f8c !important;
     background: transparent !important;
+    box-shadow: none !important;
     font-size: 18px !important;
+    font-weight: 400 !important;
     line-height: 1 !important;
   }
 
-  .paper-detail-paper:has(.universe-standalone-detail)
-    .universe-node-paper-overflow-menu {
+  .universe-standalone-editor-management .universe-node-paper-overflow-menu {
     top: calc(100% + 4px);
     right: 0;
     min-width: 142px;
@@ -103,8 +142,7 @@
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
   }
 
-  .paper-detail-paper:has(.universe-standalone-detail)
-    .universe-node-paper-overflow-menu button {
+  .universe-standalone-editor-management .universe-node-paper-overflow-menu button {
     min-height: 36px;
     padding: 7px 9px;
     border: 0;
@@ -116,43 +154,136 @@
     text-align: left;
   }
 
-  .paper-detail-paper:has(.universe-standalone-detail)
-    .universe-node-paper-overflow-menu button + button {
+  .universe-standalone-editor-management .universe-node-paper-overflow-menu button + button {
     margin-top: 2px;
     border-top: 1px solid #2a2c35;
   }
 
-  /* Action feedback belongs on the Universe title row and should not shift the map. */
+  /* Mutation feedback stays on the page but is horizontally centered. */
   .universe-page-heading {
     display: flex;
     min-width: 0;
     align-items: baseline;
-    gap: 10px;
   }
 
   .universe-page-heading .memory-page-title {
     flex: 0 0 auto;
   }
 
-  .universe-header-notice {
-    min-width: 0;
-    flex: 1 1 auto;
+  .universe-page:has(.universe-mobile-map) .universe-header-notice {
+    position: absolute;
+    z-index: 13;
+    top: 3px;
+    left: 50%;
+    width: max-content;
+    max-width: 56vw;
     overflow: hidden;
     color: #8d8d8d;
     font-size: 11px;
     font-weight: 400;
     line-height: 1.3;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
+    transform: translateX(-50%);
     pointer-events: none;
   }
 
-  /* Day Space keeps the shared mobile top-bar geometry and white surface, without a visible separator edge. */
+  /* Ready-state guidance uses the same quiet, centered status language instead of framed popovers. */
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover,
+  .universe-page:has(.universe-mobile-map) .universe-map-mode-hint {
+    position: fixed !important;
+    z-index: 31 !important;
+    top: calc(64px + env(safe-area-inset-top, 0px)) !important;
+    right: auto !important;
+    left: 50% !important;
+    width: max-content !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 48px) !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: #8d8d8d !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 11px !important;
+    font-weight: 400 !important;
+    line-height: 1.3 !important;
+    text-align: center !important;
+    white-space: nowrap;
+    transform: translateX(-50%) !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover {
+    pointer-events: none;
+    animation: universe-transient-status-fade 3s ease forwards;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-map-mode-hint {
+    gap: 8px;
+    animation: universe-transient-status-fade 3s ease forwards;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover > span {
+    width: auto;
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    color: inherit;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover > span::before {
+    font-size: 11px;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-map-mode-hint button {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    color: #8d8d8d;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+  }
+
+  @keyframes universe-transient-status-fade {
+    0%, 78% {
+      opacity: 1;
+      visibility: visible;
+    }
+    100% {
+      opacity: 0;
+      visibility: hidden;
+    }
+  }
+
+  /* Dragging or long-pressing planets must never select the surrounding page text. */
+  .universe-mobile-map,
+  .universe-mobile-map * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Day Space matches Memory: sticky white top bar, no gray separator. */
   .app-shell:has(.day-space-page) .mobile-top-bar {
+    position: sticky !important;
+    z-index: 20 !important;
+    top: 0 !important;
     min-height: calc(44px + env(safe-area-inset-top, 0px));
     height: calc(44px + env(safe-area-inset-top, 0px));
     border-bottom: 0;
     background: #ffffff !important;
+    background-image: none !important;
+    box-shadow: 0 1px 0 #ffffff;
+    opacity: 1;
+    isolation: isolate;
     backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }

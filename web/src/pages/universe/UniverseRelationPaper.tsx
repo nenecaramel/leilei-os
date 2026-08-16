@@ -70,11 +70,10 @@ export function UniverseRelationPaper({
   const strengthStyle = { "--strength-progress": `${Math.round(strength * 100)}%` } as CSSProperties;
 
   const mobileStandaloneBody = (
-    <section className="universe-standalone-connection" aria-label="建立思想连接">
+    <section className="universe-standalone-connection" aria-label="连接另一个思想">
       <header className="universe-standalone-connection-heading">
         <p className="universe-standalone-connection-context">当前思想 · {source.title}</p>
-        <h2>让两个思想相遇</h2>
-        <p className="universe-standalone-connection-intro">选择另一个思想，并定义它们之间的关系。</p>
+        <h2>连接另一个思想</h2>
       </header>
 
       <div className="universe-standalone-connection-body">
