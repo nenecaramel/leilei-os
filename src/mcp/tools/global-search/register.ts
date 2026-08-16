@@ -24,7 +24,7 @@ const globalSearchOutputSchema = z.object({
   data: z.object({
     results: z.array(z.object({
       entity_type: z.enum(["memory", "diary", "task", "universe"]),
-      entity_id: z.string().min(1).max(128),
+      entity_id: z.string().min(1).max(256),
       stable_name: z.string(),
       snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
       matched_field: z.enum(["key", "title", "content", "description", "tags", "mood"]),

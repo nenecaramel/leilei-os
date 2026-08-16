@@ -6,7 +6,7 @@ import { GlobalSearchService, type GlobalSearchResult } from "../src/domains/glo
 import type { GlobalSearchQuery, GlobalSearchRepository, GlobalSearchRow } from "../src/domains/global-search/global-search-repository.js";
 import { createGlobalSearchApiHandler } from "../src/web-api/global-search-router.js";
 import type { Request, Response } from "express";
-import { readUniverseNodeTarget } from "../web/src/pages/universe/universe-location.js";
+import { consumeUniverseNodeTarget, readUniverseNodeTarget } from "../web/src/pages/universe/universe-location.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000701";
@@ -71,18 +71,46 @@ test("Universe is excluded from archived scope and an uninitialized Universe is 
   assert.deepEqual(archived.results, []);
 });
 
-test("Universe text IDs remain valid through the shared keyset cursor", async () => {
+test("Universe canonical IDs remain valid through the shared keyset cursor", async () => {
   const repository = new UniverseSearchRepository();
   repository.rows = [
-    ...repository.rows,
-    { ...repository.rows[0]!, entityId: "node-2", stableName: "第二节点", matchedValue: "旅行第二节点", businessTime: new Date("2026-08-09T12:00:00.000Z"), updatedAt: new Date("2026-08-09T12:00:00.000Z") },
+    { ...repository.rows[0]!, entityId: "节点 A", stableName: "第一节点", matchedValue: "旅行第一节点" },
+    { ...repository.rows[0]!, entityId: "合法".repeat(100), stableName: "第二节点", matchedValue: "旅行第二节点", businessTime: new Date("2026-08-09T12:00:00.000Z"), updatedAt: new Date("2026-08-09T12:00:00.000Z") },
   ];
   const service = new GlobalSearchService(repository);
   const first = await service.search({ userId: USER_ID, query: "旅行", modules: ["universe"], limit: 1 });
   assert.ok(first.metadata.next_cursor);
   await service.search({ userId: USER_ID, query: "旅行", modules: ["universe"], limit: 1, cursor: first.metadata.next_cursor! });
   assert.equal(repository.calls.at(-1)?.after?.entityType, "universe");
-  assert.equal(repository.calls.at(-1)?.after?.entityId, NODE_ID);
+  assert.equal(repository.calls.at(-1)?.after?.entityId, "节点 A");
+});
+
+test("Universe cursor accepts canonical IDs through 256 characters and rejects invalid IDs for each module", async () => {
+  const repository = new UniverseSearchRepository();
+  repository.rows = [
+    { ...repository.rows[0]!, entityId: "节点 A", stableName: "第一节点", matchedValue: "旅行第一节点" },
+    { ...repository.rows[0]!, entityId: "第二节点", stableName: "第二节点", matchedValue: "旅行第二节点", businessTime: new Date("2026-08-09T12:00:00.000Z"), updatedAt: new Date("2026-08-09T12:00:00.000Z") },
+  ];
+  const service = new GlobalSearchService(repository);
+  const first = await service.search({ userId: USER_ID, query: "旅行", modules: ["universe"], limit: 1 });
+  assert.ok(first.metadata.next_cursor);
+  const payload = JSON.parse(Buffer.from(first.metadata.next_cursor!, "base64url").toString("utf8")) as { t: { entityType: string; entityId: string } };
+  payload.t.entityType = "universe";
+  payload.t.entityId = "长".repeat(256);
+  const maxLengthCursor = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  await assert.doesNotReject(service.search({ userId: USER_ID, query: "旅行", modules: ["universe"], limit: 1, cursor: maxLengthCursor }));
+
+  payload.t.entityId = "x".repeat(257);
+  const overlongCursor = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  await assert.rejects(service.search({ userId: USER_ID, query: "旅行", modules: ["universe"], limit: 1, cursor: overlongCursor }), (error: unknown) => (error as { code?: string }).code === "INVALID_GLOBAL_SEARCH");
+
+  const memoryFirst = await service.search({ userId: USER_ID, query: "旅行", modules: ["memory"], limit: 1 });
+  assert.ok(memoryFirst.metadata.next_cursor);
+  const memoryPayload = JSON.parse(Buffer.from(memoryFirst.metadata.next_cursor!, "base64url").toString("utf8")) as { t: { entityType: string; entityId: string } };
+  memoryPayload.t.entityType = "memory";
+  memoryPayload.t.entityId = "not-a-uuid";
+  const nonUuidCursor = Buffer.from(JSON.stringify(memoryPayload)).toString("base64url");
+  await assert.rejects(service.search({ userId: USER_ID, query: "旅行", modules: ["memory"], limit: 1, cursor: nonUuidCursor }), (error: unknown) => (error as { code?: string }).code === "INVALID_GLOBAL_SEARCH");
 });
 
 function recorder() {
@@ -117,6 +145,13 @@ test("Universe navigation accepts only an existing node from the search route", 
   assert.equal(readUniverseNodeTarget("?node=thought-node-1", ["thought-node-1"]), "thought-node-1");
   assert.equal(readUniverseNodeTarget("?node=missing", ["thought-node-1"]), null);
   assert.equal(readUniverseNodeTarget("?node=thought-node-1&user_id=other", ["thought-node-1"]), "thought-node-1");
+});
+
+test("Universe search deep-link is consumed once so later map selection is not overwritten", () => {
+  const consumed = consumeUniverseNodeTarget("?node=thought-node-1&from=search", ["thought-node-1", "thought-node-2"]);
+  assert.deepEqual(consumed, { nodeId: "thought-node-1", remainingSearch: "?from=search" });
+  assert.equal(consumeUniverseNodeTarget(consumed?.remainingSearch ?? "", ["thought-node-1", "thought-node-2"]), null);
+  assert.deepEqual(consumeUniverseNodeTarget("?node=thought-node-2", ["thought-node-1", "thought-node-2"]), { nodeId: "thought-node-2", remainingSearch: "" });
 });
 
 test("MCP global_search accepts Universe results without inventing a detail tool", async (t) => {

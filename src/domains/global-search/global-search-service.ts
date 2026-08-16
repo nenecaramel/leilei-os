@@ -15,9 +15,8 @@ const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
 const CURSOR_FINGERPRINT = /^[0-9a-f]{64}$/;
 const CURSOR_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const UNIVERSE_ENTITY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const MAX_CURSOR_ENCODED_LENGTH = 1200;
-const MAX_CURSOR_DECODED_BYTES = 900;
+const MAX_CURSOR_ENCODED_LENGTH = 2800;
+const MAX_CURSOR_DECODED_BYTES = 2000;
 const MAX_SNIPPET_CODE_POINTS = 240;
 
 export type GlobalSearchInput = {
@@ -188,6 +187,10 @@ function validCursorInstant(value: unknown): value is string {
     && new Date(value).toISOString() === value;
 }
 
+function validUniverseEntityId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 256 && value.trim().length > 0;
+}
+
 function decodeCursor(cursor: string | undefined, fingerprint: string): GlobalSearchCursorTuple | undefined {
   if (cursor === undefined) return undefined;
   if (!cursor || cursor.length > MAX_CURSOR_ENCODED_LENGTH || !CURSOR_BASE64URL.test(cursor)) invalid();
@@ -202,8 +205,11 @@ function decodeCursor(cursor: string | undefined, fingerprint: string): GlobalSe
     if (!Number.isInteger(tuple.rank) || (tuple.rank as number) < 1 || (tuple.rank as number) > 4) invalid();
     if (!validCursorInstant(tuple.businessTime) || !validCursorInstant(tuple.updatedAt)) invalid();
     if (typeof tuple.entityType !== "string" || !MODULES.includes(tuple.entityType as GlobalSearchModule)) invalid();
-    if (typeof tuple.entityId !== "string" || tuple.entityId.length > 128) invalid();
-    if (tuple.entityType === "universe" ? !UNIVERSE_ENTITY_ID.test(tuple.entityId) : !UUID.test(tuple.entityId)) invalid();
+    if (tuple.entityType === "universe") {
+      if (!validUniverseEntityId(tuple.entityId)) invalid();
+    } else if (typeof tuple.entityId !== "string" || !UUID.test(tuple.entityId)) {
+      invalid();
+    }
     return tuple as GlobalSearchCursorTuple;
   } catch {
     return invalid();
