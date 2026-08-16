@@ -10,6 +10,10 @@ const shellCss = readFileSync(
   new URL("../web/src/pages/universe/universe-node-detail-memory-shell.css", import.meta.url),
   "utf8",
 );
+const stateCss = readFileSync(
+  new URL("../web/src/pages/universe-state-polish.css", import.meta.url),
+  "utf8",
+);
 const nodePaperSource = readFileSync(
   new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url),
   "utf8",
@@ -68,8 +72,20 @@ test("Mobile recovery and removal management lives in edit instead of detail", (
 
 test("Create edit and connection footers match the detail footer treatment", () => {
   assert.match(polishCss, /\.universe-standalone-editor-footer,[\s\S]*?\.universe-standalone-connection-footer\s*\{[\s\S]*?flex-direction:\s*row !important;[\s\S]*?justify-content:\s*space-between !important;[\s\S]*?margin:\s*0 !important;[\s\S]*?padding:\s*12px 0 0 !important/);
-  assert.match(polishCss, /\.universe-standalone-editor-footer button,[\s\S]*?\.universe-standalone-connection-footer button\s*\{[\s\S]*?color:\s*#7d7f8c !important;[\s\S]*?font-size:\s*12px !important;[\s\S]*?font-weight:\s*400 !important;[\s\S]*?line-height:\s*1\.35 !important/);
+  assert.match(polishCss, /\.universe-standalone-editor-footer button,[\s\S]*?\.universe-standalone-connection-footer button\s*\{[\s\S]*?font-size:\s*12px !important;[\s\S]*?font-weight:\s*400 !important;[\s\S]*?line-height:\s*1\.35 !important/);
   assert.match(polishCss, /\.universe-standalone-connection\s*\{[\s\S]*?padding-bottom:\s*14px !important/);
+});
+
+test("All four Universe mobile pages use the detail footer action color", () => {
+  assert.match(shellCss, /\.universe-standalone-detail-actions button\s*\{\s*color:\s*#7d7f8c;/);
+  assert.match(polishCss, /\.universe-standalone-detail-actions button,[\s\S]*?\.universe-standalone-editor-footer button,[\s\S]*?\.universe-standalone-connection-footer button\s*\{[\s\S]*?color:\s*#7d7f8c !important/);
+});
+
+test("Export popover uses the same vertical and horizontal text inset as placement popover", () => {
+  assert.match(stateCss, /\.universe-floating-popover\s*\{[\s\S]*?padding:\s*5px/);
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover > span\s*\{[\s\S]*?padding:\s*6px 8px/);
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-overflow-menu\s*\{[\s\S]*?padding:\s*5px !important;[\s\S]*?font-size:\s*12px !important;[\s\S]*?line-height:\s*1\.35 !important/);
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-overflow-menu button\s*\{[\s\S]*?min-height:\s*0 !important;[\s\S]*?padding:\s*6px 8px !important;[\s\S]*?font-size:\s*12px !important;[\s\S]*?line-height:\s*1\.35 !important/);
 });
 
 test("Universe action feedback is viewport-centered and expires after three seconds", () => {
