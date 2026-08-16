@@ -35,10 +35,9 @@ test("Universe connection strength thumb uses the same zero-based percentage sca
   assert.doesNotMatch(relationPaperSource, /type="range"\s+min="0\.1"/);
 });
 
-test("Opening connection keeps the source detail mounted so cancel returns to detail", () => {
-  assert.match(universePageSource, /onCreateRelation=\{\(node\) => \{[\s\S]*?setRelationEditorOpen\(true\); \}\}/);
-  assert.doesNotMatch(universePageSource, /setRelationEditorOpen\(true\); setEditorOpen\(false\); setPaperMode\(null\);/);
-  assert.match(universePageSource, /onRequestClose=\{\(\) => \{ setRelationEditorOpen\(false\); setRelationSourceId\(null\); setPaperError\(null\); setMapMode\(\{ kind: "browse" \}\); return true; \}\}/);
+test("Connection subflow closes its dialog then returns to the source detail", () => {
+  assert.match(universePageSource, /setRelationEditorOpen\(true\); setEditorOpen\(false\); setPaperMode\(null\);/);
+  assert.match(universePageSource, /const sourceId = relationSourceId;[\s\S]*?setRelationEditorOpen\(false\);[\s\S]*?setPaperMode\(\{ kind: "detail", nodeId: sourceId \}\);[\s\S]*?setEditorOpen\(true\);/);
 });
 
 test("Day Space keeps the white mobile top-bar surface without the gray separator edge", () => {
