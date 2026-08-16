@@ -1,7 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 
-export type GlobalSearchModule = "memory" | "diary" | "task";
+export type GlobalSearchModule = "memory" | "diary" | "task" | "universe";
 export type GlobalSearchScope = "active" | "archived" | "all";
 export type GlobalSearchMode = "phrase" | "normal";
 export type GlobalSearchMatchReason = "exact_stable_name" | "exact_phrase" | "stable_name_prefix" | "field_match";
@@ -63,6 +63,8 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     if (input.modules.includes("memory")) moduleQueries.push(memoryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("diary")) moduleQueries.push(diaryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("task")) moduleQueries.push(taskQuery(input, queryText, pattern, prefix));
+    if (input.modules.includes("universe") && input.scope !== "archived") moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
+    if (moduleQueries.length === 0) return [];
     const union = sql.join(moduleQueries, sql` union all `);
     const result = await this.db.execute(sql<GlobalSearchRow>`
       with ranked as (${union})
@@ -112,7 +114,7 @@ function cursorPredicate(
     (rank = ${cursor.rank} and business_time < ${cursor.businessTime}::timestamptz) or
     (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at < ${cursor.updatedAt}::timestamptz) or
     (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at = ${cursor.updatedAt}::timestamptz and entity_type > ${cursor.entityType}) or
-    (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at = ${cursor.updatedAt}::timestamptz and entity_type = ${cursor.entityType} and entity_id > ${cursor.entityId}::uuid)
+    (rank = ${cursor.rank} and business_time = ${cursor.businessTime}::timestamptz and updated_at = ${cursor.updatedAt}::timestamptz and entity_type = ${cursor.entityType} and entity_id > ${cursor.entityId})
   )`;
 }
 
@@ -163,7 +165,7 @@ function memoryQuery(input: GlobalSearchQuery, query: string, pattern: string, p
   const tags = sql`array_to_string(m.tags, ' ')`;
   const fields = [{ name: "key" as const, value: sql`m.key` }, { name: "content" as const, value: sql`m.content` }, { name: "tags" as const, value: tags }];
   const businessDate = sql`(m.updated_at at time zone ${input.timezone})::date`;
-  return bounded(sql`select 'memory'::text entity_type, m.id entity_id, m.key stable_name,
+  return bounded(sql`select 'memory'::text entity_type, m.id::text entity_id, m.key stable_name,
     ${reasonAndField(sql`m.key`, fields, input.mode, query, pattern, prefix)}, m.status::text lifecycle_status,
     m.updated_at business_time, 'updated_at'::text time_basis, m.updated_at
     from core_memories m where m.user_id=${input.userId}::uuid and m.visibility='assistant' and ${lifecycle(sql`m.status`, input.scope)}
@@ -172,7 +174,7 @@ function memoryQuery(input: GlobalSearchQuery, query: string, pattern: string, p
 function diaryQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
   const tags = sql`array_to_string(d.tags, ' ')`; const mood = sql`coalesce(d.mood, '')`;
   const fields = [{ name: "title" as const, value: sql`d.title` }, { name: "content" as const, value: sql`d.content` }, { name: "tags" as const, value: tags }, { name: "mood" as const, value: mood }];
-  return bounded(sql`select 'diary'::text entity_type, d.id entity_id, d.title stable_name,
+  return bounded(sql`select 'diary'::text entity_type, d.id::text entity_id, d.title stable_name,
     ${reasonAndField(sql`d.title`, fields, input.mode, query, pattern, prefix)}, d.status::text lifecycle_status,
     (d.date::timestamp at time zone ${input.timezone}) business_time, 'diary_date'::text time_basis, d.updated_at
     from diary_entries d where d.user_id=${input.userId}::uuid and ${lifecycle(sql`d.status`, input.scope)}
@@ -182,9 +184,28 @@ function taskQuery(input: GlobalSearchQuery, query: string, pattern: string, pre
   const tags = sql`array_to_string(t.tags, ' ')`;
   const fields = [{ name: "title" as const, value: sql`t.title` }, { name: "description" as const, value: sql`t.description` }, { name: "tags" as const, value: tags }];
   const effective = sql`coalesce(t.due_time, t.created_at)`; const businessDate = sql`(${effective} at time zone ${input.timezone})::date`;
-  return bounded(sql`select 'task'::text entity_type, t.id entity_id, t.title stable_name,
+  return bounded(sql`select 'task'::text entity_type, t.id::text entity_id, t.title stable_name,
     ${reasonAndField(sql`t.title`, fields, input.mode, query, pattern, prefix)}, t.lifecycle_status::text lifecycle_status,
     ${effective} business_time, case when t.due_time is null then 'created_at' else 'due_time' end::text time_basis, t.updated_at
     from tasks t where t.user_id=${input.userId}::uuid and ${lifecycle(sql`t.lifecycle_status`, input.scope)}
     and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input);
+}
+
+function universeQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
+  const searchable = sql`concat_ws(' ', n.summary, n.content)`;
+  const tags = sql`array_to_string(n.tags, ' ')`;
+  const fields = [
+    { name: "title" as const, value: sql`n.title` },
+    { name: "content" as const, value: searchable },
+    { name: "tags" as const, value: tags },
+  ];
+  const businessDate = sql`(n.updated_at at time zone ${input.timezone})::date`;
+  return bounded(sql`select 'universe'::text entity_type, n.id::text entity_id, n.title stable_name,
+    ${reasonAndField(sql`n.title`, fields, input.mode, query, pattern, prefix)},
+    'active'::text lifecycle_status, n.updated_at business_time, 'updated_at'::text time_basis, n.updated_at
+    from universe_nodes n
+    inner join universe_meta um on um.user_id = n.user_id
+    where n.user_id=${input.userId}::uuid
+      and ${match(fields.map((f) => f.value), input.mode, pattern)}
+      and ${dates(businessDate, input)}`, input);
 }

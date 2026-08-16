@@ -59,7 +59,7 @@ test("Global Search full page uses the accepted three-tool mobile presentation",
   assert.match(pageSource, /GlobalSearchPageHeader/);
   assert.doesNotMatch(pageSource, /匹配方式/);
   assert.doesNotMatch(pageSource, /exact_phrase|精确短语/);
-  assert.match(pageSource, /搜索 Memory、Diary 与 Task 中保存的内容/);
+  assert.match(pageSource, /搜索 Memory、Diary、Task 与 Universe 中保存的内容/);
   assert.match(pageSource, /没有找到匹配内容/);
   assert.match(pageSource, /SEARCH_MODULES\.map/);
   assert.match(pageSource, /global-search-result-button/);

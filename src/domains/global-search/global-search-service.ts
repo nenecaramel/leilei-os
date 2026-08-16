@@ -9,12 +9,13 @@ import type {
   GlobalSearchTimeBasis,
 } from "./global-search-repository.js";
 
-const MODULES = ["memory", "diary", "task"] as const;
+const MODULES = ["memory", "diary", "task", "universe"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
 const CURSOR_FINGERPRINT = /^[0-9a-f]{64}$/;
 const CURSOR_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UNIVERSE_ENTITY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const MAX_CURSOR_ENCODED_LENGTH = 1200;
 const MAX_CURSOR_DECODED_BYTES = 900;
 const MAX_SNIPPET_CODE_POINTS = 240;
@@ -42,8 +43,8 @@ export type GlobalSearchItem = {
   business_time: string;
   time_basis: GlobalSearchTimeBasis;
   updated_at: string;
-  detail_tool: "get_memory" | "get_diary" | "get_task";
-  detail_arguments: { id: string; scope: "active" | "archived" };
+  detail_tool: "get_memory" | "get_diary" | "get_task" | null;
+  detail_arguments: { id: string; scope: "active" | "archived" } | null;
 };
 
 export type GlobalSearchResult = {
@@ -113,8 +114,8 @@ export class GlobalSearchService {
         business_time: row.businessTime.toISOString(),
         time_basis: row.timeBasis,
         updated_at: row.updatedAt.toISOString(),
-        detail_tool: ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
-        detail_arguments: { id: row.entityId, scope: row.lifecycleStatus },
+        detail_tool: row.entityType === "universe" ? null : ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
+        detail_arguments: row.entityType === "universe" ? null : { id: row.entityId, scope: row.lifecycleStatus },
       })),
       metadata: {
         count: page.length,
@@ -201,7 +202,8 @@ function decodeCursor(cursor: string | undefined, fingerprint: string): GlobalSe
     if (!Number.isInteger(tuple.rank) || (tuple.rank as number) < 1 || (tuple.rank as number) > 4) invalid();
     if (!validCursorInstant(tuple.businessTime) || !validCursorInstant(tuple.updatedAt)) invalid();
     if (typeof tuple.entityType !== "string" || !MODULES.includes(tuple.entityType as GlobalSearchModule)) invalid();
-    if (typeof tuple.entityId !== "string" || tuple.entityId.length > 36 || !UUID.test(tuple.entityId)) invalid();
+    if (typeof tuple.entityId !== "string" || tuple.entityId.length > 128) invalid();
+    if (tuple.entityType === "universe" ? !UNIVERSE_ENTITY_ID.test(tuple.entityId) : !UUID.test(tuple.entityId)) invalid();
     return tuple as GlobalSearchCursorTuple;
   } catch {
     return invalid();

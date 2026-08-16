@@ -139,6 +139,47 @@ test("real PostgreSQL keyset pagination consumes every row after the cursor", { 
   }
 });
 
+test("real PostgreSQL Universe search is owner-scoped, active-only, and empty before initialization", { skip: !RUN }, async () => {
+  const client = postgres(url!, { max: 1, prepare: false, ssl: false });
+  const db = drizzle(client, { schema });
+  try {
+    await assert.rejects(db.transaction(async (tx) => {
+      const owner = randomUUID();
+      const other = randomUUID();
+      const now = new Date("2026-08-10T12:00:00.000Z");
+      await tx.insert(schema.users).values([
+        { id: owner, email: `universe-search-${owner}@example.invalid`, displayName: "Universe owner", status: "active" },
+        { id: other, email: `universe-search-${other}@example.invalid`, displayName: "Other owner", status: "active" },
+      ]);
+      await tx.insert(schema.userSettings).values([
+        { userId: owner, timezone: "Asia/Shanghai" },
+        { userId: other, timezone: "Asia/Shanghai" },
+      ]);
+      const service = new GlobalSearchService(new DrizzleGlobalSearchRepository(tx as never));
+
+      const beforeInitialization = await service.search({ userId: owner, query: "星球", modules: ["universe"], scope: "active", limit: 10 });
+      assert.deepEqual(beforeInitialization.results, []);
+
+      await tx.insert(schema.universeMeta).values({ userId: owner, name: "我的 Universe", schemaVersion: 2, createdAt: now, updatedAt: now, version: 0 });
+      await tx.insert(schema.universeNodes).values([
+        { userId: owner, id: "node-owner", title: "旅行星球", summary: "关于星球的摘要", content: "关于旅行的想法", type: "concept", tags: ["宇宙"], galaxies: [], galaxyMemberships: [], position: { x: 50, y: 50 }, createdAt: now, updatedAt: now, importance: "normal" },
+        { userId: other, id: "node-other", title: "旅行星球", summary: "不应泄露", content: "其他用户", type: "concept", tags: [], galaxies: [], galaxyMemberships: [], position: { x: 20, y: 20 }, createdAt: now, updatedAt: now, importance: "normal" },
+      ]);
+
+      const active = await service.search({ userId: owner, query: "旅行", modules: ["universe"], scope: "active", limit: 10 });
+      assert.equal(active.results.length, 1);
+      assert.equal(active.results[0]?.entity_id, "node-owner");
+      assert.equal(active.results[0]?.lifecycle_status, "active");
+      assert.equal(active.results[0]?.detail_tool, null);
+      const archived = await service.search({ userId: owner, query: "旅行", modules: ["universe"], scope: "archived", limit: 10 });
+      assert.deepEqual(archived.results, []);
+      throw new Rollback();
+    }), Rollback);
+  } finally {
+    await client.end();
+  }
+});
+
 test("real PostgreSQL pagination preserves sub-millisecond rows", { skip: !RUN }, async () => {
   const client = postgres(url!, { max: 1, prepare: false, ssl: false });
   const db = drizzle(client, { schema });

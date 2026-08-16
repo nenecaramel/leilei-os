@@ -16,6 +16,7 @@ import { UniverseGalaxyPicker } from "./universe/UniverseGalaxyPicker";
 import { UniverseNodePaper, type UniverseNodePaperDraft, type UniverseNodePaperMode } from "./universe/UniverseNodePaper";
 import { UniverseRelationPaper } from "./universe/UniverseRelationPaper";
 import { UniverseFloatingPopover } from "./universe/UniverseFloatingPopover";
+import { readUniverseNodeTarget } from "./universe/universe-location";
 import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
@@ -138,6 +139,17 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       refreshFromService();
     }
   };
+
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    const nodeId = readUniverseNodeTarget(window.location.search, state.snapshot.nodes.map((node) => node.id));
+    if (!nodeId || selectedId === nodeId) return;
+    setPaperError(null);
+    setSelectedId(nodeId);
+    setRevealNodeId(nodeId);
+    setPaperMode({ kind: "detail", nodeId });
+    setEditorOpen(true);
+  }, [selectedId, state]);
 
   async function saveNode(values: UniverseNodePaperDraft) {
     if (saving) return;

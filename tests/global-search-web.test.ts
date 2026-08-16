@@ -59,6 +59,18 @@ test("global search never removes the final selected module", () => {
   );
 });
 
+test("global search URL accepts Universe as a peer module", () => {
+  assert.deepEqual(readGlobalSearchFilters("?q=planet&modules=universe"), {
+    q: "planet",
+    modules: ["universe"],
+    scope: "active",
+    mode: "normal",
+    dateFrom: "",
+    dateTo: "",
+  });
+  assert.equal(createGlobalSearchLocation({ ...DEFAULT_GLOBAL_SEARCH_FILTERS, q: "planet", modules: ["universe"] }), "/search?q=planet&modules=universe");
+});
+
 test("in-app navigation notifies the router after changing location", () => {
   const dom = new JSDOM("<main></main>", { url: "https://leilei.test/memory" });
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -223,6 +235,7 @@ test("global search opens active and archived detail routes for every module", a
     { module: "memory", archived: false }, { module: "memory", archived: true },
     { module: "diary", archived: false }, { module: "diary", archived: true },
     { module: "task", archived: false }, { module: "task", archived: true },
+    { module: "universe", archived: false },
   ];
   for (const { module, archived } of cases) {
     const entityId = `item-${module}-${archived ? "archived" : "active"}`;
@@ -233,6 +246,11 @@ test("global search opens active and archived detail routes for every module", a
       assert.ok(button);
       await React.act(async () => { button.dispatchEvent(new page.dom.window.MouseEvent("click", { bubbles: true })); });
       const location = new URL(page.dom.window.location.href);
+      if (module === "universe") {
+        assert.equal(location.pathname, "/universe");
+        assert.equal(location.searchParams.get("node"), entityId);
+        return;
+      }
       assert.equal(location.pathname, `/${module}`);
       assert.equal(location.searchParams.get("returnTo"), `/search?q=goal&modules=${module}`);
       if (module === "memory") assert.equal(location.searchParams.get(archived ? "archivedMemory" : "memory"), entityId);
@@ -369,7 +387,7 @@ test("clearing a query returns to idle without requesting or restoring the old s
     assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search");
     assert.equal(page.dom.window.history.state?.globalSearch, undefined);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /目标/);
-    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary 与 Task 中保存的内容/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task 与 Universe 中保存的内容/);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
     assert.equal(page.dom.window.document.querySelector("[role=alert]"), null);
   } finally {
@@ -397,7 +415,7 @@ test("clearing an overlong initial URL normalizes the address without requesting
     assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=memory&scope=all&mode=phrase&date_from=2026-08-01");
     assert.equal(page.dom.window.history.state?.globalSearch, undefined);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
-    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary 与 Task 中保存的内容/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task 与 Universe 中保存的内容/);
   } finally {
     await page.cleanup();
   }
@@ -426,8 +444,8 @@ test("empty query filter changes update URL without requesting", async () => {
     assert.ok(from);
     await React.act(async () => { reactChange(from, "2026-08-01"); });
     assert.equal(requests.length, 0);
-    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=diary%2Ctask&scope=all&mode=phrase&date_from=2026-08-01");
-    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary 与 Task 中保存的内容/);
+    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=diary%2Ctask%2Cuniverse&scope=all&mode=phrase&date_from=2026-08-01");
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task 与 Universe 中保存的内容/);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
   } finally {
     await page.cleanup();
