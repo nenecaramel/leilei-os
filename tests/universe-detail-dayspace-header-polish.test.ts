@@ -78,7 +78,8 @@ test("Universe action feedback is viewport-centered and expires after three seco
   assert.match(universePageSource, /if \(!notice \|\| editorOpen \|\| relationEditorOpen\) return;/);
   assert.match(universePageSource, /setTimeout\([\s\S]*?3000/);
   assert.match(universePageSource, /replace\(\/\[。．.!！？\?\]\+\$\/u, ""\)/);
-  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-header-notice\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*50vw;[\s\S]*?transform:\s*translateX\(-50%\);[\s\S]*?text-align:\s*center/);
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-header-notice\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*50vw/);
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-header-notice\s*\{[\s\S]*?text-align:\s*center;[\s\S]*?transform:\s*translateX\(-50%\)/);
 });
 
 test("Add-planet placement guidance stays visible, framed, and shifts inward from the right edge", () => {
