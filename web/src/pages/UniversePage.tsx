@@ -116,12 +116,12 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   }, [service, reload]);
 
   useEffect(() => {
-    if (!notice) return;
+    if (!notice || editorOpen || relationEditorOpen) return;
     const timer = window.setTimeout(() => {
       setNotice((current) => current?.id === notice.id ? null : current);
     }, 3000);
     return () => window.clearTimeout(timer);
-  }, [notice]);
+  }, [notice, editorOpen, relationEditorOpen]);
 
   const refreshFromService = () => {
     const current = service.getState();
