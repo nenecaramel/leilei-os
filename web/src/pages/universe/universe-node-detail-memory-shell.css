@@ -21,8 +21,25 @@
     font-size: 29px;
   }
 
+  .universe-standalone-summary {
+    margin-top: 6px;
+    color: #7d7f8c;
+  }
+
   .universe-standalone-content {
-    color: #c7c5cc;
+    color: #f5f2e9;
+  }
+
+  .universe-standalone-updated,
+  .universe-standalone-stats,
+  .universe-standalone-relation-link,
+  .universe-standalone-relation-remove,
+  .universe-standalone-detail-actions button {
+    color: #7d7f8c;
+  }
+
+  .universe-standalone-stats strong {
+    color: #f5f2e9;
   }
 }
 
