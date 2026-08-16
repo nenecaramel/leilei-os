@@ -113,6 +113,7 @@ export function UniverseNodePaper({
   const [memberships, setMemberships] = useState<MembershipDraft[]>(() => (effectiveNode?.galaxies ?? []).map((membership) => ({ id: membership.id, weightText: String(membership.weight) })));
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [detailOverflowOpen, setDetailOverflowOpen] = useState(false);
+  const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
   const [connectionMenuId, setConnectionMenuId] = useState<string | null>(null);
   const connectionAnchorRef = useRef<HTMLButtonElement | null>(null);
   const createTimestampRef = useRef<string | null>(null);
@@ -131,6 +132,7 @@ export function UniverseNodePaper({
     setMembershipError(null);
     setConnectionMenuId(null);
     setDetailOverflowOpen(false);
+    setDeleteConfirmPending(false);
     if (!isCreate) createTimestampRef.current = null;
   }, [effectiveNode, mode?.kind]);
 
@@ -192,11 +194,28 @@ export function UniverseNodePaper({
   const detailTopRight = effectiveNode ? (
     <div className="universe-node-paper-top-actions">
       <span className="universe-node-paper-overflow">
-        <button type="button" className="tertiary-button" aria-label="更多星球操作" aria-expanded={detailOverflowOpen} onClick={() => setDetailOverflowOpen((value) => !value)}>···</button>
+        <button type="button" className="tertiary-button" aria-label="更多星球操作" aria-expanded={detailOverflowOpen} onClick={() => { setDetailOverflowOpen((value) => !value); setDeleteConfirmPending(false); }}>···</button>
         {detailOverflowOpen ? (
           <span className="universe-node-paper-overflow-menu" role="menu">
-            {revisionsAvailable && onRestore ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); onRestore(effectiveNode); }}>恢复上一版本</button> : null}
-            {onDelete ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); onDelete(effectiveNode); }}>让它离开宇宙</button> : null}
+            {revisionsAvailable && onRestore ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); setDeleteConfirmPending(false); onRestore(effectiveNode); }}>恢复上一版本</button> : null}
+            {onDelete ? (
+              <button
+                type="button"
+                className={deleteConfirmPending ? "universe-node-paper-delete is-confirming" : "universe-node-paper-delete"}
+                disabled={saving}
+                onClick={() => {
+                  if (!deleteConfirmPending) {
+                    setDeleteConfirmPending(true);
+                    return;
+                  }
+                  setDetailOverflowOpen(false);
+                  setDeleteConfirmPending(false);
+                  onDelete(effectiveNode);
+                }}
+              >
+                {deleteConfirmPending ? "确认让它离开" : "让它离开宇宙"}
+              </button>
+            ) : null}
           </span>
         ) : null}
       </span>
