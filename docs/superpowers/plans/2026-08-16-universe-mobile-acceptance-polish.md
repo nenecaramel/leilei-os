@@ -28,7 +28,7 @@
 - Consumes: existing mobile Universe component/CSS source files.
 - Produces: static assertions covering the requested layout/copy/interaction contract.
 
-- [ ] **Step 1: Add failing assertions** for Day Space non-sticky top bar, all three lifted titles, connection copy rename/removal, management menu in edit only, aligned footer actions, centered transient feedback, map text-selection prevention, and galaxy percentage spacing.
+- [ ] **Step 1: Add failing assertions** for the Memory-style sticky white Day Space top bar, all three lifted titles, connection copy rename/removal, management menu in edit only, aligned footer actions, centered transient feedback, map text-selection prevention, and galaxy percentage spacing.
 - [ ] **Step 2: Verify the new assertions target behavior absent from the current base.**
 - [ ] **Step 3: Keep earlier #136/#138 regression assertions intact where they still describe accepted behavior.**
 
@@ -42,7 +42,7 @@
 - Consumes: existing `onRestore`, `onDelete`, `onSave`, `onRequestClose`, and node/relation state.
 - Produces: edit-only management menu, renamed relation title, no relation intro copy, consistent bottom actions.
 
-- [ ] **Step 1: Move recovery/removal management out of detail and into the edit heading area.** Keep restore conditional on available revisions and keep the two-step delete confirmation.
+- [ ] **Step 1: Move recovery/removal management out of mobile detail and into the edit heading area.** Keep restore conditional on available revisions and keep the two-step delete confirmation.
 - [ ] **Step 2: Change mobile relation title to `连接另一个思想`.**
 - [ ] **Step 3: Remove the explanatory sentence below the mobile relation title.**
 - [ ] **Step 4: Keep create/edit/relation footer markup simple so CSS can match detail footer typography and spacing.**
@@ -58,9 +58,9 @@
 
 **Interfaces:**
 - Consumes: `UniverseNotice`, `.universe-map-mode-hint`, placement popover, existing mobile shell classes.
-- Produces: horizontally centered transient feedback, non-selectable map gestures, fixed percentage spacing, non-sticky Day Space top bar, unified footer visual contract.
+- Produces: horizontally centered transient feedback, non-selectable map gestures, fixed percentage spacing, Memory-style sticky white Day Space top bar, unified footer visual contract.
 
-- [ ] **Step 1: Set Day Space mobile top bar to `position: static; top: auto;` while keeping its white surface and no separator.**
+- [ ] **Step 1: Keep Day Space mobile top bar sticky at the top, give it an opaque white surface like Memory, and remove the gray separator.**
 - [ ] **Step 2: Lift `点亮一颗新星`, `调整这颗星球`, and `连接另一个思想` titles by 10px from the accepted shell.**
 - [ ] **Step 3: Match create/edit/relation footer text controls to detail footer positions, font size, weight, and color; save uses the same muted color as cancel.**
 - [ ] **Step 4: Keep the 16px Safari anti-zoom input size while visually moving galaxy percentage digits left and preserving a gap before `%`.**
