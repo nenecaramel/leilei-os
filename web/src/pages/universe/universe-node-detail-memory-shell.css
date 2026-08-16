@@ -22,12 +22,16 @@
   }
 
   .universe-standalone-summary {
-    margin-top: 6px;
+    margin-top: 5px;
     color: #7d7f8c;
   }
 
   .universe-standalone-content {
     color: #f5f2e9;
+  }
+
+  .universe-standalone-updated {
+    font-size: 12px;
   }
 
   .universe-standalone-updated,
