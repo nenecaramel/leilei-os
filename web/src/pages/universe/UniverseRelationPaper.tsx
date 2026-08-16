@@ -62,7 +62,7 @@ export function UniverseRelationPaper({
       <p>从「{source.title}」连接到另一个思想。</p>
       <label>连接到<select value={selectedTargetId} onChange={(event) => setSelectedTargetId(event.target.value)}>{targetOptions}</select></label>
       <label>关系<select value={relationType} onChange={(event) => setRelationType(event.target.value as UniverseRelationType)}>{RELATION_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-      <label>强度<input type="range" min="0.1" max="1" step="0.1" value={strength} onChange={(event) => setStrength(Number(event.target.value))} /><span>{Math.round(strength * 100)}%</span></label>
+      <label>强度<input type="range" min="0" max="1" step="0.1" value={strength} onChange={(event) => setStrength(Number(event.target.value))} /><span>{Math.round(strength * 100)}%</span></label>
       <button className="secondary-button" type="button" disabled={saving || !target} onClick={saveSelectedRelation}>{saving ? "保存中…" : "建立连接"}</button>
     </div>
   );
@@ -103,7 +103,7 @@ export function UniverseRelationPaper({
           <input
             aria-label="连接强度"
             type="range"
-            min="0.1"
+            min="0"
             max="1"
             step="0.1"
             value={strength}
