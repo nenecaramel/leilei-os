@@ -1,0 +1,2 @@
+ALTER TABLE "toy_commands" DROP CONSTRAINT "toy_commands_action_percent_consistency";--> statement-breakpoint
+ALTER TABLE "toy_commands" ADD CONSTRAINT "toy_commands_action_percent_consistency" CHECK (("toy_commands"."action" = 'set' AND "toy_commands"."percent" IS NOT NULL AND "toy_commands"."percent" BETWEEN 1 AND 50) OR ("toy_commands"."action" = 'stop' AND "toy_commands"."percent" IS NULL));

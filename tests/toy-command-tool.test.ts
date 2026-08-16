@@ -209,6 +209,29 @@ test("toy_set queues an authenticated set command", async (t) => {
   });
 });
 
+test("toy_set accepts the new percent 50 endpoint", async (t) => {
+  const service = new MockToyCommandToolService();
+  const { client, server } = await connectTestClient(
+    createTestDependencies(service),
+  );
+
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const response = await client.callTool({
+    name: "toy_set",
+    arguments: {
+      percent: 50,
+      idempotency_key: "toy-set-20260816-cap50",
+    },
+  });
+
+  assert.equal(response.isError, undefined);
+  assert.equal(service.calls[0]?.input.percent, 50);
+});
+
 test("toy_stop queues an authenticated stop command", async (t) => {
   const service = new MockToyCommandToolService();
   const { client, server } = await connectTestClient(
@@ -265,7 +288,7 @@ test("toy tools reject invalid intensity and arbitrary fields before service exe
   const invalidSetArguments: Array<Record<string, unknown>> = [
     { percent: 0 },
     { percent: -1 },
-    { percent: 41 },
+    { percent: 51 },
     { percent: 1.5 },
     { percent: "1" },
     { percent: true },
