@@ -84,7 +84,7 @@ test("Universe action feedback is viewport-centered and expires after three seco
 
 test("Add-planet placement guidance stays visible, framed, and shifts inward from the right edge", () => {
   assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover\s*\{[\s\S]*?position:\s*absolute !important;[\s\S]*?right:\s*0 !important;[\s\S]*?left:\s*auto !important;[\s\S]*?max-width:\s*calc\(100vw - 32px\) !important;[\s\S]*?border:\s*1px solid #e7e7e7 !important;[\s\S]*?background:\s*#ffffff !important;[\s\S]*?box-shadow:\s*0 6px 18px rgba\(0, 0, 0, 0\.07\) !important;[\s\S]*?transform:\s*none !important;[\s\S]*?animation:\s*none !important/);
-  assert.doesNotMatch(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover\s*\{[\s\S]*?universe-transient-status-fade/);
+  assert.doesNotMatch(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover\s*\{[^}]*universe-transient-status-fade/);
 });
 
 test("Universe map gestures cannot select page text or trigger the iOS callout", () => {
