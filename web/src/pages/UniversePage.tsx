@@ -68,7 +68,6 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [paperError, setPaperError] = useState<string | null>(null);
   const [relationEditorOpen, setRelationEditorOpen] = useState(false);
   const [relationSourceId, setRelationSourceId] = useState<string | null>(null);
-  const [relationTargetId, setRelationTargetId] = useState<string | null>(null);
   const [mapMode, setMapMode] = useState<UniverseMapMode>({ kind: "browse" });
   const [viewport, setViewport] = useState<UniverseViewport | null>(null);
   const [pendingPosition, setPendingPosition] = useState<UniversePoint | null>(null);
@@ -192,7 +191,6 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       await service.createRelation(relation);
       setRelationEditorOpen(false);
       setRelationSourceId(null);
-      setRelationTargetId(null);
       setMapMode({ kind: "browse" });
       setNotice("新的思想连接已经出现。");
       refreshFromService();
@@ -287,7 +285,6 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         onRevealNodeHandled={() => setRevealNodeId(null)}
         onOpenNode={(nodeId) => { setPaperError(null); setSelectedId(nodeId); setPaperMode({ kind: "detail", nodeId }); setEditorOpen(true); }}
         onPlaceNode={(position) => { setPlacementOpen(false); setPaperError(null); setPendingPosition(position); setEditingNode(null); setPaperMode({ kind: "create", position }); setMapMode({ kind: "browse" }); setEditorOpen(true); }}
-        onChooseRelationTarget={(nodeId) => { setRelationTargetId(nodeId); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); }}
         onMoveNode={async (nodeId, position) => {
           try {
             await service.updateNode(nodeId, { position }, "Universe Web 移动星球");
@@ -313,7 +310,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}
         onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { setNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
-        onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setRelationTargetId(null); setMapMode({ kind: "relation-target", sourceNodeId: node.id }); setEditorOpen(false); setPaperMode(null); }}
+        onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setPaperError(null); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); setEditorOpen(false); setPaperMode(null); }}
         onDeleteRelation={(relation) => void removeRelation(relation)}
         onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setRevealNodeId(nodeId); setPaperError(null); }}
         onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
@@ -321,12 +318,12 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       />
       <UniverseRelationPaper
         source={snapshot.nodes.find((node) => node.id === relationSourceId) ?? null}
-        target={snapshot.nodes.find((node) => node.id === relationTargetId) ?? null}
+        nodes={snapshot.nodes}
         open={relationEditorOpen}
         saving={saving}
         errorMessage={paperError}
         triggerRef={paperTriggerRef}
-        onRequestClose={() => { setRelationEditorOpen(false); setRelationSourceId(null); setRelationTargetId(null); setPaperError(null); setMapMode({ kind: "browse" }); return true; }}
+        onRequestClose={() => { setRelationEditorOpen(false); setRelationSourceId(null); setPaperError(null); setMapMode({ kind: "browse" }); return true; }}
         onSave={saveRelation}
       />
     </div>
