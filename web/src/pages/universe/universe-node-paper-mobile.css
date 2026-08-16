@@ -1,0 +1,123 @@
+@media (max-width: 760px) {
+  .paper-detail-paper:has(.universe-node-paper-body-detail):has(.universe-node-metadata) .paper-detail-scroll {
+    inset: 42px 0 38px;
+    padding: 8px 24px 30px;
+  }
+
+  .universe-node-paper-top-actions {
+    gap: 4px;
+  }
+
+  .universe-node-paper-top-actions > span[aria-hidden="true"] {
+    color: #b6b6b6;
+    font-size: 12px;
+  }
+
+  .universe-node-paper-overflow-menu button {
+    color: #555555;
+  }
+
+  .universe-node-paper-body-detail {
+    display: block;
+    color: #242424;
+  }
+
+  .universe-node-paper-title {
+    margin: 0;
+    overflow: hidden;
+    color: #171717;
+    font-size: 23px;
+    font-weight: 600;
+    line-height: 1.28;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .universe-node-paper-summary {
+    margin: 12px 0 0;
+    color: #858585;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.75;
+    white-space: pre-wrap;
+  }
+
+  .universe-node-paper-content {
+    margin: 22px 0 0;
+    color: #333333;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.95;
+    white-space: pre-wrap;
+  }
+
+  .universe-node-paper-body-detail .universe-node-connections {
+    gap: 4px;
+    margin-top: 30px;
+  }
+
+  .universe-node-paper-body-detail .universe-node-connections h3 {
+    color: #777777;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  .universe-node-paper-body-detail .universe-node-connection-link {
+    min-height: 34px;
+    color: #555555;
+    font-size: 13px;
+  }
+
+  .universe-node-paper-body-detail .universe-node-connection-link small {
+    color: #aaaaaa;
+    font-size: 10px;
+  }
+
+  .universe-node-paper-properties {
+    margin-top: 28px;
+    padding: 0;
+    border: 0;
+    color: #929292;
+    font-size: 12px;
+  }
+
+  .universe-node-paper-properties summary {
+    display: inline-flex;
+    min-height: 30px;
+    align-items: center;
+    padding: 0;
+    color: #8b8b8b;
+    font-size: 12px;
+    font-weight: 400;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .universe-node-paper-properties summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .universe-node-paper-properties summary::after {
+    margin-left: 5px;
+    color: #b6b6b6;
+    content: "＋";
+    font-size: 11px;
+    font-weight: 300;
+  }
+
+  .universe-node-paper-properties[open] summary::after {
+    content: "－";
+  }
+
+  .universe-node-paper-properties-content {
+    margin-top: 5px;
+    padding-bottom: 8px;
+  }
+
+  .universe-node-paper-properties .universe-node-metadata {
+    gap: 5px;
+    color: #929292;
+    font-size: 12px;
+  }
+}
