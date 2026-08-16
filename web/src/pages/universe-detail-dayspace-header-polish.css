@@ -1,4 +1,4 @@
-/* Focused mobile polish: Universe detail + Day Space header only. */
+/* Focused mobile polish: Universe detail/edit flows + Day Space header only. */
 @media (max-width: 760px) {
   /* Keep the existing shared 20px card edge spacing; change only flex order. */
   .universe-standalone-detail-head .universe-standalone-updated {
@@ -10,6 +10,7 @@
     position: static;
     top: auto;
     margin-top: 5px;
+    padding-right: 34px;
   }
 
   .universe-standalone-summary {
@@ -28,6 +29,122 @@
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+  }
+
+  /*
+   * Safari focus safety, matching Memory's established rule: focused form
+   * controls keep a real/computed font size of at least 16px so iOS does not
+   * zoom the viewport. The tiny galaxy-weight field is optically scaled back
+   * to its accepted 12px appearance while retaining a real 16px input font.
+   */
+  .universe-standalone-editor .universe-standalone-form-field input,
+  .universe-standalone-editor .universe-standalone-form-field select,
+  .universe-standalone-editor .universe-standalone-form-field textarea,
+  .universe-standalone-connection .universe-standalone-form-field select {
+    font-size: 16px !important;
+    touch-action: manipulation;
+  }
+
+  .universe-standalone-editor .universe-standalone-weight {
+    width: 50.666667px !important;
+    min-width: 50.666667px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    margin: 0 -12.666667px 0 0 !important;
+    font-size: 16px !important;
+    transform: scale(0.75);
+    transform-origin: right center;
+    touch-action: manipulation;
+  }
+
+  /* Detail-only management lives in the top-right overflow, not the editor. */
+  .paper-detail-paper:has(.universe-standalone-detail) .paper-detail-top-right {
+    display: flex !important;
+    top: 43px !important;
+    right: 18px !important;
+    z-index: 6;
+    width: auto !important;
+    height: auto !important;
+    align-items: flex-start;
+    overflow: visible !important;
+  }
+
+  .paper-detail-paper:has(.universe-standalone-detail)
+    .universe-node-paper-top-actions
+    > .tertiary-button {
+    display: none !important;
+  }
+
+  .paper-detail-paper:has(.universe-standalone-detail)
+    .universe-node-paper-overflow
+    > .tertiary-button {
+    display: grid !important;
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 !important;
+    place-items: center;
+    color: #7d7f8c !important;
+    background: transparent !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+  }
+
+  .paper-detail-paper:has(.universe-standalone-detail)
+    .universe-node-paper-overflow-menu {
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 142px;
+    padding: 4px;
+    border: 1px solid #343640;
+    border-radius: 9px;
+    background: #171820;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  }
+
+  .paper-detail-paper:has(.universe-standalone-detail)
+    .universe-node-paper-overflow-menu button {
+    min-height: 36px;
+    padding: 7px 9px;
+    border: 0;
+    color: #b0aeb7;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.35;
+    text-align: left;
+  }
+
+  .paper-detail-paper:has(.universe-standalone-detail)
+    .universe-node-paper-overflow-menu button + button {
+    margin-top: 2px;
+    border-top: 1px solid #2a2c35;
+  }
+
+  /* Action feedback belongs on the Universe title row and should not shift the map. */
+  .universe-page-heading {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .universe-page-heading .memory-page-title {
+    flex: 0 0 auto;
+  }
+
+  .universe-header-notice {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    color: #8d8d8d;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
   }
 
   /* Day Space keeps the shared mobile top-bar geometry and white surface, without a visible separator edge. */
