@@ -6,6 +6,10 @@ const polishCss = readFileSync(
   new URL("../web/src/pages/universe-detail-dayspace-header-polish.css", import.meta.url),
   "utf8",
 );
+const shellCss = readFileSync(
+  new URL("../web/src/pages/universe/universe-node-detail-memory-shell.css", import.meta.url),
+  "utf8",
+);
 const nodePaperSource = readFileSync(
   new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url),
   "utf8",
@@ -63,31 +67,37 @@ test("Mobile recovery and removal management lives in edit instead of detail", (
 });
 
 test("Create edit and connection footers match the detail footer treatment", () => {
-  assert.match(polishCss, /\.universe-standalone-editor-footer,[\s\S]*?\.universe-standalone-connection-footer\s*\{[\s\S]*?justify-content:\s*space-between !important;[\s\S]*?padding-top:\s*12px !important/);
-  assert.match(polishCss, /\.universe-standalone-editor-footer button,[\s\S]*?\.universe-standalone-connection-footer button\s*\{[\s\S]*?color:\s*#7d7f8c !important;[\s\S]*?font-size:\s*12px !important;[\s\S]*?font-weight:\s*400 !important/);
+  assert.match(polishCss, /\.universe-standalone-editor-footer,[\s\S]*?\.universe-standalone-connection-footer\s*\{[\s\S]*?justify-content:\s*space-between !important;[\s\S]*?margin:\s*0 !important;[\s\S]*?padding:\s*12px 0 0 !important/);
+  assert.match(polishCss, /\.universe-standalone-editor-footer button,[\s\S]*?\.universe-standalone-connection-footer button\s*\{[\s\S]*?color:\s*#777986 !important;[\s\S]*?font-size:\s*12px !important;[\s\S]*?font-weight:\s*400 !important;[\s\S]*?line-height:\s*1\.35 !important/);
+  assert.doesNotMatch(shellCss, /\.universe-standalone-connection\s*\{[\s\S]*?padding-bottom:\s*24px/);
 });
 
-test("Universe action feedback is horizontally centered and expires after three seconds", () => {
+test("Universe action feedback is viewport-centered and expires after three seconds", () => {
   assert.match(universePageSource, /<UniverseHeader\s+notice=\{notice\?\.message\}/);
   assert.match(universePageSource, /className="universe-header-notice" role="status"/);
   assert.match(universePageSource, /if \(!notice \|\| editorOpen \|\| relationEditorOpen\) return;/);
   assert.match(universePageSource, /setTimeout\([\s\S]*?3000/);
   assert.match(universePageSource, /replace\(\/\[。．.!！？\?\]\+\$\/u, ""\)/);
-  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-header-notice\s*\{[\s\S]*?left:\s*50%;[\s\S]*?transform:\s*translateX\(-50%\);[\s\S]*?text-align:\s*center/);
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-header-notice\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*50vw;[\s\S]*?transform:\s*translateX\(-50%\);[\s\S]*?text-align:\s*center/);
 });
 
-test("Ready-state placement and move guidance use the lightweight centered status treatment", () => {
-  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover,[\s\S]*?\.universe-page:has\(\.universe-mobile-map\) \.universe-map-mode-hint\s*\{[\s\S]*?left:\s*50% !important;[\s\S]*?border:\s*0 !important;[\s\S]*?background:\s*transparent !important;[\s\S]*?box-shadow:\s*none !important/);
-  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover\s*\{[\s\S]*?animation:\s*universe-transient-status-fade 3s/);
+test("Add-planet placement guidance stays visible, framed, and inside the mobile viewport", () => {
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover\s*\{[\s\S]*?position:\s*fixed !important;[\s\S]*?left:\s*50vw !important;[\s\S]*?max-width:\s*calc\(100vw - 32px\) !important;[\s\S]*?border:\s*1px solid #e7e7e7 !important;[\s\S]*?background:\s*#ffffff !important;[\s\S]*?box-shadow:\s*0 6px 18px rgba\(0, 0, 0, 0\.07\) !important;[\s\S]*?animation:\s*none !important/);
+  assert.doesNotMatch(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover\s*\{[\s\S]*?universe-transient-status-fade/);
 });
 
 test("Universe map gestures cannot select page text or trigger the iOS callout", () => {
   assert.match(polishCss, /\.universe-mobile-map,[\s\S]*?\.universe-mobile-map \*\s*\{[\s\S]*?-webkit-user-select:\s*none;[\s\S]*?user-select:\s*none;[\s\S]*?-webkit-touch-callout:\s*none/);
 });
 
-test("Day Space uses the Memory-style sticky white mobile top bar", () => {
-  assert.match(polishCss, /\.app-shell:has\(\.day-space-page\) \.mobile-top-bar\s*\{[\s\S]*?position:\s*sticky !important;[\s\S]*?top:\s*0 !important;[\s\S]*?background:\s*#ffffff !important/);
-  assert.match(polishCss, /border-bottom:\s*0/);
+test("Day Space uses the Memory-style sticky white mobile top bar above its content", () => {
+  assert.match(polishCss, /\.app-shell:has\(\.day-space-page\) \.mobile-top-bar\s*\{[\s\S]*?position:\s*sticky !important;[\s\S]*?z-index:\s*40 !important;[\s\S]*?top:\s*0 !important;[\s\S]*?border-bottom:\s*0 !important;[\s\S]*?background:\s*#ffffff !important/);
+});
+
+test("Create and edit native select arrows use the same dark color scheme as connection selects", () => {
+  assert.match(shellCss, /\.universe-standalone-connection \.universe-standalone-form-field select\s*\{[\s\S]*?color-scheme:\s*dark/);
+  assert.match(shellCss, /\.universe-standalone-editor \.universe-standalone-form-field select\s*\{[\s\S]*?color-scheme:\s*dark/);
+  assert.match(polishCss, /\.universe-standalone-editor \.universe-standalone-form-field input,[\s\S]*?\.universe-standalone-editor \.universe-standalone-form-field select,[\s\S]*?font-size:\s*16px !important/);
 });
 
 test("Universe homepage background redesign is still outside this polish file", () => {
