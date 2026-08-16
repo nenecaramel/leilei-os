@@ -25,9 +25,13 @@ test("Universe detail keeps its title in scrolling content and lifts title plus 
   assert.match(polishCss, /\.universe-standalone-summary\s*\{[\s\S]*?margin-top:\s*4px/);
 });
 
-test("Universe create/edit and connection headings are lifted and create footer stays split left-right", () => {
-  assert.match(polishCss, /\.universe-standalone-editor h2,[\s\S]*?\.universe-standalone-connection h2\s*\{[\s\S]*?margin-top:\s*14px/);
+test("Universe create, edit, and connection titles all lift by ten pixels from the accepted shell", () => {
+  assert.match(polishCss, /\.universe-standalone-editor h2,[\s\S]*?\.universe-standalone-connection h2\s*\{[\s\S]*?margin-top:\s*5px/);
   assert.match(polishCss, /\.universe-standalone-editor-footer\s*\{[\s\S]*?flex-direction:\s*row;[\s\S]*?justify-content:\s*space-between/);
+});
+
+test("Universe connection card removes the explanatory sentence under its title", () => {
+  assert.doesNotMatch(relationPaperSource, /选择另一个思想，并定义它们之间的关系。/);
 });
 
 test("Universe connection strength thumb uses the same zero-based percentage scale as its label", () => {
@@ -43,37 +47,46 @@ test("Connection subflow closes its dialog then returns to the source detail", (
 test("Universe edit controls use Safari focus-safe computed font sizes", () => {
   assert.match(polishCss, /\.universe-standalone-editor \.universe-standalone-form-field input,[\s\S]*?font-size:\s*16px !important/);
   assert.match(polishCss, /\.universe-standalone-connection \.universe-standalone-form-field select[\s\S]*?font-size:\s*16px !important/);
-  assert.match(polishCss, /\.universe-standalone-editor \.universe-standalone-weight\s*\{[\s\S]*?font-size:\s*16px !important;[\s\S]*?transform:\s*scale\(0\.75\)/);
+  assert.match(polishCss, /\.universe-standalone-editor \.universe-standalone-weight\s*\{[\s\S]*?font-size:\s*16px !important;[\s\S]*?transform:\s*scale\(0\.75\);[\s\S]*?transform-origin:\s*left center/);
 });
 
-test("Mobile node editor keeps recovery and removal out of the edit body and suppresses the local weight hint", () => {
-  const mobileStart = nodePaperSource.indexOf("const mobileStandaloneBody");
-  const detailStart = nodePaperSource.indexOf("<section className=\"universe-standalone-detail\"");
-  assert.ok(mobileStart >= 0 && detailStart > mobileStart);
-  const mobileEditor = nodePaperSource.slice(mobileStart, detailStart);
-  assert.doesNotMatch(mobileEditor, /universe-standalone-editor-secondary-actions/);
-  assert.doesNotMatch(mobileEditor, /请填写星系权重/);
-  assert.match(nodePaperSource, /detailTopRight[\s\S]*?恢复上一版本[\s\S]*?让它离开宇宙/);
+test("Galaxy percentage input keeps optical size but leaves room for the fixed percent sign", () => {
+  assert.match(polishCss, /\.universe-standalone-editor \.universe-standalone-weight\s*\{[\s\S]*?padding:\s*0 4px 0 0 !important;[\s\S]*?transform-origin:\s*left center/);
+});
+
+test("Mobile recovery and removal management lives in edit, not detail", () => {
+  assert.match(nodePaperSource, /const renderManagementMenu[\s\S]*?恢复上一版本[\s\S]*?让它离开宇宙/);
+  assert.match(nodePaperSource, /const detailTopRight[\s\S]*?>编辑<\/button>/);
+  const detailTopRightStart = nodePaperSource.indexOf("const detailTopRight");
+  const editTopRightStart = nodePaperSource.indexOf("const editTopRight");
+  assert.ok(detailTopRightStart >= 0 && editTopRightStart > detailTopRightStart);
+  assert.doesNotMatch(nodePaperSource.slice(detailTopRightStart, editTopRightStart), /更多星球操作/);
+  assert.match(nodePaperSource, /const editTopRight[\s\S]*?renderManagementMenu\(\)/);
+  assert.match(nodePaperSource, /universe-standalone-editor-heading-row[\s\S]*?renderManagementMenu\("universe-standalone-editor-management"\)/);
   assert.match(nodePaperSource, /deleteConfirmPending[\s\S]*?确认让它离开/);
-  assert.match(polishCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\) \.paper-detail-top-right\s*\{[\s\S]*?display:\s*flex !important/);
 });
 
-test("Universe action feedback lives on the title row, strips trailing punctuation, and expires only while visible", () => {
+test("Universe action feedback is horizontally centered and expires after three seconds", () => {
   assert.match(universePageSource, /<UniverseHeader\s+notice=\{notice\?\.message\}/);
   assert.match(universePageSource, /className="universe-header-notice" role="status"/);
   assert.match(universePageSource, /if \(!notice \|\| editorOpen \|\| relationEditorOpen\) return;/);
   assert.match(universePageSource, /setTimeout\([\s\S]*?3000/);
   assert.match(universePageSource, /replace\(\/\[。．.!！？\?\]\+\$\/u, ""\)/);
-  assert.doesNotMatch(universePageSource, /<p className="universe-notice"/);
-  assert.match(polishCss, /\.universe-page-heading\s*\{[\s\S]*?display:\s*flex/);
+  assert.match(polishCss, /\.universe-header-notice\s*\{[\s\S]*?left:\s*50%;[\s\S]*?transform:\s*translateX\(-50%\);[\s\S]*?text-align:\s*center/);
 });
 
-test("Day Space keeps the white mobile top-bar surface without the gray separator edge", () => {
-  assert.match(polishCss, /\.app-shell:has\(\.day-space-page\) \.mobile-top-bar\s*\{[\s\S]*?min-height:\s*calc\(44px \+ env\(safe-area-inset-top, 0px\)\)/);
-  assert.match(polishCss, /height:\s*calc\(44px \+ env\(safe-area-inset-top, 0px\)\)/);
-  assert.match(polishCss, /background:\s*#ffffff !important/);
+test("Ready-state placement and move guidance reuse the centered transient status treatment", () => {
+  assert.match(polishCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover,[\s\S]*?\.universe-page:has\(\.universe-mobile-map\) \.universe-map-mode-hint[\s\S]*?animation:\s*universe-transient-status-fade 3s/);
+  assert.match(polishCss, /@keyframes universe-transient-status-fade[\s\S]*?visibility:\s*hidden/);
+});
+
+test("Universe map gestures cannot select page text or trigger the iOS callout", () => {
+  assert.match(polishCss, /\.universe-mobile-map,[\s\S]*?\.universe-mobile-map \*\s*\{[\s\S]*?-webkit-user-select:\s*none;[\s\S]*?user-select:\s*none;[\s\S]*?-webkit-touch-callout:\s*none/);
+});
+
+test("Day Space white mobile top bar scrolls with the page instead of floating", () => {
+  assert.match(polishCss, /\.app-shell:has\(\.day-space-page\) \.mobile-top-bar\s*\{[\s\S]*?position:\s*static;[\s\S]*?top:\s*auto;[\s\S]*?background:\s*#ffffff !important/);
   assert.match(polishCss, /border-bottom:\s*0/);
-  assert.doesNotMatch(polishCss, /border-bottom:\s*1px solid rgba\(0, 0, 0, 0\.08\)/);
 });
 
 test("Universe homepage background redesign is still outside this polish file", () => {
