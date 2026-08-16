@@ -54,12 +54,14 @@ test("Mobile node editor keeps recovery and removal out of the edit body and sup
   assert.doesNotMatch(mobileEditor, /universe-standalone-editor-secondary-actions/);
   assert.doesNotMatch(mobileEditor, /请填写星系权重/);
   assert.match(nodePaperSource, /detailTopRight[\s\S]*?恢复上一版本[\s\S]*?让它离开宇宙/);
+  assert.match(nodePaperSource, /deleteConfirmPending[\s\S]*?确认让它离开/);
   assert.match(polishCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\) \.paper-detail-top-right\s*\{[\s\S]*?display:\s*flex !important/);
 });
 
-test("Universe action feedback lives on the title row, strips trailing punctuation, and expires", () => {
+test("Universe action feedback lives on the title row, strips trailing punctuation, and expires only while visible", () => {
   assert.match(universePageSource, /<UniverseHeader\s+notice=\{notice\?\.message\}/);
   assert.match(universePageSource, /className="universe-header-notice" role="status"/);
+  assert.match(universePageSource, /if \(!notice \|\| editorOpen \|\| relationEditorOpen\) return;/);
   assert.match(universePageSource, /setTimeout\([\s\S]*?3000/);
   assert.match(universePageSource, /replace\(\/\[。．.!！？\?\]\+\$\/u, ""\)/);
   assert.doesNotMatch(universePageSource, /<p className="universe-notice"/);
