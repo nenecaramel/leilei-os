@@ -2,6 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { GlobalSearchError, type GlobalSearchInput, type GlobalSearchResult } from "../../../domains/global-search/global-search-service.js";
 
+const MAX_CURSOR_ENCODED_LENGTH = 2800;
+
 const inputSchema = z.object({
   query: z
     .string()
@@ -10,21 +12,21 @@ const inputSchema = z.object({
       const normalized = value.normalize("NFC").trim();
       return normalized.length > 0 && [...normalized].length <= 200;
     }, "Query must contain 1 to 200 Unicode code points after NFC normalization and trimming."),
-  modules: z.array(z.enum(["memory", "diary", "task"])).min(1).max(3).optional(),
+  modules: z.array(z.enum(["memory", "diary", "task", "universe"])).min(1).max(4).optional(),
   scope: z.enum(["active", "archived", "all"]).optional(),
   mode: z.enum(["phrase", "normal"]).optional(),
   date_from: z.string().max(10).optional(),
   date_to: z.string().max(10).optional(),
   limit: z.number().int().min(1).max(25).optional(),
-  cursor: z.string().max(1200).optional(),
+  cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).optional(),
 }).strict();
 
 const globalSearchOutputSchema = z.object({
   success: z.literal(true),
   data: z.object({
     results: z.array(z.object({
-      entity_type: z.enum(["memory", "diary", "task"]),
-      entity_id: z.string().uuid(),
+      entity_type: z.enum(["memory", "diary", "task", "universe"]),
+      entity_id: z.string().min(1).max(256),
       stable_name: z.string(),
       snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
       matched_field: z.enum(["key", "title", "content", "description", "tags", "mood"]),
@@ -33,17 +35,17 @@ const globalSearchOutputSchema = z.object({
       business_time: z.string().datetime(),
       time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at"]),
       updated_at: z.string().datetime(),
-      detail_tool: z.enum(["get_memory", "get_diary", "get_task"]),
+      detail_tool: z.enum(["get_memory", "get_diary", "get_task"]).nullable(),
       detail_arguments: z.object({
         id: z.string().uuid(),
         scope: z.enum(["active", "archived"]),
-      }).strict(),
+      }).strict().nullable(),
     }).strict()),
     metadata: z.object({
       count: z.number().int().min(0).max(25),
       has_more: z.boolean(),
-      next_cursor: z.string().max(1200).nullable(),
-      searched_modules: z.array(z.enum(["memory", "diary", "task"])).min(1).max(3),
+      next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
+      searched_modules: z.array(z.enum(["memory", "diary", "task", "universe"])).min(1).max(4),
       searched_scope: z.enum(["active", "archived", "all"]),
     }).strict(),
   }).strict(),
@@ -54,7 +56,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search for previously recorded experiences, preferences, decisions, plans, tasks, diary entries, project facts, or whenever model memory is uncertain. Use active for current state and all for 以前、曾经、历史、所有记录. No results means nothing was found: never invent an answer. Compare conflicting records by module, lifecycle, and time; archived records are historical, not automatically current. Before relying on private full content, call the returned detail_tool with detail_arguments. Preserve entity type, ID, and time when summarizing important results.",
+    description: "Use global_search for previously recorded experiences, preferences, decisions, plans, tasks, diary entries, Universe nodes, project facts, or whenever model memory is uncertain. Use active for current state and all for 以前、曾经、历史、所有记录. No results means nothing was found: never invent an answer. Compare conflicting records by module, lifecycle, and time; archived records are historical, not automatically current. Before relying on private full content, call the returned detail_tool with detail_arguments when one is available. Preserve entity type, ID, and time when summarizing important results.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

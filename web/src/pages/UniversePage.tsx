@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import "./universe-state-polish.css";
 import {
@@ -16,6 +17,7 @@ import { UniverseGalaxyPicker } from "./universe/UniverseGalaxyPicker";
 import { UniverseNodePaper, type UniverseNodePaperDraft, type UniverseNodePaperMode } from "./universe/UniverseNodePaper";
 import { UniverseRelationPaper } from "./universe/UniverseRelationPaper";
 import { UniverseFloatingPopover } from "./universe/UniverseFloatingPopover";
+import { consumeUniverseNodeTarget } from "./universe/universe-location";
 import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
@@ -56,6 +58,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     () => LeileiOSUniverseService({ adapter: createLeileiOSUniverseAdapter(api) }),
     [api],
   );
+  const location = useLocation();
   const [state, setState] = useState<UniverseState>({ status: "loading" });
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -138,6 +141,20 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       refreshFromService();
     }
   };
+
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    const target = consumeUniverseNodeTarget(location.search, state.snapshot.nodes.map((node) => node.id));
+    if (!target) return;
+    window.history.replaceState(window.history.state, "", `${location.pathname}${target.remainingSearch}${location.hash}`);
+    window.dispatchEvent(new window.PopStateEvent("popstate"));
+    if (selectedId === target.nodeId) return;
+    setPaperError(null);
+    setSelectedId(target.nodeId);
+    setRevealNodeId(target.nodeId);
+    setPaperMode({ kind: "detail", nodeId: target.nodeId });
+    setEditorOpen(true);
+  }, [location, selectedId, state]);
 
   async function saveNode(values: UniverseNodePaperDraft) {
     if (saving) return;
