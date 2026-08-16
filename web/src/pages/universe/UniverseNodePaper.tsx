@@ -5,6 +5,7 @@ import type { UniversePoint } from "./universe-map-transform";
 import { relationTypeLabel } from "./universe-map-presentation";
 import { UniverseNodeMetadata, parseUniverseTags, toCanonicalMemberships, type MembershipDraft } from "./UniverseNodeMetadata";
 import { UniverseFloatingPopover } from "./UniverseFloatingPopover";
+import "./universe-node-paper-web-mobile.css";
 
 export type UniverseNodePaperMode =
   | { kind: "detail"; nodeId: string }
