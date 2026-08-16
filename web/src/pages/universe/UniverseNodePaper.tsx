@@ -5,6 +5,7 @@ import type { UniversePoint } from "./universe-map-transform";
 import { relationTypeLabel } from "./universe-map-presentation";
 import { UniverseNodeMetadata, parseUniverseTags, toCanonicalMemberships, type MembershipDraft } from "./UniverseNodeMetadata";
 import { UniverseFloatingPopover } from "./UniverseFloatingPopover";
+import "./universe-node-paper-mobile.css";
 
 export type UniverseNodePaperMode =
   | { kind: "detail"; nodeId: string }
@@ -41,6 +42,7 @@ export function UniverseNodePaper({
   onDeleteRelation,
   onOpenRelatedNode,
   onEdit,
+  onCancelEdit,
   connections = [],
 }: {
   node: UniverseNode | null;
@@ -59,6 +61,7 @@ export function UniverseNodePaper({
   onDeleteRelation?(relation: UniverseRelation): void;
   onOpenRelatedNode?(nodeId: string): void;
   onEdit?(node: UniverseNode): void;
+  onCancelEdit?: (node: UniverseNode) => void;
   connections?: Array<{ relation: UniverseRelation; node: UniverseNode }>;
 }) {
   const isCreate = mode?.kind === "create";
@@ -128,6 +131,40 @@ export function UniverseNodePaper({
     />
   );
 
+  const detailTopRight = effectiveNode ? (
+    <div className="universe-node-paper-top-actions">
+      <span className="universe-node-paper-overflow">
+        <button type="button" className="memory-paper-control" aria-label="更多星球操作" aria-expanded={detailOverflowOpen} onClick={() => setDetailOverflowOpen((value) => !value)}>···</button>
+        {detailOverflowOpen ? (
+          <span className="universe-node-paper-overflow-menu" role="menu">
+            <button type="button" onClick={() => { setDetailOverflowOpen(false); onCreateRelation?.(effectiveNode); }}>建立连接</button>
+            <button type="button" disabled={!revisionsAvailable || saving} onClick={() => { setDetailOverflowOpen(false); onRestore?.(effectiveNode); }}>恢复上一版本</button>
+            {onDelete ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); onDelete(effectiveNode); }}>移除星球</button> : null}
+          </span>
+        ) : null}
+      </span>
+      <button type="button" className="memory-paper-control" onClick={() => onEdit?.(effectiveNode)}>编辑</button>
+    </div>
+  ) : null;
+
+  const editTopRight = (
+    <div className="universe-node-paper-top-actions">
+      <button
+        type="button"
+        className="memory-paper-control"
+        onClick={() => {
+          if (isCreate || !effectiveNode || !onCancelEdit) {
+            void onRequestClose();
+            return;
+          }
+          onCancelEdit(effectiveNode);
+        }}
+      >取消</button>
+      <span aria-hidden="true">·</span>
+      <button type="button" className="memory-paper-control" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : "保存"}</button>
+    </div>
+  );
+
   return (
     <PaperDetailDialog
       id={id}
@@ -136,33 +173,14 @@ export function UniverseNodePaper({
       dateLabel={formatUniverseNodeTimestamp(isCreate ? (createTimestampRef.current ?? new Date().toISOString()) : effectiveNode!.createdAt)}
       signature=""
       showRules={false}
-      topRight={isEdit ? (
-        <div className="universe-node-paper-top-actions">
-          <button type="button" className="tertiary-button" onClick={() => void onRequestClose()}>取消</button>
-          <button type="button" className="tertiary-button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : "保存"}</button>
-        </div>
-      ) : effectiveNode ? (
-        <div className="universe-node-paper-top-actions">
-          <button type="button" className="tertiary-button" onClick={() => onEdit?.(effectiveNode)}>编辑</button>
-          <span className="universe-node-paper-overflow">
-            <button type="button" className="tertiary-button" aria-label="更多星球操作" aria-expanded={detailOverflowOpen} onClick={() => setDetailOverflowOpen((value) => !value)}>···</button>
-            {detailOverflowOpen ? (
-              <span className="universe-node-paper-overflow-menu" role="menu">
-                <button type="button" onClick={() => { setDetailOverflowOpen(false); onCreateRelation?.(effectiveNode); }}>建立连接</button>
-                <button type="button" disabled={!revisionsAvailable || saving} onClick={() => { setDetailOverflowOpen(false); onRestore?.(effectiveNode); }}>恢复上一版本</button>
-                {onDelete ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); onDelete(effectiveNode); }}>移除星球</button> : null}
-              </span>
-            ) : null}
-          </span>
-        </div>
-      ) : null}
+      topRight={isEdit ? editTopRight : detailTopRight}
       triggerRef={triggerRef}
       onRequestClose={onRequestClose}
       errorMessage={errorMessage}
-      bottomLeft={metadata}
+      bottomLeft={isEdit ? metadata : null}
     >
       {isEdit ? (
-        <div className="universe-node-paper-body">
+        <div className="universe-node-paper-body universe-node-paper-body-edit">
           <input className="universe-paper-title-editor" aria-label="星球标题" placeholder="星球标题" autoFocus value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} />
           <textarea className="universe-paper-summary-editor" aria-label="星球摘要" placeholder=" " value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} />
           <textarea className="universe-paper-content-editor" aria-label="星球正文" placeholder="记录这颗星球的想法" value={content} rows={6} onChange={(event) => setContent(event.target.value)} />
@@ -170,11 +188,15 @@ export function UniverseNodePaper({
           {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-paper-inline-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
         </div>
       ) : (
-        <div className="universe-node-paper-body">
-          <h2>{effectiveNode!.title}</h2>
-          {effectiveNode!.summary ? <p>{effectiveNode!.summary}</p> : null}
-          {effectiveNode!.content ? <p>{effectiveNode!.content}</p> : null}
+        <div className="universe-node-paper-body universe-node-paper-body-detail">
+          <h2 className="universe-node-paper-title">{effectiveNode!.title}</h2>
+          {effectiveNode!.summary ? <p className="universe-node-paper-summary">{effectiveNode!.summary}</p> : null}
+          {effectiveNode!.content ? <p className="universe-node-paper-content">{effectiveNode!.content}</p> : null}
           {connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button></div>)}</section> : null}
+          <details className="universe-node-paper-properties">
+            <summary>属性</summary>
+            <div className="universe-node-paper-properties-content">{metadata}</div>
+          </details>
         </div>
       )}
     </PaperDetailDialog>
