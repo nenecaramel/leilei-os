@@ -47,6 +47,10 @@ test("Universe mobile detail typography matches the approved hierarchy", () => {
   assert.match(mobileCss, /\.universe-standalone-stats strong\s*\{[\s\S]*font-size:\s*19px[\s\S]*font-weight:\s*500/);
 });
 
+test("Universe mobile detail moves only its top metadata row up 4px", () => {
+  assert.match(detailShellCss, /\.universe-standalone-detail-head\s*\{[\s\S]*transform:\s*translateY\(-4px\)/);
+});
+
 test("Universe mobile detail removes the fake revision count and compacts relation controls", () => {
   const detailStart = paperSource.indexOf('className="universe-standalone-detail"');
   const detailEnd = paperSource.indexOf("</section>", detailStart);
