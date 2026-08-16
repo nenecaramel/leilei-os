@@ -18,10 +18,10 @@ const detailShellCss = existsSync(detailShellUrl)
   ? readFileSync(detailShellUrl, "utf8")
   : "";
 
-test("Universe mobile detail uses Memory paper geometry with fixed head and actions and a scrolling body", () => {
+test("Universe mobile detail keeps its top edge while moving the bottom edge up 30px", () => {
   assert.match(paperSource, /className="universe-standalone-detail-scroll"/);
-  assert.match(detailShellCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\)[\s\S]*width:\s*min\(665px,\s*calc\(100vw - 46px\)\)[\s\S]*height:\s*clamp\(536px,\s*calc\(78dvh - 24px\),\s*696px\)[\s\S]*transform:\s*translateY\(31px\)/);
-  assert.doesNotMatch(detailShellCss, /height:\s*min\(590px,\s*calc\(100dvh - 96px\)\)/);
+  assert.match(detailShellCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\)[\s\S]*width:\s*min\(665px,\s*calc\(100vw - 46px\)\)[\s\S]*height:\s*clamp\(506px,\s*calc\(78dvh - 54px\),\s*666px\)[\s\S]*transform:\s*translateY\(16px\)/);
+  assert.match(detailShellCss, /@media \(max-width:\s*760px\) and \(max-height:\s*680px\)[\s\S]*height:\s*calc\(100dvh - 50px\)[\s\S]*max-height:\s*calc\(100dvh - 50px\)/);
   assert.match(mobileCss, /\.universe-standalone-detail\s*\{[\s\S]*display:\s*grid[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto/);
   assert.match(mobileCss, /\.universe-standalone-detail-scroll\s*\{[\s\S]*overflow-y:\s*auto/);
 });
