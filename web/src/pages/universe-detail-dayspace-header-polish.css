@@ -23,9 +23,8 @@
   }
 
   /*
-   * The old relation shell carried 24px bottom padding while detail/edit use
-   * 14px. Normalize the parent inset first so all three action footers land
-   * on the exact same bottom baseline as detail.
+   * Normalize the connection card to the same bottom inset as detail/edit so
+   * all three action footers land on the same baseline.
    */
   .universe-standalone-connection {
     padding-bottom: 14px !important;
@@ -36,6 +35,7 @@
   .universe-standalone-connection-footer {
     display: flex !important;
     width: 100%;
+    flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
     gap: 14px !important;
@@ -53,7 +53,7 @@
     padding: 0 !important;
     border: 0 !important;
     border-radius: 0 !important;
-    color: #777986 !important;
+    color: #7d7f8c !important;
     background: transparent !important;
     box-shadow: none !important;
     font-size: 12px !important;
@@ -204,16 +204,19 @@
   }
 
   /*
-   * Add-planet guidance is a real placement popover, not a transient notice.
-   * Fixed viewport geometry avoids toolbar/map clipping; the max-width keeps
-   * at least 16px of horizontal safe space on both sides.
+   * Add-planet guidance is a real anchored popover again. Align its right edge
+   * with the + control so it shifts inward instead of overflowing off-screen.
    */
+  .universe-popover-anchor {
+    overflow: visible;
+  }
+
   .universe-page:has(.universe-mobile-map) .universe-placement-popover {
-    position: fixed !important;
+    position: absolute !important;
     z-index: 41 !important;
-    top: calc(64px + env(safe-area-inset-top, 0px)) !important;
-    right: auto !important;
-    left: 50vw !important;
+    top: calc(100% + 4px) !important;
+    right: 0 !important;
+    left: auto !important;
     width: max-content !important;
     min-width: 188px !important;
     max-width: calc(100vw - 32px) !important;
@@ -233,7 +236,7 @@
     line-height: 1.35 !important;
     text-align: center !important;
     white-space: normal;
-    transform: translateX(-50%) !important;
+    transform: none !important;
     animation: none !important;
   }
 
