@@ -71,6 +71,29 @@
     padding: 0 !important;
   }
 
+  .paper-detail-layer:has(.universe-standalone-detail) .paper-detail-veil {
+    background: rgba(3, 4, 9, 0.5) !important;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .paper-detail-paper:has(.universe-standalone-detail) {
+    height: min(590px, calc(100dvh - 96px)) !important;
+    max-height: calc(100dvh - 96px) !important;
+  }
+
+  .paper-detail-paper:has(.universe-standalone-detail) .paper-detail-scroll {
+    height: 100% !important;
+    max-height: none !important;
+    overflow: hidden !important;
+  }
+
+  .paper-detail-paper:has(.universe-standalone-detail) .paper-detail-body,
+  .paper-detail-paper:has(.universe-standalone-detail) .universe-node-original-web-mobile {
+    height: 100%;
+    min-height: 0 !important;
+  }
+
   .universe-standalone-editor,
   .universe-standalone-detail,
   .universe-standalone-connection {
@@ -346,7 +369,12 @@
 
   /* Detail card */
   .universe-standalone-detail {
-    padding: 23px 22px 20px;
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: 16px 20px 14px;
+    overflow: hidden;
   }
 
   .universe-standalone-detail-head {
@@ -355,9 +383,9 @@
 
   .universe-standalone-type-chip {
     display: inline-flex;
-    min-height: 31px;
+    min-height: 28px;
     align-items: center;
-    padding: 0 12px;
+    padding: 0 10px;
     border: 1px solid #75527f;
     border-radius: 999px;
     color: #d79ae5;
@@ -370,26 +398,37 @@
     white-space: nowrap;
   }
 
+  .universe-standalone-detail-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .universe-standalone-detail-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
   .universe-standalone-detail h2 {
-    margin: 22px 0 0;
+    margin: 15px 0 0;
     color: #f5f2e9;
-    font-size: clamp(29px, 8vw, 37px);
-    font-weight: 650;
-    letter-spacing: -0.045em;
+    font-size: 31px;
+    font-weight: 500;
+    letter-spacing: -0.035em;
     line-height: 1.08;
   }
 
   .universe-standalone-summary {
-    margin: 13px 0 0;
-    color: #a7a4ae;
-    font-size: 17px;
+    margin: 10px 0 0;
+    color: #858793;
+    font-size: 13px;
     line-height: 1.65;
   }
 
   .universe-standalone-content {
-    margin: 12px 0 0;
-    color: #777986;
-    font-size: 14px;
+    margin: 10px 0 0;
+    color: #b0aeb7;
+    font-size: 16px;
     line-height: 1.7;
     white-space: pre-wrap;
   }
@@ -425,11 +464,12 @@
 
   .universe-standalone-divider {
     height: 1px;
-    margin: 21px 0 18px;
+    margin: 18px 0 15px;
     background: #30323b;
   }
 
   .universe-standalone-stats {
+    justify-content: flex-start;
     gap: 15px;
     color: #656773;
     font-size: 12px;
@@ -438,21 +478,21 @@
   .universe-standalone-stats strong {
     margin: 0 3px;
     color: #ece9e2;
-    font-size: 22px;
-    font-weight: 650;
+    font-size: 19px;
+    font-weight: 500;
   }
 
   .universe-standalone-relations {
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
-    margin-top: 14px;
+    margin-top: 12px;
   }
 
   .universe-standalone-relation-chip {
     display: inline-flex;
-    min-height: 37px;
-    align-items: stretch;
+    min-height: 28px;
+    align-items: center;
     overflow: hidden;
     border: 1px solid #343640;
     border-radius: 999px;
@@ -460,7 +500,7 @@
 
   .universe-standalone-relation-link,
   .universe-standalone-relation-remove {
-    min-height: 35px;
+    min-height: 26px;
     border: 0;
     color: #737582;
     background: transparent;
@@ -468,33 +508,31 @@
   }
 
   .universe-standalone-relation-link {
-    padding: 0 12px;
+    padding: 0 4px 0 9px;
   }
 
   .universe-standalone-relation-remove {
-    width: 35px;
-    padding: 0;
-    border-left: 1px solid #343640;
-    font-size: 19px;
+    width: auto;
+    min-width: 18px;
+    padding: 0 7px 0 2px;
+    font-size: 12px;
     line-height: 1;
   }
 
   .universe-standalone-detail-actions {
-    align-items: baseline;
+    align-items: center;
     gap: 14px;
-    margin-top: 18px;
+    margin-top: 0;
+    padding-top: 12px;
+    background: #101119;
   }
 
   .universe-standalone-detail-actions button {
     padding: 0;
     border: 0;
-    color: #9d8cff;
+    color: #777986;
     background: transparent;
     font-size: 12px;
-  }
-
-  .universe-standalone-detail-actions button:last-child {
-    color: #777986;
   }
 
   /* Connection modal */
