@@ -55,8 +55,8 @@ test("Galaxy percentage input keeps optical size but leaves room for the fixed p
 });
 
 test("Mobile recovery and removal management lives in edit instead of detail", () => {
-  assert.match(nodePaperSource, /universe-standalone-editor-management[\s\S]*?更多星球操作/);
-  assert.match(nodePaperSource, /恢复上一版本[\s\S]*?让它离开宇宙/);
+  assert.match(nodePaperSource, /const renderManagementMenu[\s\S]*?更多星球操作[\s\S]*?恢复上一版本[\s\S]*?让它离开宇宙/);
+  assert.match(nodePaperSource, /renderManagementMenu\("universe-standalone-editor-management"\)/);
   assert.match(nodePaperSource, /deleteConfirmPending[\s\S]*?确认让它离开/);
   assert.match(polishCss, /\.paper-detail-paper:has\(\.universe-standalone-detail\) \.paper-detail-top-right\s*\{[\s\S]*?display:\s*none !important/);
   assert.match(polishCss, /\.universe-standalone-editor-management\s*\{[\s\S]*?position:\s*absolute/);
