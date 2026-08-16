@@ -298,39 +298,42 @@ export function UniverseNodePaper({
         <span className="universe-standalone-type-chip">{NODE_TYPE_LABELS[effectiveNode!.type] ?? effectiveNode!.type}</span>
         <span className="universe-standalone-updated">更新于 {formatStandaloneDate(effectiveNode!.updatedAt)}</span>
       </div>
-      <h2>{effectiveNode!.title}</h2>
-      {effectiveNode!.summary ? <p className="universe-standalone-summary">{effectiveNode!.summary}</p> : null}
-      {effectiveNode!.content ? <p className="universe-standalone-content">{effectiveNode!.content}</p> : null}
 
-      {effectiveNode!.tags.length ? <div className="universe-standalone-tags">{effectiveNode!.tags.map((tag) => <span className="universe-standalone-tag" key={tag}># {tag}</span>)}</div> : null}
+      <div className="universe-standalone-detail-scroll">
+        <h2>{effectiveNode!.title}</h2>
+        {effectiveNode!.summary ? <p className="universe-standalone-summary">{effectiveNode!.summary}</p> : null}
+        {effectiveNode!.content ? <p className="universe-standalone-content">{effectiveNode!.content}</p> : null}
 
-      {effectiveNode!.galaxies.length ? (
-        <div className="universe-standalone-memberships">
-          {effectiveNode!.galaxies.map((membership) => {
-            const galaxy = galaxies.find((item) => item.id === membership.id);
-            return <span className="universe-standalone-membership" key={membership.id} style={{ borderLeftColor: galaxy?.color ?? "#9a8cff", color: galaxy?.color ?? "#aeb0bf" }}>{galaxy?.title ?? membership.id} · {formatMembershipWeight(membership.weight)}</span>;
-          })}
+        {effectiveNode!.tags.length ? <div className="universe-standalone-tags">{effectiveNode!.tags.map((tag) => <span className="universe-standalone-tag" key={tag}># {tag}</span>)}</div> : null}
+
+        {effectiveNode!.galaxies.length ? (
+          <div className="universe-standalone-memberships">
+            {effectiveNode!.galaxies.map((membership) => {
+              const galaxy = galaxies.find((item) => item.id === membership.id);
+              return <span className="universe-standalone-membership" key={membership.id} style={{ borderLeftColor: galaxy?.color ?? "#9a8cff", color: galaxy?.color ?? "#aeb0bf" }}>{galaxy?.title ?? membership.id} · {formatMembershipWeight(membership.weight)}</span>;
+            })}
+          </div>
+        ) : null}
+
+        <div className="universe-standalone-divider" />
+        <div className="universe-standalone-stats">
+          <span>一阶关联 <strong>{connections.length}</strong> 条</span>
         </div>
-      ) : null}
 
-      <div className="universe-standalone-divider" />
-      <div className="universe-standalone-stats">
-        <span>一阶关联 <strong>{connections.length}</strong> 条</span>
-        <span>认知修订 <strong>{revisionsAvailable ? "1+" : "0"}</strong> 次</span>
+        {connections.length ? (
+          <div className="universe-standalone-relations" aria-label="思想连接">
+            {connections.map(({ relation, node: relatedNode }) => (
+              <div className="universe-standalone-relation-chip" key={relation.id}>
+                <button type="button" className="universe-standalone-relation-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}>{relationTypeLabel(relation.relationType)} · {relatedNode.title}</button>
+                {onDeleteRelation ? <button type="button" className="universe-standalone-relation-remove" aria-label={`移除与 ${relatedNode.title} 的连接`} disabled={saving} onClick={() => onDeleteRelation(relation)}>×</button> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
       </div>
 
-      {connections.length ? (
-        <div className="universe-standalone-relations" aria-label="思想连接">
-          {connections.map(({ relation, node: relatedNode }) => (
-            <div className="universe-standalone-relation-chip" key={relation.id}>
-              <button type="button" className="universe-standalone-relation-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}>{relationTypeLabel(relation.relationType)} · {relatedNode.title}</button>
-              {onDeleteRelation ? <button type="button" className="universe-standalone-relation-remove" aria-label={`移除与 ${relatedNode.title} 的连接`} disabled={saving} onClick={() => onDeleteRelation(relation)}>×</button> : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
       <div className="universe-standalone-detail-actions">
         {onCreateRelation ? <button type="button" onClick={() => onCreateRelation(effectiveNode!)}>连接另一个思想</button> : <span />}
         <button type="button" onClick={() => onEdit?.(effectiveNode!)}>调整这颗星球</button>
