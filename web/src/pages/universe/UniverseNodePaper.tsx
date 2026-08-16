@@ -195,9 +195,8 @@ export function UniverseNodePaper({
         <button type="button" className="tertiary-button" aria-label="更多星球操作" aria-expanded={detailOverflowOpen} onClick={() => setDetailOverflowOpen((value) => !value)}>···</button>
         {detailOverflowOpen ? (
           <span className="universe-node-paper-overflow-menu" role="menu">
-            <button type="button" onClick={() => { setDetailOverflowOpen(false); onCreateRelation?.(effectiveNode); }}>建立连接</button>
-            <button type="button" disabled={!revisionsAvailable || saving} onClick={() => { setDetailOverflowOpen(false); onRestore?.(effectiveNode); }}>恢复上一版本</button>
-            {onDelete ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); onDelete(effectiveNode); }}>移除星球</button> : null}
+            {revisionsAvailable && onRestore ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); onRestore(effectiveNode); }}>恢复上一版本</button> : null}
+            {onDelete ? <button type="button" disabled={saving} onClick={() => { setDetailOverflowOpen(false); onDelete(effectiveNode); }}>让它离开宇宙</button> : null}
           </span>
         ) : null}
       </span>
@@ -298,15 +297,7 @@ export function UniverseNodePaper({
           </fieldset>
         ) : null}
 
-        {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-standalone-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
         {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
-
-        {!isCreate && effectiveNode ? (
-          <div className="universe-standalone-editor-secondary-actions">
-            {revisionsAvailable && onRestore ? <button type="button" disabled={saving} onClick={() => onRestore(effectiveNode)}>恢复上一版本</button> : null}
-            {onDelete ? <button type="button" disabled={saving} onClick={() => onDelete(effectiveNode)}>让它离开宇宙</button> : null}
-          </div>
-        ) : null}
       </div>
 
       <footer className="universe-standalone-editor-footer">
