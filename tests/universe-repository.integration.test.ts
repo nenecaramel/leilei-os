@@ -6,7 +6,7 @@ import test from "node:test";
 import { eq } from "drizzle-orm";
 import * as schema from "../src/database/schema.js";
 import { DrizzleUniverseRepository } from "../src/domains/universe/universe-repository-drizzle.js";
-import { UniverseService } from "../src/domains/universe/universe-service.js";
+import { UniverseService, UniverseServiceError } from "../src/domains/universe/universe-service.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const parsedUrl = databaseUrl ? new URL(databaseUrl) : null;
