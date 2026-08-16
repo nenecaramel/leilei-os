@@ -16,9 +16,18 @@ test("Universe migration is additive and creates the six logical stores", async 
   assert.match(sql, /"strength" double precision NOT NULL/u);
 });
 
-test("migration journal ends at Universe weighted membership expand", async () => {
-  const journal = JSON.parse(await readFile(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8")) as { entries: Array<{ tag: string }> };
-  assert.equal(journal.entries.at(-1)?.tag, "0021_universe_weighted_membership_switch");
+test("migration journal keeps the Universe switch before Toy duration", async () => {
+  const journal = JSON.parse(await readFile(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8")) as { entries: Array<{ idx: number; tag: string }> };
+  const universeEntry = journal.entries.find((entry) => entry.tag === "0021_universe_weighted_membership_switch");
+  const toyEntry = journal.entries.find((entry) => entry.tag === "0022_toy_duration");
+  assert.deepEqual(universeEntry && { idx: universeEntry.idx, tag: universeEntry.tag }, {
+    idx: 21,
+    tag: "0021_universe_weighted_membership_switch",
+  });
+  assert.deepEqual(toyEntry && { idx: toyEntry.idx, tag: toyEntry.tag }, {
+    idx: 22,
+    tag: "0022_toy_duration",
+  });
 });
 
 test("0021 switch is a single fail-closed legacy membership gate", async () => {

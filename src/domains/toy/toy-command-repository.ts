@@ -6,6 +6,7 @@ import type {
   ToyCommandRecord,
   ToyCreateInput,
 } from "./toy-command-types.js";
+import { TOY_DEFAULT_DURATION_SECONDS } from "./toy-command-types.js";
 import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
@@ -20,6 +21,7 @@ const selection = {
   userId: toyCommands.userId,
   action: toyCommands.action,
   percent: toyCommands.percent,
+  durationSeconds: toyCommands.durationSeconds,
   status: toyCommands.status,
   createdAt: toyCommands.createdAt,
   expiresAt: toyCommands.expiresAt,
@@ -146,6 +148,10 @@ export class DrizzleToyCommandRepository implements ToyCommandRepository {
         userId,
         action: input.action,
         percent: input.action === "set" ? input.percent : null,
+        durationSeconds:
+          input.action === "set"
+            ? input.durationSeconds ?? TOY_DEFAULT_DURATION_SECONDS
+            : null,
         status: "pending",
         createdAt: sql`now()`,
         expiresAt: sql`now() + interval '10 seconds'`,
@@ -276,6 +282,8 @@ function mapRawRecord(value: unknown): ToyCommandRecord | undefined {
     userId: String(row.user_id),
     action: row.action as ToyCommandRecord["action"],
     percent: row.percent === null ? null : Number(row.percent),
+    durationSeconds:
+      row.duration_seconds === null ? null : Number(row.duration_seconds),
     status: row.status as ToyCommandRecord["status"],
     createdAt: new Date(String(row.created_at)),
     expiresAt: new Date(String(row.expires_at)),

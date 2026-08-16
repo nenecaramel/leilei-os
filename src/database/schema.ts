@@ -776,6 +776,7 @@ export const toyCommands = pgTable(
       }),
     action: toyCommandActionEnum("action").notNull(),
     percent: integer("percent"),
+    durationSeconds: integer("duration_seconds").default(60),
     status: toyCommandStatusEnum("status").default("pending").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -814,6 +815,10 @@ export const toyCommands = pgTable(
     check(
       "toy_commands_expiry_after_creation",
       sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
+    check(
+      "toy_commands_duration_seconds_consistency",
+      sql`(${table.action} = 'set' AND ${table.durationSeconds} BETWEEN 1 AND 1200) OR (${table.action} = 'stop' AND (${table.durationSeconds} IS NULL OR ${table.durationSeconds} = 60))`,
     ),
   ],
 );

@@ -34,7 +34,7 @@ class FakeRepository implements ToyCommandRepository {
   async createIdempotently(userId: string, input: ToyCreateInput & { toolName: "toy_set" | "toy_stop"; idempotencyKey: string; requestHash: string }) {
     this.idempotentCreates.push({ userId, input });
     if (this.idempotentOutcome === "conflict") return { outcome: "conflict" as const };
-    return { outcome: this.idempotentOutcome, command: record({ userId, action: input.action, percent: input.action === "set" ? input.percent : null }) };
+    return { outcome: this.idempotentOutcome, command: record({ userId, action: input.action, percent: input.action === "set" ? input.percent : null, durationSeconds: input.action === "set" ? input.durationSeconds ?? 60 : null }) };
   }
   async claim(userId: string) {
     this.claimUserIds.push(userId);
@@ -74,10 +74,61 @@ test("creates only strict high-level set and stop commands for the bound user", 
   await service.create(USER_ID, { action: "set", percent: 40 });
   await service.create(USER_ID, { action: "stop" });
   assert.deepEqual(repository.creates.map(({ input }) => input), [
-    { action: "set", percent: 1 },
-    { action: "set", percent: 40 },
+    { action: "set", percent: 1, durationSeconds: 60 },
+    { action: "set", percent: 40, durationSeconds: 60 },
     { action: "stop" },
   ]);
+});
+
+test("normalizes omitted duration to 60 seconds and accepts the bounded endpoints", async () => {
+  const repository = new FakeRepository();
+  const service = new ToyCommandService(repository, USER_ID);
+
+  await service.create(USER_ID, { action: "set", percent: 20 });
+  await service.create(USER_ID, { action: "set", percent: 1, durationSeconds: 1 });
+  await service.create(USER_ID, { action: "set", percent: 40, durationSeconds: 1200 });
+
+  assert.deepEqual(repository.creates.map(({ input }) => input), [
+    { action: "set", percent: 20, durationSeconds: 60 },
+    { action: "set", percent: 1, durationSeconds: 1 },
+    { action: "set", percent: 40, durationSeconds: 1200 },
+  ]);
+});
+
+test("includes normalized duration in the idempotency fingerprint", async () => {
+  const repository = new FakeRepository();
+  const service = new ToyCommandService(repository, USER_ID);
+
+  await service.createIdempotently(
+    USER_ID,
+    { action: "set", percent: 20 },
+    "toy-duration-fingerprint-0001",
+  );
+  await service.createIdempotently(
+    USER_ID,
+    { action: "set", percent: 20, durationSeconds: 61 },
+    "toy-duration-fingerprint-0002",
+  );
+
+  assert.notEqual(
+    repository.idempotentCreates[0]?.input.requestHash,
+    repository.idempotentCreates[1]?.input.requestHash,
+  );
+});
+
+test("rejects duration outside 1 through 1200 without changing the percent contract", async () => {
+  const service = new ToyCommandService(new FakeRepository(), USER_ID);
+
+  for (const durationSeconds of [0, -1, 1201, 1.5, Number.NaN, "60", true, null]) {
+    await assert.rejects(
+      service.create(USER_ID, { action: "set", percent: 20, durationSeconds }),
+      (error: unknown) => error instanceof ToyDomainError && error.code === "INVALID_INPUT",
+    );
+  }
+  await assert.rejects(
+    service.create(USER_ID, { action: "set", percent: 41, durationSeconds: 60 }),
+    (error: unknown) => error instanceof ToyDomainError && error.code === "INVALID_INPUT",
+  );
 });
 
 test("rejects invalid intensity, coercion, stop percent and arbitrary payload fields", async () => {
@@ -212,6 +263,7 @@ function record(overrides: Partial<ToyCommandRecord> = {}): ToyCommandRecord {
     userId: USER_ID,
     action: "stop",
     percent: null,
+    durationSeconds: null,
     status: "pending",
     createdAt: new Date("2026-07-26T10:00:00Z"),
     expiresAt: new Date("2026-07-26T10:00:10Z"),

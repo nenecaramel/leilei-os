@@ -4,7 +4,11 @@ import type {
   ToyCommandRecord,
   ToyCreateInput,
 } from "./toy-command-types.js";
-import { TOY_ERROR_MAX_LENGTH } from "./toy-command-types.js";
+import {
+  TOY_DEFAULT_DURATION_SECONDS,
+  TOY_ERROR_MAX_LENGTH,
+  TOY_MAX_DURATION_SECONDS,
+} from "./toy-command-types.js";
 import type {
   ToyAckRepositoryResult,
   ToyCommandRepository,
@@ -18,6 +22,7 @@ const createSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("set"),
     percent: z.number().int().min(1).max(40),
+    durationSeconds: z.number().int().min(1).max(TOY_MAX_DURATION_SECONDS).default(TOY_DEFAULT_DURATION_SECONDS),
   }).strict(),
   z.object({ action: z.literal("stop") }).strict(),
 ]);

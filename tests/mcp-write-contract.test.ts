@@ -79,6 +79,7 @@ function toyResult(action: "set" | "stop", percent: number | null): ToyCommandRe
     userId: AUTHENTICATED_USER_ID,
     action,
     percent,
+    durationSeconds: action === "set" ? 60 : null,
     status: "pending",
     createdAt: new Date("2026-08-01T00:00:00.000Z"),
     expiresAt: new Date("2026-08-01T00:00:10.000Z"),
