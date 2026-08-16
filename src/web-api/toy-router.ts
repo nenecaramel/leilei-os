@@ -100,7 +100,7 @@ function serializeUserCommand(command: ToyCommandRecord) {
     id: command.id,
     action: command.action,
     percent: command.percent,
-    durationSeconds: command.durationSeconds,
+    durationSeconds: command.action === "set" ? command.durationSeconds : null,
     status: command.status,
     createdAt: command.createdAt.toISOString(),
     expiresAt: command.expiresAt.toISOString(),

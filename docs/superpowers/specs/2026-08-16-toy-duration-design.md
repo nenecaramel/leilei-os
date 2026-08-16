@@ -45,10 +45,13 @@ multi-segment behavior in this change.
   idempotency key with a different duration remains a conflict.
 
 The migration is additive: add nullable `duration_seconds`, backfill existing
-`set` rows to 60, set the application/database default to 60 for new set rows,
-and add a dedicated check for set range and stop nullability. The existing
-percent check, command status checks, TTL expression, indexes, and other
-schema are unchanged. No production migration is run in this task.
+`set` rows to 60, set the column default to 60, and add a dedicated check for
+the set range. Stop rows created by the new application explicitly store null;
+the check also permits the default 60 on a legacy stop insert that omits the
+new column, so rolling back the application remains safe. That legacy storage
+value is never serialized or used as runtime duration. The existing percent
+check, command status checks, TTL expression, indexes, and other schema are
+unchanged. No production migration is run in this task.
 
 ## Files in scope
 
@@ -71,8 +74,10 @@ no production deploy, and no merge are part of this change.
 ## Rollback
 
 Application rollback can safely ignore the additive column after stopping new
-duration writes; existing rows remain valid because omitted duration is the
-60-second compatibility value. Do not drop or rewrite the column as an
+duration writes: old set inserts receive the column default 60, old stop
+inserts that omit the column receive the same compatibility value, and the
+new Worker already accepts a missing bridge duration as 60. Stop remains a
+wire-level command without duration. Do not drop or rewrite the column as an
 automatic rollback: first roll back application code, verify no newer clients
 depend on it, take the normal database backup, and use a separately reviewed
 destructive migration if removal is ever required. This branch does not run a

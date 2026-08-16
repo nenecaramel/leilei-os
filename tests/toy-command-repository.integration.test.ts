@@ -52,7 +52,7 @@ test(
           ),
           CONSTRAINT action_duration CHECK (
             (action = 'set' AND duration_seconds BETWEEN 1 AND 1200)
-            OR (action = 'stop' AND duration_seconds IS NULL)
+            OR (action = 'stop' AND (duration_seconds IS NULL OR duration_seconds = 60))
           ),
           CONSTRAINT expiry_after_creation CHECK (expires_at > created_at),
           CONSTRAINT error_length CHECK (error IS NULL OR char_length(error) <= 500)

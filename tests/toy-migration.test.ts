@@ -41,6 +41,6 @@ test("Toy duration migration is additive, backfills legacy set rows, and keeps s
   assert.match(sql, /ALTER COLUMN "duration_seconds" SET DEFAULT 60/u);
   assert.match(sql, /ADD CONSTRAINT "toy_commands_duration_seconds_consistency"/u);
   assert.match(sql, /duration_seconds.*BETWEEN 1 AND 1200/su);
-  assert.match(sql, /action.*=.*'stop'.*duration_seconds.*IS NULL/su);
+  assert.match(sql, /action.*=.*'stop'.*duration_seconds.*IS NULL.*duration_seconds.*=.*60/su);
   assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|DROP CONSTRAINT "toy_commands_action_percent_consistency"/u);
 });

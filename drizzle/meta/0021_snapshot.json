@@ -1878,7 +1878,7 @@
         },
         "toy_commands_duration_seconds_consistency": {
           "name": "toy_commands_duration_seconds_consistency",
-          "value": "(\"toy_commands\".\"action\" = 'set' AND \"toy_commands\".\"duration_seconds\" BETWEEN 1 AND 1200) OR (\"toy_commands\".\"action\" = 'stop' AND \"toy_commands\".\"duration_seconds\" IS NULL)"
+        "value": "(\"toy_commands\".\"action\" = 'set' AND \"toy_commands\".\"duration_seconds\" BETWEEN 1 AND 1200) OR (\"toy_commands\".\"action\" = 'stop' AND (\"toy_commands\".\"duration_seconds\" IS NULL OR \"toy_commands\".\"duration_seconds\" = 60))"
         }
       },
       "isRLSEnabled": false
