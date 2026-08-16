@@ -53,7 +53,6 @@
     padding: 0 !important;
     border: 0 !important;
     border-radius: 0 !important;
-    color: #7d7f8c !important;
     background: transparent !important;
     box-shadow: none !important;
     font-size: 12px !important;
@@ -62,9 +61,13 @@
     white-space: nowrap;
   }
 
+  /* One literal action color across detail, create, edit, and connection pages. */
+  .universe-standalone-detail-actions button,
+  .universe-standalone-editor-footer button,
+  .universe-standalone-connection-footer button,
   .universe-standalone-editor-footer button:disabled,
   .universe-standalone-connection-footer button:disabled {
-    color: #555763 !important;
+    color: #7d7f8c !important;
     opacity: 1 !important;
   }
 
@@ -249,6 +252,20 @@
     color: inherit;
     text-align: center;
     overflow-wrap: anywhere;
+  }
+
+  /* Export uses the same 5px shell + 6px/8px text inset as placement. */
+  .universe-page:has(.universe-mobile-map) .universe-overflow-menu {
+    padding: 5px !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-overflow-menu button {
+    min-height: 0 !important;
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
   }
 
   /* Move-mode guidance remains a lightweight three-second status. */
