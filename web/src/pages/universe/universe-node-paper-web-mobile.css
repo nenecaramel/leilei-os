@@ -1,0 +1,28 @@
+/*
+ * Universe detail / create / edit use the desktop Universe Paper as the visual
+ * source of truth. The shared app has a few broad mobile Paper overrides for
+ * Memory / Diary / Task ergonomics; cancel only those rules for Universe node
+ * papers so the same DOM and Universe styles render on phone.
+ *
+ * Keep this file deliberately small. Fine-grained phone polish belongs here,
+ * but it must not restyle the Universe home/map or invent a second Paper UI.
+ */
+@media (max-width: 760px) {
+  .paper-detail-paper[id^="universe-node-"] {
+    transform: translateY(31px) !important;
+  }
+
+  .paper-detail-paper[id^="universe-node-"] .paper-detail-top-right {
+    display: block;
+    height: auto !important;
+    align-items: initial;
+    white-space: normal;
+  }
+
+  .paper-detail-paper[id^="universe-node-"] .paper-detail-top-right button {
+    height: auto !important;
+    min-height: 44px !important;
+    padding: 0 4px !important;
+    line-height: normal !important;
+  }
+}
