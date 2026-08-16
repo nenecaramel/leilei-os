@@ -48,6 +48,20 @@ function formatMembershipWeight(weight: number): string {
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(weight);
 }
 
+function canonicalWeightTextToPercentText(weightText: string): string {
+  if (!weightText.trim()) return "";
+  const percent = Number(weightText) * 100;
+  if (!Number.isFinite(percent)) return "";
+  return String(Number(percent.toFixed(3)));
+}
+
+function percentWeightTextToCanonicalText(percentText: string): string {
+  if (!percentText.trim()) return "";
+  const canonical = Number(percentText) / 100;
+  if (!Number.isFinite(canonical)) return "";
+  return String(Number(canonical.toFixed(6)));
+}
+
 export function UniverseNodePaper({
   node,
   galaxies,
@@ -217,79 +231,87 @@ export function UniverseNodePaper({
 
   const mobileStandaloneBody = isEdit ? (
     <section className="universe-standalone-editor" aria-label={isCreate ? "点亮星球" : "调整星球"}>
-      <header className="universe-standalone-editor-header">
-        <div>
-          <div className="universe-standalone-eyebrow"><i aria-hidden="true" /><span>{isCreate ? "NEW STAR" : "EDIT STAR"}</span></div>
-          <h2>{isCreate ? "点亮一颗新星" : "调整这颗星球"}</h2>
-        </div>
-        <button className="universe-standalone-close" type="button" aria-label="关闭" onClick={cancelEditor}>×</button>
+      <header className="universe-standalone-editor-heading">
+        <p className="universe-standalone-editor-context">{isCreate ? "新星 · 待点亮" : <>当前思想 · {effectiveNode!.title}</>}</p>
+        <h2>{isCreate ? "点亮一颗新星" : "调整这颗星球"}</h2>
       </header>
 
-      <div className="universe-standalone-form-field">
-        <label htmlFor={`${id}-title`}>它叫什么？</label>
-        <input id={`${id}-title`} value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="一个概念、问题或经历" />
-      </div>
+      <div className="universe-standalone-editor-body">
+        <div className="universe-standalone-form-field">
+          <label htmlFor={`${id}-title`}>它叫什么？</label>
+          <input id={`${id}-title`} value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="一个概念、问题或经历" />
+        </div>
 
-      <div className="universe-standalone-form-field">
-        <label htmlFor={`${id}-summary`}>一句话描述 <small>可选</small></label>
-        <textarea id={`${id}-summary`} value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} placeholder="为什么它值得留在你的宇宙？也可以以后再写。" />
-      </div>
+        <div className="universe-standalone-form-field">
+          <label htmlFor={`${id}-summary`}>一句话描述 · 可选</label>
+          <textarea id={`${id}-summary`} value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} placeholder="为什么它值得留在你的宇宙？" />
+        </div>
 
-      <div className="universe-standalone-form-field">
-        <label htmlFor={`${id}-content`}>此刻的理解</label>
-        <textarea id={`${id}-content`} value={content} rows={4} onChange={(event) => setContent(event.target.value)} placeholder="写下当前理解。未来改变时，这一刻会成为认知轨迹。" />
-      </div>
+        <div className="universe-standalone-form-field">
+          <label htmlFor={`${id}-content`}>此刻的理解</label>
+          <textarea id={`${id}-content`} value={content} rows={4} onChange={(event) => setContent(event.target.value)} placeholder="写下你现在怎样理解它。" />
+        </div>
 
-      <div className="universe-standalone-form-field">
-        <label htmlFor={`${id}-reason`}>这次认知为什么改变？</label>
-        <input id={`${id}-reason`} value="" disabled placeholder={isCreate ? "第一次点亮无需填写" : "当前数据契约暂未保存这一字段"} />
-      </div>
+        <div className="universe-standalone-form-field">
+          <label htmlFor={`${id}-type`}>节点性质</label>
+          <select id={`${id}-type`} value={type} onChange={(event) => setType(event.target.value as UniverseNode["type"])}>
+            {NODE_TYPES.map((option) => <option key={option} value={option}>{NODE_TYPE_LABELS[option] ?? option}</option>)}
+          </select>
+        </div>
 
-      <div className="universe-standalone-form-field">
-        <label htmlFor={`${id}-type`}>节点性质</label>
-        <select id={`${id}-type`} value={type} onChange={(event) => setType(event.target.value as UniverseNode["type"])}>
-          {NODE_TYPES.map((option) => <option key={option} value={option}>{NODE_TYPE_LABELS[option] ?? option}</option>)}
-        </select>
-      </div>
+        <div className="universe-standalone-form-field">
+          <label htmlFor={`${id}-tags`}>标签</label>
+          <input id={`${id}-tags`} value={tags} onChange={(event) => setTags(event.target.value)} placeholder="自我观察, 认知演化" />
+        </div>
 
-      <div className="universe-standalone-form-field">
-        <label htmlFor={`${id}-tags`}>标签</label>
-        <input id={`${id}-tags`} value={tags} onChange={(event) => setTags(event.target.value)} placeholder="哲学, AI, 自我" />
-      </div>
+        {galaxies.length ? (
+          <fieldset className="universe-standalone-galaxies">
+            <legend>它同时闪耀在哪些星系？</legend>
+            <div className="universe-standalone-galaxy-grid">
+              {galaxies.slice().sort((a, b) => a.order - b.order).map((galaxy) => {
+                const membership = memberships.find((item) => item.id === galaxy.id);
+                const selected = Boolean(membership);
+                return (
+                  <label className={selected ? "universe-standalone-galaxy-chip is-selected" : "universe-standalone-galaxy-chip"} key={galaxy.id} style={selected ? { borderColor: galaxy.color, color: galaxy.color } : undefined}>
+                    <input type="checkbox" checked={selected} onChange={() => toggleMembership(galaxy.id)} />
+                    <span>{galaxy.title}</span>
+                    {selected ? (
+                      <span className="universe-standalone-weight-wrap">
+                        <input
+                          className="universe-standalone-weight"
+                          aria-label={`${galaxy.title} 权重百分比`}
+                          type="number"
+                          step="any"
+                          inputMode="decimal"
+                          value={canonicalWeightTextToPercentText(membership?.weightText ?? "")}
+                          onInput={(event) => updateMembershipWeight(galaxy.id, percentWeightTextToCanonicalText(event.currentTarget.value))}
+                          onChange={(event) => updateMembershipWeight(galaxy.id, percentWeightTextToCanonicalText(event.target.value))}
+                          placeholder="0"
+                        />
+                        <span className="universe-standalone-weight-suffix">%</span>
+                      </span>
+                    ) : null}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        ) : null}
 
-      {galaxies.length ? (
-        <fieldset className="universe-standalone-galaxies">
-          <legend>它同时闪耀在哪些星系？</legend>
-          <div className="universe-standalone-galaxy-grid">
-            {galaxies.slice().sort((a, b) => a.order - b.order).map((galaxy) => {
-              const membership = memberships.find((item) => item.id === galaxy.id);
-              const selected = Boolean(membership);
-              return (
-                <label className={selected ? "universe-standalone-galaxy-chip is-selected" : "universe-standalone-galaxy-chip"} key={galaxy.id} style={selected ? { borderColor: galaxy.color, color: galaxy.color } : undefined}>
-                  <input type="checkbox" checked={selected} onChange={() => toggleMembership(galaxy.id)} />
-                  <span>{galaxy.title}</span>
-                  {selected ? <input className="universe-standalone-weight" aria-label={`${galaxy.title} 权重`} type="number" step="any" inputMode="decimal" value={membership?.weightText ?? ""} onInput={(event) => updateMembershipWeight(galaxy.id, event.currentTarget.value)} onChange={(event) => updateMembershipWeight(galaxy.id, event.target.value)} placeholder="权重" /> : null}
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
-      ) : null}
+        {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-standalone-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
+        {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
 
-      {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-standalone-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
-      {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
-
-      <footer className="universe-standalone-editor-footer">
         {!isCreate && effectiveNode ? (
           <div className="universe-standalone-editor-secondary-actions">
             {revisionsAvailable && onRestore ? <button type="button" disabled={saving} onClick={() => onRestore(effectiveNode)}>恢复上一版本</button> : null}
             {onDelete ? <button type="button" disabled={saving} onClick={() => onDelete(effectiveNode)}>让它离开宇宙</button> : null}
           </div>
-        ) : <span />}
-        <div className="universe-standalone-editor-primary-actions">
-          <button className="universe-standalone-cancel" type="button" onClick={cancelEditor}>取消</button>
-          <button className="universe-standalone-primary" type="button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : "保存星球"}</button>
-        </div>
+        ) : null}
+      </div>
+
+      <footer className="universe-standalone-editor-footer">
+        <button className="universe-standalone-cancel" type="button" onClick={cancelEditor}>取消</button>
+        <button className="universe-standalone-primary" type="button" disabled={saving || !title.trim() || canonicalMemberships === null} onClick={submit}>{saving ? "保存中…" : isCreate ? "点亮星球" : "保存星球"}</button>
       </footer>
     </section>
   ) : (
