@@ -45,6 +45,8 @@ type UniverseState =
   | { status: "error"; message: string }
   | { status: "ready"; snapshot: UniverseSnapshot; version: number };
 
+type UniverseNotice = { id: number; message: string };
+
 export function UniversePage({ api }: { api: WebApiClient }) {
   return <UniversePageContent api={api} />;
 }
@@ -61,7 +63,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const [galaxyPickerOpen, setGalaxyPickerOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [placementOpen, setPlacementOpen] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<UniverseNotice | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<UniverseNode | null>(null);
   const [saving, setSaving] = useState(false);
@@ -77,6 +79,12 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   const addActionRef = useRef<HTMLButtonElement | null>(null);
   const overflowActionRef = useRef<HTMLButtonElement | null>(null);
   const generation = useRef(0);
+  const noticeSequence = useRef(0);
+
+  const showNotice = (message: string) => {
+    noticeSequence.current += 1;
+    setNotice({ id: noticeSequence.current, message });
+  };
 
   const cancelPlacement = () => {
     if (mapMode.kind === "placing-node" || placementOpen) {
@@ -107,6 +115,14 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     };
   }, [service, reload]);
 
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => {
+      setNotice((current) => current?.id === notice.id ? null : current);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const refreshFromService = () => {
     const current = service.getState();
     if (current) setState({ status: "ready", ...current });
@@ -131,7 +147,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       if (editingNode) {
         const editedNodeId = editingNode.id;
         await service.updateNode(editedNodeId, values, "Universe Web 编辑");
-        setNotice("星球已更新。");
+        showNotice("星球已更新。");
         refreshFromService();
         setEditingNode(null);
         setPendingPosition(null);
@@ -153,7 +169,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
           importance: values.importance,
         };
         await service.createNode(node);
-        setNotice("一颗新星已经亮起。");
+        showNotice("一颗新星已经亮起。");
         setEditorOpen(false);
         setEditingNode(null);
         setPendingPosition(null);
@@ -173,10 +189,10 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     try {
       await service.deleteNode(node.id);
       setSelectedId(null);
-      setNotice("星球已从当前宇宙移除。");
+      showNotice("星球已从当前宇宙移除。");
       refreshFromService();
     } catch (error) {
-      setNotice(safeUniverseError(error));
+      showNotice(safeUniverseError(error));
       void reconcileAfterMutationFailure();
     } finally {
       setSaving(false);
@@ -192,7 +208,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
       setRelationEditorOpen(false);
       setRelationSourceId(null);
       setMapMode({ kind: "browse" });
-      setNotice("新的思想连接已经出现。");
+      showNotice("新的思想连接已经出现。");
       refreshFromService();
     } catch (error) {
       setPaperError(safeUniverseError(error));
@@ -211,7 +227,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         <UniverseImportFlow
           service={service}
           onReady={(result, message) => {
-            setNotice(message);
+            showNotice(message);
             setState({ status: "ready", ...result });
           }}
           onRecheck={() => setReload((value) => value + 1)}
@@ -238,7 +254,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     setPaperError(null);
     try {
       await service.deleteRelation(relation.id);
-      setNotice("思想连接已移除。");
+      showNotice("思想连接已移除。");
       refreshFromService();
     } catch (error) {
       setPaperError(safeUniverseError(error));
@@ -251,6 +267,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   return (
     <div className="page memory-page universe-page">
       <UniverseHeader
+        notice={notice?.message}
         actions={(
           <>
             <span className="universe-popover-anchor">
@@ -269,7 +286,6 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         )}
       />
       <UniverseGalaxyPicker galaxies={snapshot.galaxies} activeGalaxyId={galaxyFilter} open={galaxyPickerOpen} onOpenChange={(open) => { if (open) cancelPlacement(); setOverflowOpen(false); setGalaxyPickerOpen(open); }} onSelect={setGalaxyFilter} />
-      {notice ? <p className="universe-notice" role="status">{notice}</p> : null}
       <UniverseMobileMap
         galaxies={snapshot.galaxies}
         nodes={snapshot.nodes}
@@ -288,10 +304,10 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         onMoveNode={async (nodeId, position) => {
           try {
             await service.updateNode(nodeId, { position }, "Universe Web 移动星球");
-            setNotice("星球位置已更新。");
+            showNotice("星球位置已更新。");
             refreshFromService();
           } catch (error) {
-            setNotice(safeUniverseError(error));
+            showNotice(safeUniverseError(error));
             await reconcileAfterMutationFailure();
           }
         }}
@@ -309,7 +325,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         onRequestClose={() => { setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}
-        onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { setNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { setNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
+        onRestore={(node) => { void service.restoreLatestRevision(node.id).then(() => { showNotice("已恢复最近的认知版本。"); refreshFromService(); }).catch((error) => { showNotice(safeUniverseError(error)); void reconcileAfterMutationFailure(); }); }}
         onCreateRelation={(node) => { setSelectedId(node.id); setRelationSourceId(node.id); setPaperError(null); setMapMode({ kind: "browse" }); setRelationEditorOpen(true); setEditorOpen(false); setPaperMode(null); }}
         onDeleteRelation={(relation) => void removeRelation(relation)}
         onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setRevealNodeId(nodeId); setPaperError(null); }}
@@ -342,11 +358,12 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
   );
 }
 
-function UniverseHeader({ actions }: { actions?: ReactNode }) {
+function UniverseHeader({ actions, notice }: { actions?: ReactNode; notice?: string | null }) {
   return (
     <header className="memory-page-header universe-page-header">
-      <div className="memory-page-heading">
+      <div className="memory-page-heading universe-page-heading">
         <div className="memory-page-title">Universe</div>
+        {notice ? <span className="universe-header-notice" role="status">{formatUniverseNotice(notice)}</span> : null}
       </div>
       {actions ? <div className="universe-page-tools">{actions}</div> : null}
     </header>
@@ -382,6 +399,10 @@ export function toggleUniverseGalaxyMemberships(
   }
   if (typeof weight !== "number" || !Number.isFinite(weight)) return current;
   return [...current, { id: galaxyId, weight }];
+}
+
+function formatUniverseNotice(message: string): string {
+  return message.trim().replace(/[。．.!！？?]+$/u, "");
 }
 
 function safeUniverseError(error: unknown): string {
