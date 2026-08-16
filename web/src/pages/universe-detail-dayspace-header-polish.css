@@ -5,15 +5,36 @@
     order: -1;
   }
 
+  /* The detail title belongs to the scroll container; keep it non-sticky and lift title + summary together by 10px. */
+  .universe-standalone-detail-scroll > h2 {
+    position: static;
+    top: auto;
+    margin-top: 5px;
+  }
+
   .universe-standalone-summary {
     margin-top: 4px;
   }
 
-  /* Day Space keeps the shared mobile top-bar geometry, with a visible white bar surface. */
+  /* Lift the create/edit and connection titles by the same 10px. */
+  .universe-standalone-editor h2,
+  .universe-standalone-connection h2 {
+    margin-top: 14px;
+  }
+
+  /* Keep create/edit footer actions on opposite sides on narrow phones too. */
+  .universe-standalone-editor-footer {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Day Space keeps the shared mobile top-bar geometry and white surface, without a visible separator edge. */
   .app-shell:has(.day-space-page) .mobile-top-bar {
     min-height: calc(44px + env(safe-area-inset-top, 0px));
     height: calc(44px + env(safe-area-inset-top, 0px));
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 0;
     background: #ffffff !important;
     backdrop-filter: none;
   }
