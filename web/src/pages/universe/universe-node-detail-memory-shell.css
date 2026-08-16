@@ -17,6 +17,10 @@
     box-shadow: none;
   }
 
+  .universe-standalone-detail-head {
+    transform: translateY(-4px);
+  }
+
   .universe-standalone-detail h2 {
     font-size: 27px;
   }
