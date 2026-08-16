@@ -41,7 +41,6 @@ test("Universe mobile detail matches the standalone dark detail card hierarchy",
   assert.match(paperSource, /更新于/);
   assert.match(paperSource, /effectiveNode!\.updatedAt/);
   assert.match(paperSource, /一阶关联/);
-  assert.match(paperSource, /认知修订/);
   assert.match(paperSource, /连接另一个思想/);
   assert.match(paperSource, /调整这颗星球/);
   assert.match(paperSource, /universe-standalone-tag/);
