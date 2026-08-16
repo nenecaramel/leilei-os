@@ -74,7 +74,6 @@ export function UniverseRelationPaper({
       <header className="universe-standalone-connection-heading">
         <p className="universe-standalone-connection-context">当前思想 · {source.title}</p>
         <h2>让两个思想相遇</h2>
-        <p className="universe-standalone-connection-intro">选择另一个思想，并定义它们之间的关系。</p>
       </header>
 
       <div className="universe-standalone-connection-body">
