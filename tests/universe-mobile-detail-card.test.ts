@@ -36,19 +36,22 @@ test("Universe mobile detail has no square dark halo outside its rounded frame",
   assert.match(detailShellCss, /\.paper-detail-layer:has\(\.universe-standalone-detail\) \.universe-standalone-detail[\s\S]*border-radius:\s*14px[\s\S]*box-shadow:\s*none/);
 });
 
-test("Universe mobile detail typography matches the approved hierarchy", () => {
+test("Universe mobile detail typography matches the approved calmer hierarchy", () => {
   assert.match(mobileCss, /\.universe-standalone-type-chip\s*\{[\s\S]*min-height:\s*28px/);
-  assert.match(detailShellCss, /\.universe-standalone-detail h2\s*\{[\s\S]*font-size:\s*27px/);
+  assert.match(detailShellCss, /\.universe-standalone-detail h2\s*\{[\s\S]*font-size:\s*24px/);
   assert.match(mobileCss, /\.universe-standalone-summary\s*\{[\s\S]*font-size:\s*13px/);
-  assert.match(detailShellCss, /\.universe-standalone-summary\s*\{[\s\S]*margin-top:\s*5px[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-summary\s*\{[\s\S]*margin-top:\s*7px[\s\S]*color:\s*#7d7f8c/);
   assert.match(detailShellCss, /\.universe-standalone-updated\s*\{[\s\S]*font-size:\s*12px/);
-  assert.match(detailShellCss, /\.universe-standalone-content\s*\{[\s\S]*color:\s*#f5f2e9/);
-  assert.match(mobileCss, /\.universe-standalone-content\s*\{[\s\S]*font-size:\s*16px/);
+  assert.match(detailShellCss, /\.universe-standalone-content\s*\{[\s\S]*color:\s*#d7d5d0[\s\S]*font-size:\s*15px/);
   assert.match(mobileCss, /\.universe-standalone-stats strong\s*\{[\s\S]*font-size:\s*19px[\s\S]*font-weight:\s*500/);
 });
 
 test("Universe mobile detail moves only its top metadata row up 4px", () => {
   assert.match(detailShellCss, /\.universe-standalone-detail-head\s*\{[\s\S]*transform:\s*translateY\(-4px\)/);
+});
+
+test("Universe mobile detail softens tag blocks", () => {
+  assert.match(detailShellCss, /\.universe-standalone-tag\s*\{[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.025\)/);
 });
 
 test("Universe mobile detail removes the fake revision count and compacts relation controls", () => {
@@ -62,13 +65,14 @@ test("Universe mobile detail removes the fake revision count and compacts relati
   assert.doesNotMatch(mobileCss, /\.universe-standalone-relation-remove\s*\{[^}]*border-left:/);
 });
 
-test("Universe mobile detail uses dark gray, brighter gray, warm white, and semantic color", () => {
+test("Universe mobile detail uses warm white, soft body white, neutral gray, and semantic color", () => {
   assert.match(mobileCss, /\.universe-standalone-tag\s*\{[\s\S]*color:\s*#7d7f8c/);
   assert.match(detailShellCss, /\.universe-standalone-summary\s*\{[\s\S]*color:\s*#7d7f8c/);
   assert.match(detailShellCss, /\.universe-standalone-stats,[\s\S]*\.universe-standalone-relation-remove\s*\{[\s\S]*color:\s*#7d7f8c/);
-  assert.match(detailShellCss, /\.universe-standalone-type-chip\s*\{[\s\S]*border-color:\s*#a3a0aa[\s\S]*color:\s*#a3a0aa/);
-  assert.match(detailShellCss, /\.universe-standalone-updated\s*\{[\s\S]*font-size:\s*12px[\s\S]*color:\s*#a3a0aa/);
-  assert.match(detailShellCss, /\.universe-standalone-detail-actions button\s*\{[\s\S]*color:\s*#a3a0aa/);
+  assert.match(detailShellCss, /\.universe-standalone-type-chip\s*\{[\s\S]*border-color:\s*#7d7f8c[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-updated\s*\{[\s\S]*font-size:\s*12px[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-detail-actions button\s*\{[\s\S]*color:\s*#7d7f8c/);
+  assert.match(detailShellCss, /\.universe-standalone-content\s*\{[\s\S]*color:\s*#d7d5d0/);
   assert.match(detailShellCss, /\.universe-standalone-stats strong\s*\{[\s\S]*color:\s*#f5f2e9/);
-  assert.doesNotMatch(detailShellCss, /#c7c5cc|#777986|#737582|#656773|#5e606d|#858793/);
+  assert.doesNotMatch(detailShellCss, /#a3a0aa|#c7c5cc|#777986|#737582|#656773|#5e606d|#858793/);
 });
