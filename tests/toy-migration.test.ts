@@ -31,3 +31,16 @@ test("the Drizzle migration runner discovers migration 0006 from its journal", (
     statement.includes('CREATE INDEX "toy_commands_claim_queue_idx"')
   ));
 });
+
+test("Toy duration migration is additive, backfills legacy set rows, and keeps stop null", async () => {
+  const migrationUrl = new URL("../drizzle/0022_toy_duration.sql", import.meta.url);
+  const sql = await readFile(migrationUrl, "utf8");
+
+  assert.match(sql, /ADD COLUMN "duration_seconds" integer/u);
+  assert.match(sql, /UPDATE "toy_commands" SET "duration_seconds" = 60/u);
+  assert.match(sql, /ALTER COLUMN "duration_seconds" SET DEFAULT 60/u);
+  assert.match(sql, /ADD CONSTRAINT "toy_commands_duration_seconds_consistency"/u);
+  assert.match(sql, /duration_seconds.*BETWEEN 1 AND 1200/su);
+  assert.match(sql, /action.*=.*'stop'.*duration_seconds.*IS NULL.*duration_seconds.*=.*60/su);
+  assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|DROP CONSTRAINT "toy_commands_action_percent_consistency"/u);
+});

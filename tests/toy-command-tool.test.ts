@@ -54,6 +54,7 @@ class MockToyCommandToolService {
       status: "pending",
       createdAt: new Date("2026-07-26T12:00:00.000Z"),
       expiresAt: new Date("2026-07-26T12:00:10.000Z"),
+      durationSeconds: command.action === "set" ? command.durationSeconds ?? 60 : null,
       claimedAt: null,
       completedAt: null,
       expiredAt: null,
@@ -122,7 +123,7 @@ test("tools/list exposes strict toy_set and toy_stop tools", async (t) => {
 
   assert.deepEqual(
     Object.keys(toySet.inputSchema.properties ?? {}),
-    ["percent", "idempotency_key"],
+    ["percent", "duration_seconds", "idempotency_key"],
   );
   assert.deepEqual(
     Object.keys(toyStop.inputSchema.properties ?? {}),
@@ -186,6 +187,7 @@ test("toy_set queues an authenticated set command", async (t) => {
       input: {
         action: "set",
         percent: 1,
+        durationSeconds: 60,
       },
       idempotencyKey: "toy-set-20260726-0001",
     },
@@ -198,6 +200,7 @@ test("toy_set queues an authenticated set command", async (t) => {
         id: "00000000-0000-4000-8000-000000000201",
         action: "set",
         percent: 1,
+        duration_seconds: 60,
         status: "pending",
         created_at: "2026-07-26T12:00:00.000Z",
         expires_at: "2026-07-26T12:00:10.000Z",
@@ -275,6 +278,10 @@ test("toy tools reject invalid intensity and arbitrary fields before service exe
     { percent: 1, shell: "echo unsafe" },
     { percent: 1, script: "unsafe" },
     { percent: 1, action: "stop" },
+    { percent: 1, duration_seconds: 0 },
+    { percent: 1, duration_seconds: 1201 },
+    { percent: 1, duration_seconds: 1.5 },
+    { percent: 1, duration_seconds: true },
   ];
 
   for (const argumentsValue of invalidSetArguments) {

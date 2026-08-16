@@ -13,6 +13,10 @@ import {
   MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
   MCP_IDEMPOTENCY_KEY_PATTERN,
 } from "../../../domains/mcp-write/mcp-write-idempotency.js";
+import {
+  TOY_DEFAULT_DURATION_SECONDS,
+  TOY_MAX_DURATION_SECONDS,
+} from "../../../domains/toy/toy-command-types.js";
 
 const toyCommandStatusSchema = z.enum([
   "pending",
@@ -30,6 +34,13 @@ const toySetInputSchema = z
       .min(1)
       .max(40)
       .describe("Toy intensity as an integer from 1 to 40."),
+    duration_seconds: z
+      .number()
+      .int()
+      .min(1)
+      .max(TOY_MAX_DURATION_SECONDS)
+      .default(TOY_DEFAULT_DURATION_SECONDS)
+      .describe("How long the device may run after local execution, in seconds (1-1200)."),
     idempotency_key: z
       .string()
       .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
@@ -57,6 +68,7 @@ const toySetOutputSchema = z.object({
       id: z.string().uuid(),
       action: z.literal("set"),
       percent: z.number().int().min(1).max(40),
+      duration_seconds: z.number().int().min(1).max(TOY_MAX_DURATION_SECONDS),
       status: toyCommandStatusSchema,
       created_at: z.string().datetime(),
       expires_at: z.string().datetime(),
@@ -100,7 +112,7 @@ export function registerToyCommandTools(
     {
       title: "Set toy intensity",
       description:
-        "Queue one short-lived toy intensity command in Leilei OS. Percent must be an integer from 1 to 40. The authenticated user and device binding are assigned by the server. This tool never accepts BLE bytes, URLs, scripts, or arbitrary payloads.",
+        "Queue one short-lived toy intensity command in Leilei OS. Percent must be an integer from 1 to 40 and duration_seconds must be 1 to 1200 (default 60). The authenticated user and device binding are assigned by the server. This tool never accepts BLE bytes, URLs, scripts, or arbitrary payloads.",
       inputSchema: toySetInputSchema,
       outputSchema: toySetOutputSchema,
       annotations: {
@@ -110,14 +122,14 @@ export function registerToyCommandTools(
         openWorldHint: false,
       },
     },
-    async ({ percent, idempotency_key }) =>
+    async ({ percent, duration_seconds, idempotency_key }) =>
       invokeMcpWrite({
         toolName: "toy_set",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           const command = await dependencies.toyCommandService.createIdempotently(
             userId,
-            { action: "set", percent } satisfies ToyCreateInput,
+            { action: "set", percent, durationSeconds: duration_seconds } satisfies ToyCreateInput,
             idempotency_key,
           );
 
@@ -128,6 +140,7 @@ export function registerToyCommandTools(
                 id: command.id,
                 action: "set" as const,
                 percent: command.percent as number,
+                duration_seconds: command.durationSeconds as number,
                 status: command.status,
                 created_at: command.createdAt.toISOString(),
                 expires_at: command.expiresAt.toISOString(),
@@ -139,7 +152,7 @@ export function registerToyCommandTools(
             content: [
               {
                 type: "text",
-                text: `Toy intensity command ${percent} queued successfully.`,
+                text: `Toy intensity command ${percent} queued successfully for ${duration_seconds} seconds.`,
               },
             ],
             structuredContent: result,

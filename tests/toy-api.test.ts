@@ -26,6 +26,7 @@ const command = {
   userId: "22222222-2222-4222-8222-222222222222",
   action: "set" as const,
   percent: 40,
+  durationSeconds: 60,
   status: "pending" as const,
   createdAt: new Date("2026-07-26T10:00:00Z"),
   expiresAt: new Date("2026-07-26T10:00:10Z"),
@@ -48,6 +49,31 @@ test("create handler uses authenticated Web user and returns only public command
   assert.deepEqual(calls, [{ userId: command.userId, input: { action: "set", percent: 40 } }]);
   assert.equal(result.headers["cache-control"], "no-store");
   assert.ok(!JSON.stringify(result.body).includes(command.userId));
+});
+
+test("bridge claim carries duration only for set commands and preserves the 10-second TTL", async () => {
+  const calls: string[] = [];
+  const setCommand = { ...command, durationSeconds: 1200 };
+  const handler = createClaimToyCommandHandler({ toyService: {
+    async create() { return command; },
+    async claim() { calls.push("claim"); return setCommand; },
+    async ack() { return command; },
+  } });
+  const { result, response } = recorder();
+
+  await handler({ body: {} } as Request, response, () => {});
+
+  assert.deepEqual(calls, ["claim"]);
+  assert.deepEqual(result.body, {
+    success: true,
+    data: {
+      id: command.id,
+      action: "set",
+      percent: command.percent,
+      durationSeconds: 1200,
+      expiresAt: "2026-07-26T10:00:10.000Z",
+    },
+  });
 });
 
 test("claim returns 204 when empty and rejects a non-empty body", async () => {
