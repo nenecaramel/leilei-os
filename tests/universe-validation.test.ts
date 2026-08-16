@@ -158,3 +158,31 @@ test("revision snapshots preserve weighted memberships", () => {
   });
   assert.deepEqual(snapshot.revisions[0]?.snapshot.galaxies, [{ id: "galaxy-1", weight: 0.25 }]);
 });
+
+test("revision snapshots preserve optional importance and migration metadata", () => {
+  const snapshot = validateUniverseSnapshot({
+    schemaVersion: 2,
+    meta: { name: "Universe", createdAt: timestamp, updatedAt: timestamp },
+    galaxies: [galaxy],
+    nodes: [node],
+    relations: [],
+    revisions: [{
+      id: "revision-meta",
+      nodeId: "node-1",
+      createdAt: timestamp,
+      reason: "metadata",
+      snapshot: {
+        title: "Unknown type remains valid",
+        summary: "summary",
+        content: "content",
+        type: "legacy-type",
+        tags: ["one"],
+        galaxies: [{ id: "galaxy-1", weight: 0.25 }],
+        importance: "major",
+        migration: { source: "mind-universe", migratedAt: timestamp },
+      },
+    }],
+  });
+  assert.equal(snapshot.revisions[0]?.snapshot.importance, "major");
+  assert.deepEqual(snapshot.revisions[0]?.snapshot.migration, { source: "mind-universe", migratedAt: timestamp });
+});

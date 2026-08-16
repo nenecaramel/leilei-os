@@ -44,23 +44,59 @@ test("initializeUniverse writes once at version zero and then reads fresh state"
   const calls: string[] = [];
   const adapter = adapterWith({
     saveUniverse: async (_value, expectedVersion) => { calls.push(`save:${expectedVersion}`); return fresh; },
-    loadUniverse: async () => { calls.push("load"); return fresh; },
+    loadUniverse: async () => {
+      calls.push("load");
+      if (calls.length === 1) throw notInitializedError();
+      return fresh;
+    },
   });
   const service = createLeileiOSUniverseService({ adapter });
   const result = await service.initializeUniverse(snapshot);
-  assert.deepEqual(calls, ["save:0", "load"]);
+  assert.deepEqual(calls, ["load", "save:0", "load"]);
   assert.deepEqual(result, { state: fresh, writeFailed: false });
+});
+
+test("initializeUniverse refuses to write when the preflight GET finds an existing Universe", async () => {
+  const calls: string[] = [];
+  const adapter = adapterWith({
+    loadUniverse: async () => { calls.push("load"); return fresh; },
+    saveUniverse: async () => { calls.push("save"); return fresh; },
+  });
+  const service = createLeileiOSUniverseService({ adapter });
+  await assert.rejects(
+    service.initializeUniverse(snapshot),
+    (error: unknown) => error instanceof UniverseInitializationError && error.code === "UNIVERSE_IMPORT_ALREADY_INITIALIZED",
+  );
+  assert.deepEqual(calls, ["load"]);
+});
+
+test("initializeUniverse stops before PUT when the preflight GET is indeterminate", async () => {
+  const calls: string[] = [];
+  const adapter = adapterWith({
+    loadUniverse: async () => { calls.push("load"); throw new Error("network failed"); },
+    saveUniverse: async () => { calls.push("save"); return fresh; },
+  });
+  const service = createLeileiOSUniverseService({ adapter });
+  await assert.rejects(
+    service.initializeUniverse(snapshot),
+    (error: unknown) => error instanceof UniverseInitializationError && error.code === "UNIVERSE_IMPORT_UNCERTAIN",
+  );
+  assert.deepEqual(calls, ["load"]);
 });
 
 test("initializeUniverse keeps a ready GET result when PUT fails without retrying", async () => {
   const calls: string[] = [];
   const adapter = adapterWith({
     saveUniverse: async () => { calls.push("save"); throw new Error("write failed"); },
-    loadUniverse: async () => { calls.push("load"); return fresh; },
+    loadUniverse: async () => {
+      calls.push("load");
+      if (calls.length === 1) throw notInitializedError();
+      return fresh;
+    },
   });
   const service = createLeileiOSUniverseService({ adapter });
   const result = await service.initializeUniverse(snapshot);
-  assert.deepEqual(calls, ["save", "load"]);
+  assert.deepEqual(calls, ["load", "save", "load"]);
   assert.deepEqual(result, { state: fresh, writeFailed: true });
 });
 
@@ -75,19 +111,23 @@ test("initializeUniverse reports not written when failed PUT is still uninitiali
     service.initializeUniverse(snapshot),
     (error: unknown) => error instanceof UniverseInitializationError && error.code === "UNIVERSE_IMPORT_NOT_WRITTEN",
   );
-  assert.deepEqual(calls, ["save", "load"]);
+  assert.deepEqual(calls, ["load", "save", "load"]);
 });
 
 test("initializeUniverse does not retry when follow-up GET is indeterminate", async () => {
   const calls: string[] = [];
   const adapter = adapterWith({
     saveUniverse: async () => { calls.push("save"); return fresh; },
-    loadUniverse: async () => { calls.push("load"); throw new Error("network failed"); },
+    loadUniverse: async () => {
+      calls.push("load");
+      if (calls.length === 1) throw notInitializedError();
+      throw new Error("network failed");
+    },
   });
   const service = createLeileiOSUniverseService({ adapter });
   await assert.rejects(
     service.initializeUniverse(snapshot),
     (error: unknown) => error instanceof UniverseInitializationError && error.code === "UNIVERSE_IMPORT_UNCERTAIN",
   );
-  assert.deepEqual(calls, ["save", "load"]);
+  assert.deepEqual(calls, ["load", "save", "load"]);
 });

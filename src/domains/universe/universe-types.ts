@@ -61,7 +61,7 @@ export type UniverseMeta = {
 export type UniverseRevisionSnapshot = Pick<
   UniverseNode,
   "title" | "summary" | "content" | "type" | "tags" | "galaxies"
->;
+> & Partial<Pick<UniverseNode, "importance" | "migration">>;
 
 export type UniverseRevision = {
   id: string;

@@ -112,3 +112,24 @@ test("Universe save and backup restore preserve canonical metadata and double pr
     await client.end();
   }
 });
+
+test("Universe initialization refuses to overwrite an existing version-zero meta row", { skip: !runIntegration }, async () => {
+  const client = postgres(databaseUrl!, { prepare: false, ssl: false, max: 2 });
+  const db = drizzle(client, { schema });
+  const userId = randomUUID();
+  const now = "2026-08-14T00:00:00.000Z";
+  const snapshot = { schemaVersion: 2 as const, meta: { name: "incoming", createdAt: now, updatedAt: now }, galaxies: [], nodes: [], relations: [], revisions: [] };
+  try {
+    await assert.rejects(db.transaction(async (tx) => {
+      await tx.insert(schema.users).values({ id: userId, email: `universe-existing-${userId}@example.invalid`, displayName: "Universe test", status: "active", createdAt: new Date(now), updatedAt: new Date(now) });
+      await tx.insert(schema.universeMeta).values({ userId, name: "existing", schemaVersion: 2, createdAt: new Date(now), updatedAt: new Date(now), version: 0 });
+      const repository = new DrizzleUniverseRepository(tx as never);
+      await assert.rejects(repository.saveUniverse(userId, snapshot, 0), (error: unknown) => error instanceof UniverseServiceError && error.code === "VERSION_CONFLICT");
+      const [meta] = await tx.select({ name: schema.universeMeta.name, version: schema.universeMeta.version }).from(schema.universeMeta).where(eq(schema.universeMeta.userId, userId));
+      assert.deepEqual(meta, { name: "existing", version: 0 });
+      throw new RollbackUniverseTest();
+    }), RollbackUniverseTest);
+  } finally {
+    await client.end();
+  }
+});

@@ -52,6 +52,8 @@ const standalone = {
       type: "concept",
       tags: ["tag"],
       galaxies: [{ id: "g-a", weight: 0.123456789 }],
+      importance: "major",
+      migration: { source: "mind-universe-static", migratedAt: "2026-08-02T00:00:00.000Z" },
     },
   }],
 };
@@ -78,6 +80,8 @@ test("parses standalone edges into canonical weighted relations", () => {
   assert.deepEqual(preview.snapshot.relations, standalone.edges);
   assert.deepEqual(preview.snapshot.nodes[0]?.galaxies, standalone.nodes[0]?.galaxies);
   assert.deepEqual(preview.snapshot.revisions[0]?.snapshot.galaxies, standalone.revisions[0]?.snapshot.galaxies);
+  assert.equal(preview.snapshot.revisions[0]?.snapshot.importance, "major");
+  assert.deepEqual(preview.snapshot.revisions[0]?.snapshot.migration, standalone.revisions[0]?.snapshot.migration);
   assert.deepEqual(preview.snapshot.meta, {
     name: standalone.meta.name,
     createdAt: standalone.meta.createdAt,
@@ -110,6 +114,7 @@ test("rejects malformed standalone import payloads", () => {
     { ...standalone, meta: { ...standalone.meta, updatedAt: "not-a-date" } },
     { ...standalone, nodes: [{ ...standalone.nodes[0], migration: { source: "unknown", migratedAt: standalone.meta.updatedAt } }] },
     { ...standalone, nodes: [{ ...standalone.nodes[0], migration: { source: "mind-universe", migratedAt: "not-a-date" } }] },
+    { ...standalone, revisions: [{ ...standalone.revisions[0], nodeId: "missing" }] },
   ]) {
     assertInvalid(value);
   }

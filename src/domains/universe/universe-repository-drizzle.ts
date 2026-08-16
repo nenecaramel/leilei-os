@@ -46,6 +46,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   async saveUniverse(userId: string, snapshot: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult> {
     return this.inTransaction(async (repository) => {
       const meta = await repository.lockMeta(userId);
+      if (meta && expectedVersion === 0) throw new UniverseServiceError("VERSION_CONFLICT");
       const currentVersion = meta?.version ?? 0;
       if (currentVersion !== expectedVersion) throw new UniverseServiceError("VERSION_CONFLICT");
       if (!meta) {
@@ -396,6 +397,8 @@ function toRevisionSnapshot(node: UniverseNode) {
     type: node.type,
     tags: node.tags,
     galaxies: node.galaxies,
+    ...(node.importance === undefined ? {} : { importance: node.importance }),
+    ...(node.migration === undefined ? {} : { migration: node.migration }),
   };
 }
 

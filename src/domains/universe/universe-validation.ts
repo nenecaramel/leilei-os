@@ -169,6 +169,10 @@ function validateMeta(value: unknown): UniverseMeta {
 
 function validateRevisionSnapshot(value: unknown): UniverseRevisionSnapshot {
   const record = object(value, "revision.snapshot");
+  const importance = record.importance === undefined
+    ? undefined
+    : string(record.importance, "revision.snapshot.importance", 128);
+  const migration = readMigration(record.migration);
   return {
     title: string(record.title, "revision.snapshot.title"),
     summary: string(record.summary, "revision.snapshot.summary"),
@@ -176,6 +180,8 @@ function validateRevisionSnapshot(value: unknown): UniverseRevisionSnapshot {
     type: nonBlankString(record.type, "revision.snapshot.type", 128),
     tags: stringArray(record.tags, "revision.snapshot.tags"),
     galaxies: weightedMembershipArray(record.galaxies, "revision.snapshot.galaxies"),
+    ...(importance === undefined ? {} : { importance }),
+    ...(migration === undefined ? {} : { migration }),
   };
 }
 
