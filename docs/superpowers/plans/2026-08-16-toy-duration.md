@@ -6,7 +6,7 @@
 
 **Architecture:** Normalize the optional MCP input to 60 seconds in the Toy domain. Persist it in an additive nullable database column, serialize it as `durationSeconds` on bridge set commands, and forward it to the local API. Keep the 10-second command TTL in the queue unchanged. The local Controller owns a monotonic runtime deadline and preserves stop-first/fail-safe behavior.
 
-**Repo/worktrees:** Cloud changes are on `agent/toy-duration` in `/Users/Admin1/projects/leilei-os-clean-2026-07-28`, based on `origin/codex/phase-8-3-weighted-galaxy-expand`. Local runtime changes remain in `/Users/Admin1/leilei-toy` and are reported separately because that directory is not part of the LeileiOS repository.
+**Repo/worktrees:** Cloud changes are on `agent/toy-duration` in `/Users/Admin1/projects/leilei-os-clean-2026-07-28`, based on `origin/codex/phase-6-web-ui-foundation`. Local runtime changes remain in `/Users/Admin1/leilei-toy` and are reported separately because that directory is not part of the LeileiOS repository.
 
 ### Task 1: Establish design and red tests
 

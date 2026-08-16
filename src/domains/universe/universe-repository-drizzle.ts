@@ -46,6 +46,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   async saveUniverse(userId: string, snapshot: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult> {
     return this.inTransaction(async (repository) => {
       const meta = await repository.lockMeta(userId);
+      if (meta && expectedVersion === 0) throw new UniverseServiceError("VERSION_CONFLICT");
       const currentVersion = meta?.version ?? 0;
       if (currentVersion !== expectedVersion) throw new UniverseServiceError("VERSION_CONFLICT");
       if (!meta) {
@@ -298,7 +299,8 @@ export class DrizzleUniverseRepository implements UniverseRepository {
     return row ? fromNodeRow(row) : null;
   }
 
-  private async assertGalaxyReferences(userId: string, galaxyIds: string[]): Promise<void> {
+  private async assertGalaxyReferences(userId: string, memberships: UniverseNode["galaxies"]): Promise<void> {
+    const galaxyIds = memberships.map((membership) => membership.id);
     if (galaxyIds.length === 0) return;
     const rows = await this.db.select({ id: universeGalaxies.id }).from(universeGalaxies).where(
       and(eq(universeGalaxies.userId, userId), inArray(universeGalaxies.id, galaxyIds)),
@@ -365,7 +367,8 @@ function toNodeInsert(userId: string, node: UniverseNode) {
     content: node.content,
     type: node.type,
     tags: node.tags,
-    galaxies: node.galaxies,
+    galaxies: [],
+    galaxyMemberships: node.galaxies,
     position: node.position,
     createdAt: new Date(node.createdAt),
     updatedAt: new Date(node.updatedAt),
@@ -394,6 +397,8 @@ function toRevisionSnapshot(node: UniverseNode) {
     type: node.type,
     tags: node.tags,
     galaxies: node.galaxies,
+    ...(node.importance === undefined ? {} : { importance: node.importance }),
+    ...(node.migration === undefined ? {} : { migration: node.migration }),
   };
 }
 
@@ -419,7 +424,7 @@ function fromNodeRow(row: typeof universeNodes.$inferSelect): UniverseNode {
     content: row.content,
     type: row.type,
     tags: row.tags,
-    galaxies: row.galaxies,
+    galaxies: row.galaxyMemberships,
     position: row.position,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

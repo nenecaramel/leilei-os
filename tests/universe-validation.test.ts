@@ -18,7 +18,7 @@ const node = {
   content: "content",
   type: "legacy-type",
   tags: ["one"],
-  galaxies: ["galaxy-1"],
+  galaxies: [{ id: "galaxy-1", weight: 1 }],
   position: { x: 1, y: -2 },
   createdAt: timestamp,
   updatedAt: timestamp,
@@ -102,4 +102,87 @@ test("relation create normalization preserves a supplied createdAt", () => {
     createdAt: suppliedCreatedAt,
   }, timestamp);
   assert.equal(relation.createdAt, suppliedCreatedAt);
+});
+
+test("accepts weighted memberships without clamping finite weights", () => {
+  const weighted = validateUniverseNode({ ...node, galaxies: [{ id: "galaxy-1", weight: 2.75 }] });
+  assert.deepEqual(weighted.galaxies, [{ id: "galaxy-1", weight: 2.75 }]);
+});
+
+test("rejects legacy string memberships and non-finite weights", () => {
+  assert.throws(() => validateUniverseNode({ ...node, galaxies: ["galaxy-1"] }));
+  assert.throws(() => validateUniverseNode({ ...node, galaxies: [{ id: "galaxy-1", weight: Number.NaN }] }));
+  assert.throws(() => validateUniverseNode({ ...node, galaxies: [{ id: "galaxy-1", weight: Number.POSITIVE_INFINITY }] }));
+});
+
+test("rejects duplicate memberships and unknown galaxy references", () => {
+  assert.throws(() => validateUniverseSnapshot({
+    schemaVersion: 2,
+    meta: { name: "Universe", createdAt: timestamp, updatedAt: timestamp },
+    galaxies: [galaxy],
+    nodes: [{ ...node, galaxies: [{ id: "galaxy-1", weight: 1 }, { id: "galaxy-1", weight: 0.5 }] }],
+    relations: [],
+    revisions: [],
+  }));
+  assert.throws(() => validateUniverseSnapshot({
+    schemaVersion: 2,
+    meta: { name: "Universe", createdAt: timestamp, updatedAt: timestamp },
+    galaxies: [galaxy],
+    nodes: [{ ...node, galaxies: [{ id: "missing", weight: 1 }] }],
+    relations: [],
+    revisions: [],
+  }));
+});
+
+test("revision snapshots preserve weighted memberships", () => {
+  const snapshot = validateUniverseSnapshot({
+    schemaVersion: 2,
+    meta: { name: "Universe", createdAt: timestamp, updatedAt: timestamp },
+    galaxies: [galaxy],
+    nodes: [node],
+    relations: [],
+    revisions: [{
+      id: "revision-1",
+      nodeId: "node-1",
+      createdAt: timestamp,
+      reason: "test",
+      snapshot: {
+        title: "Unknown type remains valid",
+        summary: "summary",
+        content: "content",
+        type: "legacy-type",
+        tags: ["one"],
+        galaxies: [{ id: "galaxy-1", weight: 0.25 }],
+      },
+    }],
+  });
+  assert.deepEqual(snapshot.revisions[0]?.snapshot.galaxies, [{ id: "galaxy-1", weight: 0.25 }]);
+});
+
+test("revision snapshots preserve optional importance and migration metadata", () => {
+  const snapshot = validateUniverseSnapshot({
+    schemaVersion: 2,
+    meta: { name: "Universe", createdAt: timestamp, updatedAt: timestamp },
+    galaxies: [galaxy],
+    nodes: [node],
+    relations: [],
+    revisions: [{
+      id: "revision-meta",
+      nodeId: "node-1",
+      createdAt: timestamp,
+      reason: "metadata",
+      snapshot: {
+        title: "Unknown type remains valid",
+        summary: "summary",
+        content: "content",
+        type: "legacy-type",
+        tags: ["one"],
+        galaxies: [{ id: "galaxy-1", weight: 0.25 }],
+        importance: "major",
+        migration: { source: "mind-universe", migratedAt: timestamp },
+      },
+    }],
+  });
+  assert.equal(snapshot.revisions[0]?.snapshot.importance, "major");
+  assert.deepEqual(snapshot.revisions[0]?.snapshot.migration, { source: "mind-universe", migratedAt: timestamp });
 });

@@ -17,7 +17,7 @@ test("Universe follows the accepted monochrome mobile UI contract", () => {
   assert.match(pageSource, /className="memory-page-title">Universe</);
   assert.doesNotMatch(pageSource, /eyebrow="Universe"/);
   assert.doesNotMatch(pageSource, /空间知识图谱/);
-  assert.doesNotMatch(pageSource, /style=\{\{ background: galaxy\.color \}\}/);
+  assert.match(pageSource, /UniverseMobileMap/);
 
   assert.match(polishCss, /background:\s*#fff(?:fff)?/i);
   assert.match(polishCss, /color:\s*#8d8d8d/i);

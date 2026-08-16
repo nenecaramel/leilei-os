@@ -8,7 +8,11 @@ const snapshot: UniverseSnapshot = {
   schemaVersion: 2,
   meta: { name: "远程宇宙", createdAt: "2026-08-01", updatedAt: "2026-08-02" },
   galaxies: [],
-  nodes: [],
+  nodes: [{
+    id: "node-1", title: "节点", summary: "", content: "", type: "concept", tags: [],
+    galaxies: [{ id: "galaxy-1", weight: 0.37 }], position: { x: 0, y: 0 },
+    createdAt: "2026-08-01", updatedAt: "2026-08-02",
+  }],
   relations: [],
   revisions: [],
 };
@@ -48,5 +52,6 @@ test("JSON export downloads the loaded canonical snapshot without IndexedDB", as
   assert.equal(downloaded?.download, "蕾蕾宇宙备份-2026-08-15.json");
   assert.equal(revoked, "blob:universe");
   assert.deepEqual(result.meta, { ...snapshot.meta, exportedAt: "2026-08-15T12:00:00.000Z" });
+  assert.deepEqual(result.nodes[0]?.galaxies, [{ id: "galaxy-1", weight: 0.37 }]);
   assert.deepEqual(JSON.parse(await blobs[0]!.text()), result);
 });

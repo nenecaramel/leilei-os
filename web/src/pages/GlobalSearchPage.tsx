@@ -511,7 +511,7 @@ export function GlobalSearchPageContent({ api }: Props) {
   const subtitle =
     state === "ready" || state === "empty"
       ? `${results.length}条结果`
-      : "Memory · Diary · Task";
+      : "Memory · Diary · Task · Universe";
 
   const statusText = useMemo(
     () =>
@@ -638,7 +638,7 @@ export function GlobalSearchPageContent({ api }: Props) {
 
       {state === "idle" ? (
         <p className="global-search-state-line">
-          搜索 Memory、Diary 与 Task 中保存的内容
+          搜索 Memory、Diary、Task 与 Universe 中保存的内容
         </p>
       ) : null}
 

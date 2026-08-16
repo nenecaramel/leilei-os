@@ -33,7 +33,7 @@ test("the Drizzle migration runner discovers migration 0006 from its journal", (
 });
 
 test("Toy duration migration is additive, backfills legacy set rows, and keeps stop null", async () => {
-  const migrationUrl = new URL("../drizzle/0021_toy_duration.sql", import.meta.url);
+  const migrationUrl = new URL("../drizzle/0022_toy_duration.sql", import.meta.url);
   const sql = await readFile(migrationUrl, "utf8");
 
   assert.match(sql, /ADD COLUMN "duration_seconds" integer/u);

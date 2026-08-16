@@ -607,6 +607,10 @@ export const universeNodes = pgTable(
       "universe_nodes_galaxy_memberships_array",
       sql`jsonb_typeof(${table.galaxyMemberships}) = 'array'`,
     ),
+    check(
+      "universe_nodes_legacy_galaxies_empty",
+      sql`cardinality(${table.galaxies}) = 0`,
+    ),
   ],
 );
 
@@ -811,6 +815,10 @@ export const toyCommands = pgTable(
     check(
       "toy_commands_expiry_after_creation",
       sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
+    check(
+      "toy_commands_duration_seconds_consistency",
+      sql`(${table.action} = 'set' AND ${table.durationSeconds} BETWEEN 1 AND 1200) OR (${table.action} = 'stop' AND (${table.durationSeconds} IS NULL OR ${table.durationSeconds} = 60))`,
     ),
   ],
 );

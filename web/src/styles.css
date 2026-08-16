@@ -2414,6 +2414,28 @@ body:has(.home-prototype) {
   min-height: 100%;
 }
 
+/* Universe papers use the same transparent paper-form language as Memory and
+   Diary, while keeping controls at iOS's no-zoom threshold on mobile. */
+.universe-node-paper-body input,
+.universe-node-paper-body textarea,
+.universe-node-paper-body select,
+.universe-relation-paper-body input,
+.universe-relation-paper-body textarea,
+.universe-relation-paper-body select,
+.universe-node-paper-body input:focus,
+.universe-node-paper-body textarea:focus,
+.universe-node-paper-body select:focus,
+.universe-relation-paper-body input:focus,
+.universe-relation-paper-body textarea:focus,
+.universe-relation-paper-body select:focus {
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  font-size: 16px;
+}
+
 .todo-paper-editor {
   display: grid;
   align-content: start;

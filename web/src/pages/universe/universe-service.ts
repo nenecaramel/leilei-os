@@ -17,6 +17,13 @@ export type UniverseClientState = UniverseReadResult | null;
 
 export type UniverseService = ReturnType<typeof createLeileiOSUniverseService>;
 
+export class UniverseInitializationError extends Error {
+  constructor(readonly code: "UNIVERSE_IMPORT_NOT_WRITTEN" | "UNIVERSE_IMPORT_UNCERTAIN" | "UNIVERSE_IMPORT_ALREADY_INITIALIZED") {
+    super(code);
+    this.name = "UniverseInitializationError";
+  }
+}
+
 export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAdapter }) {
   let state: UniverseClientState = null;
   const set = (result: UniverseReadResult) => {
@@ -36,6 +43,30 @@ export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAd
     },
     async saveUniverse(snapshot: UniverseSnapshot) {
       return set(await adapter.saveUniverse(snapshot, expected()));
+    },
+    async initializeUniverse(snapshot: UniverseSnapshot) {
+      try {
+        const existing = await adapter.loadUniverse();
+        if (existing) throw new UniverseInitializationError("UNIVERSE_IMPORT_ALREADY_INITIALIZED");
+      } catch (error) {
+        if (error instanceof UniverseInitializationError) throw error;
+        if (!isUniverseNotInitialized(error)) throw new UniverseInitializationError("UNIVERSE_IMPORT_UNCERTAIN");
+      }
+      let writeFailed = false;
+      try {
+        await adapter.saveUniverse(snapshot, 0);
+      } catch {
+        writeFailed = true;
+      }
+      try {
+        const fresh = set(await adapter.loadUniverse());
+        return { state: fresh, writeFailed };
+      } catch (readError) {
+        if (writeFailed && isUniverseNotInitialized(readError)) {
+          throw new UniverseInitializationError("UNIVERSE_IMPORT_NOT_WRITTEN");
+        }
+        throw new UniverseInitializationError("UNIVERSE_IMPORT_UNCERTAIN");
+      }
     },
     async createNode(node: UniverseNodeCreateInput) {
       return set(await adapter.createNode(node, expected()));

@@ -1,5 +1,5 @@
 {
-  "id": "7fb12d3b-2f4e-4aa0-8d2f-9cb0e0c72f91",
+  "id": "5dcf76ba-7396-49e8-91da-d55b33b592ce",
   "prevId": "f240cdd3-01d4-4ab8-8e06-c029a2d12e1f",
   "version": "7",
   "dialect": "postgresql",
@@ -1781,13 +1781,6 @@
           "type": "varchar(500)",
           "primaryKey": false,
           "notNull": false
-        },
-        "duration_seconds": {
-          "name": "duration_seconds",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "60"
         }
       },
       "indexes": {
@@ -1875,10 +1868,6 @@
         "toy_commands_expiry_after_creation": {
           "name": "toy_commands_expiry_after_creation",
           "value": "\"toy_commands\".\"expires_at\" > \"toy_commands\".\"created_at\""
-        },
-        "toy_commands_duration_seconds_consistency": {
-          "name": "toy_commands_duration_seconds_consistency",
-        "value": "(\"toy_commands\".\"action\" = 'set' AND \"toy_commands\".\"duration_seconds\" BETWEEN 1 AND 1200) OR (\"toy_commands\".\"action\" = 'stop' AND (\"toy_commands\".\"duration_seconds\" IS NULL OR \"toy_commands\".\"duration_seconds\" = 60))"
         }
       },
       "isRLSEnabled": false
@@ -2282,6 +2271,10 @@
         "universe_nodes_galaxy_memberships_array": {
           "name": "universe_nodes_galaxy_memberships_array",
           "value": "jsonb_typeof(\"universe_nodes\".\"galaxy_memberships\") = 'array'"
+        },
+        "universe_nodes_legacy_galaxies_empty": {
+          "name": "universe_nodes_legacy_galaxies_empty",
+          "value": "cardinality(\"universe_nodes\".\"galaxies\") = 0"
         }
       },
       "isRLSEnabled": false

@@ -19,6 +19,7 @@ export type PaperDetailDialogProps = {
   errorMessage?: string | null;
   topRight?: ReactNode;
   bottomLeft?: ReactNode;
+  showRules?: boolean;
 };
 
 const FOCUSABLE_SELECTOR = [
@@ -41,6 +42,7 @@ export function PaperDetailDialog({
   errorMessage = null,
   topRight = null,
   bottomLeft = null,
+  showRules = true,
 }: PaperDetailDialogProps) {
   const paperRef = useRef<HTMLElement | null>(null);
   const closingRef = useRef(false);
@@ -167,11 +169,13 @@ export function PaperDetailDialog({
           <div className="paper-detail-top-right">{topRight}</div>
         ) : null}
         <div className="paper-detail-scroll">
-          <div className="paper-detail-rules" aria-hidden="true">
-            {Array.from({ length: 24 }, (_, index) => (
-              <span key={index} />
-            ))}
-          </div>
+          {showRules ? (
+            <div className="paper-detail-rules" aria-hidden="true">
+              {Array.from({ length: 24 }, (_, index) => (
+                <span key={index} />
+              ))}
+            </div>
+          ) : null}
           <div className="paper-detail-body">{children}</div>
         </div>
         {bottomLeft ? (
