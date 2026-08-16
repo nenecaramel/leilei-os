@@ -21,6 +21,11 @@
     transform: translateY(-4px);
   }
 
+  .universe-standalone-type-chip {
+    border-color: #a3a0aa;
+    color: #a3a0aa;
+  }
+
   .universe-standalone-detail h2 {
     font-size: 27px;
   }
@@ -36,14 +41,17 @@
 
   .universe-standalone-updated {
     font-size: 12px;
+    color: #a3a0aa;
   }
 
-  .universe-standalone-updated,
   .universe-standalone-stats,
   .universe-standalone-relation-link,
-  .universe-standalone-relation-remove,
-  .universe-standalone-detail-actions button {
+  .universe-standalone-relation-remove {
     color: #7d7f8c;
+  }
+
+  .universe-standalone-detail-actions button {
+    color: #a3a0aa;
   }
 
   .universe-standalone-stats strong {
