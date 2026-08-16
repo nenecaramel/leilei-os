@@ -130,8 +130,14 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     setPaperError(null);
     try {
       if (editingNode) {
-        await service.updateNode(editingNode.id, values, "Universe Web 编辑");
+        const editedNodeId = editingNode.id;
+        await service.updateNode(editedNodeId, values, "Universe Web 编辑");
         setNotice("星球已更新。");
+        refreshFromService();
+        setEditingNode(null);
+        setPendingPosition(null);
+        setPaperMode({ kind: "detail", nodeId: editedNodeId });
+        setEditorOpen(true);
       } else {
         if (!pendingPosition) {
           setPaperError("请先在星图上选择新星球的位置。");
@@ -149,11 +155,11 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         };
         await service.createNode(node);
         setNotice("一颗新星已经亮起。");
+        setEditorOpen(false);
+        setEditingNode(null);
+        setPendingPosition(null);
+        refreshFromService();
       }
-      setEditorOpen(false);
-      setEditingNode(null);
-      setPendingPosition(null);
-      refreshFromService();
     } catch (error) {
       setPaperError(safeUniverseError(error));
       void reconcileAfterMutationFailure();
@@ -311,6 +317,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         onDeleteRelation={(relation) => void removeRelation(relation)}
         onOpenRelatedNode={(nodeId) => { setEditorOpen(false); setPaperMode(null); setSelectedId(nodeId); setRevealNodeId(nodeId); setPaperError(null); }}
         onEdit={(node) => { setEditingNode(node); setPaperMode({ kind: "edit", nodeId: node.id }); setEditorOpen(true); }}
+        onCancelEdit={(node) => { setEditingNode(null); setPaperMode({ kind: "detail", nodeId: node.id }); setPaperError(null); setEditorOpen(true); }}
       />
       <UniverseRelationPaper
         source={snapshot.nodes.find((node) => node.id === relationSourceId) ?? null}
