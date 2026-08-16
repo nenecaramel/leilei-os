@@ -93,6 +93,7 @@ test("valid file preview shows filename, counts, confirm, and one reselect actio
   await selectFile(env.container, file(env, sourceJson, "old-universe.json"));
   assert.match(env.container.textContent ?? "", /old-universe\.json/);
   assert.match(env.container.textContent ?? "", /1 星系 · 0 星球 · 0 连接 · 0 历史版本/);
+  assert.match(env.container.textContent ?? "", /edges → relations/);
   const buttons = Array.from(env.container.querySelectorAll<HTMLButtonElement>("button"));
   assert.deepEqual(buttons.map((button) => button.textContent), ["确认迁移", "重新选择"]);
 
@@ -163,6 +164,18 @@ test("not-written allows explicit retry while uncertain disables confirm and off
   await click(env.container.querySelector<HTMLButtonElement>("button[data-action='recheck-import']")!);
   assert.deepEqual(onRecheckCalls, [1]);
   assert.equal(calls, 2);
+  await React.act(async () => env.root.unmount());
+  await waitForPaint();
+  env.restore();
+});
+
+test("existing server content blocks confirmation and offers GET-only recheck", async () => {
+  const env = await render({ initializeUniverse: async () => { throw new (class extends Error { readonly code = "UNIVERSE_IMPORT_ALREADY_INITIALIZED"; })(); } });
+  await selectFile(env.container, file(env, sourceJson));
+  await click(env.container.querySelector<HTMLButtonElement>("button[data-action='confirm-import']")!);
+  assert.match(env.container.textContent ?? "", /已有内容/);
+  assert.equal(env.container.querySelector<HTMLButtonElement>("button[data-action='confirm-import']"), null);
+  assert.ok(env.container.querySelector<HTMLButtonElement>("button[data-action='recheck-import']"));
   await React.act(async () => env.root.unmount());
   await waitForPaint();
   env.restore();

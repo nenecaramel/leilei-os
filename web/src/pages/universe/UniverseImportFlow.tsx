@@ -78,6 +78,9 @@ export function UniverseImportFlow({
       } else if (code === "UNIVERSE_IMPORT_UNCERTAIN") {
         setUncertain(true);
         setError("迁移状态暂时无法确认，请先重新读取；不要再次提交。");
+      } else if (code === "UNIVERSE_IMPORT_ALREADY_INITIALIZED") {
+        setUncertain(true);
+        setError("服务器已有内容，未覆盖现有内容，请重新读取。");
       } else {
         setError("迁移未完成，请重新确认。");
       }
@@ -99,6 +102,7 @@ export function UniverseImportFlow({
       {fileName ? <p className="universe-import-preview">{fileName}</p> : null}
       {preview ? <p className="universe-import-preview">
         {preview.counts.galaxies} 星系 · {preview.counts.nodes} 星球 · {preview.counts.relations} 连接 · {preview.counts.revisions} 历史版本
+        <br />{preview.conversions.join(" · ")}
       </p> : null}
       {error ? <p className="universe-import-error">{error}</p> : null}
       {committing ? <p className="universe-import-preview">正在迁移…</p> : null}

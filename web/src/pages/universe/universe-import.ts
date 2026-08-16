@@ -26,6 +26,7 @@ export type UniverseImportPreview = {
     relations: number;
     revisions: number;
   };
+  conversions: string[];
 };
 
 const RELATION_TYPES = new Set<UniverseRelationType>([
@@ -151,6 +152,8 @@ function relation(value: unknown): UniverseRelation {
 
 function revisionSnapshot(value: unknown): UniverseRevisionSnapshot {
   const entry = record(value, "revision.snapshot");
+  const importance = entry.importance === undefined ? undefined : text(entry.importance, "revision.snapshot.importance", 128);
+  const nodeMigration = migration(entry.migration);
   return {
     title: text(entry.title, "revision.snapshot.title"),
     summary: text(entry.summary, "revision.snapshot.summary"),
@@ -158,6 +161,8 @@ function revisionSnapshot(value: unknown): UniverseRevisionSnapshot {
     type: nonBlank(entry.type, "revision.snapshot.type", 128),
     tags: strings(entry.tags, "revision.snapshot.tags"),
     galaxies: memberships(entry.galaxies, "revision.snapshot.galaxies"),
+    ...(importance === undefined ? {} : { importance }),
+    ...(nodeMigration === undefined ? {} : { migration: nodeMigration }),
   };
 }
 
@@ -226,6 +231,11 @@ function validateCanonical(value: unknown): UniverseSnapshot {
     }
     relationKeys.add(key);
   }
+  for (const item of revisions) {
+    if (!nodeIds.has(item.nodeId)) {
+      throw new UniverseImportValidationError("revision references an unknown node.");
+    }
+  }
   return {
     schemaVersion: 2,
     meta: {
@@ -265,6 +275,7 @@ export function parseStandaloneUniverseJson(textValue: string): UniverseImportPr
       relations: snapshot.relations.length,
       revisions: snapshot.revisions.length,
     },
+    conversions: ["edges → relations"],
   };
 }
 
