@@ -36,8 +36,8 @@ test("Universe connection strength thumb uses the same zero-based percentage sca
 });
 
 test("Opening connection keeps the source detail mounted so cancel returns to detail", () => {
-  assert.match(universePageSource, /onCreateRelation=\{\(node\) => \{[^}]*setRelationEditorOpen\(true\); \}\}/);
-  assert.doesNotMatch(universePageSource, /onCreateRelation=\{\(node\) => \{[^}]*setRelationEditorOpen\(true\);[^}]*setEditorOpen\(false\)/);
+  assert.match(universePageSource, /onCreateRelation=\{\(node\) => \{[\s\S]*?setRelationEditorOpen\(true\); \}\}/);
+  assert.doesNotMatch(universePageSource, /setRelationEditorOpen\(true\); setEditorOpen\(false\); setPaperMode\(null\);/);
   assert.match(universePageSource, /onRequestClose=\{\(\) => \{ setRelationEditorOpen\(false\); setRelationSourceId\(null\); setPaperError\(null\); setMapMode\(\{ kind: "browse" \}\); return true; \}\}/);
 });
 
