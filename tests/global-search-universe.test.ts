@@ -189,3 +189,55 @@ test("MCP global_search accepts Universe results without inventing a detail tool
   assert.deepEqual(calls[0]?.modules, ["universe"]);
   assert.equal((response.structuredContent as { data: GlobalSearchResult }).data.results[0]?.detail_tool, null);
 });
+
+test("MCP global_search round-trips a canonical 256-character Universe cursor", async (t) => {
+  const longId = "长".repeat(256);
+  const firstRow: GlobalSearchRow = {
+    entityType: "universe",
+    entityId: longId,
+    stableName: "长 ID 节点",
+    matchedField: "title",
+    matchedValue: "旅行",
+    matchReason: "field_match",
+    lifecycleStatus: "active",
+    businessTime: new Date("2026-08-10T12:00:00.000Z"),
+    timeBasis: "updated_at",
+    updatedAt: new Date("2026-08-10T12:00:00.000Z"),
+    rank: 4,
+  };
+  const secondRow: GlobalSearchRow = { ...firstRow, entityId: "第二节点", stableName: "第二节点" };
+  const repository: GlobalSearchRepository = {
+    async findUser() {
+      return { status: "active" as const, timezone: "Asia/Shanghai" };
+    },
+    async search(input) {
+      return input.after ? [secondRow] : [firstRow, secondRow];
+    },
+  };
+  const server = createMcpServer({
+    globalSearch: {
+      globalSearchService: new GlobalSearchService(repository),
+      getAuthenticatedUserId: () => USER_ID,
+    },
+  });
+  const client = new Client({ name: "universe-search-cursor-test", version: "1" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => { await client.close(); await server.close(); });
+
+  const first = await client.callTool({ name: "global_search", arguments: { query: "旅行", modules: ["universe"], limit: 1 } });
+  assert.equal(first.isError, undefined);
+  const firstData = (first.structuredContent as { data: GlobalSearchResult }).data;
+  assert.equal(firstData.metadata.has_more, true);
+  const cursor = firstData.metadata.next_cursor;
+  assert.ok(cursor);
+  assert.ok(cursor.length > 1200);
+
+  const second = await client.callTool({ name: "global_search", arguments: { query: "旅行", modules: ["universe"], limit: 1, cursor } });
+  assert.equal(second.isError, undefined);
+  assert.equal((second.structuredContent as { data: GlobalSearchResult }).data.results[0]?.entity_id, "第二节点");
+
+  const tooLong = await client.callTool({ name: "global_search", arguments: { query: "旅行", modules: ["universe"], cursor: "a".repeat(2801) } });
+  assert.equal(tooLong.isError, true);
+});

@@ -2,6 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { GlobalSearchError, type GlobalSearchInput, type GlobalSearchResult } from "../../../domains/global-search/global-search-service.js";
 
+const MAX_CURSOR_ENCODED_LENGTH = 2800;
+
 const inputSchema = z.object({
   query: z
     .string()
@@ -16,7 +18,7 @@ const inputSchema = z.object({
   date_from: z.string().max(10).optional(),
   date_to: z.string().max(10).optional(),
   limit: z.number().int().min(1).max(25).optional(),
-  cursor: z.string().max(1200).optional(),
+  cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).optional(),
 }).strict();
 
 const globalSearchOutputSchema = z.object({
@@ -42,7 +44,7 @@ const globalSearchOutputSchema = z.object({
     metadata: z.object({
       count: z.number().int().min(0).max(25),
       has_more: z.boolean(),
-      next_cursor: z.string().max(1200).nullable(),
+      next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
       searched_modules: z.array(z.enum(["memory", "diary", "task", "universe"])).min(1).max(4),
       searched_scope: z.enum(["active", "archived", "all"]),
     }).strict(),
