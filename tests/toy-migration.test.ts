@@ -44,3 +44,22 @@ test("Toy duration migration is additive, backfills legacy set rows, and keeps s
   assert.match(sql, /action.*=.*'stop'.*duration_seconds.*IS NULL.*duration_seconds.*=.*60/su);
   assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|DROP CONSTRAINT "toy_commands_action_percent_consistency"/u);
 });
+
+test("a later migration widens only the Toy percent constraint to 50", () => {
+  const migrations = readMigrationFiles({ migrationsFolder: "drizzle" });
+  const capMigration = migrations.find(({ sql }) =>
+    sql.join("\n").includes('DROP CONSTRAINT "toy_commands_action_percent_consistency"') &&
+    sql.join("\n").includes("BETWEEN 1 AND 50"),
+  );
+
+  assert.ok(capMigration, "a versioned Toy cap migration must replace the 40 percent constraint");
+  assert.match(
+    capMigration.sql.join("\n"),
+    /ADD CONSTRAINT "toy_commands_action_percent_consistency"[\s\S]*BETWEEN 1 AND 50/u,
+  );
+  assert.equal(
+    capMigration.sql.some((statement) => statement.includes("duration_seconds")),
+    false,
+    "the cap migration must not modify duration schema",
+  );
+});

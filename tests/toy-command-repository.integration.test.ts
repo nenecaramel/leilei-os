@@ -17,7 +17,9 @@ test(
   async () => {
     const databaseUrl = process.env.DATABASE_URL!;
     const schemaName = `toy_queue_test_${randomBytes(8).toString("hex")}`;
-    const admin = postgres(databaseUrl, { max: 1, prepare: false, ssl: "require" });
+    const localDatabase = ["127.0.0.1", "localhost"].includes(new URL(databaseUrl).hostname);
+    const ssl = localDatabase ? false : "require";
+    const admin = postgres(databaseUrl, { max: 1, prepare: false, ssl });
 
     try {
       await admin.unsafe(`CREATE SCHEMA "${schemaName}"`);
@@ -47,7 +49,7 @@ test(
           CONSTRAINT action_allowed CHECK (action IN ('set', 'stop')),
           CONSTRAINT status_allowed CHECK (status IN ('pending', 'claimed', 'completed', 'failed', 'expired')),
           CONSTRAINT action_percent CHECK (
-            (action = 'set' AND percent IS NOT NULL AND percent BETWEEN 1 AND 40)
+            (action = 'set' AND percent IS NOT NULL AND percent BETWEEN 1 AND 50)
             OR (action = 'stop' AND percent IS NULL)
           ),
           CONSTRAINT action_duration CHECK (
@@ -64,7 +66,7 @@ test(
       const makeClient = () => postgres(databaseUrl, {
         max: 1,
         prepare: false,
-        ssl: "require",
+        ssl,
         connection: { search_path: schemaName },
       });
       const clientA = makeClient();
@@ -89,6 +91,16 @@ test(
           createdAt: new Date("2026-07-26T10:00:00Z"),
           expiresAt: new Date("2026-07-26T10:00:10Z"),
         };
+        for (const percent of [1, 40, 50]) {
+          await dbA.insert(toyCommands).values({
+            ...invalidBase,
+            id: randomUUID(),
+            action: "set",
+            percent,
+            status: "expired",
+            expiredAt: invalidBase.expiresAt,
+          });
+        }
         await assert.rejects(dbA.insert(toyCommands).values({
           ...invalidBase,
           action: "set",
@@ -97,7 +109,7 @@ test(
         await assert.rejects(dbA.insert(toyCommands).values({
           ...invalidBase,
           action: "set",
-          percent: 41,
+          percent: 51,
         }));
         await assert.rejects(dbA.insert(toyCommands).values({
           ...invalidBase,
@@ -119,7 +131,7 @@ test(
 
         const first = await repositoryA.create(owner, { action: "set", percent: 10 });
         await assert.rejects(
-          repositoryA.create(owner, { action: "set", percent: 41 }),
+          repositoryA.create(owner, { action: "set", percent: 51 }),
         );
         assert.equal(
           (await dbA.select().from(toyCommands)).find(({ id }) => id === first.id)?.status,
