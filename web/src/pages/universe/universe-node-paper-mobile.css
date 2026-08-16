@@ -1,5 +1,5 @@
 @media (max-width: 760px) {
-  .paper-detail-paper:has(.universe-node-paper-body-detail) .paper-detail-scroll {
+  .paper-detail-paper:has(.universe-node-paper-body-detail):has(.universe-node-metadata) .paper-detail-scroll {
     inset: 42px 0 38px;
     padding: 8px 24px 30px;
   }
