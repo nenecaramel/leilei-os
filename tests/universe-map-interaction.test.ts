@@ -24,23 +24,11 @@ test("place mode converts a map tap into create intent, not selection", () => {
   assert.deepEqual(result.state.mode, { kind: "browse" });
 });
 
-test("relation target mode converts a planet tap into relation intent", () => {
-  const choosing = reduceUniverseMapInteraction(initialUniverseMapInteraction(), { type: "begin-relation", sourceNodeId: "source" });
-  const result = reduceUniverseMapInteraction(choosing.state, tapPlanet("target"));
-  assert.deepEqual(result.effects, [{ type: "open-relation", sourceNodeId: "source", targetNodeId: "target" }]);
-  assert.deepEqual(result.state.mode, { kind: "browse" });
-});
-
-test("long press move cannot begin while placing or choosing a relation target", () => {
-  for (const action of [
-    { type: "begin-placing-node" } as const,
-    { type: "begin-relation", sourceNodeId: "source" } as const,
-  ]) {
-    const started = reduceUniverseMapInteraction(initialUniverseMapInteraction(), action);
-    const result = reduceUniverseMapInteraction(started.state, { type: "long-press", nodeId: "n1", world: { x: 1, y: 2 } });
-    assert.deepEqual(result.effects, []);
-    assert.notEqual(result.state.mode.kind, "moving-node");
-  }
+test("long press move cannot begin while placing", () => {
+  const placing = reduceUniverseMapInteraction(initialUniverseMapInteraction(), { type: "begin-placing-node" });
+  const result = reduceUniverseMapInteraction(placing.state, { type: "long-press", nodeId: "n1", world: { x: 1, y: 2 } });
+  assert.deepEqual(result.effects, []);
+  assert.notEqual(result.state.mode.kind, "moving-node");
 });
 
 test("cancel returns to browse without a write effect", () => {

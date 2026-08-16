@@ -1,4 +1,4 @@
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { PaperDetailDialog } from "../PaperDetailDialog";
 import type { UniverseNode, UniverseRelationCreateInput, UniverseRelationType } from "./universe-types";
 import "./universe-node-paper-web-mobile.css";
@@ -14,7 +14,7 @@ const RELATION_TYPES: Array<{ value: UniverseRelationType; label: string; standa
 
 export function UniverseRelationPaper({
   source,
-  target,
+  nodes,
   open,
   saving,
   errorMessage,
@@ -23,7 +23,7 @@ export function UniverseRelationPaper({
   onSave,
 }: {
   source: UniverseNode | null;
-  target: UniverseNode | null;
+  nodes: UniverseNode[];
   open: boolean;
   saving: boolean;
   errorMessage?: string | null;
@@ -33,15 +33,37 @@ export function UniverseRelationPaper({
 }) {
   const [relationType, setRelationType] = useState<UniverseRelationType>("related_to");
   const [strength, setStrength] = useState(0.7);
-  if (!source || !target) return null;
+  const [selectedTargetId, setSelectedTargetId] = useState("");
+
+  useEffect(() => {
+    setSelectedTargetId("");
+  }, [open, source?.id]);
+
+  if (!source) return null;
+
+  const candidateTargets = nodes.filter((node) => node.id !== source.id);
+  const target = candidateTargets.find((node) => node.id === selectedTargetId) ?? null;
+
+  const targetOptions = (
+    <>
+      <option value="">选择另一个思想</option>
+      {candidateTargets.map((node) => <option key={node.id} value={node.id}>{node.title}</option>)}
+    </>
+  );
+
+  const saveSelectedRelation = () => {
+    if (!target || saving) return;
+    void onSave({ source: source.id, target: target.id, relationType, strength });
+  };
 
   const desktopBody = (
     <div className="universe-relation-paper-body">
       <h2>建立思想连接</h2>
-      <p>从「{source.title}」连接到「{target.title}」。</p>
+      <p>从「{source.title}」连接到另一个思想。</p>
+      <label>连接到<select value={selectedTargetId} onChange={(event) => setSelectedTargetId(event.target.value)}>{targetOptions}</select></label>
       <label>关系<select value={relationType} onChange={(event) => setRelationType(event.target.value as UniverseRelationType)}>{RELATION_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
       <label>强度<input type="range" min="0.1" max="1" step="0.1" value={strength} onChange={(event) => setStrength(Number(event.target.value))} /><span>{Math.round(strength * 100)}%</span></label>
-      <button className="secondary-button" type="button" disabled={saving} onClick={() => void onSave({ source: source.id, target: target.id, relationType, strength })}>{saving ? "保存中…" : "建立连接"}</button>
+      <button className="secondary-button" type="button" disabled={saving || !target} onClick={saveSelectedRelation}>{saving ? "保存中…" : "建立连接"}</button>
     </div>
   );
 
@@ -57,8 +79,10 @@ export function UniverseRelationPaper({
       <p className="universe-standalone-connection-intro">从当前星球出发，选择它与另一个节点之间的关系。</p>
 
       <div className="universe-standalone-form-field">
-        <label>连接到</label>
-        <div className="universe-standalone-readonly-select" aria-label={`连接到 ${target.title}`}>{target.title}<span aria-hidden="true">⌄</span></div>
+        <label htmlFor="universe-standalone-relation-target">连接到</label>
+        <select id="universe-standalone-relation-target" aria-label="连接到" value={selectedTargetId} onChange={(event) => setSelectedTargetId(event.target.value)}>
+          {targetOptions}
+        </select>
       </div>
 
       <div className="universe-standalone-form-field">
@@ -76,7 +100,7 @@ export function UniverseRelationPaper({
       {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
       <footer className="universe-standalone-connection-footer">
         <button className="universe-standalone-cancel" type="button" onClick={() => { void onRequestClose(); }}>取消</button>
-        <button className="universe-standalone-primary" type="button" disabled={saving} onClick={() => void onSave({ source: source.id, target: target.id, relationType, strength })}>{saving ? "保存中…" : "建立连接"}</button>
+        <button className="universe-standalone-primary" type="button" disabled={saving || !target} onClick={saveSelectedRelation}>{saving ? "保存中…" : "建立连接"}</button>
       </footer>
     </section>
   );

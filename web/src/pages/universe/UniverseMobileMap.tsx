@@ -16,7 +16,6 @@ export type UniverseMobileMapProps = {
   onSelectNode(nodeId: string | null): void;
   onOpenNode(nodeId: string): void;
   onPlaceNode(position: UniversePoint): void;
-  onChooseRelationTarget(nodeId: string): void;
   onMoveNode(nodeId: string, position: UniversePoint): Promise<void>;
   onModeChange?(mode: UniverseMapMode): void;
   revealNodeId?: string | null;
@@ -31,7 +30,6 @@ const MOVEMENT_TOLERANCE_PX = 8;
 
 function sameMode(left: UniverseMapMode, right: UniverseMapMode): boolean {
   if (left.kind !== right.kind) return false;
-  if (left.kind === "relation-target" && right.kind === "relation-target") return left.sourceNodeId === right.sourceNodeId;
   if (left.kind === "moving-node" && right.kind === "moving-node") return left.nodeId === right.nodeId;
   return true;
 }
@@ -48,7 +46,6 @@ export function UniverseMobileMap({
   onSelectNode,
   onOpenNode,
   onPlaceNode,
-  onChooseRelationTarget,
   onMoveNode,
   onModeChange,
   revealNodeId = null,
@@ -142,10 +139,9 @@ export function UniverseMobileMap({
     for (const effect of transition.effects) {
       if (effect.type === "open-node") onOpenNode(effect.nodeId);
       if (effect.type === "create-node") onPlaceNode(effect.world);
-      if (effect.type === "open-relation") onChooseRelationTarget(effect.targetNodeId);
       if (effect.type === "begin-move") movingRef.current = { nodeId: effect.nodeId, pointerId: pointerId ?? -1 };
     }
-  }, [onChooseRelationTarget, onModeChange, onOpenNode, onPlaceNode, onSelectNode]);
+  }, [onModeChange, onOpenNode, onPlaceNode, onSelectNode]);
 
   const fitAll = () => updateViewport(fitViewportToPositions(nodes.map((node) => node.position), mapSize));
   const pointFromEvent = (event: ReactPointerEvent<HTMLElement> | ReactMouseEvent<HTMLElement>): UniversePoint => {
@@ -292,11 +288,7 @@ export function UniverseMobileMap({
   const activeSelectedNodeId = interaction.selectedNodeId;
   const directNeighbors = getDirectNeighborIds(activeSelectedNodeId, relations);
   const screenPosition = (node: UniverseNode) => canonicalPositionToWorld(dragPositions[node.id] ?? node.position);
-  const modeHint = activeMode.kind === "relation-target"
-      ? `选择目标星球：从「${nodeMap.get(activeMode.sourceNodeId)?.title ?? "当前星球"}」出发`
-      : activeMode.kind === "moving-node"
-        ? "拖动星球调整位置，松手保存"
-        : null;
+  const modeHint = activeMode.kind === "moving-node" ? "拖动星球调整位置，松手保存" : null;
 
   return (
     <section className="universe-mobile-map" ref={mapRef} aria-label="Universe spatial map" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={(event) => { void handlePointerUp(event); }} onPointerCancel={clearGesture} onClick={handleMapClick}>
