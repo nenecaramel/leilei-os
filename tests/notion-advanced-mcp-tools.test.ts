@@ -21,7 +21,12 @@ class AdvancedReads {
       provider: "notion" as const,
       connection: { id: "connection-id", name: "Leilei Bot", type: "bot" as const },
       workspace: { id: "workspace-id", name: "Leilei Workspace" },
-      capabilities: ["page.read", "database.read", "data_source.read", "data_source.query"],
+      capabilities: [
+        { operation: "page.read", status: "unverified" as const },
+        { operation: "database.read", status: "unverified" as const },
+        { operation: "data_source.read", status: "unverified" as const },
+        { operation: "data_source.query", status: "unverified" as const },
+      ],
     };
   }
 

@@ -52,6 +52,10 @@ test("parseNotionPageReference accepts stable IDs and safe Notion URLs", () => {
     PAGE_ID,
   );
   assert.throws(
+    () => parseNotionPageReference("https://www.notion.so/Project-%E0%A4%A"),
+    (error: unknown) => error instanceof NotionIntegrationError && error.code === "INVALID_INPUT",
+  );
+  assert.throws(
     () => parseNotionPageReference("https://evil.example/page/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
     (error: unknown) => error instanceof NotionIntegrationError && error.code === "INVALID_INPUT",
   );
@@ -83,7 +87,12 @@ test("connection discovery normalizes identity, workspace, and read capabilities
       id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
       name: "Leilei Workspace",
     },
-    capabilities: ["page.read", "database.read", "data_source.read", "data_source.query"],
+    capabilities: [
+      { operation: "page.read", status: "unverified" },
+      { operation: "database.read", status: "unverified" },
+      { operation: "data_source.read", status: "unverified" },
+      { operation: "data_source.query", status: "unverified" },
+    ],
   });
   assert.equal(JSON.stringify(result).includes("test-token-1234567890123456"), false);
   assert.deepEqual(calls, [{ path: "/users/me", method: "GET", body: undefined }]);
@@ -146,6 +155,8 @@ test("data source query binds structured filters, limit, and cursors and normali
   const { integration, calls } = createIntegration({
     [`/data_sources/${DATA_SOURCE_ID}/query`]: {
       object: "list",
+      type: "page_or_data_source",
+      page_or_data_source: {},
       has_more: true,
       next_cursor: "next-page",
       results: [{
@@ -197,6 +208,8 @@ test("data source query binds structured filters, limit, and cursors and normali
 test("data source query rejects malformed list envelopes and non-page results", async () => {
   const malformedResponses = [
     { results: [], has_more: false, next_cursor: null },
+    { object: "list", type: "page", page_or_data_source: {}, results: [], has_more: false, next_cursor: null },
+    { object: "list", type: "page_or_data_source", results: [], has_more: false, next_cursor: null },
     { object: "list", results: {}, has_more: false, next_cursor: null },
     { object: "list", results: [], has_more: "false", next_cursor: null },
     { object: "list", results: [], has_more: false },
@@ -212,10 +225,30 @@ test("data source query rejects malformed list envelopes and non-page results", 
   }
 });
 
+test("connection and database reads reject plausible payloads with the wrong provider object", async () => {
+  const connection = createIntegration({
+    "/users/me": { object: "page", id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" },
+  });
+  await assert.rejects(
+    () => connection.integration.getConnection(),
+    (error: unknown) => error instanceof NotionIntegrationError && error.code === "MALFORMED_RESPONSE",
+  );
+
+  const database = createIntegration({
+    [`/databases/${DATABASE_ID}`]: { object: "page", id: DATABASE_ID },
+  });
+  await assert.rejects(
+    () => database.integration.readDatabase(DATABASE_ID),
+    (error: unknown) => error instanceof NotionIntegrationError && error.code === "MALFORMED_RESPONSE",
+  );
+});
+
 test("unsupported page property types retain explicit type evidence instead of becoming null", async () => {
   const { integration } = createIntegration({
     [`/data_sources/${DATA_SOURCE_ID}/query`]: {
       object: "list",
+      type: "page_or_data_source",
+      page_or_data_source: {},
       results: [{
         object: "page",
         id: PAGE_ID,

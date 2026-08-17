@@ -40,9 +40,10 @@ export type NotionConnectionResult = {
     id: string | null;
     name: string | null;
   };
-  capabilities: Array<
-    "page.read" | "database.read" | "data_source.read" | "data_source.query"
-  >;
+  capabilities: Array<{
+    operation: "page.read" | "database.read" | "data_source.read" | "data_source.query";
+    status: "unverified";
+  }>;
 };
 
 export type NotionSchemaProperty = {
@@ -210,7 +211,12 @@ export function parseNotionPageReference(value: string): string {
     throw invalid("page URL must use the official Notion host.");
   }
 
-  const path = decodeURIComponent(url.pathname);
+  let path: string;
+  try {
+    path = decodeURIComponent(url.pathname);
+  } catch {
+    throw invalid("page URL contains malformed encoding.");
+  }
   const match = path.match(/([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
   if (!match) throw invalid("page URL must contain a Notion page UUID.");
   const compact = match[1]!.replaceAll("-", "");
@@ -316,6 +322,7 @@ export class NotionIntegration {
   async getConnection(): Promise<NotionConnectionResult> {
     try {
       const payload = await this.transport.requestJson("/users/me");
+      if (asString(payload.object) !== "user") throw malformed("Notion returned an invalid identity object.");
       const id = asString(payload.id);
       if (!id) throw malformed("Notion returned an identity without an ID.");
       const bot = asObject(payload.bot);
@@ -333,7 +340,12 @@ export class NotionIntegration {
           type: typeValue === "bot" || typeValue === "person" ? typeValue : "unknown",
         },
         workspace: { id: workspaceId, name: workspaceName },
-        capabilities: ["page.read", "database.read", "data_source.read", "data_source.query"],
+        capabilities: [
+          { operation: "page.read", status: "unverified" },
+          { operation: "database.read", status: "unverified" },
+          { operation: "data_source.read", status: "unverified" },
+          { operation: "data_source.query", status: "unverified" },
+        ],
       };
     } catch (error) {
       throw normalizeError(error);
@@ -353,7 +365,7 @@ export class NotionIntegration {
     const id = assertNotionId(databaseId, "database_id");
     try {
       const payload = await this.transport.requestJson(`/databases/${encodeURIComponent(id)}`);
-      if (normalizeProviderId(payload.id, "database ID") !== id) throw malformed("Notion returned a database with an unexpected ID.");
+      if (asString(payload.object) !== "database" || normalizeProviderId(payload.id, "database ID") !== id) throw malformed("Notion returned a database with an unexpected identity.");
       const dataSourcesRaw = Array.isArray(payload.data_sources) ? payload.data_sources : [];
       const dataSources = dataSourcesRaw.map((item) => {
         const source = asObject(item);
@@ -419,7 +431,14 @@ export class NotionIntegration {
         method: "POST",
         body: JSON.stringify(body),
       });
-      if (payload.object !== "list" || !Array.isArray(payload.results) || typeof payload.has_more !== "boolean" || !(payload.next_cursor === null || typeof payload.next_cursor === "string")) {
+      if (
+        payload.object !== "list"
+        || payload.type !== "page_or_data_source"
+        || !asObject(payload.page_or_data_source)
+        || !Array.isArray(payload.results)
+        || typeof payload.has_more !== "boolean"
+        || !(payload.next_cursor === null || typeof payload.next_cursor === "string")
+      ) {
         throw malformed("Notion returned an invalid data source query envelope.");
       }
       const rawResults = payload.results;
