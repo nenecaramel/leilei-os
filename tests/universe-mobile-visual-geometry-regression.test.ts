@@ -13,8 +13,9 @@ const homeCss = readFileSync(
 
 test("export popover clears the legacy 36px content height and matches placement vertical typography", () => {
   assert.match(homeCss, /--universe-home-popover-content-height:\s*36px/);
-  assert.match(geometryCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-overflow-menu button\s*\{[^}]*height:\s*auto !important;[^}]*min-height:\s*0 !important;[^}]*padding:\s*6px 8px !important;[^}]*font-size:\s*13px !important;[^}]*line-height:\s*1\.35 !important;/s);
-  assert.match(geometryCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover > span\s*\{[^}]*height:\s*auto !important;[^}]*min-height:\s*0 !important;[^}]*padding:\s*6px 8px !important;/s);
+  assert.match(geometryCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-overflow-menu button\s*\{[^}]*height:\s*auto !important;[^}]*min-height:\s*0 !important;[^}]*padding:\s*6px 8px !important;/s);
+  assert.match(geometryCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-overflow-menu button\s*\{[^}]*font-size:\s*13px !important;[^}]*line-height:\s*1\.35 !important;/s);
+  assert.match(geometryCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover > span,\s*\.universe-page:has\(\.universe-mobile-map\) \.universe-overflow-menu button\s*\{[^}]*height:\s*auto !important;[^}]*min-height:\s*0 !important;[^}]*padding:\s*6px 8px !important;/s);
   assert.match(geometryCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover > span::before\s*\{[^}]*font-size:\s*13px !important;[^}]*line-height:\s*1\.35 !important;/s);
 });
 

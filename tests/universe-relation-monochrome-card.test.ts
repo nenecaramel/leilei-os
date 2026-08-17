@@ -13,8 +13,8 @@ const shellCss = readFileSync(
 
 test("mobile relation card uses the approved lightweight content hierarchy", () => {
   assert.match(relationPaper, /当前思想 · \{source\.title\}/);
-  assert.match(relationPaper, /让两个思想相遇/);
-  assert.match(relationPaper, /选择另一个思想，并定义它们之间的关系。/);
+  assert.match(relationPaper, /连接另一个思想/);
+  assert.match(relationPaper, /它们如何彼此影响？/);
   assert.doesNotMatch(relationPaper, /universe-standalone-eyebrow/);
   assert.doesNotMatch(relationPaper, /universe-standalone-close/);
 });
@@ -36,7 +36,7 @@ test("relation outer shell exactly mirrors the accepted detail-card geometry", (
   );
   assert.match(
     shellCss,
-    /\.paper-detail-layer:has\(\.universe-standalone-connection\) \.paper-detail-veil\s*\{[\s\S]*?rgba\(3, 4, 9, 0\.5\)[\s\S]*?blur\(4px\)/,
+    /\.paper-detail-layer:has\(\.universe-standalone-connection\) \.paper-detail-veil\s*(?:,\s*\.paper-detail-layer:has\(\.universe-standalone-editor\) \.paper-detail-veil\s*)?\{[\s\S]*?rgba\(3, 4, 9, 0\.5\)[\s\S]*?blur\(4px\)/,
   );
   assert.match(
     shellCss,
