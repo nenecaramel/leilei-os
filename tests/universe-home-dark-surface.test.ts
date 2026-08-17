@@ -21,6 +21,7 @@ const mainTsx = readFileSync(
 
 const PAGE_SCOPE = String.raw`\.universe-page:has\(\.universe-mobile-map\)`;
 const BODY_SCOPE = String.raw`body:has\(\.universe-page\)`;
+const READY_BODY_SCOPE = String.raw`body:has\(\.universe-mobile-map\):not\(:has\(\.universe-standalone-detail, \.universe-standalone-editor, \.universe-standalone-connection\)\)`;
 
 test("Universe production correction layer loads last and keeps the underlying map dark while papers are open", () => {
   assert.match(mainTsx, /import "\.\/pages\/universe-home-dark\.css";\s*import "\.\/pages\/universe-home-dark-production-fixes\.css";/s);
@@ -30,19 +31,23 @@ test("Universe production correction layer loads last and keeps the underlying m
   assert.doesNotMatch(productionFixCss, /:has\([^)]*:has\(/);
 });
 
-test("Universe route uses one white mobile top-bar language and a dark mobile drawer without touching desktop sidebar", () => {
-  assert.match(productionFixCss, new RegExp(`${BODY_SCOPE} \\.mobile-top-bar-title\\s*\\{[^}]*color:\\s*#e8e7ec;`, "s"));
-  assert.match(productionFixCss, new RegExp(`${BODY_SCOPE} \\.mobile-menu-button,[\\s\\S]*?${BODY_SCOPE} \\.mobile-search-link\\s*\\{[^}]*color:\\s*#e8e7ec;`, "s"));
-  assert.match(productionFixCss, new RegExp(`${BODY_SCOPE} \\.mobile-menu-line\\s*\\{[^}]*background:\\s*currentColor !important;`, "s"));
+test("Universe ready-state top bar is floating and uses the same white language as the Universe title", () => {
+  assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-top-bar\\s*\\{[^}]*color:\\s*#e8e7ec !important;[^}]*background:\\s*transparent !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-top-bar-title\\s*\\{[^}]*color:\\s*#e8e7ec !important;[^}]*opacity:\\s*1 !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-menu-button,[\\s\\S]*?${READY_BODY_SCOPE} \\.mobile-search-link\\s*\\{[^}]*color:\\s*#e8e7ec !important;[^}]*background:\\s*transparent !important;[^}]*box-shadow:\\s*none !important;[^}]*opacity:\\s*1 !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-menu-line\\s*\\{[^}]*background:\\s*currentColor !important;`, "s"));
+});
+
+test("Universe route keeps the dark mobile drawer without touching desktop sidebar", () => {
   assert.match(productionFixCss, new RegExp(`${BODY_SCOPE} \\.mobile-drawer-panel\\s*\\{[^}]*background:\\s*#0b0c12;`, "s"));
   assert.match(productionFixCss, new RegExp(`${BODY_SCOPE} \\.mobile-drawer \\.nav-item\\.active::before\\s*\\{[^}]*background:\\s*#22232b;`, "s"));
   assert.doesNotMatch(productionFixCss, /\.sidebar(?:\b|[\s,{])/);
 });
 
-test("Universe loading state is dark and does not flash the shared white state surface", () => {
+test("Universe loading state is dark and keeps its existing white top bar", () => {
   assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-loading\)\s*\{[^}]*background:\s*#0b0c12 !important;/s);
   assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-loading\) \.universe-cosmos-loading\s*\{[^}]*background:\s*#0b0c12 !important;/s);
-  assert.match(productionFixCss, /body:has\(\.universe-cosmos-loading\) \.mobile-top-bar\s*\{[^}]*background:\s*#0b0c12 !important;/s);
+  assert.match(productionFixCss, /body:has\(\.universe-cosmos-loading\) \.mobile-top-bar\s*\{[^}]*color:\s*#e8e7ec;[^}]*background:\s*#0b0c12 !important;/s);
 });
 
 test("Universe home popovers keep accepted geometry while placement wins over the legacy white important rule", () => {
@@ -59,6 +64,6 @@ test("Universe map keeps soft color while slightly raising labels and topology r
   assert.match(darkCss, /\.universe-map-reference-dots i/);
 });
 
-test("All transient Universe status text shares the title row height and viewport center", () => {
-  assert.match(productionFixCss, new RegExp(`${PAGE_SCOPE} \\.universe-header-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-map-mode-hint\\s*\\{[^}]*top:\\s*calc\\(62px \+ env\\(safe-area-inset-top, 0px\\)\\) !important;[^}]*left:\\s*50vw !important;[^}]*transform:\\s*translateX\\(-50%\\) !important;`, "s"));
+test("All transient Universe status text sits eight pixels lower while staying viewport-centered", () => {
+  assert.match(productionFixCss, new RegExp(`${PAGE_SCOPE} \\.universe-header-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-map-mode-hint\\s*\\{[^}]*top:\\s*calc\\(70px \+ env\\(safe-area-inset-top, 0px\\)\\) !important;[^}]*left:\\s*50vw !important;[^}]*transform:\\s*translateX\\(-50%\\) !important;`, "s"));
 });
