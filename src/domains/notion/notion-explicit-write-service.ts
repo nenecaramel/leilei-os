@@ -201,10 +201,53 @@ function requestedMarkdown(body: NotionJsonObject): { content: string; replace: 
   return undefined;
 }
 
+type MarkdownFence = { marker: "`" | "~"; length: number };
+
+function parseMarkdownFence(line: string): MarkdownFence | undefined {
+  const match = line.match(/^\s*(`{3,}|~{3,})/);
+  if (!match) return undefined;
+  const markerRun = match[1];
+  if (!markerRun) return undefined;
+  const marker = markerRun.charAt(0);
+  if (marker !== "`" && marker !== "~") return undefined;
+  return { marker, length: markerRun.length };
+}
+
+function isClosingMarkdownFence(line: string, fence: MarkdownFence): boolean {
+  const trimmed = line.trim();
+  return trimmed.length >= fence.length && [...trimmed].every((character) => character === fence.marker);
+}
+
+function canonicalizeMarkdownForVerification(markdown: string): string {
+  // Notion renders adjacent top-level blocks with single newlines and strips
+  // plain empty lines; fenced code content and explicit <empty-block/> lines
+  // remain meaningful content and are preserved.
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const canonicalLines: string[] = [];
+  let codeFence: MarkdownFence | undefined;
+
+  for (const line of lines) {
+    if (codeFence) {
+      canonicalLines.push(line);
+      if (isClosingMarkdownFence(line, codeFence)) codeFence = undefined;
+      continue;
+    }
+
+    if (line.trim().length === 0) continue;
+
+    canonicalLines.push(line);
+    codeFence = parseMarkdownFence(line);
+  }
+
+  return canonicalLines.join("\n");
+}
+
 function verifyRequestedMarkdown(requested: { content: string; replace: boolean }, markdown: string): void {
+  const canonicalRequested = canonicalizeMarkdownForVerification(requested.content);
+  const canonicalReadback = canonicalizeMarkdownForVerification(markdown);
   const matches = requested.replace
-    ? markdown === requested.content
-    : markdown.includes(requested.content);
+    ? canonicalReadback === canonicalRequested
+    : canonicalReadback.includes(canonicalRequested);
   if (!matches) {
     throw new NotionExplicitWriteError(
       "VERIFICATION_FAILED",
@@ -342,15 +385,9 @@ export class NotionExplicitWriteService {
       return this.uncertainAfter(error, () => this.readPageMarkdown(pageId));
     }
 
-    const providerMarkdown = assertCompleteMarkdown(written, pageId);
+    requireMatchingId(written, pageId, "page");
     const readback = await this.readPageMarkdown(pageId);
     const readbackMarkdown = assertCompleteMarkdown(readback, pageId);
-    if (readbackMarkdown !== providerMarkdown) {
-      throw new NotionExplicitWriteError(
-        "VERIFICATION_FAILED",
-        "Notion page content changed again before the write could be verified.",
-      );
-    }
     verifyRequestedMarkdown(requested, readbackMarkdown);
 
     return {

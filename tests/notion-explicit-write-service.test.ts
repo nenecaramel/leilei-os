@@ -18,6 +18,20 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function pageMarkdownResponse(
+  id: string,
+  markdown: string,
+  options: { truncated?: boolean; unknownBlockIds?: string[] } = {},
+): Response {
+  return jsonResponse({
+    object: "page_markdown",
+    id,
+    markdown,
+    truncated: options.truncated ?? false,
+    unknown_block_ids: options.unknownBlockIds ?? [],
+  });
+}
+
 test("page update performs fresh read, one explicit write, then fresh readback", async () => {
   const calls: Array<{ method: string; path: string }> = [];
   const fetchImpl: typeof fetch = async (input, init = {}) => {
@@ -173,6 +187,209 @@ test("page content update verifies the exact provider markdown with a fresh mark
   ]);
 });
 
+test("page content update verifies inserted markdown after Notion canonicalizes block separators", async () => {
+  const requestedContent = "Production acceptance smoke evidence\n\nPhase 8.6.2 production smoke is being executed against Railway ACTIVE production.";
+  const renderedContent = requestedContent.replaceAll("\n\n", "\n");
+  const renderedPage = `# Existing\n${renderedContent}`;
+  const calls: Array<{ method: string; path: string }> = [];
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = init.method ?? "GET";
+    calls.push({ method, path: url.pathname });
+    if (method === "PATCH") return pageMarkdownResponse(PAGE_ID, renderedPage);
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Existing" : renderedPage);
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  const result = await service.updatePageContent(PAGE_ID, {
+    type: "insert_content",
+    insert_content: { content: requestedContent },
+  });
+
+  assert.equal(result.verified, true);
+  assert.deepEqual(calls, [
+    { method: "GET", path: `/v1/pages/${PAGE_ID}/markdown` },
+    { method: "PATCH", path: `/v1/pages/${PAGE_ID}/markdown` },
+    { method: "GET", path: `/v1/pages/${PAGE_ID}/markdown` },
+  ]);
+});
+
+test("page content update does not require PATCH markdown serialization to equal fresh GET serialization", async () => {
+  const requestedContent = "# Fresh Start\n\nThis replaces all previous content.";
+  const providerMarkdown = requestedContent;
+  const readbackMarkdown = requestedContent.replaceAll("\n\n", "\n");
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") return pageMarkdownResponse(PAGE_ID, providerMarkdown);
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Before" : readbackMarkdown);
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  const result = await service.updatePageContent(PAGE_ID, {
+    type: "replace_content",
+    replace_content: { new_str: requestedContent },
+  });
+
+  assert.equal(result.verified, true);
+});
+
+test("page content insertion fails closed when the fresh readback omits the canonical fragment", async () => {
+  let readCount = 0;
+  let patchCalls = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") {
+      patchCalls += 1;
+      return pageMarkdownResponse(PAGE_ID, "# Provider response");
+    }
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Existing" : "# Different content");
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  await assert.rejects(
+    () => service.updatePageContent(PAGE_ID, {
+      type: "insert_content",
+      insert_content: { content: "Intended inserted content" },
+    }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
+  );
+  assert.equal(patchCalls, 1);
+  assert.equal(readCount, 2);
+});
+
+test("page content replacement verifies the complete rendered markdown after canonicalization", async () => {
+  const requestedContent = "# Fresh Start\n\nThis replaces all previous content.";
+  const renderedContent = requestedContent.replaceAll("\n\n", "\n");
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") return pageMarkdownResponse(PAGE_ID, renderedContent);
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Before" : renderedContent);
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  const result = await service.updatePageContent(PAGE_ID, {
+    type: "replace_content",
+    replace_content: { new_str: requestedContent },
+  });
+
+  assert.equal(result.verified, true);
+});
+
+test("page content replacement fails closed when canonicalization would change fenced code content", async () => {
+  const requestedContent = "# Code\n\n```text\nline one\n\nline three\n```";
+  const readbackContent = "# Code\n```text\nline one\nline three\n```";
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") return pageMarkdownResponse(PAGE_ID, requestedContent);
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Before" : readbackContent);
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  await assert.rejects(
+    () => service.updatePageContent(PAGE_ID, {
+      type: "replace_content",
+      replace_content: { new_str: requestedContent },
+    }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
+  );
+});
+
+test("page content replacement preserves explicit empty blocks during canonicalization", async () => {
+  const requestedContent = "# Before\n\n<empty-block/>\n\n# After";
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") return pageMarkdownResponse(PAGE_ID, requestedContent);
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Existing" : "# Before\n# After");
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  await assert.rejects(
+    () => service.updatePageContent(PAGE_ID, {
+      type: "replace_content",
+      replace_content: { new_str: requestedContent },
+    }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
+  );
+});
+
+test("page content replacement preserves blank lines inside four-backtick and tilde fences", async () => {
+  for (const fence of ["````text", "~~~text"]) {
+    const closingFence = fence.startsWith("`") ? "````" : "~~~";
+    const requestedContent = `${fence}\nline one\n\nline three\n${closingFence}`;
+    const readbackContent = `${fence}\nline one\nline three\n${closingFence}`;
+    let readCount = 0;
+    const fetchImpl: typeof fetch = async (_input, init = {}) => {
+      const method = init.method ?? "GET";
+      if (method === "PATCH") return pageMarkdownResponse(PAGE_ID, requestedContent);
+      readCount += 1;
+      return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Before" : readbackContent);
+    };
+
+    const service = new NotionExplicitWriteService("secret", fetchImpl);
+    await assert.rejects(
+      () => service.updatePageContent(PAGE_ID, {
+        type: "replace_content",
+        replace_content: { new_str: requestedContent },
+      }),
+      (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
+    );
+  }
+});
+
+test("page content update treats a minimal provider response as auxiliary evidence", async () => {
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") return jsonResponse({ object: "page", id: PAGE_ID });
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Before" : "# After");
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  const result = await service.updatePageContent(PAGE_ID, {
+    type: "replace_content",
+    replace_content: { new_str: "# After" },
+  });
+
+  assert.equal(result.verified, true);
+});
+
+test("page content update fails closed when the provider response has a different stable ID", async () => {
+  let patchCalls = 0;
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") {
+      patchCalls += 1;
+      return jsonResponse({ object: "page", id: OTHER_PAGE_ID });
+    }
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Before" : "# After");
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  await assert.rejects(
+    () => service.updatePageContent(PAGE_ID, {
+      type: "replace_content",
+      replace_content: { new_str: "# After" },
+    }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
+  );
+  assert.equal(patchCalls, 1);
+  assert.equal(readCount, 1);
+});
+
 test("page content update fails closed when provider and readback content differ from the requested content", async () => {
   const fetchImpl: typeof fetch = async (input, init = {}) => {
     const url = new URL(String(input));
@@ -210,6 +427,73 @@ test("page content update rejects an unverifiable body before any provider call"
     (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "INVALID_WRITE",
   );
   assert.equal(calls, 0);
+});
+
+test("page content update fails closed when the fresh markdown is truncated", async () => {
+  let patchCalls = 0;
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") {
+      patchCalls += 1;
+      return pageMarkdownResponse(PAGE_ID, "# After");
+    }
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, readCount === 1 ? "# Before" : "# After", {
+      truncated: readCount > 1,
+    });
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  await assert.rejects(
+    () => service.updatePageContent(PAGE_ID, {
+      type: "replace_content",
+      replace_content: { new_str: "# After" },
+    }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
+  );
+  assert.equal(patchCalls, 1);
+});
+
+test("page content update fails closed when the fresh markdown contains unknown blocks", async () => {
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") return pageMarkdownResponse(PAGE_ID, "# After");
+    readCount += 1;
+    return pageMarkdownResponse(PAGE_ID, "# After", {
+      unknownBlockIds: readCount > 1 ? ["unknown-block"] : [],
+    });
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  await assert.rejects(
+    () => service.updatePageContent(PAGE_ID, {
+      type: "replace_content",
+      replace_content: { new_str: "# After" },
+    }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
+  );
+});
+
+test("page content update fails closed when the fresh markdown stable ID changes", async () => {
+  const otherPageId = "66666666-6666-4666-8666-666666666666";
+  let readCount = 0;
+  const fetchImpl: typeof fetch = async (_input, init = {}) => {
+    const method = init.method ?? "GET";
+    if (method === "PATCH") return pageMarkdownResponse(PAGE_ID, "# After");
+    readCount += 1;
+    return pageMarkdownResponse(readCount === 1 ? PAGE_ID : otherPageId, readCount === 1 ? "# Before" : "# After");
+  };
+
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+  await assert.rejects(
+    () => service.updatePageContent(PAGE_ID, {
+      type: "replace_content",
+      replace_content: { new_str: "# After" },
+    }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
+  );
 });
 
 test("comment create performs one mutation and verifies the created comment content", async () => {
