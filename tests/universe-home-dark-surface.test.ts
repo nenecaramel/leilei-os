@@ -35,8 +35,8 @@ test("Universe production correction layer loads last and keeps the underlying m
 test("Universe ready-state top bar is structurally overlaid on the map instead of reserving a solid strip", () => {
   assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-top-bar\\s*\\{[^}]*position:\\s*fixed !important;[^}]*top:\\s*0 !important;[^}]*right:\\s*0 !important;[^}]*left:\\s*0 !important;[^}]*background:\\s*transparent !important;`, "s"));
   assert.match(productionFixCss, new RegExp(`${READY_PAGE_SCOPE}\\s*\\{[^}]*height:\\s*100dvh !important;[^}]*min-height:\\s*100dvh !important;`, "s"));
-  assert.match(productionFixCss, new RegExp(`${READY_PAGE_SCOPE} \\.universe-page-header\\s*\\{[^}]*top:\\s*calc\\(62px \+ env\\(safe-area-inset-top, 0px\\)\\) !important;`, "s"));
-  assert.match(productionFixCss, new RegExp(`${READY_PAGE_SCOPE} \\.universe-galaxy-picker,[\\s\\S]*?${READY_PAGE_SCOPE} \\.universe-mobile-map-toolbar\\s*\\{[^}]*top:\\s*calc\\(92px \+ env\\(safe-area-inset-top, 0px\\)\\) !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${READY_PAGE_SCOPE} \\.universe-page-header\\s*\\{[^}]*top:\\s*calc\\(62px [+] env\\(safe-area-inset-top, 0px\\)\\) !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${READY_PAGE_SCOPE} \\.universe-galaxy-picker,[\\s\\S]*?${READY_PAGE_SCOPE} \\.universe-mobile-map-toolbar\\s*\\{[^}]*top:\\s*calc\\(92px [+] env\\(safe-area-inset-top, 0px\\)\\) !important;`, "s"));
 });
 
 test("Universe ready-state top bar uses the same white language as the Universe title", () => {
@@ -74,5 +74,5 @@ test("Universe map keeps soft color while slightly raising labels and topology r
 });
 
 test("All transient Universe status text sits eight pixels lower while staying viewport-centered", () => {
-  assert.match(productionFixCss, new RegExp(`${PAGE_SCOPE} \\.universe-header-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-map-mode-hint\\s*\\{[^}]*top:\\s*calc\\(70px \+ env\\(safe-area-inset-top, 0px\\)\\) !important;[^}]*left:\\s*50vw !important;[^}]*transform:\\s*translateX\\(-50%\\) !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${PAGE_SCOPE} \\.universe-header-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-map-mode-hint\\s*\\{[^}]*top:\\s*calc\\(70px [+] env\\(safe-area-inset-top, 0px\\)\\) !important;[^}]*left:\\s*50vw !important;[^}]*transform:\\s*translateX\\(-50%\\) !important;`, "s"));
 });
