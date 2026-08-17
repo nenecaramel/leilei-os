@@ -196,7 +196,7 @@ test("readPage paginates blocks, traverses structural children, and does not exp
 
 test("Notion read failures map to stable error codes without exposing upstream bodies", async () => {
   const cases = [
-    [401, "ACCESS_DENIED"],
+    [401, "AUTHENTICATION_FAILED"],
     [403, "ACCESS_DENIED"],
     [404, "NOT_FOUND"],
     [429, "RATE_LIMITED"],

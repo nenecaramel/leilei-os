@@ -113,6 +113,8 @@ function mapNotionSearchError(error: unknown): string {
   switch (error.code) {
     case "NOT_CONFIGURED":
       return "Notion is not configured.";
+    case "AUTHENTICATION_FAILED":
+      return "Notion authentication failed.";
     case "ACCESS_DENIED":
       return "Notion access is unavailable.";
     case "RATE_LIMITED":

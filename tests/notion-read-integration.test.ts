@@ -38,8 +38,17 @@ function createIntegration(responses: Record<string, unknown>) {
 
 test("parseNotionPageReference accepts stable IDs and safe Notion URLs", () => {
   assert.equal(parseNotionPageReference(PAGE_ID), PAGE_ID);
+  assert.equal(parseNotionPageReference(PAGE_ID.replaceAll("-", "").toUpperCase()), PAGE_ID);
   assert.equal(
     parseNotionPageReference(`https://www.notion.so/Project-${PAGE_ID.replaceAll("-", "")}`),
+    PAGE_ID,
+  );
+  assert.equal(
+    parseNotionPageReference(`https://app.notion.com/workspace/${PAGE_ID.replaceAll("-", "")}`),
+    PAGE_ID,
+  );
+  assert.equal(
+    parseNotionPageReference(`https://leilei.notion.site/Project-${PAGE_ID.replaceAll("-", "")}`),
     PAGE_ID,
   );
   assert.throws(
@@ -177,10 +186,54 @@ test("data source query binds structured filters, limit, and cursors and normali
     method: "POST",
     body: {
       page_size: 17,
+      result_type: "page",
       start_cursor: "cursor-1",
       filter: { property: "Done", checkbox: { equals: true } },
       sorts: [{ property: "Name", direction: "ascending" }],
     },
+  });
+});
+
+test("data source query rejects malformed list envelopes and non-page results", async () => {
+  const malformedResponses = [
+    { results: [], has_more: false, next_cursor: null },
+    { object: "list", results: {}, has_more: false, next_cursor: null },
+    { object: "list", results: [], has_more: "false", next_cursor: null },
+    { object: "list", results: [], has_more: false },
+    { object: "list", results: [], has_more: true, next_cursor: null },
+    { object: "list", results: [{ object: "data_source", id: DATA_SOURCE_ID }], has_more: false, next_cursor: null },
+  ];
+  for (const response of malformedResponses) {
+    const { integration } = createIntegration({ [`/data_sources/${DATA_SOURCE_ID}/query`]: response });
+    await assert.rejects(
+      () => integration.queryDataSource({ dataSourceId: DATA_SOURCE_ID }),
+      (error: unknown) => error instanceof NotionIntegrationError && error.code === "MALFORMED_RESPONSE",
+    );
+  }
+});
+
+test("unsupported page property types retain explicit type evidence instead of becoming null", async () => {
+  const { integration } = createIntegration({
+    [`/data_sources/${DATA_SOURCE_ID}/query`]: {
+      object: "list",
+      results: [{
+        object: "page",
+        id: PAGE_ID,
+        properties: {
+          Formula: { id: "formula", type: "formula", formula: { type: "number", number: 42 } },
+          Rollup: { id: "rollup", type: "rollup", rollup: { type: "number", number: 3 } },
+          Files: { id: "files", type: "files", files: [{ name: "brief.pdf", type: "external", external: { url: "https://files.example/brief.pdf" } }] },
+        },
+      }],
+      has_more: false,
+      next_cursor: null,
+    },
+  });
+  const result = await integration.queryDataSource({ dataSourceId: DATA_SOURCE_ID });
+  assert.deepEqual(result.results[0]?.properties, {
+    Formula: { id: "formula", type: "formula", value: { unsupported: true, provider_type: "formula" } },
+    Rollup: { id: "rollup", type: "rollup", value: { unsupported: true, provider_type: "rollup" } },
+    Files: { id: "files", type: "files", value: { unsupported: true, provider_type: "files" } },
   });
 });
 
@@ -203,7 +256,7 @@ test("invalid input and malformed provider responses fail closed", async () => {
 });
 
 test("Notion transport error categories remain safe for advanced reads", async () => {
-  for (const [status, code] of [[401, "ACCESS_DENIED"], [403, "ACCESS_DENIED"], [404, "NOT_FOUND"], [429, "RATE_LIMITED"], [503, "UPSTREAM"]] as const) {
+  for (const [status, code] of [[401, "AUTHENTICATION_FAILED"], [403, "ACCESS_DENIED"], [404, "NOT_FOUND"], [429, "RATE_LIMITED"], [503, "UPSTREAM"]] as const) {
     const { integration } = createIntegration({ [`/databases/${DATABASE_ID}`]: new Response("private upstream secret", { status }) });
     await assert.rejects(
       () => integration.readDatabase(DATABASE_ID),

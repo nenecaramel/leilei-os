@@ -17,6 +17,8 @@ export function safeNotionAdvancedError(error: unknown) {
   if (error instanceof NotionIntegrationError) {
     const text = error.code === "NOT_CONFIGURED"
       ? "Notion is not configured."
+      : error.code === "AUTHENTICATION_FAILED"
+        ? "Notion authentication failed."
       : error.code === "ACCESS_DENIED"
         ? "Notion access was denied."
         : error.code === "NOT_FOUND"

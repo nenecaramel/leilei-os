@@ -9,6 +9,7 @@ const MAX_TEXT_LENGTH = 60_000;
 
 export type NotionReadErrorCode =
   | "NOT_CONFIGURED"
+  | "AUTHENTICATION_FAILED"
   | "ACCESS_DENIED"
   | "NOT_FOUND"
   | "RATE_LIMITED"
@@ -158,6 +159,8 @@ function mapTransportError(error: unknown): NotionReadError {
   switch (error.code) {
     case "NOT_CONFIGURED":
       return new NotionReadError("NOT_CONFIGURED", "Notion access is not configured.");
+    case "AUTHENTICATION_FAILED":
+      return new NotionReadError("AUTHENTICATION_FAILED", "Notion authentication failed.");
     case "ACCESS_DENIED":
       return new NotionReadError("ACCESS_DENIED", "Notion access was denied.");
     case "NOT_FOUND":

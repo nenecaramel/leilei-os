@@ -11,6 +11,7 @@ import {
 
 export type NotionIntegrationErrorCode =
   | "NOT_CONFIGURED"
+  | "AUTHENTICATION_FAILED"
   | "ACCESS_DENIED"
   | "NOT_FOUND"
   | "RATE_LIMITED"
@@ -135,6 +136,7 @@ function normalizeError(error: unknown): NotionIntegrationError {
   if (error instanceof NotionApiError) {
     switch (error.code) {
       case "NOT_CONFIGURED": return new NotionIntegrationError("NOT_CONFIGURED", "Notion access is not configured.");
+      case "AUTHENTICATION_FAILED": return new NotionIntegrationError("AUTHENTICATION_FAILED", "Notion authentication failed.");
       case "ACCESS_DENIED": return new NotionIntegrationError("ACCESS_DENIED", "Notion access was denied.");
       case "NOT_FOUND": return new NotionIntegrationError("NOT_FOUND", "The Notion resource was not found or is inaccessible.");
       case "RATE_LIMITED": return new NotionIntegrationError("RATE_LIMITED", "Notion is temporarily rate limited.");
@@ -146,6 +148,7 @@ function normalizeError(error: unknown): NotionIntegrationError {
   if (error instanceof NotionReadError) {
     switch (error.code) {
       case "NOT_CONFIGURED": return new NotionIntegrationError("NOT_CONFIGURED", "Notion access is not configured.");
+      case "AUTHENTICATION_FAILED": return new NotionIntegrationError("AUTHENTICATION_FAILED", "Notion authentication failed.");
       case "ACCESS_DENIED": return new NotionIntegrationError("ACCESS_DENIED", "Notion access was denied.");
       case "NOT_FOUND": return new NotionIntegrationError("NOT_FOUND", "The Notion resource was not found or is inaccessible.");
       case "RATE_LIMITED": return new NotionIntegrationError("RATE_LIMITED", "Notion is temporarily rate limited.");
@@ -169,7 +172,15 @@ function assertNotionId(value: string, label: string): string {
   if (!/^[0-9a-fA-F]{32}$/.test(compact)) {
     throw invalid(`${label} must be a Notion UUID.`);
   }
-  return normalized;
+  return formatCompactUuid(compact.toLowerCase());
+}
+
+function normalizeProviderId(value: unknown, label: string): string {
+  try {
+    return assertNotionId(asString(value), label);
+  } catch {
+    throw malformed(`Notion returned an invalid ${label}.`);
+  }
 }
 
 function formatCompactUuid(value: string): string {
@@ -190,7 +201,12 @@ export function parseNotionPageReference(value: string): string {
   } catch {
     throw invalid("page reference must be a Notion page UUID or URL.");
   }
-  if (url.protocol !== "https:" || !["notion.so", "www.notion.so"].includes(url.hostname)) {
+  const officialHost = url.hostname === "notion.so"
+    || url.hostname === "www.notion.so"
+    || url.hostname === "app.notion.com"
+    || url.hostname === "notion.site"
+    || url.hostname.endsWith(".notion.site");
+  if (url.protocol !== "https:" || !officialHost) {
     throw invalid("page URL must use the official Notion host.");
   }
 
@@ -236,12 +252,16 @@ function normalizePropertyValue(raw: unknown): NotionDataSourcePage["properties"
   if (["number", "checkbox", "url", "email", "phone_number"].includes(type)) {
     return { id: nullableString(property.id), type, value: value ?? null };
   }
-  return { id: nullableString(property.id), type, value: null };
+  return {
+    id: nullableString(property.id),
+    type,
+    value: { unsupported: true, provider_type: type },
+  };
 }
 
 function normalizePageResult(raw: unknown): NotionDataSourcePage {
   const page = asObject(raw);
-  if (!page || asString(page.id) === "") throw malformed("Notion returned an invalid data source page.");
+  if (!page || asString(page.id) === "" || asString(page.object) !== "page") throw malformed("Notion returned an invalid data source page.");
   const properties = asObject(page.properties);
   if (!properties) throw malformed("Notion returned a page without properties.");
   let title = "Untitled";
@@ -253,7 +273,7 @@ function normalizePageResult(raw: unknown): NotionDataSourcePage {
     }
   }
   return {
-    id: asString(page.id),
+    id: normalizeProviderId(page.id, "page ID"),
     url: nullableString(page.url),
     title,
     created_time: nullableString(page.created_time),
@@ -333,12 +353,12 @@ export class NotionIntegration {
     const id = assertNotionId(databaseId, "database_id");
     try {
       const payload = await this.transport.requestJson(`/databases/${encodeURIComponent(id)}`);
-      if (asString(payload.id) !== id) throw malformed("Notion returned a database with an unexpected ID.");
+      if (normalizeProviderId(payload.id, "database ID") !== id) throw malformed("Notion returned a database with an unexpected ID.");
       const dataSourcesRaw = Array.isArray(payload.data_sources) ? payload.data_sources : [];
       const dataSources = dataSourcesRaw.map((item) => {
         const source = asObject(item);
         if (!source || !asString(source.id)) throw malformed("Notion returned an invalid data source reference.");
-        return { id: asString(source.id), name: asString(source.name) || "Untitled" };
+        return { id: normalizeProviderId(source.id, "data source ID"), name: asString(source.name) || "Untitled" };
       });
       return {
         id,
@@ -358,15 +378,18 @@ export class NotionIntegration {
     const id = assertNotionId(dataSourceId, "data_source_id");
     try {
       const payload = await this.transport.requestJson(`/data_sources/${encodeURIComponent(id)}`);
-      if (asString(payload.id) !== id || asString(payload.object) !== "data_source") throw malformed("Notion returned an invalid data source.");
+      if (asString(payload.object) !== "data_source" || normalizeProviderId(payload.id, "data source ID") !== id) throw malformed("Notion returned an invalid data source.");
       const parent = asObject(payload.parent);
+      const parentDatabaseId = parent?.database_id === undefined || parent?.database_id === null
+        ? null
+        : normalizeProviderId(parent.database_id, "parent database ID");
       return {
         id,
         url: nullableString(payload.url),
         title: titleText(payload.title),
         created_time: nullableString(payload.created_time),
         last_edited_time: nullableString(payload.last_edited_time),
-        parent_database_id: nullableString(parent?.database_id),
+        parent_database_id: parentDatabaseId,
         schema: normalizeSchema(payload.properties),
       };
     } catch (error) {
@@ -387,7 +410,7 @@ export class NotionIntegration {
       if (!Array.isArray(input.sorts) || input.sorts.length > 10) throw invalid("sorts must contain at most 10 items.");
       validateJsonTree(input.sorts);
     }
-    const body: NotionJsonObject = { page_size: limit };
+    const body: NotionJsonObject = { page_size: limit, result_type: "page" };
     if (input.cursor) body.start_cursor = input.cursor;
     if (input.filter) body.filter = input.filter;
     if (input.sorts) body.sorts = input.sorts;
@@ -396,11 +419,15 @@ export class NotionIntegration {
         method: "POST",
         body: JSON.stringify(body),
       });
-      const rawResults = Array.isArray(payload.results) ? payload.results : [];
+      if (payload.object !== "list" || !Array.isArray(payload.results) || typeof payload.has_more !== "boolean" || !(payload.next_cursor === null || typeof payload.next_cursor === "string")) {
+        throw malformed("Notion returned an invalid data source query envelope.");
+      }
+      const rawResults = payload.results;
       const results = rawResults.map(normalizePageResult);
-      const hasMore = payload.has_more === true;
-      const nextCursor = typeof payload.next_cursor === "string" ? payload.next_cursor : null;
-      if (hasMore && !nextCursor) throw malformed("Notion returned more results without a cursor.");
+      const hasMore = payload.has_more;
+      const nextCursor = payload.next_cursor;
+      if (hasMore && (!nextCursor || nextCursor.trim() === "")) throw malformed("Notion returned more results without a cursor.");
+      if (!hasMore && nextCursor !== null) throw malformed("Notion returned a cursor without more results.");
       return {
         data_source_id: dataSourceId,
         results,

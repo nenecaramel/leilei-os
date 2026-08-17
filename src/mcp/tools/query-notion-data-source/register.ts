@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { NotionDataSourceQueryResult, NotionIntegration } from "../../../domains/notion/notion-read-integration.js";
 import { readOnlyNotionAnnotations, safeNotionAdvancedError } from "../notion-advanced/shared.js";
 
-const idSchema = z.string().trim().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+const idSchema = z.string().trim().refine((value) => /^[0-9a-f]{32}$/i.test(value.replaceAll("-", "")), "Notion IDs must be UUIDs.");
 const jsonObjectSchema = z.record(z.any());
 const outputSchema = z.object({
   success: z.literal(true),

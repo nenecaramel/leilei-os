@@ -103,7 +103,7 @@ test("advanced Notion reads authenticate and preserve normalized IDs and paginat
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
   const connection = await fixture.client.callTool({ name: "get_notion_connection", arguments: {} });
-  const database = await fixture.client.callTool({ name: "read_notion_database", arguments: { database_id: DATABASE_ID } });
+  const database = await fixture.client.callTool({ name: "read_notion_database", arguments: { database_id: DATABASE_ID.replaceAll("-", "").toUpperCase() } });
   const source = await fixture.client.callTool({ name: "read_notion_data_source", arguments: { data_source_id: DATA_SOURCE_ID } });
   const query = await fixture.client.callTool({ name: "query_notion_data_source", arguments: {
     data_source_id: DATA_SOURCE_ID,
@@ -120,7 +120,7 @@ test("advanced Notion reads authenticate and preserve normalized IDs and paginat
   assert.equal(fixture.authCalls, 4);
   assert.deepEqual(fixture.reads.calls, [
     { method: "getConnection" },
-    { method: "readDatabase", input: DATABASE_ID },
+    { method: "readDatabase", input: DATABASE_ID.replaceAll("-", "").toUpperCase() },
     { method: "readDataSource", input: DATA_SOURCE_ID },
     { method: "queryDataSource", input: {
       dataSourceId: DATA_SOURCE_ID,
