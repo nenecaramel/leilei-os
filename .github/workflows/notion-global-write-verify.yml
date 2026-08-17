@@ -7,6 +7,7 @@ on:
       - fix/notion-write-input-schema
       - fix/notion-write-runtime-smoke
       - codex/notion-explicit-write-8-6-2
+      - codex/phase-8-6-2-verifier-hotfix
 
 jobs:
   verify:
