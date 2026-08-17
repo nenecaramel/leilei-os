@@ -78,7 +78,7 @@ test("Create edit and connection footers match the detail footer treatment", () 
 
 test("All four Universe mobile pages use the detail footer action color", () => {
   assert.match(shellCss, /\.universe-standalone-detail-actions button\s*\{\s*color:\s*#7d7f8c;/);
-  assert.match(polishCss, /\.universe-standalone-detail-actions button,[\s\S]*?\.universe-standalone-editor-footer button,[\s\S]*?\.universe-standalone-connection-footer button\s*\{[\s\S]*?color:\s*#7d7f8c !important/);
+  assert.match(polishCss, /\.universe-standalone-detail-actions button,[\s\S]*?\.universe-standalone-editor-footer button,[\s\S]*?\.universe-standalone-connection-footer button,[\s\S]*?\.universe-standalone-editor-footer button:disabled,[\s\S]*?\.universe-standalone-connection-footer button:disabled\s*\{[\s\S]*?color:\s*#7d7f8c !important/);
 });
 
 test("Export popover uses the same vertical and horizontal text inset as placement popover", () => {
