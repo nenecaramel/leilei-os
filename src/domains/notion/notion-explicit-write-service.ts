@@ -65,20 +65,47 @@ function isUncertainProviderError(error: unknown): boolean {
   return error instanceof NotionApiError && error.code === "UPSTREAM";
 }
 
-function requestedPropertyKeys(body: NotionJsonObject): string[] {
-  const properties = asObject(body.properties);
-  return properties ? Object.keys(properties) : [];
+function comparableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(comparableValue);
+  const object = asObject(value);
+  if (!object) return value;
+
+  const text = asObject(object.text);
+  if (text && typeof text.content === "string") return { content: text.content };
+  if (typeof object.plain_text === "string") return { content: object.plain_text };
+
+  return Object.fromEntries(
+    Object.entries(object)
+      .filter(([key]) => !["id", "type", "object", "annotations", "color", "href", "link"].includes(key))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, comparableValue(nested)]),
+  );
 }
 
-function verifyRequestedPropertyKeys(body: NotionJsonObject, readback: NotionJsonObject): void {
-  const requested = requestedPropertyKeys(body);
-  if (requested.length === 0) return;
+function verifyRequestedPropertyValues(body: NotionJsonObject, readback: NotionJsonObject): void {
+  const requestedProperties = asObject(body.properties);
+  if (!requestedProperties || Object.keys(requestedProperties).length === 0) return;
   const properties = asObject(readback.properties);
-  if (!properties || requested.some((key) => !(key in properties))) {
+  if (!properties) {
     throw new NotionExplicitWriteError(
       "VERIFICATION_FAILED",
-      "Notion page readback did not contain the requested properties.",
+      "Notion page readback did not contain page properties.",
     );
+  }
+
+  for (const [key, requestedValue] of Object.entries(requestedProperties)) {
+    if (!(key in properties)) {
+      throw new NotionExplicitWriteError(
+        "VERIFICATION_FAILED",
+        "Notion page readback did not contain the requested properties.",
+      );
+    }
+    if (JSON.stringify(comparableValue(properties[key])) !== JSON.stringify(comparableValue(requestedValue))) {
+      throw new NotionExplicitWriteError(
+        "VERIFICATION_FAILED",
+        "Notion page readback did not contain the requested property values.",
+      );
+    }
   }
 }
 
@@ -151,6 +178,29 @@ function assertCompleteMarkdown(payload: NotionJsonObject, expectedId: string): 
   return payload.markdown;
 }
 
+function requestedMarkdown(body: NotionJsonObject): { content: string; replace: boolean } | undefined {
+  const replaceContent = asObject(body.replace_content);
+  const insertContent = asObject(body.insert_content);
+  const content = asString(body.content)
+    ?? asString(body.new_str)
+    ?? (replaceContent ? asString(replaceContent.new_str) : undefined)
+    ?? (insertContent ? asString(insertContent.content) : undefined);
+  if (content === undefined) return undefined;
+  return { content, replace: body.type === "replace_content" || replaceContent !== undefined };
+}
+
+function verifyRequestedMarkdown(requested: { content: string; replace: boolean }, markdown: string): void {
+  const matches = requested.replace
+    ? markdown === requested.content
+    : markdown.includes(requested.content);
+  if (!matches) {
+    throw new NotionExplicitWriteError(
+      "VERIFICATION_FAILED",
+      "Notion page content readback did not contain the requested content.",
+    );
+  }
+}
+
 export class NotionExplicitWriteService {
   private readonly transport: NotionTransport;
   private readonly pageClient: NotionPageBlockClient;
@@ -177,16 +227,24 @@ export class NotionExplicitWriteService {
   private async readCreateTarget(body: NotionJsonObject): Promise<NotionJsonObject> {
     const parent = asObject(body.parent);
     const pageId = parent ? asString(parent.page_id) : undefined;
-    if (pageId) return this.readPage(pageId);
+    if (pageId) {
+      const readback = await this.readPage(pageId);
+      requireMatchingId(readback, pageId, "parent page");
+      return readback;
+    }
 
     const dataSourceId = parent ? asString(parent.data_source_id) : undefined;
     if (dataSourceId) {
-      return this.transport.requestJson(`/data_sources/${encodeURIComponent(dataSourceId)}`);
+      const readback = await this.transport.requestJson(`/data_sources/${encodeURIComponent(dataSourceId)}`);
+      requireMatchingId(readback, dataSourceId, "parent data source");
+      return readback;
     }
 
     const databaseId = parent ? asString(parent.database_id) : undefined;
     if (databaseId) {
-      return this.transport.requestJson(`/databases/${encodeURIComponent(databaseId)}`);
+      const readback = await this.transport.requestJson(`/databases/${encodeURIComponent(databaseId)}`);
+      requireMatchingId(readback, databaseId, "parent database");
+      return readback;
     }
 
     return this.transport.requestJson("/users/me");
@@ -219,7 +277,7 @@ export class NotionExplicitWriteService {
     const pageId = requireMatchingId(written, undefined, "page");
     const readback = await this.readPage(pageId);
     requireMatchingId(readback, pageId, "page");
-    verifyRequestedPropertyKeys(body, readback);
+    verifyRequestedPropertyValues(body, readback);
 
     return {
       operation: "page.create",
@@ -243,7 +301,7 @@ export class NotionExplicitWriteService {
     requireMatchingId(written, pageId, "page");
     const readback = await this.readPage(pageId);
     requireMatchingId(readback, pageId, "page");
-    verifyRequestedPropertyKeys(body, readback);
+    verifyRequestedPropertyValues(body, readback);
 
     return {
       operation: "page.update",
@@ -254,6 +312,13 @@ export class NotionExplicitWriteService {
   }
 
   async updatePageContent(pageId: string, body: NotionJsonObject): Promise<NotionExplicitWriteResult> {
+    const requested = requestedMarkdown(body);
+    if (!requested) {
+      throw new NotionExplicitWriteError(
+        "INVALID_WRITE",
+        "Notion page content update did not include verifiable content.",
+      );
+    }
     const before = await this.readPageMarkdown(pageId);
     assertCompleteMarkdown(before, pageId);
 
@@ -273,6 +338,7 @@ export class NotionExplicitWriteService {
         "Notion page content changed again before the write could be verified.",
       );
     }
+    verifyRequestedMarkdown(requested, readbackMarkdown);
 
     return {
       operation: "page.update_content",
