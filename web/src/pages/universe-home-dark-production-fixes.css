@@ -103,7 +103,7 @@ body:has(.universe-cosmos-loading),
 }
 
 @media (max-width: 760px) {
-  /* Every Universe route state uses the same white top-bar language. */
+  /* Loading and inner-paper states keep the dark route bar. */
   body:has(.universe-page) .mobile-top-bar,
   body:has(.universe-cosmos-loading) .mobile-top-bar {
     color: #e8e7ec;
@@ -133,8 +133,54 @@ body:has(.universe-cosmos-loading),
     background: transparent;
   }
 
+  /*
+   * Ready-state must beat universe-home-dark.css's more-specific gray rules.
+   * The bar itself is transparent so the three controls read as floating over
+   * the same dark Universe surface as the title instead of sitting on a strip.
+   */
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-top-bar {
+    color: #e8e7ec !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-top-bar-title {
+    color: #e8e7ec !important;
+    opacity: 1 !important;
+  }
+
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-button,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link {
+    border: 0 !important;
+    color: #e8e7ec !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+  }
+
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-button:hover,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-button:active,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-button[aria-expanded="true"],
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link:hover,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link:active,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link[aria-expanded="true"] {
+    color: #e8e7ec !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link svg {
+    color: inherit !important;
+    opacity: 1 !important;
+  }
+
   /* styles.css hard-codes these bars black, so restore currentColor explicitly. */
-  body:has(.universe-page) .mobile-menu-line {
+  body:has(.universe-page) .mobile-menu-line,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-line {
     background: currentColor !important;
   }
 
@@ -181,13 +227,13 @@ body:has(.universe-cosmos-loading),
     color: #70727d;
   }
 
-  /* All transient status copy sits on the Universe title row and viewport center. */
+  /* All transient status copy stays viewport-centered and now sits 8px lower. */
   .universe-page:has(.universe-mobile-map) .universe-header-notice,
   .universe-page:has(.universe-mobile-map) .universe-notice,
   .universe-page:has(.universe-mobile-map) .universe-map-mode-hint {
     position: fixed !important;
     z-index: 42 !important;
-    top: calc(62px + env(safe-area-inset-top, 0px)) !important;
+    top: calc(70px + env(safe-area-inset-top, 0px)) !important;
     right: auto !important;
     left: 50vw !important;
     width: max-content !important;
