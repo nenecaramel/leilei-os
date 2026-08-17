@@ -123,3 +123,49 @@ test("destructive or non-native actions are rejected by the public tool schema",
   assert.equal(comment.isError, true);
   assert.equal(fixture.calls.length, 0);
 });
+
+test("page action-specific schemas reject unknown create and parent fields before service calls", async (t) => {
+  const fixture = await connect();
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const create = await fixture.client.callTool({
+    name: "write_notion_page",
+    arguments: {
+      action: "create",
+      parent: { type: "workspace", workspace: true, unexpected: true },
+      body: { properties: {}, unexpected: true },
+    },
+  });
+
+  assert.equal(create.isError, true);
+  assert.equal(fixture.calls.length, 0);
+});
+
+test("page action-specific schemas reject unknown update and content fields before service calls", async (t) => {
+  const fixture = await connect();
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const update = await fixture.client.callTool({
+    name: "write_notion_page",
+    arguments: {
+      action: "update",
+      page_id: PAGE_ID,
+      body: { properties: {}, children: [] },
+    },
+  });
+  const content = await fixture.client.callTool({
+    name: "write_notion_page",
+    arguments: {
+      action: "update_content",
+      page_id: PAGE_ID,
+      body: {
+        type: "replace_content",
+        replace_content: { new_str: "# After", unexpected: true },
+      },
+    },
+  });
+
+  assert.equal(update.isError, true);
+  assert.equal(content.isError, true);
+  assert.equal(fixture.calls.length, 0);
+});

@@ -5,6 +5,11 @@ import {
   NotionTransport,
   type NotionJsonObject,
 } from "./notion-transport.js";
+import {
+  notionPageContentUpdateBodySchema,
+  notionPageCreateMutationBodySchema,
+  notionPageUpdateBodySchema,
+} from "./notion-explicit-write-schema.js";
 
 export type NotionExplicitWriteErrorCode =
   | "INVALID_WRITE"
@@ -109,15 +114,19 @@ function verifyRequestedPropertyValues(body: NotionJsonObject, readback: NotionJ
   }
 }
 
-function assertNonDestructivePageUpdate(body: NotionJsonObject): void {
-  for (const key of ["in_trash", "archived", "erase_content"]) {
-    if (key in body) {
-      throw new NotionExplicitWriteError(
-        "INVALID_WRITE",
-        `Page update field ${key} is outside the Phase 8.6.2 write surface.`,
-      );
-    }
+function parsePagePayload(
+  schema: { safeParse(value: unknown): { success: true; data: unknown } | { success: false } },
+  body: NotionJsonObject,
+  operation: string,
+): NotionJsonObject {
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    throw new NotionExplicitWriteError(
+      "INVALID_WRITE",
+      `Notion ${operation} payload contains fields outside the explicit write allowlist.`,
+    );
   }
+  return parsed.data as NotionJsonObject;
 }
 
 function richTextPlainText(value: unknown): string | undefined {
@@ -179,14 +188,17 @@ function assertCompleteMarkdown(payload: NotionJsonObject, expectedId: string): 
 }
 
 function requestedMarkdown(body: NotionJsonObject): { content: string; replace: boolean } | undefined {
-  const replaceContent = asObject(body.replace_content);
-  const insertContent = asObject(body.insert_content);
-  const content = asString(body.content)
-    ?? asString(body.new_str)
-    ?? (replaceContent ? asString(replaceContent.new_str) : undefined)
-    ?? (insertContent ? asString(insertContent.content) : undefined);
-  if (content === undefined) return undefined;
-  return { content, replace: body.type === "replace_content" || replaceContent !== undefined };
+  if (body.type === "replace_content") {
+    const replaceContent = asObject(body.replace_content);
+    const content = replaceContent ? asString(replaceContent.new_str) : undefined;
+    if (content !== undefined) return { content, replace: true };
+  }
+  if (body.type === "insert_content") {
+    const insertContent = asObject(body.insert_content);
+    const content = insertContent ? asString(insertContent.content) : undefined;
+    if (content !== undefined) return { content, replace: false };
+  }
+  return undefined;
 }
 
 function verifyRequestedMarkdown(requested: { content: string; replace: boolean }, markdown: string): void {
@@ -264,20 +276,20 @@ export class NotionExplicitWriteService {
   }
 
   async createPage(body: NotionJsonObject): Promise<NotionExplicitWriteResult> {
-    assertNonDestructivePageUpdate(body);
-    await this.readCreateTarget(body);
+    const validatedBody = parsePagePayload(notionPageCreateMutationBodySchema, body, "page create");
+    await this.readCreateTarget(validatedBody);
 
     let written: NotionJsonObject;
     try {
-      written = await this.pageClient.createPage(body);
+      written = await this.pageClient.createPage(validatedBody);
     } catch (error) {
-      return this.uncertainAfter(error, () => this.readCreateTarget(body));
+      return this.uncertainAfter(error, () => this.readCreateTarget(validatedBody));
     }
 
     const pageId = requireMatchingId(written, undefined, "page");
     const readback = await this.readPage(pageId);
     requireMatchingId(readback, pageId, "page");
-    verifyRequestedPropertyValues(body, readback);
+    verifyRequestedPropertyValues(validatedBody, readback);
 
     return {
       operation: "page.create",
@@ -288,12 +300,12 @@ export class NotionExplicitWriteService {
   }
 
   async updatePage(pageId: string, body: NotionJsonObject): Promise<NotionExplicitWriteResult> {
-    assertNonDestructivePageUpdate(body);
+    const validatedBody = parsePagePayload(notionPageUpdateBodySchema, body, "page update");
     await this.readPage(pageId);
 
     let written: NotionJsonObject;
     try {
-      written = await this.pageClient.updatePage(pageId, body);
+      written = await this.pageClient.updatePage(pageId, validatedBody);
     } catch (error) {
       return this.uncertainAfter(error, () => this.readPage(pageId));
     }
@@ -301,7 +313,7 @@ export class NotionExplicitWriteService {
     requireMatchingId(written, pageId, "page");
     const readback = await this.readPage(pageId);
     requireMatchingId(readback, pageId, "page");
-    verifyRequestedPropertyValues(body, readback);
+    verifyRequestedPropertyValues(validatedBody, readback);
 
     return {
       operation: "page.update",
@@ -312,7 +324,8 @@ export class NotionExplicitWriteService {
   }
 
   async updatePageContent(pageId: string, body: NotionJsonObject): Promise<NotionExplicitWriteResult> {
-    const requested = requestedMarkdown(body);
+    const validatedBody = parsePagePayload(notionPageContentUpdateBodySchema, body, "page content update");
+    const requested = requestedMarkdown(validatedBody);
     if (!requested) {
       throw new NotionExplicitWriteError(
         "INVALID_WRITE",
@@ -324,7 +337,7 @@ export class NotionExplicitWriteService {
 
     let written: NotionJsonObject;
     try {
-      written = await this.pageClient.updatePageMarkdown(pageId, body);
+      written = await this.pageClient.updatePageMarkdown(pageId, validatedBody);
     } catch (error) {
       return this.uncertainAfter(error, () => this.readPageMarkdown(pageId));
     }

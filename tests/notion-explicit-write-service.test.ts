@@ -109,7 +109,7 @@ test("page create verifies the fresh parent identity before the single create mu
   const service = new NotionExplicitWriteService("secret", fetchImpl);
   await assert.rejects(
     () => service.createPage({
-      parent: { page_id: PAGE_ID },
+      parent: { type: "page_id", page_id: PAGE_ID },
       properties: {},
     }),
     (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "VERIFICATION_FAILED",
@@ -304,6 +304,58 @@ test("destructive page update payloads are rejected before any provider call", a
 
   await assert.rejects(
     () => service.updatePage(PAGE_ID, { in_trash: true }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "INVALID_WRITE",
+  );
+  assert.equal(calls, 0);
+});
+
+test("page create rejects unknown body and parent fields before any provider call", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return jsonResponse({ object: "page", id: CREATED_PAGE_ID });
+  };
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+
+  await assert.rejects(
+    () => service.createPage({
+      parent: { type: "workspace", workspace: true, unexpected: true },
+      properties: {},
+      unexpected: true,
+    }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "INVALID_WRITE",
+  );
+  assert.equal(calls, 0);
+});
+
+test("page update rejects unknown fields before any provider call", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return jsonResponse({ object: "page", id: PAGE_ID, properties: {} });
+  };
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+
+  await assert.rejects(
+    () => service.updatePage(PAGE_ID, { properties: {}, children: [] }),
+    (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "INVALID_WRITE",
+  );
+  assert.equal(calls, 0);
+});
+
+test("page content update rejects unknown fields before any provider call", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return jsonResponse({ object: "page_markdown", id: PAGE_ID, markdown: "# Before" });
+  };
+  const service = new NotionExplicitWriteService("secret", fetchImpl);
+
+  await assert.rejects(
+    () => service.updatePageContent(PAGE_ID, {
+      type: "replace_content",
+      replace_content: { new_str: "# After", unexpected: true },
+    }),
     (error: unknown) => error instanceof NotionExplicitWriteError && error.code === "INVALID_WRITE",
   );
   assert.equal(calls, 0);

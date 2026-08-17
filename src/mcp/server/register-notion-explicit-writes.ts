@@ -15,6 +15,12 @@ import {
   notionSuccess,
   NotionWriteAuthenticationError,
 } from "../tools/notion-write-shared.js";
+import {
+  notionPageContentUpdateBodySchema,
+  notionPageCreateBodySchema,
+  notionPageParentSchema,
+  notionPageUpdateBodySchema,
+} from "../../domains/notion/notion-explicit-write-schema.js";
 
 export type NotionExplicitWriteServiceContract = {
   createPage(body: Record<string, unknown>): Promise<NotionExplicitWriteResult>;
@@ -36,9 +42,31 @@ export type NotionExplicitWriteToolsDependencies = {
 const pageInputSchema = z.object({
   action: z.enum(["create", "update", "update_content"]),
   page_id: notionIdSchema.optional(),
-  body: notionBodySchema.optional(),
-  parent: notionBodySchema.optional(),
+  body: z.union([
+    notionPageCreateBodySchema,
+    notionPageUpdateBodySchema,
+    notionPageContentUpdateBodySchema,
+  ]).optional(),
+  parent: notionPageParentSchema.optional(),
 }).strict();
+
+const pageActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("create"),
+    body: notionPageCreateBodySchema,
+    parent: notionPageParentSchema.optional(),
+  }).strict(),
+  z.object({
+    action: z.literal("update"),
+    page_id: notionIdSchema,
+    body: notionPageUpdateBodySchema,
+  }).strict(),
+  z.object({
+    action: z.literal("update_content"),
+    page_id: notionIdSchema,
+    body: notionPageContentUpdateBodySchema,
+  }).strict(),
+]);
 
 const commentInputSchema = z.object({
   action: z.enum(["create", "reply"]),
@@ -96,23 +124,27 @@ export function registerNotionExplicitWriteTools(
     },
     async (args) => {
       try {
-        if (args.action === "create") {
-          if (!args.body) return invalidActionInput("write_notion_page");
-          const body = args.parent ? { ...args.body, parent: args.parent } : args.body;
+        const parsed = pageActionSchema.safeParse(args);
+        if (!parsed.success) return invalidActionInput("write_notion_page");
+        const actionArgs = parsed.data;
+
+        if (actionArgs.action === "create") {
+          const body = actionArgs.parent
+            ? { ...actionArgs.body, parent: actionArgs.parent }
+            : actionArgs.body;
           dependencies.getAuthenticatedUserId();
           const result = await dependencies.notionService.createPage(body);
           return notionSuccess(result, `Created and verified Notion page ${result.target_id}.`);
         }
 
-        if (!args.page_id || !args.body) return invalidActionInput("write_notion_page");
         dependencies.getAuthenticatedUserId();
 
-        if (args.action === "update") {
-          const result = await dependencies.notionService.updatePage(args.page_id, args.body);
+        if (actionArgs.action === "update") {
+          const result = await dependencies.notionService.updatePage(actionArgs.page_id, actionArgs.body);
           return notionSuccess(result, `Updated and verified Notion page ${result.target_id}.`);
         }
 
-        const result = await dependencies.notionService.updatePageContent(args.page_id, args.body);
+        const result = await dependencies.notionService.updatePageContent(actionArgs.page_id, actionArgs.body);
         return notionSuccess(result, `Updated and verified Notion page content ${result.target_id}.`);
       } catch (error) {
         return handleWriteError(error);
