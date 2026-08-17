@@ -22,6 +22,7 @@ const mainTsx = readFileSync(
 const PAGE_SCOPE = String.raw`\.universe-page:has\(\.universe-mobile-map\)`;
 const BODY_SCOPE = String.raw`body:has\(\.universe-page\)`;
 const READY_BODY_SCOPE = String.raw`body:has\(\.universe-mobile-map\):not\(:has\(\.universe-standalone-detail, \.universe-standalone-editor, \.universe-standalone-connection\)\)`;
+const READY_PAGE_SCOPE = String.raw`\.universe-page:has\(\.universe-mobile-map\):not\(:has\(\.universe-standalone-detail, \.universe-standalone-editor, \.universe-standalone-connection\)\)`;
 
 test("Universe production correction layer loads last and keeps the underlying map dark while papers are open", () => {
   assert.match(mainTsx, /import "\.\/pages\/universe-home-dark\.css";\s*import "\.\/pages\/universe-home-dark-production-fixes\.css";/s);
@@ -31,7 +32,14 @@ test("Universe production correction layer loads last and keeps the underlying m
   assert.doesNotMatch(productionFixCss, /:has\([^)]*:has\(/);
 });
 
-test("Universe ready-state top bar is floating and uses the same white language as the Universe title", () => {
+test("Universe ready-state top bar is structurally overlaid on the map instead of reserving a solid strip", () => {
+  assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-top-bar\\s*\\{[^}]*position:\\s*fixed !important;[^}]*top:\\s*0 !important;[^}]*right:\\s*0 !important;[^}]*left:\\s*0 !important;[^}]*background:\\s*transparent !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${READY_PAGE_SCOPE}\\s*\\{[^}]*height:\\s*100dvh !important;[^}]*min-height:\\s*100dvh !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${READY_PAGE_SCOPE} \\.universe-page-header\\s*\\{[^}]*top:\\s*calc\\(62px \+ env\\(safe-area-inset-top, 0px\\)\\) !important;`, "s"));
+  assert.match(productionFixCss, new RegExp(`${READY_PAGE_SCOPE} \\.universe-galaxy-picker,[\\s\\S]*?${READY_PAGE_SCOPE} \\.universe-mobile-map-toolbar\\s*\\{[^}]*top:\\s*calc\\(92px \+ env\\(safe-area-inset-top, 0px\\)\\) !important;`, "s"));
+});
+
+test("Universe ready-state top bar uses the same white language as the Universe title", () => {
   assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-top-bar\\s*\\{[^}]*color:\\s*#e8e7ec !important;[^}]*background:\\s*transparent !important;`, "s"));
   assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-top-bar-title\\s*\\{[^}]*color:\\s*#e8e7ec !important;[^}]*opacity:\\s*1 !important;`, "s"));
   assert.match(productionFixCss, new RegExp(`${READY_BODY_SCOPE} \\.mobile-menu-button,[\\s\\S]*?${READY_BODY_SCOPE} \\.mobile-search-link\\s*\\{[^}]*color:\\s*#e8e7ec !important;[^}]*background:\\s*transparent !important;[^}]*box-shadow:\\s*none !important;[^}]*opacity:\\s*1 !important;`, "s"));
@@ -48,6 +56,7 @@ test("Universe loading state is dark and keeps its existing white top bar", () =
   assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-loading\)\s*\{[^}]*background:\s*#0b0c12 !important;/s);
   assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-loading\) \.universe-cosmos-loading\s*\{[^}]*background:\s*#0b0c12 !important;/s);
   assert.match(productionFixCss, /body:has\(\.universe-cosmos-loading\) \.mobile-top-bar\s*\{[^}]*color:\s*#e8e7ec;[^}]*background:\s*#0b0c12 !important;/s);
+  assert.doesNotMatch(productionFixCss, /body:has\(\.universe-cosmos-loading\) \.mobile-top-bar\s*\{[^}]*position:\s*fixed !important;/s);
 });
 
 test("Universe home popovers keep accepted geometry while placement wins over the legacy white important rule", () => {
