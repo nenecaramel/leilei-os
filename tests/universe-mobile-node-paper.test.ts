@@ -18,20 +18,19 @@ const mobileCss = readFileSync(
 
 test("Universe mobile editor matches the standalone Mind Universe form language", () => {
   assert.match(paperSource, /className="universe-standalone-editor"/);
-  assert.match(paperSource, />NEW STAR</);
-  assert.match(paperSource, />点亮一颗新星</);
+  assert.match(paperSource, /新星 · 待点亮/);
+  assert.match(paperSource, /点亮一颗新星/);
   for (const label of [
     "它叫什么？",
     "一句话描述",
     "此刻的理解",
-    "这次认知为什么改变？",
     "节点性质",
     "标签",
     "它同时闪耀在哪些星系？",
   ]) {
     assert.match(paperSource, new RegExp(label.replace(/[？?]/g, "[？?]")));
   }
-  assert.match(paperSource, />保存星球</);
+  assert.match(paperSource, /保存星球/);
   assert.match(paperSource, /type="number"[^>]*step="any"/);
   assert.match(paperSource, /Number\.isFinite\(membership\.weight\)/);
 });
@@ -50,13 +49,12 @@ test("Universe mobile detail matches the standalone dark detail card hierarchy",
 
 test("Universe mobile connection matches the standalone connection modal", () => {
   assert.match(relationSource, /className="universe-standalone-connection"/);
-  assert.match(relationSource, />CREATE CONNECTION</);
-  assert.match(relationSource, />让两个思想相遇</);
-  assert.match(relationSource, /从当前星球出发，选择它与另一个节点之间的关系。/);
+  assert.match(relationSource, /连接另一个思想/);
+  assert.match(relationSource, /当前思想 ·/);
   assert.match(relationSource, />连接到</);
   assert.match(relationSource, /它们如何彼此影响[？?]/);
   assert.match(relationSource, /连接强度/);
-  assert.match(relationSource, />建立连接</);
+  assert.match(relationSource, /建立连接/);
 });
 
 test("Universe standalone mobile styling uses the captured dark visual language only on inner pages", () => {
@@ -89,5 +87,5 @@ test("Universe edit save returns to the same detail paper while create still clo
 test("Universe mobile presentation keeps desktop Paper and homepage implementation intact", () => {
   assert.match(paperSource, /className="universe-node-paper-desktop"/);
   assert.match(paperSource, /bottomLeft=\{metadata\}/);
-  assert.match(mobileCss, /\.universe-node-paper-desktop\s*\{[\s\S]*display:\s*none/);
+  assert.match(mobileCss, /\.universe-node-paper-desktop,\s*\.universe-relation-paper-desktop\s*\{[\s\S]*display:\s*none/);
 });

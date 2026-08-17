@@ -47,7 +47,7 @@ test("mobile editor shell exactly matches accepted card geometry and compact con
 });
 
 test("mobile editor footer keeps only text actions while edit-only destructive actions move into body", () => {
-  assert.match(nodePaper, /className="universe-standalone-editor-secondary-actions"/);
+  assert.match(nodePaper, /universe-standalone-editor-management/);
   assert.match(nodePaper, /点亮星球/);
   assert.match(nodePaper, /保存星球/);
   assert.match(nodePaper, /保存中…/);

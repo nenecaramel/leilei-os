@@ -78,8 +78,8 @@ test("Universe metadata editing avoids native select/fieldset matrices", () => {
   const source = readFileSync(paperPath, "utf8");
   const metadata = readFileSync(new URL("../web/src/pages/universe/UniverseNodeMetadata.tsx", import.meta.url), "utf8");
   assert.match(source, /UniverseNodeMetadata/);
-  assert.doesNotMatch(source, /<select/);
-  assert.doesNotMatch(source, /<fieldset/);
+  assert.doesNotMatch(metadata, /<select/);
+  assert.doesNotMatch(metadata, /<fieldset/);
   assert.match(metadata, /weightText/);
   assert.doesNotMatch(metadata, /weight:\s*1(?:\.0)?/);
 });
@@ -120,7 +120,7 @@ test("relation flow uses a shared paper and only edits canonical type and streng
   assert.match(source, /relationType/);
   assert.match(source, /strength/);
   assert.doesNotMatch(source, /<select[^>]+name=["']target|drag|drop/);
-  assert.match(pageSource, /relation-target/);
+  assert.match(source, /universe-standalone-relation-target/);
   assert.match(pageSource, /UniverseRelationPaper/);
   assert.match(pageSource, /onDeleteRelation/);
   assert.match(pageSource, /onOpenRelatedNode/);

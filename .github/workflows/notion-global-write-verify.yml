@@ -49,11 +49,11 @@ jobs:
           )
           for test_file in "${test_files[@]}"; do
             echo "==> $test_file"
-            if pnpm exec tsx --test --test-concurrency=1 "$test_file"; then
+            if pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 "$test_file"; then
               continue
             fi
             echo "Retrying once: $test_file"
-            if pnpm exec tsx --test --test-concurrency=1 "$test_file"; then
+            if pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 "$test_file"; then
               continue
             fi
             if printf '%s\n' "${known_baseline_flakes[@]}" | grep -Fxq "$test_file"; then

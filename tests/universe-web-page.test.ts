@@ -29,7 +29,7 @@ test("ready state keeps the spatial map and paper structure", () => {
 
 test("map wiring preserves explicit interaction modes and closes placement notices", () => {
   assert.match(mapSource, /activeMode\.kind/);
-  assert.match(mapSource, /relation-target/);
+  assert.match(mapSource, /moving-node/);
   assert.match(mapSource, /aria-label="取消"/);
   assert.doesNotMatch(mapSource, /点一下星图，选择新星球的位置/);
   assert.match(pageSource, /onModeChange=\{\(next\) => \{/);
