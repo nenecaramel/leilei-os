@@ -1,0 +1,13 @@
+/* Keep the Universe drawer dark without drawing a hard edge against the map. */
+@media (max-width: 760px) {
+  body:has(.universe-page) .mobile-drawer-panel {
+    border-right: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body:has(.universe-page) .mobile-drawer-backdrop {
+    background: rgba(0, 0, 0, 0.38) !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+}
