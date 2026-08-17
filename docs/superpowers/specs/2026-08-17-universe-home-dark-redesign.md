@@ -19,6 +19,7 @@
 - `＋` placement popover、`···` export popover 的深色视觉适配。
 - 主页操作反馈 / notice 的深色视觉适配。
 - Universe 页面上的移动端全局顶部栏深色融合。
+- 从 Universe 打开的 Quick Search 面板做上下文深色适配，避免白色面板突兀跳出。
 - 现有 18 个无数据含义的参考点的深色背景适配。
 
 ## 明确不做
@@ -27,7 +28,7 @@
 - 不改导航抽屉。
 - 不改桌面侧栏。
 - 不改导航抽屉/侧栏的颜色、布局、结构或交互。
-- 不改 Global Search 面板、导航体系或搜索行为；Universe 顶部栏只做当前页面表面的深色融合。
+- 不改 Global Search 的搜索合同、结果结构、导航行为、面板布局或功能；只允许从 Universe 打开时进行上下文深色表面适配。
 - 不新增箭头、粒子、流动路径、闪烁星空、随机动画或真实行星纹理。
 - 不新增 Universe 功能。
 - 不改数据库、domain/service contract、MCP、API、ownership、version/concurrency。
@@ -56,9 +57,9 @@ Universe ready-state 整体使用连续近黑背景，建议落在 `#090a10` ~ `
 - active / expanded：约 `#e0dfe5`。
 - 控件仍保持透明背景、无边框、无阴影。
 
-## 3. 移动端全局顶部栏
+## 3. 移动端全局顶部栏与 Quick Search
 
-保留现有结构和行为：左侧菜单、中间 `Leilei OS`、右侧搜索。
+保留现有顶部栏结构和行为：左侧菜单、中间 `Leilei OS`、右侧搜索。
 
 仅在 Universe 页面 surface 内做深色融合：
 - 背景与 Universe 主页完全相同。
@@ -66,6 +67,12 @@ Universe ready-state 整体使用连续近黑背景，建议落在 `#090a10` ~ `
 - `Leilei OS` 约 `#aaaab3`，视觉层级低于 `Universe` 页面标题。
 - 菜单与搜索图标默认约 `#898a94`，active / expanded 提亮到约 `#d6d5dc`。
 - 保留现有顶部栏高度和点击区域。
+
+从 Universe 打开 Quick Search 时：
+- 面板使用与深色 Universe 相容的近黑 surface、细灰边框与灰白文字/图标层级。
+- 不出现大块白色背景或白色闪现。
+- 不改变 Quick Search 的尺寸、布局、搜索逻辑、结果结构、键盘/点击行为或导航目标。
+- 深色适配必须是 Universe 上下文限定，不应把其他页面的 Quick Search 一并强制改色。
 
 导航抽屉与桌面侧栏完全不改。
 
@@ -188,6 +195,7 @@ Universe ready-state 整体使用连续近黑背景，建议落在 `#090a10` ~ `
 - viewport preference persistence。
 - 现有 create/edit/delete/relation/move notice 行为。
 - 现有 export 行为。
+- Quick Search 在 Universe 上的打开、搜索、结果选择和导航行为。
 
 ## 11. 实现边界
 
@@ -200,11 +208,14 @@ Universe ready-state 整体使用连续近黑背景，建议落在 `#090a10` ~ `
 
 当前 Universe home 已有多轮 polish/geometry override，实施时必须先梳理 cascade，避免继续用无法解释优先级的大量 `!important` 堆叠；可以增加一个清晰的 final dark-home surface 层，但必须让适用范围可读、可测试。
 
+Quick Search 深色适配必须通过明确的 Universe 页面上下文选择器或等价隔离方式实现，不允许把共享 Quick Search 默认主题全局改黑。
+
 ## 12. 测试与回归
 
 实现阶段至少验证：
 - ready-state home 深色 surface 不泄漏到 Universe 内页。
 - Universe mobile top bar 在 ready-state 为深色，但导航抽屉/桌面侧栏未被改色。
+- 从 Universe 打开的 Quick Search 为深色且行为不变；其他页面的 Quick Search 仍保持原主题。
 - `＋ / ··· / galaxy menu` 的几何保持现有已验收值，只变视觉。
 - active galaxy filter 行为不变。
 - selected node / neighbor / muted node 的 class 与行为不变。
@@ -223,8 +234,9 @@ merge + production deployment 后，用真实移动端至少检查：
 4. 星球颜色柔和可辨，选中态清楚，未选中弱化合理。
 5. 默认关系存在但安静，选中关系明显提升。
 6. 三类深色 popover（placement / export / galaxy）统一，没有白盒闪现。
-7. notice 在深色背景上可读且不呈现系统 Toast 感。
-8. 18 个背景点只提供非常弱的空间感。
-9. 平移、缩放、选择、打开、移动、创建、筛选、查看全部、导出均正常。
+7. 从 Universe 打开的 Quick Search 也是深色，且搜索/导航正常；其他页面 Quick Search 不受影响。
+8. notice 在深色背景上可读且不呈现系统 Toast 感。
+9. 18 个背景点只提供非常弱的空间感。
+10. 平移、缩放、选择、打开、移动、创建、筛选、查看全部、导出均正常。
 
 满足以上视觉与行为检查后，Universe 主页深色重做才算 production accepted。
