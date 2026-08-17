@@ -1,0 +1,51 @@
+/* Final mobile-only geometry locks for accepted Universe inner/home controls. */
+@media (max-width: 760px) {
+  /* Four logical inner pages: detail, create, edit, connection. */
+  .universe-standalone-detail,
+  .universe-standalone-editor,
+  .universe-standalone-connection {
+    padding-bottom: 14px !important;
+  }
+
+  .universe-standalone-detail-actions button,
+  .universe-standalone-editor-footer button,
+  .universe-standalone-connection-footer button {
+    color: #7d7f8c !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 1.35 !important;
+  }
+
+  .universe-standalone-editor-footer button:disabled,
+  .universe-standalone-connection-footer button:disabled {
+    color: #7d7f8c !important;
+    opacity: 1 !important;
+  }
+
+  /*
+   * universe-home-polish.css gives both popover contents a fixed 36px height.
+   * Placement already escaped that legacy height; export did not. Clear it on
+   * both and use the same outer/inner vertical geometry and 13px text rhythm.
+   */
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover,
+  .universe-page:has(.universe-mobile-map) .universe-overflow-menu {
+    padding: 5px !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover > span,
+  .universe-page:has(.universe-mobile-map) .universe-overflow-menu button {
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 6px 8px !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-overflow-menu button {
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover > span::before {
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+  }
+}
