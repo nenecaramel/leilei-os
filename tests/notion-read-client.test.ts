@@ -104,6 +104,8 @@ test("readPage paginates blocks, traverses structural children, and does not exp
     if (url === `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`) {
       return jsonResponse({
         object: "list",
+        type: "block",
+        block: {},
         results: [
           {
             object: "block",
@@ -135,6 +137,8 @@ test("readPage paginates blocks, traverses structural children, and does not exp
     if (url === `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100&start_cursor=root-next`) {
       return jsonResponse({
         object: "list",
+        type: "block",
+        block: {},
         results: [
           {
             object: "block",
@@ -155,6 +159,8 @@ test("readPage paginates blocks, traverses structural children, and does not exp
     if (url === `https://api.notion.com/v1/blocks/${toggleId}/children?page_size=100`) {
       return jsonResponse({
         object: "list",
+        type: "block",
+        block: {},
         results: [
           {
             object: "block",
@@ -194,9 +200,60 @@ test("readPage paginates blocks, traverses structural children, and does not exp
   );
 });
 
+test("readPage rejects malformed page and block provider envelopes", async () => {
+  const pageId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const blockId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const validPage = {
+    object: "page",
+    id: pageId,
+    url: "https://www.notion.so/main",
+    last_edited_time: "2026-08-13T08:30:00.000Z",
+    properties: {},
+  };
+  const validBlocks = {
+    object: "list",
+    type: "block",
+    block: {},
+    results: [{ object: "block", id: blockId, type: "divider", has_children: false, divider: {} }],
+    has_more: false,
+    next_cursor: null,
+  };
+
+  const readPageWith = async (page: unknown, blocks: unknown) => {
+    const client = new NotionReadClient("secret-notion-token", async (input) => {
+      const url = String(input);
+      if (url === `https://api.notion.com/v1/pages/${pageId}`) return jsonResponse(page);
+      return jsonResponse(blocks);
+    });
+    await assert.rejects(
+      () => client.readPage(pageId),
+      (error: unknown) => error instanceof NotionReadError && error.code === "MALFORMED_RESPONSE",
+    );
+  };
+
+  for (const page of [
+    { ...validPage, object: "database" },
+    { ...validPage, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" },
+    { ...validPage, id: "not-a-notion-id" },
+  ]) {
+    await readPageWith(page, validBlocks);
+  }
+
+  for (const blocks of [
+    { ...validBlocks, object: "page" },
+    { ...validBlocks, type: "page_or_data_source" },
+    { ...validBlocks, block: undefined },
+    { ...validBlocks, results: {} },
+    { ...validBlocks, has_more: true, next_cursor: null },
+    { ...validBlocks, has_more: false, next_cursor: "stale-cursor" },
+  ]) {
+    await readPageWith(validPage, blocks);
+  }
+});
+
 test("Notion read failures map to stable error codes without exposing upstream bodies", async () => {
   const cases = [
-    [401, "ACCESS_DENIED"],
+    [401, "AUTHENTICATION_FAILED"],
     [403, "ACCESS_DENIED"],
     [404, "NOT_FOUND"],
     [429, "RATE_LIMITED"],

@@ -9,9 +9,11 @@ const MAX_TEXT_LENGTH = 60_000;
 
 export type NotionReadErrorCode =
   | "NOT_CONFIGURED"
+  | "AUTHENTICATION_FAILED"
   | "ACCESS_DENIED"
   | "NOT_FOUND"
   | "RATE_LIMITED"
+  | "MALFORMED_RESPONSE"
   | "UPSTREAM";
 
 export class NotionReadError extends Error {
@@ -62,6 +64,19 @@ function asObject(value: unknown): JsonObject | undefined {
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function formatUuid(compact: string): string {
+  return `${compact.slice(0, 8)}-${compact.slice(8, 12)}-${compact.slice(12, 16)}-${compact.slice(16, 20)}-${compact.slice(20)}`;
+}
+
+function normalizeNotionUuid(value: unknown): string | null {
+  const compact = asString(value).replaceAll("-", "").toLowerCase();
+  return /^[0-9a-f]{32}$/.test(compact) ? formatUuid(compact) : null;
+}
+
+function malformed(message: string): NotionReadError {
+  return new NotionReadError("MALFORMED_RESPONSE", message);
 }
 
 function richTextPlain(value: unknown): string {
@@ -158,6 +173,8 @@ function mapTransportError(error: unknown): NotionReadError {
   switch (error.code) {
     case "NOT_CONFIGURED":
       return new NotionReadError("NOT_CONFIGURED", "Notion access is not configured.");
+    case "AUTHENTICATION_FAILED":
+      return new NotionReadError("AUTHENTICATION_FAILED", "Notion authentication failed.");
     case "ACCESS_DENIED":
       return new NotionReadError("ACCESS_DENIED", "Notion access was denied.");
     case "NOT_FOUND":
@@ -214,7 +231,12 @@ export class NotionReadClient {
 
   async readPage(pageId: string): Promise<NotionPageReadResult> {
     const pagePayload = await this.request(`/pages/${encodeURIComponent(pageId)}`);
-    const page = normalizePage(pagePayload);
+    const expectedPageId = normalizeNotionUuid(pageId);
+    const returnedPageId = normalizeNotionUuid(pagePayload.id);
+    if (pagePayload.object !== "page" || !expectedPageId || !returnedPageId || returnedPageId !== expectedPageId) {
+      throw malformed("Notion returned an invalid or unexpected page.");
+    }
+    const page = normalizePage({ ...pagePayload, id: returnedPageId });
     const lines: string[] = [];
     let blockCount = 0;
     let traversalTruncated = false;
@@ -238,7 +260,33 @@ export class NotionReadClient {
         const payload = await this.request(
           `/blocks/${encodeURIComponent(blockId)}/children${suffix}`,
         );
-        const blocks = Array.isArray(payload.results) ? payload.results : [];
+        if (
+          payload.object !== "list"
+          || payload.type !== "block"
+          || !asObject(payload.block)
+          || !Array.isArray(payload.results)
+          || typeof payload.has_more !== "boolean"
+          || !(payload.next_cursor === null || typeof payload.next_cursor === "string")
+        ) {
+          throw malformed("Notion returned an invalid block list envelope.");
+        }
+        const nextCursor = payload.next_cursor;
+        if (payload.has_more && (!nextCursor || nextCursor.trim() === "")) {
+          throw malformed("Notion returned more blocks without a cursor.");
+        }
+        if (!payload.has_more && nextCursor !== null) {
+          throw malformed("Notion returned a cursor without more blocks.");
+        }
+        if (payload.has_more && nextCursor === cursor) {
+          throw malformed("Notion returned a non-advancing block cursor.");
+        }
+        const blocks = payload.results.map((rawBlock) => {
+          const block = asObject(rawBlock);
+          if (!block || asString(block.object) !== "block" || !normalizeNotionUuid(block.id)) {
+            throw malformed("Notion returned an invalid block.");
+          }
+          return block;
+        });
 
         for (const rawBlock of blocks) {
           if (blockCount >= MAX_BLOCKS) {
@@ -263,8 +311,8 @@ export class NotionReadClient {
           }
         }
 
-        cursor = payload.has_more === true && typeof payload.next_cursor === "string"
-          ? payload.next_cursor
+        cursor = payload.has_more
+          ? nextCursor!
           : undefined;
       } while (cursor);
     };

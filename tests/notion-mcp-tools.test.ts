@@ -178,6 +178,22 @@ test("read_notion_page authenticates first and returns bounded page content", as
   });
 });
 
+test("read_notion_page accepts an official Notion URL as an exact page reference", async (t) => {
+  const fixture = await connect();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const result = await fixture.client.callTool({
+    name: "read_notion_page",
+    arguments: { page_url: `https://www.notion.so/Project-${PAGE_ID.replaceAll("-", "")}` },
+  });
+
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(fixture.notion.readCalls, [PAGE_ID]);
+});
+
 test("strict schemas reject client identity and secret injection", async (t) => {
   const fixture = await connect();
   t.after(async () => {

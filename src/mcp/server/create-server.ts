@@ -10,6 +10,7 @@ import { DrizzleToyCommandRepository } from "../../domains/toy/toy-command-repos
 import { createDatabase } from "../../database/client.js";
 import { env } from "../../config/env.js";
 import { NotionReadClient } from "../../domains/notion/notion-read-client.js";
+import { NotionIntegration } from "../../domains/notion/notion-read-integration.js";
 import { registerHelloTool } from "../tools/hello/register.js";
 import { registerGetLocalContextTool } from "../tools/get-local-context/register.js";
 import { registerGetWeatherContextTool } from "../tools/get-weather-context/register.js";
@@ -77,6 +78,23 @@ import {
   registerReadNotionPageTool,
   type ReadNotionPageToolDependencies,
 } from "../tools/read-notion-page/register.js";
+import {
+  NotionAdvancedAuthenticationError,
+  registerGetNotionConnectionTool,
+  type GetNotionConnectionToolDependencies,
+} from "../tools/get-notion-connection/register.js";
+import {
+  registerReadNotionDatabaseTool,
+  type ReadNotionDatabaseToolDependencies,
+} from "../tools/read-notion-database/register.js";
+import {
+  registerReadNotionDataSourceTool,
+  type ReadNotionDataSourceToolDependencies,
+} from "../tools/read-notion-data-source/register.js";
+import {
+  registerQueryNotionDataSourceTool,
+  type QueryNotionDataSourceToolDependencies,
+} from "../tools/query-notion-data-source/register.js";
 import { TodoService } from "../../domains/todo/todo-service.js";
 import { DrizzleTodoRepository } from "../../domains/todo/todo-repository.js";
 import { UniverseService } from "../../domains/universe/universe-service.js";
@@ -107,6 +125,7 @@ let defaultToyCommandService: ToyCommandService | undefined;
 let defaultGlobalSearchService: GlobalSearchService | undefined;
 let defaultTodoService: TodoService | undefined;
 let defaultNotionReadClient: NotionReadClient | undefined;
+let defaultNotionIntegration: NotionIntegration | undefined;
 let defaultUniverseService: UniverseService | undefined;
 
 function getDefaultNotionReadClient(): NotionReadClient {
@@ -114,6 +133,13 @@ function getDefaultNotionReadClient(): NotionReadClient {
     defaultNotionReadClient = new NotionReadClient(env.NOTION_PAT);
   }
   return defaultNotionReadClient;
+}
+
+function getDefaultNotionIntegration(): NotionIntegration {
+  if (!defaultNotionIntegration) {
+    defaultNotionIntegration = new NotionIntegration(env.NOTION_PAT);
+  }
+  return defaultNotionIntegration;
 }
 
 function getDefaultTodoService(): TodoService {
@@ -355,6 +381,12 @@ type NotionToolsDependencies = {
   getAuthenticatedUserId: () => string;
 };
 
+type NotionReadDependencies =
+  GetNotionConnectionToolDependencies &
+  ReadNotionDatabaseToolDependencies &
+  ReadNotionDataSourceToolDependencies &
+  QueryNotionDataSourceToolDependencies;
+
 type UniverseToolsDependencies = {
   universeService: GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"];
   globalSearchService: SearchUniverseToolDependencies["globalSearchService"];
@@ -394,6 +426,7 @@ export type McpServerDependencies = {
   globalSearch?: GlobalSearchToolDependencies;
   todoTools?: TodoToolsDependencies;
   notionTools?: NotionToolsDependencies;
+  notionRead?: NotionReadDependencies;
   universeTools?: UniverseToolsDependencies;
 };
 
@@ -551,6 +584,17 @@ export function createMcpServer(
       return authenticatedUserId;
     },
   });
+  const notionRead = dependencies.notionRead ?? {
+    notionIntegration: getDefaultNotionIntegration(),
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new NotionAdvancedAuthenticationError();
+      return authenticatedUserId;
+    },
+  } satisfies NotionReadDependencies;
+  registerGetNotionConnectionTool(server, notionRead);
+  registerReadNotionDatabaseTool(server, notionRead);
+  registerReadNotionDataSourceTool(server, notionRead);
+  registerQueryNotionDataSourceTool(server, notionRead);
   registerReadTodoDayTool(server, dependencies.todoTools ?? {
     todoService: productionTodoService,
     getAuthenticatedUserId: () => {

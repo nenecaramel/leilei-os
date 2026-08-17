@@ -3,6 +3,7 @@ export const NOTION_API_VERSION = "2026-03-11";
 
 export type NotionApiErrorCode =
   | "NOT_CONFIGURED"
+  | "AUTHENTICATION_FAILED"
   | "ACCESS_DENIED"
   | "NOT_FOUND"
   | "CONFLICT"
@@ -31,7 +32,10 @@ function mapStatus(status: number): NotionApiError {
   if (status === 400 || status === 406) {
     return new NotionApiError("VALIDATION", "Notion rejected the request.");
   }
-  if (status === 401 || status === 403) {
+  if (status === 401) {
+    return new NotionApiError("AUTHENTICATION_FAILED", "Notion authentication failed.");
+  }
+  if (status === 403) {
     return new NotionApiError("ACCESS_DENIED", "Notion access was denied.");
   }
   if (status === 404) {

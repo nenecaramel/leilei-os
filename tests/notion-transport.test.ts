@@ -45,7 +45,7 @@ test("NotionTransport sends fixed API headers and only relative Notion paths", a
 test("NotionTransport maps stable error codes and never leaks token or upstream body", async () => {
   const cases = [
     [400, "VALIDATION"],
-    [401, "ACCESS_DENIED"],
+    [401, "AUTHENTICATION_FAILED"],
     [403, "ACCESS_DENIED"],
     [404, "NOT_FOUND"],
     [409, "CONFLICT"],
