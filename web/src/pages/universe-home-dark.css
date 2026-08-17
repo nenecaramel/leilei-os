@@ -14,11 +14,11 @@
   background: var(--universe-home-bg) !important;
 }
 
-html:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))),
-body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))),
-#root:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))),
-.app-shell:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))),
-.main-content:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) {
+html:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)),
+body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)),
+#root:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)),
+.app-shell:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)),
+.main-content:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) {
   background: #0b0c12 !important;
   background-image: none !important;
 }
@@ -102,7 +102,7 @@ body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-
   font-weight: 500;
 }
 
-/* Existing inline opacity keeps the selected/neighbor/faded behaviour intact. */
+/* Existing inline opacity keeps selected/neighbor/faded behaviour intact. */
 .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-relation {
   background: #343640;
 }
@@ -132,7 +132,7 @@ body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-
   background: #31323b;
 }
 
-/* Home popovers share one dark surface. Geometry remains owned by the accepted files. */
+/* Home popovers share one dark surface. Geometry remains owned by accepted files. */
 .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-placement-popover,
 .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-overflow-menu,
 .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-menu {
@@ -178,51 +178,51 @@ body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-
 }
 
 @media (max-width: 760px) {
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-top-bar {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-top-bar {
     color: #aaaab3;
     background: #0b0c12;
     box-shadow: none;
     backdrop-filter: none;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-top-bar-title {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-top-bar-title {
     color: #aaaab3;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-menu-button,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-search-link {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-button,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link {
     color: #898a94;
     background: transparent;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-menu-button:hover,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-menu-button:active,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-menu-button[aria-expanded="true"],
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-search-link:hover,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-search-link:active,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-search-link[aria-expanded="true"] {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-button:hover,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-button:active,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-menu-button[aria-expanded="true"],
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link:hover,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link:active,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .mobile-search-link[aria-expanded="true"] {
     color: #d6d5dc;
     background: transparent;
   }
 
   /* Quick Search changes colour only while Universe home is the visible surface. */
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-panel {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-panel {
     border-color: #343640;
     color: #d6d5dc;
     background: #171820;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-field {
     background: #1d1e26;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field > svg {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-field > svg {
     color: #898a94;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field > input,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field > input:focus {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-field > input,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-field > input:focus {
     color: #e8e7ec;
     background: transparent;
     box-shadow: none;
@@ -230,40 +230,40 @@ body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-
     color-scheme: dark;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field > input::placeholder {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-field > input::placeholder {
     color: #70727d;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-state {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-state {
     color: #898a94;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-view-all {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-result,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-view-all {
     color: #d6d5dc;
     background: #171820;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result:hover,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-view-all:hover {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-result:hover,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-view-all:hover {
     background: #22232b;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result-module {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-result-module {
     color: #70727d;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result-title {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-result-title {
     color: #d6d5dc;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result-snippet,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-view-all {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-result-snippet,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-view-all {
     color: #898a94;
   }
 
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result::before,
-  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-view-all::before {
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-result::before,
+  body:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .quick-search-view-all::before {
     background: #2b2c35;
   }
 }
