@@ -69,7 +69,6 @@ async function mount(mode: UniverseMapMode, callbacks: Record<string, (...args: 
       onSelectNode: callbacks.onSelectNode ?? (() => {}),
       onOpenNode: callbacks.onOpenNode ?? (() => {}),
       onPlaceNode: callbacks.onPlaceNode ?? (() => {}),
-      onChooseRelationTarget: callbacks.onChooseRelationTarget ?? (() => {}),
       onMoveNode: callbacks.onMoveNode ?? (async () => {}),
       onModeChange: callbacks.onModeChange ?? (() => {}),
     }));
@@ -82,29 +81,6 @@ async function mount(mode: UniverseMapMode, callbacks: Record<string, (...args: 
   };
   return { context, map, unmount };
 }
-
-test("mounted relation-target mode uses the state machine and exposes a cancellable hint", async () => {
-  const calls: Array<{ target: string } | UniverseMapMode> = [];
-  const mounted = await mount({ kind: "relation-target", sourceNodeId: "n1" }, {
-    onChooseRelationTarget: (target: string) => calls.push({ target }),
-    onModeChange: (next: UniverseMapMode) => calls.push(next),
-  });
-  try {
-    assert.match(mounted.map.textContent ?? "", /选择目标星球/);
-    assert.ok(mounted.map.querySelector("button[aria-label='取消']"));
-    assert.match(mounted.map.querySelector<HTMLElement>(".universe-map-world")?.style.transform ?? "", /scale\(1\)/);
-    const target = mounted.map.querySelector<HTMLButtonElement>("button[aria-label='查看节点：第二颗星']")!;
-    await React.act(async () => {
-      pointer(target, "pointerdown", 260, 260);
-      pointer(target, "pointerup", 260, 260);
-      target.click();
-    });
-    assert.deepEqual(calls, [{ kind: "browse" }, { target: "n2" }]);
-    assert.equal(mounted.map.querySelector(".universe-map-relation-label")?.textContent, "支持");
-  } finally {
-    await mounted.unmount();
-  }
-});
 
 test("a map movement beyond tolerance does not become an empty-space tap", async () => {
   const selected: Array<string | null> = [];
@@ -241,7 +217,6 @@ function PlacementHarness() {
       onSelectNode: () => {},
       onOpenNode: () => {},
       onPlaceNode: () => { setCreated(true); setMode({ kind: "browse" }); setPlacementOpen(false); },
-      onChooseRelationTarget: () => {},
       onMoveNode: async () => {},
       onModeChange: setMode,
     }),
