@@ -108,6 +108,46 @@ test("global_search reports missing authentication without calling the service",
   assert.match(JSON.stringify(result),/Authentication is required to use global search/);
 });
 
+test("global_search output schema keeps module detail IDs strict while accepting Universe IDs", async (t) => {
+  const base = {
+    stable_name: "结果",
+    snippet: "命中",
+    matched_field: "content" as const,
+    match_reason: "field_match" as const,
+    lifecycle_status: "active" as const,
+    business_time: "2026-08-01T00:00:00.000Z",
+    updated_at: "2026-08-01T00:00:00.000Z",
+  };
+  const cases = [
+    ["memory", "get_memory"],
+    ["diary", "get_diary"],
+    ["task", "get_task"],
+  ] as const;
+
+  for (const [entityType, detailTool] of cases) {
+    const server = createMcpServer({
+      globalSearch: {
+        globalSearchService: {
+          async search() {
+            return {
+              results: [{ ...base, entity_type: entityType, entity_id: "00000000-0000-4000-8000-000000000001", detail_tool: detailTool, detail_arguments: { id: "not-a-uuid", scope: "active" as const } }],
+              metadata: { count: 1, has_more: false, next_cursor: null, searched_modules: [entityType], searched_scope: "active" as const },
+            };
+          },
+        },
+        getAuthenticatedUserId: () => USER_ID,
+      },
+    });
+    const client = new Client({ name: `global-search-invalid-${entityType}`, version: "1" }, { capabilities: {} });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    t.after(async () => { await client.close(); await server.close(); });
+    const response = await client.callTool({ name: "global_search", arguments: { query: "结果", modules: [entityType] } });
+    assert.equal(response.isError, true);
+  }
+});
+
 
 test("GlobalSearchService rejects structurally invalid cursors before user lookup",async()=>{
   const repo=new Repository();
