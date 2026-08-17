@@ -1,0 +1,35 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import type { UniverseService } from "../../../domains/universe/universe-service.js";
+import type { UniverseNode } from "../../../domains/universe/universe-types.js";
+import { safeUniverseError } from "../universe/shared.js";
+import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
+
+const nodeIdSchema = z.string().trim().min(1).max(256).describe("Exact canonical Universe node ID.");
+const membershipSchema = z.object({ id: z.string().min(1).max(256), weight: z.number().finite() }).strict();
+const nodeSchema = z.object({
+  id: z.string().min(1).max(256), title: z.string(), summary: z.string(), content: z.string(), type: z.string(), tags: z.array(z.string()),
+  galaxies: z.array(membershipSchema), position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
+  createdAt: z.string().datetime(), updatedAt: z.string().datetime(), importance: z.string().optional(),
+  migration: z.object({ source: z.enum(["mind-universe-static", "mind-universe"]), migratedAt: z.string().datetime() }).strict().optional(),
+}).strict();
+const outputSchema = z.object({ success: z.literal(true), data: nodeSchema }).strict();
+
+export type GetUniverseNodeToolDependencies = { universeService: Pick<UniverseService, "loadUniverse">; getAuthenticatedUserId: () => string };
+
+export function registerGetUniverseNodeTool(server: McpServer, dependencies: GetUniverseNodeToolDependencies): void {
+  server.registerTool("get_universe_node", {
+    title: "Get one Universe node", description: "Read one authenticated Universe node by exact stable ID.", inputSchema: z.object({ id: nodeIdSchema }).strict(), outputSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ id }) => {
+    try {
+      const userId = dependencies.getAuthenticatedUserId();
+      const { snapshot } = await dependencies.universeService.loadUniverse(userId);
+      const node = snapshot.nodes.find((candidate) => candidate.id === id);
+      if (!node) throw new UniverseServiceError("NODE_NOT_FOUND");
+      return { content: [{ type: "text", text: "Universe node retrieved." }], structuredContent: { success: true as const, data: node as UniverseNode } };
+    } catch (error) {
+      return safeUniverseError(error, "Universe node was not found.");
+    }
+  });
+}
