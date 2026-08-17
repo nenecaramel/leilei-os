@@ -8,6 +8,7 @@ import "./pages/home-calendar-real-data.css";
 import "./pages/system-export-ui-polish.css";
 import "./pages/universe/universe-node-detail-memory-shell.css";
 import "./pages/universe-detail-dayspace-header-polish.css";
+import "./pages/universe-mobile-final-geometry.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
