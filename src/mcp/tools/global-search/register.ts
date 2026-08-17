@@ -21,26 +21,59 @@ const inputSchema = z.object({
   cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).optional(),
 }).strict();
 
+const detailArgumentsSchema = z.union([
+  z.object({ id: z.string().uuid(), scope: z.enum(["active", "archived"]) }).strict(),
+  z.object({ id: z.string().min(1).max(256) }).strict(),
+]);
+
+const globalSearchResultSchema = z.object({
+  entity_type: z.enum(["memory", "diary", "task", "universe"]),
+  entity_id: z.string().min(1).max(256),
+  stable_name: z.string(),
+  snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
+  matched_field: z.enum(["key", "title", "content", "description", "tags", "mood"]),
+  match_reason: z.enum(["exact_stable_name", "exact_phrase", "stable_name_prefix", "field_match"]),
+  lifecycle_status: z.enum(["active", "archived"]),
+  business_time: z.string().datetime(),
+  time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at"]),
+  updated_at: z.string().datetime(),
+  detail_tool: z.enum(["get_memory", "get_diary", "get_task", "get_universe_node"]).nullable(),
+  detail_arguments: detailArgumentsSchema.nullable(),
+}).strict().superRefine((result, context) => {
+  if (result.detail_tool === null) {
+    if (result.detail_arguments !== null) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Null detail_tool requires null detail_arguments." });
+    }
+    return;
+  }
+  if (result.detail_arguments === null) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "A detail tool requires detail_arguments." });
+    return;
+  }
+
+  if (result.entity_type === "universe") {
+    if (result.detail_tool !== "get_universe_node") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Universe results must use get_universe_node." });
+    }
+    if (!("scope" in result.detail_arguments)
+      && result.detail_arguments.id.trim().length > 0
+      && result.detail_arguments.id.length <= 256) return;
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Universe detail_arguments must contain only a canonical node id." });
+    return;
+  }
+
+  const expectedTool = ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[result.entity_type];
+  if (result.detail_tool !== expectedTool) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Detail tool must match the result module." });
+  }
+  if ("scope" in result.detail_arguments && z.string().uuid().safeParse(result.detail_arguments.id).success) return;
+  context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Memory, Diary, and Task detail_arguments require a UUID id and scope." });
+});
+
 const globalSearchOutputSchema = z.object({
   success: z.literal(true),
   data: z.object({
-    results: z.array(z.object({
-      entity_type: z.enum(["memory", "diary", "task", "universe"]),
-      entity_id: z.string().min(1).max(256),
-      stable_name: z.string(),
-      snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
-      matched_field: z.enum(["key", "title", "content", "description", "tags", "mood"]),
-      match_reason: z.enum(["exact_stable_name", "exact_phrase", "stable_name_prefix", "field_match"]),
-      lifecycle_status: z.enum(["active", "archived"]),
-      business_time: z.string().datetime(),
-      time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at"]),
-      updated_at: z.string().datetime(),
-      detail_tool: z.enum(["get_memory", "get_diary", "get_task"]).nullable(),
-      detail_arguments: z.object({
-        id: z.string().uuid(),
-        scope: z.enum(["active", "archived"]),
-      }).strict().nullable(),
-    }).strict()),
+    results: z.array(globalSearchResultSchema),
     metadata: z.object({
       count: z.number().int().min(0).max(25),
       has_more: z.boolean(),

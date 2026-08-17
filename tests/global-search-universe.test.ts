@@ -38,7 +38,7 @@ class UniverseSearchRepository implements GlobalSearchRepository {
   }
 }
 
-test("Universe participates in the shared search contract with stable identity and no detail-tool fiction", async () => {
+test("Universe participates in the shared search contract with a direct exact-read link", async () => {
   const repository = new UniverseSearchRepository();
   const result = await new GlobalSearchService(repository).search({
     userId: USER_ID,
@@ -53,8 +53,8 @@ test("Universe participates in the shared search contract with stable identity a
   assert.equal(result.results[0]?.entity_id, NODE_ID);
   assert.equal(result.results[0]?.stable_name, "宇宙节点");
   assert.match(result.results[0]?.snippet ?? "", /旅行/);
-  assert.equal(result.results[0]?.detail_tool, null);
-  assert.equal(result.results[0]?.detail_arguments, null);
+  assert.equal(result.results[0]?.detail_tool, "get_universe_node");
+  assert.deepEqual(result.results[0]?.detail_arguments, { id: NODE_ID });
   assert.equal(repository.calls[0]?.scope, "active");
 });
 
@@ -154,7 +154,7 @@ test("Universe search deep-link is consumed once so later map selection is not o
   assert.deepEqual(consumeUniverseNodeTarget("?node=thought-node-2", ["thought-node-1", "thought-node-2"]), { nodeId: "thought-node-2", remainingSearch: "" });
 });
 
-test("MCP global_search accepts Universe results without inventing a detail tool", async (t) => {
+test("MCP global_search returns an exact-read link for Universe results", async (t) => {
   const result: GlobalSearchResult = {
     results: [{
       entity_type: "universe",
@@ -167,8 +167,8 @@ test("MCP global_search accepts Universe results without inventing a detail tool
       business_time: "2026-08-10T12:00:00.000Z",
       time_basis: "updated_at",
       updated_at: "2026-08-10T12:00:00.000Z",
-      detail_tool: null,
-      detail_arguments: null,
+      detail_tool: "get_universe_node",
+      detail_arguments: { id: NODE_ID },
     }],
     metadata: { count: 1, has_more: false, next_cursor: null, searched_modules: ["universe"], searched_scope: "active" },
   };
@@ -187,7 +187,9 @@ test("MCP global_search accepts Universe results without inventing a detail tool
   const response = await client.callTool({ name: "global_search", arguments: { query: "旅行", modules: ["universe"] } });
   assert.equal(response.isError, undefined);
   assert.deepEqual(calls[0]?.modules, ["universe"]);
-  assert.equal((response.structuredContent as { data: GlobalSearchResult }).data.results[0]?.detail_tool, null);
+  const hit = (response.structuredContent as { data: GlobalSearchResult }).data.results[0];
+  assert.equal(hit?.detail_tool, "get_universe_node");
+  assert.deepEqual(hit?.detail_arguments, { id: NODE_ID });
 });
 
 test("MCP global_search round-trips a canonical 256-character Universe cursor", async (t) => {
