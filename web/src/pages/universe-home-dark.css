@@ -1,0 +1,269 @@
+/* Universe ready-state dark surface only. Accepted inner pages stay untouched. */
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) {
+  --universe-home-bg: #0b0c12;
+  --universe-home-surface: #171820;
+  --universe-home-surface-hover: #22232b;
+  --universe-home-border: #343640;
+  --universe-home-title: #e8e7ec;
+  --universe-home-strong: #d6d5dc;
+  --universe-home-text: #b6b5bd;
+  --universe-home-control: #898a94;
+  --universe-home-muted: #70727d;
+  color: var(--universe-home-text);
+  background: var(--universe-home-bg) !important;
+}
+
+html:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))),
+body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))),
+#root:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))),
+.app-shell:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))),
+.main-content:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) {
+  background: #0b0c12 !important;
+  background-image: none !important;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-mobile-map {
+  background: var(--universe-home-bg) !important;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .memory-page-title {
+  color: var(--universe-home-title);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-header-action {
+  color: #aaaab3;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-header-action:hover,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-header-action:active,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-header-action[aria-expanded="true"] {
+  color: #e0dfe5;
+  background: transparent !important;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-entry,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-fit {
+  color: var(--universe-home-control);
+  background: transparent !important;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-entry:hover,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-entry:active,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-entry[aria-expanded="true"],
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-fit:hover,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-fit:active {
+  color: var(--universe-home-strong);
+  background: transparent !important;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-entry-label {
+  color: inherit;
+}
+
+/* Planet colour remains data-driven; dark mode only changes presentation. */
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-planet-core {
+  background: color-mix(in srgb, var(--planet-color, #9a9a9a) 68%, #c6c5cd 32%);
+  opacity: 1;
+  filter: none;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--planet-color, #9a9a9a) 34%, transparent),
+    0 0 12px color-mix(in srgb, var(--planet-color, #9a9a9a) 22%, transparent);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-planet.is-selected .universe-map-planet-core {
+  background: color-mix(in srgb, var(--planet-color, #9a9a9a) 76%, #dedde4 24%);
+  box-shadow:
+    0 0 0 1px rgba(232, 231, 236, 0.88),
+    0 0 10px color-mix(in srgb, var(--planet-color, #9a9a9a) 28%, transparent);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-membership-ring {
+  border-width: 1px;
+  filter: saturate(0.68) brightness(0.84);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-planet.is-selected .universe-map-membership-ring {
+  filter: saturate(0.72) brightness(0.92);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-planet-title {
+  color: var(--universe-home-text);
+  font-weight: 400;
+  text-shadow:
+    0 1px 2px var(--universe-home-bg),
+    0 0 4px var(--universe-home-bg);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-planet.is-selected .universe-map-planet-title {
+  color: #ecebf0;
+  font-weight: 500;
+}
+
+/* Existing inline opacity keeps the selected/neighbor/faded behaviour intact. */
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-relation {
+  background: #343640;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-relation.is-emphasized {
+  background: #676974;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-relation-label {
+  color: var(--universe-home-muted);
+  background: transparent;
+  text-shadow:
+    0 1px 2px var(--universe-home-bg),
+    0 0 4px var(--universe-home-bg);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-relation.is-emphasized .universe-map-relation-label {
+  color: #aaaab3;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-reference-dots i {
+  background: #292a32;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-reference-dots i:nth-child(5n + 2),
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-reference-dots i:nth-child(7n + 1) {
+  background: #31323b;
+}
+
+/* Home popovers share one dark surface. Geometry remains owned by the accepted files. */
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-placement-popover,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-overflow-menu,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-menu {
+  border: 1px solid var(--universe-home-border);
+  border-radius: 10px;
+  color: #b0aeb7;
+  background: var(--universe-home-surface);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-placement-popover > span,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-overflow-menu button,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-menu button {
+  color: #b0aeb7;
+  background: transparent;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-overflow-menu button:hover,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-overflow-menu button:active,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-menu button:hover,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-menu button:active,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-menu button.is-active {
+  color: #ecebf0;
+  background: var(--universe-home-surface-hover);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-mode-hint {
+  border-color: var(--universe-home-border);
+  color: #b0aeb7;
+  background: var(--universe-home-surface);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-map-mode-hint button {
+  color: var(--universe-home-control);
+  background: transparent;
+}
+
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-header-notice,
+.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-notice {
+  color: #8f909b;
+  background: transparent;
+}
+
+@media (max-width: 760px) {
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-top-bar {
+    color: #aaaab3;
+    background: #0b0c12;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-top-bar-title {
+    color: #aaaab3;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-menu-button,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-search-link {
+    color: #898a94;
+    background: transparent;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-menu-button:hover,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-menu-button:active,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-menu-button[aria-expanded="true"],
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-search-link:hover,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-search-link:active,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .mobile-search-link[aria-expanded="true"] {
+    color: #d6d5dc;
+    background: transparent;
+  }
+
+  /* Quick Search changes colour only while Universe home is the visible surface. */
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-panel {
+    border-color: #343640;
+    color: #d6d5dc;
+    background: #171820;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field {
+    background: #1d1e26;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field > svg {
+    color: #898a94;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field > input,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field > input:focus {
+    color: #e8e7ec;
+    background: transparent;
+    box-shadow: none;
+    caret-color: #e8e7ec;
+    color-scheme: dark;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-field > input::placeholder {
+    color: #70727d;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-state {
+    color: #898a94;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-view-all {
+    color: #d6d5dc;
+    background: #171820;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result:hover,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-view-all:hover {
+    background: #22232b;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result-module {
+    color: #70727d;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result-title {
+    color: #d6d5dc;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result-snippet,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-view-all {
+    color: #898a94;
+  }
+
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-result::before,
+  body:has(.universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection))) .quick-search-view-all::before {
+    background: #2b2c35;
+  }
+}
