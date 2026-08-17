@@ -79,6 +79,8 @@ import {
 } from "../tools/read-notion-page/register.js";
 import { TodoService } from "../../domains/todo/todo-service.js";
 import { DrizzleTodoRepository } from "../../domains/todo/todo-repository.js";
+import { UniverseService } from "../../domains/universe/universe-service.js";
+import { DrizzleUniverseRepository } from "../../domains/universe/universe-repository-drizzle.js";
 import {
   registerReadTodoDayTool,
   TodoReadAuthenticationError,
@@ -93,6 +95,10 @@ import {
   WriteTodoPaperAuthenticationError,
   type WriteTodoPaperToolDependencies,
 } from "../tools/write-todo-paper/register.js";
+import { registerSearchUniverseTool, type SearchUniverseToolDependencies } from "../tools/search-universe/register.js";
+import { registerGetUniverseNodeTool, type GetUniverseNodeToolDependencies } from "../tools/get-universe-node/register.js";
+import { registerGetUniverseRelationsTool, type GetUniverseRelationsToolDependencies } from "../tools/get-universe-relations/register.js";
+import { UniverseAuthenticationError } from "../tools/universe/shared.js";
 
 let defaultMemoryService: MemoryService | undefined;
 let defaultDiaryService: DiaryService | undefined;
@@ -101,6 +107,7 @@ let defaultToyCommandService: ToyCommandService | undefined;
 let defaultGlobalSearchService: GlobalSearchService | undefined;
 let defaultTodoService: TodoService | undefined;
 let defaultNotionReadClient: NotionReadClient | undefined;
+let defaultUniverseService: UniverseService | undefined;
 
 function getDefaultNotionReadClient(): NotionReadClient {
   if (!defaultNotionReadClient) {
@@ -127,6 +134,15 @@ function getDefaultGlobalSearchService(): GlobalSearchService {
     defaultGlobalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
   }
   return defaultGlobalSearchService;
+}
+
+function getDefaultUniverseService(): UniverseService {
+  if (!defaultUniverseService) {
+    if (!env.DATABASE_URL) throw new Error("Universe database is not configured.");
+    const { db } = createDatabase(env.DATABASE_URL);
+    defaultUniverseService = new UniverseService(new DrizzleUniverseRepository(db));
+  }
+  return defaultUniverseService;
 }
 
 function getDefaultMemoryService(): MemoryService {
@@ -305,6 +321,12 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
   getAuthenticatedUserId: () => { throw new GlobalSearchAuthenticationError(); },
 };
 
+const productionUniverseService: SearchUniverseToolDependencies["globalSearchService"] &
+  GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] = {
+  search: (input) => getDefaultGlobalSearchService().search(input),
+  loadUniverse: (userId) => getDefaultUniverseService().loadUniverse(userId),
+};
+
 const productionNotionService: SearchNotionToolDependencies["notionService"] &
   ReadNotionPageToolDependencies["notionService"] = {
   searchPages: (input) => getDefaultNotionReadClient().searchPages(input),
@@ -330,6 +352,12 @@ type TodoToolsDependencies = {
 type NotionToolsDependencies = {
   notionService: SearchNotionToolDependencies["notionService"] &
     ReadNotionPageToolDependencies["notionService"];
+  getAuthenticatedUserId: () => string;
+};
+
+type UniverseToolsDependencies = {
+  universeService: GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"];
+  globalSearchService: SearchUniverseToolDependencies["globalSearchService"];
   getAuthenticatedUserId: () => string;
 };
 
@@ -366,6 +394,7 @@ export type McpServerDependencies = {
   globalSearch?: GlobalSearchToolDependencies;
   todoTools?: TodoToolsDependencies;
   notionTools?: NotionToolsDependencies;
+  universeTools?: UniverseToolsDependencies;
 };
 
 export function createMcpServer(
@@ -497,6 +526,17 @@ export function createMcpServer(
       return authenticatedUserId;
     },
   });
+  const universeTools = dependencies.universeTools ?? {
+    universeService: productionUniverseService,
+    globalSearchService: productionUniverseService,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new UniverseAuthenticationError();
+      return authenticatedUserId;
+    },
+  } satisfies UniverseToolsDependencies;
+  registerSearchUniverseTool(server, universeTools);
+  registerGetUniverseNodeTool(server, universeTools);
+  registerGetUniverseRelationsTool(server, universeTools);
   registerSearchNotionTool(server, dependencies.notionTools ?? {
     notionService: productionNotionService,
     getAuthenticatedUserId: () => {

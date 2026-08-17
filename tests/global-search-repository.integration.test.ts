@@ -170,7 +170,8 @@ test("real PostgreSQL Universe search is owner-scoped, active-only, and empty be
       assert.equal(active.results.length, 1);
       assert.equal(active.results[0]?.entity_id, "node-owner");
       assert.equal(active.results[0]?.lifecycle_status, "active");
-      assert.equal(active.results[0]?.detail_tool, null);
+      assert.equal(active.results[0]?.detail_tool, "get_universe_node");
+      assert.deepEqual(active.results[0]?.detail_arguments, { id: "node-owner" });
       const archived = await service.search({ userId: owner, query: "旅行", modules: ["universe"], scope: "archived", limit: 10 });
       assert.deepEqual(archived.results, []);
       throw new Rollback();
