@@ -71,8 +71,8 @@ function searchResult(nextCursor: string | null = null): GlobalSearchResult {
       business_time: NOW,
       time_basis: "updated_at",
       updated_at: NOW,
-      detail_tool: null,
-      detail_arguments: null,
+      detail_tool: "get_universe_node",
+      detail_arguments: { id: "node-1" },
     }],
     metadata: {
       count: 1,
@@ -143,6 +143,9 @@ test("get_universe_node returns canonical node fields and enforces exact IDs", a
   assert.equal(result.isError, undefined);
   const node = (result.structuredContent as { data: typeof snapshot.nodes[number] }).data;
   assert.equal(node.id, "node-1");
+  assert.equal((result.structuredContent as { data: { universe_version: number } }).data.universe_version, 3);
+  const nodeTool = (await fixture.client.listTools()).tools.find((tool) => tool.name === "get_universe_node");
+  assert.match(JSON.stringify(nodeTool?.outputSchema), /universe_version/);
   assert.deepEqual(node.galaxies, [{ id: "galaxy-1", weight: 0.8 }]);
   assert.equal(node.importance, "major");
   assert.equal(calls, 1);
@@ -168,8 +171,11 @@ test("get_universe_relations returns stable relation references and handles unin
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
   const result = await fixture.client.callTool({ name: "get_universe_relations", arguments: { node_id: "node-1" } });
   assert.equal(result.isError, undefined);
-  const data = (result.structuredContent as { data: { node_id: string; relations: typeof snapshot.relations } }).data;
+  const data = (result.structuredContent as { data: { node_id: string; relations: typeof snapshot.relations; universe_version: number } }).data;
   assert.equal(data.node_id, "node-1");
+  assert.equal(data.universe_version, 3);
+  const relationTool = (await fixture.client.listTools()).tools.find((tool) => tool.name === "get_universe_relations");
+  assert.match(JSON.stringify(relationTool?.outputSchema), /universe_version/);
   assert.deepEqual(data.relations[0], {
     id: "relation-1", source: "node-1", target: "node-2", relation_type: "supports", strength: 0.75, created_at: NOW,
   });

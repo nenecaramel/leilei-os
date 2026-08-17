@@ -9,7 +9,15 @@ const relationSchema = z.object({
   relation_type: z.enum(["related_to", "supports", "contradicts", "extends", "part_of", "raises"]),
   strength: z.number().finite(), created_at: z.string().datetime(),
 }).strict();
-const outputSchema = z.object({ success: z.literal(true), data: z.object({ node_id: z.string().min(1).max(256), relations: z.array(relationSchema), metadata: z.object({ count: z.number().int().min(0) }).strict() }).strict() }).strict();
+const outputSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    node_id: z.string().min(1).max(256),
+    relations: z.array(relationSchema),
+    metadata: z.object({ count: z.number().int().min(0) }).strict(),
+    universe_version: z.number().int().nonnegative(),
+  }).strict(),
+}).strict();
 
 export type GetUniverseRelationsToolDependencies = { universeService: Pick<UniverseService, "loadUniverse">; getAuthenticatedUserId: () => string };
 
@@ -21,12 +29,15 @@ export function registerGetUniverseRelationsTool(server: McpServer, dependencies
   }, async ({ node_id }) => {
     try {
       const userId = dependencies.getAuthenticatedUserId();
-      const { snapshot } = await dependencies.universeService.loadUniverse(userId);
+      const { snapshot, version } = await dependencies.universeService.loadUniverse(userId);
       if (!snapshot.nodes.some((node) => node.id === node_id)) throw new UniverseServiceError("NODE_NOT_FOUND");
       const relations = snapshot.relations.filter((relation) => relation.source === node_id || relation.target === node_id).map((relation) => ({
         id: relation.id, source: relation.source, target: relation.target, relation_type: relation.relationType, strength: relation.strength, created_at: relation.createdAt,
       }));
-      return { content: [{ type: "text", text: `Found ${relations.length} Universe relations.` }], structuredContent: { success: true as const, data: { node_id, relations, metadata: { count: relations.length } } } };
+      return {
+        content: [{ type: "text", text: `Found ${relations.length} Universe relations.` }],
+        structuredContent: { success: true as const, data: { node_id, relations, metadata: { count: relations.length }, universe_version: version } },
+      };
     } catch (error) {
       return safeUniverseError(error, "Universe node was not found.");
     }

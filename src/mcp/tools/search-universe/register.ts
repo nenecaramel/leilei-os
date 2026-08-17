@@ -28,8 +28,8 @@ const itemSchema = z.object({
   business_time: z.string().datetime(),
   time_basis: z.literal("updated_at"),
   updated_at: z.string().datetime(),
-  detail_tool: z.null(),
-  detail_arguments: z.null(),
+  detail_tool: z.literal("get_universe_node"),
+  detail_arguments: z.object({ id: z.string().min(1).max(256) }).strict(),
 }).strict();
 const outputSchema = z.object({
   success: z.literal(true),
@@ -81,8 +81,8 @@ export function registerSearchUniverseTool(server: McpServer, dependencies: Sear
           business_time: result.business_time,
           time_basis: "updated_at" as const,
           updated_at: result.updated_at,
-          detail_tool: null,
-          detail_arguments: null,
+          detail_tool: "get_universe_node" as const,
+          detail_arguments: { id: result.entity_id },
         })),
         metadata: {
           count: data.results.filter((result) => result.entity_type === "universe").length,

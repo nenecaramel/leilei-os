@@ -35,11 +35,11 @@ const globalSearchOutputSchema = z.object({
       business_time: z.string().datetime(),
       time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at"]),
       updated_at: z.string().datetime(),
-      detail_tool: z.enum(["get_memory", "get_diary", "get_task"]).nullable(),
-      detail_arguments: z.object({
-        id: z.string().uuid(),
-        scope: z.enum(["active", "archived"]),
-      }).strict().nullable(),
+      detail_tool: z.enum(["get_memory", "get_diary", "get_task", "get_universe_node"]).nullable(),
+      detail_arguments: z.union([
+        z.object({ id: z.string().uuid(), scope: z.enum(["active", "archived"]) }).strict(),
+        z.object({ id: z.string().min(1).max(256) }).strict(),
+      ]).nullable(),
     }).strict()),
     metadata: z.object({
       count: z.number().int().min(0).max(25),
