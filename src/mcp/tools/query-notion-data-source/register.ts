@@ -1,0 +1,57 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import type { NotionDataSourceQueryResult, NotionIntegration } from "../../../domains/notion/notion-read-integration.js";
+import { readOnlyNotionAnnotations, safeNotionAdvancedError } from "../notion-advanced/shared.js";
+
+const idSchema = z.string().trim().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+const jsonObjectSchema = z.record(z.any());
+const outputSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    data_source_id: z.string(),
+    results: z.array(z.object({
+      id: z.string(),
+      url: z.string().nullable(),
+      title: z.string(),
+      created_time: z.string().nullable(),
+      last_edited_time: z.string().nullable(),
+      properties: z.record(z.object({ id: z.string().nullable(), type: z.string(), value: z.any() }).strict()),
+    }).strict()),
+    metadata: z.object({ count: z.number().int().min(0), has_more: z.boolean(), next_cursor: z.string().nullable() }).strict(),
+  }).strict(),
+}).strict();
+
+export type QueryNotionDataSourceToolDependencies = {
+  notionIntegration: Pick<NotionIntegration, "queryDataSource">;
+  getAuthenticatedUserId: () => string;
+};
+
+export function registerQueryNotionDataSourceTool(server: McpServer, dependencies: QueryNotionDataSourceToolDependencies): void {
+  server.registerTool("query_notion_data_source", {
+    title: "Query a Notion data source",
+    description: "Read pages from one Notion data source with bounded, structured filters, sorting, and cursor pagination. No SQL or arbitrary query text is accepted.",
+    inputSchema: z.object({
+      data_source_id: idSchema,
+      limit: z.number().int().min(1).max(100).optional(),
+      cursor: z.string().min(1).max(2000).optional(),
+      filter: jsonObjectSchema.optional(),
+      sorts: z.array(jsonObjectSchema).max(10).optional(),
+    }).strict(),
+    outputSchema,
+    annotations: readOnlyNotionAnnotations,
+  }, async ({ data_source_id, limit, cursor, filter, sorts }) => {
+    try {
+      dependencies.getAuthenticatedUserId();
+      const data: NotionDataSourceQueryResult = await dependencies.notionIntegration.queryDataSource({
+        dataSourceId: data_source_id,
+        limit,
+        cursor,
+        filter,
+        sorts,
+      });
+      return { content: [{ type: "text" as const, text: `Read ${data.metadata.count} Notion data source pages.` }], structuredContent: { success: true as const, data } };
+    } catch (error) {
+      return safeNotionAdvancedError(error);
+    }
+  });
+}

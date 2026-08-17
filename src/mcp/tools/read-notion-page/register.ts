@@ -4,13 +4,19 @@ import {
   NotionReadError,
   type NotionPageReadResult,
 } from "../../../domains/notion/notion-read-client.js";
+import { parseNotionPageReference } from "../../../domains/notion/notion-read-integration.js";
 
 const inputSchema = z.object({
-  page_id: z.string().trim().refine((value) => {
-    const compact = value.replaceAll("-", "");
-    return /^[0-9a-fA-F]{32}$/.test(compact);
-  }, "page_id must be a Notion page UUID."),
-}).strict();
+  page_id: z.string().trim().optional(),
+  page_url: z.string().trim().url().optional(),
+}).strict().superRefine((value, context) => {
+  if (!value.page_id && !value.page_url) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["page_id"], message: "Provide page_id or page_url." });
+  }
+  if (value.page_id && value.page_url) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["page_url"], message: "Provide only one page reference." });
+  }
+});
 
 const pageSchema = z.object({
   id: z.string(),
@@ -54,7 +60,8 @@ export function registerReadNotionPageTool(
   }, async (args) => {
     try {
       dependencies.getAuthenticatedUserId();
-      const data = await dependencies.notionService.readPage(args.page_id);
+      const pageId = parseNotionPageReference(args.page_id ?? args.page_url ?? "");
+      const data = await dependencies.notionService.readPage(pageId);
       const structuredData = {
         page: {
           id: data.page.id,
