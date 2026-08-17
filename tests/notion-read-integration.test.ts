@@ -243,6 +243,16 @@ test("connection and database reads reject plausible payloads with the wrong pro
   );
 });
 
+test("page reads map malformed provider envelopes to the stable malformed-response error", async () => {
+  const { integration } = createIntegration({
+    [`/pages/${PAGE_ID}`]: { object: "database", id: PAGE_ID },
+  });
+  await assert.rejects(
+    () => integration.readPage(PAGE_ID),
+    (error: unknown) => error instanceof NotionIntegrationError && error.code === "MALFORMED_RESPONSE",
+  );
+});
+
 test("unsupported page property types retain explicit type evidence instead of becoming null", async () => {
   const { integration } = createIntegration({
     [`/data_sources/${DATA_SOURCE_ID}/query`]: {

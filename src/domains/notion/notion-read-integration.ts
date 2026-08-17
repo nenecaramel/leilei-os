@@ -153,6 +153,7 @@ function normalizeError(error: unknown): NotionIntegrationError {
       case "ACCESS_DENIED": return new NotionIntegrationError("ACCESS_DENIED", "Notion access was denied.");
       case "NOT_FOUND": return new NotionIntegrationError("NOT_FOUND", "The Notion resource was not found or is inaccessible.");
       case "RATE_LIMITED": return new NotionIntegrationError("RATE_LIMITED", "Notion is temporarily rate limited.");
+      case "MALFORMED_RESPONSE": return new NotionIntegrationError("MALFORMED_RESPONSE", "Notion returned an unsupported response.");
       case "UPSTREAM": return new NotionIntegrationError("UPSTREAM", "Notion is temporarily unavailable.");
     }
   }

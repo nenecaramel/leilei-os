@@ -118,6 +118,8 @@ function mapNotionReadError(error: unknown): string {
       return "The Notion page was not found or is not accessible.";
     case "RATE_LIMITED":
       return "Notion is temporarily rate limited.";
+    case "MALFORMED_RESPONSE":
+      return "Notion returned an unsupported response.";
     case "UPSTREAM":
       return "Notion is temporarily unavailable.";
   }
