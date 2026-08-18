@@ -37,6 +37,20 @@ function installDom() {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 100));
 
+async function waitForCondition(
+  predicate: () => boolean,
+  description: string,
+  timeoutMs = 2000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${description}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 function dayResponse(date: string, label: string) {
   return {
     success: true,
@@ -63,11 +77,21 @@ test("foreground date change loads the new local day without carrying yesterday'
   } };
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, { api, now })));
-  await waitForPaint();
-  assert.match(container.textContent ?? "", /yesterday/);
+  await waitForCondition(
+    () =>
+      requests.includes("/todo/2026-08-12") &&
+      /yesterday/.test(container.textContent ?? ""),
+    "initial yesterday Todo paper",
+  );
   currentDate = new Date(2026, 7, 13, 9, 0);
   env.dom.window.dispatchEvent(new env.dom.window.Event("focus"));
-  await waitForPaint();
+  await waitForCondition(
+    () =>
+      requests.includes("/todo/2026-08-13") &&
+      /today/.test(container.textContent ?? "") &&
+      !/yesterday/.test(container.textContent ?? ""),
+    "new local date Todo paper",
+  );
   assert.match(container.textContent ?? "", /today/);
   assert.doesNotMatch(container.textContent ?? "", /yesterday/);
   assert.deepEqual(requests, ["/todo/2026-08-12", "/todo/dates", "/diary/dates", "/todo/2026-08-13"]);

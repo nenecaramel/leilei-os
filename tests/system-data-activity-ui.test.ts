@@ -51,6 +51,20 @@ function installDom(url: string) {
 const waitForPaint = () =>
   new Promise((resolve) => setTimeout(resolve, 35));
 
+async function waitForCondition(
+  predicate: () => boolean,
+  description: string,
+  timeoutMs = 2000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${description}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 test("Data renders authenticated user-scoped counts from /system/data", async () => {
   const env = installDom(
     "https://leilei.test/system/data",
@@ -79,7 +93,13 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
     React.createElement(SystemDataPageContent, { api }),
   );
 
-  await waitForPaint();
+  await waitForCondition(
+    () =>
+      paths.includes("/system/data") &&
+      /Health/.test(container.textContent ?? "") &&
+      /31/.test(container.textContent ?? ""),
+    "System Data request and ready state",
+  );
 
   assert.deepEqual(paths, ["/system/data"]);
   const text = container.textContent ?? "";
