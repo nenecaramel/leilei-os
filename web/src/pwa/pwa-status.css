@@ -1,0 +1,52 @@
+/* Phase 7.6A PWA shell status */
+.pwa-status {
+  position: fixed;
+  z-index: 320;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 32px), 420px);
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.pwa-status__item {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+
+.pwa-status__offline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pwa-status__update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pwa-status__update-button {
+  flex: 0 0 auto;
+  min-width: 82px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #111;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
