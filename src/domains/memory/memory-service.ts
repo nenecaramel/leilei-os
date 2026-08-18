@@ -13,6 +13,12 @@ import {
   isContentAuthor,
   type ContentAuthor,
 } from "../content-author.js";
+import {
+  MEMORY_CONTENT_MAX_LENGTH,
+  MEMORY_KEY_MAX_LENGTH,
+  MEMORY_TAGS_MAX_COUNT,
+  MEMORY_TAG_MAX_LENGTH,
+} from "../resource-limits.js";
 
 const ALLOWED_CATEGORIES = [
   "profile",
@@ -23,11 +29,11 @@ const ALLOWED_CATEGORIES = [
 
 const DEFAULT_MEMORY_LIMIT = 50;
 const MAX_MEMORY_LIMIT = 50;
-const MAX_CONTENT_LENGTH = 4_000;
 const MAX_SEARCH_LENGTH = 200;
-const MAX_TAGS = 20;
-const MAX_TAG_LENGTH = 50;
-const MAX_KEY_LENGTH = 100;
+const MAX_CONTENT_LENGTH = MEMORY_CONTENT_MAX_LENGTH;
+const MAX_TAGS = MEMORY_TAGS_MAX_COUNT;
+const MAX_TAG_LENGTH = MEMORY_TAG_MAX_LENGTH;
+const MAX_KEY_LENGTH = MEMORY_KEY_MAX_LENGTH;
 
 export type ReadMemoryInput = {
   userId: string;
@@ -311,12 +317,15 @@ export class MemoryService {
 
   async createMemory(input: CreateMemoryInput): Promise<void> {
     await this.requireActiveUser(input.userId);
+    const category = this.validateCategories([input.category])![0]!;
+    const key = this.normalizeRequiredText(input.key, MAX_KEY_LENGTH, "INVALID_MEMORY_KEY");
+    const content = this.normalizeRequiredText(input.content, MAX_CONTENT_LENGTH, "INVALID_MEMORY_CONTENT");
     this.requireAuthor(input.author);
     await this.repository.createMemory({
       userId: input.userId,
-      category: input.category,
-      key: input.key.trim(),
-      content: input.content.trim(),
+      category,
+      key,
+      content,
       tags: this.normalizeTags(input.tags ?? []),
       source: "web",
       author: input.author,
@@ -580,7 +589,7 @@ export class MemoryService {
     const normalized = [
       ...new Set(
         tags.map((tag) => {
-          const value = tag.normalize("NFC").trim();
+          const value = typeof tag === "string" ? tag.normalize("NFC").trim() : "";
           if (
             value.length === 0 ||
             value.length > MAX_TAG_LENGTH
@@ -606,11 +615,11 @@ export class MemoryService {
   }
 
   private normalizeRequiredText(
-    value: string,
+    value: unknown,
     maxLength: number,
     code: "INVALID_MEMORY_KEY" | "INVALID_MEMORY_CONTENT",
   ): string {
-    const normalized = value.normalize("NFC").trim();
+    const normalized = typeof value === "string" ? value.normalize("NFC").trim() : "";
     if (normalized.length === 0 || normalized.length > maxLength) {
       throw new MemoryDomainError(code, "Memory text is invalid.");
     }

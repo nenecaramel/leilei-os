@@ -69,7 +69,7 @@ test("parseImportPackage validates exported business invariants without coercion
   );
 });
 
-test("parseImportPackage accepts diary tags allowed by the current text[] database contract", () => {
+test("parseImportPackage accepts the historical 80-character Diary tag export", () => {
   const longTag = "d".repeat(80);
   const diary = {
     id: "00000000-0000-4000-8000-000000000012",
@@ -86,4 +86,81 @@ test("parseImportPackage accepts diary tags allowed by the current text[] databa
   };
   const parsed = parseImportPackage(bytes(validDocument({ diary: [diary] })));
   assert.equal(parsed.document.data.diary?.[0]?.tags[0], longTag);
+});
+
+test("parseImportPackage accepts values that are valid in storage but wider than live-write limits", () => {
+  const diary = {
+    id: "00000000-0000-4000-8000-000000000021",
+    title: "Historical diary",
+    content: "x".repeat(20_001),
+    date: "2026-08-14",
+    tags: ["d".repeat(80)],
+    mood: null,
+    source: "chatgpt_mcp",
+    author: "L",
+    status: "active",
+    created_at: "2026-08-14T00:00:00.000Z",
+    updated_at: "2026-08-14T00:00:00.000Z",
+  };
+  const task = {
+    id: "00000000-0000-4000-8000-000000000022",
+    title: "Historical task",
+    description: "x".repeat(5_001),
+    status: "pending",
+    resume_status: null,
+    lifecycle_status: "active",
+    author: null,
+    priority: "normal",
+    due_time: null,
+    timezone: "Asia/Shanghai",
+    tags: [],
+    created_at: "2026-08-14T00:00:00.000Z",
+    updated_at: "2026-08-14T00:00:00.000Z",
+    completed_at: null,
+  };
+  const todo = {
+    date: "2026-08-14",
+    author: "L",
+    revision: 0,
+    created_at: "2026-08-14T00:00:00.000Z",
+    updated_at: "2026-08-14T00:00:00.000Z",
+    entries: [{ id: "i".repeat(129), kind: "record", text: "x".repeat(4_001) }],
+  };
+
+  const parsed = parseImportPackage(bytes(validDocument({ diary: [diary], task: [task], todo: [todo] })));
+  assert.equal(parsed.document.data.diary?.[0]?.tags[0]?.length, 80);
+  assert.equal(parsed.document.data.diary?.[0]?.content.length, 20_001);
+  assert.equal(parsed.document.data.task?.[0]?.description.length, 5_001);
+  assert.equal(parsed.document.data.todo?.[0]?.entries[0]?.id.length, 129);
+  assert.equal(parsed.document.data.todo?.[0]?.entries[0]?.text.length, 4_001);
+});
+
+test("parseImportPackage enforces canonical record and collection limits before planning", () => {
+  const memory = {
+    id: "00000000-0000-4000-8000-000000000101",
+    category: "profile",
+    key: "memory",
+    content: "content",
+    tags: [],
+    visibility: "assistant",
+    source: "web",
+    author: "L",
+    status: "active",
+    sort_order: 0,
+    created_at: "2026-08-14T00:00:00.000Z",
+    updated_at: "2026-08-14T00:00:00.000Z",
+  };
+  const base = validDocument({ memory: [memory] });
+  assert.doesNotThrow(() => parseImportPackage(bytes(base)));
+  for (const value of [
+    { ...base, data: { memory: [{ ...memory, key: "k".repeat(101) }] } },
+    { ...base, data: { memory: Array.from({ length: 10_001 }, (_, index) => ({ ...memory, id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}` })) } },
+    { ...base, data: { todo: [{ date: "2026-08-14", author: "L", revision: 0, created_at: "2026-08-14T00:00:00.000Z", updated_at: "2026-08-14T00:00:00.000Z", entries: Array.from({ length: 201 }, (_, index) => ({ id: String(index), kind: "record", text: "x" })) }] } },
+    { ...base, audit: { lifecycle: Array.from({ length: 50_001 }, (_, index) => ({ id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, resource_type: "memory", resource_id: "00000000-0000-4000-8000-000000000101", action: "create", actor_type: "user", channel: "web", created_at: "2026-08-14T00:00:00.000Z" })), tool_activity: [] } },
+  ]) {
+    assert.throws(() => parseImportPackage(bytes(value)), (error: unknown) => {
+      if (!(error instanceof ImportValidationError)) return false;
+      return error.code === "INVALID_IMPORT_FILE" || error.code === "IMPORT_TOO_LARGE";
+    });
+  }
 });

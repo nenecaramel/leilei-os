@@ -30,6 +30,13 @@ import {
   isContentAuthor,
   type ContentAuthor,
 } from "../content-author.js";
+import {
+  TASK_DESCRIPTION_MAX_LENGTH,
+  TASK_TAGS_MAX_COUNT,
+  TASK_TAG_MAX_LENGTH,
+  TASK_TIMEZONE_MAX_LENGTH,
+  TASK_TITLE_MAX_LENGTH,
+} from "../resource-limits.js";
 
 const ALLOWED_PRIORITIES = [
   "low",
@@ -45,11 +52,11 @@ const ALLOWED_STATUSES = [
   "cancelled",
 ] as const satisfies readonly TaskStatus[];
 
-const MAX_TITLE_LENGTH = 200;
-const MAX_DESCRIPTION_LENGTH = 5_000;
-const MAX_TAGS = 20;
-const MAX_TAG_LENGTH = 50;
-const MAX_TIMEZONE_LENGTH = 64;
+const MAX_TITLE_LENGTH = TASK_TITLE_MAX_LENGTH;
+const MAX_DESCRIPTION_LENGTH = TASK_DESCRIPTION_MAX_LENGTH;
+const MAX_TAGS = TASK_TAGS_MAX_COUNT;
+const MAX_TAG_LENGTH = TASK_TAG_MAX_LENGTH;
+const MAX_TIMEZONE_LENGTH = TASK_TIMEZONE_MAX_LENGTH;
 const DEFAULT_TASK_LIMIT = 100;
 const MAX_TASK_LIMIT = 100;
 const MAX_SEARCH_LENGTH = 200;

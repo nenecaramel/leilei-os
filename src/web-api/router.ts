@@ -40,6 +40,11 @@ export function createWebApiRouter(
 ): Router {
   const router = Router();
 
+  router.use((_request, response, next) => {
+    response.setHeader("Cache-Control", "private, no-store");
+    next();
+  });
+
   router.get("/session", (request, response) => {
     if (!request.webUserId) {
       response.status(401).json({

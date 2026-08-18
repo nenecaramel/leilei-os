@@ -14,6 +14,11 @@ import {
   ActiveUserAuthorizationError,
   requireActiveUser,
 } from "../require-active-user.js";
+import {
+  MAX_TODO_ENTRIES,
+  MAX_TODO_ENTRY_ID_LENGTH,
+  MAX_TODO_ENTRY_TEXT_LENGTH,
+} from "../resource-limits.js";
 
 export type TodoServiceErrorCode =
   | "TODO_DATE_INVALID"
@@ -47,6 +52,7 @@ function assertDate(value: unknown): asserts value is string {
 
 function normalizeEntries(value: unknown): TodoEntry[] {
   if (!Array.isArray(value)) throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entries are invalid.");
+  if (value.length > MAX_TODO_ENTRIES) throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entries are invalid.");
   const seen = new Set<string>();
   const normalized: TodoEntry[] = [];
   for (const row of value) {
@@ -57,6 +63,7 @@ function normalizeEntries(value: unknown): TodoEntry[] {
     if (typeof candidate.text !== "string") throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry is invalid.");
     const id = candidate.id.trim();
     const text = candidate.text.trim();
+    if (id.length > MAX_TODO_ENTRY_ID_LENGTH || text.length > MAX_TODO_ENTRY_TEXT_LENGTH) throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry is invalid.");
     if (!text) continue;
     if (seen.has(id)) throw new TodoServiceError("TODO_ENTRY_ID_DUPLICATE", "Todo entry ids must be unique.");
     seen.add(id);

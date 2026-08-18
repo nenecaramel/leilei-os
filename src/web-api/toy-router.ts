@@ -40,7 +40,7 @@ export function createToyCommandHandler(
   dependencies: ToyApiDependencies,
 ): RequestHandler {
   return async (request, response) => {
-    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Cache-Control", "private, no-store");
     if (!request.webUserId) {
       sendError(response, 401, "UNAUTHORIZED", "Web API authentication is required.");
       return;

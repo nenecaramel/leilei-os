@@ -134,3 +134,36 @@ test("Web Memory creation remains source web", async () => {
   await service.createMemory({ userId: "user-a", category: "profile", key: "name", content: "Leilei", tags: [], author: "G" });
   assert.equal((calls[0] as { source: string }).source, "web");
 });
+
+test("Web Memory creation uses the canonical key, content, and tag boundaries", async () => {
+  const writes: unknown[] = [];
+  const service = new MemoryService(repository({
+    async createMemory(input) { writes.push(input); },
+  }));
+
+  await service.createMemory({
+    userId: "user-a",
+    category: "profile",
+    key: "k".repeat(100),
+    content: "c".repeat(4_000),
+    tags: Array.from({ length: 20 }, (_, index) => `tag-${index}`),
+    author: "L",
+  });
+  assert.equal(writes.length, 1);
+
+  for (const input of [
+    { category: "unknown" as never, key: "key", content: "content", tags: [] },
+    { key: "k".repeat(101), content: "content", tags: [] },
+    { key: "key", content: "c".repeat(4_001), tags: [] },
+    { key: "key", content: "content", tags: Array.from({ length: 21 }, (_, index) => `tag-${index}`) },
+    { key: "key", content: "content", tags: ["t".repeat(51)] },
+    { key: " ", content: "content", tags: [] },
+    { key: "key", content: " ", tags: [] },
+  ]) {
+    await assert.rejects(
+      service.createMemory({ userId: "user-a", category: "profile", ...input, author: "L" }),
+      (error: unknown) => error instanceof MemoryDomainError,
+    );
+  }
+  assert.equal(writes.length, 1);
+});

@@ -1,0 +1,23 @@
+export const MEMORY_KEY_MAX_LENGTH = 100;
+export const MEMORY_CONTENT_MAX_LENGTH = 4_000;
+export const MEMORY_TAGS_MAX_COUNT = 20;
+export const MEMORY_TAG_MAX_LENGTH = 50;
+
+export const DIARY_TITLE_MAX_LENGTH = 200;
+export const DIARY_CONTENT_MAX_LENGTH = 20_000;
+export const DIARY_TAGS_MAX_COUNT = 20;
+export const DIARY_TAG_MAX_LENGTH = 50;
+export const DIARY_MOOD_MAX_LENGTH = 50;
+
+export const TASK_TITLE_MAX_LENGTH = 200;
+export const TASK_DESCRIPTION_MAX_LENGTH = 5_000;
+export const TASK_TAGS_MAX_COUNT = 20;
+export const TASK_TAG_MAX_LENGTH = 50;
+export const TASK_TIMEZONE_MAX_LENGTH = 64;
+
+export const MAX_TODO_ENTRIES = 200;
+export const MAX_TODO_ENTRY_ID_LENGTH = 128;
+export const MAX_TODO_ENTRY_TEXT_LENGTH = 4_000;
+
+export const MAX_IMPORT_RECORDS_PER_MODULE = 10_000;
+export const MAX_IMPORT_AUDIT_EVENTS_PER_TYPE = 50_000;
