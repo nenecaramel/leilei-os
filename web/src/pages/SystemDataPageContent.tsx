@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  WebApiError,
-  type WebApiClient,
-} from "../api/useWebApiClient";
+import type { WebApiClient } from "../api/useWebApiClient";
+import { WebApiError } from "../api/web-api-error";
 import type {
   SystemDataResponse,
   SystemDataSummary,
