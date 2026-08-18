@@ -1,0 +1,53 @@
+name: Minimize PWA web lockfile diff
+
+on:
+  push:
+    branches:
+      - codex/phase-7-6a-pwa-reintegration
+
+permissions:
+  contents: write
+
+jobs:
+  minimize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build additive lockfile from current base
+        shell: bash
+        run: |
+          git show 0ea8cc370d554adb219aebc7f5723d5702aeb6bd:web/package-lock.json > /tmp/base-lock.json
+          cp /tmp/base-lock.json web/package-lock.json
+          cd web
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          cp package-lock.json /tmp/generated-lock.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const base = JSON.parse(fs.readFileSync('/tmp/base-lock.json', 'utf8'));
+          const generated = JSON.parse(fs.readFileSync('/tmp/generated-lock.json', 'utf8'));
+          base.packages[''].devDependencies = generated.packages[''].devDependencies;
+          for (const [key, value] of Object.entries(generated.packages)) {
+            if (!(key in base.packages)) base.packages[key] = value;
+          }
+          fs.writeFileSync('package-lock.json', `${JSON.stringify(base, null, 2)}\n`);
+          NODE
+          rm -rf node_modules
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm ls vite-plugin-pwa workbox-build workbox-window --depth=0
+      - name: Commit minimized lockfile
+        shell: bash
+        run: |
+          if git diff --quiet -- web/package-lock.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/package-lock.json
+          git commit -m "chore: minimize PWA web lockfile diff"
+          git push
