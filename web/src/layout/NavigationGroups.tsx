@@ -4,7 +4,6 @@ import {
   AboutIcon,
   AccountIcon,
   ActivityIcon,
-  ArchiveIcon,
   ConnectionsIcon,
   DashboardIcon,
   DataIcon,
@@ -40,7 +39,6 @@ export const NAV_GROUPS: NavigationGroup[] = [
       { label: "Task", to: "/task", icon: TaskIcon },
       { label: "Day Space", to: "/day-space", icon: DashboardIcon },
       { label: "Universe", to: "/universe", icon: UniverseIcon },
-      { label: "Chat Archive", to: "/chat-archive", icon: ArchiveIcon },
     ],
   },
   {
@@ -143,8 +141,7 @@ export function NavigationGroups({
                   >
                     <Icon />
                     <span>{label}</span>
-                    {(label === "Chat Archive" ||
-                      label === "Universe") && (
+                    {label === "Universe" && (
                       <small>soon</small>
                     )}
                   </NavLink>

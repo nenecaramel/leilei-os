@@ -3890,31 +3890,6 @@ body:has(.home-prototype) {
 }
 /* leilei-mobile-search-focus-safe-2026-08-08:end */
 
-/* leilei-simple-placeholder-pages-2026-08-08:start */
-.simple-placeholder-page {
-  background: #ffffff !important;
-}
-
-.main-content:has(.simple-placeholder-page) {
-  background: #ffffff !important;
-}
-
-@media (max-width: 760px) {
-  html:has(.simple-placeholder-page),
-  body:has(.simple-placeholder-page),
-  #root:has(.simple-placeholder-page),
-  .app-shell:has(.simple-placeholder-page),
-  .main-content:has(.simple-placeholder-page) {
-    background: #ffffff !important;
-    background-image: none !important;
-  }
-
-  .simple-placeholder-page .memory-page-header {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-/* leilei-simple-placeholder-pages-2026-08-08:end */
-
 /* leilei-task-mobile-redesign-2026-08-08:start */
 @media (max-width: 760px) {
   .task-page-tools {

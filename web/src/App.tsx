@@ -10,7 +10,6 @@ import { DashboardPage } from "./pages/DashboardPageContainer";
 import { DiaryPage } from "./pages/DiaryPageContainer";
 import { GlobalSearchPage } from "./pages/GlobalSearchPageContainer";
 import { MemoryPage } from "./pages/MemoryPageContainer";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SystemAboutPage } from "./pages/SystemAboutPage";
 import { SystemAccountPage } from "./pages/SystemAccountPage";
 import { SystemActivityPage } from "./pages/SystemActivityPage";
@@ -64,10 +63,6 @@ export default function App() {
               element={<SystemAboutPage />}
             />
 
-            <Route
-              path="chat-archive"
-              element={<PlaceholderPage title="Chat Archive" />}
-            />
             <Route
               path="universe"
               element={<UniversePage />}
