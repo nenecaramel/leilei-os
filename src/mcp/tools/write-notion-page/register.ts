@@ -1,0 +1,103 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import type { NotionJsonObject } from "../../../domains/notion/notion-transport.js";
+import {
+  notionAuthErrorResult,
+  notionBodySchema,
+  notionErrorResult,
+  notionIdSchema,
+  notionOutputSchema,
+  notionSuccess,
+  NotionWriteAuthenticationError,
+} from "../notion-write-shared.js";
+
+const actionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("create"),
+    body: notionBodySchema,
+    parent: notionBodySchema.optional(),
+  }).strict(),
+  z.object({ action: z.literal("update"), page_id: notionIdSchema, body: notionBodySchema }).strict(),
+  z.object({ action: z.literal("move"), page_id: notionIdSchema, parent: notionBodySchema }).strict(),
+  z.object({ action: z.literal("update_content"), page_id: notionIdSchema, body: notionBodySchema }).strict(),
+  z.object({ action: z.literal("trash"), page_id: notionIdSchema }).strict(),
+  z.object({ action: z.literal("restore"), page_id: notionIdSchema }).strict(),
+]);
+
+const inputSchema = z.object({
+  action: z.enum(["create", "update", "move", "update_content", "trash", "restore"]),
+  page_id: notionIdSchema.optional(),
+  body: notionBodySchema.optional(),
+  parent: notionBodySchema.optional(),
+}).strict();
+
+export type WriteNotionPageToolDependencies = {
+  notionService: {
+    createPage(body: NotionJsonObject): Promise<NotionJsonObject>;
+    updatePage(pageId: string, body: NotionJsonObject): Promise<NotionJsonObject>;
+    movePage(pageId: string, parent: NotionJsonObject): Promise<NotionJsonObject>;
+    updatePageMarkdown(pageId: string, body: NotionJsonObject): Promise<NotionJsonObject>;
+  };
+  getAuthenticatedUserId: () => string;
+};
+
+export function registerWriteNotionPageTool(
+  server: McpServer,
+  dependencies: WriteNotionPageToolDependencies,
+): void {
+  server.registerTool("write_notion_page", {
+    title: "Write Notion page",
+    description: "Create, update, move, change enhanced-Markdown content, trash, or restore a Notion page. For create, provide the page fields in body and the destination parent either in body.parent or the top-level parent field. For move, parent is required. Mutations execute immediately when Notion permits them.",
+    inputSchema,
+    outputSchema: notionOutputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  }, async (rawArgs) => {
+    const parsed = actionSchema.safeParse(rawArgs);
+    if (!parsed.success) {
+      return {
+        isError: true as const,
+        content: [{
+          type: "text" as const,
+          text: "The Notion page request is invalid for the selected action.",
+        }],
+      };
+    }
+    const args = parsed.data;
+
+    try {
+      dependencies.getAuthenticatedUserId();
+      let data: NotionJsonObject;
+      switch (args.action) {
+        case "create":
+          data = await dependencies.notionService.createPage(
+            args.parent ? { ...args.body, parent: args.parent } : args.body,
+          );
+          break;
+        case "update":
+          data = await dependencies.notionService.updatePage(args.page_id, args.body);
+          break;
+        case "move":
+          data = await dependencies.notionService.movePage(args.page_id, args.parent);
+          break;
+        case "update_content":
+          data = await dependencies.notionService.updatePageMarkdown(args.page_id, args.body);
+          break;
+        case "trash":
+          data = await dependencies.notionService.updatePage(args.page_id, { in_trash: true });
+          break;
+        case "restore":
+          data = await dependencies.notionService.updatePage(args.page_id, { in_trash: false });
+          break;
+      }
+      return notionSuccess(data, `Notion page ${args.action} completed.`);
+    } catch (error) {
+      if (error instanceof NotionWriteAuthenticationError) return notionAuthErrorResult();
+      return notionErrorResult(error);
+    }
+  });
+}

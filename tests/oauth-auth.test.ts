@@ -78,7 +78,12 @@ test("verifies issuer, audience, signature and required scope", async () => {
   publicJwk.kid = "oauth-test-key";
   publicJwk.alg = "RS256";
   const verifier = createJwtVerifier(
-    config,
+    {
+      issuer: config.AUTH0_ISSUER,
+      audience: config.AUTH0_AUDIENCE,
+      jwksUri: config.AUTH0_JWKS_URI,
+      requiredScope: config.AUTH0_REQUIRED_SCOPE,
+    },
     createLocalJWKSet({ keys: [publicJwk] }),
   );
   const issue = (scope: string) =>
@@ -185,4 +190,3 @@ test("keeps MCP_AUTH_TOKEN valid only for the internal middleware", () => {
   assert.equal(result.nextCalled, true);
   assert.equal(request.mcpUserId, config.MCP_USER_ID);
 });
-

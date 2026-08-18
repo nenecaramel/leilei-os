@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A remote MCP server for validating ChatGPT Developer Mode connectivity.",
+  "description": "Authenticated Leilei OS personal workspace API and Streamable HTTP MCP server.",
   "engines": {
     "node": ">=20"
   },
@@ -13,13 +13,21 @@
     "start": "node dist/app/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:task-tag-integration": "RUN_DATABASE_INTEGRATION_TEST=1 tsx --test tests/task-tag-repository.integration.test.ts",
+    "test:task-time-integration": "RUN_TASK_TIME_DATABASE_TEST=1 tsx --test tests/task-time-repository.integration.test.ts",
+    "test:diary-search-integration": "RUN_DATABASE_INTEGRATION_TEST=1 tsx --test tests/diary-repository.integration.test.ts",
+    "test:toy-integration": "RUN_TOY_DATABASE_INTEGRATION_TEST=1 tsx --test --test-reporter=spec tests/toy-command-repository.integration.test.ts",
+    "test:mcp-write-idempotency-integration": "RUN_MCP_WRITE_IDEMPOTENCY_DATABASE_TEST=1 tsx --test --test-reporter=spec tests/mcp-write-idempotency.integration.test.ts",
+    "test:layout": "RUN_SAFARI_LAYOUT_TEST=1 tsx --test tests/native-date-layout.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
     "db:seed:phase2": "tsx scripts/seed-phase-2.ts"
   },
   "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.1.0",
@@ -28,9 +36,12 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^24.0.0",
     "drizzle-kit": "^0.31.10",
+    "jsdom": "^29.1.1",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   },

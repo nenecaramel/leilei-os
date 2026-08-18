@@ -22,6 +22,153 @@
       "when": 1784709430224,
       "tag": "0002_phase_4_task_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784877361417,
+      "tag": "0003_phase_5_health_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784947984670,
+      "tag": "0004_fuzzy_mentor",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784959004277,
+      "tag": "0005_clean_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785061096117,
+      "tag": "0006_large_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785218456792,
+      "tag": "0007_perpetual_bedlam",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785234575537,
+      "tag": "0008_massive_azazel",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785320286385,
+      "tag": "0009_soft_master_chief",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785322904338,
+      "tag": "0010_many_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785334063593,
+      "tag": "0011_clever_lifeguard",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785580450440,
+      "tag": "0012_unique_norman_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785588559006,
+      "tag": "0013_brief_shiver_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1785871980592,
+      "tag": "0014_early_ozymandias",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786415856981,
+      "tag": "0015_lg_author_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786494935368,
+      "tag": "0016_todo_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786590053042,
+      "tag": "0017_mcp_todo_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786645516211,
+      "tag": "0018_nifty_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786714396976,
+      "tag": "0019_universe_domain",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786732731392,
+      "tag": "0020_weighted_galaxy_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786763074616,
+      "tag": "0021_universe_weighted_membership_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786886823074,
+      "tag": "0022_toy_duration",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786892445681,
+      "tag": "0023_faulty_sphinx",
+      "breakpoints": true
     }
   ]
 }

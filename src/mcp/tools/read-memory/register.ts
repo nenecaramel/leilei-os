@@ -12,6 +12,7 @@ const memoryCategorySchema = z.enum([
   "goal",
   "project",
 ]);
+const contentAuthorSchema = z.enum(["L", "G"]);
 
 const readMemoryInputSchema = z
   .object({
@@ -39,6 +40,7 @@ const readMemoryOutputSchema = z.object({
         category: memoryCategorySchema,
         key: z.string(),
         content: z.string(),
+        author: contentAuthorSchema.nullable(),
         updated_at: z.string().datetime(),
       }),
     ),

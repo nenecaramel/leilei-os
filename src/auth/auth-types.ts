@@ -10,7 +10,7 @@ declare global {
     interface Request {
       oauthPrincipal?: AuthenticatedPrincipal;
       mcpUserId?: string;
+      webUserId?: string;
     }
   }
 }
-

@@ -6,6 +6,9 @@ import {
   type CreateDiaryInput,
   type CreateDiaryResult,
 } from "../../../domains/diary/diary-service.js";
+import { invokeMcpWrite } from "../write-context.js";
+
+const contentAuthorSchema = z.enum(["L", "G"]);
 
 const writeDiaryInputSchema = z
   .object({
@@ -33,6 +36,7 @@ const writeDiaryInputSchema = z
       .max(50)
       .optional()
       .describe("An optional concise mood label."),
+    author: contentAuthorSchema.describe("The logical content author: L or G."),
     idempotency_key: z
       .string()
       .min(16)
@@ -52,6 +56,7 @@ const writeDiaryOutputSchema = z.object({
       tags: z.array(z.string()),
       mood: z.string().nullable(),
       created_at: z.string().datetime(),
+      author: contentAuthorSchema.nullable(),
     }),
     metadata: z.object({
       created: z.boolean(),
@@ -61,7 +66,7 @@ const writeDiaryOutputSchema = z.object({
 });
 
 export interface WriteDiaryToolService {
-  createDiary(
+  createMcpDiary(
     context: AuthenticatedDiaryContext,
     input: CreateDiaryInput,
   ): Promise<CreateDiaryResult>;
@@ -91,33 +96,35 @@ export function registerWriteDiaryTool(
         openWorldHint: false,
       },
     },
-    async ({ title, content, date, tags, mood, idempotency_key }) => {
-      try {
-        const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.diaryService.createDiary(
-          { userId },
-          {
-            title,
-            content,
-            date,
-            tags,
-            mood,
-            idempotencyKey: idempotency_key,
-          },
-        );
-        const result = { success: true as const, data };
-        const message = data.metadata.idempotent_replay
-          ? "The existing diary entry was returned without creating a duplicate."
-          : "Diary entry created successfully.";
+    async ({ title, content, date, tags, mood, author, idempotency_key }) =>
+      invokeMcpWrite({
+        toolName: "write_diary",
+        getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
+        operation: async ({ userId }) => {
+          const data = await dependencies.diaryService.createMcpDiary(
+            { userId },
+            {
+              title,
+              content,
+              date,
+              tags,
+              mood,
+              author,
+              idempotencyKey: idempotency_key,
+            },
+          );
+          const result = { success: true as const, data };
+          const message = data.metadata.idempotent_replay
+            ? "The existing diary entry was returned without creating a duplicate."
+            : "Diary entry created successfully.";
 
-        return {
-          content: [{ type: "text", text: message }],
-          structuredContent: result,
-        };
-      } catch (error) {
-        return toSafeToolError(error);
-      }
-    },
+          return {
+            content: [{ type: "text", text: message }],
+            structuredContent: result,
+          };
+        },
+        mapError: toSafeToolError,
+      }),
   );
 }
 

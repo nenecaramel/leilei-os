@@ -4,8 +4,14 @@ import {
   type JWTVerifyGetKey,
   type JWTPayload,
 } from "jose";
-import type { AppConfig } from "../config/env.js";
 import type { AuthenticatedPrincipal } from "./auth-types.js";
+
+export type JwtVerifierConfig = {
+  issuer: string;
+  audience: string;
+  jwksUri: string;
+  requiredScope: string;
+};
 
 export class AccessTokenError extends Error {
   constructor(
@@ -36,15 +42,15 @@ function parseScopes(payload: JWTPayload): string[] {
 }
 
 export function createJwtVerifier(
-  config: AppConfig,
+  config: JwtVerifierConfig,
   keyResolver: JWTVerifyGetKey,
 ): AccessTokenVerifier {
   return async (token) => {
     let payload: JWTPayload;
     try {
       const verified = await jwtVerify(token, keyResolver, {
-        issuer: config.AUTH0_ISSUER,
-        audience: config.AUTH0_AUDIENCE,
+        issuer: config.issuer,
+        audience: config.audience,
         algorithms: ["RS256"],
       });
       payload = verified.payload;
@@ -60,7 +66,7 @@ export function createJwtVerifier(
     }
 
     const scopes = parseScopes(payload);
-    if (!scopes.includes(config.AUTH0_REQUIRED_SCOPE)) {
+    if (!scopes.includes(config.requiredScope)) {
       throw new AccessTokenError(
         "The access token does not grant the required scope.",
         "insufficient_scope",
@@ -75,17 +81,18 @@ export function createJwtVerifier(
 
     return {
       subject: payload.sub,
-      issuer: config.AUTH0_ISSUER,
+      issuer: config.issuer,
       audience,
       scopes,
     };
   };
 }
 
-export function createAuth0JwtVerifier(config: AppConfig): AccessTokenVerifier {
+export function createAuth0JwtVerifier(
+  config: JwtVerifierConfig,
+): AccessTokenVerifier {
   return createJwtVerifier(
     config,
-    createRemoteJWKSet(new URL(config.AUTH0_JWKS_URI)),
+    createRemoteJWKSet(new URL(config.jwksUri)),
   );
 }
-

@@ -1,0 +1,347 @@
+/* Focused mobile polish: Universe detail/edit flows + Day Space header only. */
+@media (max-width: 760px) {
+  .universe-standalone-detail-head .universe-standalone-updated {
+    order: -1;
+  }
+
+  /* Detail title remains part of the scrolling content. */
+  .universe-standalone-detail-scroll > h2 {
+    position: static;
+    top: auto;
+    margin-top: 5px;
+    padding-right: 0;
+  }
+
+  .universe-standalone-summary {
+    margin-top: 4px;
+  }
+
+  /* The accepted shell used 15px; all three action-page titles move up by 10px. */
+  .universe-standalone-editor h2,
+  .universe-standalone-connection h2 {
+    margin-top: 5px;
+  }
+
+  /*
+   * Normalize the connection card to the same bottom inset as detail/edit so
+   * all three action footers land on the same baseline.
+   */
+  .universe-standalone-connection {
+    padding-bottom: 14px !important;
+  }
+
+  /* Match create/edit/relation footer geometry and typography to the detail footer. */
+  .universe-standalone-editor-footer,
+  .universe-standalone-connection-footer {
+    display: flex !important;
+    width: 100%;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 14px !important;
+    margin: 0 !important;
+    padding: 12px 0 0 !important;
+    border-top: 0 !important;
+    background: #101119 !important;
+  }
+
+  .universe-standalone-editor-footer button,
+  .universe-standalone-connection-footer button {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 1.35 !important;
+    white-space: nowrap;
+  }
+
+  /* One literal action color across detail, create, edit, and connection pages. */
+  .universe-standalone-detail-actions button,
+  .universe-standalone-editor-footer button,
+  .universe-standalone-connection-footer button,
+  .universe-standalone-editor-footer button:disabled,
+  .universe-standalone-connection-footer button:disabled {
+    color: #7d7f8c !important;
+    opacity: 1 !important;
+  }
+
+  /*
+   * Safari focus safety, matching Memory's established rule: focused form
+   * controls keep a real/computed font size of at least 16px so iOS does not
+   * zoom the viewport. The tiny galaxy-weight field is optically scaled back
+   * while retaining a real 16px input font.
+   */
+  .universe-standalone-editor .universe-standalone-form-field input,
+  .universe-standalone-editor .universe-standalone-form-field select,
+  .universe-standalone-editor .universe-standalone-form-field textarea,
+  .universe-standalone-connection .universe-standalone-form-field select {
+    font-size: 16px !important;
+    touch-action: manipulation;
+  }
+
+  /* Match the relation form's native dark select arrow on create/edit. */
+  .universe-standalone-editor .universe-standalone-form-field select {
+    color-scheme: dark;
+  }
+
+  .universe-standalone-editor .universe-standalone-weight {
+    width: 50.666667px !important;
+    min-width: 50.666667px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    margin: 0 -12.666667px 0 0 !important;
+    padding: 0 4px 0 0 !important;
+    font-size: 16px !important;
+    text-align: right !important;
+    transform: scale(0.75);
+    transform-origin: left center;
+    touch-action: manipulation;
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  .universe-standalone-editor .universe-standalone-weight::-webkit-inner-spin-button,
+  .universe-standalone-editor .universe-standalone-weight::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  /* Mobile detail has no management overflow. Management belongs to edit. */
+  .paper-detail-paper:has(.universe-standalone-detail) .paper-detail-top-right {
+    display: none !important;
+  }
+
+  .universe-standalone-editor-heading {
+    position: relative;
+    padding-right: 34px;
+  }
+
+  .universe-standalone-editor-management {
+    position: absolute;
+    z-index: 8;
+    top: -4px;
+    right: 0;
+    display: inline-flex;
+  }
+
+  .universe-standalone-editor-management > .tertiary-button {
+    display: grid !important;
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 !important;
+    place-items: center;
+    border: 0 !important;
+    color: #7d7f8c !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 18px !important;
+    font-weight: 400 !important;
+    line-height: 1 !important;
+  }
+
+  .universe-standalone-editor-management .universe-node-paper-overflow-menu {
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 142px;
+    padding: 4px;
+    border: 1px solid #343640;
+    border-radius: 9px;
+    background: #171820;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  }
+
+  .universe-standalone-editor-management .universe-node-paper-overflow-menu button {
+    min-height: 36px;
+    padding: 7px 9px;
+    border: 0;
+    color: #b0aeb7;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.35;
+    text-align: left;
+  }
+
+  .universe-standalone-editor-management .universe-node-paper-overflow-menu button + button {
+    margin-top: 2px;
+    border-top: 1px solid #2a2c35;
+  }
+
+  /* Mutation feedback is centered against the viewport, not the title wrapper. */
+  .universe-page-heading {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+  }
+
+  .universe-page-heading .memory-page-title {
+    flex: 0 0 auto;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-header-notice {
+    position: fixed;
+    z-index: 42;
+    top: calc(50px + env(safe-area-inset-top, 0px));
+    left: 50vw;
+    width: max-content;
+    max-width: calc(100vw - 48px);
+    overflow: hidden;
+    color: #8d8d8d;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.3;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  /*
+   * Add-planet guidance is a real anchored popover again. Align its right edge
+   * with the + control so it shifts inward instead of overflowing off-screen.
+   */
+  .universe-popover-anchor {
+    overflow: visible;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover {
+    position: absolute !important;
+    z-index: 41 !important;
+    top: calc(100% + 4px) !important;
+    right: 0 !important;
+    left: auto !important;
+    width: max-content !important;
+    min-width: 188px !important;
+    max-width: calc(100vw - 32px) !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 5px !important;
+    overflow: visible !important;
+    box-sizing: border-box;
+    border: 1px solid #e7e7e7 !important;
+    border-radius: 10px !important;
+    color: #555555 !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07) !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 1.35 !important;
+    text-align: center !important;
+    white-space: normal;
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-placement-popover > span {
+    display: block;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    padding: 6px 8px;
+    color: inherit;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  /* Export uses the same 5px shell + 6px/8px text inset as placement. */
+  .universe-page:has(.universe-mobile-map) .universe-overflow-menu {
+    padding: 5px !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-overflow-menu button {
+    min-height: 0 !important;
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  /* Move-mode guidance remains a lightweight three-second status. */
+  .universe-page:has(.universe-mobile-map) .universe-map-mode-hint {
+    position: fixed !important;
+    z-index: 31 !important;
+    top: calc(64px + env(safe-area-inset-top, 0px)) !important;
+    right: auto !important;
+    left: 50vw !important;
+    width: max-content !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 48px) !important;
+    height: auto !important;
+    min-height: 0 !important;
+    gap: 8px;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: #8d8d8d !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 11px !important;
+    font-weight: 400 !important;
+    line-height: 1.3 !important;
+    text-align: center !important;
+    white-space: nowrap;
+    transform: translateX(-50%) !important;
+    animation: universe-transient-status-fade 3s ease forwards;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-map-mode-hint button {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    color: #8d8d8d;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+  }
+
+  @keyframes universe-transient-status-fade {
+    0%, 78% {
+      opacity: 1;
+      visibility: visible;
+    }
+    100% {
+      opacity: 0;
+      visibility: hidden;
+    }
+  }
+
+  /* Dragging or long-pressing planets must never select the surrounding page text. */
+  .universe-mobile-map,
+  .universe-mobile-map * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Day Space matches Memory: sticky white top bar, above all Day Space content. */
+  .app-shell:has(.day-space-page) .mobile-top-bar {
+    position: sticky !important;
+    z-index: 40 !important;
+    top: 0 !important;
+    min-height: calc(44px + env(safe-area-inset-top, 0px));
+    height: calc(44px + env(safe-area-inset-top, 0px));
+    border-bottom: 0 !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    box-shadow: 0 1px 0 #ffffff;
+    opacity: 1;
+    isolation: isolate;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

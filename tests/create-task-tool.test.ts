@@ -19,13 +19,15 @@ class MockTaskToolService {
   calls: Array<{
     context: AuthenticatedTaskContext;
     input: CreateTaskInput;
+    idempotencyKey: string;
   }> = [];
 
-  async createTask(
+  async createTaskIdempotently(
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
+    idempotencyKey: string,
   ): Promise<CreateTaskResult> {
-    this.calls.push({ context, input });
+    this.calls.push({ context, input, idempotencyKey });
 
     return {
       task: {
@@ -34,12 +36,20 @@ class MockTaskToolService {
         description: input.description,
         status: "pending",
         priority: input.priority as "low" | "normal" | "high" | "urgent",
-        due_time: "2026-07-23T08:30:00.000Z",
-        timezone: input.timezone,
+        due_time:
+          input.dueTime === null || input.dueTime === undefined
+            ? null
+            : "2026-07-23T08:30:00.000Z",
+        timezone: input.timezone ?? "Asia/Shanghai",
+        time_bucket:
+          input.dueTime === null || input.dueTime === undefined
+            ? "no_due_date"
+            : "later",
         tags: [...input.tags],
         created_at: "2026-07-22T09:00:00.000Z",
         updated_at: "2026-07-22T09:00:00.000Z",
         completed_at: null,
+        author: input.author ?? null,
       },
     };
   }
@@ -62,7 +72,7 @@ function createTestDependencies(
     },
     writeDiary: {
       diaryService: {
-        createDiary: async () => ({
+        createMcpDiary: async () => ({
           diary: {
             id: "00000000-0000-4000-8000-000000000001",
             title: "Test diary",
@@ -116,6 +126,8 @@ test("create_task calls the mock service with authenticated context", async (t) 
       timezone: "Asia/Shanghai",
       priority: "high",
       tags: ["phase4", "MCP"],
+      author: "L",
+      idempotency_key: "task-20260723-phase4",
     },
   });
 
@@ -130,13 +142,55 @@ test("create_task calls the mock service with authenticated context", async (t) 
         timezone: "Asia/Shanghai",
         priority: "high",
         tags: ["phase4", "MCP"],
+        author: "L",
       },
+      idempotencyKey: "task-20260723-phase4",
     },
   ]);
   assert.equal(
     (response.structuredContent as { data?: { task?: { status?: string } } })
       .data?.task?.status,
     "pending",
+  );
+});
+
+test("create_task accepts an omitted due time without bypassing Task Service", async (t) => {
+  const taskService = new MockTaskToolService();
+  const { client, server } = await connectTestClient(
+    createTestDependencies(taskService),
+  );
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const response = await client.callTool({
+    name: "create_task",
+    arguments: {
+      title: "开放任务",
+      description: "暂时没有截止时间。",
+        priority: "normal",
+        tags: [],
+        author: "G",
+      author: "G",
+      idempotency_key: "task-20260723-open",
+    },
+  });
+
+  assert.equal(response.isError, undefined);
+  assert.equal(taskService.calls.length, 1);
+  assert.equal(taskService.calls[0]?.input.dueTime, undefined);
+  assert.equal(
+    (response.structuredContent as {
+      data?: { task?: { due_time?: string | null; time_bucket?: string } };
+    }).data?.task?.due_time,
+    null,
+  );
+  assert.equal(
+    (response.structuredContent as {
+      data?: { task?: { time_bucket?: string } };
+    }).data?.task?.time_bucket,
+    "no_due_date",
   );
 });
 
@@ -164,7 +218,7 @@ test("create_task schema excludes identity and lifecycle fields", async (t) => {
     assert.equal(forbidden in properties, false);
   }
   assert.equal(createTask?.annotations?.readOnlyHint, false);
-  assert.equal(createTask?.annotations?.idempotentHint, false);
+  assert.equal(createTask?.annotations?.idempotentHint, true);
 });
 
 test("create_task rejects forbidden fields before calling the service", async (t) => {
@@ -186,6 +240,8 @@ test("create_task rejects forbidden fields before calling the service", async (t
       timezone: "Asia/Shanghai",
       priority: "normal",
       tags: [],
+      author: "L",
+      idempotency_key: "task-20260723-forbidden",
       user_id: "00000000-0000-4000-8000-000000000123",
       status: "completed",
       completed_at: "2026-07-22T09:00:00Z",
@@ -217,6 +273,8 @@ test("create_task fails safely without authenticated context", async (t) => {
       timezone: "Asia/Shanghai",
       priority: "normal",
       tags: [],
+      author: "L",
+      idempotency_key: "task-20260723-unauthenticated",
     },
   });
 

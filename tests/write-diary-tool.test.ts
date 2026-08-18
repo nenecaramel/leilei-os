@@ -21,7 +21,7 @@ class MockDiaryToolService {
     input: CreateDiaryInput;
   }> = [];
 
-  async createDiary(
+  async createMcpDiary(
     context: AuthenticatedDiaryContext,
     input: CreateDiaryInput,
   ): Promise<CreateDiaryResult> {
@@ -34,6 +34,7 @@ class MockDiaryToolService {
         date: input.date,
         tags: [...input.tags],
         mood: input.mood ?? null,
+        author: input.author ?? null,
         created_at: "2026-07-22T08:00:00.000Z",
       },
       metadata: {
@@ -80,7 +81,7 @@ async function connectTestClient(dependencies: ReturnType<typeof createTestDepen
   return { client, server };
 }
 
-test("tools/list includes all registered Phase 4 tools", async (t) => {
+test("tools/list includes all registered Phase 4 tools plus later read additions", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService),
@@ -93,7 +94,36 @@ test("tools/list includes all registered Phase 4 tools", async (t) => {
   const response = await client.listTools();
   assert.deepEqual(
     response.tools.map((tool) => tool.name).sort(),
-    ["create_task", "hello", "read_memory", "write_diary"],
+    [
+      "create_task",
+      "get_diary",
+      "get_local_context",
+      "get_memory",
+      "get_notion_connection",
+      "get_task",
+      "get_universe_node",
+      "get_universe_relations",
+      "get_weather_context",
+      "global_search",
+      "hello",
+      "list_tasks",
+      "list_todo_dates",
+      "query_notion_data_source",
+      "read_memory",
+      "read_notion_data_source",
+      "read_notion_database",
+      "read_notion_page",
+      "read_todo_day",
+      "search_diary",
+      "search_memory",
+      "search_notion",
+      "search_universe",
+      "toy_set",
+      "toy_stop",
+      "write_diary",
+      "write_memory",
+      "write_todo_paper",
+    ],
   );
 
   const writeDiary = response.tools.find((tool) => tool.name === "write_diary");
@@ -121,6 +151,7 @@ test("write_diary calls the mock service with authenticated context", async (t) 
       date: "2026-07-22",
       tags: ["MCP", "测试"],
       mood: "开心",
+      author: "G",
       idempotency_key: "diary-20260722-test-0001",
     },
   });
@@ -136,6 +167,7 @@ test("write_diary calls the mock service with authenticated context", async (t) 
       tags: ["MCP", "测试"],
       mood: "开心",
       idempotencyKey: "diary-20260722-test-0001",
+      author: "G",
     },
   });
   assert.deepEqual(response.structuredContent, {
@@ -147,6 +179,7 @@ test("write_diary calls the mock service with authenticated context", async (t) 
         date: "2026-07-22",
         tags: ["MCP", "测试"],
         mood: "开心",
+        author: "G",
         created_at: "2026-07-22T08:00:00.000Z",
       },
       metadata: { created: true, idempotent_replay: false },
@@ -172,6 +205,7 @@ test("write_diary rejects invalid input before calling the service", async (t) =
       date: "明天",
       tags: [],
       idempotency_key: "diary-20260722-test-0002",
+      author: "L",
       user_id: "00000000-0000-4000-8000-000000000123",
     },
   });
@@ -200,6 +234,7 @@ test("write_diary fails safely when authenticated context is unavailable", async
       date: "2026-07-22",
       tags: [],
       idempotency_key: "diary-20260722-test-0003",
+      author: "L",
     },
   });
 

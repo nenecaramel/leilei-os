@@ -1,0 +1,50 @@
+.calendar-preview-header .calendar-month-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.calendar-day-link {
+  position: relative;
+  text-decoration: none;
+}
+
+.calendar-day i.calendar-day-marker {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.58;
+  transform: translateX(-50%);
+}
+
+.calendar-status {
+  margin-top: 8px;
+  color: #777;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.calendar-status button {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+}
