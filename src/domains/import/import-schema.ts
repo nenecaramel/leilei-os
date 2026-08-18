@@ -2,25 +2,19 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ExportDocumentV2 } from "../export/export-types.js";
 import {
-  DIARY_CONTENT_MAX_LENGTH,
   DIARY_MOOD_MAX_LENGTH,
   DIARY_TAGS_MAX_COUNT,
-  DIARY_TAG_MAX_LENGTH,
   DIARY_TITLE_MAX_LENGTH,
   MAX_IMPORT_AUDIT_EVENTS_PER_TYPE,
   MAX_IMPORT_RECORDS_PER_MODULE,
-  MEMORY_CONTENT_MAX_LENGTH,
   MEMORY_KEY_MAX_LENGTH,
   MEMORY_TAGS_MAX_COUNT,
   MEMORY_TAG_MAX_LENGTH,
-  TASK_DESCRIPTION_MAX_LENGTH,
   TASK_TIMEZONE_MAX_LENGTH,
   TASK_TITLE_MAX_LENGTH,
   TASK_TAGS_MAX_COUNT,
   TASK_TAG_MAX_LENGTH,
   MAX_TODO_ENTRIES,
-  MAX_TODO_ENTRY_ID_LENGTH,
-  MAX_TODO_ENTRY_TEXT_LENGTH,
 } from "../resource-limits.js";
 
 export type ImportErrorCode =
@@ -56,13 +50,16 @@ const businessDate = z.string().refine((value) => {
 const uuid = z.string().uuid();
 const author = z.union([z.literal("L"), z.literal("G"), z.null()]);
 const boundedTags = z.array(z.string().min(1).max(MEMORY_TAG_MAX_LENGTH)).max(MEMORY_TAGS_MAX_COUNT);
-const diaryTags = z.array(z.string().min(1).max(DIARY_TAG_MAX_LENGTH)).max(DIARY_TAGS_MAX_COUNT);
+// Restore accepts the full DB text payload for unbounded text[]/text columns.
+// The raw package limit remains the outer resource bound so historical exports
+// are not narrowed to today's live-write limits.
+const diaryTags = z.array(z.string().min(1)).max(DIARY_TAGS_MAX_COUNT);
 
 const memoryRecord = z.object({
   id: uuid,
   category: z.enum(["profile", "preference", "goal", "project"]),
   key: z.string().min(1).max(MEMORY_KEY_MAX_LENGTH),
-  content: z.string().min(1).max(MEMORY_CONTENT_MAX_LENGTH),
+  content: z.string().min(1),
   tags: boundedTags,
   visibility: z.enum(["assistant", "private", "restricted"]),
   source: z.string().min(1).max(100),
@@ -76,7 +73,7 @@ const memoryRecord = z.object({
 const diaryRecord = z.object({
   id: uuid,
   title: z.string().min(1).max(DIARY_TITLE_MAX_LENGTH),
-  content: z.string().min(1).max(DIARY_CONTENT_MAX_LENGTH),
+  content: z.string().min(1),
   date: businessDate,
   tags: diaryTags,
   mood: z.string().max(DIARY_MOOD_MAX_LENGTH).nullable(),
@@ -90,7 +87,7 @@ const diaryRecord = z.object({
 const taskRecord = z.object({
   id: uuid,
   title: z.string().min(1).max(TASK_TITLE_MAX_LENGTH),
-  description: z.string().min(1).max(TASK_DESCRIPTION_MAX_LENGTH),
+  description: z.string().min(1),
   status: z.enum(["pending", "in_progress", "completed", "cancelled"]),
   resume_status: z.enum(["pending", "in_progress", "completed", "cancelled"]).nullable(),
   lifecycle_status: z.enum(["active", "archived"]),
@@ -105,9 +102,9 @@ const taskRecord = z.object({
 }).strict();
 
 const todoEntry = z.object({
-  id: z.string().min(1).max(MAX_TODO_ENTRY_ID_LENGTH),
+  id: z.string().min(1),
   kind: z.enum(["pending", "completed", "record"]),
-  text: z.string().min(1).max(MAX_TODO_ENTRY_TEXT_LENGTH),
+  text: z.string().min(1),
 }).strict();
 
 const todoPaper = z.object({
