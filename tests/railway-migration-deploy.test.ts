@@ -100,3 +100,19 @@ test("migration readiness does not wrap or retry the existing transactions", () 
   assert.ok(readiness < firstTransaction);
   assert.doesNotMatch(source.slice(firstTransaction), /waitForMigrationDatabaseReady/);
 });
+
+test("migration failure logs expose only a controlled stage and safe error fingerprint", () => {
+  const source = readRepoFile("src/database/migrate.ts");
+
+  assert.match(source, /let migrationStage =/);
+  assert.match(source, /function safeErrorName\(/);
+  assert.match(source, /function safeErrorCode\(/);
+  assert.match(
+    source,
+    /Database migration failed\. stage=\$\{migrationStage\} name=\$\{safeErrorName\(error\)\} code=\$\{safeErrorCode\(error\)\}/,
+  );
+  assert.doesNotMatch(source, /console\.error\(error/);
+  assert.doesNotMatch(source, /error\.message/);
+  assert.doesNotMatch(source, /error\.stack/);
+  assert.doesNotMatch(source, /DATABASE_URL[^\n]*console\.error/);
+});
