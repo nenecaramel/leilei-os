@@ -19,7 +19,12 @@ Confirmed:
 - The currently injected database endpoint is a Railway public connection
   endpoint, not a `railway.internal` private endpoint.
 - The application uses `postgres` through Drizzle ORM and requires TLS.
-- Drizzle migrations live in `drizzle/` and run with `npm run db:migrate`.
+- Checked-in migrations live in `drizzle/`. Manual disposable/local migration
+  checks use `pnpm db:migrate`; Railway production uses the compiled
+  pre-deploy runner `node dist/database/migrate.js` instead.
+- The Railway runner records the accepted head in
+  `public.leilei_schema_migrations` and validates the legacy
+  `drizzle.__drizzle_migrations` ledger during first bootstrap.
 - Auth0 subjects are not stored in a dedicated database table. The allowed
   Auth0 subject maps server-side to `MCP_USER_ID`, which must exist in
   `users.id`.

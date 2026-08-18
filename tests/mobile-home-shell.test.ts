@@ -68,6 +68,20 @@ function installDom() {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 100));
 
+async function waitForCondition(
+  predicate: () => boolean,
+  description: string,
+  timeoutMs = 2000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${description}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 test("Home Todo preview uses canonical Todo entries without runtime fixtures", () => {
   const entryShape = (entry: TodoEntry) => {
     assert.ok(entry.id);
@@ -127,7 +141,20 @@ test("Home renders compact L/G Todo panels and performs real Calendar discovery"
       return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map((entry) => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map((entry) => ({ ...entry })) } } } };
     } },
   })));
-  await waitForPaint();
+  await waitForCondition(
+    () => {
+      const panels = [...container.querySelectorAll<HTMLElement>(".today-panel")];
+      return (
+        container.querySelector("h1")?.textContent === "Todo" &&
+        panels.length === 2 &&
+        panels.every((panel) => panel.querySelectorAll(".today-note").length >= 4) &&
+        container.querySelectorAll(".calendar-day").length === 42 &&
+        requests.includes("/todo/dates") &&
+        requests.includes("/diary/dates")
+      );
+    },
+    "Home Todo panels and Calendar discovery",
+  );
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
   assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
   const todoPanels = [...container.querySelectorAll<HTMLElement>(".today-panel")];

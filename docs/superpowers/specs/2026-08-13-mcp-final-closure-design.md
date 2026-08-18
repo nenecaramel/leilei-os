@@ -1,5 +1,9 @@
 # MCP Final Closure Design
 
+> Historical/superseded package. The Todo MCP closure described here is
+> already represented in the current `main` tree; its old branch, migration
+> checkpoint, and tool-count assertions are implementation history only.
+
 Date: 2026-08-13
 Base: `codex/phase-6-web-ui-foundation` at `e544e9647a26222263ef3bb00d72f319a428a384`
 Implementation branch: `feat/mcp-final-closure`
