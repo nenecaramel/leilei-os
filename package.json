@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A remote MCP server for validating ChatGPT Developer Mode connectivity.",
+  "description": "Authenticated Leilei OS personal workspace API and Streamable HTTP MCP server.",
   "engines": {
     "node": ">=20"
   },
