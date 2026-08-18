@@ -8,6 +8,7 @@ on:
       - fix/notion-write-runtime-smoke
       - codex/notion-explicit-write-8-6-2
       - codex/phase-8-6-2-verifier-hotfix
+      - codex/phase-7-6a-pwa-reintegration
 
 jobs:
   verify:
