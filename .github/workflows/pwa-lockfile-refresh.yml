@@ -1,0 +1,32 @@
+name: Refresh PWA web lockfile
+
+on:
+  push:
+    branches:
+      - codex/phase-7-6a-pwa-reintegration
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Refresh web package lock only
+        run: cd web && npm install --package-lock-only --ignore-scripts
+      - name: Commit refreshed lockfile when needed
+        shell: bash
+        run: |
+          if git diff --quiet -- web/package-lock.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/package-lock.json
+          git commit -m "chore: refresh PWA web lockfile"
+          git push
