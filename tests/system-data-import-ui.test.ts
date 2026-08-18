@@ -3,10 +3,8 @@ import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
-import {
-  WebApiError,
-  type WebApiClient,
-} from "../web/src/api/useWebApiClient.js";
+import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
+import { WebApiError } from "../web/src/api/web-api-error.js";
 import { SystemDataPageContent } from "../web/src/pages/SystemDataPageContent.js";
 
 function installDom(url: string) {
