@@ -1,34 +1,68 @@
 # Leilei OS
 
-Leilei OS is a personal assistant service that gives an authenticated Web app
-and ChatGPT MCP access to persistent personal data. The original Phase 1
-connectivity probe is historical; the repository now contains the working
-Memory, Diary, and Task product.
+Leilei OS is an authenticated personal workspace: a React Web app, a
+PostgreSQL-backed API, and an OAuth-protected Streamable HTTP MCP server. The
+current integration trunk is `codex/phase-6-web-ui-foundation`; see
+[`docs/branch-release-policy.md`](docs/branch-release-policy.md) for the
+relationship between that branch and `main`.
 
 ## Current product status
 
-The current implementation includes:
+The current codebase contains the following working areas:
 
-- a React Web UI protected by Auth0;
-- PostgreSQL-backed Memory, Diary, Task, Settings, and Dashboard data;
-- an OAuth-protected remote MCP endpoint using Streamable HTTP;
-- MCP read capabilities including `read_memory`, local-time context, and
-  weather context;
-- MCP writes for creating diary entries and tasks.
+- **Memory, Diary, and Task** — PostgreSQL-backed personal records with
+  filtering, search, editing, lifecycle actions, and server-side ownership.
+- **Dashboard and Day Space** — authenticated home and date-scoped Todo/Diary
+  views backed by the real APIs.
+- **Todo** — durable daily papers, revisions, status-aware entries, and
+  legacy-data migration support.
+- **Universe** — spatial Universe nodes, weighted galaxy memberships,
+  relations, revisions, backups, import/export, and Global Search integration.
+- **Global Search** — authenticated cross-module search for Memory, Diary, Task,
+  and Universe with cursor pagination and deep links.
+- **System** — account, connections, activity, data export/import, and about
+  pages.
+- **Notion integration** — server-side read access plus explicit, verified
+  page/comment writes through the MCP surface.
+- **PWA runtime** — Vite PWA manifest/assets, service-worker registration,
+  prompt-based updates, and online/update status UI. The backend remains the
+  source of truth for persisted application data.
 
-Chat Archive and Universe remain visible placeholders in the Web information
-architecture. They are not implemented product modules.
+The current database migration head is
+`0023_faulty_sphinx` (see `drizzle/meta/_journal.json`). The migration chain
+must be reviewed before any production database change.
 
-## Implemented modules
+## Web application
 
-- **Memory** — create, read, edit, archive, search, category and tag filters,
-  detail views, and read-only creation-source display.
-- **Diary** — create, read, edit, search, tag, mood, and date filters.
-- **Task** — create, read, edit, search, filtering, controlled status
-  transitions, optional due times, and account-timezone handling.
-- **Web** — authenticated Dashboard, Memory, Diary, Task, and Settings pages.
-- **MCP** — authenticated tools for reading Memory and context, plus the
-  implemented Diary and Task creation tools.
+The Web app is protected by Auth0 and includes Dashboard, Day Space, Memory,
+Diary, Task, Todo, Universe, Global Search, and System routes. It reads and
+writes through the authenticated `/api/v1` service; it is no longer a static
+page-shell-only foundation.
+
+## MCP and Notion capabilities
+
+The public MCP endpoint uses Auth0 and Streamable HTTP. The registered tools
+cover:
+
+- local context, weather, Memory, Diary, Task, Todo, Toy, and Global Search;
+- Universe search, node reads, and relation reads;
+- Notion connection discovery, page/database/data-source reads, and safe
+  parameterized data-source queries;
+- explicit `write_notion_page` and `write_notion_comment` operations, each
+  using fresh-read and readback verification. Destructive Notion delete/archive
+  operations are not exposed.
+
+MCP and Web clients never select a database user ID. Authenticated ownership is
+resolved server-side, and Notion credentials remain in server environment
+configuration only.
+
+## HTTP API surfaces
+
+In addition to `/health`, `/mcp`, and optional `/internal/mcp`, the authenticated
+Web API exposes `/api/v1` routes for:
+
+`/memory`, `/diary`, `/task`, `/health`, `/toy`, `/system`, `/todo`, `/search`,
+`/system/export`, `/system/import`, and `/universe`.
 
 ## Architecture
 

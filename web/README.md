@@ -1,7 +1,20 @@
 # Leilei OS Web
 
-Phase 6 的独立 Web 管理端基础架构。当前只包含 Auth0 登录、Dashboard
-布局、导航和业务页面空壳，不读取或修改 Leilei OS 数据。
+Leilei OS 的 Auth0 保护 React Web 应用。它通过已认证的 `/api/v1` API
+读取和修改用户数据，不是只展示页面壳的静态原型。
+
+## 当前功能
+
+- Dashboard 与 Day Space：真实 Todo/Diary 数据和日期导航；
+- Memory、Diary、Task：列表、筛选、编辑、详情和生命周期操作；
+- Todo：每日纸张、版本、条目编辑与状态操作；
+- Universe：空间画布、节点/关系、加权星系、导入导出与搜索深链；
+- Global Search：Memory、Diary、Task、Universe 的服务端搜索；
+- System：账户、连接、Activity、数据导出/导入和关于页面；
+- PWA：安装清单、service worker 更新提示以及在线/离线状态提示。
+
+后端服务仍是持久化数据的权威来源；Web 不使用本地 IndexedDB 或隐式双写来替代
+服务端数据。
 
 ## 本地运行
 
