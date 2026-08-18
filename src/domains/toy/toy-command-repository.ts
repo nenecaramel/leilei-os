@@ -309,6 +309,7 @@ export class DrizzleToyCommandRepository implements ToyCommandRepository {
             .select({ status: users.status })
             .from(users)
             .where(eq(users.id, candidate))
+            .for("share")
             .limit(1);
           return user ?? null;
         },

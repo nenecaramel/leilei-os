@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { toyCommands } from "../src/database/schema.js";
 import { DrizzleToyCommandRepository } from "../src/domains/toy/toy-command-repository.js";
+import { ActiveUserAuthorizationError } from "../src/domains/require-active-user.js";
 
 const RUN_INTEGRATION =
   process.env.RUN_TOY_DATABASE_INTEGRATION_TEST === "1" &&
@@ -29,7 +30,8 @@ test(
           ('pending', 'claimed', 'completed', 'failed', 'expired');
         CREATE TABLE "${schemaName}".users (
           id uuid PRIMARY KEY,
-          email varchar(320) NOT NULL UNIQUE
+          email varchar(320) NOT NULL UNIQUE,
+          status varchar(16) NOT NULL DEFAULT 'active'
         );
         CREATE TABLE "${schemaName}".toy_commands (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -378,6 +380,39 @@ test(
           (await dbA.select().from(toyCommands)).find(({ id }) => id === expiredId)?.status,
           "expired",
         );
+
+        let releaseUserLock!: () => void;
+        let userLockAcquired!: () => void;
+        const userLockRelease = new Promise<void>((resolve) => { releaseUserLock = resolve; });
+        const userLockReady = new Promise<void>((resolve) => { userLockAcquired = resolve; });
+        const heldUserLock = lockClient.begin(async (transaction) => {
+          await transaction`
+            SELECT id
+            FROM users
+            WHERE id = ${owner}::uuid
+            FOR UPDATE
+          `;
+          userLockAcquired();
+          await userLockRelease;
+        });
+        await userLockReady;
+        let createSettled = false;
+        const blockedCreate = repositoryA.create(owner, { action: "stop" }).finally(() => {
+          createSettled = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.equal(createSettled, false);
+        releaseUserLock();
+        await heldUserLock;
+        await blockedCreate;
+
+        await clientA`UPDATE users SET status = 'disabled' WHERE id = ${owner}::uuid`;
+        const commandCountBeforeDisabledAttempt = (await dbA.select().from(toyCommands)).length;
+        await assert.rejects(
+          repositoryA.create(owner, { action: "stop" }),
+          (error: unknown) => error instanceof ActiveUserAuthorizationError && error.code === "USER_DISABLED",
+        );
+        assert.equal((await dbA.select().from(toyCommands)).length, commandCountBeforeDisabledAttempt);
       } finally {
         await Promise.all([clientA.end(), clientB.end(), lockClient.end()]);
       }

@@ -142,6 +142,16 @@ test("explicit Notion writes authorize the active user before provider mutation"
     arguments: { action: "update", page_id: PAGE_ID, body: { properties: {} } },
   });
   assert.equal(blocked.isError, true);
+
+  const commentBlocked = await connection.client.callTool({
+    name: "write_notion_comment",
+    arguments: {
+      action: "create",
+      page_id: PAGE_ID,
+      body: { rich_text: [{ type: "text", text: { content: "Blocked" } }] },
+    },
+  });
+  assert.equal(commentBlocked.isError, true);
   assert.equal(providerCalls, 0);
 });
 
