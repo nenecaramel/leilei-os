@@ -1,5 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, type PropsWithChildren } from "react";
+import { isStandaloneWebApp } from "./is-standalone-web-app";
 import { syncThemeColorMeta } from "./theme-color";
 
 export function ProtectedApp({
@@ -9,6 +10,7 @@ export function ProtectedApp({
     error,
     isAuthenticated,
     isLoading,
+    loginWithPopup,
     loginWithRedirect,
   } = useAuth0();
 
@@ -42,6 +44,13 @@ export function ProtectedApp({
     };
   }, [authSurfaceVisible]);
 
+  const login = () => {
+    if (isStandaloneWebApp()) {
+      return loginWithPopup().catch(() => loginWithRedirect());
+    }
+    return loginWithRedirect();
+  };
+
   if (isLoading) {
     return (
       <main className="auth-screen auth-screen-loading">
@@ -66,9 +75,7 @@ export function ProtectedApp({
           <button
             className="auth-text-action"
             type="button"
-            onClick={() =>
-              loginWithRedirect()
-            }
+            onClick={() => void login()}
           >
             重新登录
           </button>
@@ -89,9 +96,7 @@ export function ProtectedApp({
           <button
             className="auth-text-action"
             type="button"
-            onClick={() =>
-              loginWithRedirect()
-            }
+            onClick={() => void login()}
           >
             使用 Auth0 登录
           </button>

@@ -4,6 +4,8 @@ import React, {
 } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { Outlet } from "react-router-dom";
+import { PwaStatus } from "../pwa/PwaStatus";
+import { pwaStateStore } from "../pwa/pwa-runtime-state";
 import { useWebApiClient } from "../api/useWebApiClient";
 import { MobileNavigationDrawer } from "./MobileNavigationDrawer";
 import { MobileTopBar } from "./MobileTopBar";
@@ -41,6 +43,7 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
+      <PwaStatus store={pwaStateStore} />
       <RouteScrollManager />
 
       <MobileTopBar
