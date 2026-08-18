@@ -1,12 +1,13 @@
 import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { toyCommands } from "../../database/schema.js";
+import { toyCommands, users } from "../../database/schema.js";
 import type {
   ToyAckInput,
   ToyCommandRecord,
   ToyCreateInput,
 } from "./toy-command-types.js";
 import { TOY_DEFAULT_DURATION_SECONDS } from "./toy-command-types.js";
+import { requireActiveUser } from "../require-active-user.js";
 import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
@@ -40,6 +41,7 @@ export type ToyIdempotentCreateResult =
   | { outcome: "conflict" };
 
 export interface ToyCommandRepository {
+  findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   create(userId: string, input: ToyCreateInput): Promise<ToyCommandRecord>;
   createIdempotently?(
     userId: string,
@@ -56,9 +58,20 @@ export interface ToyCommandRepository {
 export class DrizzleToyCommandRepository implements ToyCommandRepository {
   constructor(private readonly db: Database) {}
 
+  async findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null> {
+    const [user] = await this.db
+      .select({ status: users.status })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ?? null;
+  }
+
   async create(userId: string, input: ToyCreateInput): Promise<ToyCommandRecord> {
     return this.db.transaction((transaction) =>
-      this.createInTransaction(transaction, userId, input),
+      this.withActiveUser(transaction, userId, () =>
+        this.createInTransaction(transaction, userId, input),
+      ),
     );
   }
 
@@ -71,6 +84,7 @@ export class DrizzleToyCommandRepository implements ToyCommandRepository {
     },
   ): Promise<ToyIdempotentCreateResult> {
     return this.db.transaction(async (transaction) => {
+      await this.requireActiveUserInTransaction(transaction, userId);
       const idempotency = await lockAndReadMcpIdempotency(transaction, {
         userId,
         toolName: input.toolName,
@@ -164,6 +178,7 @@ export class DrizzleToyCommandRepository implements ToyCommandRepository {
 
   async claim(userId: string): Promise<ToyCommandRecord | null> {
     return this.db.transaction(async (transaction) => {
+      await this.requireActiveUserInTransaction(transaction, userId);
       await this.expireElapsed(transaction, userId);
 
       const result = await transaction.execute(sql`
@@ -201,6 +216,7 @@ export class DrizzleToyCommandRepository implements ToyCommandRepository {
     input: ToyAckInput,
   ): Promise<ToyAckRepositoryResult> {
     return this.db.transaction(async (transaction) => {
+      await this.requireActiveUserInTransaction(transaction, userId);
       const locked = await transaction.execute(sql`
         SELECT *, expires_at <= now() AS is_expired
         FROM toy_commands
@@ -271,6 +287,35 @@ export class DrizzleToyCommandRepository implements ToyCommandRepository {
           sql`${toyCommands.expiresAt} <= now()`,
         ),
       );
+  }
+
+  private async withActiveUser<T>(
+    transaction: Transaction,
+    userId: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    await this.requireActiveUserInTransaction(transaction, userId);
+    return work();
+  }
+
+  private async requireActiveUserInTransaction(
+    transaction: Transaction,
+    userId: string,
+  ): Promise<void> {
+    await requireActiveUser(
+      {
+        findUserById: async (candidate) => {
+          const [user] = await transaction
+            .select({ status: users.status })
+            .from(users)
+            .where(eq(users.id, candidate))
+            .for("share")
+            .limit(1);
+          return user ?? null;
+        },
+      },
+      userId,
+    );
   }
 }
 

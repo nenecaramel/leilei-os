@@ -21,6 +21,10 @@ import {
   notionPageParentSchema,
   notionPageUpdateBodySchema,
 } from "../../domains/notion/notion-explicit-write-schema.js";
+import {
+  authorizeNotionUser,
+  isActiveUserAuthorizationError,
+} from "./notion-authorization.js";
 
 export type NotionExplicitWriteServiceContract = {
   createPage(body: Record<string, unknown>): Promise<NotionExplicitWriteResult>;
@@ -37,6 +41,7 @@ export type NotionExplicitWriteServiceContract = {
 export type NotionExplicitWriteToolsDependencies = {
   notionService: NotionExplicitWriteServiceContract;
   getAuthenticatedUserId: () => string;
+  requireActiveUser?: () => Promise<string>;
 };
 
 const pageInputSchema = z.object({
@@ -98,6 +103,9 @@ function invalidActionInput(toolName: string) {
 }
 
 function handleWriteError(error: unknown) {
+  if (isActiveUserAuthorizationError(error)) {
+    return notionAuthErrorResult();
+  }
   if (error instanceof NotionWriteAuthenticationError) return notionAuthErrorResult();
   if (error instanceof NotionExplicitWriteError) return explicitWriteErrorResult(error);
   return notionErrorResult(error);
@@ -132,12 +140,12 @@ export function registerNotionExplicitWriteTools(
           const body = actionArgs.parent
             ? { ...actionArgs.body, parent: actionArgs.parent }
             : actionArgs.body;
-          dependencies.getAuthenticatedUserId();
+          await authorizeNotionUser(dependencies);
           const result = await dependencies.notionService.createPage(body);
           return notionSuccess(result, `Created and verified Notion page ${result.target_id}.`);
         }
 
-        dependencies.getAuthenticatedUserId();
+        await authorizeNotionUser(dependencies);
 
         if (actionArgs.action === "update") {
           const result = await dependencies.notionService.updatePage(actionArgs.page_id, actionArgs.body);
@@ -172,7 +180,7 @@ export function registerNotionExplicitWriteTools(
         if (args.action === "reply" && !args.discussion_id) {
           return invalidActionInput("write_notion_comment");
         }
-        dependencies.getAuthenticatedUserId();
+        await authorizeNotionUser(dependencies);
 
         if (args.action === "create") {
           const result = await dependencies.notionService.createComment(args.page_id, args.body);
@@ -202,6 +210,7 @@ function getProductionService(): NotionExplicitWriteService {
 export function registerProductionNotionExplicitWriteTools(
   server: McpServer,
   authenticatedUserId: string | undefined,
+  requireActiveUser?: () => Promise<string>,
 ): void {
   registerNotionExplicitWriteTools(server, {
     notionService: getProductionService(),
@@ -209,5 +218,6 @@ export function registerProductionNotionExplicitWriteTools(
       if (!authenticatedUserId) throw new NotionWriteAuthenticationError();
       return authenticatedUserId;
     },
+    requireActiveUser,
   });
 }

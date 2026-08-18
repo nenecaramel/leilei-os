@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { NotionDataSourceResult, NotionIntegration } from "../../../domains/notion/notion-read-integration.js";
-import { readOnlyNotionAnnotations, safeNotionAdvancedError } from "../notion-advanced/shared.js";
+import { authorizeNotionUser, readOnlyNotionAnnotations, safeNotionAdvancedError, type NotionUserAuthorizationDependencies } from "../notion-advanced/shared.js";
 
 const idSchema = z.string().trim().refine((value) => /^[0-9a-f]{32}$/i.test(value.replaceAll("-", "")), "Notion IDs must be UUIDs.");
 const outputSchema = z.object({
@@ -17,9 +17,8 @@ const outputSchema = z.object({
   }).strict(),
 }).strict();
 
-export type ReadNotionDataSourceToolDependencies = {
+export type ReadNotionDataSourceToolDependencies = NotionUserAuthorizationDependencies & {
   notionIntegration: Pick<NotionIntegration, "readDataSource">;
-  getAuthenticatedUserId: () => string;
 };
 
 export function registerReadNotionDataSourceTool(server: McpServer, dependencies: ReadNotionDataSourceToolDependencies): void {
@@ -31,7 +30,7 @@ export function registerReadNotionDataSourceTool(server: McpServer, dependencies
     annotations: readOnlyNotionAnnotations,
   }, async ({ data_source_id }) => {
     try {
-      dependencies.getAuthenticatedUserId();
+      await authorizeNotionUser(dependencies);
       const data: NotionDataSourceResult = await dependencies.notionIntegration.readDataSource(data_source_id);
       return { content: [{ type: "text" as const, text: "Notion data source retrieved." }], structuredContent: { success: true as const, data } };
     } catch (error) {

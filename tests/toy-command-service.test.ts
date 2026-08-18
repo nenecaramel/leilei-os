@@ -27,6 +27,10 @@ class FakeRepository implements ToyCommandRepository {
   ackCalls: Array<{ userId: string; id: string; input: ToyAckInput }> = [];
   ackResult: ToyAckRepositoryResult = { kind: "not_found" };
 
+  async findUserById() {
+    return { status: "active" as const };
+  }
+
   async create(userId: string, input: ToyCreateInput) {
     this.creates.push({ userId, input });
     return record({ userId, action: input.action, percent: input.action === "set" ? input.percent : null });

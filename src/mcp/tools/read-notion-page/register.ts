@@ -5,6 +5,11 @@ import {
   type NotionPageReadResult,
 } from "../../../domains/notion/notion-read-client.js";
 import { parseNotionPageReference } from "../../../domains/notion/notion-read-integration.js";
+import {
+  authorizeNotionUser,
+  isActiveUserAuthorizationError,
+  type NotionUserAuthorizationDependencies,
+} from "../../server/notion-authorization.js";
 
 const inputSchema = z.object({
   page_id: z.string().trim().optional(),
@@ -35,11 +40,10 @@ const outputSchema = z.object({
   }).strict(),
 }).strict();
 
-export type ReadNotionPageToolDependencies = {
+export type ReadNotionPageToolDependencies = NotionUserAuthorizationDependencies & {
   notionService: {
     readPage(pageId: string): Promise<NotionPageReadResult>;
   };
-  getAuthenticatedUserId: () => string;
 };
 
 export function registerReadNotionPageTool(
@@ -59,7 +63,7 @@ export function registerReadNotionPageTool(
     },
   }, async (args) => {
     try {
-      dependencies.getAuthenticatedUserId();
+      await authorizeNotionUser(dependencies);
       const pageId = parseNotionPageReference(args.page_id ?? args.page_url ?? "");
       const data = await dependencies.notionService.readPage(pageId);
       const structuredData = {
@@ -81,7 +85,7 @@ export function registerReadNotionPageTool(
         structuredContent: { success: true as const, data: structuredData },
       };
     } catch (error) {
-      if (error instanceof ReadNotionPageAuthenticationError) {
+      if (error instanceof ReadNotionPageAuthenticationError || isActiveUserAuthorizationError(error)) {
         return {
           isError: true as const,
           content: [{

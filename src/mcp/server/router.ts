@@ -3,7 +3,10 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { createMcpServer } from "./create-server.js";
+import {
+  createMcpServer,
+  createProductionActiveUserAuthorizer,
+} from "./create-server.js";
 import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
 
 type ActiveSession = {
@@ -48,8 +51,14 @@ export function createMcpRouter(): Router {
       }
 
       if (!activeSession && isInitializeRequest(request.body)) {
-        const server = createMcpServer({}, userId);
-        registerProductionNotionExplicitWriteTools(server, userId);
+        const activeUserAuthorization =
+          createProductionActiveUserAuthorizer(userId);
+        const server = createMcpServer({ activeUserAuthorization }, userId);
+        registerProductionNotionExplicitWriteTools(
+          server,
+          userId,
+          activeUserAuthorization,
+        );
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (initializedSessionId) => {
