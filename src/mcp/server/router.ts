@@ -100,40 +100,43 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
         }
         // Retention cleanup is best-effort and must never delay initialize.
         void options.onInitialize?.();
-        const activeUserAuthorization =
-          createProductionActiveUserAuthorizer(userId);
-        const server = createMcpServer({ activeUserAuthorization }, userId);
-        registerProductionNotionExplicitWriteTools(
-          server,
-          userId,
-          activeUserAuthorization,
-        );
         let initializedRecord: McpSessionRecord | null = null;
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (initializedSessionId) => {
-            initializedRecord = registry.commit(reservation, {
-              sessionId: initializedSessionId,
-              server,
-              transport,
-              userId,
-              namespace,
-              inFlightCount: 1,
-            });
-          },
-        });
-
-        transport.onclose = () => {
-          if (!reservation.committed) registry.release(reservation);
-          else registry.handleTransportClose(transport);
-        };
-
+        let transport: StreamableHTTPServerTransport | null = null;
         try {
+          const activeUserAuthorization =
+            createProductionActiveUserAuthorizer(userId);
+          const server = createMcpServer({ activeUserAuthorization }, userId);
+          registerProductionNotionExplicitWriteTools(
+            server,
+            userId,
+            activeUserAuthorization,
+          );
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (initializedSessionId) => {
+              initializedRecord = registry.commit(reservation, {
+                sessionId: initializedSessionId,
+                server,
+                transport: transport!,
+                userId,
+                namespace,
+                inFlightCount: 1,
+              });
+            },
+          });
+
+          transport.onclose = () => {
+            if (!reservation.committed) registry.release(reservation);
+            else registry.handleTransportClose(transport!);
+          };
           await server.connect(transport);
           await transport.handleRequest(request, response, request.body);
         } finally {
           if (initializedRecord) registry.finishRequest(initializedRecord);
-          if (!reservation.committed) registry.release(reservation);
+          if (!reservation.committed) {
+            registry.release(reservation);
+            if (transport) await transport.close().catch(() => undefined);
+          }
         }
         return;
       }
