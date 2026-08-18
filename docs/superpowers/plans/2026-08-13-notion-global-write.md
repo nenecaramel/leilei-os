@@ -2,6 +2,11 @@
 
 **Goal:** Extend LeileiOS from Notion global read-only access to the current Notion API `2026-03-11` write surface exposed to the configured PAT, with no LeileiOS-side confirmation gate.
 
+> Historical/superseded plan. The implementation described here is now on
+> `main`; the original feature branch `feat/notion-global-write` is retired.
+> This file is retained for provenance and is not a current deployment or
+> release procedure.
+
 **Architecture:** Preserve `search_notion` and `read_notion_page`; share one server-side Notion transport; add focused page/block, structure, comment, file-upload, and meeting-note clients; register eight explicit authenticated write tools on production MCP sessions.
 
 **Constraints:** `NOTION_PAT` stays server-only. No page allowlist, raw HTTP passthrough, synthetic `confirm=true`, migration, PWA change, or automatic retry of non-idempotent writes.
@@ -65,11 +70,11 @@ Public schemas expose neither PAT/token, user identity, arbitrary endpoint URLs,
 - [x] `git diff --check`.
 - [x] Compare feature branch against production and confirm no migration/PWA/unrelated product-code changes.
 
-### Task 8: Production and disposable live smoke
+### Task 8: Production and disposable live smoke (historical record)
 
-- [ ] Fast-forward `feat/notion-global-write` to `codex/phase-6-web-ui-foundation` with `force:false` only after the complete verification gate is green.
-- [ ] Wait for Railway and Vercel success.
-- [ ] Through a fresh authenticated LeileiOS MCP session, create a disposable page, update title/content, append/update a block, trash/restore, and read back.
-- [ ] Exercise disposable database/data-source/view/comment/file-upload paths where the workspace permits them.
-- [ ] Exercise Meeting Note creation only with a disposable supported source; if Notion blocks it by workspace/plan capability, record that upstream limitation rather than treating it as a LeileiOS failure.
-- [ ] Clean up disposable content and record exact production SHA/status evidence.
+- [x] Historical release and disposable smoke steps were completed for the
+  implementation that landed on `main`; no operation should be run against
+  the retired feature branch.
+- [x] Historical capability-gated limitations and production evidence were
+  recorded with the implementation review; consult current deployment
+  records before any new smoke test.

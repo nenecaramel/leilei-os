@@ -2,7 +2,11 @@
 
 Date: 2026-08-10
 
-Design branch: `docs/day-space-real-data-design`
+Design branch (retired): `docs/day-space-real-data-design`
+Historical branch tip: `2da38e1c6c787f4efbb8f201d86a89874f658599`
+
+This is historical design provenance only. The branch is retired; the
+implementation and operational truth live on the current `main` trunk.
 
 Pre-A/B UI reference baseline: `codex/phase-6-web-ui-foundation` at `0c2e70de174527c650c4974b917072995968e6d6`
 

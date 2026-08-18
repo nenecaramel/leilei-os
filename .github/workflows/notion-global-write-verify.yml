@@ -3,12 +3,24 @@ name: Notion global write verification
 on:
   push:
     branches:
-      - feat/notion-global-write
-      - fix/notion-write-input-schema
-      - fix/notion-write-runtime-smoke
-      - codex/notion-explicit-write-8-6-2
-      - codex/phase-8-6-2-verifier-hotfix
-      - codex/phase-7-6a-pwa-reintegration
+      - main
+    paths:
+      - src/domains/notion/**
+      - src/mcp/server/register-notion-writes.ts
+      - src/mcp/tools/**
+      - tests/notion-*.test.ts
+      - tests/mcp-read-contract.test.ts
+      - .github/workflows/notion-global-write-verify.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - src/domains/notion/**
+      - src/mcp/server/register-notion-writes.ts
+      - src/mcp/tools/**
+      - tests/notion-*.test.ts
+      - tests/mcp-read-contract.test.ts
+      - .github/workflows/notion-global-write-verify.yml
 
 jobs:
   verify:
