@@ -1,9 +1,8 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   coreMemories,
   diaryEntries,
-  mcpWriteIdempotency,
   resourceLifecycleEvents,
   tasks,
   todoEntries,
@@ -11,6 +10,7 @@ import {
   toolCalls,
   users,
 } from "../../database/schema.js";
+import { MCP_WRITE_TOOL_NAMES } from "../../mcp/tools/write-context.js";
 import type { ExportRepository } from "./export-service.js";
 import type {
   ExportDiaryRecord,
@@ -124,12 +124,12 @@ export class DrizzleExportRepository implements ExportRepository {
       id: toolCalls.id, toolName: toolCalls.toolName, operation: toolCalls.operation,
       resourceType: toolCalls.resourceType, resourceId: toolCalls.resourceId,
       status: toolCalls.status, errorCode: toolCalls.errorCode, createdAt: toolCalls.createdAt,
-    }).from(toolCalls).innerJoin(mcpWriteIdempotency, and(
-      eq(mcpWriteIdempotency.userId, toolCalls.userId), eq(mcpWriteIdempotency.toolName, toolCalls.toolName),
-      eq(mcpWriteIdempotency.resourceType, toolCalls.resourceType),
-      eq(mcpWriteIdempotency.idempotencyKey, toolCalls.idempotencyKey),
-      eq(mcpWriteIdempotency.resourceId, toolCalls.resourceId),
-    )).where(eq(toolCalls.userId, userId))
+    }).from(toolCalls).where(and(
+      eq(toolCalls.userId, userId),
+      inArray(toolCalls.toolName, [...MCP_WRITE_TOOL_NAMES]),
+      isNotNull(toolCalls.idempotencyKey),
+      isNotNull(toolCalls.resourceId),
+    ))
       .orderBy(asc(toolCalls.createdAt), asc(toolCalls.id));
     return rows.map((row) => ({
       id: row.id, tool_name: row.toolName, operation: row.operation, resource_type: row.resourceType,

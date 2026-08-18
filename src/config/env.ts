@@ -24,6 +24,36 @@ const baseEnvSchema = z.object({
   LEILEI_TOY_BRIDGE_KEY: z.string().min(32).optional(),
   LEILEI_TOY_BRIDGE_USER_ID: z.string().uuid().optional(),
   NOTION_PAT: z.string().trim().min(16).optional(),
+  MCP_SESSION_IDLE_TTL_SECONDS: z.coerce.number().int().positive().default(7_200),
+  MCP_SESSION_ABSOLUTE_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
+  MCP_SESSION_MAX_PER_USER: z.coerce.number().int().positive().default(8),
+  MCP_SESSION_MAX_TOTAL: z.coerce.number().int().positive().default(32),
+  MCP_IDEMPOTENCY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+  MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
+});
+
+const mcpGovernanceEnvSchema = z.object({
+  MCP_SESSION_IDLE_TTL_SECONDS: z.coerce.number().int().positive().default(7_200),
+  MCP_SESSION_ABSOLUTE_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
+  MCP_SESSION_MAX_PER_USER: z.coerce.number().int().positive().default(8),
+  MCP_SESSION_MAX_TOTAL: z.coerce.number().int().positive().default(32),
+  MCP_IDEMPOTENCY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+  MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
+}).superRefine((value, context) => {
+  if (value.MCP_SESSION_ABSOLUTE_TTL_SECONDS < value.MCP_SESSION_IDLE_TTL_SECONDS) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["MCP_SESSION_ABSOLUTE_TTL_SECONDS"],
+      message: "Absolute session TTL must be greater than or equal to idle TTL.",
+    });
+  }
+  if (value.MCP_SESSION_MAX_TOTAL < value.MCP_SESSION_MAX_PER_USER) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["MCP_SESSION_MAX_TOTAL"],
+      message: "Total MCP session capacity must be greater than or equal to per-user capacity.",
+    });
+  }
 });
 
 const webApiEnvSchema = baseEnvSchema
@@ -80,6 +110,37 @@ export const env = baseEnvSchema.parse(process.env);
 export type RuntimeEnv = z.infer<typeof baseEnvSchema>;
 export type AppConfig = z.infer<typeof oauthEnvSchema>;
 export type WebApiConfig = z.infer<typeof webApiEnvSchema>;
+
+export type McpGovernanceConfig = {
+  idleTtlSeconds: number;
+  absoluteTtlSeconds: number;
+  maxPerUser: number;
+  maxTotal: number;
+  idempotencyRetentionDays: number;
+  idempotencyCleanupIntervalHours: number;
+};
+
+export function getMcpGovernanceConfig(
+  values: Partial<Record<
+    | "MCP_SESSION_IDLE_TTL_SECONDS"
+    | "MCP_SESSION_ABSOLUTE_TTL_SECONDS"
+    | "MCP_SESSION_MAX_PER_USER"
+    | "MCP_SESSION_MAX_TOTAL"
+    | "MCP_IDEMPOTENCY_RETENTION_DAYS"
+    | "MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS",
+    string | number | undefined
+  >>,
+): McpGovernanceConfig {
+  const parsed = mcpGovernanceEnvSchema.parse(values);
+  return {
+    idleTtlSeconds: parsed.MCP_SESSION_IDLE_TTL_SECONDS,
+    absoluteTtlSeconds: parsed.MCP_SESSION_ABSOLUTE_TTL_SECONDS,
+    maxPerUser: parsed.MCP_SESSION_MAX_PER_USER,
+    maxTotal: parsed.MCP_SESSION_MAX_TOTAL,
+    idempotencyRetentionDays: parsed.MCP_IDEMPOTENCY_RETENTION_DAYS,
+    idempotencyCleanupIntervalHours: parsed.MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS,
+  };
+}
 
 export function requireOAuthConfig(environment: RuntimeEnv): AppConfig {
   return oauthEnvSchema.parse(environment);

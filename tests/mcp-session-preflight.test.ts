@@ -5,6 +5,7 @@ import express from "express";
 import type { AddressInfo } from "node:net";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpRouter } from "../src/mcp/server/router.js";
+import { McpSessionRegistry } from "../src/mcp/server/session-registry.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const PROTOCOL_VERSION = "2025-06-18";
@@ -87,12 +88,16 @@ function requestDelete(
   });
 }
 
-function openAndCloseSse(port: number, sessionId: string): Promise<{ status: number; headers: http.IncomingHttpHeaders }> {
+function openAndCloseSse(
+  port: number,
+  sessionId: string,
+  path = "/mcp",
+): Promise<{ status: number; headers: http.IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
     const request = http.request({
       host: "127.0.0.1",
       port,
-      path: "/mcp",
+      path,
       method: "GET",
       agent: false,
       headers: {
@@ -214,4 +219,60 @@ test("pinned SDK transport.close invokes the actual onclose callback", async () 
   await transport.close();
 
   assert.equal(closeCallbacks, 1);
+});
+
+test("public and internal namespaces reject cross-use and enforce capacity", async () => {
+  const app = express();
+  app.use(express.json());
+  app.use((request, _response, next) => {
+    request.mcpUserId = request.header("x-test-mcp-user") ?? undefined;
+    next();
+  });
+  const registry = new McpSessionRegistry({ maxPerUser: 1, maxTotal: 2 });
+  app.use("/mcp", createMcpRouter({ namespace: "public", registry }));
+  app.use("/internal/mcp", createMcpRouter({ namespace: "internal", registry }));
+  const server = await new Promise<http.Server>((resolve) => {
+    const instance = app.listen(0, "127.0.0.1", () => resolve(instance));
+  });
+  const port = (server.address() as AddressInfo).port;
+  try {
+    const publicInit = await requestSsePost(port, "/mcp", initializeRequest(), {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "x-test-mcp-user": USER_ID,
+    });
+    const publicSessionId = publicInit.headers["mcp-session-id"] as string;
+    const internalInit = await requestSsePost(port, "/internal/mcp", initializeRequest(), {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "x-test-mcp-user": USER_ID,
+    });
+    const internalSessionId = internalInit.headers["mcp-session-id"] as string;
+    assert.equal(publicInit.status, 200);
+    assert.equal(internalInit.status, 200);
+
+    const crossPublic = await requestSsePost(port, "/internal/mcp", toolsListRequest(2), {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "mcp-session-id": publicSessionId,
+      "x-test-mcp-user": USER_ID,
+    });
+    assert.equal(crossPublic.status, 400);
+    const crossInternal = await requestSsePost(port, "/mcp", toolsListRequest(3), {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "mcp-session-id": internalSessionId,
+      "x-test-mcp-user": USER_ID,
+    });
+    assert.equal(crossInternal.status, 400);
+
+    const overCapacity = await requestSsePost(port, "/mcp", initializeRequest(), {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "x-test-mcp-user": "00000000-0000-4000-8000-000000000002",
+    });
+    assert.equal(overCapacity.status, 429);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });

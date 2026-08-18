@@ -5,10 +5,19 @@ import {
   type AccessTokenVerifier,
 } from "../auth/jwt-verifier.js";
 import { createOAuthMiddleware } from "../auth/oauth-middleware.js";
-import { env, requireOAuthConfig } from "../config/env.js";
+import { env, getMcpGovernanceConfig, requireOAuthConfig } from "../config/env.js";
 import { getWebApiConfig } from "../config/env.js";
 import { createDatabase } from "../database/client.js";
 import { createMcpRouter } from "../mcp/server/router.js";
+import {
+  McpSessionRegistry,
+  type McpSessionObserverEvent,
+} from "../mcp/server/session-registry.js";
+import {
+  deleteExpiredMcpIdempotency,
+  McpIdempotencyCleanupCoordinator,
+  type IdempotencyCleanupObserverEvent,
+} from "../mcp/server/idempotency-retention.js";
 import { createProtectedResourceMetadataHandler } from "../oauth/protected-resource-metadata.js";
 import { createWebApiRouter } from "../web-api/router.js";
 import { createWebApiAuthMiddleware } from "../web-api/web-api-auth.js";
@@ -66,11 +75,44 @@ export type AppDependencies = {
   webUniverseService?: UniverseApiDependencies["universeService"];
 };
 
+function observeMcpLifecycle(
+  event: McpSessionObserverEvent | IdempotencyCleanupObserverEvent,
+): void {
+  const safeFields = Object.fromEntries(
+    Object.entries(event).filter(([key]) =>
+      ["name", "namespace", "reason", "activeSessionCount", "activeNamespaceCount", "deletedRows", "durationMs"].includes(key),
+    ),
+  );
+  if (event.name === "mcp_idempotency_cleanup_failed") {
+    console.warn("MCP lifecycle event", safeFields);
+    return;
+  }
+  console.info("MCP lifecycle event", safeFields);
+}
+
 export function createApp(
   dependencies: AppDependencies = {},
 ): express.Express {
   const app = express();
   const config = requireOAuthConfig(env);
+  const mcpGovernance = getMcpGovernanceConfig(env);
+  const mcpSessionRegistry = new McpSessionRegistry({
+    idleTtlMs: mcpGovernance.idleTtlSeconds * 1_000,
+    absoluteTtlMs: mcpGovernance.absoluteTtlSeconds * 1_000,
+    maxPerUser: mcpGovernance.maxPerUser,
+    maxTotal: mcpGovernance.maxTotal,
+    observer: observeMcpLifecycle,
+  });
+  let mcpIdempotencyCleanup: McpIdempotencyCleanupCoordinator | undefined;
+  if (env.DATABASE_URL) {
+    const { db } = createDatabase(env.DATABASE_URL);
+    mcpIdempotencyCleanup = new McpIdempotencyCleanupCoordinator({
+      retentionMs: mcpGovernance.idempotencyRetentionDays * 24 * 60 * 60 * 1_000,
+      intervalMs: mcpGovernance.idempotencyCleanupIntervalHours * 60 * 60 * 1_000,
+      cleanup: (cutoff) => deleteExpiredMcpIdempotency(db, cutoff),
+      observer: observeMcpLifecycle,
+    });
+  }
 
   const verifyAccessToken =
     dependencies.verifyAccessToken ??
@@ -265,7 +307,11 @@ export function createApp(
   app.use(
     "/mcp",
     createOAuthMiddleware(config, verifyAccessToken),
-    createMcpRouter(),
+    createMcpRouter({
+      namespace: "public",
+      registry: mcpSessionRegistry,
+      onInitialize: () => mcpIdempotencyCleanup?.maybeCleanup() ?? Promise.resolve(),
+    }),
   );
 
   if (config.MCP_AUTH_TOKEN) {
@@ -275,7 +321,11 @@ export function createApp(
         config.MCP_AUTH_TOKEN,
         config.MCP_USER_ID,
       ),
-      createMcpRouter(),
+      createMcpRouter({
+        namespace: "internal",
+        registry: mcpSessionRegistry,
+        onInitialize: () => mcpIdempotencyCleanup?.maybeCleanup() ?? Promise.resolve(),
+      }),
     );
   }
 
