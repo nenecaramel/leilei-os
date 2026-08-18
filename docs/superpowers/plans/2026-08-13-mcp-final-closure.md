@@ -1,5 +1,10 @@
 # MCP Final Closure Implementation Plan
 
+> Historical/superseded plan. The implementation described here has landed on
+> `main`. The old branch, checklist, migration checkpoint, and intermediate
+> tool-count contract are retained for provenance and are not current release
+> instructions.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the three frozen Todo MCP tools, extend persistent MCP idempotency safely for whole-paper Todo writes, and close the cross-cutting MCP auth/author/annotation/privacy/audit contracts without adding any other product capability.

@@ -59,10 +59,12 @@ npm run build
 history fallback，并将生产站点 URL 加入 Auth0 的 Callback、Logout 和 Web
 Origins 白名单。
 
-## 部署隔离
+## 部署
 
-- 当前 Railway MCP 服务继续使用仓库根目录的 `Dockerfile`。
-- Web 应用不修改根后端依赖、启动命令或 Railway 服务配置。
-- 后续部署应创建独立 Railway Static Service、Vercel Project 或其他静态站点，
-  Root Directory 指向 `web/`。
-- 本阶段不部署任何环境。
+- Web 使用独立的 Vercel 项目，Root Directory 指向 `web/`。
+- Vercel Production 已部署当前 `main`，并使用 `web/vercel.json` 的 SPA
+  history fallback。
+- Railway 继续使用仓库根目录的 `Dockerfile` 运行 API/MCP 服务；Web 不改变
+  Railway 的后端启动或迁移配置。
+- 预览和本地部署必须保持独立的 Auth0 callback/logout/origin 配置；生产凭据
+  不写入仓库。

@@ -1,137 +1,104 @@
 # Leilei OS Architecture
 
-## Purpose
+## Current product
 
-Leilei OS is a remote Model Context Protocol (MCP) service that gives ChatGPT
-access to explicitly defined personal capabilities. It is not a standalone chat
-application and does not call the OpenAI API.
+Leilei OS is an authenticated personal workspace composed of:
 
-The responsibility boundary is:
+- a React Web application protected by its own Auth0 audience and scope;
+- a PostgreSQL-backed Express API with domain services and repositories;
+- an OAuth-protected Streamable HTTP MCP server; and
+- a PWA runtime for the Web application.
 
-- ChatGPT handles conversation, intent understanding, tool selection, and the
-  final natural-language response.
-- Leilei OS exposes tools, validates requests, performs operations, and returns
-  structured results.
+ChatGPT remains the MCP client and user-facing conversation layer. Leilei OS
+does not call the OpenAI API and does not store ChatGPT conversation history.
 
-## Current Phase 1 architecture
-
-```text
-ChatGPT Web
-    │
-    │ Developer Mode / Custom App
-    │ MCP over HTTPS
-    ▼
-Railway public endpoint
-    │
-    ▼
-Docker container
-    │
-    ▼
-TypeScript + Express service
-    │
-    ▼
-MCP Streamable HTTP endpoint (/mcp)
-    │
-    ▼
-hello tool
-```
-
-### Components
-
-#### ChatGPT Developer Mode
-
-ChatGPT is the MCP client and the user-facing interface. The custom app stores
-the remote MCP endpoint configuration, discovers available tools, and invokes a
-tool when the conversation requires it.
-
-#### Remote MCP Server
-
-Leilei OS exposes a Streamable HTTP MCP endpoint at `/mcp`. Production access is
-through HTTPS. Local stdio transport is not part of the production architecture.
-
-Phase 1 exposes only `hello`, a read-only, non-destructive, idempotent
-connectivity tool.
-
-#### TypeScript service
-
-The service runs on Node.js and uses:
-
-- TypeScript for application code;
-- Express for HTTP routing;
-- the MCP TypeScript SDK for protocol handling and tool registration;
-- Zod for runtime input and environment validation.
-
-The service also exposes `/health` for platform health checks. This route does
-not return credentials or private data.
-
-#### Docker
-
-The multi-stage Docker build compiles TypeScript in a build image and copies the
-compiled output into a smaller runtime image. The runtime process executes as
-the non-root `node` user and listens on the configured `PORT`.
-
-#### Railway
-
-Railway builds the repository's Dockerfile, runs the resulting container, and
-provides the public HTTPS domain. Railway forwards requests to the application
-port supplied through its environment.
-
-## MCP tool call flow
+## Runtime boundaries
 
 ```text
-1. User sends a message in ChatGPT.
-2. ChatGPT decides whether an enabled Leilei OS tool is relevant.
-3. ChatGPT sends an MCP request to the Railway HTTPS /mcp endpoint.
-4. Express routes the request through authentication middleware.
-5. The MCP server validates the protocol request and tool input.
-6. The selected tool executes.
-7. The server returns MCP text content and structuredContent.
-8. ChatGPT uses the tool result in its natural-language reply.
+Web / ChatGPT MCP client
+          │ authenticated request
+          ▼
+Express Web API / MCP router
+          │ server-owned identity
+          ▼
+Domain services
+          │ validation, ownership, lifecycle, concurrency
+          ▼
+Repositories ───────────────► PostgreSQL
+          │
+          └──────────────► Notion API (server-only PAT, explicit MCP tools)
 ```
 
-ChatGPT does not receive server credentials, internal errors, or deployment
-configuration through a tool result.
+The Web API and MCP tools share domain services and repositories. Tool handlers
+do not query PostgreSQL directly. User identity is resolved from authenticated
+server context; clients cannot submit or select a database user ID.
 
-## Future architecture
+## Web application
 
-Future phases will add capabilities behind the same MCP boundary:
+The Web application contains authenticated Dashboard and Day Space views plus
+Memory, Diary, Task, Todo, Universe, Global Search, and System routes. Durable
+data is read and written through `/api/v1`; the server remains authoritative.
+The Web does not use IndexedDB or implicit dual-write as a substitute for the
+server data model.
 
-```text
-                    ┌─ Memory tools ── Memory service ─┐
-ChatGPT ─ MCP Server├─ Diary tools ─── Diary service  ─┼─ Database
-                    └─ Task tools ──── Task service   ─┘
-```
+The PWA build emits the manifest and service worker from `web/`. Vercel serves
+the built SPA from `web/dist` with history fallback. Production source is
+`main`.
 
-### Memory
+## MCP surface
 
-Read stable personal information, preferences, goals, and current projects.
-Authorization and visibility filtering must occur on the server. ChatGPT must
-not be allowed to select an arbitrary user identity.
+Authenticated production MCP sessions include tools for:
 
-### Diary
+- local context and weather;
+- Memory, Diary, Task, and Todo reads/writes;
+- Toy command control when its bridge is configured;
+- Global Search and Universe search/node/relation reads;
+- Notion connection, page, database, data-source, and parameterized query reads;
+- explicit `write_notion_page` and `write_notion_comment` actions.
 
-Create and retrieve diary entries. Write operations will require strict input
-validation, idempotency, and audit records.
+The explicit Notion writes perform server-side authentication, fresh-read
+preconditions, and readback verification. The older broad Notion registrar is
+kept only for focused compatibility/security tests and is not wired into the
+production MCP router.
 
-### Task
+MCP schemas are Zod-validated. Safe error mappings distinguish invalid input,
+missing resources, authorization failures, conflicts, unavailable providers,
+and service failures without exposing credentials, connection strings, SQL, or
+stack traces.
 
-Create and inspect tasks using explicit timestamps and time zones. Ambiguous
-natural-language dates must be resolved before persistence.
+## Database and migrations
 
-### Database
+PostgreSQL holds durable user, content, Todo, Universe, audit, and integration
+state. The checked-in migration chain currently ends at
+`0023_faulty_sphinx` in `drizzle/meta/_journal.json`.
 
-PostgreSQL will hold durable state. Domain services will sit between MCP tools
-and database repositories so that tool handlers do not query the database
-directly. Database credentials will be supplied only through deployment
-environment variables.
+Railway runs the compiled migration entrypoint
+`node dist/database/migrate.js` as its pre-deploy command. The runner performs
+readiness checks, uses the LeileiOS-owned
+`public.leilei_schema_migrations` ledger, cross-checks the legacy
+`drizzle.__drizzle_migrations` ledger when bootstrapping, and applies pending
+checked-in migrations transactionally.
 
-## Architectural constraints
+The normal application start command does not run migrations. Manual local or
+disposable-database checks use the package scripts and must never be pointed at
+production without the approved backup and release procedure.
 
-- Do not build a second chat interface.
-- Do not store ChatGPT conversation history in Phase 1.
-- Do not call the OpenAI API from the MCP server unless a later phase explicitly
-  requires background AI processing.
-- Keep tools narrow, schema-validated, and explicit about side effects.
-- Preserve user isolation and apply permissions on the server, not in prompts.
-- Never expose tokens, connection strings, stack traces, or private logs through
-  MCP responses.
+## Deployment topology
+
+- GitHub default branch and release trunk: `main`.
+- Railway Production source: `main`; the root Dockerfile builds the API/MCP
+  service and the platform supplies `PORT`.
+- Vercel Production Branch: `main`; Vercel builds `web/` and serves the SPA.
+- Production credentials and database URLs stay in platform secret stores.
+
+## Security constraints
+
+- OAuth issuer, audience, signature, scope, subject, and Web origin checks are
+  enforced server-side.
+- Authenticated ownership is applied in domain services and repositories.
+- `DATABASE_URL`, OAuth credentials, MCP tokens, bridge keys, and `NOTION_PAT`
+  are server-only and must never be logged, returned, or committed.
+- Notion access is limited by the configured PAT's permissions; Leilei OS does
+  not silently synchronize or merge Notion data into its canonical domains.
+- Database migrations, imports, and other durable writes require explicit
+  release/operation ownership; no production mutation is hidden in a read path.

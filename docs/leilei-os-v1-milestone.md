@@ -3,6 +3,11 @@
 记录日期：2026-07-22
 状态：生产可用，v1 核心链路验收完成
 
+> Historical snapshot from 2026-07-22. This document records the v1
+> acceptance state and its then-current tool list; it is not a description of
+> the current `main` product surface. See the root README and current
+> deployment/architecture documents for today’s capabilities.
+
 ## 1. 当前生产状态
 
 Leilei OS v1 已作为远程 MCP Server 部署在 Railway，并已通过 ChatGPT

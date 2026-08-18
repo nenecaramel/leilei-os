@@ -1,119 +1,101 @@
 # Leilei OS Deployment
 
-## Current deployment
+This document describes the current `main`-based release path. It does not
+contain credentials, connection strings, tokens, or private deployment URLs.
 
-Phase 1 is deployed to Railway from the project repository using the included
-multi-stage Dockerfile. Railway provides the public HTTPS address used by the
-ChatGPT custom app.
+## Source of truth
 
-No real token, database password, private domain, or other credential belongs in
-this document or in the repository.
+- GitHub default branch: `main`.
+- `main` is the only integration, development, and release trunk.
+- Railway Production watches `main` for the root API/MCP service.
+- Vercel Production watches `main` for the Web SPA under `web/`.
 
-## Railway deployment flow
+Feature and maintenance branches must enter `main` through a reviewed pull
+request. A Draft PR is not production acceptance evidence.
 
-1. Create or select a Railway project.
-2. Add a service connected to the Leilei OS repository.
-3. Configure Railway to build the repository Dockerfile.
-4. Add the required environment variables in Railway's variable settings.
-5. Deploy the service.
-6. Generate or attach a public Railway domain.
-7. Confirm that `https://<public-domain>/health` returns a successful status.
-8. Configure ChatGPT with `https://<public-domain>/mcp`.
+## Railway API/MCP deployment
 
-Railway supplies `PORT` at runtime. The service binds to `0.0.0.0`, allowing the
-platform proxy to reach the container.
+Railway builds the repository root `Dockerfile`. The multi-stage image compiles
+the TypeScript service and starts `node dist/app/index.js` on the platform
+provided `PORT`.
 
-## Docker build and run
-
-Build the image from the repository root:
-
-```bash
-docker build -t leilei-os .
-```
-
-Run it locally with an environment file:
-
-```bash
-docker run --rm -p 3000:3000 --env-file .env leilei-os
-```
-
-Verify the health endpoint:
-
-```bash
-curl http://localhost:3000/health
-```
-
-The production MCP endpoint must use HTTPS. A local HTTP endpoint is suitable
-only for local protocol testing and is not the URL entered into ChatGPT.
-
-## MCP endpoint configuration
-
-The ChatGPT custom app endpoint has this form:
+Before a new application release is promoted, `railway.json` runs:
 
 ```text
-https://<public-domain>/mcp
+node dist/database/migrate.js
 ```
 
-In ChatGPT Web:
+The pre-deploy runner performs a bounded database-readiness check, then uses
+the checked-in `drizzle/` files and the LeileiOS-owned
+`public.leilei_schema_migrations` ledger. On first bootstrap it validates the
+legacy `drizzle.__drizzle_migrations` row. Bootstrap and pending migration SQL
+are transactional; the runner fails closed on ledger, checksum, or SQL errors.
 
-1. Enable Developer Mode for the account.
-2. Create or edit the custom app.
-3. Enter the public `/mcp` HTTPS endpoint.
-4. Configure the authentication mode to match the server.
-5. Scan or refresh tools.
-6. Confirm that the expected tools appear.
-7. Invoke `hello` in a new chat as a deployment smoke test.
+The current checked-in migration head is `0023_faulty_sphinx`, as recorded in
+`drizzle/meta/_journal.json`.
 
-After changing tool definitions, refresh the app's tool list before testing.
+Application startup itself does not run migrations. A successful deployment
+must report a healthy service before production smoke checks continue.
 
-## Environment variables
+## Vercel Web deployment
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `PORT` | Platform-provided | HTTP listening port. Defaults to `3000` locally. |
-| `HOST` | No | Bind address. Defaults to `0.0.0.0`. |
-| `LOG_LEVEL` | No | Application log level. |
-| `MCP_SERVER_URL` | No | Canonical public MCP URL for documentation or future configuration. |
-| `MCP_AUTH_TOKEN` | Recommended for protected data | Bearer token used by the MCP authentication middleware. |
-| `DATABASE_URL` | Future database phases | PostgreSQL connection string supplied by Railway or the database provider. |
-| `MCP_USER_ID` | Future single-user phase | Server-controlled user UUID associated with authenticated MCP requests. |
-| `LEILEI_TOY_BRIDGE_KEY` | No | Mac bridge credential; Toy routes remain disabled unless both Toy variables exist. |
-| `LEILEI_TOY_BRIDGE_USER_ID` | No | PostgreSQL `users.id` UUID of the only user whose Toy commands the bridge may claim; never use the Auth0 `sub`. |
+The Vercel project builds from the `web/` directory using:
 
-Rules:
+```text
+npm run build
+```
 
-- Store production values in Railway variables, not source files.
-- Keep `.env` local and untracked.
-- Never print authorization headers, tokens, or connection strings in logs.
-- Use placeholders in examples.
-- Rotate a credential if it is exposed in a terminal recording, screenshot,
-  commit, issue, or chat.
+The output directory is `web/dist`. `web/vercel.json` rewrites application
+routes to `index.html` so authenticated SPA routes can be refreshed directly.
+The Production Branch is `main`.
 
-For `LEILEI_TOY_BRIDGE_KEY`, use at least 32 bytes from a cryptographically
-secure random source. Do not use names, birthdays, ordinary passwords, or
-readable short phrases. Missing Toy variables disable only the Toy routes and
-do not prevent existing MCP or Web API modules from starting.
+After deployment, verify the public homepage, `manifest.webmanifest`, and
+`sw.js` before doing authenticated Web checks. Auth0 callback, logout, and Web
+origin allowlists must contain the deployed Web origin.
 
-`LEILEI_TOY_BRIDGE_USER_ID` must contain the same PostgreSQL UUID already used
-as `MCP_USER_ID` for the single mapped user. Obtain it from the existing
-`users.id` record through an authorized database administration session; do
-not copy the Auth0 `sub` (`auth0|...`) into this variable. The Web JWT subject
-is first mapped server-side to `MCP_USER_ID`, and Toy creation then compares
-that database UUID with `LEILEI_TOY_BRIDGE_USER_ID`.
+## Local build and disposable migration verification
 
-For Toy acknowledgements, `completed_at` is the terminal acknowledgement time
-for both `completed` and `failed` states. The existing column name is retained
-for schema compatibility.
+From the repository root:
 
-## Deployment verification
+```bash
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm build
+pnpm test
+pnpm db:check
+```
 
-After each deployment:
+For the Web package:
 
-- confirm Railway reports a healthy running service;
-- call `/health` through the public HTTPS domain;
-- refresh the custom app's tools in ChatGPT when tool definitions changed;
-- call `hello` and verify its structured response;
-- inspect logs for errors without copying secrets into support messages.
+```bash
+cd web
+npm ci
+npm run typecheck
+npm run build
+```
 
-Phase 1 is considered deployed successfully when ChatGPT can discover and call
-`hello` through the Railway HTTPS MCP endpoint.
+Use only a disposable/local PostgreSQL instance for migration integration
+tests. The manual Drizzle command is:
+
+```bash
+pnpm db:migrate
+```
+
+This command is separate from Railway's compiled pre-deploy runner. Never
+point either command at production without an approved backup and release
+procedure.
+
+## Production verification
+
+After a successful `main` deployment:
+
+1. Confirm Railway and Vercel both report the expected `main` commit SHA.
+2. Call `/health` through the public HTTPS API endpoint.
+3. Confirm the MCP protected-resource metadata and authenticated `/mcp`
+   handshake.
+4. Verify representative Web routes and PWA assets.
+5. If MCP definitions changed, refresh the ChatGPT app tool list and run only
+   the approved smoke checks.
+
+Never paste environment values or raw provider errors into Git, logs, tickets,
+or screenshots.

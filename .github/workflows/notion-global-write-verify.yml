@@ -10,6 +10,10 @@ on:
       - src/mcp/tools/**
       - tests/notion-*.test.ts
       - tests/mcp-read-contract.test.ts
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tests/register-css-loader.mjs
       - .github/workflows/notion-global-write-verify.yml
   pull_request:
     branches:
@@ -20,6 +24,10 @@ on:
       - src/mcp/tools/**
       - tests/notion-*.test.ts
       - tests/mcp-read-contract.test.ts
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tests/register-css-loader.mjs
       - .github/workflows/notion-global-write-verify.yml
 
 jobs:
@@ -51,31 +59,8 @@ jobs:
           tests/notion-mcp-tools.test.ts
           tests/notion-server-wiring.test.ts
           tests/mcp-read-contract.test.ts
-      - name: Run every test file in an isolated process
-        shell: bash
-        run: |
-          mapfile -t test_files < <(find tests -type f -name '*.test.ts' -print | sort)
-          known_baseline_flakes=(
-            tests/mobile-home-shell.test.ts
-            tests/system-data-activity-ui.test.ts
-            tests/system-data-export-ui.test.ts
-            tests/todo-home-date-rollover.test.ts
-          )
-          for test_file in "${test_files[@]}"; do
-            echo "==> $test_file"
-            if pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 "$test_file"; then
-              continue
-            fi
-            echo "Retrying once: $test_file"
-            if pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 "$test_file"; then
-              continue
-            fi
-            if printf '%s\n' "${known_baseline_flakes[@]}" | grep -Fxq "$test_file"; then
-              echo "::warning::Known baseline-only flaky test failed twice: $test_file"
-              continue
-            fi
-            exit 1
-          done
+      - name: Run deterministic canonical test suite
+        run: pnpm test
       - run: pnpm typecheck
       - run: pnpm build
       - run: cd web && npm run typecheck && npm run build

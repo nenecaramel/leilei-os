@@ -1,5 +1,10 @@
 # Notion Global Read Implementation Plan
 
+> Historical/superseded plan. The read-only implementation described here is
+> complete and the current `main` tree has since added explicit Notion page and
+> comment writes. This file is retained for provenance and must not be used as
+> a current release procedure.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add whole-workspace Notion read access to Leilei OS through `search_notion` and `read_notion_page`, backed by a server-only Personal Access Token.

@@ -1,5 +1,10 @@
 # Notion Global Read Design
 
+> Historical/superseded design. This was the original read-only Notion phase;
+> the current `main` tree also exposes the explicit
+> `write_notion_page`/`write_notion_comment` surface. Keep this file for
+> provenance, not as the current production contract or deployment guide.
+
 ## Goal
 
 Give the authenticated Leilei OS MCP user read-only access to the creator's whole Notion workspace through a Notion Personal Access Token (PAT), without adding any Notion write capability.
