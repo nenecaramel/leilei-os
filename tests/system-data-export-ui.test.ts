@@ -32,6 +32,16 @@ function installDom(url: string) {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 35));
 
+async function waitFor(condition: () => boolean, label: string, timeoutMs = 1000): Promise<void> {
+  const started = Date.now();
+  while (!condition()) {
+    if (Date.now() - started >= timeoutMs) {
+      throw new Error(`Timed out waiting for ${label}.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 function summary() {
   return {
     success: true as const,
@@ -69,7 +79,10 @@ test("Data renders Export title, one horizontal scope row, and inactive audit te
     },
   };
   const { root, container } = render(api);
-  await waitForPaint();
+  await waitFor(
+    () => paths.includes("/system/data") && container.querySelector(".system-export-card") !== null,
+    "the System Data request and Export card",
+  );
 
   assert.deepEqual(paths, ["/system/data"]);
   const card = container.querySelector(".system-export-card");
