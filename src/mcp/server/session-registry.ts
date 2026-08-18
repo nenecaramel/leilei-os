@@ -206,16 +206,16 @@ export class McpSessionRegistry {
       closed: false,
     };
     this.sessions.set(record.sessionId, record);
+    record.absoluteDeadlineCancel = this.scheduleAbsoluteDeadline(
+      this.absoluteTtlMs,
+      () => { void this.closeRecord(record, "absolute_ttl"); },
+    );
     this.emit({
       name: "mcp_session_created",
       namespace: record.namespace,
       activeSessionCount: this.size,
       activeNamespaceCount: this.countNamespace(record.namespace),
     });
-    record.absoluteDeadlineCancel = this.scheduleAbsoluteDeadline(
-      this.absoluteTtlMs,
-      () => { void this.closeRecord(record, "absolute_ttl"); },
-    );
     return record;
   }
 

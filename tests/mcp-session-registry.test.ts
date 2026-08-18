@@ -247,6 +247,28 @@ test("absolute deadline closes an idle session without a request or sweep", asyn
   assert.deepEqual(events.filter((event) => event.startsWith("mcp_session_closed:")), ["mcp_session_closed:absolute_ttl"]);
 });
 
+test("absolute deadline is cancelled when registration observer closes the session", () => {
+  let registry!: McpSessionRegistry;
+  let cancelled = false;
+  registry = new McpSessionRegistry({
+    scheduleAbsoluteDeadline: (_delay, _callback) => () => { cancelled = true; },
+    observer: (event) => {
+      if (event.name === "mcp_session_created") {
+        void registry.close("observer-close", "transport_close");
+      }
+    },
+  });
+  registry.register({
+    sessionId: "observer-close",
+    userId: "u1",
+    namespace: "public",
+    server: { close: async () => undefined },
+    transport: {},
+  });
+  assert.equal(registry.size, 0);
+  assert.equal(cancelled, true);
+});
+
 test("absolute deadline closes an in-flight session and wins the idle protection", async () => {
   const deadlines: Array<() => void> = [];
   const registry = new McpSessionRegistry({
