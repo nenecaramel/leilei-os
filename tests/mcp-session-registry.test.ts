@@ -225,3 +225,113 @@ test("explicit close reason is consumed once and unsolicited transport close rem
   registry.handleTransportClose(transport);
   assert.deepEqual(events, ["mcp_session_created:undefined", "mcp_session_closed:client_close", "mcp_session_created:undefined", "mcp_session_closed:transport_close"]);
 });
+
+test("absolute deadline closes an idle session without a request or sweep", async () => {
+  const deadlines: Array<{ callback: () => void; cancelled: boolean }> = [];
+  const events: string[] = [];
+  const registry = new McpSessionRegistry({
+    absoluteTtlMs: 86_400_000,
+    scheduleAbsoluteDeadline: (_delay, callback) => {
+      const deadline = { callback, cancelled: false };
+      deadlines.push(deadline);
+      return () => { deadline.cancelled = true; };
+    },
+    observer: (event) => events.push(`${event.name}:${event.reason ?? ""}`),
+  });
+  const session = createDummy(registry, { sessionId: "hard-deadline", userId: "u1", namespace: "public" });
+  assert.equal(deadlines.length, 1);
+  deadlines[0]!.callback();
+  await Promise.resolve();
+  assert.equal(registry.find(session.sessionId), null);
+  assert.equal(session.closeCalls, 1);
+  assert.deepEqual(events.filter((event) => event.startsWith("mcp_session_closed:")), ["mcp_session_closed:absolute_ttl"]);
+});
+
+test("absolute deadline closes an in-flight session and wins the idle protection", async () => {
+  const deadlines: Array<() => void> = [];
+  const registry = new McpSessionRegistry({
+    idleTtlMs: 1,
+    absoluteTtlMs: 86_400_000,
+    scheduleAbsoluteDeadline: (_delay, callback) => {
+      deadlines.push(callback);
+      return () => undefined;
+    },
+  });
+  const session = createDummy(registry, { sessionId: "in-flight-deadline", userId: "u1", namespace: "public" });
+  const acquired = await registry.acquire(session.sessionId, "public");
+  assert.equal(acquired?.inFlightCount, 1);
+  deadlines[0]!();
+  await Promise.resolve();
+  assert.equal(registry.find(session.sessionId), null);
+  assert.equal(session.closeCalls, 1);
+});
+
+test("all close paths cancel the absolute deadline and never emit a second close", async () => {
+  const deadlines: Array<{ callback: () => void; cancelled: boolean }> = [];
+  const closedReasons: string[] = [];
+  let now = 0;
+  const registry = new McpSessionRegistry({
+    idleTtlMs: 10,
+    absoluteTtlMs: 100,
+    now: () => now,
+    scheduleAbsoluteDeadline: (_delay, callback) => {
+      const deadline = { callback, cancelled: false };
+      deadlines.push(deadline);
+      return () => { deadline.cancelled = true; };
+    },
+    observer: (event) => {
+      if (event.name === "mcp_session_closed") closedReasons.push(event.reason);
+    },
+  });
+  const client = createDummy(registry, { sessionId: "client-close", userId: "u1", namespace: "public" });
+  await registry.close(client.sessionId, "client_close");
+  deadlines[0]!.callback();
+
+  const transport = {};
+  const transportSession = { sessionId: "transport-close", userId: "u1", namespace: "public" as const, closeCalls: 0 };
+  registry.register({
+    sessionId: transportSession.sessionId,
+    userId: transportSession.userId,
+    namespace: transportSession.namespace,
+    server: { close: async () => { transportSession.closeCalls += 1; } },
+    transport,
+  });
+  registry.handleTransportClose(transport);
+  deadlines[1]!.callback();
+
+  const idle = createDummy(registry, { sessionId: "idle-close", userId: "u1", namespace: "public" });
+  now = 22;
+  await registry.sweep(true);
+  deadlines[2]!.callback();
+
+  assert.deepEqual(deadlines.map((deadline) => deadline.cancelled), [true, true, true]);
+  assert.deepEqual(closedReasons, ["client_close", "transport_close", "idle_ttl"]);
+  assert.equal(client.closeCalls, 1);
+  assert.equal(registry.find(transportSession.sessionId), null);
+  assert.equal(idle.closeCalls, 1);
+});
+
+test("absolute deadline and another close racing still remove once and reclaim capacity once", async () => {
+  const deadlines: Array<() => void> = [];
+  const events: string[] = [];
+  const registry = new McpSessionRegistry({
+    maxTotal: 1,
+    scheduleAbsoluteDeadline: (_delay, callback) => {
+      deadlines.push(callback);
+      return () => undefined;
+    },
+    observer: (event) => {
+      if (event.name === "mcp_session_closed") events.push(event.reason);
+    },
+  });
+  const session = createDummy(registry, { sessionId: "race", userId: "u1", namespace: "public" });
+  await Promise.all([
+    registry.close(session.sessionId, "client_close"),
+    Promise.resolve().then(() => deadlines[0]!()),
+  ]);
+  assert.equal(registry.size, 0);
+  assert.equal(registry.capacitySize, 0);
+  assert.deepEqual(events, ["client_close"]);
+  assert.equal(session.closeCalls, 1);
+  assert.ok(registry.reserve("u2", "public"));
+});

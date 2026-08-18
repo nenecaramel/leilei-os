@@ -32,6 +32,11 @@ type Closable = {
   close: () => Promise<void> | void;
 };
 
+export type McpAbsoluteDeadlineScheduler = (
+  delayMs: number,
+  callback: () => void,
+) => () => void;
+
 export type McpSessionRecord = {
   sessionId: string;
   userId: string;
@@ -43,6 +48,7 @@ export type McpSessionRecord = {
   inFlightCount: number;
   closed: boolean;
   expectedCloseReason?: "client_close";
+  absoluteDeadlineCancel?: () => void;
 };
 
 export type McpSessionReservation = {
@@ -60,6 +66,7 @@ export type McpSessionRegistryOptions = {
   maxTotal?: number;
   sweepMinIntervalMs?: number;
   observer?: (event: McpSessionObserverEvent) => void;
+  scheduleAbsoluteDeadline?: McpAbsoluteDeadlineScheduler;
 };
 
 const DEFAULT_IDLE_TTL_MS = 2 * 60 * 60 * 1_000;
@@ -77,6 +84,7 @@ export class McpSessionRegistry {
   private readonly maxTotal: number;
   private readonly sweepMinIntervalMs: number;
   private readonly observer?: (event: McpSessionObserverEvent) => void;
+  private readonly scheduleAbsoluteDeadline: McpAbsoluteDeadlineScheduler;
   private lastSweepAt = Number.NEGATIVE_INFINITY;
   private readonly reservations = new Set<McpSessionReservation>();
 
@@ -89,6 +97,11 @@ export class McpSessionRegistry {
     this.sweepMinIntervalMs =
       options.sweepMinIntervalMs ?? DEFAULT_SWEEP_MIN_INTERVAL_MS;
     this.observer = options.observer;
+    this.scheduleAbsoluteDeadline = options.scheduleAbsoluteDeadline ?? ((delayMs, callback) => {
+      const timer = setTimeout(callback, delayMs);
+      timer.unref?.();
+      return () => clearTimeout(timer);
+    });
   }
 
   get size(): number {
@@ -199,6 +212,10 @@ export class McpSessionRegistry {
       activeSessionCount: this.size,
       activeNamespaceCount: this.countNamespace(record.namespace),
     });
+    record.absoluteDeadlineCancel = this.scheduleAbsoluteDeadline(
+      this.absoluteTtlMs,
+      () => { void this.closeRecord(record, "absolute_ttl"); },
+    );
     return record;
   }
 
@@ -320,6 +337,8 @@ export class McpSessionRegistry {
   ): void {
     if (record.closed) return;
     record.closed = true;
+    record.absoluteDeadlineCancel?.();
+    record.absoluteDeadlineCancel = undefined;
     this.sessions.delete(record.sessionId);
     this.emit({
       name: "mcp_session_closed",
