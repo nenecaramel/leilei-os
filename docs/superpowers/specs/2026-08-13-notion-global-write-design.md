@@ -1,8 +1,14 @@
 # Notion Global Write Design
 
 Date: 2026-08-13
-Status: Approved scope, implementation in progress
-Branch: `feat/notion-global-write`
+Status: Historical design; superseded by the implementation now present on `main`
+Original implementation branch: `feat/notion-global-write`
+
+This document is retained for design provenance. It is not a current
+deployment or implementation checklist. The approved explicit-write scope is
+implemented in the current `main` tree, including the authenticated
+resource-oriented write tools; do not use the historical branch named above
+as an integration target.
 
 ## Goal
 
