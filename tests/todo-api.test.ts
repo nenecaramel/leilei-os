@@ -10,7 +10,7 @@ async function withServer(todoService: Record<string, unknown>, callback: (url: 
   const app = express();
   app.use(express.json());
   app.use((request, _response, next) => { if (request.header("x-test-user")) request.webUserId = USER_ID; next(); });
-  app.use("/api/v1", createWebApiRouter({ todo: { todoService }, memory: { memoryService: {} as never }, diary: { diaryService: {} as never }, task: { taskService: {} as never }, health: { healthService: {} as never }, toy: { toyService: {} as never }, system: { systemService: {} as never } }));
+  app.use("/api/v1", createWebApiRouter({ todo: { todoService }, memory: { memoryService: {} as never }, diary: { diaryService: {} as never }, task: { taskService: {} as never }, toy: { toyService: {} as never }, system: { systemService: {} as never } }));
   const server = await new Promise<import("node:http").Server>((resolve) => { const instance = app.listen(0, () => resolve(instance)); });
   try { const address = server.address() as { port: number }; await callback(`http://127.0.0.1:${address.port}`); } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
 }

@@ -26,10 +26,6 @@ import { DrizzleTaskRepository } from "../domains/task/task-repository.js";
 import { TaskService } from "../domains/task/task-service.js";
 import type { TaskApiDependencies } from "../web-api/task-router.js";
 
-import { DrizzleHealthRepository } from "../domains/health/health-repository.js";
-import { HealthService } from "../domains/health/health-service.js";
-import type { HealthApiDependencies } from "../web-api/health-router.js";
-
 import { DrizzleToyCommandRepository } from "../domains/toy/toy-command-repository.js";
 import { ToyCommandService } from "../domains/toy/toy-command-service.js";
 import {
@@ -61,7 +57,6 @@ export type AppDependencies = {
   webMemoryService?: MemoryApiDependencies["memoryService"];
   webDiaryService?: DiaryApiDependencies["diaryService"];
   webTaskService?: TaskApiDependencies["taskService"];
-  webHealthService?: HealthApiDependencies["healthService"];
   webSystemService?: SystemApiDependencies["systemService"];
   toyService?: ToyApiDependencies["toyService"];
   webGlobalSearchService?: GlobalSearchApiDependencies["globalSearchService"];
@@ -142,9 +137,6 @@ export function createApp(
     let webTaskService =
       dependencies.webTaskService;
 
-    let webHealthService =
-      dependencies.webHealthService;
-
     let webSystemService = dependencies.webSystemService;
     let toyService = dependencies.toyService;
     let webGlobalSearchService = dependencies.webGlobalSearchService;
@@ -157,7 +149,6 @@ export function createApp(
       !webMemoryService ||
       !webDiaryService ||
       !webTaskService ||
-      !webHealthService ||
       !webSystemService ||
       !toyService ||
       !webGlobalSearchService ||
@@ -192,12 +183,6 @@ export function createApp(
         );
       }
 
-      if (!webHealthService) {
-        webHealthService = new HealthService(
-          new DrizzleHealthRepository(db),
-        );
-      }
-
       if (!webSystemService) {
         webSystemService = new SystemService(
           new DrizzleSystemRepository(db),
@@ -224,7 +209,6 @@ export function createApp(
       !webMemoryService ||
       !webDiaryService ||
       !webTaskService ||
-      !webHealthService ||
       !webSystemService ||
       !toyService ||
       !webGlobalSearchService ||
@@ -264,9 +248,6 @@ export function createApp(
         },
         task: {
           taskService: webTaskService,
-        },
-        health: {
-          healthService: webHealthService,
         },
         system: { systemService: webSystemService },
         toy: {

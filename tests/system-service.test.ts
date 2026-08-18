@@ -21,7 +21,6 @@ function createRepository(overrides: Partial<SystemRepository> = {}): SystemRepo
         memory: { active: 2, archived: 1 },
         diary: { active: 3, archived: 2 },
         task: { active: 4, archived: 1 },
-        health: { total: 5 },
       } satisfies SystemDataSummary;
     },
     async listLifecycleActivity() {
@@ -64,7 +63,6 @@ test("data summary forwards the authenticated user id and preserves real counts"
         memory: { active: 1, archived: 2 },
         diary: { active: 3, archived: 4 },
         task: { active: 5, archived: 6 },
-        health: { total: 7 },
       };
     },
   }));
@@ -73,7 +71,6 @@ test("data summary forwards the authenticated user id and preserves real counts"
     memory: { active: 1, archived: 2 },
     diary: { active: 3, archived: 4 },
     task: { active: 5, archived: 6 },
-    health: { total: 7 },
   });
   assert.deepEqual(calls, [USER_ID]);
 });

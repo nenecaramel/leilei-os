@@ -61,7 +61,7 @@ configuration only.
 In addition to `/health`, `/mcp`, and optional `/internal/mcp`, the authenticated
 Web API exposes `/api/v1` routes for:
 
-`/memory`, `/diary`, `/task`, `/health`, `/toy`, `/system`, `/todo`, `/search`,
+`/memory`, `/diary`, `/task`, `/toy`, `/system`, `/todo`, `/search`,
 `/system/export`, `/system/import`, and `/universe`.
 
 ## Architecture

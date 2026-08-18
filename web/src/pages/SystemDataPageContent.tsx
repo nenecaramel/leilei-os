@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type {
-  WebApiClient,
-} from "../api/useWebApiClient";
+import type { WebApiClient } from "../api/useWebApiClient";
+import { WebApiError } from "../api/web-api-error";
 import type {
   SystemDataResponse,
   SystemDataSummary,
@@ -29,9 +28,32 @@ type ImportState =
   | { status: "selected"; filename: string; bytes: Uint8Array; size: number }
   | { status: "previewing"; filename: string; bytes: Uint8Array; size: number }
   | { status: "ready"; filename: string; preview: WebImportPreview; bytes: Uint8Array; size: number }
-  | { status: "restoring"; filename: string }
+  | { status: "restoring"; filename: string; size: number }
   | { status: "success"; message: string }
   | { status: "error"; message: string };
+
+type ImportPreviewRow = {
+  key: ImportModuleKey;
+  label: string;
+  value: string;
+};
+
+const IMPORT_MODULE_ORDER = ["memory", "diary", "task", "todo"] as const;
+type ImportModuleKey = (typeof IMPORT_MODULE_ORDER)[number];
+
+const IMPORT_MODULE_LABELS: Record<ImportModuleKey, string> = {
+  memory: "Memory",
+  diary: "Diary",
+  task: "Task",
+  todo: "Todo",
+};
+
+const EMPTY_IMPORT_COUNTS: WebImportModuleSummary = {
+  create: 0,
+  duplicate: 0,
+  conflict: 0,
+  invalid: 0,
+};
 
 function CountCell({
   label,
@@ -82,8 +104,61 @@ function recordLabel(count: number): string {
   return `${count} ${count === 1 ? "record" : "records"}`;
 }
 
+function newRecordLabel(count: number): string {
+  return `${count} new ${count === 1 ? "record" : "records"}`;
+}
+
 function fileSummary(filename: string, size: number): string {
   return `${filename} · ${(size / 1024).toFixed(1)} KB`;
+}
+
+function importCounts(summary: Record<string, WebImportModuleSummary>, module: ImportModuleKey): WebImportModuleSummary {
+  return summary[module] ?? EMPTY_IMPORT_COUNTS;
+}
+
+function importPreviewIsBlocked(preview: WebImportPreview): boolean {
+  return countImport(preview.summary, "conflict") > 0 || countImport(preview.summary, "invalid") > 0;
+}
+
+function importPreviewRows(preview: WebImportPreview): ImportPreviewRow[] {
+  const blocked = importPreviewIsBlocked(preview);
+  return IMPORT_MODULE_ORDER.flatMap((module) => {
+    const counts = importCounts(preview.summary, module);
+    if (blocked) {
+      if (counts.conflict === 0 && counts.invalid === 0) return [];
+      const states: string[] = [];
+      if (counts.conflict > 0) states.push("Conflict");
+      if (counts.invalid > 0) states.push("Invalid");
+      return [{ key: module, label: IMPORT_MODULE_LABELS[module], value: states.join(" · ") }];
+    }
+    if (counts.create === 0) return [];
+    return [{ key: module, label: IMPORT_MODULE_LABELS[module], value: `${counts.create} new` }];
+  });
+}
+
+function blockedImportCopy(preview: WebImportPreview): string {
+  const conflicts = countImport(preview.summary, "conflict");
+  const invalid = countImport(preview.summary, "invalid");
+  if (conflicts > 0 && invalid > 0) {
+    return "This export contains conflicting or invalid records. Nothing will be overwritten.";
+  }
+  if (conflicts > 0) {
+    return "Existing data would differ. Nothing will be overwritten.";
+  }
+  return "This export contains invalid records. Nothing will be overwritten.";
+}
+
+function readyImportSummary(preview: WebImportPreview): string {
+  const created = countImport(preview.summary, "create");
+  const duplicates = countImport(preview.summary, "duplicate");
+  if (created === 0) return "Everything is already here";
+  return `${newRecordLabel(created)}${duplicates > 0 ? ` · ${duplicates} already here` : ""}`;
+}
+
+function importErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof WebApiError && error.message.trim().length > 0
+    ? error.message
+    : fallback;
 }
 
 export function SystemDataPageContent({
@@ -115,6 +190,15 @@ export function SystemDataPageContent({
     }
   }
 
+  function chooseImportFile(): void {
+    importInputRef.current?.click();
+  }
+
+  function resetImport(): void {
+    importSelectionRef.current += 1;
+    setImportState({ status: "idle" });
+  }
+
   function onImportFile(file: File | undefined): void {
     if (!file) return;
     const selection = importSelectionRef.current + 1;
@@ -138,15 +222,15 @@ export function SystemDataPageContent({
     try {
       const preview = await previewImport(api, current.bytes);
       setImportState({ status: "ready", filename: current.filename, preview, bytes: current.bytes, size: current.size });
-    } catch {
-      setImportState({ status: "error", message: "Unable to validate this export file." });
+    } catch (error) {
+      setImportState({ status: "error", message: importErrorMessage(error, "Unable to validate this export file.") });
     }
   }
 
   async function restoreImport(): Promise<void> {
     if (importState.status !== "ready") return;
     const current = importState;
-    setImportState({ status: "restoring", filename: current.filename });
+    setImportState({ status: "restoring", filename: current.filename, size: current.size });
     try {
       const result = await executeImport(api, current.bytes, current.preview.preview_fingerprint);
       const created = countImport(result.summary, "create");
@@ -154,8 +238,8 @@ export function SystemDataPageContent({
       const duplicateCopy = duplicates > 0 ? ` Skipped ${recordLabel(duplicates)} already present.` : "";
       setImportState({ status: "success", message: `Restored ${recordLabel(created)}.${duplicateCopy}` });
       setReloadKey((value) => value + 1);
-    } catch {
-      setImportState({ status: "error", message: "Unable to restore this export file." });
+    } catch (error) {
+      setImportState({ status: "error", message: importErrorMessage(error, "Unable to restore this export file.") });
     }
   }
 
@@ -187,6 +271,12 @@ export function SystemDataPageContent({
   const readyCreateCount = importState.status === "ready"
     ? countImport(importState.preview.summary, "create")
     : 0;
+  const readyBlocked = importState.status === "ready"
+    ? importPreviewIsBlocked(importState.preview)
+    : false;
+  const readyRows = importState.status === "ready"
+    ? importPreviewRows(importState.preview)
+    : [];
 
   return (
     <div className="page system-page system-data-page">
@@ -246,17 +336,6 @@ export function SystemDataPageContent({
                 state.summary.task.archived
               }
             />
-            <div className="system-data-row">
-              <strong>Health</strong>
-              <div className="system-count-pair">
-                <CountCell
-                  label="Total"
-                  value={
-                    state.summary.health.total
-                  }
-                />
-              </div>
-            </div>
           </div>
         ) : null}
       </section>
@@ -325,34 +404,92 @@ export function SystemDataPageContent({
       </section>
 
       <section className="system-section system-import-card" aria-label="Restore data">
-        <div className="system-export-header"><strong className="system-export-label">Restore</strong></div>
-        <p className="system-note">Validate an export before restoring new records. Existing records are never overwritten.</p>
+        <div className="system-export-header">
+          <strong className="system-export-label">Restore</strong>
+        </div>
         <input
           ref={importInputRef}
           className="sr-only"
           type="file"
           accept="application/json,.json"
+          aria-label="Choose export file"
           onChange={(event) => { onImportFile(event.target.files?.[0]); event.currentTarget.value = ""; }}
         />
-        <button className="secondary-button" type="button" disabled={importState.status === "previewing" || importState.status === "restoring"} onClick={() => importInputRef.current?.click()}>
-          Choose export file
-        </button>
-        {importState.status === "selected" || importState.status === "previewing" ? (
-          <p className="system-state-copy">{fileSummary(importState.filename, importState.size)}</p>
-        ) : null}
-        {importState.status === "selected" ? <button className="secondary-button" type="button" onClick={() => void previewSelected()}>Preview restore</button> : null}
-        {importState.status === "previewing" ? <p className="system-state-copy" aria-live="polite">Validating…</p> : null}
-        {importState.status === "ready" ? (
-          <div className="system-import-preview" aria-live="polite">
-            <p>{fileSummary(importState.filename, importState.size)}</p>
-            <p>{importState.preview.can_execute ? "Ready to restore new records." : "No new records can be restored."}</p>
-            {Object.entries(importState.preview.summary).map(([module, counts]) => <p key={module}>{module}: create {counts.create}, duplicate {counts.duplicate}, conflict {counts.conflict}, invalid {counts.invalid}</p>)}
-            <button className="secondary-button" type="button" disabled={!importState.preview.can_execute} onClick={() => void restoreImport()}>Restore {recordLabel(readyCreateCount)}</button>
+
+        {importState.status === "idle" ? (
+          <div className="system-import-row system-import-file-row">
+            <span className="system-import-row-label">Export file</span>
+            <button className="system-import-action" type="button" onClick={chooseImportFile}>Choose</button>
           </div>
         ) : null}
-        {importState.status === "restoring" ? <p className="system-state-copy" aria-live="polite">Restoring…</p> : null}
-        {importState.status === "success" ? <p className="system-state-copy" role="status">{importState.message}</p> : null}
-        {importState.status === "error" ? <p className="system-export-error" role="alert">{importState.message}</p> : null}
+
+        {importState.status === "selected" ? (
+          <div className="system-import-row system-import-file-row">
+            <span className="system-import-row-label" title={fileSummary(importState.filename, importState.size)}>{fileSummary(importState.filename, importState.size)}</span>
+            <button className="system-import-action" type="button" onClick={() => void previewSelected()}>Preview</button>
+          </div>
+        ) : null}
+
+        {importState.status === "previewing" ? (
+          <div className="system-import-row system-import-file-row" aria-live="polite">
+            <span className="system-import-row-label" title={fileSummary(importState.filename, importState.size)}>{fileSummary(importState.filename, importState.size)}</span>
+            <span className="system-import-status">Validating…</span>
+          </div>
+        ) : null}
+
+        {importState.status === "ready" ? (
+          <div className="system-import-ready" aria-live="polite">
+            <div className="system-import-row system-import-file-row">
+              <span className="system-import-row-label" title={fileSummary(importState.filename, importState.size)}>{fileSummary(importState.filename, importState.size)}</span>
+              <button className="system-import-action" type="button" onClick={chooseImportFile}>Change</button>
+            </div>
+            {readyRows.map((row) => (
+              <div className="system-import-row system-import-module-row" key={row.key}>
+                <span className="system-import-row-label">{row.label}</span>
+                <span className={readyBlocked ? "system-import-row-value system-import-row-value-blocked" : "system-import-row-value"}>{row.value}</span>
+              </div>
+            ))}
+            {readyBlocked ? (
+              <div className="system-import-row system-import-message-row">
+                <span className="system-import-message-copy">{blockedImportCopy(importState.preview)}</span>
+              </div>
+            ) : readyCreateCount === 0 ? (
+              <div className="system-import-row system-import-summary-row">
+                <span className="system-import-row-label">Everything is already here</span>
+              </div>
+            ) : (
+              <div className="system-import-row system-import-summary-row">
+                <span className="system-import-row-label">{readyImportSummary(importState.preview)}</span>
+                <button className="system-import-action" type="button" onClick={() => void restoreImport()}>Restore</button>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {importState.status === "restoring" ? (
+          <div className="system-import-restoring" aria-live="polite">
+            <div className="system-import-row system-import-file-row">
+              <span className="system-import-row-label" title={fileSummary(importState.filename, importState.size)}>{fileSummary(importState.filename, importState.size)}</span>
+            </div>
+            <div className="system-import-row system-import-message-row">
+              <span className="system-import-status">Restoring…</span>
+            </div>
+          </div>
+        ) : null}
+
+        {importState.status === "success" ? (
+          <div className="system-import-row system-import-message-row" role="status">
+            <span className="system-import-row-label">{importState.message}</span>
+            <button className="system-import-action" type="button" onClick={resetImport}>Done</button>
+          </div>
+        ) : null}
+
+        {importState.status === "error" ? (
+          <div className="system-import-row system-import-message-row" role="alert">
+            <span className="system-import-error-copy">{importState.message}</span>
+            <button className="system-import-action" type="button" onClick={chooseImportFile}>Choose</button>
+          </div>
+        ) : null}
       </section>
     </div>
   );

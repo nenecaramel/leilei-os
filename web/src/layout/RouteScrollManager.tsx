@@ -17,7 +17,6 @@ const TOP_LEVEL_PATHNAMES = new Set([
   "/system/activity",
   "/system/about",
   "/settings",
-  "/chat-archive",
   "/universe",
 ]);
 

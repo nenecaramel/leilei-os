@@ -32,6 +32,16 @@ function installDom(url: string) {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 35));
 
+async function waitFor(condition: () => boolean, label: string, timeoutMs = 1000): Promise<void> {
+  const started = Date.now();
+  while (!condition()) {
+    if (Date.now() - started >= timeoutMs) {
+      throw new Error(`Timed out waiting for ${label}.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 function summary() {
   return {
     success: true as const,
@@ -39,7 +49,6 @@ function summary() {
       memory: { active: 1, archived: 2 },
       diary: { active: 3, archived: 4 },
       task: { active: 5, archived: 6 },
-      health: { total: 7 },
     },
   };
 }
@@ -70,7 +79,10 @@ test("Data renders Export title, one horizontal scope row, and inactive audit te
     },
   };
   const { root, container } = render(api);
-  await waitForPaint();
+  await waitFor(
+    () => paths.includes("/system/data") && container.querySelector(".system-export-card") !== null,
+    "the System Data request and Export card",
+  );
 
   assert.deepEqual(paths, ["/system/data"]);
   const card = container.querySelector(".system-export-card");
@@ -164,8 +176,6 @@ test("export failures are local and do not erase the loaded summary", async () =
   assert.equal(attempts, 1);
   assert.equal(clicks, 0);
   assert.match(container.textContent ?? "", /Unable to export data/);
-  assert.match(container.textContent ?? "", /Health/);
-  assert.match(container.textContent ?? "", /7/);
   env.dom.window.HTMLAnchorElement.prototype.click = originalClick;
   root.unmount();
   await waitForPaint();
@@ -187,7 +197,6 @@ test("pending export disables all export actions without changing summary state"
   buttons[0].click();
   await waitForPaint();
   assert.equal(Array.from(buttons).every((button) => button.disabled), true);
-  assert.match(container.textContent ?? "", /Health/);
   resolveExport(exportDocument());
   await waitForPaint();
   assert.equal(Array.from(buttons).some((button) => button.disabled), false);

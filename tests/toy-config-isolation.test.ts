@@ -55,7 +55,6 @@ test("missing or partial Toy configuration fails closed without affecting existi
         },
       } as never,
     },
-    health: { healthService: {} as never },
     system: {
       systemService: {
         readConnections() {
@@ -66,7 +65,6 @@ test("missing or partial Toy configuration fails closed without affecting existi
             memory: { active: 0, archived: 0 },
             diary: { active: 0, archived: 0 },
             task: { active: 0, archived: 0 },
-            health: { total: 0 },
           };
         },
         async readActivity() { return []; },

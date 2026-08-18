@@ -83,7 +83,6 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
           memory: { active: 12, archived: 3 },
           diary: { active: 8, archived: 2 },
           task: { active: 5, archived: 7 },
-          health: { total: 31 },
         },
       } as T;
     },
@@ -96,8 +95,8 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
   await waitForCondition(
     () =>
       paths.includes("/system/data") &&
-      /Health/.test(container.textContent ?? "") &&
-      /31/.test(container.textContent ?? ""),
+      /Task/.test(container.textContent ?? "") &&
+      /7/.test(container.textContent ?? ""),
     "System Data request and ready state",
   );
 
@@ -114,8 +113,6 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
     "Task",
     "5",
     "7",
-    "Health",
-    "31",
   ]) {
     assert.match(text, new RegExp(expected));
   }
@@ -146,7 +143,6 @@ test("Data exposes Retry after a failed count request", async () => {
           memory: { active: 1, archived: 0 },
           diary: { active: 2, archived: 0 },
           task: { active: 3, archived: 0 },
-          health: { total: 4 },
         },
       } as T;
     },
@@ -173,8 +169,6 @@ test("Data exposes Retry after a failed count request", async () => {
   await waitForPaint();
 
   assert.equal(attempts, 2);
-  assert.match(container.textContent ?? "", /Health/);
-  assert.match(container.textContent ?? "", /4/);
 
   root.unmount();
   await waitForPaint();
