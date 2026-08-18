@@ -2,9 +2,9 @@
 
 Leilei OS is an authenticated personal workspace: a React Web app, a
 PostgreSQL-backed API, and an OAuth-protected Streamable HTTP MCP server. The
-current integration trunk is `codex/phase-6-web-ui-foundation`; see
-[`docs/branch-release-policy.md`](docs/branch-release-policy.md) for the
-relationship between that branch and `main`.
+single integration, development, and release trunk is `main`; see
+[`docs/branch-release-policy.md`](docs/branch-release-policy.md) for the branch
+and release rules.
 
 ## Current product status
 

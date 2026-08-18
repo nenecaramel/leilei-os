@@ -1,14 +1,17 @@
 # Branch and release policy
 
-## Branch roles
+## Canonical trunk
 
-- `codex/phase-6-web-ui-foundation` is the current integration trunk and the
-  source branch for release review.
-- `main` remains the GitHub default branch until an explicit promotion decision
-  is approved. It is not the current integration source and must not be used
-  for deployment while it is behind the integration trunk.
-- Feature, maintenance, and experiment branches must use a dedicated branch
-  name and must not receive unrelated changes.
+`main` is the only formal integration, development, and release trunk.
+
+- GitHub default branch: `main`.
+- Railway Production source: `main`.
+- Vercel Production Branch: `main`.
+- Feature, maintenance, and experiment branches are short-lived work branches;
+  they enter `main` only through a reviewed pull request.
+- `codex/phase-6-web-ui-foundation` is a historical integration branch, not an
+  active trunk. Keep it only while an open pull request or explicit release
+  obligation depends on it.
 
 ## Integration rules
 
@@ -21,20 +24,16 @@
    production-accepted until the required deployment and database checks are
    recorded separately.
 
-## Promotion to `main`
+## Release flow
 
-Promotion is a deliberate release step, not an automatic branch cleanup:
-
-1. finish or explicitly defer all open integration work;
-2. run the full root/Web verification and the applicable disposable database
-   gates;
-3. open a reviewed promotion pull request from the integration trunk to
-   `main`;
-4. merge only after production migration/deployment ownership is confirmed;
-5. tag the accepted release SHA and record the production deployment result.
-
-Until that promotion is approved, keep `main` unchanged and treat the
-integration trunk as the only shared development/release-candidate source.
+1. Branch from the latest `main` and keep the work focused on one change.
+2. Run the applicable root/Web tests, typechecks, builds, and database gates;
+   record skipped gates and their reasons.
+3. Open a reviewed pull request back to `main` with scope, migration impact,
+   production impact, and verification evidence.
+4. Merge only after review and deployment/migration ownership are confirmed.
+5. Deployments follow `main`; record the accepted release SHA and production
+   result after the platform reports success.
 
 ## Historical branches
 
