@@ -122,14 +122,17 @@ function openAndCloseSse(
   });
 }
 
-async function withMcpServer(callback: (port: number) => Promise<void>): Promise<void> {
+async function withMcpServer(
+  callback: (port: number) => Promise<void>,
+  registry = new McpSessionRegistry(),
+): Promise<void> {
   const app = express();
   app.use(express.json());
   app.use((request, _response, next) => {
     request.mcpUserId = request.header("x-test-mcp-user") ?? undefined;
     next();
   });
-  app.use("/mcp", createMcpRouter());
+  app.use("/mcp", createMcpRouter({ registry }));
   const server = await new Promise<http.Server>((resolve) => {
     const instance = app.listen(0, "127.0.0.1", () => resolve(instance));
   });
@@ -159,6 +162,7 @@ function toolsListRequest(id: number) {
 }
 
 test("pinned Streamable HTTP sessions survive connection replacement and SSE disconnect until DELETE", async () => {
+  const events: string[] = [];
   await withMcpServer(async (port) => {
     const initialize = await requestSsePost(port, "/mcp", initializeRequest(), {
       "mcp-protocol-version": PROTOCOL_VERSION,
@@ -204,7 +208,8 @@ test("pinned Streamable HTTP sessions survive connection replacement and SSE dis
       "x-test-mcp-user": USER_ID,
     });
     assert.equal(afterDelete.status, 400);
-  });
+  }, new McpSessionRegistry({ observer: (event) => events.push(`${event.name}:${event.reason ?? ""}`) }));
+  assert.ok(events.includes("mcp_session_closed:client_close"));
 });
 
 test("pinned SDK transport.close invokes the actual onclose callback", async () => {
@@ -275,4 +280,24 @@ test("public and internal namespaces reject cross-use and enforce capacity", asy
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
+});
+
+test("concurrent HTTP initialize requests admit exactly one session at maxTotal one", async () => {
+  const registry = new McpSessionRegistry({ maxPerUser: 8, maxTotal: 1 });
+  await withMcpServer(async (port) => {
+    const results = await Promise.all([
+      requestSsePost(port, "/mcp", initializeRequest(), {
+        "mcp-protocol-version": PROTOCOL_VERSION,
+        accept: "application/json, text/event-stream",
+        "x-test-mcp-user": USER_ID,
+      }),
+      requestSsePost(port, "/mcp", initializeRequest(), {
+        "mcp-protocol-version": PROTOCOL_VERSION,
+        accept: "application/json, text/event-stream",
+        "x-test-mcp-user": "00000000-0000-4000-8000-000000000002",
+      }),
+    ]);
+    assert.deepEqual(results.map((result) => result.status).sort(), [200, 429]);
+    assert.equal(registry.capacitySize, 1);
+  }, registry);
 });

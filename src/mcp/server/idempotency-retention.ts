@@ -25,7 +25,7 @@ export class McpIdempotencyCleanupCoordinator {
   private readonly intervalMs: number;
   private readonly cleanup: (cutoff: Date) => Promise<number>;
   private readonly observer?: (event: IdempotencyCleanupObserverEvent) => void;
-  private lastCleanupAt: number | null = null;
+  private lastAttemptAt: number | null = null;
   private inFlight: Promise<void> | null = null;
 
   constructor(options: {
@@ -46,18 +46,18 @@ export class McpIdempotencyCleanupCoordinator {
     if (this.inFlight) return this.inFlight;
     const startedAt = this.now();
     if (
-      this.lastCleanupAt !== null &&
-      startedAt - this.lastCleanupAt < this.intervalMs
+      this.lastAttemptAt !== null &&
+      startedAt - this.lastAttemptAt < this.intervalMs
     ) {
       return;
     }
 
+    this.lastAttemptAt = startedAt;
     const operation = (async () => {
       try {
         const deletedRows = await this.cleanup(
           new Date(startedAt - this.retentionMs),
         );
-        this.lastCleanupAt = startedAt;
         this.emit({
           name: "mcp_idempotency_cleanup_completed",
           deletedRows,

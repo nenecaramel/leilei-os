@@ -32,7 +32,7 @@ test("idempotency cleanup runs once per interval with an exact cutoff", async ()
   assert.equal(cutoffs.length, 2);
 });
 
-test("concurrent cleanup calls share one operation and failures remain retryable", async () => {
+test("concurrent cleanup calls share one operation and failed attempts respect cadence", async () => {
   let now = 0;
   let calls = 0;
   let fail = true;
@@ -55,7 +55,33 @@ test("concurrent cleanup calls share one operation and failures remain retryable
   assert.equal(events[0]?.name, "mcp_idempotency_cleanup_failed");
 
   fail = false;
+  now = 9_999;
+  await coordinator.maybeCleanup();
+  assert.equal(calls, 1);
+
+  now = 10_000;
   await coordinator.maybeCleanup();
   assert.equal(calls, 2);
   assert.equal(events[1]?.name, "mcp_idempotency_cleanup_completed");
+});
+
+test("successful cleanup attempts are also limited to one per interval", async () => {
+  let now = 0;
+  let calls = 0;
+  const coordinator = new McpIdempotencyCleanupCoordinator({
+    now: () => now,
+    retentionMs: 1_000,
+    intervalMs: 24 * 60 * 60 * 1_000,
+    cleanup: async () => {
+      calls += 1;
+      return 0;
+    },
+  });
+  await coordinator.maybeCleanup();
+  now = 23 * 60 * 60 * 1_000;
+  await coordinator.maybeCleanup();
+  assert.equal(calls, 1);
+  now = 24 * 60 * 60 * 1_000;
+  await coordinator.maybeCleanup();
+  assert.equal(calls, 2);
 });

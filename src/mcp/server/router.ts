@@ -92,8 +92,8 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
         : null;
 
       if (!activeSession && !knownSession && isInitializeRequest(request.body)) {
-        await registry.sweep();
-        if (!registry.canCreate(userId, namespace)) {
+        const reservation = await registry.admit(userId, namespace);
+        if (!reservation) {
           registry.observeCapacityRejected(namespace);
           sendError(response, 429, -32029, "MCP session capacity exceeded.");
           return;
@@ -108,25 +108,33 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
           userId,
           activeUserAuthorization,
         );
+        let initializedRecord: McpSessionRecord | null = null;
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (initializedSessionId) => {
-            registry.register({
+            initializedRecord = registry.commit(reservation, {
               sessionId: initializedSessionId,
               server,
               transport,
               userId,
               namespace,
+              inFlightCount: 1,
             });
           },
         });
 
         transport.onclose = () => {
-          registry.handleTransportClose(transport);
+          if (!reservation.committed) registry.release(reservation);
+          else registry.handleTransportClose(transport);
         };
 
-        await server.connect(transport);
-        await transport.handleRequest(request, response, request.body);
+        try {
+          await server.connect(transport);
+          await transport.handleRequest(request, response, request.body);
+        } finally {
+          if (initializedRecord) registry.finishRequest(initializedRecord);
+          if (!reservation.committed) registry.release(reservation);
+        }
         return;
       }
 
@@ -192,7 +200,12 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
       response.status(400).send("Invalid or missing MCP session.");
       return;
     }
-    await runRequest(activeSession, request, response);
+    registry.expectClose(activeSession);
+    try {
+      await runRequest(activeSession, request, response);
+    } finally {
+      registry.clearExpectedClose(activeSession);
+    }
   });
 
   return router;

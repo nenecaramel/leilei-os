@@ -129,3 +129,99 @@ test("transport close cleanup removes the registry entry once", async () => {
 
   assert.equal(registry.size, 0);
 });
+
+test("reservations atomically enforce total and per-user namespace capacity", async () => {
+  const registry = new McpSessionRegistry({ maxPerUser: 1, maxTotal: 1 });
+  const first = registry.reserve("u1", "public");
+  const second = registry.reserve("u1", "public");
+  assert.ok(first);
+  assert.equal(second, null);
+  assert.equal(registry.capacitySize, 1);
+
+  registry.release(first!);
+  const afterRelease = registry.reserve("u1", "public");
+  assert.ok(afterRelease);
+  registry.commit(afterRelease!, {
+    sessionId: "committed",
+    userId: "u1",
+    namespace: "public",
+    server: { close: async () => undefined } as never,
+    transport: {} as never,
+  });
+  assert.equal(registry.capacitySize, 1);
+  assert.equal(registry.reserve("u2", "public"), null);
+});
+
+test("concurrent admissions cannot exceed total or per-user namespace limits", async () => {
+  const totalLimited = new McpSessionRegistry({ maxPerUser: 8, maxTotal: 1 });
+  const totalResults = await Promise.all([
+    totalLimited.admit("u1", "public"),
+    totalLimited.admit("u2", "public"),
+  ]);
+  assert.equal(totalResults.filter(Boolean).length, 1);
+  assert.equal(totalLimited.capacitySize, 1);
+
+  const userLimited = new McpSessionRegistry({ maxPerUser: 1, maxTotal: 8 });
+  const userResults = await Promise.all([
+    userLimited.admit("u1", "public"),
+    userLimited.admit("u1", "public"),
+  ]);
+  assert.equal(userResults.filter(Boolean).length, 1);
+  assert.equal(userLimited.capacitySize, 1);
+});
+
+test("reservation release after failed initialize leaves capacity available", () => {
+  const registry = new McpSessionRegistry({ maxTotal: 1 });
+  const reservation = registry.reserve("u1", "public");
+  assert.ok(reservation);
+  registry.release(reservation!);
+  assert.equal(registry.capacitySize, 0);
+  assert.ok(registry.reserve("u2", "public"));
+});
+
+test("expired capacity is reclaimed even inside the lazy sweep throttle window", async () => {
+  let now = 0;
+  const events: string[] = [];
+  const registry = new McpSessionRegistry({
+    now: () => now,
+    maxTotal: 1,
+    idleTtlMs: 100,
+    absoluteTtlMs: 1_000,
+    sweepMinIntervalMs: 1_000,
+    observer: (event) => events.push(event.name + ":" + event.reason),
+  });
+  const session = createDummy(registry, { sessionId: "expired", userId: "u1", namespace: "public" });
+  await registry.sweep();
+  now = 101;
+  const reservation = await registry.admit("u2", "public");
+  assert.ok(reservation);
+  assert.equal(session.closeCalls, 1);
+  assert.deepEqual(events.filter((event) => event.startsWith("mcp_session_closed:")), ["mcp_session_closed:idle_ttl"]);
+});
+
+test("explicit close reason is consumed once and unsolicited transport close remains distinct", async () => {
+  const events: string[] = [];
+  const registry = new McpSessionRegistry({ observer: (event) => events.push(event.name + ":" + event.reason) });
+  const explicitTransport = {};
+  registry.register({
+    sessionId: "explicit",
+    userId: "u1",
+    namespace: "public",
+    server: { close: async () => undefined } as never,
+    transport: explicitTransport,
+  });
+  const explicit = registry.find("explicit")!;
+  registry.expectClose(explicit);
+  registry.handleTransportClose(explicitTransport);
+
+  const transport = {};
+  registry.register({
+    sessionId: "transport",
+    userId: "u1",
+    namespace: "public",
+    server: { close: async () => undefined } as never,
+    transport,
+  });
+  registry.handleTransportClose(transport);
+  assert.deepEqual(events, ["mcp_session_created:undefined", "mcp_session_closed:client_close", "mcp_session_created:undefined", "mcp_session_closed:transport_close"]);
+});

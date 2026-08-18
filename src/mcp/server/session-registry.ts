@@ -42,6 +42,14 @@ export type McpSessionRecord = {
   lastActivityAt: number;
   inFlightCount: number;
   closed: boolean;
+  expectedCloseReason?: "client_close";
+};
+
+export type McpSessionReservation = {
+  readonly userId: string;
+  readonly namespace: McpSessionNamespace;
+  released: boolean;
+  committed: boolean;
 };
 
 export type McpSessionRegistryOptions = {
@@ -70,6 +78,7 @@ export class McpSessionRegistry {
   private readonly sweepMinIntervalMs: number;
   private readonly observer?: (event: McpSessionObserverEvent) => void;
   private lastSweepAt = Number.NEGATIVE_INFINITY;
+  private readonly reservations = new Set<McpSessionReservation>();
 
   constructor(options: McpSessionRegistryOptions = {}) {
     this.now = options.now ?? Date.now;
@@ -86,12 +95,91 @@ export class McpSessionRegistry {
     return this.sessions.size;
   }
 
+  get capacitySize(): number {
+    return this.sessions.size + this.reservations.size;
+  }
+
+  reserve(
+    userId: string,
+    namespace: McpSessionNamespace,
+  ): McpSessionReservation | null {
+    if (this.capacitySize >= this.maxTotal) return null;
+    if (this.countUserNamespace(userId, namespace) + this.countReservedUserNamespace(userId, namespace) >= this.maxPerUser) {
+      return null;
+    }
+    const reservation: McpSessionReservation = {
+      userId,
+      namespace,
+      released: false,
+      committed: false,
+    };
+    this.reservations.add(reservation);
+    return reservation;
+  }
+
+  async admit(
+    userId: string,
+    namespace: McpSessionNamespace,
+  ): Promise<McpSessionReservation | null> {
+    await this.sweep();
+    const reservation = this.reserve(userId, namespace);
+    if (reservation) return reservation;
+    await this.sweep(true);
+    return this.reserve(userId, namespace);
+  }
+
+  release(reservation: McpSessionReservation): boolean {
+    if (reservation.released || reservation.committed) return false;
+    reservation.released = true;
+    return this.reservations.delete(reservation);
+  }
+
+  commit(
+    reservation: McpSessionReservation,
+    input: {
+      sessionId: string;
+      userId: string;
+      namespace: McpSessionNamespace;
+      server: Closable;
+      transport: object;
+      inFlightCount?: number;
+    },
+  ): McpSessionRecord {
+    if (reservation.released || reservation.committed || !this.reservations.has(reservation)) {
+      throw new Error("MCP_SESSION_RESERVATION_INVALID");
+    }
+    if (reservation.userId !== input.userId || reservation.namespace !== input.namespace) {
+      throw new Error("MCP_SESSION_RESERVATION_MISMATCH");
+    }
+    reservation.committed = true;
+    this.reservations.delete(reservation);
+    return this.insert(input);
+  }
+
   register(input: {
     sessionId: string;
     userId: string;
     namespace: McpSessionNamespace;
     server: Closable;
     transport: object;
+  }): McpSessionRecord {
+    const reservation = this.reserve(input.userId, input.namespace);
+    if (!reservation) throw new Error("MCP_SESSION_CAPACITY_EXCEEDED");
+    try {
+      return this.commit(reservation, input);
+    } catch (error) {
+      this.release(reservation);
+      throw error;
+    }
+  }
+
+  private insert(input: {
+    sessionId: string;
+    userId: string;
+    namespace: McpSessionNamespace;
+    server: Closable;
+    transport: object;
+    inFlightCount?: number;
   }): McpSessionRecord {
     if (this.sessions.has(input.sessionId)) {
       throw new Error("MCP_SESSION_ALREADY_REGISTERED");
@@ -101,7 +189,7 @@ export class McpSessionRegistry {
       ...input,
       createdAt: now,
       lastActivityAt: now,
-      inFlightCount: 0,
+      inFlightCount: input.inFlightCount ?? 0,
       closed: false,
     };
     this.sessions.set(record.sessionId, record);
@@ -153,8 +241,8 @@ export class McpSessionRegistry {
   }
 
   canCreate(userId: string, namespace: McpSessionNamespace): boolean {
-    if (this.size >= this.maxTotal) return false;
-    return this.countUserNamespace(userId, namespace) < this.maxPerUser;
+    return this.capacitySize < this.maxTotal &&
+      this.countUserNamespace(userId, namespace) + this.countReservedUserNamespace(userId, namespace) < this.maxPerUser;
   }
 
   observeCapacityRejected(namespace: McpSessionNamespace): void {
@@ -191,8 +279,16 @@ export class McpSessionRegistry {
   handleTransportClose(transport: object): boolean {
     const record = [...this.sessions.values()].find((candidate) => candidate.transport === transport);
     if (!record || record.closed) return false;
-    this.removeAndObserve(record, "transport_close");
+    this.removeAndObserve(record, record.expectedCloseReason ?? "transport_close");
     return true;
+  }
+
+  expectClose(record: McpSessionRecord): void {
+    if (!record.closed) record.expectedCloseReason = "client_close";
+  }
+
+  clearExpectedClose(record: McpSessionRecord): void {
+    if (!record.closed) delete record.expectedCloseReason;
   }
 
   private expiryReason(
@@ -242,6 +338,12 @@ export class McpSessionRegistry {
   private countUserNamespace(userId: string, namespace: McpSessionNamespace): number {
     return [...this.sessions.values()].filter(
       (record) => record.userId === userId && record.namespace === namespace,
+    ).length;
+  }
+
+  private countReservedUserNamespace(userId: string, namespace: McpSessionNamespace): number {
+    return [...this.reservations].filter(
+      (reservation) => reservation.userId === userId && reservation.namespace === namespace && !reservation.released && !reservation.committed,
     ).length;
   }
 
