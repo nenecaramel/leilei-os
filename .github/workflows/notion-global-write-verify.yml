@@ -1,3 +1,4 @@
+# Verification carrier for PR #167 only; this branch must not be merged.
 name: Notion global write verification
 
 on:
