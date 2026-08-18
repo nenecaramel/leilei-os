@@ -1,6 +1,27 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ExportDocumentV2 } from "../export/export-types.js";
+import {
+  DIARY_CONTENT_MAX_LENGTH,
+  DIARY_MOOD_MAX_LENGTH,
+  DIARY_TAGS_MAX_COUNT,
+  DIARY_TAG_MAX_LENGTH,
+  DIARY_TITLE_MAX_LENGTH,
+  MAX_IMPORT_AUDIT_EVENTS_PER_TYPE,
+  MAX_IMPORT_RECORDS_PER_MODULE,
+  MEMORY_CONTENT_MAX_LENGTH,
+  MEMORY_KEY_MAX_LENGTH,
+  MEMORY_TAGS_MAX_COUNT,
+  MEMORY_TAG_MAX_LENGTH,
+  TASK_DESCRIPTION_MAX_LENGTH,
+  TASK_TIMEZONE_MAX_LENGTH,
+  TASK_TITLE_MAX_LENGTH,
+  TASK_TAGS_MAX_COUNT,
+  TASK_TAG_MAX_LENGTH,
+  MAX_TODO_ENTRIES,
+  MAX_TODO_ENTRY_ID_LENGTH,
+  MAX_TODO_ENTRY_TEXT_LENGTH,
+} from "../resource-limits.js";
 
 export type ImportErrorCode =
   | "INVALID_IMPORT_FILE"
@@ -34,14 +55,14 @@ const businessDate = z.string().refine((value) => {
 });
 const uuid = z.string().uuid();
 const author = z.union([z.literal("L"), z.literal("G"), z.null()]);
-const boundedTags = z.array(z.string().max(50)).max(20);
-const diaryTags = z.array(z.string()).max(20);
+const boundedTags = z.array(z.string().min(1).max(MEMORY_TAG_MAX_LENGTH)).max(MEMORY_TAGS_MAX_COUNT);
+const diaryTags = z.array(z.string().min(1).max(DIARY_TAG_MAX_LENGTH)).max(DIARY_TAGS_MAX_COUNT);
 
 const memoryRecord = z.object({
   id: uuid,
   category: z.enum(["profile", "preference", "goal", "project"]),
-  key: z.string().min(1).max(100),
-  content: z.string().min(1),
+  key: z.string().min(1).max(MEMORY_KEY_MAX_LENGTH),
+  content: z.string().min(1).max(MEMORY_CONTENT_MAX_LENGTH),
   tags: boundedTags,
   visibility: z.enum(["assistant", "private", "restricted"]),
   source: z.string().min(1).max(100),
@@ -54,11 +75,11 @@ const memoryRecord = z.object({
 
 const diaryRecord = z.object({
   id: uuid,
-  title: z.string().min(1).max(200),
-  content: z.string().min(1),
+  title: z.string().min(1).max(DIARY_TITLE_MAX_LENGTH),
+  content: z.string().min(1).max(DIARY_CONTENT_MAX_LENGTH),
   date: businessDate,
   tags: diaryTags,
-  mood: z.string().max(50).nullable(),
+  mood: z.string().max(DIARY_MOOD_MAX_LENGTH).nullable(),
   source: z.literal("chatgpt_mcp"),
   author,
   status: z.enum(["active", "archived"]),
@@ -68,25 +89,25 @@ const diaryRecord = z.object({
 
 const taskRecord = z.object({
   id: uuid,
-  title: z.string().min(1).max(200),
-  description: z.string().min(1),
+  title: z.string().min(1).max(TASK_TITLE_MAX_LENGTH),
+  description: z.string().min(1).max(TASK_DESCRIPTION_MAX_LENGTH),
   status: z.enum(["pending", "in_progress", "completed", "cancelled"]),
   resume_status: z.enum(["pending", "in_progress", "completed", "cancelled"]).nullable(),
   lifecycle_status: z.enum(["active", "archived"]),
   author,
   priority: z.enum(["low", "normal", "high", "urgent"]),
   due_time: isoDateTime.nullable(),
-  timezone: z.string().regex(/^[A-Za-z0-9_+.-]+(?:\/[A-Za-z0-9_+.-]+)*$/u).max(64),
-  tags: boundedTags,
+  timezone: z.string().regex(/^[A-Za-z0-9_+.-]+(?:\/[A-Za-z0-9_+.-]+)*$/u).max(TASK_TIMEZONE_MAX_LENGTH),
+  tags: z.array(z.string().min(1).max(TASK_TAG_MAX_LENGTH)).max(TASK_TAGS_MAX_COUNT),
   created_at: isoDateTime,
   updated_at: isoDateTime,
   completed_at: isoDateTime.nullable(),
 }).strict();
 
 const todoEntry = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1).max(MAX_TODO_ENTRY_ID_LENGTH),
   kind: z.enum(["pending", "completed", "record"]),
-  text: z.string().min(1),
+  text: z.string().min(1).max(MAX_TODO_ENTRY_TEXT_LENGTH),
 }).strict();
 
 const todoPaper = z.object({
@@ -95,7 +116,7 @@ const todoPaper = z.object({
   revision: z.number().int().nonnegative(),
   created_at: isoDateTime,
   updated_at: isoDateTime,
-  entries: z.array(todoEntry),
+  entries: z.array(todoEntry).max(MAX_TODO_ENTRIES),
 }).strict();
 
 const lifecycleEvent = z.object({
@@ -124,14 +145,14 @@ const documentSchema = z.object({
   owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
   exported_at: isoDateTime,
   data: z.object({
-    memory: z.array(memoryRecord).optional(),
-    diary: z.array(diaryRecord).optional(),
-    task: z.array(taskRecord).optional(),
-    todo: z.array(todoPaper).optional(),
+    memory: z.array(memoryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+    diary: z.array(diaryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+    task: z.array(taskRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+    todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
   }).strict(),
   audit: z.object({
-    lifecycle: z.array(lifecycleEvent),
-    tool_activity: z.array(toolActivity),
+    lifecycle: z.array(lifecycleEvent).max(MAX_IMPORT_AUDIT_EVENTS_PER_TYPE),
+    tool_activity: z.array(toolActivity).max(MAX_IMPORT_AUDIT_EVENTS_PER_TYPE),
   }).strict().optional(),
 }).strict();
 

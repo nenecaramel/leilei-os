@@ -7,6 +7,7 @@ import {
   migrateLegacyTodoPapers,
   parseLegacyTodoPaper,
 } from "../web/src/pages/todo-legacy-migration.js";
+import { WebApiError } from "../web/src/api/web-api-error.js";
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -36,6 +37,7 @@ test("legacy migration uploads only when the server paper is absent", async () =
   assert.equal(calls.length, 2);
   assert.deepEqual(JSON.parse(String((calls[1] as { init: RequestInit }).init.body)), { revision: null, entries: [{ id: "l-1", kind: "pending", text: "hello" }, { id: "l-2", kind: "completed", text: "done" }] });
   assert.deepEqual(JSON.parse(storage.getItem(legacyTodoMigrationMarkerKey("L", "2026-08-12"))!), { state: "migrated" });
+  assert.equal(storage.getItem(legacyTodoPaperKey("L", "2026-08-12")), null);
 });
 
 test("server wins and invalid legacy data never uploads", async () => {
@@ -50,6 +52,28 @@ test("server wins and invalid legacy data never uploads", async () => {
   assert.equal(puts, 0);
   assert.deepEqual(JSON.parse(storage.getItem(legacyTodoMigrationMarkerKey("L", "2026-08-12"))!), { state: "server-wins" });
   assert.deepEqual(JSON.parse(storage.getItem(legacyTodoMigrationMarkerKey("G", "2026-08-13"))!), { state: "invalid" });
+  assert.equal(storage.getItem(legacyTodoPaperKey("L", "2026-08-12")), null);
+  assert.equal(storage.getItem(legacyTodoPaperKey("G", "2026-08-13")), "{broken");
+});
+
+test("legacy migration keeps raw data on retryable failures and clears it on a 409 server win", async () => {
+  const networkStorage = new MemoryStorage();
+  networkStorage.setItem(legacyTodoPaperKey("L", "2026-08-12"), legacy);
+  await migrateLegacyTodoPapers({ storage: networkStorage, api: { request: async (_path: string, init?: RequestInit) => {
+    if (init) throw new Error("network unavailable");
+    return { success: true, data: { date: "2026-08-12", papers: { L: null, G: null } } };
+  } } });
+  assert.equal(networkStorage.getItem(legacyTodoPaperKey("L", "2026-08-12")), legacy);
+  assert.equal(networkStorage.getItem(legacyTodoMigrationMarkerKey("L", "2026-08-12")), null);
+
+  const conflictStorage = new MemoryStorage();
+  conflictStorage.setItem(legacyTodoPaperKey("L", "2026-08-12"), legacy);
+  await migrateLegacyTodoPapers({ storage: conflictStorage, api: { request: async (_path: string, init?: RequestInit) => {
+    if (init) throw new WebApiError(409, "TODO_PAPER_CONFLICT", "server won");
+    return { success: true, data: { date: "2026-08-12", papers: { L: null, G: null } } };
+  } } });
+  assert.deepEqual(JSON.parse(conflictStorage.getItem(legacyTodoMigrationMarkerKey("L", "2026-08-12"))!), { state: "server-wins" });
+  assert.equal(conflictStorage.getItem(legacyTodoPaperKey("L", "2026-08-12")), null);
 });
 
 test("legacy discovery and parser enforce exact namespace and authorship", () => {

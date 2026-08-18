@@ -51,6 +51,14 @@ function sameEntries(a: unknown, b: readonly { id: string; author: string; kind:
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function isKnownLegacyHomeSeed(raw: string, author: TodoAuthor): boolean {
+  try {
+    return sameEntries(JSON.parse(raw) as unknown, LEGACY_HOME_SEED_ENTRIES[author]);
+  } catch {
+    return false;
+  }
+}
+
 export function parseLegacyTodoPaper(raw: string, author: TodoAuthor): { author: TodoAuthor; entries: TodoEntry[] } | null {
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -91,7 +99,13 @@ export async function migrateLegacyTodoPapers(input: { storage: Storage; api: We
       if (raw === null) continue;
       if (day.papers[candidate.author]) {
         mark(input.storage, candidate.author, date, "server-wins");
+        input.storage.removeItem(candidate.key);
         input.onNotice?.({ date, author: candidate.author, state: "server-wins" });
+        continue;
+      }
+      if (isKnownLegacyHomeSeed(raw, candidate.author)) {
+        mark(input.storage, candidate.author, date, "migrated");
+        input.storage.removeItem(candidate.key);
         continue;
       }
       const parsed = parseLegacyTodoPaper(raw, candidate.author);
@@ -99,9 +113,11 @@ export async function migrateLegacyTodoPapers(input: { storage: Storage; api: We
       try {
         await saveTodoPaper(input.api, { date, author: candidate.author, revision: null, entries: parsed.entries });
         mark(input.storage, candidate.author, date, "migrated");
+        input.storage.removeItem(candidate.key);
       } catch (error) {
         if (error instanceof WebApiError && error.status === 409) {
           mark(input.storage, candidate.author, date, "server-wins");
+          input.storage.removeItem(candidate.key);
           input.onNotice?.({ date, author: candidate.author, state: "server-wins" });
         }
         // network and server errors stay retryable and leave the raw key untouched

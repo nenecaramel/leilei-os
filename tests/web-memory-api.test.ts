@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { NextFunction, Request, Response } from "express";
-import { MemoryDomainError } from "../src/domains/memory/memory-service.js";
+import { MemoryDomainError, MemoryService } from "../src/domains/memory/memory-service.js";
 import {
   createCreateMemoryApiHandler,
   createArchiveMemoryApiHandler,
@@ -626,6 +626,31 @@ test("Memory create maps missing author to a safe client error", async () => {
   assert.equal(called, true);
   assert.equal(result.status, 400);
   assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
+});
+
+test("Memory Web create applies the domain boundary before repository mutation", async () => {
+  const writes: unknown[] = [];
+  const memoryService = new MemoryService({
+    async findUserById() { return { displayName: "Leilei", status: "active" }; },
+    async createMemory(input: unknown) { writes.push(input); },
+  } as never);
+  const handler = createCreateMemoryApiHandler({ memoryService } as never);
+  const makeResponse = () => responseRecorder();
+
+  const accepted = makeResponse();
+  await handler({
+    webUserId: "user-a",
+    body: { category: "goal", key: "k".repeat(100), content: "c".repeat(4_000), tags: [], author: "L" },
+  } as unknown as Request, accepted.response, (() => {}) as NextFunction);
+  assert.deepEqual(accepted.result.body, { success: true });
+
+  const rejected = makeResponse();
+  await handler({
+    webUserId: "user-a",
+    body: { category: "goal", key: "k".repeat(101), content: "content", tags: [], author: "L" },
+  } as unknown as Request, rejected.response, (() => {}) as NextFunction);
+  assert.equal(rejected.result.status, 400);
+  assert.equal(writes.length, 1);
 });
 
 test("Memory update maps AUTHOR_REQUIRED to the stable safe client error", async () => {

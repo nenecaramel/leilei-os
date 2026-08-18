@@ -47,7 +47,7 @@ test("create handler uses authenticated Web user and returns only public command
   await handler({ webUserId: command.userId, body: { action: "set", percent: 40 } } as Request, response, () => {});
   assert.equal(result.status, 201);
   assert.deepEqual(calls, [{ userId: command.userId, input: { action: "set", percent: 40 } }]);
-  assert.equal(result.headers["cache-control"], "no-store");
+  assert.equal(result.headers["cache-control"], "private, no-store");
   assert.ok(!JSON.stringify(result.body).includes(command.userId));
 });
 

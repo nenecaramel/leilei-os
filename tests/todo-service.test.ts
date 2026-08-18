@@ -52,6 +52,39 @@ test("TodoService rejects invalid input without repository mutation", async () =
   assert.equal(repository.replacements.length, 0);
 });
 
+test("TodoService enforces the canonical durable entry limits for Web and MCP writes", async () => {
+  const repository = new FakeTodoRepository();
+  const service = new TodoService(repository);
+  const validEntries = Array.from({ length: 200 }, (_, index) => ({
+    id: `entry-${index}`,
+    kind: "record" as const,
+    text: "x".repeat(4_000),
+  }));
+
+  await service.replacePaper({ userId: "u", date: "2026-08-12", author: "L", revision: null, entries: validEntries });
+  await service.replacePaperIdempotently({
+    userId: "u", date: "2026-08-13", author: "G", revision: null, entries: validEntries,
+    idempotencyKey: "todo.paper:limits-0001",
+  });
+  const writes = repository.replacements.length + repository.idempotentReplacements.length;
+
+  for (const entries of [
+    Array.from({ length: 201 }, (_, index) => ({ id: String(index), kind: "record", text: "x" })),
+    [{ id: "x".repeat(129), kind: "record", text: "x" }],
+    [{ id: "x", kind: "record", text: "x".repeat(4_001) }],
+  ]) {
+    await assert.rejects(
+      service.replacePaper({ userId: "u", date: "2026-08-12", author: "L", revision: null, entries }),
+      (error: unknown) => error instanceof TodoServiceError && error.code === "TODO_ENTRY_INVALID",
+    );
+    await assert.rejects(
+      service.replacePaperIdempotently({ userId: "u", date: "2026-08-13", author: "G", revision: null, entries, idempotencyKey: `todo.paper:limits-${writes + 2}` }),
+      (error: unknown) => error instanceof TodoServiceError && error.code === "TODO_ENTRY_INVALID",
+    );
+  }
+  assert.equal(repository.replacements.length + repository.idempotentReplacements.length, writes);
+});
+
 test("TodoService trims and drops blank rows while preserving order", async () => {
   const repository = new FakeTodoRepository();
   const service = new TodoService(repository);
