@@ -69,8 +69,8 @@ test("parseImportPackage validates exported business invariants without coercion
   );
 });
 
-test("parseImportPackage accepts diary tags at the current canonical limit", () => {
-  const longTag = "d".repeat(50);
+test("parseImportPackage accepts the historical 80-character Diary tag export", () => {
+  const longTag = "d".repeat(80);
   const diary = {
     id: "00000000-0000-4000-8000-000000000012",
     title: "Long tag diary",
