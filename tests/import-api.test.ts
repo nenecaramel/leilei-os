@@ -11,7 +11,7 @@ const body = JSON.stringify({ schema_version: 2, owner_fingerprint: createOwnerF
 function dependencies(importService: { preview: (...args: never[]) => Promise<unknown>; execute: (...args: never[]) => Promise<unknown> }) {
   return {
     memory: { memoryService: {} as never }, diary: { diaryService: {} as never }, task: { taskService: {} as never },
-    health: { healthService: {} as never }, toy: { toyService: {} as never }, system: { systemService: {} as never },
+    toy: { toyService: {} as never }, system: { systemService: {} as never },
     import: { importService },
   } as never;
 }

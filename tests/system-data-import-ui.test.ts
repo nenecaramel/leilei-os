@@ -17,7 +17,7 @@ function installDom(url: string) {
 }
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 35));
-const summary = () => ({ success: true as const, data: { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 }, health: { total: 0 } } });
+const summary = () => ({ success: true as const, data: { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 } } });
 
 test("Data restore previews a selected file and executes only after explicit confirmation", async () => {
   const env = installDom("https://leilei.test/system/data");

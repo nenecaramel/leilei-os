@@ -45,10 +45,6 @@ test("real System repository scopes counts and activity to one user", { skip: !r
         { id: randomUUID(), userId: owner, title: "owner archived task", description: "owner", status: "completed", resumeStatus: "in_progress", lifecycleStatus: "archived", priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: [], createdAt: now, updatedAt: now, completedAt: now },
         { id: randomUUID(), userId: other, title: "other task", description: "other", status: "pending", resumeStatus: null, lifecycleStatus: "active", priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: [], createdAt: now, updatedAt: now, completedAt: null },
       ]);
-      await transaction.insert(schema.healthRecords).values({
-        id: randomUUID(), userId: owner, date: "2026-08-09", steps: 100, periodStartDate: null, cycleDay: null, createdAt: now, updatedAt: now,
-      });
-
       const ownerMemoryId = randomUUID();
       const otherMemoryId = randomUUID();
       await transaction.insert(schema.resourceLifecycleEvents).values([
@@ -71,7 +67,6 @@ test("real System repository scopes counts and activity to one user", { skip: !r
         memory: { active: 1, archived: 1 },
         diary: { active: 1, archived: 1 },
         task: { active: 1, archived: 1 },
-        health: { total: 1 },
       });
       const lifecycle = await repository.listLifecycleActivity(owner, 10);
       assert.equal(lifecycle.length, 1);

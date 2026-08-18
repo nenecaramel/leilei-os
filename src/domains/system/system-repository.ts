@@ -3,7 +3,6 @@ import type { createDatabase } from "../../database/client.js";
 import {
   coreMemories,
   diaryEntries,
-  healthRecords,
   mcpWriteIdempotency,
   resourceLifecycleEvents,
   tasks,
@@ -15,7 +14,6 @@ export type SystemDataSummary = {
   memory: { active: number; archived: number };
   diary: { active: number; archived: number };
   task: { active: number; archived: number };
-  health: { total: number };
 };
 
 export type SystemLifecycleActivityRecord = {
@@ -74,7 +72,7 @@ export class DrizzleSystemRepository implements SystemRepository {
   }
 
   async readDataSummary(userId: string): Promise<SystemDataSummary> {
-    const [memoryRows, diaryRows, taskRows, healthRows] = await Promise.all([
+    const [memoryRows, diaryRows, taskRows] = await Promise.all([
       this.db
         .select({ status: coreMemories.status, count: count() })
         .from(coreMemories)
@@ -90,10 +88,6 @@ export class DrizzleSystemRepository implements SystemRepository {
         .from(tasks)
         .where(eq(tasks.userId, userId))
         .groupBy(tasks.lifecycleStatus),
-      this.db
-        .select({ count: count() })
-        .from(healthRecords)
-        .where(eq(healthRecords.userId, userId)),
     ]);
 
     return {
@@ -108,9 +102,6 @@ export class DrizzleSystemRepository implements SystemRepository {
       task: {
         active: readCount(taskRows, "active"),
         archived: readCount(taskRows, "archived"),
-      },
-      health: {
-        total: Number(healthRows[0]?.count ?? 0),
       },
     };
   }

@@ -17,7 +17,7 @@ type Service = Record<string, (...args: never[]) => unknown>;
 function dependencies(universeService: Service) {
   return {
     memory: { memoryService: {} as never }, diary: { diaryService: {} as never }, task: { taskService: {} as never },
-    health: { healthService: {} as never }, toy: { toyService: {} as never }, system: { systemService: {} as never },
+    toy: { toyService: {} as never }, system: { systemService: {} as never },
     universe: { universeService },
   } as never;
 }

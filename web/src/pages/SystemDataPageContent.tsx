@@ -246,17 +246,6 @@ export function SystemDataPageContent({
                 state.summary.task.archived
               }
             />
-            <div className="system-data-row">
-              <strong>Health</strong>
-              <div className="system-count-pair">
-                <CountCell
-                  label="Total"
-                  value={
-                    state.summary.health.total
-                  }
-                />
-              </div>
-            </div>
           </div>
         ) : null}
       </section>

@@ -31,10 +31,8 @@ test("Data reads the approved counts endpoint and exposes the approved export ac
     "Memory",
     "Diary",
     "Task",
-    "Health",
     "Active",
     "Archived",
-    "Total",
   ]) {
     assert.match(dataContentSource, new RegExp(label));
   }

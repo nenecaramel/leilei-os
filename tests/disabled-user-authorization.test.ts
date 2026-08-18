@@ -5,7 +5,6 @@ import type { AddressInfo } from "node:net";
 import type { Request } from "express";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
 import { ExportService, ExportServiceError, type ExportRepository } from "../src/domains/export/export-service.js";
-import { HealthService, HealthServiceError } from "../src/domains/health/health-service.js";
 import { ImportAuthorizationError, ImportService } from "../src/domains/import/import-service.js";
 import type { ImportRepository } from "../src/domains/import/import-repository.js";
 import { SystemService, SystemServiceError, type SystemRepository } from "../src/domains/system/system-service.js";
@@ -76,45 +75,12 @@ test("TodoService rechecks durable status for an already-established caller", as
   assert.equal(reads, 1);
 });
 
-test("HealthService rejects disabled and missing users before persistence", async () => {
-  for (const user of [DISABLED, null]) {
-    let writes = 0;
-    const service = new HealthService({
-      findUserById: async () => user,
-      upsertHealth: async () => { writes += 1; return { id: "health-1", date: "2026-08-14", steps: 1, periodStartDate: null, cycleDay: null }; },
-      getLatestHealth: async () => null,
-    } as never);
-    const code = user ? "USER_DISABLED" : "USER_NOT_FOUND";
-    await assert.rejects(() => service.syncHealth(USER_ID, { date: "2026-08-14" }), (error: unknown) => assertUserRejection(error, code));
-    assert.equal(writes, 0);
-  }
-});
-
-test("HealthService preserves active-user behavior", async () => {
-  let writes = 0;
-  const service = new HealthService({
-    findUserById: async () => ACTIVE,
-    upsertHealth: async () => {
-      writes += 1;
-      return { id: "health-1", date: "2026-08-14", steps: 1, periodStartDate: null, cycleDay: null };
-    },
-    getLatestHealth: async () => null,
-  } as never);
-  assert.deepEqual(await service.syncHealth(USER_ID, { date: "2026-08-14", steps: 1 }), {
-    date: "2026-08-14",
-    steps: 1,
-    periodStartDate: null,
-    cycleDay: null,
-  });
-  assert.equal(writes, 1);
-});
-
 test("SystemService rejects disabled and missing users before summary or activity reads", async () => {
   for (const user of [DISABLED, null]) {
     let reads = 0;
     const repository = {
       findUserById: async () => user,
-      readDataSummary: async () => { reads += 1; return { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 }, health: { total: 0 } }; },
+      readDataSummary: async () => { reads += 1; return { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 } }; },
       listLifecycleActivity: async () => { reads += 1; return []; },
       listToolActivity: async () => { reads += 1; return []; },
     } as unknown as SystemRepository;
@@ -183,7 +149,6 @@ async function withApiServer(dependencies: Record<string, unknown>, callback: (u
 test("affected Web routes map durable user rejection to generic 403 envelopes", async () => {
   await withApiServer({
     todo: { todoService: { readDay: async () => { throw new TodoServiceError("USER_DISABLED" as never, "private disabled detail"); }, listDates: async () => [], replacePaper: async () => ({}) } },
-    health: { healthService: { syncHealth: async () => { throw new HealthServiceError("USER_NOT_FOUND"); } } },
     system: { systemService: { readConnections: async () => ({}), readDataSummary: async () => { throw new SystemServiceError("USER_DISABLED"); }, readActivity: async () => [] } },
     export: { exportService: { createExport: async () => { throw new ExportServiceError("USER_NOT_FOUND"); } } },
     import: { importService: { preview: async () => { throw new ImportAuthorizationError("USER_DISABLED"); }, execute: async () => { throw new ImportAuthorizationError("USER_DISABLED"); } } },
@@ -191,7 +156,6 @@ test("affected Web routes map durable user rejection to generic 403 envelopes", 
     const headers = { "x-test-user": "yes", "content-type": "application/octet-stream" };
     const cases = [
       fetch(`${url}/api/v1/todo/2026-08-14`, { headers: { "x-test-user": "yes" } }),
-      fetch(`${url}/api/v1/health`, { method: "POST", headers: { "x-test-user": "yes", "content-type": "application/json" }, body: JSON.stringify({ date: "2026-08-14" }) }),
       fetch(`${url}/api/v1/system/data`, { headers: { "x-test-user": "yes" } }),
       fetch(`${url}/api/v1/system/export?scope=all`, { headers: { "x-test-user": "yes" } }),
       fetch(`${url}/api/v1/system/import/preview`, { method: "POST", headers, body: packageBytes }),

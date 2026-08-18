@@ -22,7 +22,6 @@ function dependencies(exportService: { createExport: (userId: string, scope: Exp
     memory: { memoryService: {} as never },
     diary: { diaryService: {} as never },
     task: { taskService: {} as never },
-    health: { healthService: {} as never },
     toy: { toyService: {} as never },
     system: { systemService: {} as never },
     export: { exportService },

@@ -11,7 +11,6 @@ function dependencies(systemService: Record<string, unknown>) {
     memory: { memoryService: {} as never },
     diary: { diaryService: {} as never },
     task: { taskService: {} as never },
-    health: { healthService: {} as never },
     toy: { toyService: {} as never },
     system: { systemService },
   } as never;
@@ -73,7 +72,6 @@ test("system connections and data routes use server-owned identity", async () =>
         memory: { active: 1, archived: 2 },
         diary: { active: 3, archived: 4 },
         task: { active: 5, archived: 6 },
-        health: { total: 7 },
       };
     },
   }, async (baseUrl) => {
@@ -96,7 +94,6 @@ test("system connections and data routes use server-owned identity", async () =>
         memory: { active: 1, archived: 2 },
         diary: { active: 3, archived: 4 },
         task: { active: 5, archived: 6 },
-        health: { total: 7 },
       },
     });
   });

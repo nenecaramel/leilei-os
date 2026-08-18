@@ -22,9 +22,6 @@ export type SystemDataSummary = {
     active: number;
     archived: number;
   };
-  health: {
-    total: number;
-  };
 };
 
 export type SystemDataResponse = {

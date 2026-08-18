@@ -12,10 +12,6 @@ import {
   type TaskApiDependencies,
 } from "./task-router.js";
 import {
-  createHealthApiRouter,
-  type HealthApiDependencies,
-} from "./health-router.js";
-import {
   createToyUserRouter,
   type ToyApiDependencies,
 } from "./toy-router.js";
@@ -30,7 +26,6 @@ export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
   diary: DiaryApiDependencies;
   task: TaskApiDependencies;
-  health: HealthApiDependencies;
   toy: ToyApiDependencies;
   system: SystemApiDependencies;
   globalSearch?: GlobalSearchApiDependencies;
@@ -78,11 +73,6 @@ export function createWebApiRouter(
   router.use(
     "/task",
     createTaskApiRouter(dependencies.task),
-  );
-
-  router.use(
-    "/health",
-    createHealthApiRouter(dependencies.health),
   );
 
   router.use("/toy", createToyUserRouter(dependencies.toy));
