@@ -10,6 +10,7 @@ const USER_ID = "11111111-1111-4111-8111-111111111111";
 const BRIDGE_KEY = "a".repeat(64);
 
 const unreachableRepository: ToyCommandRepository = {
+  async findUserById() { return null; },
   async create() { throw new Error("repository must not be called"); },
   async claim() { throw new Error("repository must not be called"); },
   async ack() { throw new Error("repository must not be called"); },

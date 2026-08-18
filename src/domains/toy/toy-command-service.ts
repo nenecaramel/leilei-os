@@ -17,6 +17,7 @@ import {
   hashMcpWriteRequest,
   normalizeMcpIdempotencyKey,
 } from "../mcp-write/mcp-write-idempotency.js";
+import { requireActiveUser } from "../require-active-user.js";
 
 const createSchema = z.discriminatedUnion("action", [
   z.object({
@@ -64,6 +65,7 @@ export class ToyCommandService {
     if (userId.trim() !== bound) {
       throw new ToyDomainError("TOY_FORBIDDEN", "Toy commands are unavailable.");
     }
+    await requireActiveUser(this.repository, bound);
     const parsed = createSchema.safeParse(input);
     if (!parsed.success) {
       throw new ToyDomainError("INVALID_INPUT", "The toy command is invalid.");
@@ -80,6 +82,7 @@ export class ToyCommandService {
     if (userId.trim() !== bound) {
       throw new ToyDomainError("TOY_FORBIDDEN", "Toy commands are unavailable.");
     }
+    await requireActiveUser(this.repository, bound);
     const parsed = createSchema.safeParse(input);
     if (!parsed.success) {
       throw new ToyDomainError("INVALID_INPUT", "The toy command is invalid.");
@@ -115,11 +118,14 @@ export class ToyCommandService {
   }
 
   async claim(): Promise<ToyCommandRecord | null> {
-    return this.repository.claim(this.requireBoundUser());
+    const bound = this.requireBoundUser();
+    await requireActiveUser(this.repository, bound);
+    return this.repository.claim(bound);
   }
 
   async ack(id: string, input: unknown): Promise<ToyCommandRecord> {
     const bound = this.requireBoundUser();
+    await requireActiveUser(this.repository, bound);
     const commandId = z.string().uuid().safeParse(id);
     const parsed = ackSchema.safeParse(input);
     if (!commandId.success || !parsed.success) {

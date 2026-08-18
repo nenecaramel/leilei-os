@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { NotionConnectionResult, NotionIntegration } from "../../../domains/notion/notion-read-integration.js";
-import { NotionAdvancedAuthenticationError, readOnlyNotionAnnotations, safeNotionAdvancedError } from "../notion-advanced/shared.js";
+import { NotionAdvancedAuthenticationError, authorizeNotionUser, readOnlyNotionAnnotations, safeNotionAdvancedError, type NotionUserAuthorizationDependencies } from "../notion-advanced/shared.js";
 
 const outputSchema = z.object({
   success: z.literal(true),
@@ -16,9 +16,8 @@ const outputSchema = z.object({
   }).strict(),
 }).strict();
 
-export type GetNotionConnectionToolDependencies = {
+export type GetNotionConnectionToolDependencies = NotionUserAuthorizationDependencies & {
   notionIntegration: Pick<NotionIntegration, "getConnection">;
-  getAuthenticatedUserId: () => string;
 };
 
 export function registerGetNotionConnectionTool(server: McpServer, dependencies: GetNotionConnectionToolDependencies): void {
@@ -30,7 +29,7 @@ export function registerGetNotionConnectionTool(server: McpServer, dependencies:
     annotations: readOnlyNotionAnnotations,
   }, async () => {
     try {
-      dependencies.getAuthenticatedUserId();
+      await authorizeNotionUser(dependencies);
       const data: NotionConnectionResult = await dependencies.notionIntegration.getConnection();
       return { content: [{ type: "text" as const, text: "Notion connection discovered." }], structuredContent: { success: true as const, data } };
     } catch (error) {

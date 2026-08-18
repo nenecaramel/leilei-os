@@ -5,6 +5,7 @@ import {
 } from "../domains/toy/toy-command-service.js";
 import type { ToyCommandRecord } from "../domains/toy/toy-command-types.js";
 import { createToyBridgeAuthMiddleware } from "./toy-bridge-auth.js";
+import { ActiveUserAuthorizationError } from "../domains/require-active-user.js";
 
 export type ToyApiDependencies = {
   toyService: Pick<ToyCommandService, "create" | "claim" | "ack">;
@@ -127,6 +128,10 @@ function serializeAck(command: ToyCommandRecord) {
 }
 
 function sendToyError(response: Response, error: unknown): void {
+  if (error instanceof ActiveUserAuthorizationError) {
+    sendError(response, 503, "TOY_UNAVAILABLE", "Toy command queue is unavailable.");
+    return;
+  }
   if (!(error instanceof ToyDomainError)) {
     sendError(response, 500, "TOY_ERROR", "The toy request could not be completed.");
     return;

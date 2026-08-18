@@ -17,6 +17,7 @@ import {
   TOY_DEFAULT_DURATION_SECONDS,
   TOY_MAX_DURATION_SECONDS,
 } from "../../../domains/toy/toy-command-types.js";
+import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
 
 const toyCommandStatusSchema = z.enum([
   "pending",
@@ -227,6 +228,13 @@ function toSafeToolError(error: unknown, action: "set" | "stop") {
           text: "Authentication is required to control the toy.",
         },
       ],
+    };
+  }
+
+  if (error instanceof ActiveUserAuthorizationError) {
+    return {
+      isError: true as const,
+      content: [{ type: "text" as const, text: "Toy control is temporarily unavailable." }],
     };
   }
 

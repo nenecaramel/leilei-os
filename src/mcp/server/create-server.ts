@@ -117,6 +117,11 @@ import { registerSearchUniverseTool, type SearchUniverseToolDependencies } from 
 import { registerGetUniverseNodeTool, type GetUniverseNodeToolDependencies } from "../tools/get-universe-node/register.js";
 import { registerGetUniverseRelationsTool, type GetUniverseRelationsToolDependencies } from "../tools/get-universe-relations/register.js";
 import { UniverseAuthenticationError } from "../tools/universe/shared.js";
+import {
+  ActiveUserAuthorizationError,
+  requireActiveUser,
+  type ActiveUserRepository,
+} from "../../domains/require-active-user.js";
 
 let defaultMemoryService: MemoryService | undefined;
 let defaultDiaryService: DiaryService | undefined;
@@ -127,6 +132,32 @@ let defaultTodoService: TodoService | undefined;
 let defaultNotionReadClient: NotionReadClient | undefined;
 let defaultNotionIntegration: NotionIntegration | undefined;
 let defaultUniverseService: UniverseService | undefined;
+let defaultActiveUserRepository: ActiveUserRepository | undefined;
+
+function getDefaultActiveUserRepository(): ActiveUserRepository {
+  if (!defaultActiveUserRepository) {
+    if (!env.DATABASE_URL) {
+      throw new Error("Active user database is not configured.");
+    }
+    const { db } = createDatabase(env.DATABASE_URL);
+    defaultActiveUserRepository = new DrizzleMemoryRepository(db);
+  }
+  return defaultActiveUserRepository;
+}
+
+export function createProductionActiveUserAuthorizer(
+  authenticatedUserId: string | undefined,
+): () => Promise<string> {
+  return async () => {
+    if (!authenticatedUserId) {
+      throw new ActiveUserAuthorizationError("USER_NOT_FOUND");
+    }
+    return requireActiveUser(
+      getDefaultActiveUserRepository(),
+      authenticatedUserId,
+    );
+  };
+}
 
 function getDefaultNotionReadClient(): NotionReadClient {
   if (!defaultNotionReadClient) {
@@ -394,6 +425,7 @@ type UniverseToolsDependencies = {
 };
 
 export type McpServerDependencies = {
+  activeUserAuthorization?: () => Promise<string>;
   memoryReads?: {
     memoryService: ReadMemoryToolDependencies["memoryService"] &
       SearchMemoryToolDependencies["memoryService"] &
@@ -438,6 +470,10 @@ export function createMcpServer(
     name: "leilei-os",
     version: "0.1.0",
   });
+
+  const activeUserAuthorization =
+    dependencies.activeUserAuthorization ??
+    createProductionActiveUserAuthorizer(authenticatedUserId);
 
   registerHelloTool(server);
   registerGetLocalContextTool(server);
@@ -570,27 +606,32 @@ export function createMcpServer(
   registerSearchUniverseTool(server, universeTools);
   registerGetUniverseNodeTool(server, universeTools);
   registerGetUniverseRelationsTool(server, universeTools);
-  registerSearchNotionTool(server, dependencies.notionTools ?? {
-    notionService: productionNotionService,
-    getAuthenticatedUserId: () => {
-      if (!authenticatedUserId) throw new SearchNotionAuthenticationError();
-      return authenticatedUserId;
-    },
-  });
-  registerReadNotionPageTool(server, dependencies.notionTools ?? {
-    notionService: productionNotionService,
-    getAuthenticatedUserId: () => {
-      if (!authenticatedUserId) throw new ReadNotionPageAuthenticationError();
-      return authenticatedUserId;
-    },
-  });
-  const notionRead = dependencies.notionRead ?? {
-    notionIntegration: getDefaultNotionIntegration(),
-    getAuthenticatedUserId: () => {
-      if (!authenticatedUserId) throw new NotionAdvancedAuthenticationError();
-      return authenticatedUserId;
-    },
-  } satisfies NotionReadDependencies;
+  const notionTools = dependencies.notionTools
+    ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
+      ? { ...dependencies.notionTools, requireActiveUser: activeUserAuthorization }
+      : dependencies.notionTools
+    : {
+        notionService: productionNotionService,
+        getAuthenticatedUserId: () => {
+          if (!authenticatedUserId) throw new SearchNotionAuthenticationError();
+          return authenticatedUserId;
+        },
+        requireActiveUser: activeUserAuthorization,
+      };
+  registerSearchNotionTool(server, notionTools);
+  registerReadNotionPageTool(server, notionTools);
+  const notionRead = dependencies.notionRead
+    ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
+      ? { ...dependencies.notionRead, requireActiveUser: activeUserAuthorization }
+      : dependencies.notionRead
+    : {
+        notionIntegration: getDefaultNotionIntegration(),
+        getAuthenticatedUserId: () => {
+          if (!authenticatedUserId) throw new NotionAdvancedAuthenticationError();
+          return authenticatedUserId;
+        },
+        requireActiveUser: activeUserAuthorization,
+      } satisfies NotionReadDependencies;
   registerGetNotionConnectionTool(server, notionRead);
   registerReadNotionDatabaseTool(server, notionRead);
   registerReadNotionDataSourceTool(server, notionRead);

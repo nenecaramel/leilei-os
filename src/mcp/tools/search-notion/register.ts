@@ -5,6 +5,11 @@ import {
   type NotionSearchInput,
   type NotionSearchResult,
 } from "../../../domains/notion/notion-read-client.js";
+import {
+  authorizeNotionUser,
+  isActiveUserAuthorizationError,
+  type NotionUserAuthorizationDependencies,
+} from "../../server/notion-authorization.js";
 
 const inputSchema = z.object({
   query: z
@@ -37,11 +42,10 @@ const outputSchema = z.object({
   }).strict(),
 }).strict();
 
-export type SearchNotionToolDependencies = {
+export type SearchNotionToolDependencies = NotionUserAuthorizationDependencies & {
   notionService: {
     searchPages(input: NotionSearchInput): Promise<NotionSearchResult>;
   };
-  getAuthenticatedUserId: () => string;
 };
 
 export function registerSearchNotionTool(
@@ -61,7 +65,7 @@ export function registerSearchNotionTool(
     },
   }, async (args) => {
     try {
-      dependencies.getAuthenticatedUserId();
+      await authorizeNotionUser(dependencies);
       const data = await dependencies.notionService.searchPages(args);
       const structuredData = {
         results: data.results.map((page) => ({
@@ -84,7 +88,7 @@ export function registerSearchNotionTool(
         structuredContent: { success: true as const, data: structuredData },
       };
     } catch (error) {
-      if (error instanceof SearchNotionAuthenticationError) {
+      if (error instanceof SearchNotionAuthenticationError || isActiveUserAuthorizationError(error)) {
         return {
           isError: true as const,
           content: [{

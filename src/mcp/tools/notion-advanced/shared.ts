@@ -1,4 +1,9 @@
 import { NotionIntegrationError } from "../../../domains/notion/notion-read-integration.js";
+import {
+  authorizeNotionUser,
+  isActiveUserAuthorizationError,
+  type NotionUserAuthorizationDependencies,
+} from "../../server/notion-authorization.js";
 
 export class NotionAdvancedAuthenticationError extends Error {
   constructor() {
@@ -7,8 +12,11 @@ export class NotionAdvancedAuthenticationError extends Error {
   }
 }
 
+export { authorizeNotionUser, isActiveUserAuthorizationError };
+export type { NotionUserAuthorizationDependencies };
+
 export function safeNotionAdvancedError(error: unknown) {
-  if (error instanceof NotionAdvancedAuthenticationError) {
+  if (error instanceof NotionAdvancedAuthenticationError || isActiveUserAuthorizationError(error)) {
     return {
       isError: true as const,
       content: [{ type: "text" as const, text: "Authentication is required to access Notion." }],
