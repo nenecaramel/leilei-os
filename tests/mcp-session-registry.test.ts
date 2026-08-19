@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createMcpAbsoluteDeadlineScheduler,
+  MAX_TIMER_DELAY_MS,
   McpSessionRegistry,
   type McpSessionNamespace,
 } from "../src/mcp/server/session-registry.js";
@@ -11,6 +13,29 @@ type DummySession = {
   namespace: McpSessionNamespace;
   closeCalls: number;
 };
+
+type FakeTimer = {
+  callback: () => void;
+  delayMs: number;
+  cancelled: boolean;
+  unrefCalls: number;
+};
+
+function createFakeTimerHarness() {
+  const timers: FakeTimer[] = [];
+  const scheduler = createMcpAbsoluteDeadlineScheduler({
+    setTimeout: (callback, delayMs) => {
+      const timer: FakeTimer = { callback, delayMs, cancelled: false, unrefCalls: 0 };
+      timers.push(timer);
+      return {
+        unref: () => { timer.unrefCalls += 1; },
+        timer,
+      };
+    },
+    clearTimeout: (handle) => { handle.timer.cancelled = true; },
+  });
+  return { scheduler, timers };
+}
 
 function createDummy(
   registry: McpSessionRegistry,
@@ -128,6 +153,58 @@ test("transport close cleanup removes the registry entry once", async () => {
   registry.handleTransportClose(transport);
 
   assert.equal(registry.size, 0);
+});
+
+test("chunked absolute deadlines schedule the maximum safe delay before the remainder", () => {
+  const { scheduler, timers } = createFakeTimerHarness();
+  let callbacks = 0;
+  scheduler(MAX_TIMER_DELAY_MS + 1_000, () => { callbacks += 1; });
+
+  assert.deepEqual(timers.map((timer) => timer.delayMs), [MAX_TIMER_DELAY_MS]);
+  assert.equal(timers[0]!.unrefCalls, 1);
+  timers[0]!.callback();
+  assert.deepEqual(timers.map((timer) => timer.delayMs), [MAX_TIMER_DELAY_MS, 1_000]);
+  assert.equal(callbacks, 0);
+  assert.equal(timers[1]!.unrefCalls, 1);
+  timers[1]!.callback();
+  timers[1]!.callback();
+  assert.equal(callbacks, 1);
+});
+
+test("chunked absolute deadlines cancel during the first chunk", () => {
+  const { scheduler, timers } = createFakeTimerHarness();
+  let callbacks = 0;
+  const cancel = scheduler(MAX_TIMER_DELAY_MS + 1_000, () => { callbacks += 1; });
+  cancel();
+
+  assert.equal(timers[0]!.cancelled, true);
+  timers[0]!.callback();
+  assert.equal(timers.length, 1);
+  assert.equal(callbacks, 0);
+});
+
+test("chunked absolute deadlines cancel during a remainder chunk", () => {
+  const { scheduler, timers } = createFakeTimerHarness();
+  let callbacks = 0;
+  const cancel = scheduler(MAX_TIMER_DELAY_MS + 1_000, () => { callbacks += 1; });
+  timers[0]!.callback();
+  cancel();
+
+  assert.equal(timers[1]!.cancelled, true);
+  timers[1]!.callback();
+  assert.equal(timers.length, 2);
+  assert.equal(callbacks, 0);
+});
+
+test("the default 24-hour absolute TTL needs one timeout", () => {
+  const { scheduler, timers } = createFakeTimerHarness();
+  let callbacks = 0;
+  scheduler(86_400_000, () => { callbacks += 1; });
+
+  assert.deepEqual(timers.map((timer) => timer.delayMs), [86_400_000]);
+  timers[0]!.callback();
+  assert.equal(callbacks, 1);
+  assert.equal(timers.length, 1);
 });
 
 test("reservations atomically enforce total and per-user namespace capacity", async () => {
@@ -271,7 +348,9 @@ test("absolute deadline is cancelled when registration observer closes the sessi
 
 test("absolute deadline closes an in-flight session and wins the idle protection", async () => {
   const deadlines: Array<() => void> = [];
+  let now = 0;
   const registry = new McpSessionRegistry({
+    now: () => now,
     idleTtlMs: 1,
     absoluteTtlMs: 86_400_000,
     scheduleAbsoluteDeadline: (_delay, callback) => {

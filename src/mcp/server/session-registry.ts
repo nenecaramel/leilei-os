@@ -37,6 +37,61 @@ export type McpAbsoluteDeadlineScheduler = (
   callback: () => void,
 ) => () => void;
 
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+type McpAbsoluteDeadlineTimeoutHandle = {
+  unref?: () => void;
+};
+
+type McpAbsoluteDeadlineSchedulerOptions = {
+  setTimeout?: (
+    callback: () => void,
+    delayMs: number,
+  ) => McpAbsoluteDeadlineTimeoutHandle;
+  clearTimeout?: (handle: McpAbsoluteDeadlineTimeoutHandle) => void;
+};
+
+export function createMcpAbsoluteDeadlineScheduler(
+  options: McpAbsoluteDeadlineSchedulerOptions = {},
+): McpAbsoluteDeadlineScheduler {
+  const setTimeoutFn = options.setTimeout ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+  const clearTimeoutFn = options.clearTimeout ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+
+  return (delayMs, callback) => {
+    let cancelled = false;
+    let completed = false;
+    let remaining = Math.max(0, delayMs);
+    let activeTimer: McpAbsoluteDeadlineTimeoutHandle | null = null;
+
+    const scheduleNext = (): void => {
+      if (cancelled || completed) return;
+      const chunk = Math.min(remaining, MAX_TIMER_DELAY_MS);
+      remaining -= chunk;
+      activeTimer = setTimeoutFn(() => {
+        activeTimer = null;
+        if (cancelled || completed) return;
+        if (remaining > 0) {
+          scheduleNext();
+          return;
+        }
+        completed = true;
+        callback();
+      }, chunk);
+      activeTimer.unref?.();
+    };
+
+    scheduleNext();
+    return () => {
+      if (cancelled || completed) return;
+      cancelled = true;
+      if (activeTimer) {
+        clearTimeoutFn(activeTimer);
+        activeTimer = null;
+      }
+    };
+  };
+}
+
 export type McpSessionRecord = {
   sessionId: string;
   userId: string;
@@ -97,11 +152,7 @@ export class McpSessionRegistry {
     this.sweepMinIntervalMs =
       options.sweepMinIntervalMs ?? DEFAULT_SWEEP_MIN_INTERVAL_MS;
     this.observer = options.observer;
-    this.scheduleAbsoluteDeadline = options.scheduleAbsoluteDeadline ?? ((delayMs, callback) => {
-      const timer = setTimeout(callback, delayMs);
-      timer.unref?.();
-      return () => clearTimeout(timer);
-    });
+    this.scheduleAbsoluteDeadline = options.scheduleAbsoluteDeadline ?? createMcpAbsoluteDeadlineScheduler();
   }
 
   get size(): number {
