@@ -10,6 +10,7 @@ import {
   universeRevisions,
   users,
 } from "../../database/schema.js";
+import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
 import { UniverseServiceError } from "./universe-service.js";
 import type {
   UniverseBackup,
@@ -44,7 +45,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async saveUniverse(userId: string, snapshot: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       const meta = await repository.lockMeta(userId);
       if (meta && expectedVersion === 0) throw new UniverseServiceError("VERSION_CONFLICT");
       const currentVersion = meta?.version ?? 0;
@@ -81,7 +82,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async createNode(userId: string, node: UniverseNode, expectedVersion: number): Promise<UniverseReadResult> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       await repository.assertVersion(userId, expectedVersion);
       await repository.assertGalaxyReferences(userId, node.galaxies);
       try {
@@ -96,7 +97,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async updateNode(userId: string, node: UniverseNode, reason: string, expectedVersion: number): Promise<UniverseReadResult> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       await repository.assertVersion(userId, expectedVersion);
       const existing = await repository.findNode(userId, node.id);
       if (!existing) throw new UniverseServiceError("NODE_NOT_FOUND");
@@ -118,7 +119,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async deleteNode(userId: string, nodeId: string, expectedVersion: number): Promise<UniverseReadResult> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       await repository.assertVersion(userId, expectedVersion);
       const existing = await repository.findNode(userId, nodeId);
       if (!existing) throw new UniverseServiceError("NODE_NOT_FOUND");
@@ -134,7 +135,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async createRelation(userId: string, relation: UniverseRelation, expectedVersion: number): Promise<UniverseReadResult> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       await repository.assertVersion(userId, expectedVersion);
       const nodes = await repository.db.select({ id: universeNodes.id }).from(universeNodes).where(
         and(eq(universeNodes.userId, userId), inArray(universeNodes.id, [relation.source, relation.target])),
@@ -157,7 +158,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async deleteRelation(userId: string, relationId: string, expectedVersion: number): Promise<UniverseReadResult> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       await repository.assertVersion(userId, expectedVersion);
       const deleted = await repository.db.delete(universeRelations).where(
         and(eq(universeRelations.userId, userId), eq(universeRelations.id, relationId)),
@@ -176,7 +177,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async restoreLatestRevision(userId: string, nodeId: string, expectedVersion: number): Promise<UniverseReadResult> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       await repository.assertVersion(userId, expectedVersion);
       const node = await repository.findNode(userId, nodeId);
       if (!node) throw new UniverseServiceError("NODE_NOT_FOUND");
@@ -206,7 +207,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async createBackup(userId: string, reason: string): Promise<UniverseBackup> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       const current = await repository.requireUniverse(userId);
       const createdAt = new Date().toISOString();
       const backup: UniverseBackup = {
@@ -241,7 +242,7 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   async restoreBackup(userId: string, backupId: string, expectedVersion: number): Promise<UniverseReadResult> {
-    return this.inTransaction(async (repository) => {
+    return this.inTransaction(userId, async (repository) => {
       await repository.assertVersion(userId, expectedVersion);
       const [backup] = await repository.db.select().from(universeBackups).where(
         and(eq(universeBackups.userId, userId), eq(universeBackups.id, backupId)),
@@ -266,8 +267,14 @@ export class DrizzleUniverseRepository implements UniverseRepository {
     return this.createBackup(userId, reason);
   }
 
-  private async inTransaction<T>(work: (repository: DrizzleUniverseRepository) => Promise<T>): Promise<T> {
-    return this.db.transaction(async (tx) => work(new DrizzleUniverseRepository(tx as Transaction)));
+  private async inTransaction<T>(
+    userId: string,
+    work: (repository: DrizzleUniverseRepository) => Promise<T>,
+  ): Promise<T> {
+    return this.db.transaction(async (tx) => {
+      await requireActiveUserInTransaction(tx as Transaction, userId);
+      return work(new DrizzleUniverseRepository(tx as Transaction));
+    });
   }
 
   private async lockMeta(userId: string) {
