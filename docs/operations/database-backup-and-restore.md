@@ -1,7 +1,9 @@
 # Database backup and restore operations
 
-This runbook covers Leilei OS PostgreSQL backups. It intentionally separates
-Railway platform backups from encrypted logical backups kept outside Railway.
+This runbook covers Leilei OS PostgreSQL backups, restore verification, and
+destructive-migration release gates. It intentionally separates Railway
+platform backups from encrypted logical backups kept outside Railway.
+
 Never paste connection strings, passwords, tokens, or encryption passphrases
 into this document, tickets, screenshots, shell history, or Git.
 
@@ -9,102 +11,91 @@ into this document, tickets, screenshots, shell history, or Git.
 
 Confirmed:
 
-- Railway project: `carefree-spontaneity`
-- Environment: `production`
-- API service: `leilei-os`
-- Database service: Railway Postgres with a persistent `postgres-volume`
-- Vercel hosts only the static Web SPA; its checked-in configuration does not
-  connect directly to PostgreSQL.
+- GitHub release trunk: `main`.
+- Railway project: `carefree-spontaneity`.
+- Environment: `production`.
+- API service: `leilei-os`.
+- Database service: Railway PostgreSQL with persistent volume storage.
+- Vercel hosts only the static Web SPA and does not connect directly to
+  PostgreSQL.
 - The API receives `DATABASE_URL` from Railway service variables.
-- The currently injected database endpoint is a Railway public connection
-  endpoint, not a `railway.internal` private endpoint.
-- The application uses `postgres` through Drizzle ORM and requires TLS.
-- Checked-in migrations live in `drizzle/`. Manual disposable/local migration
-  checks use `pnpm db:migrate`; Railway production uses the compiled
-  pre-deploy runner `node dist/database/migrate.js` instead.
-- The Railway runner records the accepted head in
+- The application uses PostgreSQL through Drizzle ORM and requires TLS.
+- Checked-in migrations live under `drizzle/`.
+- Railway production runs the compiled migration runner
+  `node dist/database/migrate.js` as a pre-deploy gate.
+- Normal application startup does not run migrations.
+- The migration runner records the accepted migration head in
   `public.leilei_schema_migrations` and validates the legacy
-  `drizzle.__drizzle_migrations` ledger during first bootstrap.
-- Auth0 subjects are not stored in a dedicated database table. The allowed
-  Auth0 subject maps server-side to `MCP_USER_ID`, which must exist in
-  `users.id`.
-- Critical application tables include `users`, `core_memories`,
-  `diary_entries`, `tasks`, and `user_settings`.
+  `drizzle.__drizzle_migrations` ledger during bootstrap.
+- The current production migration head on `main` is `0023_faulty_sphinx`.
 
-Railway's Backups page currently reports that Backups and point-in-time
-recovery require the Pro plan and that `postgres-volume` has no backups.
-Therefore, the Volume is persistent storage but is not itself a verified
-backup.
+Railway platform backups/PITR are not assumed to be available. Persistent
+volume storage is not itself a verified backup.
 
-Not yet confirmed:
+## Backup layers
 
-- Exact Railway resource ceilings for CPU, memory, storage, and egress.
-- A private-network `DATABASE_URL` migration plan.
-- A paid-plan backup retention policy, because Railway backups are not enabled.
+Leilei OS uses three distinct recovery layers with different purposes.
 
-## Platform backups versus external logical backups
+### 1. Railway platform backup / PITR
 
-Railway Backups/PITR are provider-managed snapshots tied to the Railway
-project and plan. They can shorten recovery time but remain in the same
-provider and administrative account.
+Use provider-managed backup/PITR when the active Railway plan supports it.
+This can shorten recovery time inside the same provider, but it does not
+replace a provider-independent logical backup.
 
-The external script creates a PostgreSQL custom-format logical dump, a
-non-content manifest with critical-table counts, and then encrypts both into
-one artifact. It is portable to a separate PostgreSQL instance and protects
-against a Railway project or account incident. Keep both layers when the
-project moves to a plan that supports platform backups.
+### 2. External encrypted PostgreSQL logical backup
 
-## Prerequisites
+The repository backup tooling creates a PostgreSQL custom-format logical dump,
+a non-content manifest with verification metadata, and an encrypted artifact
+stored outside Railway and outside Git.
 
-Install compatible PostgreSQL client tools:
+Required properties:
 
-- `pg_dump`
-- `pg_restore`
-- `psql`
+- use compatible `pg_dump`, `pg_restore`, and `psql` clients;
+- create the backup outside the repository;
+- encrypt the artifact;
+- keep the encryption passphrase separately;
+- record a SHA-256 checksum;
+- never print private record contents or credentials;
+- restore the artifact into a disposable PostgreSQL instance before treating
+  it as verified.
 
-`pg_dump` must be the same major version as the production PostgreSQL server
-or newer. The restore script similarly refuses `pg_restore` older than the
-`pg_dump` version recorded in the encrypted manifest.
+### 3. Leilei OS product export
 
-OpenSSL 3 is used for AES-256-CBC encryption with PBKDF2. The restore host is
-restricted to `localhost`, `127.0.0.1`, or `::1`, and the database name must
-contain `temp`, `test`, `verify`, or `restore`.
-
-Choose an external backup directory, for example an encrypted external disk.
-Do not put it inside the repository. Provide an encryption passphrase of at
-least 16 characters through a secure prompt or a temporary environment
-variable. A password manager-generated value is recommended.
+The versioned application Export/Restore feature is useful for user-facing
+portability and recovery, but it is not a substitute for a full database
+backup before schema changes.
 
 ## Create an encrypted logical backup
 
-Export production credentials through an approved secret manager or run the
-script in a Railway-injected environment. Do not put literal values in shell
-history:
+Obtain production credentials through an approved secret source. Do not put
+literal production credentials in scripts, Git, documentation, shell history,
+or issue/PR bodies.
+
+Example:
 
 ```bash
 export DATABASE_URL="<production connection supplied securely>"
 export MCP_USER_ID="<database user UUID supplied securely>"
-export LEILEI_BACKUP_DIR="/absolute/path/outside/the/repository"
+export LEILEI_BACKUP_DIR="/absolute/path/outside/the-repository"
 read -r -s LEILEI_BACKUP_PASSPHRASE
 export LEILEI_BACKUP_PASSPHRASE
 ./scripts/db/backup_postgres.sh
 unset LEILEI_BACKUP_PASSPHRASE DATABASE_URL MCP_USER_ID
 ```
 
-The script:
+The backup script must:
 
-1. refuses repository-internal output;
-2. creates an unencrypted custom dump only in a private temporary directory;
-3. records counts without reading or printing private content;
-4. encrypts the dump and manifest;
-5. securely removes temporary material on exit;
-6. refuses to overwrite an existing artifact;
-7. writes a separate SHA-256 file.
+1. refuse repository-internal output;
+2. keep unencrypted temporary material private and short-lived;
+3. record verification metadata without reading or printing private content;
+4. encrypt the dump and manifest;
+5. remove temporary plaintext material on exit;
+6. refuse accidental overwrite;
+7. write a separate SHA-256 checksum.
 
-The manifest count query and `pg_dump` do not share one exported snapshot.
-Writes occurring between those operations can produce a count mismatch even
-when the dump is valid. Treat such a mismatch as a reason to repeat the backup
-during a quiet/maintenance window; never waive the check silently.
+If source counts and dump contents can drift because writes occur between
+queries, repeat the backup during a quiet/controlled window. Never waive a
+count mismatch silently.
 
 ## Verify the checksum
 
@@ -116,11 +107,13 @@ shasum -a 256 -c "<backup-file>.sha256"
 
 Do not proceed if verification fails.
 
-## Restore and verify in a temporary database
+## Restore and verify in a disposable PostgreSQL instance
 
-Create a disposable local PostgreSQL database whose name clearly includes
-`restore`, `verify`, `temp`, or `test`. Never point this script at Railway,
-Supabase, another remote host, or a database with an ambiguous name.
+The restore target must be disposable and clearly non-production. The checked
+restore tooling deliberately refuses ambiguous or remote production-like
+targets.
+
+Example:
 
 ```bash
 export LEILEI_ALLOW_TEMP_RESTORE=1
@@ -134,112 +127,157 @@ export LEILEI_BACKUP_PASSPHRASE
 unset LEILEI_BACKUP_PASSPHRASE TEMP_DATABASE_URL MCP_USER_ID
 ```
 
-The restore script checks the encrypted artifact's SHA-256, restores schema
-and data, verifies critical tables, compares counts, and verifies the mapped
-database user when the source manifest contains that check. It never prints
-Memory, Diary, Task, Settings, or user content.
+A successful verification should establish, without printing private content:
 
-Delete the disposable local database or container after verification. Retain
-only the encrypted artifact and its checksum.
+- checksum validity;
+- schema restoration;
+- expected critical tables and indexes;
+- representative table-count agreement;
+- expected migration-ledger state;
+- mapped database user availability;
+- representative repository read paths;
+- cleanup of the disposable database/container after verification.
+
+Retain only the encrypted artifact, checksum, and non-secret verification
+metadata.
+
+## Destructive migration gate
+
+A destructive migration is not authorized merely because an older backup or
+restore drill exists. Before every destructive production migration, create a
+fresh backup and verify it against the exact change being proposed.
+
+Required order:
+
+1. fresh `main` and exact PR head are identified;
+2. production remains read-only with respect to the proposed destructive
+   migration;
+3. create a new external production logical backup;
+4. verify its SHA-256 and archive readability;
+5. capture non-secret pre-change readback such as relevant table existence,
+   representative counts, migration ledger, and dependency checks;
+6. restore the fresh backup to disposable PostgreSQL of the supported major
+   version;
+7. confirm restored counts/ledger match the pre-change readback;
+8. build the exact PR head;
+9. run the real compiled Leilei OS migration runner only against the disposable
+   restored database;
+10. verify the intended schema change and unchanged unrelated durable data;
+11. run the migration runner a second time and require a no-op result;
+12. perform representative application/readback checks;
+13. only then may the destructive PR become eligible for merge/deploy;
+14. after production deployment, verify the production migration head and
+   service health again.
+
+Any unexpected dependency, count mismatch, ledger anomaly, restore failure, or
+migration-runner discrepancy is a stop condition. Never use `CASCADE` or an
+ad-hoc production workaround to force a destructive migration through its
+gate.
+
+## Current Health Stage B gate
+
+Health product runtime removal Stage A is already complete. The obsolete
+`health_records` table remains intentionally present in the current production
+schema because destructive Stage B is still isolated in Draft PR #174.
+
+PR #174 adds forward migration `0024_brainy_wildside` with the intended schema
+operation:
+
+```sql
+DROP TABLE "health_records";
+```
+
+The migration intentionally fails closed rather than using `IF EXISTS` or
+`CASCADE`. Historical migrations and migration-ledger history must remain
+unchanged.
+
+**PR #174 must remain unmerged and undeployed until a fresh production backup
+and disposable PostgreSQL 18 restore rehearsal have been completed for its
+exact head.** Prior backup/restore drills are historical recovery evidence; they
+do not authorize this destructive migration.
+
+The Stage B disposable rehearsal must additionally verify:
+
+- `health_records` exists before migration and has expected pre-change state;
+- no unexpected current dependency requires `health_records`;
+- the exact migration runner applies only the pending `0024` change;
+- `health_records` is absent afterward;
+- `public.leilei_schema_migrations` records the expected new head;
+- representative unrelated durable table counts remain unchanged;
+- a second migration-runner invocation is a no-op;
+- infrastructure `GET /health` remains available while retired product
+  `/api/v1/health` remains absent.
+
+Sending or possessing a production database credential never counts as merge
+or mutation authorization.
 
 ## Production incident recovery
 
-1. Stop application writes or place the API into a controlled maintenance
-   state.
-2. Confirm the incident scope and preserve the current database before making
-   any recovery change.
+1. Stop or control application writes if continuing writes could worsen the
+   incident.
+2. Preserve the current database state before making recovery changes.
 3. Verify the chosen backup checksum.
-4. Restore into a separate temporary database first.
+4. Restore into a separate disposable database first.
 5. Compare schema version, critical tables, counts, and mapped user.
-6. Have a second operator review the target and recovery evidence.
-7. Provision a new production database rather than restoring over the damaged
-   one.
-8. Run application smoke tests against the new database.
-9. Change `DATABASE_URL` only through Railway's production variable UI after
-   explicit approval.
-10. Keep the previous `DATABASE_URL` reference available for rollback; never
-    publish its value.
-11. Monitor API health and data consistency before resuming writes.
+6. Run representative application reads/smoke tests against the restored copy.
+7. Prefer provisioning a replacement production database over destructive
+   in-place restore when practical.
+8. Change production `DATABASE_URL` only through the deployment platform and
+   only after explicit recovery approval.
+9. Keep the previous database reference available for rollback without
+   publishing its value.
+10. Monitor API health and data consistency before resuming normal writes.
 
-To roll back a `DATABASE_URL` switch, select the prior database reference in
-Railway production variables and redeploy. This is a production mutation and
-requires an approved incident change window.
+## Commands forbidden against production without an explicitly approved runbook
 
-## Commands forbidden against production
+Never improvise the following directly against production:
 
-Never run the following against production:
+- `dropdb`, `DROP DATABASE`, `DROP SCHEMA`, or `DROP TABLE`;
+- `TRUNCATE`;
+- `pg_restore --clean`;
+- destructive `drizzle-kit push`;
+- seed commands unless an approved procedure explicitly requires them;
+- ad-hoc UPDATE/DELETE statements used as a recovery shortcut.
 
-- `dropdb`, `DROP DATABASE`, `DROP SCHEMA`, or `DROP TABLE`
-- `TRUNCATE`
-- `pg_restore --clean`
-- destructive `drizzle-kit push`
-- seed commands unless an approved runbook explicitly requires them
-- ad-hoc UPDATE or DELETE statements used as a recovery shortcut
-
-`restore_verify_postgres.sh` deliberately refuses remote targets and requires
-two explicit temporary-environment flags.
+Destructive schema operations must travel through reviewed forward migrations
+and the backup/restore gate above.
 
 ## Secret and artifact storage
 
-- Store the encrypted artifact and checksum outside Git and outside Railway.
-- Keep the encryption passphrase in a password manager, separately from the
-  artifact.
-- Never store unencrypted dumps.
-- Restrict the backup directory and files to the current user.
-- Maintain at least one offline or independently administered copy.
-- Test restoration regularly; a backup that has not been restored is
-  unverified.
+- Store encrypted backup artifacts and checksums outside Git and outside
+  Railway.
+- Keep encryption passphrases in a password manager, separately from artifacts.
+- Never retain unencrypted dumps as durable backups.
+- Restrict backup directories/files to the intended operator.
+- Maintain at least one independently administered/offline copy when possible.
+- Restore-test backups regularly; an untested backup is not considered verified
+  for a destructive release gate.
 
-Recommended starting schedule for this single-user system:
+## Historical verified backup/restore record
 
-- encrypted logical backup daily;
-- retain daily backups for 14 days;
-- retain one weekly backup for 8 weeks;
-- perform a temporary restore drill monthly and after schema migrations;
-- enable Railway Backups/PITR after upgrading to an eligible plan.
+The repository retains the following older drill as historical recovery
+proof. It is **not** a current destructive-migration authorization.
 
-Adjust retention after measuring database growth and applicable privacy
-requirements.
-
-
-## Verified production backup and restore drill
-
-A real read-only production logical backup and disposable local restore were completed on 2026-07-28 UTC.
+A real read-only production logical backup and disposable PostgreSQL 18 restore
+were completed on 2026-07-28 UTC.
 
 - Backup created at: `2026-07-28T04:10:29Z`
-- Production PostgreSQL server: major version 18 (`18.4` during the drill)
-- Backup and restore clients: PostgreSQL `18.4` (Homebrew `libpq`)
-- Schema version: `0006_large_chat`
-- Encrypted artifact: `leilei-os_20260728T041029Z_0006_large_chat.backup.enc`
-- Encrypted size: `13,520` bytes
-- SHA-256: `c2f8eff0dae14a812d828126820d0ed214b4f10156d9b6c8a0b8511c825b80f9`
-- Encryption: AES-256-CBC with PBKDF2; the random passphrase is stored separately in macOS Keychain
+- Production PostgreSQL server/client major: 18
+- Schema version at that time: `0006_large_chat`
+- Encrypted artifact:
+  `leilei-os_20260728T041029Z_0006_large_chat.backup.enc`
+- SHA-256:
+  `c2f8eff0dae14a812d828126820d0ed214b4f10156d9b6c8a0b8511c825b80f9`
 - Checksum verification: passed
-- Restore target: disposable PostgreSQL 18 container bound only to `127.0.0.1` on a random port
-- Temporary container, network, and volume cleanup: verified
-- Plaintext dump and decrypted archive cleanup: verified
-- Railway internal Backups/PITR: unavailable under the current plan and not enabled
-- Next recommended logical backup: 2026-07-29 UTC, then daily per the retention schedule below
+- Restore target: disposable PostgreSQL 18 bound to localhost
+- Source/restored counts matched for the recorded critical tables
+- Auth0-to-database mapped user verification passed
+- Representative repository reads and user-isolation checks passed
+- Temporary database/container and plaintext material cleanup were verified
 
-Snapshot counts restored and compared without reading private content:
-
-| Table | Source snapshot | Restored | Result |
-| --- | ---: | ---: | --- |
-| `users` | 1 | 1 | match |
-| `core_memories` | 7 | 7 | match |
-| `diary_entries` | 7 | 7 | match |
-| `tasks` | 7 | 7 | match |
-| `user_settings` | 1 | 1 | match |
-| `toy_commands` | 51 | 51 | match |
-
-Additional verification:
-
-- Auth0-to-database mapped user count and SHA-256 identity-set digest matched.
-- Six critical tables, six primary keys, five foreign keys, and eighteen indexes were present after restore.
-- The Drizzle migration journal contained seven applied entries after restore.
-- Memory, Diary, Task, and Settings repository read paths succeeded against the restored database.
-- A random unmapped user returned no records from all four modules, confirming user isolation.
-- No private content, raw identity, connection string, password, or token was recorded during the drill.
+Later backups/restores, when performed, should be recorded separately with
+non-secret metadata. For a destructive migration, the active PR must still
+reference a fresh gate run rather than relying on this historical section.
 
 ## Backup and restore record template
 
@@ -247,16 +285,22 @@ Do not mark an item successful until it was actually performed.
 
 ```text
 Backup created at (UTC):
-Schema version:
+Source main SHA:
+Exact change/PR head SHA:
+Schema version before change:
 Encrypted artifact location:
 SHA-256 verified: yes / no
-Railway internal backup status:
-Temporary restore tested at (UTC):
-Temporary database/container:
+Archive/list verification: yes / no
+Pre-change counts/ledger captured: yes / no
+Disposable restore tested at (UTC):
+Disposable PostgreSQL version:
 Critical table structures verified: yes / no
 Critical counts matched: yes / no
 Mapped database user verified: yes / no / unavailable
-Temporary database deleted: yes / no
+Exact migration runner tested: yes / no / not applicable
+Second migration runner no-op: yes / no / not applicable
+Application/readback checks passed: yes / no
+Disposable database deleted: yes / no
 Operator:
 Notes and unresolved risks:
 ```
