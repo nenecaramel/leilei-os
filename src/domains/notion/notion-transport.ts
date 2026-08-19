@@ -71,6 +71,16 @@ function configuredTimeout(value: number | undefined): number {
   return Math.max(1, Math.floor(value));
 }
 
+function deadlineSignal(
+  callerSignal: AbortSignal | null | undefined,
+  timeoutMs: number,
+): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
+}
+
 export class NotionTransport {
   private readonly requestTimeoutMs: number;
 
@@ -117,29 +127,15 @@ export class NotionTransport {
       if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     }
 
-    const controller = new AbortController();
-    const callerSignal = init.signal;
-    const abortFromCaller = () => controller.abort();
-    if (callerSignal?.aborted) {
-      abortFromCaller();
-    } else {
-      callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
-    }
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    (timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
-
     let response: Response;
     try {
       response = await this.fetchImpl(`${NOTION_API_BASE}${path}`, {
         ...init,
         headers,
-        signal: controller.signal,
+        signal: deadlineSignal(init.signal, timeoutMs),
       });
     } catch {
       throw new NotionApiError("UPSTREAM", "Notion is temporarily unavailable.");
-    } finally {
-      clearTimeout(timer);
-      callerSignal?.removeEventListener("abort", abortFromCaller);
     }
 
     if (!response.ok) throw mapStatus(response.status);
