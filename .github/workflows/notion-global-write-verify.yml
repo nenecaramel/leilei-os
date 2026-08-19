@@ -47,6 +47,7 @@ jobs:
         run: pnpm exec tsx --test tests/notion-write-schema-surface.test.ts
       - run: >-
           pnpm exec tsx --test --test-concurrency=1
+          tests/notion-provider-deadline.test.ts
           tests/notion-transport.test.ts
           tests/notion-read-client.test.ts
           tests/notion-page-block-client.test.ts
