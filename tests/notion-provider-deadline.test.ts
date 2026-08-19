@@ -73,6 +73,40 @@ test("Notion transport aborts a provider request at its request deadline", async
   assert.equal(aborted, true);
 });
 
+test("Notion request deadline remains active while the JSON response body is consumed", async () => {
+  let bodyAborted = false;
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    const signal = init?.signal;
+    assert.ok(signal, "bounded Notion transport must pass an abort signal");
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const abort = () => {
+          bodyAborted = true;
+          controller.error(new DOMException("Aborted", "AbortError"));
+        };
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const transport = new NotionTransport(
+    "secret-notion-token",
+    fakeFetch,
+    { requestTimeoutMs: 20 },
+  );
+
+  await assert.rejects(
+    () => within(transport.requestJson("/users/me")),
+    (error: unknown) =>
+      error instanceof NotionApiError && error.code === "UPSTREAM",
+  );
+  assert.equal(bodyAborted, true);
+});
+
 test("Notion page reads enforce one total operation deadline across pagination", async () => {
   let blockCalls = 0;
   let secondBlockRequestAborted = false;
