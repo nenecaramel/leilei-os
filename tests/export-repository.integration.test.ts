@@ -127,6 +127,15 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
 
       const tools = await repository.listToolActivity(owner);
       assert.deepEqual(tools.map((row) => row.id), [ownerToolEarly]);
+      await transaction.delete(schema.mcpWriteIdempotency).where(
+        eq(schema.mcpWriteIdempotency.idempotencyKey, `export-mcp-key-${owner}`),
+      );
+      const toolsAfterLedgerRetention = await repository.listToolActivity(owner);
+      assert.deepEqual(
+        toolsAfterLedgerRetention.map((row) => row.id),
+        [ownerToolEarly],
+        "tool activity must remain exportable after retry-ledger retention cleanup",
+      );
       const toolJson = JSON.stringify(tools);
       for (const forbidden of ["idempotency_key", "request_summary", "result_summary", "duration_ms", "PRIVATE_REQUEST_SUMMARY", "PRIVATE_RESULT_SUMMARY"]) {
         assert.equal(toolJson.includes(forbidden), false);
@@ -158,7 +167,11 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
         transaction.select({ count: count() }).from(schema.toolCalls),
         transaction.select({ count: count() }).from(schema.mcpWriteIdempotency),
       ]);
-      assert.deepEqual(countsAfter, countsBefore);
+      assert.deepEqual(countsAfter.slice(0, 7), countsBefore.slice(0, 7));
+      assert.equal(
+        Number(countsAfter[7]?.count ?? 0),
+        Number(countsBefore[7]?.count ?? 0) - 1,
+      );
 
       throw new RollbackExportTest();
     }), RollbackExportTest);

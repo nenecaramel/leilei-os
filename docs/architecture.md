@@ -66,6 +66,18 @@ missing resources, authorization failures, conflicts, unavailable providers,
 and service failures without exposing credentials, connection strings, SQL, or
 stack traces.
 
+### MCP session lifecycle
+
+Streamable HTTP sessions are process-local and namespaced: `/mcp` uses the
+`public` namespace and `/internal/mcp` uses `internal`. The default governance
+limits are eight sessions per user and namespace, 32 sessions per Node process,
+two hours idle TTL, and 24 hours absolute TTL. These are intentionally not
+cross-replica limits. Expired sessions are reclaimed lazily before capacity
+checks; no permanent process timer is required. MCP write idempotency rows are
+retained for 30 days by default and cleaned at most every 24 hours. Tool
+activity remains durable in `tool_calls` and is not coupled to that finite retry
+ledger window.
+
 ## Database and migrations
 
 PostgreSQL holds durable user, content, Todo, Universe, audit, and integration

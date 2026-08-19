@@ -8,87 +8,145 @@ import {
   createProductionActiveUserAuthorizer,
 } from "./create-server.js";
 import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
+import {
+  McpSessionRegistry,
+  type McpSessionNamespace,
+  type McpSessionRecord,
+} from "./session-registry.js";
 
-type ActiveSession = {
-  server: ReturnType<typeof createMcpServer>;
-  transport: StreamableHTTPServerTransport;
-  userId: string;
+export type McpRouterOptions = {
+  namespace?: McpSessionNamespace;
+  registry?: McpSessionRegistry;
+  onInitialize?: () => Promise<void>;
 };
 
-const sessions = new Map<string, ActiveSession>();
-
-export function createMcpRouter(): Router {
+export function createMcpRouter(options: McpRouterOptions = {}): Router {
   const router = Router();
+  const namespace = options.namespace ?? "public";
+  const registry = options.registry ?? new McpSessionRegistry();
+
+  const sendError = (
+    response: Response,
+    status: number,
+    code: number,
+    message: string,
+  ) => {
+    response.status(status).json({
+      jsonrpc: "2.0",
+      error: { code, message },
+      id: null,
+    });
+  };
+
+  const readSession = (sessionId: string | undefined) =>
+    sessionId ? registry.findAnyNamespace(sessionId) : null;
+
+  const runRequest = async (
+    session: McpSessionRecord,
+    request: Request,
+    response: Response,
+    body?: unknown,
+  ) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      registry.finishRequest(session);
+    };
+    response.once("finish", finish);
+    response.once("close", finish);
+    try {
+      await (session.transport as StreamableHTTPServerTransport).handleRequest(
+        request,
+        response,
+        body,
+      );
+    } finally {
+      if (response.writableEnded) finish();
+    }
+  };
 
   router.post("/", async (request: Request, response: Response) => {
     try {
       const userId = request.mcpUserId;
       if (!userId) {
-        response.status(401).json({
-          jsonrpc: "2.0",
-          error: {
-            code: -32001,
-            message: "Authenticated user context is missing.",
-          },
-          id: null,
-        });
+        sendError(response, 401, -32001, "Authenticated user context is missing.");
         return;
       }
 
       const sessionId = request.header("mcp-session-id");
-      let activeSession = sessionId ? sessions.get(sessionId) : undefined;
+      const knownSession = readSession(sessionId);
 
-      if (activeSession && activeSession.userId !== userId) {
-        response.status(403).json({
-          jsonrpc: "2.0",
-          error: {
-            code: -32003,
-            message: "MCP session belongs to another user.",
-          },
-          id: null,
-        });
+      if (knownSession && knownSession.namespace !== namespace) {
+        sendError(response, 400, -32000, "Invalid or missing MCP session.");
         return;
       }
 
-      if (!activeSession && isInitializeRequest(request.body)) {
-        const activeUserAuthorization =
-          createProductionActiveUserAuthorizer(userId);
-        const server = createMcpServer({ activeUserAuthorization }, userId);
-        registerProductionNotionExplicitWriteTools(
-          server,
-          userId,
-          activeUserAuthorization,
-        );
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (initializedSessionId) => {
-            sessions.set(initializedSessionId, { server, transport, userId });
-          },
-        });
+      if (knownSession && knownSession.userId !== userId) {
+        sendError(response, 403, -32003, "MCP session belongs to another user.");
+        return;
+      }
 
-        transport.onclose = () => {
-          if (transport.sessionId) {
-            sessions.delete(transport.sessionId);
+      let activeSession = knownSession
+        ? await registry.acquire(sessionId!, namespace, userId)
+        : null;
+
+      if (!activeSession && !knownSession && isInitializeRequest(request.body)) {
+        const reservation = await registry.admit(userId, namespace);
+        if (!reservation) {
+          registry.observeCapacityRejected(namespace);
+          sendError(response, 429, -32029, "MCP session capacity exceeded.");
+          return;
+        }
+        // Retention cleanup is best-effort and must never delay initialize.
+        void options.onInitialize?.();
+        let initializedRecord: McpSessionRecord | null = null;
+        let transport: StreamableHTTPServerTransport | null = null;
+        try {
+          const activeUserAuthorization =
+            createProductionActiveUserAuthorizer(userId);
+          const server = createMcpServer({ activeUserAuthorization }, userId);
+          registerProductionNotionExplicitWriteTools(
+            server,
+            userId,
+            activeUserAuthorization,
+          );
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (initializedSessionId) => {
+              initializedRecord = registry.commit(reservation, {
+                sessionId: initializedSessionId,
+                server,
+                transport: transport!,
+                userId,
+                namespace,
+                inFlightCount: 1,
+              });
+            },
+          });
+
+          transport.onclose = () => {
+            if (!reservation.committed) registry.release(reservation);
+            else registry.handleTransportClose(transport!);
+          };
+          await server.connect(transport);
+          await transport.handleRequest(request, response, request.body);
+        } finally {
+          if (initializedRecord) registry.finishRequest(initializedRecord);
+          if (!reservation.committed) {
+            registry.release(reservation);
+            if (transport) await transport.close().catch(() => undefined);
           }
-        };
-
-        await server.connect(transport);
-        activeSession = { server, transport, userId };
+        }
+        return;
       }
 
       if (!activeSession) {
-        response.status(400).json({
-          jsonrpc: "2.0",
-          error: {
-            code: -32000,
-            message: "Invalid or missing MCP session.",
-          },
-          id: null,
-        });
+        sendError(response, 400, -32000, "Invalid or missing MCP session.");
         return;
       }
 
-      await activeSession.transport.handleRequest(request, response, request.body);
+      await runRequest(activeSession, request, response, request.body);
     } catch (error) {
       console.error("MCP request failed", error);
       if (!response.headersSent) {
@@ -106,36 +164,51 @@ export function createMcpRouter(): Router {
 
   router.get("/", async (request: Request, response: Response) => {
     const sessionId = request.header("mcp-session-id");
-    const activeSession = sessionId ? sessions.get(sessionId) : undefined;
+    const knownSession = readSession(sessionId);
 
-    if (!activeSession) {
+    if (!knownSession || knownSession.namespace !== namespace) {
       response.status(400).send("Invalid or missing MCP session.");
       return;
     }
 
-    if (!request.mcpUserId || activeSession.userId !== request.mcpUserId) {
+    if (!request.mcpUserId || knownSession.userId !== request.mcpUserId) {
       response.status(403).send("MCP session belongs to another user.");
       return;
     }
 
-    await activeSession.transport.handleRequest(request, response);
+    const activeSession = await registry.acquire(sessionId!, namespace, request.mcpUserId);
+    if (!activeSession) {
+      response.status(400).send("Invalid or missing MCP session.");
+      return;
+    }
+    await runRequest(activeSession, request, response);
   });
 
   router.delete("/", async (request: Request, response: Response) => {
     const sessionId = request.header("mcp-session-id");
-    const activeSession = sessionId ? sessions.get(sessionId) : undefined;
+    const knownSession = readSession(sessionId);
 
-    if (!activeSession) {
+    if (!knownSession || knownSession.namespace !== namespace) {
       response.status(400).send("Invalid or missing MCP session.");
       return;
     }
 
-    if (!request.mcpUserId || activeSession.userId !== request.mcpUserId) {
+    if (!request.mcpUserId || knownSession.userId !== request.mcpUserId) {
       response.status(403).send("MCP session belongs to another user.");
       return;
     }
 
-    await activeSession.transport.handleRequest(request, response);
+    const activeSession = await registry.acquire(sessionId!, namespace, request.mcpUserId);
+    if (!activeSession) {
+      response.status(400).send("Invalid or missing MCP session.");
+      return;
+    }
+    registry.expectClose(activeSession);
+    try {
+      await runRequest(activeSession, request, response);
+    } finally {
+      registry.clearExpectedClose(activeSession);
+    }
   });
 
   return router;

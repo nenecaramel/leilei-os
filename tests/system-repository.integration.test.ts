@@ -74,7 +74,12 @@ test("real System repository scopes counts and activity to one user", { skip: !r
       const tools = await repository.listToolActivity(owner, 10);
       assert.deepEqual(tools.map((row) => row.source), ["mcp"]);
       assert.deepEqual(tools.map((row) => row.toolName), ["write_memory"]);
-      assert.equal((await transaction.select().from(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, owner), eq(schema.mcpWriteIdempotency.resourceId, mcpResourceId)))).length, 1);
+      await transaction.delete(schema.mcpWriteIdempotency).where(
+        eq(schema.mcpWriteIdempotency.idempotencyKey, `system-key-${owner}`),
+      );
+      const toolsAfterLedgerRetention = await repository.listToolActivity(owner, 10);
+      assert.deepEqual(toolsAfterLedgerRetention.map((row) => row.toolName), ["write_memory"]);
+      assert.equal((await transaction.select().from(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, owner), eq(schema.mcpWriteIdempotency.resourceId, mcpResourceId)))).length, 0);
       throw new RollbackSystemTest();
     }), RollbackSystemTest);
   } finally {

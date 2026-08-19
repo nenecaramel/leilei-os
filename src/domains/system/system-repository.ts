@@ -3,7 +3,6 @@ import type { createDatabase } from "../../database/client.js";
 import {
   coreMemories,
   diaryEntries,
-  mcpWriteIdempotency,
   resourceLifecycleEvents,
   tasks,
   toolCalls,
@@ -139,16 +138,6 @@ export class DrizzleSystemRepository implements SystemRepository {
         createdAt: toolCalls.createdAt,
       })
       .from(toolCalls)
-      .innerJoin(
-        mcpWriteIdempotency,
-        and(
-          eq(mcpWriteIdempotency.userId, toolCalls.userId),
-          eq(mcpWriteIdempotency.toolName, toolCalls.toolName),
-          eq(mcpWriteIdempotency.resourceType, toolCalls.resourceType),
-          eq(mcpWriteIdempotency.idempotencyKey, toolCalls.idempotencyKey),
-          eq(mcpWriteIdempotency.resourceId, toolCalls.resourceId),
-        ),
-      )
       .where(
         and(
           eq(toolCalls.userId, userId),
