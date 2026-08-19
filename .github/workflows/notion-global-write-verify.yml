@@ -43,6 +43,8 @@ jobs:
           node-version: 24
       - run: pnpm install --frozen-lockfile
       - run: cd web && npm ci
+      - name: Run Notion provider deadline regression
+        run: pnpm exec tsx --test tests/notion-provider-deadline.test.ts
       - name: Run Notion write schema surface regression
         run: pnpm exec tsx --test tests/notion-write-schema-surface.test.ts
       - run: >-
