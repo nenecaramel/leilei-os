@@ -10,6 +10,7 @@ const TOP_LEVEL_PATHNAMES = new Set([
   "/memory",
   "/diary",
   "/task",
+  "/day-space",
   "/search",
   "/system/account",
   "/system/connections",
