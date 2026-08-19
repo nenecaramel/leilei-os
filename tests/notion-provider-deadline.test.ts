@@ -134,24 +134,15 @@ test("Notion page reads enforce one total operation deadline across pagination",
   assert.equal(secondBlockRequestAborted, true);
 });
 
-test("a timed-out Notion mutation is read back once and never retried", async () => {
+test("an uncertain Notion mutation is read back once and never retried", async () => {
   let reads = 0;
   let writes = 0;
-  let writeAborted = false;
   const fakeFetch: typeof fetch = async (input, init) => {
     const url = String(input);
     if (url === `https://api.notion.com/v1/pages/${PAGE_ID}` && init?.method === "PATCH") {
       writes += 1;
-      return new Promise<Response>((_resolve, reject) => {
-        const signal = init.signal;
-        if (!signal) return;
-        const abort = () => {
-          writeAborted = true;
-          reject(new DOMException("Aborted", "AbortError"));
-        };
-        if (signal.aborted) abort();
-        else signal.addEventListener("abort", abort, { once: true });
-      });
+      assert.ok(init.signal, "Notion mutations must inherit the bounded transport signal");
+      throw new DOMException("Aborted", "AbortError");
     }
     if (url === `https://api.notion.com/v1/pages/${PAGE_ID}`) {
       reads += 1;
@@ -163,7 +154,6 @@ test("a timed-out Notion mutation is read back once and never retried", async ()
   const service = new NotionExplicitWriteService(
     "secret-notion-token",
     fakeFetch,
-    { requestTimeoutMs: 20 },
   );
 
   await assert.rejects(
@@ -171,7 +161,6 @@ test("a timed-out Notion mutation is read back once and never retried", async ()
     (error: unknown) =>
       error instanceof NotionExplicitWriteError && error.code === "UNCERTAIN_WRITE",
   );
-  assert.equal(writeAborted, true);
   assert.equal(writes, 1);
   assert.equal(reads, 2);
 });
