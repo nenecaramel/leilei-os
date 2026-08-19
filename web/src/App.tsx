@@ -67,6 +67,11 @@ export default function App() {
               path="universe"
               element={<UniversePage />}
             />
+
+            <Route
+              path="*"
+              element={<Navigate to="/" replace />}
+            />
           </Route>
         </Routes>
       </ProtectedApp>
