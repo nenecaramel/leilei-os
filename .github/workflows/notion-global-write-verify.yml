@@ -43,6 +43,8 @@ jobs:
           node-version: 24
       - run: pnpm install --frozen-lockfile
       - run: cd web && npm ci
+      - name: Run active-user mutation atomicity regression
+        run: pnpm exec tsx --test tests/active-user-mutation-atomicity.test.ts
       - name: Run Notion write schema surface regression
         run: pnpm exec tsx --test tests/notion-write-schema-surface.test.ts
       - run: >-
