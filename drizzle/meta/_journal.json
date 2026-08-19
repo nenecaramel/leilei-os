@@ -169,6 +169,13 @@
       "when": 1786892445681,
       "tag": "0023_faulty_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787110593427,
+      "tag": "0024_brainy_wildside",
+      "breakpoints": true
     }
   ]
 }
