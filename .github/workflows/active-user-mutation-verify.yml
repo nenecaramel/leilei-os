@@ -1,0 +1,57 @@
+name: Active user mutation verification
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - src/domains/require-active-user-transaction.ts
+      - src/domains/memory/memory-repository.ts
+      - src/domains/diary/diary-repository.ts
+      - src/domains/task/task-repository.ts
+      - src/domains/todo/todo-repository.ts
+      - src/domains/universe/universe-repository-drizzle.ts
+      - tests/active-user-mutation-atomicity.test.ts
+      - tests/active-user-mutation-atomicity.integration.test.ts
+      - .github/workflows/active-user-mutation-verify.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      RUN_ACTIVE_USER_DATABASE_INTEGRATION_TEST: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - run: cd web && npm ci
+      - name: Run active-user source contract
+        run: pnpm exec tsx --test tests/active-user-mutation-atomicity.test.ts
+      - name: Run PostgreSQL concurrency regression
+        run: pnpm exec tsx --test --test-reporter=spec tests/active-user-mutation-atomicity.integration.test.ts
+      - name: Run deterministic canonical test suite
+        run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: cd web && npm run typecheck && npm run build
+      - run: git diff --check
