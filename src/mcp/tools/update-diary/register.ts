@@ -5,11 +5,11 @@ import { invokeMcpWrite } from "../write-context.js";
 
 const updateDiaryInputSchema = z.object({
   id: z.string().trim().min(1),
-  title: z.string().max(200).optional(),
-  content: z.string().max(20_000).optional(),
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().min(1).max(20_000).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  tags: z.array(z.string().max(50)).max(20).optional(),
-  mood: z.string().max(50).nullable().optional(),
+  tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+  mood: z.string().min(1).max(50).nullable().optional(),
   author: z.enum(["L", "G"]).optional(),
 }).strict().refine((value) => Object.keys(value).some((key) => key !== "id"), { message: "At least one Diary field must be supplied." });
 

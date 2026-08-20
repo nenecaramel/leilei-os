@@ -5,11 +5,11 @@ import { invokeMcpWrite } from "../write-context.js";
 
 const updateTaskInputSchema = z.object({
   id: z.string().trim().min(1),
-  title: z.string().max(200).optional(),
-  description: z.string().max(5_000).optional(),
-  priority: z.string().optional(),
-  due_time: z.string().datetime().nullable().optional(),
-  tags: z.array(z.string().max(50)).max(20).optional(),
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().min(1).max(5_000).optional(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  due_time: z.string().trim().min(1).max(64).nullable().optional(),
+  tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   author: z.enum(["L", "G"]).optional(),
 }).strict().refine((value) => Object.keys(value).some((key) => key !== "id"), { message: "At least one Task field must be supplied." });
 
