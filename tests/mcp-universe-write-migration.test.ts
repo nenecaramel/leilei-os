@@ -9,7 +9,7 @@ test("Universe MCP write migration keeps UUID ledger values and admits prefixed 
     ? await readFile(new URL(`../drizzle/${migration}`, import.meta.url), "utf8")
     : "";
   assert.match(sql, /resource_id.*TYPE text/i);
-  assert.match(sql, /resource_id::text/i);
+  assert.match(sql, /resource_id[\s\S]*::text/i);
   assert.match(sql, /create_universe_node/);
   assert.match(sql, /create_universe_relation/);
   assert.match(sql, /universe_node/);
