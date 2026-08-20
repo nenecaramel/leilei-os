@@ -712,7 +712,7 @@ test(
             .from(coreMemories)
             .where(
               and(
-                eq(coreMemories.userId, ownerId),
+                inArray(coreMemories.userId, [ownerId, otherUserId]),
                 eq(coreMemories.source, "integration"),
               ),
             );
