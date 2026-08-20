@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, inArray } from "drizzle-orm";
-import { createDatabase } from "../src/database/client.js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import {
   coreMemories,
   resourceLifecycleEvents,
@@ -18,11 +20,16 @@ const RUN_INTEGRATION =
 
 class RollbackMemoryLifecycleTest extends Error {}
 
+function createLocalDatabase(databaseUrl: string) {
+  const client = postgres(databaseUrl, { max: 10, prepare: false, ssl: false });
+  return { db: drizzle(client, { schema }), close: () => client.end() };
+}
+
 test(
   "real Memory repository updates and archives only owned active assistant-visible rows",
   { skip: !RUN_INTEGRATION },
   async () => {
-    const database = createDatabase(process.env.DATABASE_URL!);
+    const database = createLocalDatabase(process.env.DATABASE_URL!);
 
     try {
       await assert.rejects(

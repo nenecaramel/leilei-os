@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, inArray } from "drizzle-orm";
-import { createDatabase } from "../src/database/client.js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import {
   diaryEntries,
   resourceLifecycleEvents,
@@ -21,11 +23,16 @@ class RollbackDiarySearchTest extends Error {}
 class RollbackDiaryLifecycleTest extends Error {}
 class RollbackDiaryDateReadTest extends Error {}
 
+function createLocalDatabase(databaseUrl: string) {
+  const client = postgres(databaseUrl, { max: 10, prepare: false, ssl: false });
+  return { db: drizzle(client, { schema }), close: () => client.end() };
+}
+
 test(
   "real Diary exact-date read returns every active row without the generic list limit",
   { skip: !RUN_INTEGRATION },
   async () => {
-    const database = createDatabase(process.env.DATABASE_URL!);
+    const database = createLocalDatabase(process.env.DATABASE_URL!);
     try {
       await assert.rejects(
         database.db.transaction(async (transaction) => {
@@ -75,7 +82,7 @@ test(
   "real Diary repository applies exact tags, literal search, ownership, dates and AND filters before limit",
   { skip: !RUN_INTEGRATION },
   async () => {
-    const database = createDatabase(process.env.DATABASE_URL!);
+    const database = createLocalDatabase(process.env.DATABASE_URL!);
     try {
       await assert.rejects(
         database.db.transaction(async (transaction) => {
@@ -273,7 +280,7 @@ test(
   "real Diary repository scopes lifecycle rows, orders archives, and records transactional events",
   { skip: !RUN_INTEGRATION },
   async () => {
-    const database = createDatabase(process.env.DATABASE_URL!);
+    const database = createLocalDatabase(process.env.DATABASE_URL!);
     try {
       await assert.rejects(
         database.db.transaction(async (transaction) => {
