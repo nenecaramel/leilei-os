@@ -17,6 +17,7 @@ import { DrizzleTaskRepository } from "../src/domains/task/task-repository.js";
 import { TaskService } from "../src/domains/task/task-service.js";
 import { DrizzleExportRepository } from "../src/domains/export/export-repository.js";
 import { ExportService } from "../src/domains/export/export-service.js";
+import { hashMcpWriteRequest } from "../src/domains/mcp-write/mcp-write-idempotency.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const parsedDatabaseUrl = databaseUrl ? new URL(databaseUrl) : null;
@@ -40,6 +41,32 @@ test(
           const diaryId = randomUUID();
           const taskId = randomUUID();
           const now = new Date("2026-08-20T00:00:00.000Z");
+          const memoryRequest = {
+            category: "goal" as const,
+            key: `mcp-deleted-memory-${memoryId}`,
+            content: "mcp deleted memory secret",
+            tags: ["private"],
+            author: "L" as const,
+          };
+          const diaryInput = {
+            title: "MCP deleted diary title",
+            content: "mcp deleted diary secret",
+            date: "2026-08-20",
+            tags: ["private"],
+            author: "L" as const,
+          };
+          const diaryRequest = { ...diaryInput, mood: null };
+          const taskRequest = {
+            title: "MCP deleted task title",
+            description: "mcp deleted task secret",
+            status: "pending" as const,
+            priority: "normal" as const,
+            due_time: null,
+            timezone: "Asia/Shanghai",
+            tags: [] as string[],
+            completed_at: null,
+            author: "L" as const,
+          };
           await transaction.insert(users).values({
             id: userId,
             email: `mcp-delete-${userId}@example.invalid`,
@@ -100,7 +127,7 @@ test(
               userId,
               toolName: "write_memory",
               idempotencyKey: "mcp-delete-memory-key",
-              requestHash: "a".repeat(64),
+              requestHash: hashMcpWriteRequest(memoryRequest),
               resourceType: "memory",
               resourceId: memoryId,
               createdAt: now,
@@ -109,7 +136,7 @@ test(
               userId,
               toolName: "write_diary",
               idempotencyKey: "mcp-delete-diary-key",
-              requestHash: "b".repeat(64),
+              requestHash: hashMcpWriteRequest(diaryRequest),
               resourceType: "diary_entry",
               resourceId: diaryId,
               createdAt: now,
@@ -118,7 +145,7 @@ test(
               userId,
               toolName: "create_task",
               idempotencyKey: "mcp-delete-task-key",
-              requestHash: "c".repeat(64),
+              requestHash: hashMcpWriteRequest(taskRequest),
               resourceType: "task",
               resourceId: taskId,
               createdAt: now,
@@ -165,20 +192,45 @@ test(
             assert.equal(taskDetail.isError, true);
 
             const replayMemory = await mcpClient.callTool({ name: "write_memory", arguments: {
-              category: "goal", key: `mcp-deleted-memory-${memoryId}`, content: "mcp deleted memory secret", tags: ["private"], author: "L", idempotency_key: "mcp-delete-memory-key",
+              ...memoryRequest, idempotency_key: "mcp-delete-memory-key",
             } });
             const replayDiary = await mcpClient.callTool({ name: "write_diary", arguments: {
-              title: "MCP deleted diary title", content: "mcp deleted diary secret", date: "2026-08-20", tags: ["private"], author: "L", idempotency_key: "mcp-delete-diary-key",
+              ...diaryInput, idempotency_key: "mcp-delete-diary-key",
             } });
             const replayTask = await mcpClient.callTool({ name: "create_task", arguments: {
-              title: "MCP deleted task title", description: "mcp deleted task secret", priority: "normal", tags: [], author: "L", idempotency_key: "mcp-delete-task-key",
+              title: taskRequest.title,
+              description: taskRequest.description,
+              priority: taskRequest.priority,
+              tags: taskRequest.tags,
+              author: taskRequest.author,
+              idempotency_key: "mcp-delete-task-key",
             } });
             assert.equal(replayMemory.isError, true);
             assert.equal(replayDiary.isError, true);
             assert.equal(replayTask.isError, true);
+            const responseText = (result: { content?: Array<{ type: string; text?: string }> }) =>
+              result.content?.filter((part) => part.type === "text").map((part) => part.text ?? "").join(" ") ?? "";
+            assert.match(responseText(replayMemory), /temporarily unavailable/i);
+            assert.match(responseText(replayDiary), /temporarily unavailable/i);
+            assert.match(responseText(replayTask), /temporarily unavailable/i);
             assert.equal((await transaction.select().from(coreMemories).where(eq(coreMemories.id, memoryId))).length, 0);
             assert.equal((await transaction.select().from(diaryEntries).where(eq(diaryEntries.id, diaryId))).length, 0);
             assert.equal((await transaction.select().from(tasks).where(eq(tasks.id, taskId))).length, 0);
+
+            const retainedLedger = await transaction.select({
+              toolName: mcpWriteIdempotency.toolName,
+              idempotencyKey: mcpWriteIdempotency.idempotencyKey,
+              requestHash: mcpWriteIdempotency.requestHash,
+              resourceId: mcpWriteIdempotency.resourceId,
+            }).from(mcpWriteIdempotency).where(eq(mcpWriteIdempotency.userId, userId));
+            assert.deepEqual(
+              retainedLedger.map(({ toolName, idempotencyKey, requestHash, resourceId }) => ({ toolName, idempotencyKey, requestHash, resourceId })).sort((a, b) => a.toolName.localeCompare(b.toolName)),
+              [
+                { toolName: "create_task", idempotencyKey: "mcp-delete-task-key", requestHash: hashMcpWriteRequest(taskRequest), resourceId: taskId },
+                { toolName: "write_diary", idempotencyKey: "mcp-delete-diary-key", requestHash: hashMcpWriteRequest(diaryRequest), resourceId: diaryId },
+                { toolName: "write_memory", idempotencyKey: "mcp-delete-memory-key", requestHash: hashMcpWriteRequest(memoryRequest), resourceId: memoryId },
+              ],
+            );
 
             const exporter = new ExportService(new DrizzleExportRepository(transaction as never), () => now);
             const exported = await exporter.createExport(userId, "all", true);
