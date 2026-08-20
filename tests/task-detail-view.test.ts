@@ -294,6 +294,19 @@ test("normal Task list keeps header action order, exact summary, and read-only c
       [...cards.querySelectorAll("button")].some((button) => button.textContent === "归档"),
       false,
     );
+    const mobilePage = await renderTaskPage("/task", api, undefined, true);
+    try {
+      await React.act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const taskMetadata = mobilePage.container.querySelector(
+        ".task-row .memory-row-meta",
+      );
+      assert.ok(taskMetadata);
+      assert.equal(taskMetadata.children.length, 2);
+    } finally {
+      await mobilePage.cleanup();
+    }
   } finally {
     await page.cleanup();
   }
