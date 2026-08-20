@@ -21,6 +21,10 @@ import type {
   UniverseReadResult,
   UniverseRepository,
 } from "./universe-repository.js";
+import {
+  hashMcpWriteRequest,
+  normalizeMcpIdempotencyKey,
+} from "../mcp-write/mcp-write-idempotency.js";
 
 export type UniverseServiceErrorCode =
   | "USER_NOT_FOUND"
@@ -32,6 +36,7 @@ export type UniverseServiceErrorCode =
   | "RELATION_NOT_FOUND"
   | "RELATION_INVALID"
   | "RELATION_CONFLICT"
+  | "IDEMPOTENCY_CONFLICT"
   | "REVISION_NOT_FOUND"
   | "BACKUP_NOT_FOUND"
   | "VERSION_CONFLICT"
@@ -56,6 +61,18 @@ export type UniverseNodeUpdate = Partial<Omit<UniverseNode, "id" | "createdAt" |
   migration?: UniverseNode["migration"];
 };
 
+export type UniverseMcpNodeCreateResult = {
+  node: UniverseNode;
+  universe_version: number;
+  metadata: { created: boolean; idempotent_replay: boolean };
+};
+
+export type UniverseMcpRelationCreateResult = {
+  relation: UniverseRelation;
+  universe_version: number;
+  metadata: { created: boolean; idempotent_replay: boolean };
+};
+
 export class UniverseService {
   constructor(private readonly repository: UniverseRepository) {}
 
@@ -78,6 +95,42 @@ export class UniverseService {
     validateExpectedVersion(expectedVersion);
     const node = invalidAsServiceError(() => normalizeNodeCreate(value));
     return this.repository.createNode(userId, node, expectedVersion);
+  }
+
+  async createMcpNode(
+    userId: string,
+    value: unknown,
+    expectedVersion: number,
+    idempotencyKey: string,
+  ): Promise<UniverseMcpNodeCreateResult> {
+    await this.requireActiveUser(userId);
+    validateExpectedVersion(expectedVersion);
+    const key = normalizeMcpIdempotencyKey(idempotencyKey);
+    const input = invalidAsServiceError(() => normalizeMcpNodeCreate(value));
+    assertMcpPosition(input.position);
+    const requestHash = hashMcpWriteRequest({
+      title: input.title,
+      summary: input.summary,
+      content: input.content,
+      type: input.type,
+      tags: input.tags,
+      galaxies: input.galaxies,
+      position: input.position,
+      expected_version: expectedVersion,
+    });
+    const result = await this.repository.createNodeIdempotently?.(
+      userId,
+      input,
+      expectedVersion,
+      key,
+      requestHash,
+    );
+    if (!result) throw new UniverseServiceError("UNIVERSE_FAILED");
+    return {
+      node: result.value,
+      universe_version: result.version,
+      metadata: { created: result.outcome === "created", idempotent_replay: result.outcome === "replayed" },
+    };
   }
 
   async updateNode(
@@ -107,6 +160,22 @@ export class UniverseService {
     return this.repository.updateNode(userId, node, reason, expectedVersion);
   }
 
+  async updateMcpNode(
+    userId: string,
+    nodeId: string,
+    patch: Pick<UniverseNodeUpdate, "title" | "summary" | "content" | "type" | "tags" | "galaxies" | "position">,
+    expectedVersion: number,
+  ): Promise<UniverseReadResult> {
+    if (!patch || Object.keys(patch).length === 0) {
+      throw new UniverseServiceError("INVALID_UNIVERSE");
+    }
+    const allowed = new Set(["title", "summary", "content", "type", "tags", "galaxies", "position"]);
+    if (Object.keys(patch).some((key) => !allowed.has(key))) {
+      throw new UniverseServiceError("INVALID_UNIVERSE");
+    }
+    return this.updateNode(userId, nodeId, patch, "mcp_update", expectedVersion);
+  }
+
   async deleteNode(userId: string, nodeId: string, expectedVersion: number): Promise<UniverseReadResult> {
     await this.requireActiveUser(userId);
     validateExpectedVersion(expectedVersion);
@@ -118,6 +187,40 @@ export class UniverseService {
     validateExpectedVersion(expectedVersion);
     const relation = invalidAsServiceError(() => normalizeRelationCreate(value));
     return this.repository.createRelation(userId, relation, expectedVersion);
+  }
+
+  async createMcpRelation(
+    userId: string,
+    value: unknown,
+    expectedVersion: number,
+    idempotencyKey: string,
+  ): Promise<UniverseMcpRelationCreateResult> {
+    await this.requireActiveUser(userId);
+    validateExpectedVersion(expectedVersion);
+    const key = normalizeMcpIdempotencyKey(idempotencyKey);
+    const input = invalidAsServiceError(() => normalizeMcpRelationCreate(value));
+    assertMcpStrength(input.strength);
+    if (input.source === input.target) throw new UniverseServiceError("RELATION_INVALID");
+    const requestHash = hashMcpWriteRequest({
+      source: input.source,
+      target: input.target,
+      relation_type: input.relationType,
+      strength: input.strength,
+      expected_version: expectedVersion,
+    });
+    const result = await this.repository.createRelationIdempotently?.(
+      userId,
+      input,
+      expectedVersion,
+      key,
+      requestHash,
+    );
+    if (!result) throw new UniverseServiceError("UNIVERSE_FAILED");
+    return {
+      relation: result.value,
+      universe_version: result.version,
+      metadata: { created: result.outcome === "created", idempotent_replay: result.outcome === "replayed" },
+    };
   }
 
   async deleteRelation(userId: string, relationId: string, expectedVersion: number): Promise<UniverseReadResult> {
@@ -188,6 +291,57 @@ function invalidAsServiceError<T>(operation: () => T): T {
       throw new UniverseServiceError("INVALID_UNIVERSE");
     }
     throw error;
+  }
+}
+
+function normalizeMcpNodeCreate(value: unknown): UniverseNode {
+  const record = asRecord(value);
+  assertAllowedKeys(record, ["title", "summary", "content", "type", "tags", "galaxies", "position"]);
+  return normalizeNodeCreate({
+    title: record.title,
+    summary: record.summary,
+    content: record.content,
+    type: record.type,
+    tags: record.tags,
+    galaxies: record.galaxies,
+    position: record.position,
+  });
+}
+
+function normalizeMcpRelationCreate(value: unknown): UniverseRelation {
+  const record = asRecord(value);
+  assertAllowedKeys(record, ["source", "target", "relationType", "strength"]);
+  return normalizeRelationCreate({
+    source: record.source,
+    target: record.target,
+    relationType: record.relationType,
+    strength: record.strength,
+  });
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new UniverseValidationError("MCP Universe input must be an object.");
+  }
+  return value as Record<string, unknown>;
+}
+
+function assertAllowedKeys(record: Record<string, unknown>, allowed: readonly string[]): void {
+  const allowedSet = new Set(allowed);
+  if (Object.keys(record).some((key) => !allowedSet.has(key))) {
+    throw new UniverseValidationError("MCP Universe input contains a forbidden field.");
+  }
+}
+
+function assertMcpPosition(position: { x: number; y: number }): void {
+  if (![position.x, position.y].every((coordinate) => Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 100)) {
+    throw new UniverseServiceError("INVALID_UNIVERSE");
+  }
+}
+
+function assertMcpStrength(strength: number): void {
+  if (!Number.isFinite(strength) || strength < 0 || strength > 1) {
+    throw new UniverseServiceError("RELATION_INVALID");
   }
 }
 

@@ -9,6 +9,9 @@ export const MCP_WRITE_TOOL_NAMES = [
   "update_diary",
   "update_task",
   "transition_task",
+  "create_universe_node",
+  "update_universe_node",
+  "create_universe_relation",
 ] as const;
 
 export type McpWriteToolName = (typeof MCP_WRITE_TOOL_NAMES)[number];

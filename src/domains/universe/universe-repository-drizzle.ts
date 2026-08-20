@@ -11,6 +11,10 @@ import {
   users,
 } from "../../database/schema.js";
 import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
+import {
+  lockAndReadMcpIdempotency,
+  recordMcpIdempotency,
+} from "../mcp-write/mcp-write-idempotency.js";
 import { UniverseServiceError } from "./universe-service.js";
 import type {
   UniverseBackup,
@@ -22,7 +26,11 @@ import type {
   UniverseSnapshot,
 } from "./universe-types.js";
 import { validateUniverseBackup, validateUniverseSnapshot } from "./universe-validation.js";
-import type { UniverseReadResult, UniverseRepository } from "./universe-repository.js";
+import type {
+  UniverseMcpCreateResult,
+  UniverseReadResult,
+  UniverseRepository,
+} from "./universe-repository.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) => unknown ? T : never;
@@ -96,6 +104,55 @@ export class DrizzleUniverseRepository implements UniverseRepository {
     });
   }
 
+  async createNodeIdempotently(
+    userId: string,
+    node: UniverseNode,
+    expectedVersion: number,
+    idempotencyKey: string,
+    requestHash: string,
+  ): Promise<UniverseMcpCreateResult<UniverseNode>> {
+    return this.db.transaction(async (tx) => {
+      const transaction = tx as Transaction;
+      const existingLedger = await lockAndReadMcpIdempotency(transaction, {
+        userId,
+        toolName: "create_universe_node",
+        idempotencyKey,
+      });
+      await requireActiveUserInTransaction(transaction, userId);
+      if (existingLedger) {
+        if (existingLedger.requestHash !== requestHash || existingLedger.resourceType !== "universe_node") {
+          throw new UniverseServiceError("IDEMPOTENCY_CONFLICT");
+        }
+        const repository = new DrizzleUniverseRepository(transaction);
+        await repository.lockMeta(userId);
+        const existing = await repository.findNode(userId, existingLedger.resourceId);
+        if (!existing) throw new UniverseServiceError("NODE_NOT_FOUND");
+        const current = await repository.requireUniverse(userId);
+        return { outcome: "replayed", value: existing, version: current.version };
+      }
+
+      const repository = new DrizzleUniverseRepository(transaction);
+      await repository.assertVersion(userId, expectedVersion);
+      await repository.assertGalaxyReferences(userId, node.galaxies);
+      try {
+        await transaction.insert(universeNodes).values(toNodeInsert(userId, node));
+      } catch (error) {
+        if (hasCode(error, "23505")) throw new UniverseServiceError("NODE_CONFLICT");
+        throw error;
+      }
+      await repository.bumpVersion(userId, expectedVersion, node.updatedAt);
+      await recordMcpIdempotency(transaction, {
+        userId,
+        toolName: "create_universe_node",
+        idempotencyKey,
+        requestHash,
+        resourceType: "universe_node",
+        resourceId: node.id,
+      });
+      return { outcome: "created", value: node, version: expectedVersion + 1 };
+    });
+  }
+
   async updateNode(userId: string, node: UniverseNode, reason: string, expectedVersion: number): Promise<UniverseReadResult> {
     return this.inTransaction(userId, async (repository) => {
       await repository.assertVersion(userId, expectedVersion);
@@ -154,6 +211,61 @@ export class DrizzleUniverseRepository implements UniverseRepository {
       }
       await repository.bumpVersion(userId, expectedVersion, relation.createdAt);
       return repository.requireUniverse(userId);
+    });
+  }
+
+  async createRelationIdempotently(
+    userId: string,
+    relation: UniverseRelation,
+    expectedVersion: number,
+    idempotencyKey: string,
+    requestHash: string,
+  ): Promise<UniverseMcpCreateResult<UniverseRelation>> {
+    return this.db.transaction(async (tx) => {
+      const transaction = tx as Transaction;
+      const existingLedger = await lockAndReadMcpIdempotency(transaction, {
+        userId,
+        toolName: "create_universe_relation",
+        idempotencyKey,
+      });
+      await requireActiveUserInTransaction(transaction, userId);
+      if (existingLedger) {
+        if (existingLedger.requestHash !== requestHash || existingLedger.resourceType !== "universe_relation") {
+          throw new UniverseServiceError("IDEMPOTENCY_CONFLICT");
+        }
+        const repository = new DrizzleUniverseRepository(transaction);
+        await repository.lockMeta(userId);
+        const existing = await transaction.select().from(universeRelations).where(
+          and(eq(universeRelations.userId, userId), eq(universeRelations.id, existingLedger.resourceId)),
+        ).limit(1);
+        if (existing.length === 0) throw new UniverseServiceError("RELATION_NOT_FOUND");
+        const current = await repository.requireUniverse(userId);
+        return { outcome: "replayed", value: fromRelationRow(existing[0]!), version: current.version };
+      }
+
+      const repository = new DrizzleUniverseRepository(transaction);
+      await repository.assertVersion(userId, expectedVersion);
+      const nodes = await transaction.select({ id: universeNodes.id }).from(universeNodes).where(
+        and(eq(universeNodes.userId, userId), inArray(universeNodes.id, [relation.source, relation.target])),
+      );
+      if (nodes.length !== 2 && relation.source !== relation.target) throw new UniverseServiceError("RELATION_INVALID");
+      if (nodes.length !== 1 && relation.source === relation.target) throw new UniverseServiceError("RELATION_INVALID");
+      try {
+        await transaction.insert(universeRelations).values(toRelationInsert(userId, relation));
+      } catch (error) {
+        if (hasCode(error, "23505")) throw new UniverseServiceError("RELATION_CONFLICT");
+        throw error;
+      }
+      await repository.bumpVersion(userId, expectedVersion, relation.createdAt);
+      await recordMcpIdempotency(transaction, {
+        userId,
+        toolName: "create_universe_relation",
+        idempotencyKey,
+        requestHash,
+        resourceType: "universe_relation",
+        resourceId: relation.id,
+      });
+      return { outcome: "created", value: relation, version: expectedVersion + 1 };
     });
   }
 
@@ -471,5 +583,8 @@ function fromBackupRow(row: typeof universeBackups.$inferSelect): UniverseBackup
 }
 
 function hasCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
+  if (typeof error !== "object" || error === null) return false;
+  if ("code" in error && (error as { code?: unknown }).code === code) return true;
+  if ("cause" in error) return hasCode((error as { cause?: unknown }).cause, code);
+  return false;
 }

@@ -136,6 +136,9 @@ import {
 import { registerSearchUniverseTool, type SearchUniverseToolDependencies } from "../tools/search-universe/register.js";
 import { registerGetUniverseNodeTool, type GetUniverseNodeToolDependencies } from "../tools/get-universe-node/register.js";
 import { registerGetUniverseRelationsTool, type GetUniverseRelationsToolDependencies } from "../tools/get-universe-relations/register.js";
+import { registerCreateUniverseNodeTool, type CreateUniverseNodeToolDependencies } from "../tools/create-universe-node/register.js";
+import { registerUpdateUniverseNodeTool, type UpdateUniverseNodeToolDependencies } from "../tools/update-universe-node/register.js";
+import { registerCreateUniverseRelationTool, type CreateUniverseRelationToolDependencies } from "../tools/create-universe-relation/register.js";
 import { UniverseAuthenticationError } from "../tools/universe/shared.js";
 import {
   ActiveUserAuthorizationError,
@@ -439,9 +442,13 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
 };
 
 const productionUniverseService: SearchUniverseToolDependencies["globalSearchService"] &
-  GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] = {
+  GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
+  CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] & CreateUniverseRelationToolDependencies["universeService"] = {
   search: (input) => getDefaultGlobalSearchService().search(input),
   loadUniverse: (userId) => getDefaultUniverseService().loadUniverse(userId),
+  createMcpNode: (userId, input, expectedVersion, idempotencyKey) => getDefaultUniverseService().createMcpNode(userId, input, expectedVersion, idempotencyKey),
+  updateMcpNode: (userId, nodeId, patch, expectedVersion) => getDefaultUniverseService().updateMcpNode(userId, nodeId, patch, expectedVersion),
+  createMcpRelation: (userId, input, expectedVersion, idempotencyKey) => getDefaultUniverseService().createMcpRelation(userId, input, expectedVersion, idempotencyKey),
 };
 
 const productionNotionService: SearchNotionToolDependencies["notionService"] &
@@ -481,6 +488,12 @@ type NotionReadDependencies =
 type UniverseToolsDependencies = {
   universeService: GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"];
   globalSearchService: SearchUniverseToolDependencies["globalSearchService"];
+  getAuthenticatedUserId: () => string;
+};
+
+type UniverseWriteToolsDependencies = {
+  nodeService: CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"];
+  relationService: CreateUniverseRelationToolDependencies["universeService"];
   getAuthenticatedUserId: () => string;
 };
 
@@ -524,6 +537,7 @@ export type McpServerDependencies = {
   notionTools?: NotionToolsDependencies;
   notionRead?: NotionReadDependencies;
   universeTools?: UniverseToolsDependencies;
+  universeWriteTools?: UniverseWriteToolsDependencies;
 };
 
 export function createMcpServer(
@@ -710,6 +724,26 @@ export function createMcpServer(
   registerSearchUniverseTool(server, universeTools);
   registerGetUniverseNodeTool(server, universeTools);
   registerGetUniverseRelationsTool(server, universeTools);
+  const sharedUniverseService = universeTools.universeService;
+  const universeWriteTools = dependencies.universeWriteTools ?? (
+    sharedUniverseService && "createMcpNode" in sharedUniverseService && "updateMcpNode" in sharedUniverseService && "createMcpRelation" in sharedUniverseService
+      ? {
+          nodeService: sharedUniverseService as UniverseWriteToolsDependencies["nodeService"],
+          relationService: sharedUniverseService as UniverseWriteToolsDependencies["relationService"],
+          getAuthenticatedUserId: universeTools.getAuthenticatedUserId,
+        }
+      : {
+          nodeService: productionUniverseService,
+          relationService: productionUniverseService,
+          getAuthenticatedUserId: () => {
+            if (!authenticatedUserId) throw new UniverseAuthenticationError();
+            return authenticatedUserId;
+          },
+        }
+  ) satisfies UniverseWriteToolsDependencies;
+  registerCreateUniverseNodeTool(server, { universeService: universeWriteTools.nodeService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
+  registerUpdateUniverseNodeTool(server, { universeService: universeWriteTools.nodeService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
+  registerCreateUniverseRelationTool(server, { universeService: universeWriteTools.relationService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
   const notionTools = dependencies.notionTools
     ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
       ? { ...dependencies.notionTools, requireActiveUser: activeUserAuthorization }

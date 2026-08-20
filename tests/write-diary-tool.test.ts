@@ -96,6 +96,8 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
     response.tools.map((tool) => tool.name).sort(),
     [
       "create_task",
+      "create_universe_node",
+      "create_universe_relation",
       "get_diary",
       "get_local_context",
       "get_memory",
@@ -124,6 +126,7 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
       "update_diary",
       "update_memory",
       "update_task",
+      "update_universe_node",
       "write_diary",
       "write_memory",
       "write_todo_paper",
