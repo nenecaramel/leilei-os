@@ -724,14 +724,23 @@ export function createMcpServer(
   registerSearchUniverseTool(server, universeTools);
   registerGetUniverseNodeTool(server, universeTools);
   registerGetUniverseRelationsTool(server, universeTools);
-  const universeWriteTools = dependencies.universeWriteTools ?? {
-    nodeService: productionUniverseService,
-    relationService: productionUniverseService,
-    getAuthenticatedUserId: () => {
-      if (!authenticatedUserId) throw new UniverseAuthenticationError();
-      return authenticatedUserId;
-    },
-  } satisfies UniverseWriteToolsDependencies;
+  const sharedUniverseService = universeTools.universeService;
+  const universeWriteTools = dependencies.universeWriteTools ?? (
+    sharedUniverseService && "createMcpNode" in sharedUniverseService && "updateMcpNode" in sharedUniverseService && "createMcpRelation" in sharedUniverseService
+      ? {
+          nodeService: sharedUniverseService as UniverseWriteToolsDependencies["nodeService"],
+          relationService: sharedUniverseService as UniverseWriteToolsDependencies["relationService"],
+          getAuthenticatedUserId: universeTools.getAuthenticatedUserId,
+        }
+      : {
+          nodeService: productionUniverseService,
+          relationService: productionUniverseService,
+          getAuthenticatedUserId: () => {
+            if (!authenticatedUserId) throw new UniverseAuthenticationError();
+            return authenticatedUserId;
+          },
+        }
+  ) satisfies UniverseWriteToolsDependencies;
   registerCreateUniverseNodeTool(server, { universeService: universeWriteTools.nodeService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
   registerUpdateUniverseNodeTool(server, { universeService: universeWriteTools.nodeService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
   registerCreateUniverseRelationTool(server, { universeService: universeWriteTools.relationService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
