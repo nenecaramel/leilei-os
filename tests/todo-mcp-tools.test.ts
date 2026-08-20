@@ -382,7 +382,7 @@ test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
-  assert.equal(tools.length, 28, "the MCP surface must contain the complete read-only Notion extension");
+  assert.equal(tools.length, 32, "the MCP surface must contain the complete read-only Notion extension plus resource updates");
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
