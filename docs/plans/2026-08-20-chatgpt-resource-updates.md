@@ -47,9 +47,11 @@ All four tools:
 - `title`: string
 - `description`: string
 - `priority`: `low | normal | high | urgent`
-- `due_time`: RFC3339/accepted existing Task due-time string | null
+- `due_time`: `null`, an ISO instant accepted by `Temporal.Instant.from`, or a local date-time matching `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$` and interpreted in the account timezone
 - `tags`: string[]
 - `author`: `L | G`
+
+The MCP Zod field for `due_time` is exactly `z.string().trim().min(1).max(64).nullable().optional()`; domain parsing remains authoritative.
 
 `update_task` must not expose `status`, `resumeStatus`, `completedAt`, or `timezone`. Task timezone remains account-owned; this PR does not add an MCP task-timezone mutation.
 
@@ -247,7 +249,7 @@ async updateMcpDiary(
 
 Add `INVALID_DIARY_PATCH` to `DiaryDomainErrorCode`.
 
-`updateMcpDiary` must validate only supplied fields. Extract field-level helpers from existing `normalizeDiaryFields` where necessary; `updateWebDiary` must keep its current full-update behavior.
+`updateMcpDiary` must validate only supplied fields. Extract field-level helpers from existing `normalizeDiaryFields`; `updateWebDiary` keeps its current full-update behavior.
 
 Call repository `updateDiary` with only normalized supplied fields plus `userId/id`. Do not pre-read to fill omitted fields. After success, return `readDiary({ userId, id })`.
 
@@ -348,9 +350,30 @@ Add `INVALID_TASK_PATCH` to `TaskDomainErrorCode`.
 7. never pass status/resumeStatus/completedAt/timezone;
 8. return `readTask({ userId, id })` after success.
 
-Refactor current Task field helpers only as needed to permit single-field normalization; keep `createTask` and `updateWebTask` behavior unchanged.
+Refactor existing field validation into single-field helpers while preserving `createTask` and `updateWebTask` behavior.
 
-In `task-repository.ts`, make `NormalizedTaskUpdate` mutable columns optional and move the current full normalized field shape used by create/Web normalization into a separate internal full-field type if TypeScript requires it. `updateTask` must conditionally set only supplied fields plus `updatedAt`.
+In `task-repository.ts`, add exactly:
+
+```ts
+export type NormalizedTaskFields = {
+  title: string;
+  description: string;
+  priority: TaskPriority;
+  dueTime: Date | null;
+  timezone: string;
+  tags: string[];
+};
+
+export type NormalizedTaskUpdate = {
+  userId: string;
+  id: string;
+  author?: ContentAuthor;
+} & Partial<NormalizedTaskFields>;
+```
+
+Change `task-service.ts` `normalizeTaskFields(...)` return type to `NormalizedTaskFields`. Existing Web update continues to pass the full normalized field object; MCP passes only supplied patch fields.
+
+`updateTask` must conditionally set only supplied fields plus `updatedAt`.
 
 Retain the existing transaction-scoped active-user guard and `lifecycleStatus === "active"` predicate. `updateTask` must never mutate `status`, `resumeStatus`, or `completedAt`.
 
@@ -494,7 +517,7 @@ Update `tests/mcp-write-contract.test.ts` expected `MCP_WRITE_TOOL_NAMES` to exa
 ]
 ```
 
-Update its author-bearing write-tool assertion so `update_memory`, `update_diary`, and `update_task` may expose `author`; `transition_task` may not.
+Rename the existing “exactly six write tools” test to “MCP exposes exactly ten write tools and preserves every annotation”. Update its author-bearing write-tool assertion so `update_memory`, `update_diary`, and `update_task` may expose `author`; `transition_task` may not.
 
 Run:
 
@@ -522,11 +545,11 @@ Dependency interface calls only:
 memoryService.updateMcpMemory(context, input)
 ```
 
-Return the service readback plus `lifecycle_status: "active"` in structured content. Map known Memory domain errors to safe text. Use a tool-specific authentication error. Description must say uncertain outcomes require `get_memory` readback before any retry.
+Use `UpdateMemoryAuthenticationError`. Return the service readback plus `lifecycle_status: "active"` in structured content. Map known Memory domain errors to safe text. Description must say uncertain outcomes require `get_memory` readback before any retry.
 
 ### 4. Implement `update_diary`
 
-Same structure. Preserve `mood: null`. Return service readback plus `lifecycle_status: "active"`. Description must direct uncertain-outcome readback through `get_diary`.
+Use `UpdateDiaryAuthenticationError`. Preserve `mood: null`. Return service readback plus `lifecycle_status: "active"`. Description must direct uncertain-outcome readback through `get_diary`.
 
 ### 5. Implement `update_task`
 
@@ -536,7 +559,7 @@ Input properties are exactly:
 id, title?, description?, priority?, due_time?, tags?, author?
 ```
 
-Map `due_time` to service `dueTime`. Do not expose `status`, `timezone`, `resumeStatus`, or `completedAt`. Return service readback plus `lifecycle_status: "active"`. Description must direct uncertain-outcome readback through `get_task`.
+`due_time` uses the frozen Zod schema above and maps to service `dueTime`. Do not expose `status`, `timezone`, `resumeStatus`, or `completedAt`. Use `UpdateTaskAuthenticationError`. Return service readback plus `lifecycle_status: "active"`. Description must direct uncertain-outcome readback through `get_task`.
 
 ### 6. Implement `transition_task`
 
@@ -546,7 +569,7 @@ Input properties are exactly `id` and `action`. Call only:
 taskService.transitionMcpTask(context, { id, action })
 ```
 
-Return service readback plus `lifecycle_status: "active"`. Map not-found, invalid-transition/reopen-state, and status-conflict errors separately. Description must direct uncertain-outcome readback through `get_task`; do not retry a transition blindly.
+Use `TransitionTaskAuthenticationError`. Return service readback plus `lifecycle_status: "active"`. Map not-found, invalid-transition/reopen-state, and status-conflict errors separately. Description must direct uncertain-outcome readback through `get_task`; do not retry a transition blindly.
 
 ### 7. Wire server
 
