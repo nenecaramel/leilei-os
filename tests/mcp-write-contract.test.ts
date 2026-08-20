@@ -242,7 +242,7 @@ async function invokeAllWrites(client: Client) {
   ]);
 }
 
-test("MCP exposes exactly six write tools and preserves every annotation", async (t) => {
+test("MCP exposes exactly ten write tools and preserves every annotation", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
@@ -258,6 +258,10 @@ test("MCP exposes exactly six write tools and preserves every annotation", async
     "toy_set",
     "toy_stop",
     "write_todo_paper",
+    "update_memory",
+    "update_diary",
+    "update_task",
+    "transition_task",
   ]);
   assert.deepEqual(
     writes.map((tool) => tool.name).sort(),
@@ -277,6 +281,14 @@ test("MCP exposes exactly six write tools and preserves every annotation", async
   for (const name of ["create_task", "write_diary", "write_memory"]) {
     assert.equal(tools.find((tool) => tool.name === name)?.annotations?.destructiveHint, false);
   }
+  for (const name of ["update_memory", "update_diary", "update_task", "transition_task"]) {
+    assert.deepEqual(tools.find((tool) => tool.name === name)?.annotations, {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    });
+  }
   assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "write_diary")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "write_memory")?.annotations?.idempotentHint, true);
@@ -285,7 +297,7 @@ test("MCP exposes exactly six write tools and preserves every annotation", async
     assert.ok(tool?.inputSchema.required?.includes("author"));
   }
   for (const tool of tools) {
-    if (!["create_task", "write_diary", "write_memory", "write_todo_paper"].includes(tool.name)) {
+    if (!["create_task", "write_diary", "write_memory", "write_todo_paper", "update_memory", "update_diary", "update_task"].includes(tool.name)) {
       assert.equal("author" in (tool.inputSchema.properties ?? {}), false);
     }
   }

@@ -33,10 +33,20 @@ import {
   type WriteMemoryToolDependencies,
 } from "../tools/write-memory/register.js";
 import {
+  registerUpdateMemoryTool,
+  UpdateMemoryAuthenticationError,
+  type UpdateMemoryToolDependencies,
+} from "../tools/update-memory/register.js";
+import {
   registerWriteDiaryTool,
   WriteDiaryAuthenticationError,
   type WriteDiaryToolDependencies,
 } from "../tools/write-diary/register.js";
+import {
+  registerUpdateDiaryTool,
+  UpdateDiaryAuthenticationError,
+  type UpdateDiaryToolDependencies,
+} from "../tools/update-diary/register.js";
 import {
   DiaryReadAuthenticationError,
   registerSearchDiaryTool,
@@ -51,6 +61,16 @@ import {
   registerCreateTaskTool,
   type CreateTaskToolDependencies,
 } from "../tools/create-task/register.js";
+import {
+  registerUpdateTaskTool,
+  UpdateTaskAuthenticationError,
+  type UpdateTaskToolDependencies,
+} from "../tools/update-task/register.js";
+import {
+  registerTransitionTaskTool,
+  TransitionTaskAuthenticationError,
+  type TransitionTaskToolDependencies,
+} from "../tools/transition-task/register.js";
 import {
   registerListTasksTool,
   TaskReadAuthenticationError,
@@ -297,6 +317,16 @@ const productionWriteMemoryDependencies: WriteMemoryToolDependencies = {
   },
 };
 
+const productionUpdateMemoryDependencies: UpdateMemoryToolDependencies = {
+  memoryService: {
+    updateMcpMemory: (context, input) =>
+      getDefaultMemoryService().updateMcpMemory(context, input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new UpdateMemoryAuthenticationError();
+  },
+};
+
 const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   diaryService: {
     createMcpDiary: (context, input) =>
@@ -304,6 +334,16 @@ const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   },
   getAuthenticatedUserId: () => {
     throw new WriteDiaryAuthenticationError();
+  },
+};
+
+const productionUpdateDiaryDependencies: UpdateDiaryToolDependencies = {
+  diaryService: {
+    updateMcpDiary: (context, input) =>
+      getDefaultDiaryService().updateMcpDiary(context, input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new UpdateDiaryAuthenticationError();
   },
 };
 
@@ -337,6 +377,26 @@ const productionCreateTaskDependencies: CreateTaskToolDependencies = {
   },
   getAuthenticatedUserId: () => {
     throw new CreateTaskAuthenticationError();
+  },
+};
+
+const productionUpdateTaskDependencies: UpdateTaskToolDependencies = {
+  taskService: {
+    updateMcpTask: (context, input) =>
+      getDefaultTaskService().updateMcpTask(context, input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new UpdateTaskAuthenticationError();
+  },
+};
+
+const productionTransitionTaskDependencies: TransitionTaskToolDependencies = {
+  taskService: {
+    transitionMcpTask: (context, input) =>
+      getDefaultTaskService().transitionMcpTask(context, input),
+  },
+  getAuthenticatedUserId: () => {
+    throw new TransitionTaskAuthenticationError();
   },
 };
 
@@ -436,6 +496,7 @@ export type McpServerDependencies = {
   searchMemory?: SearchMemoryToolDependencies;
   getMemory?: GetMemoryToolDependencies;
   writeMemory?: WriteMemoryToolDependencies;
+  updateMemory?: UpdateMemoryToolDependencies;
   diaryTools?: {
     diaryService: WriteDiaryToolDependencies["diaryService"] &
       SearchDiaryToolDependencies["diaryService"] &
@@ -443,6 +504,7 @@ export type McpServerDependencies = {
     getAuthenticatedUserId: () => string;
   };
   writeDiary?: WriteDiaryToolDependencies;
+  updateDiary?: UpdateDiaryToolDependencies;
   searchDiary?: SearchDiaryToolDependencies;
   getDiary?: GetDiaryToolDependencies;
   taskTools?: {
@@ -452,6 +514,8 @@ export type McpServerDependencies = {
     getAuthenticatedUserId: () => string;
   };
   createTask?: CreateTaskToolDependencies;
+  updateTask?: UpdateTaskToolDependencies;
+  transitionTask?: TransitionTaskToolDependencies;
   listTasks?: ListTasksToolDependencies;
   getTask?: GetTaskToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
@@ -518,12 +582,32 @@ export function createMcpServer(
       },
     },
   );
+  registerUpdateMemoryTool(
+    server,
+    dependencies.updateMemory ?? {
+      ...productionUpdateMemoryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new UpdateMemoryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
   registerWriteDiaryTool(
     server,
     dependencies.writeDiary ?? dependencies.diaryTools ?? {
       ...productionWriteDiaryDependencies,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new WriteDiaryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerUpdateDiaryTool(
+    server,
+    dependencies.updateDiary ?? {
+      ...productionUpdateDiaryDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new UpdateDiaryAuthenticationError();
         return authenticatedUserId;
       },
     },
@@ -554,6 +638,26 @@ export function createMcpServer(
       ...productionCreateTaskDependencies,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new CreateTaskAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerUpdateTaskTool(
+    server,
+    dependencies.updateTask ?? {
+      ...productionUpdateTaskDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new UpdateTaskAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerTransitionTaskTool(
+    server,
+    dependencies.transitionTask ?? {
+      ...productionTransitionTaskDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new TransitionTaskAuthenticationError();
         return authenticatedUserId;
       },
     },
