@@ -123,9 +123,11 @@ export class DrizzleUniverseRepository implements UniverseRepository {
         if (existingLedger.requestHash !== requestHash || existingLedger.resourceType !== "universe_node") {
           throw new UniverseServiceError("IDEMPOTENCY_CONFLICT");
         }
-        const existing = await new DrizzleUniverseRepository(transaction).findNode(userId, existingLedger.resourceId);
+        const repository = new DrizzleUniverseRepository(transaction);
+        await repository.lockMeta(userId);
+        const existing = await repository.findNode(userId, existingLedger.resourceId);
         if (!existing) throw new UniverseServiceError("NODE_NOT_FOUND");
-        const current = await new DrizzleUniverseRepository(transaction).requireUniverse(userId);
+        const current = await repository.requireUniverse(userId);
         return { outcome: "replayed", value: existing, version: current.version };
       }
 
@@ -231,11 +233,13 @@ export class DrizzleUniverseRepository implements UniverseRepository {
         if (existingLedger.requestHash !== requestHash || existingLedger.resourceType !== "universe_relation") {
           throw new UniverseServiceError("IDEMPOTENCY_CONFLICT");
         }
+        const repository = new DrizzleUniverseRepository(transaction);
+        await repository.lockMeta(userId);
         const existing = await transaction.select().from(universeRelations).where(
           and(eq(universeRelations.userId, userId), eq(universeRelations.id, existingLedger.resourceId)),
         ).limit(1);
         if (existing.length === 0) throw new UniverseServiceError("RELATION_NOT_FOUND");
-        const current = await new DrizzleUniverseRepository(transaction).requireUniverse(userId);
+        const current = await repository.requireUniverse(userId);
         return { outcome: "replayed", value: fromRelationRow(existing[0]!), version: current.version };
       }
 
