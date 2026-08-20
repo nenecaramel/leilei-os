@@ -1481,7 +1481,7 @@ function ArchivedMemoryDetail({
         open
         label="正在读取归档 Memory"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={() => {
           onBack();
@@ -1500,7 +1500,7 @@ function ArchivedMemoryDetail({
         open
         label="无法读取归档 Memory"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={() => { onBack(); return true; }}
       >
@@ -1624,7 +1624,7 @@ function MemoryDetail({
         open
         label="正在读取 Memory"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
@@ -1640,7 +1640,7 @@ function MemoryDetail({
         open
         label="无法读取 Memory"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >

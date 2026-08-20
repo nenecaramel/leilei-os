@@ -1439,6 +1439,7 @@ if (isMobile) {
           onArchive={(id) => void archiveDiary(id)}
           archiving={archiving}
           onBack={closeDiary}
+          onRetry={() => setDetailReloadKey((value) => value + 1)}
           invalid={updateInvalid}
         />
       ) : (
@@ -1577,11 +1578,12 @@ function DiaryDetail(props: {
   onArchive(id: string): void;
   archiving: boolean;
   onBack(): void;
+  onRetry(): void;
   invalid: boolean;
 }) {
   if (props.state === "loading") return <DiaryMessage title="正在读取日记" description="详情加载中…" />;
   if (props.state === "error" || !props.diary) {
-    return <DiaryMessage title="无法读取日记" description="该日记不存在、无权访问或暂时不可用。" role="alert" action={<button className="secondary-button" onClick={props.onBack}>返回日记列表</button>} />;
+    return <DiaryMessage title="无法读取日记" description="该日记不存在、无权访问或暂时不可用。" role="alert" action={<><button className="secondary-button" onClick={props.onRetry}>重试</button><button className="secondary-button" onClick={props.onBack}>返回日记列表</button></>} />;
   }
   const diary = props.diary;
   return (
@@ -1916,7 +1918,7 @@ function MobileDiaryDetail({
         open
         label="正在读取 Diary"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
@@ -1932,7 +1934,7 @@ function MobileDiaryDetail({
         open
         label="无法读取 Diary"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
@@ -2152,7 +2154,7 @@ function MobileArchivedDiaryDetail({
         open
         label="正在读取已归档 Diary"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={() => {
           if (restoring) return false;
@@ -2172,7 +2174,7 @@ function MobileArchivedDiaryDetail({
         open
         label="无法读取已归档 Diary"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={() => {
           onBack();

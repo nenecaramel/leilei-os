@@ -67,3 +67,60 @@ test("module state families retain their exact retry and clear labels", () => {
   assert.match(page("SystemActivityPageContent.tsx"), /Unable to read activity/);
   assert.match(page("SystemDataPageContent.tsx"), /Unable to read data summary/);
 });
+
+test("mobile Paper read states use the frozen signature placeholder", () => {
+  const cases = [
+    ["MemoryPage.tsx", ["正在读取 Memory", "无法读取 Memory", "正在读取归档 Memory", "无法读取归档 Memory"]],
+    ["DiaryPage.tsx", ["正在读取 Diary", "无法读取 Diary", "正在读取已归档 Diary", "无法读取已归档 Diary"]],
+    ["TaskPage.tsx", ["正在读取 Task", "无法读取 Task", "正在读取归档 Task", "无法读取归档 Task"]],
+  ] as const;
+
+  for (const [file, labels] of cases) {
+    const source = page(file);
+    for (const label of labels) {
+      const start = source.indexOf(`label="${label}"`);
+      assert.ok(start >= 0, `${file} must keep ${label}`);
+      assert.match(source.slice(start, start + 220), /signature="—"/);
+    }
+  }
+});
+
+test("Task mobile active detail exposes only the Paper retry action", () => {
+  const source = page("TaskPage.tsx");
+  const start = source.indexOf('if (props.state === "error" || !props.task)');
+  const end = source.indexOf("  const task = props.task;", start);
+  assert.ok(start >= 0 && end > start);
+  const errorBranch = source.slice(start, end);
+  assert.equal((errorBranch.match(/>重试<\/button>/g) ?? []).length, 1);
+  assert.doesNotMatch(errorBranch, /topRight=/);
+});
+
+test("Diary desktop detail error keeps a centered retryable state", () => {
+  const source = page("DiaryPage.tsx");
+  const start = source.indexOf("function DiaryDetail");
+  const end = source.indexOf("  const diary = props.diary;", start);
+  assert.ok(start >= 0 && end > start);
+  const detail = source.slice(start, end);
+  assert.match(detail, /role="alert"/);
+  assert.match(detail, /重试/);
+  assert.match(detail, /<DiaryMessage/);
+});
+
+test("Global Search desktop blocking states use the vertical frozen hierarchy", () => {
+  const css = styles();
+  const start = css.lastIndexOf("@media (min-width: 761px)");
+  const end = css.indexOf("@media (max-width: 760px)", start);
+  assert.ok(start >= 0 && end > start);
+  const desktop = css.slice(start, end);
+  assert.match(desktop, /global-search-error-line\.global-search-state-line-offset[\s\S]*display:\s*grid/);
+  assert.match(desktop, /global-search-error-line\.global-search-state-line-offset[\s\S]*gap:\s*10px/);
+  assert.match(desktop, /global-search-error-line\.global-search-state-line-offset[\s\S]*margin:\s*64px auto 0/);
+  assert.match(desktop, /global-search-error-line\.global-search-state-line-offset button[\s\S]*font-size:\s*11px[\s\S]*font-weight:\s*500/);
+});
+
+test("Task Archive read failure is an alert state", () => {
+  const source = page("TaskPage.tsx");
+  const start = source.indexOf('title="暂时无法读取归档任务"');
+  assert.ok(start >= 0);
+  assert.match(source.slice(start - 80, start + 260), /role="alert"/);
+});
