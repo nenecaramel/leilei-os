@@ -178,7 +178,7 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
       }
 
       if (!activeSession) {
-        sendError(response, 400, -32000, "Invalid or missing MCP session.");
+        sendError(response, sessionId ? 404 : 400, -32000, "Invalid or missing MCP session.");
         return;
       }
 
@@ -202,7 +202,11 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
     const sessionId = request.header("mcp-session-id");
     const knownSession = readSession(sessionId);
 
-    if (!knownSession || knownSession.namespace !== namespace) {
+    if (!knownSession) {
+      response.status(sessionId ? 404 : 400).send("Invalid or missing MCP session.");
+      return;
+    }
+    if (knownSession.namespace !== namespace) {
       response.status(400).send("Invalid or missing MCP session.");
       return;
     }
@@ -214,7 +218,7 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
 
     const activeSession = await registry.acquire(sessionId!, namespace, request.mcpUserId);
     if (!activeSession) {
-      response.status(400).send("Invalid or missing MCP session.");
+      response.status(404).send("Invalid or missing MCP session.");
       return;
     }
     await runRequest(activeSession, request, response);
@@ -224,7 +228,11 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
     const sessionId = request.header("mcp-session-id");
     const knownSession = readSession(sessionId);
 
-    if (!knownSession || knownSession.namespace !== namespace) {
+    if (!knownSession) {
+      response.status(sessionId ? 404 : 400).send("Invalid or missing MCP session.");
+      return;
+    }
+    if (knownSession.namespace !== namespace) {
       response.status(400).send("Invalid or missing MCP session.");
       return;
     }
@@ -236,7 +244,7 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
 
     const activeSession = await registry.acquire(sessionId!, namespace, request.mcpUserId);
     if (!activeSession) {
-      response.status(400).send("Invalid or missing MCP session.");
+      response.status(404).send("Invalid or missing MCP session.");
       return;
     }
     registry.expectClose(activeSession);
