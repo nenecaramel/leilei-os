@@ -71,7 +71,7 @@ PG_DUMP_MAJOR="$(
   fail "pg_dump version could not be determined"
 
 if ! SERVER_VERSION_NUM="$(
-  PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" \
+  "${PSQL_BIN}" "${DATABASE_URL}" \
     -X -A -t -v ON_ERROR_STOP=1 \
     -c "SHOW server_version_num;" \
     2>/dev/null
@@ -116,7 +116,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-if ! PGDATABASE="${DATABASE_URL}" "${PG_DUMP_BIN}" \
+if ! "${PG_DUMP_BIN}" "${DATABASE_URL}" \
   --format=custom \
   --no-owner \
   --no-acl \
@@ -126,7 +126,7 @@ if ! PGDATABASE="${DATABASE_URL}" "${PG_DUMP_BIN}" \
 fi
 
 if ! COUNTS="$(
-  PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" \
+  "${PSQL_BIN}" "${DATABASE_URL}" \
     -X -A -t -v ON_ERROR_STOP=1 \
     -c "SELECT
       (SELECT count(*) FROM users),
@@ -157,7 +157,7 @@ if [[ -n "${MCP_USER_ID:-}" ]]; then
   if ! MAPPED_USER_COUNT="$(
     printf '%s\n' \
       "SELECT count(*) FROM users WHERE id = :'mcp_user_id'::uuid;" | \
-      PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" \
+      "${PSQL_BIN}" "${DATABASE_URL}" \
         -X -A -t -v ON_ERROR_STOP=1 \
         --set=mcp_user_id="${MCP_USER_ID}" \
         2>"${TEMP_DIR}/mapping.error"

@@ -236,10 +236,10 @@ jobs:
           set -euo pipefail
           ./scripts/db/restore_verify_postgres.sh
 
-          RESTORED_HEALTH_COUNT="$(PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.health_records;')"
-          RESTORED_LEDGER_COUNT="$(PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.leilei_schema_migrations;')"
-          RESTORED_LEDGER_LATEST="$(PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" -XAt -F '|' -v ON_ERROR_STOP=1 -c 'SELECT created_at::text, hash FROM public.leilei_schema_migrations ORDER BY created_at DESC LIMIT 1;')"
-          RESTORED_DURABLE_COUNTS="$(PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);")"
+          RESTORED_HEALTH_COUNT="$("${PSQL_BIN}" "${TEMP_DATABASE_URL}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.health_records;')"
+          RESTORED_LEDGER_COUNT="$("${PSQL_BIN}" "${TEMP_DATABASE_URL}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.leilei_schema_migrations;')"
+          RESTORED_LEDGER_LATEST="$("${PSQL_BIN}" "${TEMP_DATABASE_URL}" -XAt -F '|' -v ON_ERROR_STOP=1 -c 'SELECT created_at::text, hash FROM public.leilei_schema_migrations ORDER BY created_at DESC LIMIT 1;')"
+          RESTORED_DURABLE_COUNTS="$("${PSQL_BIN}" "${TEMP_DATABASE_URL}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);")"
 
           [[ "${RESTORED_HEALTH_COUNT}" == '${{ steps.backup.outputs.health_count }}' ]] || { echo "Restored health_records count does not match production" >&2; exit 1; }
           [[ "${RESTORED_LEDGER_COUNT}" == '${{ steps.backup.outputs.ledger_count }}' ]] || { echo "Restored ledger count does not match production" >&2; exit 1; }
@@ -277,17 +277,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          PRE_HEALTH_EXISTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.health_records') IS NOT NULL;")"
-          PRE_LEDGER_COUNT="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.leilei_schema_migrations;')"
-          PRE_COUNTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);")"
+          PRE_HEALTH_EXISTS="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.health_records') IS NOT NULL;")"
+          PRE_LEDGER_COUNT="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.leilei_schema_migrations;')"
+          PRE_COUNTS="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);")"
           [[ "${PRE_HEALTH_EXISTS}" == "t" ]] || { echo "health_records missing before disposable migration" >&2; exit 1; }
 
           node dist/database/migrate.js
 
-          POST_HEALTH_EXISTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.health_records') IS NOT NULL;")"
-          POST_LEDGER_COUNT="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.leilei_schema_migrations;')"
-          POST_LEDGER_LATEST="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -F '|' -v ON_ERROR_STOP=1 -c 'SELECT created_at::text, hash FROM public.leilei_schema_migrations ORDER BY created_at DESC LIMIT 1;')"
-          POST_COUNTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);")"
+          POST_HEALTH_EXISTS="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.health_records') IS NOT NULL;")"
+          POST_LEDGER_COUNT="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.leilei_schema_migrations;')"
+          POST_LEDGER_LATEST="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -F '|' -v ON_ERROR_STOP=1 -c 'SELECT created_at::text, hash FROM public.leilei_schema_migrations ORDER BY created_at DESC LIMIT 1;')"
+          POST_COUNTS="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);")"
 
           [[ "${POST_HEALTH_EXISTS}" == "f" ]] || { echo "health_records still exists after disposable migration" >&2; exit 1; }
           [[ "${POST_COUNTS}" == "${PRE_COUNTS}" ]] || { echo "Unrelated durable counts changed during migration" >&2; exit 1; }
@@ -295,8 +295,8 @@ jobs:
 
           node dist/database/migrate.js
 
-          SECOND_LEDGER_COUNT="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.leilei_schema_migrations;')"
-          SECOND_COUNTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL_BIN}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);")"
+          SECOND_LEDGER_COUNT="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.leilei_schema_migrations;')"
+          SECOND_COUNTS="$("${PSQL_BIN}" "${DATABASE_URL}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);")"
           [[ "${SECOND_LEDGER_COUNT}" == "${POST_LEDGER_COUNT}" ]] || { echo "Second migration runner invocation was not a ledger no-op" >&2; exit 1; }
           [[ "${SECOND_COUNTS}" == "${POST_COUNTS}" ]] || { echo "Second migration runner invocation changed durable counts" >&2; exit 1; }
 
