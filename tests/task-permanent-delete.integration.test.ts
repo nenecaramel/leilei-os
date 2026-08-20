@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
 import { and, eq } from "drizzle-orm";
-import { createDatabase } from "../src/database/client.js";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import {
   mcpWriteIdempotency,
   resourceLifecycleEvents,
@@ -23,7 +25,8 @@ test(
   "real Task permanent delete removes archived content and old lifecycle rows but retains MCP idempotency",
   { skip: !RUN },
   async () => {
-    const database = createDatabase(databaseUrl!);
+    const client = postgres(databaseUrl!, { max: 2, prepare: false, ssl: false });
+    const database = { db: drizzle(client, { schema }), close: () => client.end() };
     try {
       await assert.rejects(
         database.db.transaction(async (transaction) => {

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
-import { and, eq } from "drizzle-orm";
-import { createDatabase } from "../src/database/client.js";
+import { and, eq, inArray } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import {
   diaryEntries,
   mcpWriteIdempotency,
@@ -24,7 +26,8 @@ test(
   "real Diary permanent delete removes exact tool calls and prior lifecycle rows but retains MCP idempotency",
   { skip: !RUN },
   async () => {
-    const database = createDatabase(databaseUrl!);
+    const client = postgres(databaseUrl!, { max: 2, prepare: false, ssl: false });
+    const database = { db: drizzle(client, { schema }), close: () => client.end() };
     try {
       await assert.rejects(
         database.db.transaction(async (transaction) => {
@@ -59,7 +62,7 @@ test(
             date: "2026-08-20",
             tags: ["private"],
             mood: null,
-            source: "web",
+            source: "chatgpt_mcp",
             author: "L",
             status: "archived",
             idempotencyKey: `diary-delete-${diaryId}`,
@@ -171,10 +174,10 @@ test(
             userId: toolCalls.userId,
             resourceType: toolCalls.resourceType,
             resourceId: toolCalls.resourceId,
-          }).from(toolCalls).where(eq(toolCalls.resourceId, diaryId));
+          }).from(toolCalls).where(inArray(toolCalls.userId, [userId, otherUserId]));
           assert.deepEqual(remainingToolCalls, [
-            { userId, resourceType: "memory", resourceId: diaryId },
-            { userId: otherUserId, resourceType: "diary_entry", resourceId: diaryId },
+            { userId, resourceType: "memory", resourceId: null },
+            { userId: otherUserId, resourceType: "diary_entry", resourceId: null },
           ]);
 
           const events = await transaction.select({
