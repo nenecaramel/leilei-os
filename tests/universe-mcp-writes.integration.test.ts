@@ -38,6 +38,12 @@ test("MCP Universe writes are atomic, idempotent, CAS-safe, and concurrent-safe 
     assert.equal(created.metadata.idempotent_replay, false);
     assert.equal(created.node.id.startsWith("node-"), true);
     version = created.universe_version;
+    const updated = await service.updateMcpNode(userId, created.node.id, { summary: "updated", tags: [] }, version);
+    assert.equal(updated.version, version + 1);
+    assert.equal(updated.snapshot.nodes.find((candidate) => candidate.id === created.node.id)?.content, nodeInput.content);
+    const revision = await service.latestRevision(userId, created.node.id);
+    assert.equal(revision?.reason, "mcp_update");
+    version = updated.version;
     const replay = await service.createMcpNode(userId, nodeInput, 1, nodeKey);
     assert.equal(replay.metadata.idempotent_replay, true);
     assert.equal(replay.node.id, created.node.id);
