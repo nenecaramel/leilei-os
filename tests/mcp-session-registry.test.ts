@@ -327,6 +327,140 @@ test("reservations atomically enforce total and per-user namespace capacity", as
   assert.equal(registry.reserve("u2", "public"), null);
 });
 
+test("capacity pressure reclaims the oldest same-user idle session", async () => {
+  let now = 1_000;
+  const events: Array<Record<string, unknown>> = [];
+  const registry = new McpSessionRegistry({
+    now: () => now,
+    maxPerUser: 2,
+    maxTotal: 8,
+    observer: (event) => events.push(event),
+  });
+  const oldest = createDummy(registry, { sessionId: "oldest", userId: "u1", namespace: "public" });
+  now = 1_100;
+  const newer = createDummy(registry, { sessionId: "newer", userId: "u1", namespace: "public" });
+
+  const reservation = await registry.admit("u1", "public");
+
+  assert.ok(reservation);
+  assert.equal(registry.find(oldest.sessionId), null);
+  assert.ok(registry.find(newer.sessionId));
+  assert.equal(registry.capacitySize, 2);
+  const close = events.find((event) => event.name === "mcp_session_closed");
+  assert.ok(close);
+  assert.equal(close.reason, "capacity_reclaim");
+  assert.equal(close.inFlightCountAtClose, 0);
+  registry.release(reservation!);
+});
+
+test("capacity pressure never reclaims in-flight sessions", async () => {
+  const events: Array<Record<string, unknown>> = [];
+  const registry = new McpSessionRegistry({
+    maxPerUser: 2,
+    maxTotal: 8,
+    observer: (event) => events.push(event),
+  });
+  const first = createDummy(registry, { sessionId: "in-flight-1", userId: "u1", namespace: "public" });
+  const second = createDummy(registry, { sessionId: "in-flight-2", userId: "u1", namespace: "public" });
+  assert.ok(await registry.acquire(first.sessionId, "public", "u1"));
+  assert.ok(await registry.acquire(second.sessionId, "public", "u1"));
+
+  assert.equal(await registry.admit("u1", "public"), null);
+  assert.equal(registry.find(first.sessionId)?.closed, false);
+  assert.equal(registry.find(second.sessionId)?.closed, false);
+  assert.equal(events.some((event) => event.reason === "capacity_reclaim"), false);
+});
+
+test("capacity pressure only reclaims the requester's same-user namespace", async () => {
+  let now = 1_000;
+  const registry = new McpSessionRegistry({ maxPerUser: 2, maxTotal: 8 });
+  const ownOld = createDummy(registry, { sessionId: "own-old", userId: "u1", namespace: "public" });
+  now = 1_100;
+  const ownNew = createDummy(registry, { sessionId: "own-new", userId: "u1", namespace: "public" });
+  now = 1_200;
+  const otherUser = createDummy(registry, { sessionId: "other-user", userId: "u2", namespace: "public" });
+  const otherNamespace = createDummy(registry, { sessionId: "other-namespace", userId: "u1", namespace: "internal" });
+
+  const reservation = await registry.admit("u1", "public");
+
+  assert.ok(reservation);
+  assert.equal(registry.find(ownOld.sessionId), null);
+  assert.ok(registry.find(ownNew.sessionId));
+  assert.ok(registry.find(otherUser.sessionId));
+  assert.ok(registry.find(otherNamespace.sessionId));
+  registry.release(reservation!);
+});
+
+test("total capacity pressure can reclaim the requester's own idle session", async () => {
+  const registry = new McpSessionRegistry({ maxPerUser: 4, maxTotal: 2 });
+  const own = createDummy(registry, { sessionId: "own-total", userId: "u1", namespace: "public" });
+  const other = createDummy(registry, { sessionId: "other-total", userId: "u2", namespace: "public" });
+
+  const reservation = await registry.admit("u1", "public");
+
+  assert.ok(reservation);
+  assert.equal(registry.find(own.sessionId), null);
+  assert.ok(registry.find(other.sessionId));
+  assert.equal(registry.capacitySize, 2);
+  registry.release(reservation!);
+});
+
+test("full total capacity without an own idle candidate preserves rejection", async () => {
+  const registry = new McpSessionRegistry({ maxPerUser: 4, maxTotal: 2 });
+  const other = createDummy(registry, { sessionId: "other-only", userId: "u2", namespace: "public" });
+  const internal = createDummy(registry, { sessionId: "internal-only", userId: "u1", namespace: "internal" });
+
+  assert.equal(await registry.admit("u1", "public"), null);
+  assert.ok(registry.find(other.sessionId));
+  assert.ok(registry.find(internal.sessionId));
+});
+
+test("concurrent pressure admissions reclaim two oldest idle sessions without exceeding capacity", async () => {
+  let now = 1_000;
+  const events: Array<Record<string, unknown>> = [];
+  const registry = new McpSessionRegistry({
+    now: () => now,
+    maxPerUser: 2,
+    maxTotal: 2,
+    observer: (event) => events.push(event),
+  });
+  createDummy(registry, { sessionId: "concurrent-old", userId: "u1", namespace: "public" });
+  now = 1_100;
+  createDummy(registry, { sessionId: "concurrent-new", userId: "u1", namespace: "public" });
+
+  const reservations = await Promise.all([
+    registry.admit("u1", "public"),
+    registry.admit("u1", "public"),
+  ]);
+
+  assert.equal(reservations.filter(Boolean).length, 2);
+  assert.equal(registry.capacitySize, 2);
+  assert.equal(registry.size, 0);
+  assert.deepEqual(
+    events.filter((event) => event.name === "mcp_session_closed").map((event) => event.reason),
+    ["capacity_reclaim", "capacity_reclaim"],
+  );
+  for (const reservation of reservations) registry.release(reservation!);
+});
+
+test("provider cleanup failure does not lose a secured replacement reservation", async () => {
+  const registry = new McpSessionRegistry({ maxPerUser: 1, maxTotal: 2 });
+  registry.register({
+    sessionId: "cleanup-fails",
+    userId: "u1",
+    namespace: "public",
+    server: { close: async () => { throw new Error("provider close failed"); } },
+    transport: {},
+  });
+
+  const reservation = await registry.admit("u1", "public");
+
+  assert.ok(reservation);
+  assert.equal(registry.find("cleanup-fails"), null);
+  assert.equal(registry.capacitySize, 1);
+  registry.release(reservation!);
+});
+
 test("concurrent admissions cannot exceed total or per-user namespace limits", async () => {
   const totalLimited = new McpSessionRegistry({ maxPerUser: 8, maxTotal: 1 });
   const totalResults = await Promise.all([

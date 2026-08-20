@@ -4,7 +4,8 @@ export type McpSessionCloseReason =
   | "client_close"
   | "transport_close"
   | "idle_ttl"
-  | "absolute_ttl";
+  | "absolute_ttl"
+  | "capacity_reclaim";
 
 export type McpSessionObserverEvent =
   | {
@@ -209,7 +210,9 @@ export class McpSessionRegistry {
     const reservation = this.reserve(userId, namespace);
     if (reservation) return reservation;
     await this.sweep(true);
-    return this.reserve(userId, namespace);
+    const afterForcedSweep = this.reserve(userId, namespace);
+    if (afterForcedSweep) return afterForcedSweep;
+    return this.reclaimForCapacity(userId, namespace);
   }
 
   release(reservation: McpSessionReservation): boolean {
@@ -393,6 +396,19 @@ export class McpSessionRegistry {
     return true;
   }
 
+  private async reclaimForCapacity(
+    userId: string,
+    namespace: McpSessionNamespace,
+  ): Promise<McpSessionReservation | null> {
+    const candidate = this.findOldestIdle(userId, namespace);
+    if (!candidate) return null;
+
+    this.removeAndObserve(candidate, "capacity_reclaim");
+    const reservation = this.reserve(userId, namespace);
+    await this.closeProvider(candidate);
+    return reservation;
+  }
+
   handleTransportClose(transport: object): boolean {
     const record = [...this.sessions.values()].find((candidate) => candidate.transport === transport);
     if (!record || record.closed) return false;
@@ -423,12 +439,41 @@ export class McpSessionRegistry {
   ): Promise<void> {
     if (record.closed) return;
     this.removeAndObserve(record, reason);
+    await this.closeProvider(record);
+  }
+
+  private async closeProvider(record: McpSessionRecord): Promise<void> {
     try {
       await record.server.close();
     } catch {
       // The session is removed even when provider cleanup fails. The caller
       // must never be able to resurrect an expired session.
     }
+  }
+
+  private findOldestIdle(
+    userId: string,
+    namespace: McpSessionNamespace,
+  ): McpSessionRecord | null {
+    let oldest: McpSessionRecord | null = null;
+    for (const candidate of this.sessions.values()) {
+      if (
+        candidate.userId !== userId ||
+        candidate.namespace !== namespace ||
+        candidate.inFlightCount !== 0
+      ) continue;
+      if (
+        !oldest ||
+        candidate.lastActivityAt < oldest.lastActivityAt ||
+        (candidate.lastActivityAt === oldest.lastActivityAt && candidate.createdAt < oldest.createdAt) ||
+        (candidate.lastActivityAt === oldest.lastActivityAt &&
+          candidate.createdAt === oldest.createdAt &&
+          candidate.diagnosticSessionOrdinal < oldest.diagnosticSessionOrdinal)
+      ) {
+        oldest = candidate;
+      }
+    }
+    return oldest;
   }
 
   private removeAndObserve(

@@ -207,7 +207,7 @@ test("pinned Streamable HTTP sessions survive connection replacement and SSE dis
       "mcp-session-id": sessionId as string,
       "x-test-mcp-user": USER_ID,
     });
-    assert.equal(afterDelete.status, 400);
+    assert.equal(afterDelete.status, 404);
   }, new McpSessionRegistry({ observer: (event) => events.push(`${event.name}:${event.reason ?? ""}`) }));
   assert.ok(events.includes("mcp_session_closed:client_close"));
 });
@@ -365,9 +365,13 @@ test("HTTP capacity rejection reports exact user namespace idle and in-flight co
     assert.equal(first.status, 200);
     assert.equal(second.status, 200);
     const firstSessionId = first.headers["mcp-session-id"];
+    const secondSessionId = second.headers["mcp-session-id"];
     assert.equal(typeof firstSessionId, "string");
+    assert.equal(typeof secondSessionId, "string");
     const inFlight = await registry.acquire(firstSessionId as string, "public", USER_ID);
     assert.ok(inFlight);
+    const secondInFlight = await registry.acquire(secondSessionId as string, "public", USER_ID);
+    assert.ok(secondInFlight);
 
     const rejected = await requestSsePost(port, "/mcp", initializeRequest(), headers);
     assert.equal(rejected.status, 429);
@@ -376,8 +380,99 @@ test("HTTP capacity rejection reports exact user namespace idle and in-flight co
   const event = events.find((candidate) => candidate.name === "mcp_session_capacity_rejected");
   assert.ok(event);
   assert.equal(event.activeUserNamespaceCount, 2);
-  assert.equal(event.idleUserNamespaceCount, 1);
-  assert.equal(event.inFlightUserNamespaceCount, 1);
-  assert.equal(typeof event.oldestIdleAgeMs, "number");
-  assert.ok((event.oldestIdleAgeMs as number) >= 0);
+  assert.equal(event.idleUserNamespaceCount, 0);
+  assert.equal(event.inFlightUserNamespaceCount, 2);
+  assert.equal(event.oldestIdleAgeMs, null);
+});
+
+test("fresh initialize churn reclaims idle sessions without permanent capacity rejection", async () => {
+  const events: Array<Record<string, unknown>> = [];
+  const registry = new McpSessionRegistry({
+    maxPerUser: 3,
+    maxTotal: 8,
+    observer: (event) => events.push(event),
+  });
+  await withMcpServer(async (port) => {
+    const headers = {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "x-test-mcp-user": USER_ID,
+    };
+    for (let index = 0; index < 8; index += 1) {
+      const response = await requestSsePost(port, "/mcp", initializeRequest(), headers);
+      assert.equal(response.status, 200);
+      assert.ok(registry.size <= 3);
+    }
+  }, registry);
+
+  assert.equal(registry.size, 3);
+  const reclaimed = events.filter(
+    (event) => event.name === "mcp_session_closed" && event.reason === "capacity_reclaim",
+  );
+  assert.equal(reclaimed.length, 5);
+  for (const event of reclaimed) assert.equal(event.inFlightCountAtClose, 0);
+});
+
+test("reclaimed session IDs return scoped 404 responses while missing headers stay 400", async () => {
+  const registry = new McpSessionRegistry({ maxPerUser: 1, maxTotal: 8 });
+  await withMcpServer(async (port) => {
+    const headers = {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "x-test-mcp-user": USER_ID,
+    };
+    const first = await requestSsePost(port, "/mcp", initializeRequest(), headers);
+    assert.equal(first.status, 200);
+    const staleSessionId = first.headers["mcp-session-id"];
+    assert.equal(typeof staleSessionId, "string");
+
+    const replacement = await requestSsePost(port, "/mcp", initializeRequest(), headers);
+    assert.equal(replacement.status, 200);
+    assert.equal(registry.find(staleSessionId as string), null);
+
+    const stalePost = await requestSsePost(port, "/mcp", toolsListRequest(2), {
+      ...headers,
+      "mcp-session-id": staleSessionId as string,
+    });
+    assert.equal(stalePost.status, 404);
+
+    const staleGet = await openAndCloseSse(port, staleSessionId as string);
+    assert.equal(staleGet.status, 404);
+
+    const staleDelete = await requestDelete(port, "/mcp", {
+      ...headers,
+      "mcp-session-id": staleSessionId as string,
+    });
+    assert.equal(staleDelete.status, 404);
+
+    const missingPost = await requestSsePost(port, "/mcp", toolsListRequest(3), headers);
+    assert.equal(missingPost.status, 400);
+
+    const fresh = await requestSsePost(port, "/mcp", initializeRequest(), {
+      ...headers,
+      "mcp-session-id": "arbitrary-unknown-session",
+    });
+    assert.equal(fresh.status, 200);
+  }, registry);
+});
+
+test("existing session access keeps cross-user 403 behavior", async () => {
+  await withMcpServer(async (port) => {
+    const first = await requestSsePost(port, "/mcp", initializeRequest(), {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "x-test-mcp-user": USER_ID,
+    });
+    assert.equal(first.status, 200);
+    const sessionId = first.headers["mcp-session-id"];
+    assert.equal(typeof sessionId, "string");
+
+    const wrongUser = await requestSsePost(port, "/mcp", toolsListRequest(2), {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "mcp-session-id": sessionId as string,
+      "x-test-mcp-user": "00000000-0000-4000-8000-000000000002",
+    });
+    assert.equal(wrongUser.status, 403);
+  });
 });
