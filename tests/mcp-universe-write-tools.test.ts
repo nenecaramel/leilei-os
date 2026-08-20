@@ -67,6 +67,13 @@ test("registers the three MCP Universe write tools with frozen annotations", asy
     idempotentHint: true,
     openWorldHint: false,
   });
+  for (const name of ["create_universe_node", "update_universe_node", "create_universe_relation"]) {
+    const outputSchema = JSON.stringify(byName.get(name)?.outputSchema);
+    assert.match(outputSchema, /success/);
+    assert.match(outputSchema, /data/);
+    assert.match(outputSchema, /error/);
+    assert.match(outputSchema, /VERSION_CONFLICT/);
+  }
 });
 
 test("exposes the strict create Universe node request fields", async (t) => {
@@ -180,6 +187,13 @@ test("create Universe node forwards boundary positions and never accepts caller 
     },
   });
   assert.equal(result.isError, undefined);
+  assert.deepEqual(result, {
+    content: [{ type: "text", text: "Universe node created." }],
+    structuredContent: {
+      success: true,
+      data: { node, universe_version: 1, metadata: { created: true, idempotent_replay: false } },
+    },
+  });
   assert.equal(calls.length, 1);
   assert.deepEqual((calls[0] as unknown[]).slice(1), [
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: 0, y: 100 } },
@@ -214,6 +228,13 @@ test("update Universe node is a partial patch and rejects an empty or hidden pat
 
   const result = await fixture.client.callTool({ name: "update_universe_node", arguments: { id: "node-generated", expected_version: 1, tags: [], galaxies: [], summary: "" } });
   assert.equal(result.isError, undefined);
+  assert.deepEqual(result, {
+    content: [{ type: "text", text: "Universe node updated." }],
+    structuredContent: {
+      success: true,
+      data: { node, universe_version: 2 },
+    },
+  });
   assert.deepEqual((calls[0] as unknown[]).slice(1), ["node-generated", { summary: "", tags: [], galaxies: [] }, 1]);
   for (const arguments_ of [
     { id: "node-generated", expected_version: 1 },
@@ -241,6 +262,13 @@ test("create Universe relation enforces self-link and strength boundaries before
 
   const result = await fixture.client.callTool({ name: "create_universe_relation", arguments: { source: "node-a", target: "node-b", relation_type: "supports", strength: 1, expected_version: 2, idempotency_key: "relation-create-0001" } });
   assert.equal(result.isError, undefined);
+  assert.deepEqual(result, {
+    content: [{ type: "text", text: "Universe relation created." }],
+    structuredContent: {
+      success: true,
+      data: { relation, universe_version: 3, metadata: { created: true, idempotent_replay: false } },
+    },
+  });
   assert.equal(calls.length, 1);
   const self = await fixture.client.callTool({ name: "create_universe_relation", arguments: { source: "node-a", target: "node-a", relation_type: "supports", strength: 0, expected_version: 2, idempotency_key: "relation-create-0002" } });
   assert.equal(self.isError, true);
@@ -263,5 +291,165 @@ test("Universe mutation errors remain safe and distinguish stale versions", asyn
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
   const stale = await fixture.client.callTool({ name: "create_universe_node", arguments: { title: "Node", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 1, y: 1 }, expected_version: 3, idempotency_key: "node-error-0000001" } });
   assert.equal(stale.isError, true);
+  assert.deepEqual(stale.structuredContent, {
+    success: false,
+    error: {
+      code: "VERSION_CONFLICT",
+      message: "Universe changed since expected_version; fresh-read before deciding whether to retry.",
+    },
+  });
+  assert.match(JSON.stringify(stale.content), /VERSION_CONFLICT/);
   assert.match(JSON.stringify(stale), /expected_version|fresh-read/i);
+
+  const missing = await fixture.client.callTool({
+    name: "update_universe_node",
+    arguments: { id: "missing-node", expected_version: 3, summary: "new summary" },
+  });
+  assert.equal(missing.isError, true);
+  assert.deepEqual(missing.structuredContent, {
+    success: false,
+    error: {
+      code: "NODE_NOT_FOUND",
+      message: "Universe node was not updated.",
+    },
+  });
+  assert.match(JSON.stringify(missing.content), /NODE_NOT_FOUND/);
+
+  const self = await fixture.client.callTool({
+    name: "create_universe_relation",
+    arguments: {
+      source: "node-a",
+      target: "node-a",
+      relation_type: "supports",
+      strength: 0,
+      expected_version: 3,
+      idempotency_key: "relation-error-0000001",
+    },
+  });
+  assert.equal(self.isError, true);
+  assert.deepEqual(self.structuredContent, {
+    success: false,
+    error: {
+      code: "RELATION_INVALID",
+      message: "The Universe relation request is invalid.",
+    },
+  });
+  assert.match(JSON.stringify(self.content), /RELATION_INVALID/);
+});
+
+test("surfaces duplicate Universe relation code in both MCP result channels", async (t) => {
+  let calls = 0;
+  const fixture = await connect({
+    universeWriteTools: {
+      nodeService: {
+        async createMcpNode() { throw new Error("not used"); },
+        async updateMcpNode() { throw new Error("not used"); },
+      },
+      relationService: {
+        async createMcpRelation() {
+          calls += 1;
+          throw new UniverseServiceError("RELATION_CONFLICT");
+        },
+      },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const duplicate = await fixture.client.callTool({
+    name: "create_universe_relation",
+    arguments: {
+      source: "node-a",
+      target: "node-b",
+      relation_type: "supports",
+      strength: 1,
+      expected_version: 3,
+      idempotency_key: "relation-error-0000002",
+    },
+  });
+  assert.equal(duplicate.isError, true);
+  assert.deepEqual(duplicate.structuredContent, {
+    success: false,
+    error: {
+      code: "RELATION_CONFLICT",
+      message: "That directional Universe relation already exists.",
+    },
+  });
+  assert.match(JSON.stringify(duplicate.content), /RELATION_CONFLICT/);
+  assert.equal(calls, 1);
+});
+
+test("preserves idempotent replay metadata in a successful Universe write", async (t) => {
+  const fixture = await connect({
+    universeWriteTools: {
+      nodeService: {
+        async createMcpNode() {
+          return { node, universe_version: 9, metadata: { created: false, idempotent_replay: true } };
+        },
+        async updateMcpNode() { throw new Error("not used"); },
+      },
+      relationService: { async createMcpRelation() { throw new Error("not used"); } },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const replay = await fixture.client.callTool({
+    name: "create_universe_node",
+    arguments: {
+      title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [],
+      position: { x: 0, y: 100 }, expected_version: 8, idempotency_key: "node-replay-0000001",
+    },
+  });
+  assert.deepEqual(replay, {
+    content: [{ type: "text", text: "Universe node replayed." }],
+    structuredContent: {
+      success: true,
+      data: { node, universe_version: 9, metadata: { created: false, idempotent_replay: true } },
+    },
+  });
+});
+
+test("keeps unknown Universe write errors generic and non-sensitive", async (t) => {
+  const fixture = await connect({
+    universeWriteTools: {
+      nodeService: {
+        async createMcpNode() { throw new Error("driver secret should not leak"); },
+        async updateMcpNode() { throw new Error("not used"); },
+      },
+      relationService: { async createMcpRelation() { throw new Error("not used"); } },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const result = await fixture.client.callTool({
+    name: "create_universe_node",
+    arguments: {
+      title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [],
+      position: { x: 0, y: 100 }, expected_version: 0, idempotency_key: "node-internal-000001",
+    },
+  });
+  assert.equal(result.isError, true);
+  assert.equal(result.structuredContent, undefined);
+  assert.deepEqual(result.content, [{ type: "text", text: "Universe is temporarily unavailable." }]);
+  assert.doesNotMatch(JSON.stringify(result), /driver secret should not leak/);
+});
+
+test("leaves Universe read error behavior unchanged", async (t) => {
+  const fixture = await connect({
+    universeTools: {
+      universeService: {
+        async loadUniverse() { throw new UniverseServiceError("NODE_NOT_FOUND"); },
+      },
+      globalSearchService: { async search() { throw new Error("not used"); } },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const result = await fixture.client.callTool({ name: "get_universe_node", arguments: { id: "missing-node" } });
+  assert.equal(result.isError, true);
+  assert.equal(result.structuredContent, undefined);
+  assert.deepEqual(result.content, [{ type: "text", text: "Universe node was not found." }]);
 });

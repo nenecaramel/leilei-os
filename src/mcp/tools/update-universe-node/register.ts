@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { UniverseServiceError, type UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
-import { UniverseAuthenticationError, safeUniverseError } from "../universe/shared.js";
+import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { universeMembershipSchema, universePositionSchema } from "../create-universe-node/schema.js";
 import { updateUniverseNodeInputSchema } from "./schema.js";
 
@@ -12,9 +12,11 @@ const nodeOutputSchema = z.object({
   createdAt: z.string().datetime(), updatedAt: z.string().datetime(), importance: z.string().optional(),
   migration: z.object({ source: z.enum(["mind-universe-static", "mind-universe"]), migratedAt: z.string().datetime() }).strict().optional(),
 }).strict();
+const successDataSchema = z.object({ node: nodeOutputSchema, universe_version: z.number().int().nonnegative() }).strict();
 const outputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({ node: nodeOutputSchema, universe_version: z.number().int().nonnegative() }).strict(),
+  success: z.boolean(),
+  data: successDataSchema.optional(),
+  error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 
 export type UpdateUniverseNodeToolDependencies = {
@@ -59,10 +61,7 @@ export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: 
           structuredContent: { success: true as const, data: { node, universe_version: result.version } },
         };
       },
-      mapError: (error) => {
-        if (error instanceof UniverseAuthenticationError) return safeUniverseError(error, "Universe node was not updated.");
-        return safeUniverseError(error, "Universe node was not updated.");
-      },
+      mapError: (error) => safeUniverseWriteError(error, "Universe node was not updated."),
     }),
   );
 }

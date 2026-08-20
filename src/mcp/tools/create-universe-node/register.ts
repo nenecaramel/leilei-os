@@ -1,9 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
-import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
-import { UniverseAuthenticationError, safeUniverseError } from "../universe/shared.js";
+import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { createUniverseNodeInputSchema, universeMembershipSchema, universePositionSchema } from "./schema.js";
 
 const nodeOutputSchema = z.object({
@@ -24,13 +23,15 @@ const nodeOutputSchema = z.object({
   }).strict().optional(),
 }).strict();
 
-const outputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
+const successDataSchema = z.object({
     node: nodeOutputSchema,
     universe_version: z.number().int().nonnegative(),
     metadata: z.object({ created: z.boolean(), idempotent_replay: z.boolean() }).strict(),
-  }).strict(),
+}).strict();
+const outputSchema = z.object({
+  success: z.boolean(),
+  data: successDataSchema.optional(),
+  error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 
 export type CreateUniverseNodeToolDependencies = {
@@ -64,11 +65,7 @@ export function registerCreateUniverseNodeTool(
           structuredContent: { success: true as const, data },
         };
       },
-      mapError: (error) => {
-        if (error instanceof UniverseAuthenticationError) return safeUniverseError(error, "Universe node was not created.");
-        if (error instanceof UniverseServiceError) return safeUniverseError(error, "Universe node was not created.");
-        return safeUniverseError(error, "Universe node was not created.");
-      },
+      mapError: (error) => safeUniverseWriteError(error, "Universe node was not created."),
     }),
   );
 }
