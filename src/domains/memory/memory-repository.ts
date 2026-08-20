@@ -11,6 +11,7 @@ import {
 import type { createDatabase } from "../../database/client.js";
 import {
   coreMemories,
+  resourceLifecycleEvents,
   users,
   type memoryCategoryEnum,
 } from "../../database/schema.js";
@@ -139,6 +140,8 @@ export interface MemoryRepository {
   archiveMemory(input: MemoryLifecycleMutationInput): Promise<boolean>;
 
   restoreMemory(input: MemoryLifecycleMutationInput): Promise<boolean>;
+
+  permanentlyDeleteMemory?(input: MemoryLifecycleMutationInput): Promise<boolean>;
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -576,6 +579,84 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         actorType: input.actorType,
         channel: input.channel,
       }));
+      return true;
+    });
+  }
+
+  async permanentlyDeleteMemory(
+    input: MemoryLifecycleMutationInput,
+  ): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+
+      const [target] = await transaction
+        .select({ id: coreMemories.id })
+        .from(coreMemories)
+        .where(
+          and(
+            eq(coreMemories.id, input.id),
+            eq(coreMemories.userId, input.userId),
+            eq(coreMemories.status, "archived"),
+            eq(coreMemories.visibility, "assistant"),
+          ),
+        )
+        .limit(1);
+
+      if (!target) return false;
+
+      await transaction
+        .delete(resourceLifecycleEvents)
+        .where(
+          and(
+            eq(resourceLifecycleEvents.userId, input.userId),
+            eq(resourceLifecycleEvents.resourceType, "memory"),
+            eq(resourceLifecycleEvents.resourceId, target.id),
+          ),
+        );
+
+      const deleted = await transaction
+        .delete(coreMemories)
+        .where(
+          and(
+            eq(coreMemories.id, target.id),
+            eq(coreMemories.userId, input.userId),
+            eq(coreMemories.status, "archived"),
+            eq(coreMemories.visibility, "assistant"),
+          ),
+        )
+        .returning({ id: coreMemories.id });
+
+      if (deleted.length !== 1) {
+        throw new Error("Memory permanent delete affected an unexpected number of rows.");
+      }
+
+      const remaining = await transaction
+        .select({ id: coreMemories.id })
+        .from(coreMemories)
+        .where(
+          and(
+            eq(coreMemories.id, target.id),
+            eq(coreMemories.userId, input.userId),
+          ),
+        )
+        .limit(1);
+
+      if (remaining.length > 0) {
+        throw new Error("Memory permanent delete did not remove the target row.");
+      }
+
+      await this.lifecycleAudit.record(
+        transaction,
+        createLifecycleAuditEvent({
+          userId: input.userId,
+          resourceType: "memory",
+          resourceId: target.id,
+          action: "permanent_delete",
+          actorType: input.actorType,
+          channel: input.channel,
+        }),
+      );
+
       return true;
     });
   }
