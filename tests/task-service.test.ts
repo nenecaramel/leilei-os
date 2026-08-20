@@ -544,6 +544,39 @@ test("Task MCP partial update rejects an empty patch before mutation", async () 
   assert.equal(repository.updateWrites.length, 0);
 });
 
+test("Task MCP action transition delegates the existing state machine and reads fresh state", async () => {
+  for (const [status, action, expected] of [
+    ["pending", "start", "in_progress"],
+    ["in_progress", "complete", "completed"],
+    ["in_progress", "cancel", "cancelled"],
+    ["completed", "reopen", "in_progress"],
+    ["cancelled", "reopen", "pending"],
+  ] as const) {
+    const repository = new MockTaskRepository();
+    seedTask(repository, status);
+    const service = new TaskService(repository);
+    const result = await service.transitionMcpTask(
+      { userId: "user-1" },
+      { id: "task-1", action },
+    );
+    assert.equal(result.status, expected);
+  }
+});
+
+test("Task MCP action transition rejects invalid actions using domain error contracts", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository, "pending");
+  const service = new TaskService(repository);
+  await assert.rejects(
+    service.transitionMcpTask({ userId: "user-1" }, { id: "task-1", action: "complete" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_STATUS_TRANSITION",
+  );
+  await assert.rejects(
+    service.transitionMcpTask({ userId: "user-1" }, { id: "task-1", action: "reopen" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_REOPEN_STATE",
+  );
+});
+
 test("Task status and lifecycle mutations preserve the stored author", async () => {
   const repository = new MockTaskRepository();
   const service = new TaskService(repository);

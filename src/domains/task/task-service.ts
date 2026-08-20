@@ -165,6 +165,11 @@ export type UpdateMcpTaskInput = {
   author?: ContentAuthor;
 };
 
+export type TransitionMcpTaskInput = {
+  id: string;
+  action: TaskAction;
+};
+
 export type TaskDomainErrorCode =
   | "AUTHOR_REQUIRED"
   | "INVALID_AUTHENTICATED_USER"
@@ -603,6 +608,40 @@ export class TaskService {
       throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
     }
     return this.readTask({ userId, id });
+  }
+
+  async transitionMcpTask(
+    context: AuthenticatedTaskContext,
+    input: TransitionMcpTaskInput,
+  ): Promise<TaskEntryResult> {
+    const current = await this.readTask({ userId: context.userId, id: input.id });
+    if (!current.allowed_actions.includes(input.action)) {
+      throw new TaskDomainError(
+        input.action === "reopen"
+          ? "INVALID_TASK_REOPEN_STATE"
+          : "INVALID_TASK_STATUS_TRANSITION",
+        input.action === "reopen"
+          ? "The task cannot be reopened in its current state."
+          : "The task cannot perform that action in its current state.",
+      );
+    }
+
+    switch (input.action) {
+      case "start":
+        await this.updateWebTaskStatus({ userId: context.userId, id: input.id, status: "in_progress" });
+        break;
+      case "complete":
+        await this.updateWebTaskStatus({ userId: context.userId, id: input.id, status: "completed" });
+        break;
+      case "cancel":
+        await this.updateWebTaskStatus({ userId: context.userId, id: input.id, status: "cancelled" });
+        break;
+      case "reopen":
+        await this.reopenTask({ userId: context.userId, id: input.id });
+        break;
+    }
+
+    return this.readTask({ userId: context.userId, id: input.id });
   }
 
   private async requireActiveUser(
