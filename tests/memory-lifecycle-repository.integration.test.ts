@@ -703,6 +703,9 @@ test(
             .select({
               id: coreMemories.id,
               content: coreMemories.content,
+              key: coreMemories.key,
+              category: coreMemories.category,
+              tags: coreMemories.tags,
               status: coreMemories.status,
               updatedAt: coreMemories.updatedAt,
             })
