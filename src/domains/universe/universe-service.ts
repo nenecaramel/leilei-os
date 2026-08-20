@@ -107,6 +107,7 @@ export class UniverseService {
     validateExpectedVersion(expectedVersion);
     const key = normalizeMcpIdempotencyKey(idempotencyKey);
     const input = invalidAsServiceError(() => normalizeMcpNodeCreate(value));
+    assertMcpPosition(input.position);
     const requestHash = hashMcpWriteRequest({
       title: input.title,
       summary: input.summary,
@@ -168,6 +169,10 @@ export class UniverseService {
     if (!patch || Object.keys(patch).length === 0) {
       throw new UniverseServiceError("INVALID_UNIVERSE");
     }
+    const allowed = new Set(["title", "summary", "content", "type", "tags", "galaxies", "position"]);
+    if (Object.keys(patch).some((key) => !allowed.has(key))) {
+      throw new UniverseServiceError("INVALID_UNIVERSE");
+    }
     return this.updateNode(userId, nodeId, patch, "mcp_update", expectedVersion);
   }
 
@@ -194,6 +199,7 @@ export class UniverseService {
     validateExpectedVersion(expectedVersion);
     const key = normalizeMcpIdempotencyKey(idempotencyKey);
     const input = invalidAsServiceError(() => normalizeMcpRelationCreate(value));
+    assertMcpStrength(input.strength);
     if (input.source === input.target) throw new UniverseServiceError("RELATION_INVALID");
     const requestHash = hashMcpWriteRequest({
       source: input.source,
@@ -324,6 +330,18 @@ function assertAllowedKeys(record: Record<string, unknown>, allowed: readonly st
   const allowedSet = new Set(allowed);
   if (Object.keys(record).some((key) => !allowedSet.has(key))) {
     throw new UniverseValidationError("MCP Universe input contains a forbidden field.");
+  }
+}
+
+function assertMcpPosition(position: { x: number; y: number }): void {
+  if (![position.x, position.y].every((coordinate) => Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 100)) {
+    throw new UniverseServiceError("INVALID_UNIVERSE");
+  }
+}
+
+function assertMcpStrength(strength: number): void {
+  if (!Number.isFinite(strength) || strength < 0 || strength > 1) {
+    throw new UniverseServiceError("RELATION_INVALID");
   }
 }
 

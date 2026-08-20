@@ -218,6 +218,14 @@ test("MCP Universe service rejects forbidden generated-field input and self rela
     service.createMcpRelation("user-1", { source: "node-a", target: "node-a", relationType: "supports", strength: 0.5 }, 1, "universe-relation-create-0002"),
     (error: unknown) => error instanceof UniverseServiceError && error.code === "RELATION_INVALID",
   );
+  await assert.rejects(
+    service.createMcpNode("user-1", { title: "Node", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 101, y: 1 } }, 1, "universe-node-create-0003"),
+    (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE",
+  );
+  await assert.rejects(
+    service.createMcpRelation("user-1", { source: "node-a", target: "node-b", relationType: "supports", strength: 2 }, 1, "universe-relation-create-0003"),
+    (error: unknown) => error instanceof UniverseServiceError && error.code === "RELATION_INVALID",
+  );
 });
 
 test("MCP Universe update keeps partial patch semantics and fixed revision reason", async () => {
@@ -237,4 +245,5 @@ test("MCP Universe update keeps partial patch semantics and fixed revision reaso
   assert.deepEqual(updated.position, existing.position);
   assert.equal(repository.lastUpdateReason, "mcp_update");
   await assert.rejects(service.updateMcpNode("user-1", existing.id, {}, 2), (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE");
+  await assert.rejects(service.updateMcpNode("user-1", existing.id, { importance: "anchor" } as never, 2), (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE");
 });
