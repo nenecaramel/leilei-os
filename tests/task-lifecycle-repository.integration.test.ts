@@ -218,6 +218,7 @@ test(
           }, {
             ...beforePartial,
             description: "Content-only task update",
+            dueTime: null,
           });
           const cleared = await repository.updateTask({
             id: lifecycleIds[0]!,

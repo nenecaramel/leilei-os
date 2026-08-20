@@ -408,15 +408,16 @@ test(
               ]),
             );
           assert.equal(lifecycleOrderEvents.length, 4);
+          const sortLifecycleEvents = (events: typeof lifecycleOrderEvents) => events
+            .map(({ createdAt: _createdAt, ...event }) => event)
+            .sort((left, right) =>
+              `${left.action}:${left.resourceId}`.localeCompare(
+                `${right.action}:${right.resourceId}`,
+              )
+            );
           assert.deepEqual(
-            lifecycleOrderEvents
-              .map(({ createdAt: _createdAt, ...event }) => event)
-              .sort((left, right) =>
-                `${left.action}:${left.resourceId}`.localeCompare(
-                  `${right.action}:${right.resourceId}`,
-                )
-              ),
-            [
+            sortLifecycleEvents(lifecycleOrderEvents),
+            sortLifecycleEvents([
               {
                 resourceId: olderContentId,
                 action: "archive",
@@ -445,7 +446,7 @@ test(
                 channel: "web",
                 metadata: {},
               },
-            ],
+            ] as typeof lifecycleOrderEvents),
           );
           assert.ok(
             lifecycleOrderEvents.every(({ resourceId, createdAt }) =>
