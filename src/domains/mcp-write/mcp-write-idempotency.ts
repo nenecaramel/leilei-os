@@ -22,14 +22,18 @@ export type McpIdempotentToolName =
   | "write_memory"
   | "toy_set"
   | "toy_stop"
-  | "write_todo_paper";
+  | "write_todo_paper"
+  | "create_universe_node"
+  | "create_universe_relation";
 
 export type McpIdempotentResourceType =
   | "task"
   | "diary_entry"
   | "memory"
   | "toy_command"
-  | "todo_paper";
+  | "todo_paper"
+  | "universe_node"
+  | "universe_relation";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 export type McpIdempotencyTransaction = Parameters<

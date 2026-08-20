@@ -74,14 +74,18 @@ test("canonical MCP fingerprint golden values are version locked", () => {
   );
 });
 
-test("Todo MCP tool and resource literals extend only the idempotency vocabulary", async () => {
+test("Universe MCP create tools extend the shared idempotency vocabulary", async () => {
   assert.ok(MCP_WRITE_TOOL_NAMES.includes("write_todo_paper" as never));
+  assert.ok(MCP_WRITE_TOOL_NAMES.includes("create_universe_node" as never));
+  assert.ok(MCP_WRITE_TOOL_NAMES.includes("create_universe_relation" as never));
   const source = await readFile(
     new URL("../src/domains/mcp-write/mcp-write-idempotency.ts", import.meta.url),
     "utf8",
   );
   assert.match(source, /McpIdempotentToolName[\s\S]*\| "write_todo_paper"/);
   assert.match(source, /McpIdempotentResourceType[\s\S]*\| "todo_paper"/);
+  assert.match(source, /McpIdempotentToolName[\s\S]*\| "create_universe_node"/);
+  assert.match(source, /McpIdempotentResourceType[\s\S]*\| "universe_node"/);
 });
 
 test("Todo fingerprints bind author, revision, entry identity, kind, text, and order", () => {
