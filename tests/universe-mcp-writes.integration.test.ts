@@ -7,6 +7,7 @@ import test from "node:test";
 import * as schema from "../src/database/schema.js";
 import { DrizzleUniverseRepository } from "../src/domains/universe/universe-repository-drizzle.js";
 import { UniverseService, UniverseServiceError } from "../src/domains/universe/universe-service.js";
+import { ActiveUserAuthorizationError } from "../src/domains/require-active-user.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const parsed = databaseUrl ? new URL(databaseUrl) : null;
@@ -126,3 +127,144 @@ test("MCP Universe ledger accepts UUID history and prefixed text resource ids af
     await client.end();
   }
 });
+
+test("MCP Universe create transactions reject a concurrent disable before mutation", { skip: !run }, async () => {
+  const admin = connection();
+  const nodeUserId = randomUUID();
+  const relationUserId = randomUUID();
+  const now = new Date(nowString());
+  const node = (id: string, title: string) => ({
+    id,
+    title,
+    summary: "",
+    content: title,
+    type: "concept",
+    tags: [],
+    galaxies: [],
+    position: { x: 50, y: 50 },
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  });
+  const baseSnapshot = (nodes: ReturnType<typeof node>[]) => ({
+    schemaVersion: 2 as const,
+    meta: { name: "Race", createdAt: now.toISOString(), updatedAt: now.toISOString() },
+    galaxies: [],
+    nodes,
+    relations: [],
+    revisions: [],
+  });
+  const waitForScheduling = () => new Promise((resolve) => setTimeout(resolve, 75));
+  const deferred = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => { resolve = done; });
+    return { promise, resolve };
+  };
+
+  async function assertNodeRace(): Promise<void> {
+    await admin.db.insert(schema.users).values({
+      id: nodeUserId,
+      email: `universe-node-race-${nodeUserId}@example.invalid`,
+      displayName: "Node race",
+      status: "active",
+    });
+    const service = new UniverseService(new DrizzleUniverseRepository(admin.db as never));
+    const initial = await service.saveUniverse(nodeUserId, baseSnapshot([]), 0);
+    const disableClient = connection();
+    const locked = deferred();
+    const release = deferred();
+    const disable = disableClient.begin(async (transaction) => {
+      await transaction`SELECT id FROM users WHERE id = ${nodeUserId}::uuid FOR UPDATE`;
+      await transaction`UPDATE users SET status = 'disabled' WHERE id = ${nodeUserId}::uuid`;
+      locked.resolve();
+      await release.promise;
+    });
+    try {
+      await locked.promise;
+      const repository = new DrizzleUniverseRepository(admin.db as never);
+      let settled = false;
+      const mutation = repository.createNodeIdempotently(
+        nodeUserId,
+        node("node-race", "blocked node"),
+        initial.version,
+        "universe-node-race-0001",
+        "a".repeat(64),
+      ).finally(() => { settled = true; });
+      await waitForScheduling();
+      assert.equal(settled, false, "the mutation must wait on the disabling user's row lock");
+      release.resolve();
+      await disable;
+      await assert.rejects(
+        mutation,
+        (error: unknown) => error instanceof ActiveUserAuthorizationError && error.code === "USER_DISABLED",
+      );
+      const readback = await service.loadUniverse(nodeUserId).catch((error: unknown) => error);
+      assert.ok(readback instanceof UniverseServiceError && readback.code === "USER_DISABLED");
+      const rows = await admin.db.select({ id: schema.universeNodes.id }).from(schema.universeNodes).where(eq(schema.universeNodes.userId, nodeUserId));
+      assert.equal(rows.length, 0);
+    } finally {
+      release.resolve();
+      await disable.catch(() => undefined);
+      await disableClient.client.end();
+    }
+  }
+
+  async function assertRelationRace(): Promise<void> {
+    await admin.db.insert(schema.users).values({
+      id: relationUserId,
+      email: `universe-relation-race-${relationUserId}@example.invalid`,
+      displayName: "Relation race",
+      status: "active",
+    });
+    const service = new UniverseService(new DrizzleUniverseRepository(admin.db as never));
+    const source = node("node-source", "source");
+    const target = node("node-target", "target");
+    const initial = await service.saveUniverse(relationUserId, baseSnapshot([source, target]), 0);
+    const disableClient = connection();
+    const locked = deferred();
+    const release = deferred();
+    const disable = disableClient.begin(async (transaction) => {
+      await transaction`SELECT id FROM users WHERE id = ${relationUserId}::uuid FOR UPDATE`;
+      await transaction`UPDATE users SET status = 'disabled' WHERE id = ${relationUserId}::uuid`;
+      locked.resolve();
+      await release.promise;
+    });
+    try {
+      await locked.promise;
+      const repository = new DrizzleUniverseRepository(admin.db as never);
+      let settled = false;
+      const mutation = repository.createRelationIdempotently(
+        relationUserId,
+        { id: "edge-race", source: source.id, target: target.id, relationType: "supports", strength: 1, createdAt: now.toISOString() },
+        initial.version,
+        "universe-relation-race-0001",
+        "b".repeat(64),
+      ).finally(() => { settled = true; });
+      await waitForScheduling();
+      assert.equal(settled, false, "the relation mutation must wait on the disabling user's row lock");
+      release.resolve();
+      await disable;
+      await assert.rejects(
+        mutation,
+        (error: unknown) => error instanceof ActiveUserAuthorizationError && error.code === "USER_DISABLED",
+      );
+      const rows = await admin.db.select({ id: schema.universeRelations.id }).from(schema.universeRelations).where(eq(schema.universeRelations.userId, relationUserId));
+      assert.equal(rows.length, 0);
+    } finally {
+      release.resolve();
+      await disable.catch(() => undefined);
+      await disableClient.client.end();
+    }
+  }
+
+  try {
+    await assertNodeRace();
+    await assertRelationRace();
+  } finally {
+    await admin.client.unsafe("delete from users where id in ($1::uuid, $2::uuid)", [nodeUserId, relationUserId]).catch(() => undefined);
+    await admin.client.end();
+  }
+});
+
+function nowString(): string {
+  return "2026-08-21T00:00:00.000Z";
+}

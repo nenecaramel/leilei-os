@@ -11,8 +11,16 @@ on:
       - src/domains/task/task-repository.ts
       - src/domains/todo/todo-repository.ts
       - src/domains/universe/universe-repository-drizzle.ts
+      - src/domains/universe/universe-repository.ts
+      - src/domains/universe/universe-service.ts
+      - src/domains/mcp-write/mcp-write-idempotency.ts
+      - src/database/schema.ts
+      - drizzle/0025_wild_xavin.sql
       - tests/active-user-mutation-atomicity.test.ts
       - tests/active-user-mutation-atomicity.integration.test.ts
+      - tests/universe-mcp-writes.integration.test.ts
+      - tests/mcp-universe-write-migration.integration.test.ts
+      - tests/mcp-write-idempotency.integration.test.ts
       - .github/workflows/active-user-mutation-verify.yml
 
 jobs:
@@ -37,6 +45,14 @@ jobs:
       RUN_ACTIVE_USER_DATABASE_INTEGRATION_TEST: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify exact PR head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event.pull_request.head.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact PR head: $actual"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.9.0
@@ -61,6 +77,15 @@ jobs:
         run: pnpm exec tsx --test tests/active-user-mutation-atomicity.test.ts
       - name: Run PostgreSQL concurrency regression
         run: pnpm exec tsx --test --test-reporter=spec tests/active-user-mutation-atomicity.integration.test.ts
+      - name: Run Universe MCP PostgreSQL integration
+        env:
+          RUN_UNIVERSE_MCP_WRITE_DATABASE_TEST: "1"
+          RUN_MCP_WRITE_IDEMPOTENCY_DATABASE_TEST: "1"
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1 --test-reporter=spec
+          tests/universe-mcp-writes.integration.test.ts
+          tests/mcp-universe-write-migration.integration.test.ts
+          tests/mcp-write-idempotency.integration.test.ts
       - name: Run deterministic canonical test suite
         run: pnpm test
       - run: pnpm typecheck
