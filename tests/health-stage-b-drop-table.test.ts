@@ -7,13 +7,11 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const read = (relativePath: string) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-function latestNumberedFile(directory: string, extension: string): string {
-  const files = fs.readdirSync(path.join(repoRoot, directory))
-    .filter((file) => /^\d+_.*\./.test(file) && file.endsWith(extension))
-    .sort((left, right) => Number(left.split("_")[0]) - Number(right.split("_")[0]));
-  const latest = files.at(-1);
-  assert.ok(latest, `expected a numbered ${extension} file`);
-  return path.join(directory, latest);
+function numberedFile(directory: string, number: number, extension: string): string {
+  const file = fs.readdirSync(path.join(repoRoot, directory))
+    .find((candidate) => candidate.startsWith(`${String(number).padStart(4, "0")}_`) && candidate.endsWith(extension));
+  assert.ok(file, `expected migration ${number}`);
+  return path.join(directory, file);
 }
 
 test("current Drizzle schema no longer exports the retired Health table", () => {
@@ -23,7 +21,7 @@ test("current Drizzle schema no longer exports the retired Health table", () => 
 });
 
 test("Stage B appends migration 0024 with a strict Health table drop", () => {
-  const migrationPath = latestNumberedFile("drizzle", ".sql");
+  const migrationPath = numberedFile("drizzle", 24, ".sql");
   assert.match(migrationPath, /drizzle\/0024_/);
   const migration = fs.readFileSync(path.join(repoRoot, migrationPath), "utf8");
   assert.equal(migration.trim(), 'DROP TABLE "health_records";');
@@ -31,7 +29,7 @@ test("Stage B appends migration 0024 with a strict Health table drop", () => {
 });
 
 test("current snapshot and journal append Stage B without rewriting history", () => {
-  const snapshotPath = latestNumberedFile("drizzle/meta", ".json");
+  const snapshotPath = numberedFile("drizzle/meta", 24, ".json");
   assert.match(snapshotPath, /drizzle\/meta\/0024_/);
   const snapshot = read(snapshotPath);
   assert.doesNotMatch(snapshot, /public\.health_records|health_records/);
@@ -39,8 +37,8 @@ test("current snapshot and journal append Stage B without rewriting history", ()
   const journal = JSON.parse(read("drizzle/meta/_journal.json")) as {
     entries: Array<{ idx: number; tag: string }>;
   };
-  assert.equal(journal.entries.length, 25);
-  assert.deepEqual(journal.entries.slice(0, 24).map(({ idx, tag }) => ({ idx, tag })), [
+  assert.equal(journal.entries.length, 26);
+  assert.deepEqual(journal.entries.slice(0, 25).map(({ idx, tag }) => ({ idx, tag })), [
     { idx: 0, tag: "0000_phase_2_core_memory_schema" },
     { idx: 1, tag: "0001_phase_3_diary_audit_schema" },
     { idx: 2, tag: "0002_phase_4_task_schema" },
@@ -65,6 +63,7 @@ test("current snapshot and journal append Stage B without rewriting history", ()
     { idx: 21, tag: "0021_universe_weighted_membership_switch" },
     { idx: 22, tag: "0022_toy_duration" },
     { idx: 23, tag: "0023_faulty_sphinx" },
+    { idx: 24, tag: "0024_brainy_wildside" },
   ]);
   const latestEntry = journal.entries.at(-1);
   assert.deepEqual(
@@ -75,9 +74,9 @@ test("current snapshot and journal append Stage B without rewriting history", ()
       breakpoints: (latestEntry as { breakpoints?: boolean }).breakpoints,
     },
     {
-      idx: 24,
+      idx: 25,
       version: "7",
-      tag: "0024_brainy_wildside",
+      tag: "0025_wild_xavin",
       breakpoints: true,
     },
   );
