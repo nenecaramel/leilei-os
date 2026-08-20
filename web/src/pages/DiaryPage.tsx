@@ -1581,7 +1581,7 @@ function DiaryDetail(props: {
 }) {
   if (props.state === "loading") return <DiaryMessage title="正在读取日记" description="详情加载中…" />;
   if (props.state === "error" || !props.diary) {
-    return <DiaryMessage title="无法读取日记" description="该日记不存在、无权访问或暂时不可用。" action={<button className="secondary-button" onClick={props.onBack}>返回日记列表</button>} />;
+    return <DiaryMessage title="无法读取日记" description="该日记不存在、无权访问或暂时不可用。" role="alert" action={<button className="secondary-button" onClick={props.onBack}>返回日记列表</button>} />;
   }
   const diary = props.diary;
   return (
@@ -1727,6 +1727,7 @@ function ArchivedDiaryDetail({
       <DiaryMessage
         title="无法读取归档日记"
         description="该日记不存在、无权访问或暂时不可用。"
+        role="alert"
         action={
           <>
             <button className="secondary-button" onClick={onRetry}>重新加载</button>
