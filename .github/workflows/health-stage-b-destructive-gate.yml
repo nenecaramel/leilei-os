@@ -91,16 +91,67 @@ jobs:
         run: |
           set -euo pipefail
           PSQL="${PSQL_BIN}"
+          PROD_ERR="${RUNNER_TEMP}/prod-readback.err"
 
-          HEALTH_EXISTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.health_records') IS NOT NULL;" 2>"${RUNNER_TEMP}/prod-readback.err")"
+          if ! DATABASE_URL="${DATABASE_URL}" node -e '
+            const value = process.env.DATABASE_URL ?? "";
+            try {
+              const url = new URL(value);
+              const protocolOk = url.protocol === "postgres:" || url.protocol === "postgresql:";
+              const host = url.hostname.toLowerCase();
+              const external = host && !host.endsWith(".railway.internal") && host !== "localhost" && host !== "127.0.0.1";
+              process.exit(protocolOk && external ? 0 : 1);
+            } catch {
+              process.exit(1);
+            }
+          '; then
+            echo "Production database secret is not a valid external PostgreSQL URL; use Railway DATABASE_PUBLIC_URL." >&2
+            exit 1
+          fi
+
+          classify_prod_error() {
+            if grep -Eqi 'password authentication failed|no password supplied|authentication failed' "${PROD_ERR}"; then
+              echo "Production database connection failed: authentication rejected. Refresh the GitHub secret from Railway DATABASE_PUBLIC_URL." >&2
+            elif grep -Eqi 'could not translate host name|name or service not known|temporary failure in name resolution' "${PROD_ERR}"; then
+              echo "Production database connection failed: public hostname could not be resolved." >&2
+            elif grep -Eqi 'connection refused|could not connect to server' "${PROD_ERR}"; then
+              echo "Production database connection failed: Railway public TCP endpoint refused the connection." >&2
+            elif grep -Eqi 'timeout expired|connection timed out|operation timed out' "${PROD_ERR}"; then
+              echo "Production database connection failed: Railway public TCP endpoint timed out." >&2
+            elif grep -Eqi 'ssl|certificate|pg_hba.conf' "${PROD_ERR}"; then
+              echo "Production database connection failed: PostgreSQL SSL/access policy rejected the connection." >&2
+            elif grep -Eqi 'invalid uri|invalid connection option|missing .* after|invalid port number' "${PROD_ERR}"; then
+              echo "Production database connection failed: DATABASE_PUBLIC_URL is malformed." >&2
+            else
+              echo "Production database connection failed before backup; verify Railway Public Access and refresh DATABASE_PUBLIC_URL in the GitHub secret." >&2
+            fi
+          }
+
+          prod_query() {
+            local query="$1"
+            local field_separator="${2:-}"
+            local output
+            local -a args=(-X -A -t -v ON_ERROR_STOP=1)
+            if [[ -n "${field_separator}" ]]; then
+              args+=(-F "${field_separator}")
+            fi
+            : > "${PROD_ERR}"
+            if ! output="$("${PSQL}" "${DATABASE_URL}" "${args[@]}" -c "${query}" 2>"${PROD_ERR}")"; then
+              classify_prod_error
+              return 1
+            fi
+            printf '%s' "${output}"
+          }
+
+          HEALTH_EXISTS="$(prod_query "SELECT to_regclass('public.health_records') IS NOT NULL;")"
           [[ "${HEALTH_EXISTS}" == "t" ]] || { echo "health_records is not present in production before migration" >&2; exit 1; }
 
-          HEALTH_COUNT="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.health_records;" 2>>"${RUNNER_TEMP}/prod-readback.err")"
-          LEDGER_COUNT="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.leilei_schema_migrations;" 2>>"${RUNNER_TEMP}/prod-readback.err")"
-          LEDGER_LATEST="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT created_at::text, hash FROM public.leilei_schema_migrations ORDER BY created_at DESC LIMIT 1;" 2>>"${RUNNER_TEMP}/prod-readback.err")"
-          DURABLE_COUNTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -F '|' -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);" 2>>"${RUNNER_TEMP}/prod-readback.err")"
-          FK_DEPENDENTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_constraint WHERE contype='f' AND confrelid='public.health_records'::regclass;" 2>>"${RUNNER_TEMP}/prod-readback.err")"
-          VIEW_DEPENDENTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(DISTINCT v.oid) FROM pg_depend d JOIN pg_rewrite r ON d.objid=r.oid JOIN pg_class v ON r.ev_class=v.oid WHERE d.refobjid='public.health_records'::regclass AND v.relkind IN ('v','m');" 2>>"${RUNNER_TEMP}/prod-readback.err")"
+          HEALTH_COUNT="$(prod_query "SELECT count(*) FROM public.health_records;")"
+          LEDGER_COUNT="$(prod_query "SELECT count(*) FROM public.leilei_schema_migrations;")"
+          LEDGER_LATEST="$(prod_query "SELECT created_at::text, hash FROM public.leilei_schema_migrations ORDER BY created_at DESC LIMIT 1;" '|')"
+          DURABLE_COUNTS="$(prod_query "SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM core_memories),(SELECT count(*) FROM diary_entries),(SELECT count(*) FROM tasks),(SELECT count(*) FROM user_settings);" '|')"
+          FK_DEPENDENTS="$(prod_query "SELECT count(*) FROM pg_constraint WHERE contype='f' AND confrelid='public.health_records'::regclass;")"
+          VIEW_DEPENDENTS="$(prod_query "SELECT count(DISTINCT v.oid) FROM pg_depend d JOIN pg_rewrite r ON d.objid=r.oid JOIN pg_class v ON r.ev_class=v.oid WHERE d.refobjid='public.health_records'::regclass AND v.relkind IN ('v','m');")"
 
           [[ "${FK_DEPENDENTS}" == "0" ]] || { echo "Unexpected foreign-key dependency references health_records" >&2; exit 1; }
           [[ "${VIEW_DEPENDENTS}" == "0" ]] || { echo "Unexpected view dependency references health_records" >&2; exit 1; }
