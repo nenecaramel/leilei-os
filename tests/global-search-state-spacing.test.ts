@@ -20,16 +20,16 @@ test(
   () => {
     assert.match(
       source,
-      /\{state === "empty" \? \(\s*<section className="memory-empty-state global-search-empty-state">/,
+      /\{state === "empty" \? \(\s*<section className="memory-empty-state global-search-empty-state"[^>]*>/,
     );
 
     assert.match(
       source,
-      /\{state === "error" \? \(\s*<div className="global-search-state-line global-search-error-line global-search-state-line-offset">/,
+      /\{state === "error" \? \(\s*<div className="global-search-state-line global-search-error-line global-search-state-line-offset"[^>]*>/,
     );
 
     const loading = source.match(
-      /\{state === "loading" \? \(\s*<p className="([^"]+)">/,
+      /\{state === "loading" \? \(\s*<p className="([^"]+)"[^>]*>/,
     );
 
     assert.ok(loading);

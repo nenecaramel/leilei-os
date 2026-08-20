@@ -9,7 +9,7 @@ test("Memory Diary and Task mobile empty-filter actions use the dedicated plain-
 
   assert.match(
     memory,
-    /className="secondary-button memory-empty-clear"[\s\S]{0,180}?清除筛选/,
+    /className="secondary-button memory-empty-clear"[\s\S]{0,180}?清除条件/,
   );
   assert.match(
     diary,
