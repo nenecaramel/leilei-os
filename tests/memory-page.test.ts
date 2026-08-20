@@ -691,7 +691,7 @@ test("Memory archived detail error retries without exposing list actions", async
   try {
     assert.match(
       page.container.textContent ?? "",
-      /无法读取已归档记忆/,
+      /无法读取归档记忆/,
     );
     assert.doesNotMatch(
       page.container.textContent ?? "",
@@ -699,7 +699,7 @@ test("Memory archived detail error retries without exposing list actions", async
     );
     assertNoList(page.container);
     const retry = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "重新加载");
+      .find((button) => button.textContent === "重试");
     assert.ok(retry);
     await React.act(async () => {
       retry.dispatchEvent(new page.window.MouseEvent("click", {
@@ -1667,8 +1667,8 @@ test("Memory active list uses lightweight loading empty and error states", async
 
   const filtered = await render("/memory?q=missing", { async request<T>() { return listResponse([]) as T; } });
   try {
-    assert.match(filtered.container.textContent ?? "", /没有匹配的记忆/);
-    assert.ok([...filtered.container.querySelectorAll("button")].some((button) => button.textContent === "清除筛选"));
+    assert.match(filtered.container.textContent ?? "", /没有符合条件的记忆/);
+    assert.ok([...filtered.container.querySelectorAll("button")].some((button) => button.textContent === "清除条件"));
   } finally { await filtered.cleanup(); }
 
   const failing = await render("/memory", { async request() { throw new Error("offline"); } });

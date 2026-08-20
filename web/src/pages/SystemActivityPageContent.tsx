@@ -197,7 +197,7 @@ export function SystemActivityPageContent({
         aria-label="System activity"
       >
         {state.status === "loading" ? (
-          <p className="system-state-copy">
+          <p className="system-state-copy" role="status" aria-live="polite">
             Reading activity…
           </p>
         ) : null}

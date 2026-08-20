@@ -393,7 +393,7 @@ function UniverseFrame({ children }: { children: ReactNode }) {
 
 function UniverseLoadingState() {
   return (
-    <section className="universe-cosmos universe-cosmos-loading" aria-label="Universe 加载中" aria-live="polite">
+    <section className="universe-cosmos universe-cosmos-loading" role="status" aria-label="Universe 加载中" aria-live="polite">
       <div className="universe-loading-line">
         <span>正在读取 Universe…</span>
         <span className="universe-loading-dots" aria-hidden="true"><i /><i /><i /></span>
@@ -403,7 +403,7 @@ function UniverseLoadingState() {
 }
 
 function UniverseStatus({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return <section className="universe-cosmos universe-cosmos-state" aria-live="polite"><div className="universe-state-inline"><p>{message}</p>{onRetry ? <button className="secondary-button" type="button" onClick={onRetry}>重新加载</button> : null}</div></section>;
+  return <section className="universe-cosmos universe-cosmos-state" role="alert" aria-live="polite"><div className="universe-state-inline"><p>{message}</p>{onRetry ? <button className="secondary-button" type="button" onClick={onRetry}>重新加载</button> : null}</div></section>;
 }
 
 export function toggleUniverseGalaxyMemberships(

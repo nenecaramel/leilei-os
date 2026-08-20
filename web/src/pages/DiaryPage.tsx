@@ -1069,10 +1069,7 @@ if (isMobile) {
           ) : null}
 
           {actionError && !isDetail && !showCreate ? (
-            <section className="memory-message">
-              <h2>操作没有完成</h2>
-              <p>{actionError}</p>
-            </section>
+            <section className="memory-action-notice" role="status">{actionError}</section>
           ) : null}
 
           {showActiveBackground ? (
@@ -1207,7 +1204,8 @@ if (isMobile) {
               {state.status === "error" ? (
                 <DiaryMessage
                   title="暂时无法读取日记"
-                  description="筛选条件已保留，请稍后重试。"
+                  description="请稍后重试。"
+                  role="alert"
                   action={
                     <button
                       className="secondary-button"
@@ -1381,10 +1379,7 @@ if (isMobile) {
       />
 
       {actionError && (
-        <section className="memory-message">
-          <h2>操作没有完成</h2>
-          <p>{actionError}</p>
-        </section>
+        <section className="memory-action-notice" role="status">{actionError}</section>
       )}
 
       {isArchivedDetail ? (
@@ -1444,6 +1439,7 @@ if (isMobile) {
           onArchive={(id) => void archiveDiary(id)}
           archiving={archiving}
           onBack={closeDiary}
+          onRetry={() => setDetailReloadKey((value) => value + 1)}
           invalid={updateInvalid}
         />
       ) : (
@@ -1548,7 +1544,7 @@ if (isMobile) {
           {state.status === "ready" && state.diaries.length === 0 && (
             <DiaryMessage
               title={hasFilters(filters) ? "没有符合条件的日记" : "还没有日记"}
-              description={hasFilters(filters) ? "调整或清除搜索和筛选条件后再试。" : "创建第一篇日记后，它会显示在这里。"}
+              description={undefined}
               action={hasFilters(filters) ? <button className="secondary-button" onClick={clearFilters}>清除条件</button> : undefined}
             />
           )}
@@ -1556,7 +1552,8 @@ if (isMobile) {
           {state.status === "error" && (
             <DiaryMessage
               title="暂时无法读取日记"
-              description="筛选条件已保留，请稍后重试。"
+              description="请稍后重试。"
+              role="alert"
               action={<button className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>重新加载</button>}
             />
           )}
@@ -1581,11 +1578,12 @@ function DiaryDetail(props: {
   onArchive(id: string): void;
   archiving: boolean;
   onBack(): void;
+  onRetry(): void;
   invalid: boolean;
 }) {
   if (props.state === "loading") return <DiaryMessage title="正在读取日记" description="详情加载中…" />;
   if (props.state === "error" || !props.diary) {
-    return <DiaryMessage title="无法读取日记" description="该日记不存在、无权访问或暂时不可用。" action={<button className="secondary-button" onClick={props.onBack}>返回日记列表</button>} />;
+    return <DiaryMessage title="无法读取日记" description="该日记不存在、无权访问或暂时不可用。" role="alert" action={<><button className="secondary-button" onClick={props.onRetry}>重试</button><button className="secondary-button" onClick={props.onBack}>返回日记列表</button></>} />;
   }
   const diary = props.diary;
   return (
@@ -1654,6 +1652,7 @@ function ArchivedDiaryList({
       <DiaryMessage
         title="暂时无法读取归档日记"
         description="请稍后重试。"
+        role="alert"
         action={<button className="secondary-button" onClick={onRetry}>重新加载</button>}
       />
     );
@@ -1662,8 +1661,8 @@ function ArchivedDiaryList({
     return (
       <DiaryMessage
         title="还没有归档日记"
-        description="归档后的日记会显示在这里。"
-        action={<button className="secondary-button" onClick={onBack}>返回日记列表</button>}
+        description={undefined}
+        action={undefined}
       />
     );
   }
@@ -1730,6 +1729,7 @@ function ArchivedDiaryDetail({
       <DiaryMessage
         title="无法读取归档日记"
         description="该日记不存在、无权访问或暂时不可用。"
+        role="alert"
         action={
           <>
             <button className="secondary-button" onClick={onRetry}>重新加载</button>
@@ -1753,7 +1753,6 @@ function ArchivedDiaryDetail({
       )}
       {confirmingDelete ? (
         <>
-          <p>永久删除后无法恢复，确认继续吗？</p>
           <button className="secondary-button" disabled={deleting} onClick={onCancelDelete}>取消</button>
           <button className="secondary-button" disabled={deleting} onClick={() => onConfirmDelete(diary.id)}>{deleting ? "删除中…" : "确认永久删除"}</button>
         </>
@@ -1776,9 +1775,10 @@ function ArchivedDiaryDetail({
 
 function DiaryLoading() {
   return (
-    <section className="memory-grid">
+    <section className="memory-grid" aria-busy="true">
+      <span className="visually-hidden" role="status" aria-live="polite">正在读取日记…</span>
       {[0, 1, 2].map((item) => (
-        <div className="memory-card memory-card-loading" key={item}>
+        <div className="memory-card memory-card-loading" aria-hidden="true" key={item}>
           <span /><strong /><p />
         </div>
       ))}
@@ -1789,17 +1789,19 @@ function DiaryLoading() {
 function DiaryMessage({
   action,
   description,
+  role = "status",
   title,
 }: {
   action?: ReactNode;
-  description: string;
+  description?: string;
+  role?: "status" | "alert";
   title: string;
 }) {
   return (
-    <section className="memory-message memory-module-state">
+    <section className="memory-message memory-module-state records-state" role={role}>
       <div className="placeholder-icon"><DiaryIcon /></div>
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description ? <p>{description}</p> : null}
       {action}
     </section>
   );
@@ -1807,9 +1809,10 @@ function DiaryMessage({
 
 function MobileDiaryLoading({ label }: { label: string }) {
   return (
-    <section className="memory-months" aria-label={label}>
+    <section className="memory-months" aria-label={label} aria-busy="true">
+      <span className="visually-hidden" role="status" aria-live="polite">正在读取日记…</span>
       {[0, 1].map((index) => (
-        <div className="memory-month-skeleton" key={index}>
+        <div className="memory-month-skeleton" aria-hidden="true" key={index}>
           <span className="memory-month-skeleton-label" />
           <div className="memory-month-skeleton-card">
             <span />
@@ -1915,11 +1918,11 @@ function MobileDiaryDetail({
         open
         label="正在读取 Diary"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
-        <p className="memory-paper-status">正在读取日记…</p>
+        <div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取日记…</p></div>
       </PaperDetailDialog>
     );
   }
@@ -1931,19 +1934,15 @@ function MobileDiaryDetail({
         open
         label="无法读取 Diary"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
-        topRight={
-          <button className="memory-paper-control" onClick={onRetry}>
-            重试
-          </button>
-        }
       >
-        <p className="memory-paper-status">无法读取日记</p>
-        <p className="memory-paper-content">
-          该日记不存在、无权访问或暂时不可用。
-        </p>
+        <div className="paper-detail-state" role="alert">
+          <p>无法读取日记</p>
+          <span>该日记不存在、无权访问或暂时不可用。</span>
+          <button type="button" className="memory-paper-control" onClick={onRetry}>重试</button>
+        </div>
       </PaperDetailDialog>
     );
   }
@@ -2074,6 +2073,7 @@ function MobileArchivedDiaryList({
       <DiaryMessage
         title="暂时无法读取归档日记"
         description="请稍后重试。"
+        role="alert"
         action={
           <button className="secondary-button" onClick={onRetry}>
             重新加载
@@ -2154,7 +2154,7 @@ function MobileArchivedDiaryDetail({
         open
         label="正在读取已归档 Diary"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={() => {
           if (restoring) return false;
@@ -2162,7 +2162,7 @@ function MobileArchivedDiaryDetail({
           return true;
         }}
       >
-        <p className="memory-paper-status">正在读取归档日记…</p>
+        <div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取归档日记…</p></div>
       </PaperDetailDialog>
     );
   }
@@ -2174,22 +2174,18 @@ function MobileArchivedDiaryDetail({
         open
         label="无法读取已归档 Diary"
         dateLabel=""
-        signature=""
+        signature="—"
         triggerRef={triggerRef}
         onRequestClose={() => {
           onBack();
           return true;
         }}
-        topRight={
-          <button className="memory-paper-control" onClick={onRetry}>
-            重试
-          </button>
-        }
       >
-        <p className="memory-paper-status">无法读取归档日记</p>
-        <p className="memory-paper-content">
-          该日记不存在、无权访问或暂时不可用。
-        </p>
+        <div className="paper-detail-state" role="alert">
+          <p>无法读取归档日记</p>
+          <span>该归档日记不存在、无权访问或暂时不可用。</span>
+          <button type="button" className="memory-paper-control" onClick={onRetry}>重试</button>
+        </div>
       </PaperDetailDialog>
     );
   }
@@ -2231,7 +2227,6 @@ function MobileArchivedDiaryDetail({
       }
     >
       <h2 className="memory-paper-title">{diary.title}</h2>
-      {confirmingDelete ? <p className="memory-paper-status">永久删除后无法恢复，确认继续吗？</p> : null}
       <p className="memory-paper-content">{diary.content}</p>
     </PaperDetailDialog>
   );
