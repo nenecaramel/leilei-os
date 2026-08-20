@@ -70,7 +70,6 @@ export function CalendarPreview({
       <div className="home-section-heading calendar-section-heading">
         <h2 id="calendar-preview-title">Calendar</h2>
       </div>
-      {status === "loading" ? <div className="home-module-state" role="status" aria-live="polite">正在读取 Calendar…</div> : null}
       {status === "error" ? <div className="home-module-state" role="alert">Calendar 暂时无法读取。 {onRetry ? <button type="button" onClick={() => void onRetry()}>重试</button> : null}</div> : null}
       <div className="calendar-frame">
         <div className="calendar-preview-header">
