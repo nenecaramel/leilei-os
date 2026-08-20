@@ -1,0 +1,57 @@
+name: Health Stage B gate observer
+
+on:
+  workflow_run:
+    workflows:
+      - Health Stage B destructive migration gate
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  statuses: write
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.event == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish exact-head gate status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REPO="${GITHUB_REPOSITORY}"
+          ARTIFACTS="$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100")"
+          EVIDENCE_NAME="$(jq -r '[.artifacts[].name | select(startswith("health-stage-b-gate-evidence-"))][0] // empty' <<<"${ARTIFACTS}")"
+
+          if [[ -n "${EVIDENCE_NAME}" ]]; then
+            TARGET_SHA="${EVIDENCE_NAME#health-stage-b-gate-evidence-}"
+          else
+            TARGET_SHA="$(gh api "repos/${REPO}/pulls/174" --jq '.head.sha')"
+          fi
+
+          [[ "${TARGET_SHA}" =~ ^[0-9a-f]{40}$ ]] || { echo "Unable to resolve Health Stage B PR head" >&2; exit 1; }
+
+          if [[ "${RUN_CONCLUSION}" == "success" && -n "${EVIDENCE_NAME}" ]]; then
+            STATE=success
+            DESCRIPTION='fresh backup + PG18 restore + exact migration gate passed'
+          else
+            STATE=failure
+            DESCRIPTION='Health Stage B destructive migration gate failed'
+          fi
+
+          gh api -X POST "repos/${REPO}/statuses/${TARGET_SHA}" \
+            -f state="${STATE}" \
+            -f context='health-stage-b-destructive-gate' \
+            -f description="${DESCRIPTION}" \
+            -f target_url="${RUN_URL}" >/dev/null
+
+          echo "Published ${STATE} status for ${TARGET_SHA}"

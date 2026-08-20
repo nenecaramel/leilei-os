@@ -69,9 +69,9 @@ jobs:
           set -euo pipefail
           sudo install -d /usr/share/postgresql-common/pgdg
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-            | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+            | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc >/dev/null
           . /etc/os-release
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
           sudo apt-get update
           sudo apt-get install -y postgresql-client-18
@@ -92,7 +92,7 @@ jobs:
           set -euo pipefail
           PSQL="${PSQL_BIN}"
 
-          HEALTH_EXISTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.health_records') IS NOT NULL;" 2>"${RUNNER_TEMP}/prod-readback.err")" 
+          HEALTH_EXISTS="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.health_records') IS NOT NULL;" 2>"${RUNNER_TEMP}/prod-readback.err")"
           [[ "${HEALTH_EXISTS}" == "t" ]] || { echo "health_records is not present in production before migration" >&2; exit 1; }
 
           HEALTH_COUNT="$(PGDATABASE="${DATABASE_URL}" "${PSQL}" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.health_records;" 2>>"${RUNNER_TEMP}/prod-readback.err")"
