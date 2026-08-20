@@ -155,6 +155,104 @@ test("transport close cleanup removes the registry entry once", async () => {
   assert.equal(registry.size, 0);
 });
 
+test("created and closed events correlate with safe process-local ordinals", async () => {
+  const observed: unknown[] = [];
+  const registry = new McpSessionRegistry({
+    observer: (event) => observed.push(event),
+  });
+  createDummy(registry, {
+    sessionId: "private-session-id-1",
+    userId: "private-user-id-1",
+    namespace: "public",
+  });
+  createDummy(registry, {
+    sessionId: "private-session-id-2",
+    userId: "private-user-id-2",
+    namespace: "public",
+  });
+
+  await registry.close("private-session-id-1", "client_close");
+
+  const created = observed.filter(
+    (event): event is { name: "mcp_session_created"; diagnosticSessionOrdinal: number } =>
+      typeof event === "object" && event !== null && (event as { name?: string }).name === "mcp_session_created",
+  );
+  const closed = observed.filter(
+    (event): event is { name: "mcp_session_closed"; diagnosticSessionOrdinal: number } =>
+      typeof event === "object" && event !== null && (event as { name?: string }).name === "mcp_session_closed",
+  );
+
+  assert.deepEqual(created.map((event) => event.diagnosticSessionOrdinal), [1, 2]);
+  assert.equal(closed[0]?.diagnosticSessionOrdinal, 1);
+  const serialized = JSON.stringify(observed);
+  assert.equal(serialized.includes("private-session-id-1"), false);
+  assert.equal(serialized.includes("private-session-id-2"), false);
+  assert.equal(serialized.includes("private-user-id-1"), false);
+  assert.equal(serialized.includes("private-user-id-2"), false);
+});
+
+test("capacity rejection reports idle and in-flight composition for one user namespace", async () => {
+  let now = 1_000;
+  const events: Array<Record<string, unknown>> = [];
+  const registry = new McpSessionRegistry({
+    now: () => now,
+    maxPerUser: 8,
+    maxTotal: 10,
+    observer: (event) => events.push(event),
+  });
+
+  createDummy(registry, { sessionId: "in-flight", userId: "u1", namespace: "public" });
+  createDummy(registry, { sessionId: "idle-old", userId: "u1", namespace: "public" });
+  createDummy(registry, { sessionId: "idle-new", userId: "u1", namespace: "public" });
+  const inFlight = await registry.acquire("in-flight", "public", "u1");
+  assert.ok(inFlight);
+  now = 1_100;
+  registry.touch("idle-new");
+  now = 1_300;
+
+  createDummy(registry, { sessionId: "other-user", userId: "u2", namespace: "public" });
+  createDummy(registry, { sessionId: "internal", userId: "u1", namespace: "internal" });
+  registry.observeCapacityRejected("u1", "public");
+
+  const event = events.find((candidate) => candidate.name === "mcp_session_capacity_rejected");
+  assert.ok(event);
+  assert.equal(event.activeUserNamespaceCount, 3);
+  assert.equal(event.idleUserNamespaceCount, 2);
+  assert.equal(event.inFlightUserNamespaceCount, 1);
+  assert.equal(event.oldestIdleAgeMs, 300);
+  assert.equal(
+    (event.idleUserNamespaceCount as number) + (event.inFlightUserNamespaceCount as number),
+    event.activeUserNamespaceCount,
+  );
+});
+
+test("close diagnostics report in-flight count and idle age without identifiers", async () => {
+  let now = 5_000;
+  const events: Array<Record<string, unknown>> = [];
+  const registry = new McpSessionRegistry({
+    now: () => now,
+    observer: (event) => events.push(event),
+  });
+  const session = createDummy(registry, {
+    sessionId: "close-private-session",
+    userId: "close-private-user",
+    namespace: "public",
+  });
+  const acquired = await registry.acquire(session.sessionId, "public", session.userId);
+  assert.ok(acquired);
+  registry.finishRequest(acquired);
+  now = 5_250;
+  await registry.close(session.sessionId, "transport_close");
+
+  const event = events.find((candidate) => candidate.name === "mcp_session_closed");
+  assert.ok(event);
+  assert.equal(event.inFlightCountAtClose, 0);
+  assert.equal(event.idleAgeMsAtClose, 250);
+  const serialized = JSON.stringify(event);
+  assert.equal(serialized.includes(session.sessionId), false);
+  assert.equal(serialized.includes(session.userId), false);
+});
+
 test("chunked absolute deadlines schedule the maximum safe delay before the remainder", () => {
   const { scheduler, timers } = createFakeTimerHarness();
   let callbacks = 0;
