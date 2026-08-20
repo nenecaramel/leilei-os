@@ -208,6 +208,8 @@ export function DiaryPageContent({
   const mutationOwnership = useRef(createMutationOwnership());
   const [archiving, setArchiving] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [permanentDeleteConfirmId, setPermanentDeleteConfirmId] = useState("");
+  const [permanentDeletingId, setPermanentDeletingId] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -744,6 +746,8 @@ export function DiaryPageContent({
   }
 
   function openArchivedDiary(id: string): void {
+    setPermanentDeleteConfirmId("");
+    setPermanentDeletingId("");
     const archiveUrl = window.location.pathname + window.location.search;
     saveDiaryScrollPosition(
       getDiaryScrollStorage(window),
@@ -761,6 +765,8 @@ export function DiaryPageContent({
   }
 
   function closeArchivedDiary(): void {
+    setPermanentDeleteConfirmId("");
+    setPermanentDeletingId("");
     const returnTo = getSafeDiaryArchiveReturnTo(
       archivedDetailLocation.returnTo,
     );
@@ -857,6 +863,30 @@ export function DiaryPageContent({
     } finally {
       mutationGate.current.leave();
       if (mutationOwnership.current.owns(ticket)) setRestoring(false);
+    }
+  }
+
+  async function permanentlyDeleteDiary(id: string): Promise<void> {
+    if (!permanentDeleteConfirmId || !mutationGate.current.enter()) return;
+    const ticket = mutationOwnership.current.begin();
+    setPermanentDeletingId(id);
+    setActionError("");
+    try {
+      await api.request(`/diary/archived/${encodeURIComponent(id)}/permanent`, {
+        method: "DELETE",
+      });
+      if (!mutationOwnership.current.owns(ticket)) return;
+      setPermanentDeleteConfirmId("");
+      setPermanentDeletingId("");
+      setArchiveReloadKey((value) => value + 1);
+      closeArchivedDiary();
+    } catch {
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("永久删除日记失败，请稍后重试。");
+      }
+    } finally {
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setPermanentDeletingId("");
     }
   }
 
@@ -1282,6 +1312,11 @@ if (isMobile) {
               errorMessage={actionError || null}
               restoring={restoring}
               onRestore={(id) => void restoreDiary(id)}
+              confirmingDelete={permanentDeleteConfirmId === archivedDetailLocation.diaryId}
+              deleting={permanentDeletingId === archivedDetailLocation.diaryId}
+              onRequestDelete={(id) => setPermanentDeleteConfirmId(id)}
+              onConfirmDelete={(id) => void permanentlyDeleteDiary(id)}
+              onCancelDelete={() => setPermanentDeleteConfirmId("")}
               onRetry={() =>
                 setArchiveReloadKey((value) => value + 1)
               }
@@ -1355,6 +1390,11 @@ if (isMobile) {
           restoring={restoring}
           onBack={closeArchivedDiary}
           onRestore={(id) => void restoreDiary(id)}
+          confirmingDelete={permanentDeleteConfirmId === archivedDetailLocation.diaryId}
+          deleting={permanentDeletingId === archivedDetailLocation.diaryId}
+          onRequestDelete={(id) => setPermanentDeleteConfirmId(id)}
+          onConfirmDelete={(id) => void permanentlyDeleteDiary(id)}
+          onCancelDelete={() => setPermanentDeleteConfirmId("")}
           onRetry={() => setArchiveReloadKey((value) => value + 1)}
         />
       ) : isArchived ? (
@@ -1657,6 +1697,11 @@ function ArchivedDiaryDetail({
   diary,
   onBack,
   onRestore,
+  confirmingDelete,
+  deleting,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
   onRetry,
   restoring,
   state,
@@ -1664,6 +1709,11 @@ function ArchivedDiaryDetail({
   diary: DiaryEntry | null;
   onBack(): void;
   onRestore(id: string): void;
+  confirmingDelete: boolean;
+  deleting: boolean;
+  onRequestDelete(id: string): void;
+  onConfirmDelete(id: string): void;
+  onCancelDelete(): void;
   onRetry(): void;
   restoring: boolean;
   state: DetailState;
@@ -1699,11 +1749,19 @@ function ArchivedDiaryDetail({
       )}
       <button
         className="secondary-button"
-        disabled={restoring}
+        disabled={restoring || deleting}
         onClick={() => onRestore(diary.id)}
       >
         {restoring ? "恢复中…" : "恢复"}
       </button>
+      <button className="secondary-button" disabled={restoring || deleting} onClick={() => onRequestDelete(diary.id)}>删除</button>
+      {confirmingDelete ? (
+        <>
+          <p>永久删除后无法恢复，确认继续吗？</p>
+          <button className="secondary-button" disabled={deleting} onClick={onCancelDelete}>取消</button>
+          <button className="secondary-button" disabled={deleting} onClick={() => onConfirmDelete(diary.id)}>{deleting ? "删除中…" : "确认永久删除"}</button>
+        </>
+      ) : null}
       <button className="secondary-button" onClick={onBack}>返回归档列表</button>
     </section>
   );
@@ -2060,6 +2118,11 @@ function MobileArchivedDiaryDetail({
   errorMessage,
   restoring,
   onRestore,
+  confirmingDelete,
+  deleting,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
   onRetry,
   onBack,
 }: {
@@ -2069,6 +2132,11 @@ function MobileArchivedDiaryDetail({
   errorMessage: string | null;
   restoring: boolean;
   onRestore(id: string): void;
+  confirmingDelete: boolean;
+  deleting: boolean;
+  onRequestDelete(id: string): void;
+  onConfirmDelete(id: string): void;
+  onCancelDelete(): void;
   onRetry(): void;
   onBack(): void;
 }) {
@@ -2129,18 +2197,24 @@ function MobileArchivedDiaryDetail({
       triggerRef={triggerRef}
       errorMessage={errorMessage}
       onRequestClose={() => {
-        if (restoring) return false;
+        if (restoring || deleting) return false;
         onBack();
         return true;
       }}
       topRight={
-        <button
-          className="memory-paper-control"
-          disabled={restoring}
-          onClick={() => onRestore(diary.id)}
-        >
-          {restoring ? "恢复中…" : "恢复"}
-        </button>
+        confirmingDelete ? (
+          <>
+            <button className="memory-paper-control" disabled={deleting} onClick={onCancelDelete}>取消</button>
+            <span>·</span>
+            <button className="memory-paper-control" disabled={deleting} onClick={() => onConfirmDelete(diary.id)}>{deleting ? "删除中…" : "确认永久删除"}</button>
+          </>
+        ) : (
+          <>
+            <button className="memory-paper-control" disabled={restoring || deleting} onClick={() => onRestore(diary.id)}>{restoring ? "恢复中…" : "恢复"}</button>
+            <span>·</span>
+            <button className="memory-paper-control" disabled={restoring || deleting} onClick={() => onRequestDelete(diary.id)}>删除</button>
+          </>
+        )
       }
       bottomLeft={
         <>
@@ -2150,6 +2224,7 @@ function MobileArchivedDiaryDetail({
       }
     >
       <h2 className="memory-paper-title">{diary.title}</h2>
+      {confirmingDelete ? <p className="memory-paper-status">永久删除后无法恢复，确认继续吗？</p> : null}
       <p className="memory-paper-content">{diary.content}</p>
     </PaperDetailDialog>
   );

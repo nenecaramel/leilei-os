@@ -226,6 +226,8 @@ export function MemoryPageContent({
     useState<MemoryCategory[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [actionError, setActionError] = useState("");
+  const [permanentDeleteConfirmId, setPermanentDeleteConfirmId] = useState("");
+  const [permanentDeletingId, setPermanentDeletingId] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
   const [category, setCategory] =
@@ -893,6 +895,8 @@ export function MemoryPageContent({
   }
 
   function openArchivedMemory(id: string): void {
+    setPermanentDeleteConfirmId("");
+    setPermanentDeletingId("");
     const archiveUrl = createMemoryArchiveLocation(
       archiveLocation.returnTo,
     );
@@ -913,6 +917,8 @@ export function MemoryPageContent({
   }
 
   function closeArchivedMemory(): void {
+    setPermanentDeleteConfirmId("");
+    setPermanentDeletingId("");
     const returnTo = getSafeMemoryArchiveReturnTo(
       archivedDetailLocation.returnTo,
     );
@@ -977,6 +983,31 @@ export function MemoryPageContent({
     } finally {
       mutationGate.current.leave();
       if (mutationOwnership.current.owns(ticket)) setRestoringId("");
+    }
+  }
+
+  async function permanentlyDeleteArchivedMemory(id: string): Promise<void> {
+    if (!permanentDeleteConfirmId || !mutationGate.current.enter()) return;
+    const ticket = mutationOwnership.current.begin();
+    setPermanentDeletingId(id);
+    setActionError("");
+    try {
+      await api.request(
+        `/memory/archived/${encodeURIComponent(id)}/permanent`,
+        { method: "DELETE" },
+      );
+      if (!mutationOwnership.current.owns(ticket)) return;
+      setPermanentDeleteConfirmId("");
+      setPermanentDeletingId("");
+      setArchiveReloadKey((value) => value + 1);
+      closeArchivedMemory();
+    } catch {
+      if (mutationOwnership.current.owns(ticket)) {
+        setActionError("永久删除记忆失败，请稍后重试。");
+      }
+    } finally {
+      mutationGate.current.leave();
+      if (mutationOwnership.current.owns(ticket)) setPermanentDeletingId("");
     }
   }
 
@@ -1314,6 +1345,11 @@ export function MemoryPageContent({
               onBack={closeArchivedMemory}
               restoring={restoringId === archivedDetailLocation.memoryId}
               onRestore={(id) => void restoreArchivedMemory(id)}
+              confirmingDelete={permanentDeleteConfirmId === archivedDetailLocation.memoryId}
+              deleting={permanentDeletingId === archivedDetailLocation.memoryId}
+              onRequestDelete={(id) => setPermanentDeleteConfirmId(id)}
+              onConfirmDelete={(id) => void permanentlyDeleteArchivedMemory(id)}
+              onCancelDelete={() => setPermanentDeleteConfirmId("")}
             />
           ) : null}
         </>
@@ -1418,6 +1454,11 @@ function ArchivedMemoryDetail({
   onBack,
   restoring,
   onRestore,
+  confirmingDelete,
+  deleting,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
 }: {
   state: DetailState;
   triggerRef: RefObject<HTMLElement | null>;
@@ -1426,6 +1467,11 @@ function ArchivedMemoryDetail({
   onBack(): void;
   restoring: boolean;
   onRestore(id: string): void;
+  confirmingDelete: boolean;
+  deleting: boolean;
+  onRequestDelete(id: string): void;
+  onConfirmDelete(id: string): void;
+  onCancelDelete(): void;
 }) {
   if (state.status === "loading") {
     return (
@@ -1483,18 +1529,30 @@ function ArchivedMemoryDetail({
       triggerRef={triggerRef}
       errorMessage={errorMessage}
       onRequestClose={() => {
-        if (restoring) return false;
+        if (restoring || deleting) return false;
         onBack();
         return true;
       }}
       topRight={
-        <button
-          className="memory-paper-control"
-          disabled={restoring}
-          onClick={() => onRestore(memory.id)}
-        >
-          {restoring ? "恢复中…" : "恢复"}
-        </button>
+        confirmingDelete ? (
+          <>
+            <button className="memory-paper-control" disabled={deleting} onClick={onCancelDelete}>取消</button>
+            <span>·</span>
+            <button className="memory-paper-control" disabled={deleting} onClick={() => onConfirmDelete(memory.id)}>
+              {deleting ? "删除中…" : "确认永久删除"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="memory-paper-control" disabled={restoring || deleting} onClick={() => onRestore(memory.id)}>
+              {restoring ? "恢复中…" : "恢复"}
+            </button>
+            <span>·</span>
+            <button className="memory-paper-control" disabled={restoring || deleting} onClick={() => onRequestDelete(memory.id)}>
+              删除
+            </button>
+          </>
+        )
       }
       bottomLeft={
         <>
@@ -1507,6 +1565,10 @@ function ArchivedMemoryDetail({
         <h2 className="memory-paper-title">
           {memory.key}
         </h2>
+      ) : null}
+
+      {confirmingDelete ? (
+        <p className="memory-paper-status">永久删除后无法恢复，确认继续吗？</p>
       ) : null}
 
       <p className="memory-paper-content">
