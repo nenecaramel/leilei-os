@@ -5,6 +5,10 @@ export const MCP_WRITE_TOOL_NAMES = [
   "toy_set",
   "toy_stop",
   "write_todo_paper",
+  "update_memory",
+  "update_diary",
+  "update_task",
+  "transition_task",
 ] as const;
 
 export type McpWriteToolName = (typeof MCP_WRITE_TOOL_NAMES)[number];

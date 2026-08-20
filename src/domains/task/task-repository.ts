@@ -104,17 +104,20 @@ export type ReopenTaskInput = {
   resumeStatus: "pending" | "in_progress";
 };
 
-export type NormalizedTaskUpdate = {
-  userId: string;
-  id: string;
+export type NormalizedTaskFields = {
   title: string;
   description: string;
   priority: TaskPriority;
   dueTime: Date | null;
   timezone: string;
   tags: string[];
-  author?: ContentAuthor;
 };
+
+export type NormalizedTaskUpdate = {
+  userId: string;
+  id: string;
+  author?: ContentAuthor;
+} & Partial<NormalizedTaskFields>;
 
 export interface TaskRepository {
   findUserById(
@@ -524,12 +527,12 @@ export class DrizzleTaskRepository
       const [task] = await transaction
         .update(tasks)
         .set({
-          title: input.title,
-          description: input.description,
-          priority: input.priority,
-          dueTime: input.dueTime,
-          timezone: input.timezone,
-          tags: input.tags,
+          ...(input.title === undefined ? {} : { title: input.title }),
+          ...(input.description === undefined ? {} : { description: input.description }),
+          ...(input.priority === undefined ? {} : { priority: input.priority }),
+          ...(input.dueTime === undefined ? {} : { dueTime: input.dueTime }),
+          ...(input.timezone === undefined ? {} : { timezone: input.timezone }),
+          ...(input.tags === undefined ? {} : { tags: input.tags }),
           updatedAt: new Date(),
           ...(input.author === undefined ? {} : { author: input.author }),
         })

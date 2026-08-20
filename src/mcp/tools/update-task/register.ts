@@ -1,0 +1,48 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { TaskDomainError, type AuthenticatedTaskContext, type TaskEntryResult, type UpdateMcpTaskInput } from "../../../domains/task/task-service.js";
+import { invokeMcpWrite } from "../write-context.js";
+
+const updateTaskInputSchema = z.object({
+  id: z.string().trim().min(1),
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().min(1).max(5_000).optional(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  due_time: z.string().trim().min(1).max(64).nullable().optional(),
+  tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+  author: z.enum(["L", "G"]).optional(),
+}).strict().refine((value) => Object.keys(value).some((key) => key !== "id"), { message: "At least one Task field must be supplied." });
+
+const taskStatusSchema = z.enum(["pending", "in_progress", "completed", "cancelled"]);
+const taskActionSchema = z.enum(["start", "complete", "cancel", "reopen"]);
+const taskOutputDataSchema = z.object({
+  id: z.string(), title: z.string(), description: z.string(), status: taskStatusSchema, priority: z.enum(["low", "normal", "high", "urgent"]), due_time: z.string().datetime().nullable(), timezone: z.string(), time_bucket: z.enum(["no_due_date", "overdue", "today", "next_7_days", "later"]), tags: z.array(z.string()), created_at: z.string().datetime(), updated_at: z.string().datetime(), completed_at: z.string().datetime().nullable(), allowed_actions: z.array(taskActionSchema), lifecycle_status: z.literal("active"), author: z.enum(["L", "G"]).nullable(),
+});
+const updateTaskOutputSchema = z.object({ success: z.literal(true), data: taskOutputDataSchema });
+
+export interface UpdateTaskToolService { updateMcpTask(context: AuthenticatedTaskContext, input: UpdateMcpTaskInput): Promise<TaskEntryResult>; }
+export type UpdateTaskToolDependencies = { taskService: UpdateTaskToolService; getAuthenticatedUserId: () => string };
+
+export function registerUpdateTaskTool(server: McpServer, dependencies: UpdateTaskToolDependencies): void {
+  server.registerTool("update_task", { title: "Update one Task", description: "Update only explicitly supplied ordinary fields on one active Task. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly retry.", inputSchema: updateTaskInputSchema, outputSchema: updateTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, title, description, priority, due_time, tags, author }) => invokeMcpWrite({
+    toolName: "update_task", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
+    operation: async ({ userId }) => {
+      const data = await dependencies.taskService.updateMcpTask({ userId }, { id, ...(title === undefined ? {} : { title }), ...(description === undefined ? {} : { description }), ...(priority === undefined ? {} : { priority }), ...(due_time === undefined ? {} : { dueTime: due_time }), ...(tags === undefined ? {} : { tags }), ...(author === undefined ? {} : { author }) });
+      return { content: [{ type: "text", text: "Task updated." }], structuredContent: { success: true as const, data: { ...data, lifecycle_status: "active" as const } } };
+    }, mapError: toSafeToolError,
+  }));
+}
+
+function toSafeToolError(error: unknown) {
+  if (error instanceof UpdateTaskAuthenticationError) return { isError: true as const, content: [{ type: "text" as const, text: "Authentication is required to update Task." }] };
+  if (error instanceof TaskDomainError) {
+    const text = error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND" ? "Task updating is unavailable for the authenticated user." : error.code === "TASK_NOT_FOUND" ? "Task was not found." : error.code === "TASK_STATUS_CONFLICT" ? "Task status changed concurrently; read it again before retrying." : "The Task update request is invalid.";
+    return { isError: true as const, content: [{ type: "text" as const, text }] };
+  }
+  console.error("update_task failed", error instanceof Error ? error.name : "UnknownError");
+  return { isError: true as const, content: [{ type: "text" as const, text: "Task updating is temporarily unavailable." }] };
+}
+
+export class UpdateTaskAuthenticationError extends Error {
+  constructor() { super("Authenticated MCP user context is unavailable."); this.name = "UpdateTaskAuthenticationError"; }
+}

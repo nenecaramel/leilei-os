@@ -34,6 +34,7 @@ test(
     const owner = randomUUID();
     const timestamp = new Date("2026-08-05T00:00:00.000Z");
     const taskId = randomUUID();
+    const inProgressTaskId = randomUUID();
     try {
       await assert.rejects(
         database.db.transaction(async (transaction) => {
@@ -51,6 +52,23 @@ test(
             title: "Reopen test",
             description: "Disposable integration fixture",
             status: "pending",
+            resumeStatus: null,
+            lifecycleStatus: "active",
+            priority: "normal",
+            dueTime: null,
+            timezone: "Asia/Shanghai",
+            tags: [],
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            completedAt: null,
+            author: "G",
+          });
+          await transaction.insert(tasks).values({
+            id: inProgressTaskId,
+            userId: owner,
+            title: "In progress reopen test",
+            description: "Disposable integration fixture",
+            status: "in_progress",
             resumeStatus: null,
             lifecycleStatus: "active",
             priority: "normal",
@@ -85,6 +103,27 @@ test(
           assert.equal(reopened?.resumeStatus, null);
           assert.equal(reopened?.completedAt, null);
           assert.equal(reopened?.author, "G");
+
+          const cancelledInProgress = await repository.updateTaskStatus({
+            userId: owner,
+            id: inProgressTaskId,
+            status: "cancelled",
+            expectedStatus: "in_progress",
+            resumeStatus: "in_progress",
+            completedAt: null,
+          });
+          assert.equal(cancelledInProgress?.status, "cancelled");
+          assert.equal(cancelledInProgress?.resumeStatus, "in_progress");
+          const reopenedInProgress = await repository.reopenTask({
+            userId: owner,
+            id: inProgressTaskId,
+            expectedStatus: "cancelled",
+            resumeStatus: "in_progress",
+          });
+          assert.equal(reopenedInProgress?.status, "in_progress");
+          assert.equal(reopenedInProgress?.resumeStatus, null);
+          assert.equal(reopenedInProgress?.completedAt, null);
+          assert.equal(reopenedInProgress?.author, "G");
 
           const [first, second] = await Promise.all([
             repository.updateTaskStatus({

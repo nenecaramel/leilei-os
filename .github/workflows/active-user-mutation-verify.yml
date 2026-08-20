@@ -45,6 +45,18 @@ jobs:
           node-version: 24
       - run: pnpm install --frozen-lockfile
       - run: cd web && npm ci
+      - name: Apply ephemeral PostgreSQL migrations
+        run: pnpm db:migrate
+      - name: Run lifecycle PostgreSQL integration tests
+        env:
+          RUN_DATABASE_INTEGRATION_TEST: "1"
+          RUN_TASK_STATUS_REOPEN_DATABASE_TEST: "1"
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/memory-lifecycle-repository.integration.test.ts
+          tests/diary-repository.integration.test.ts
+          tests/task-lifecycle-repository.integration.test.ts
+          tests/task-status-reopen.integration.test.ts
       - name: Run active-user source contract
         run: pnpm exec tsx --test tests/active-user-mutation-atomicity.test.ts
       - name: Run PostgreSQL concurrency regression

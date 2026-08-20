@@ -91,6 +91,15 @@ export type UpdateMemoryInput = {
   author?: ContentAuthor;
 };
 
+export type UpdateMcpMemoryInput = {
+  id: string;
+  category?: MemoryCategory;
+  key?: string;
+  content?: string;
+  tags?: readonly string[];
+  author?: ContentAuthor;
+};
+
 export type ReadMemoryResult = {
   user: {
     display_name: string;
@@ -137,6 +146,7 @@ export type MemoryDomainErrorCode =
   | "INVALID_MEMORY_TAGS"
   | "INVALID_MEMORY_KEY"
   | "INVALID_MEMORY_CONTENT"
+  | "INVALID_MEMORY_PATCH"
   | "INVALID_IDEMPOTENCY_KEY"
   | "IDEMPOTENCY_CONFLICT"
   | "MEMORY_KEY_CONFLICT"
@@ -439,6 +449,63 @@ export class MemoryService {
         "Memory was not found.",
       );
     }
+  }
+
+  async updateMcpMemory(
+    context: AuthenticatedMemoryContext,
+    input: UpdateMcpMemoryInput,
+  ): Promise<ReadMemoryDetailResult> {
+    await this.requireActiveUser(context.userId);
+    const id = input.id.trim();
+    if (!id) {
+      throw new MemoryDomainError("MEMORY_NOT_FOUND", "Memory was not found.");
+    }
+
+    let hasPatch = false;
+    const patch: {
+      category?: MemoryCategory;
+      key?: string;
+      content?: string;
+      tags?: string[];
+      author?: ContentAuthor;
+    } = {};
+    if (input.category !== undefined) {
+      patch.category = this.validateCategories([input.category])![0]!;
+      hasPatch = true;
+    }
+    if (input.key !== undefined) {
+      patch.key = this.normalizeRequiredText(input.key, MAX_KEY_LENGTH, "INVALID_MEMORY_KEY");
+      hasPatch = true;
+    }
+    if (input.content !== undefined) {
+      patch.content = this.normalizeRequiredText(input.content, MAX_CONTENT_LENGTH, "INVALID_MEMORY_CONTENT");
+      hasPatch = true;
+    }
+    if (input.tags !== undefined) {
+      patch.tags = this.normalizeTags(input.tags);
+      hasPatch = true;
+    }
+    if (input.author !== undefined) {
+      this.requireAuthor(input.author);
+      patch.author = input.author;
+      hasPatch = true;
+    }
+    if (!hasPatch) {
+      throw new MemoryDomainError(
+        "INVALID_MEMORY_PATCH",
+        "At least one Memory field must be supplied.",
+      );
+    }
+
+    const updated = await this.repository.updateMemory({
+      userId: context.userId,
+      id,
+      ...patch,
+    });
+    if (!updated) {
+      throw new MemoryDomainError("MEMORY_NOT_FOUND", "Memory was not found.");
+    }
+    return this.readMemoryDetail({ userId: context.userId, id });
   }
 
   async archiveMemory(input: {

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, inArray } from "drizzle-orm";
-import { createDatabase } from "../src/database/client.js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import {
   coreMemories,
   resourceLifecycleEvents,
@@ -18,11 +20,16 @@ const RUN_INTEGRATION =
 
 class RollbackMemoryLifecycleTest extends Error {}
 
+function createLocalDatabase(databaseUrl: string) {
+  const client = postgres(databaseUrl, { max: 10, prepare: false, ssl: false });
+  return { db: drizzle(client, { schema }), close: () => client.end() };
+}
+
 test(
   "real Memory repository updates and archives only owned active assistant-visible rows",
   { skip: !RUN_INTEGRATION },
   async () => {
-    const database = createDatabase(process.env.DATABASE_URL!);
+    const database = createLocalDatabase(process.env.DATABASE_URL!);
 
     try {
       await assert.rejects(
@@ -401,15 +408,16 @@ test(
               ]),
             );
           assert.equal(lifecycleOrderEvents.length, 4);
+          const sortLifecycleEvents = (events: typeof lifecycleOrderEvents) => events
+            .map(({ createdAt: _createdAt, ...event }) => event)
+            .sort((left, right) =>
+              `${left.action}:${left.resourceId}`.localeCompare(
+                `${right.action}:${right.resourceId}`,
+              )
+            );
           assert.deepEqual(
-            lifecycleOrderEvents
-              .map(({ createdAt: _createdAt, ...event }) => event)
-              .sort((left, right) =>
-                `${left.action}:${left.resourceId}`.localeCompare(
-                  `${right.action}:${right.resourceId}`,
-                )
-              ),
-            [
+            sortLifecycleEvents(lifecycleOrderEvents),
+            sortLifecycleEvents([
               {
                 resourceId: olderContentId,
                 action: "archive",
@@ -438,7 +446,7 @@ test(
                 channel: "web",
                 metadata: {},
               },
-            ],
+            ] as typeof lifecycleOrderEvents),
           );
           assert.ok(
             lifecycleOrderEvents.every(({ resourceId, createdAt }) =>
@@ -586,6 +594,57 @@ test(
             false,
           );
 
+          const partialUpdateId = updateIds.get("eligible")!;
+          const [beforePartialUpdate] = await transaction
+            .select({
+              key: coreMemories.key,
+              category: coreMemories.category,
+              content: coreMemories.content,
+              tags: coreMemories.tags,
+              author: coreMemories.author,
+            })
+            .from(coreMemories)
+            .where(eq(coreMemories.id, partialUpdateId))
+            .limit(1);
+          assert.ok(beforePartialUpdate);
+          assert.equal(
+            await repository.updateMemory({
+              id: partialUpdateId,
+              userId: ownerId,
+              content: "Content-only update",
+            }),
+            true,
+          );
+          const [afterContentOnly] = await transaction
+            .select({
+              key: coreMemories.key,
+              category: coreMemories.category,
+              content: coreMemories.content,
+              tags: coreMemories.tags,
+              author: coreMemories.author,
+            })
+            .from(coreMemories)
+            .where(eq(coreMemories.id, partialUpdateId))
+            .limit(1);
+          assert.deepEqual(afterContentOnly, {
+            ...beforePartialUpdate,
+            content: "Content-only update",
+          });
+          assert.equal(
+            await repository.updateMemory({
+              id: partialUpdateId,
+              userId: ownerId,
+              tags: [],
+            }),
+            true,
+          );
+          const [afterTagsClear] = await transaction
+            .select({ tags: coreMemories.tags })
+            .from(coreMemories)
+            .where(eq(coreMemories.id, partialUpdateId))
+            .limit(1);
+          assert.deepEqual(afterTagsClear?.tags, []);
+
           for (const fixture of fixtures) {
             assert.equal(
               await repository.updateMemory({
@@ -644,13 +703,16 @@ test(
             .select({
               id: coreMemories.id,
               content: coreMemories.content,
+              key: coreMemories.key,
+              category: coreMemories.category,
+              tags: coreMemories.tags,
               status: coreMemories.status,
               updatedAt: coreMemories.updatedAt,
             })
             .from(coreMemories)
             .where(
               and(
-                eq(coreMemories.userId, ownerId),
+                inArray(coreMemories.userId, [ownerId, otherUserId]),
                 eq(coreMemories.source, "integration"),
               ),
             );

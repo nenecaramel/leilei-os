@@ -6,6 +6,7 @@ import type {
   DiaryRepository,
   DiaryListQuery,
   NormalizedDiaryCreate,
+  UpdateDiaryInput,
 } from "./diary-repository.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
 import { hashMcpWriteRequest } from "../mcp-write/mcp-write-idempotency.js";
@@ -133,6 +134,16 @@ export type UpdateWebDiaryInput = {
   author?: ContentAuthor;
 };
 
+export type UpdateMcpDiaryInput = {
+  id: string;
+  title?: string;
+  content?: string;
+  date?: string;
+  tags?: readonly string[];
+  mood?: string | null;
+  author?: ContentAuthor;
+};
+
 export type DiaryDomainErrorCode =
   | "AUTHOR_REQUIRED"
   | "INVALID_AUTHENTICATED_USER"
@@ -146,6 +157,7 @@ export type DiaryDomainErrorCode =
   | "INVALID_DATE"
   | "INVALID_TAGS"
   | "INVALID_MOOD"
+  | "INVALID_DIARY_PATCH"
   | "INVALID_IDEMPOTENCY_KEY"
   | "IDEMPOTENCY_CONFLICT";
 
@@ -501,6 +513,59 @@ export class DiaryService {
     }
 
     return this.toEntryResult(updated);
+  }
+
+  async updateMcpDiary(
+    context: AuthenticatedDiaryContext,
+    input: UpdateMcpDiaryInput,
+  ): Promise<DiaryEntryResult> {
+    const userId = await this.requireActiveUser(context.userId);
+    const id = input.id.trim();
+    if (!id) {
+      throw new DiaryDomainError("DIARY_NOT_FOUND", "Diary entry was not found.");
+    }
+
+    let hasPatch = false;
+    const patch: Omit<UpdateDiaryInput, "userId" | "id"> = {};
+    if (input.title !== undefined) {
+      patch.title = this.normalizeRequiredText(input.title, MAX_TITLE_LENGTH, "INVALID_TITLE", "Diary title");
+      hasPatch = true;
+    }
+    if (input.content !== undefined) {
+      patch.content = this.normalizeRequiredText(input.content, MAX_CONTENT_LENGTH, "INVALID_CONTENT", "Diary content");
+      hasPatch = true;
+    }
+    if (input.date !== undefined) {
+      patch.date = this.normalizeDate(input.date);
+      hasPatch = true;
+    }
+    if (input.tags !== undefined) {
+      patch.tags = this.normalizeTags(input.tags);
+      hasPatch = true;
+    }
+    if (input.mood !== undefined) {
+      patch.mood = this.normalizeMood(input.mood);
+      hasPatch = true;
+    }
+    if (input.author !== undefined) {
+      if (!isContentAuthor(input.author)) {
+        throw new DiaryDomainError("AUTHOR_REQUIRED", "Diary author must be L or G.");
+      }
+      patch.author = input.author;
+      hasPatch = true;
+    }
+    if (!hasPatch) {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_PATCH",
+        "At least one Diary field must be supplied.",
+      );
+    }
+
+    const updated = await this.repository.updateDiary({ userId, id, ...patch });
+    if (!updated) {
+      throw new DiaryDomainError("DIARY_NOT_FOUND", "Diary entry was not found.");
+    }
+    return this.readDiary({ userId, id });
   }
 
   private async requireActiveUser(

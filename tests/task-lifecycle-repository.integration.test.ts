@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, inArray } from "drizzle-orm";
-import { createDatabase } from "../src/database/client.js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import {
   resourceLifecycleEvents,
   tasks,
@@ -16,11 +18,16 @@ const RUN_INTEGRATION =
 
 class RollbackTaskLifecycleTest extends Error {}
 
+function createLocalDatabase(databaseUrl: string) {
+  const client = postgres(databaseUrl, { max: 10, prepare: false, ssl: false });
+  return { db: drizzle(client, { schema }), close: () => client.end() };
+}
+
 test(
   "real Task repository enforces lifecycle isolation, atomic audit, ordering, and field preservation",
   { skip: !RUN_INTEGRATION },
   async () => {
-    const database = createDatabase(process.env.DATABASE_URL!);
+    const database = createLocalDatabase(process.env.DATABASE_URL!);
     try {
       await assert.rejects(
         database.db.transaction(async (transaction) => {
@@ -166,6 +173,61 @@ test(
           );
           assert.equal(roundTrip.find((row) => row.id === lifecycleIds[0])?.author, "L");
           assert.equal(roundTrip.find((row) => row.id === lifecycleIds[1])?.author, "G");
+          const [beforePartial] = await transaction.select({
+            title: tasks.title,
+            description: tasks.description,
+            priority: tasks.priority,
+            dueTime: tasks.dueTime,
+            timezone: tasks.timezone,
+            tags: tasks.tags,
+          }).from(tasks).where(eq(tasks.id, lifecycleIds[0]!));
+          assert.ok(beforePartial?.dueTime, "fixture must start with a due time");
+          const dueTimeCleared = await repository.updateTask({
+            id: lifecycleIds[0]!,
+            userId: owner,
+            dueTime: null,
+          });
+          assert.ok(dueTimeCleared);
+          assert.equal(dueTimeCleared.dueTime, null);
+          assert.deepEqual({
+            title: dueTimeCleared.title,
+            description: dueTimeCleared.description,
+            priority: dueTimeCleared.priority,
+            timezone: dueTimeCleared.timezone,
+            tags: dueTimeCleared.tags,
+          }, {
+            title: beforePartial.title,
+            description: beforePartial.description,
+            priority: beforePartial.priority,
+            timezone: beforePartial.timezone,
+            tags: beforePartial.tags,
+          });
+          const partial = await repository.updateTask({
+            id: lifecycleIds[0]!,
+            userId: owner,
+            description: "Content-only task update",
+          });
+          assert.ok(partial);
+          assert.deepEqual({
+            title: partial.title,
+            description: partial.description,
+            priority: partial.priority,
+            dueTime: partial.dueTime,
+            timezone: partial.timezone,
+            tags: partial.tags,
+          }, {
+            ...beforePartial,
+            description: "Content-only task update",
+            dueTime: null,
+          });
+          const cleared = await repository.updateTask({
+            id: lifecycleIds[0]!,
+            userId: owner,
+            tags: [],
+          });
+          assert.ok(cleared);
+          assert.deepEqual(cleared.tags, []);
+
           const edited = await repository.updateTask({
             id: lifecycleIds[0]!,
             userId: owner,

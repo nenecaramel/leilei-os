@@ -1,5 +1,6 @@
 import type {
   NormalizedTaskCreate,
+  NormalizedTaskFields,
   NormalizedTaskUpdate,
   TaskPriority,
   TaskRecord,
@@ -154,6 +155,21 @@ export type UpdateWebTaskInput = {
   author?: ContentAuthor;
 };
 
+export type UpdateMcpTaskInput = {
+  id: string;
+  title?: string;
+  description?: string;
+  priority?: string;
+  dueTime?: string | null;
+  tags?: readonly string[];
+  author?: ContentAuthor;
+};
+
+export type TransitionMcpTaskInput = {
+  id: string;
+  action: TaskAction;
+};
+
 export type TaskDomainErrorCode =
   | "AUTHOR_REQUIRED"
   | "INVALID_AUTHENTICATED_USER"
@@ -172,6 +188,7 @@ export type TaskDomainErrorCode =
   | "INVALID_DUE_TIME"
   | "INVALID_TIMEZONE"
   | "INVALID_TAGS"
+  | "INVALID_TASK_PATCH"
   | "INVALID_IDEMPOTENCY_KEY"
   | "IDEMPOTENCY_CONFLICT";
 
@@ -544,6 +561,89 @@ export class TaskService {
     return this.toTaskResult(task, accountTimezone);
   }
 
+  async updateMcpTask(
+    context: AuthenticatedTaskContext,
+    input: UpdateMcpTaskInput,
+  ): Promise<TaskEntryResult> {
+    const userId = await this.requireActiveUser(context.userId);
+    const id = input.id.trim();
+    if (!id) {
+      throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    }
+    const accountTimezone = await this.getAccountTimezone(userId);
+    let hasPatch = false;
+    const patch: Omit<NormalizedTaskUpdate, "userId" | "id"> = {};
+    if (input.title !== undefined) {
+      patch.title = this.normalizeRequiredText(input.title, MAX_TITLE_LENGTH, "INVALID_TITLE", "Task title");
+      hasPatch = true;
+    }
+    if (input.description !== undefined) {
+      patch.description = this.normalizeRequiredText(input.description, MAX_DESCRIPTION_LENGTH, "INVALID_DESCRIPTION", "Task description");
+      hasPatch = true;
+    }
+    if (input.priority !== undefined) {
+      patch.priority = this.normalizePriority(input.priority);
+      hasPatch = true;
+    }
+    if (input.dueTime !== undefined) {
+      patch.dueTime = this.normalizeDueTime(input.dueTime, accountTimezone);
+      hasPatch = true;
+    }
+    if (input.tags !== undefined) {
+      patch.tags = this.normalizeTags(input.tags);
+      hasPatch = true;
+    }
+    if (input.author !== undefined) {
+      patch.author = this.requireAuthor(input.author);
+      hasPatch = true;
+    }
+    if (!hasPatch) {
+      throw new TaskDomainError(
+        "INVALID_TASK_PATCH",
+        "At least one Task field must be supplied.",
+      );
+    }
+    const task = await this.repository.updateTask({ userId, id, ...patch });
+    if (!task) {
+      throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    }
+    return this.readTask({ userId, id });
+  }
+
+  async transitionMcpTask(
+    context: AuthenticatedTaskContext,
+    input: TransitionMcpTaskInput,
+  ): Promise<TaskEntryResult> {
+    const current = await this.readTask({ userId: context.userId, id: input.id });
+    if (!current.allowed_actions.includes(input.action)) {
+      throw new TaskDomainError(
+        input.action === "reopen"
+          ? "INVALID_TASK_REOPEN_STATE"
+          : "INVALID_TASK_STATUS_TRANSITION",
+        input.action === "reopen"
+          ? "The task cannot be reopened in its current state."
+          : "The task cannot perform that action in its current state.",
+      );
+    }
+
+    switch (input.action) {
+      case "start":
+        await this.updateWebTaskStatus({ userId: context.userId, id: input.id, status: "in_progress" });
+        break;
+      case "complete":
+        await this.updateWebTaskStatus({ userId: context.userId, id: input.id, status: "completed" });
+        break;
+      case "cancel":
+        await this.updateWebTaskStatus({ userId: context.userId, id: input.id, status: "cancelled" });
+        break;
+      case "reopen":
+        await this.reopenTask({ userId: context.userId, id: input.id });
+        break;
+    }
+
+    return this.readTask({ userId: context.userId, id: input.id });
+  }
+
   private async requireActiveUser(
     userId: string,
   ): Promise<string> {
@@ -617,7 +717,7 @@ export class TaskService {
     dueTime?: string | null;
     timezone?: string;
     tags: readonly string[];
-  }, accountTimezone: string): Omit<NormalizedTaskUpdate, "userId" | "id"> {
+  }, accountTimezone: string): NormalizedTaskFields {
     const requestedTimezone = input.timezone
       ? this.normalizeTimezone(input.timezone)
       : accountTimezone;

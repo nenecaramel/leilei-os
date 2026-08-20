@@ -139,12 +139,12 @@ class MockTaskRepository implements TaskRepository {
     if (!record || record.userId !== input.userId) return null;
     record.task = {
       ...record.task,
-      title: input.title,
-      description: input.description,
-      priority: input.priority,
-      dueTime: input.dueTime,
-      timezone: input.timezone,
-      tags: input.tags,
+      ...(input.title === undefined ? {} : { title: input.title }),
+      ...(input.description === undefined ? {} : { description: input.description }),
+      ...(input.priority === undefined ? {} : { priority: input.priority }),
+      ...(input.dueTime === undefined ? {} : { dueTime: input.dueTime }),
+      ...(input.timezone === undefined ? {} : { timezone: input.timezone }),
+      ...(input.tags === undefined ? {} : { tags: input.tags }),
       updatedAt: new Date("2026-07-22T10:00:00.000Z"),
       author: input.author ?? record.task.author ?? null,
     };
@@ -504,6 +504,88 @@ test("Task legacy-null edits require an author while authored edits preserve or 
   assert.equal(repository.records.get(authored.id)?.task.author, "L");
   await service.updateWebTask({ ...base, id: authored.id, author: "G" });
   assert.equal(repository.records.get(authored.id)?.task.author, "G");
+});
+
+test("Task MCP partial update forwards only supplied fields and returns fresh detail", async () => {
+  const repository = new MockTaskRepository();
+  const task = seedTask(repository, "in_progress");
+  task.author = "L";
+  const service = new TaskService(repository);
+
+  const result = await service.updateMcpTask(
+    { userId: "user-1" },
+    { id: " task-1 ", description: " Updated description ", dueTime: null, author: "G" },
+  );
+
+  assert.deepEqual(repository.updateWrites, [{
+    userId: "user-1",
+    id: "task-1",
+    description: "Updated description",
+    dueTime: null,
+    author: "G",
+  }]);
+  assert.equal(result.title, "原任务");
+  assert.equal(result.description, "Updated description");
+  assert.equal(result.due_time, null);
+  assert.equal(result.priority, "normal");
+  assert.equal(result.author, "G");
+  assert.equal(result.status, "in_progress");
+});
+
+test("Task MCP partial update rejects an empty patch before mutation", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository);
+  const service = new TaskService(repository);
+
+  await assert.rejects(
+    service.updateMcpTask({ userId: "user-1" }, { id: "task-1" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_PATCH",
+  );
+  assert.equal(repository.updateWrites.length, 0);
+});
+
+test("Task MCP action transition delegates the existing state machine and reads fresh state", async () => {
+  for (const [status, action, expected] of [
+    ["pending", "start", "in_progress"],
+    ["in_progress", "complete", "completed"],
+    ["in_progress", "cancel", "cancelled"],
+    ["completed", "reopen", "in_progress"],
+    ["cancelled", "reopen", "pending"],
+  ] as const) {
+    const repository = new MockTaskRepository();
+    seedTask(repository, status);
+    const service = new TaskService(repository);
+    const result = await service.transitionMcpTask(
+      { userId: "user-1" },
+      { id: "task-1", action },
+    );
+    assert.equal(result.status, expected);
+  }
+});
+
+test("Task MCP action transition rejects invalid actions using domain error contracts", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository, "pending");
+  const service = new TaskService(repository);
+  await assert.rejects(
+    service.transitionMcpTask({ userId: "user-1" }, { id: "task-1", action: "complete" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_STATUS_TRANSITION",
+  );
+  await assert.rejects(
+    service.transitionMcpTask({ userId: "user-1" }, { id: "task-1", action: "reopen" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_REOPEN_STATE",
+  );
+});
+
+test("Task MCP action transition propagates repository status conflicts", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository, "pending");
+  repository.statusWriteConflict = true;
+  const service = new TaskService(repository);
+  await assert.rejects(
+    service.transitionMcpTask({ userId: "user-1" }, { id: "task-1", action: "start" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "TASK_STATUS_CONFLICT",
+  );
 });
 
 test("Task status and lifecycle mutations preserve the stored author", async () => {
