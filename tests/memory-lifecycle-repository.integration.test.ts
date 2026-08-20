@@ -586,6 +586,57 @@ test(
             false,
           );
 
+          const partialUpdateId = updateIds.get("eligible")!;
+          const [beforePartialUpdate] = await transaction
+            .select({
+              key: coreMemories.key,
+              category: coreMemories.category,
+              content: coreMemories.content,
+              tags: coreMemories.tags,
+              author: coreMemories.author,
+            })
+            .from(coreMemories)
+            .where(eq(coreMemories.id, partialUpdateId))
+            .limit(1);
+          assert.ok(beforePartialUpdate);
+          assert.equal(
+            await repository.updateMemory({
+              id: partialUpdateId,
+              userId: ownerId,
+              content: "Content-only update",
+            }),
+            true,
+          );
+          const [afterContentOnly] = await transaction
+            .select({
+              key: coreMemories.key,
+              category: coreMemories.category,
+              content: coreMemories.content,
+              tags: coreMemories.tags,
+              author: coreMemories.author,
+            })
+            .from(coreMemories)
+            .where(eq(coreMemories.id, partialUpdateId))
+            .limit(1);
+          assert.deepEqual(afterContentOnly, {
+            ...beforePartialUpdate,
+            content: "Content-only update",
+          });
+          assert.equal(
+            await repository.updateMemory({
+              id: partialUpdateId,
+              userId: ownerId,
+              tags: [],
+            }),
+            true,
+          );
+          const [afterTagsClear] = await transaction
+            .select({ tags: coreMemories.tags })
+            .from(coreMemories)
+            .where(eq(coreMemories.id, partialUpdateId))
+            .limit(1);
+          assert.deepEqual(afterTagsClear?.tags, []);
+
           for (const fixture of fixtures) {
             assert.equal(
               await repository.updateMemory({

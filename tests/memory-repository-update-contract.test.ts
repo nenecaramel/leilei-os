@@ -7,15 +7,27 @@ const source = readFileSync(
   "utf8",
 );
 
-test("Memory repository persists every editable Web field", () => {
+test("Memory repository persists every supplied editable Web field", () => {
   const start = source.indexOf("async updateMemory(");
   const end = source.indexOf("async archiveMemory(", start);
   assert.ok(start >= 0 && end > start);
   const update = source.slice(start, end);
 
-  assert.match(update, /key:\s*input\.key/);
-  assert.match(update, /category:\s*input\.category/);
-  assert.match(update, /content:\s*input\.content/);
+  assert.match(update, /input\.key === undefined/);
+  assert.match(update, /input\.category === undefined/);
+  assert.match(update, /input\.content === undefined/);
   assert.match(update, /tags:\s*input\.tags/);
   assert.match(update, /author:\s*input\.author/);
+});
+
+test("Memory MCP repository update accepts partial fields and preserves empty tags", () => {
+  assert.match(source, /export type UpdateMemoryInput = \{[\s\S]*?key\?: string;[\s\S]*?category\?: MemoryCategory;[\s\S]*?content\?: string;[\s\S]*?tags\?: string\[\];[\s\S]*?author\?: ContentAuthor;/);
+  const start = source.indexOf("async updateMemory(");
+  const end = source.indexOf("async archiveMemory(", start);
+  const update = source.slice(start, end);
+  assert.match(update, /input\.key === undefined/);
+  assert.match(update, /input\.category === undefined/);
+  assert.match(update, /input\.content === undefined/);
+  assert.match(update, /input\.tags === undefined/);
+  assert.match(update, /input\.author === undefined/);
 });

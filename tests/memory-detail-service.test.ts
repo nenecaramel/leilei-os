@@ -462,6 +462,63 @@ test("Memory update normalizes and forwards all editable Web fields", async () =
   }]);
 });
 
+test("Memory MCP partial update forwards only supplied fields and returns fresh detail", async () => {
+  const writes: unknown[] = [];
+  let current = {
+    id: "memory-1",
+    category: "preference" as const,
+    key: "focus_style",
+    content: "Original content",
+    tags: ["keep"],
+    source: "phase_2_validation",
+    author: "L" as const,
+    updatedAt: new Date("2026-07-28T00:00:00.000Z"),
+  };
+  const service = new MemoryService(repository({
+    async findActiveAssistantMemoryById() {
+      return current;
+    },
+    async updateMemory(input) {
+      writes.push(input);
+      current = { ...current, ...input, updatedAt: new Date("2026-08-20T00:00:00.000Z") };
+      return true;
+    },
+  }));
+
+  const result = await service.updateMcpMemory(
+    { userId: "user-a" },
+    { id: " memory-1 ", content: " Updated content ", tags: [] },
+  );
+
+  assert.deepEqual(writes, [{
+    userId: "user-a",
+    id: "memory-1",
+    content: "Updated content",
+    tags: [],
+  }]);
+  assert.equal(result.content, "Updated content");
+  assert.equal(result.key, "focus_style");
+  assert.equal(result.category, "preference");
+  assert.deepEqual(result.tags, []);
+  assert.equal(result.author, "L");
+});
+
+test("Memory MCP partial update rejects an empty patch before mutation", async () => {
+  let mutated = false;
+  const service = new MemoryService(repository({
+    async updateMemory() {
+      mutated = true;
+      return true;
+    },
+  }));
+
+  await assert.rejects(
+    service.updateMcpMemory({ userId: "user-a" }, { id: "memory-1" }),
+    (error) => error instanceof MemoryDomainError && error.code === "INVALID_MEMORY_PATCH",
+  );
+  assert.equal(mutated, false);
+});
+
 for (const key of ["   ", "x".repeat(101)]) {
   test("Memory update rejects an invalid key", async () => {
     const service = new MemoryService(repository());
