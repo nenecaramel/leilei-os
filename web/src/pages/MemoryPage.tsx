@@ -1086,11 +1086,8 @@ export function MemoryPageContent({
         />
       ) : null}
 
-      {actionError && !isDetail && !showCreate && (
-            <section className="memory-message">
-              <h2>操作没有完成</h2>
-              <p>{actionError}</p>
-            </section>
+          {actionError && !isDetail && !showCreate && (
+            <section className="memory-action-notice" role="status">{actionError}</section>
           )}
 
           {showActiveBackground ? (
@@ -1211,14 +1208,14 @@ export function MemoryPageContent({
                     </section>
                   ) : (
                     <section className="memory-empty-state">
-                      <p>{filters.q || filters.category || filters.tag ? "没有匹配的记忆" : "还没有记忆"}</p>
+                      <p>{filters.q || filters.category || filters.tag ? "没有符合条件的记忆" : "还没有记忆"}</p>
                       {(filters.q || filters.category || filters.tag) && (
                         <button
                           type="button"
                           className="secondary-button memory-empty-clear"
                           onClick={() => commitFilters(EMPTY_MEMORY_FILTERS)}
                         >
-                          清除筛选
+                          清除条件
                         </button>
                       )}
                     </section>
@@ -1227,9 +1224,10 @@ export function MemoryPageContent({
               )}
 
               {state.status === "loading" && (
-                <section className="memory-months" aria-label="Memory 加载中">
+                <section className="memory-months" aria-label="Memory 加载中" aria-busy="true">
+                  <span className="visually-hidden" role="status" aria-live="polite">正在读取记忆…</span>
                   {[0, 1].map((index) => (
-                    <div className="memory-month-skeleton" key={index}>
+                    <div className="memory-month-skeleton" aria-hidden="true" key={index}>
                       <span className="memory-month-skeleton-label" />
                       <div className="memory-month-skeleton-card">
                         <span />
@@ -1241,9 +1239,10 @@ export function MemoryPageContent({
               )}
 
               {state.status === "error" && (
-                <MemoryMessage
-                  title="暂时无法读取记忆"
-                  description="连接没有完成，请稍后重试。"
+                  <MemoryMessage
+                    title="暂时无法读取记忆"
+                    description="请稍后重试。"
+                    role="alert"
                   action={
                     <button
                       className="secondary-button"
@@ -1376,9 +1375,10 @@ function ArchivedMemoryList({
   if (state.status === "loading") {
     body = (
       <>
-        <section className="memory-months" aria-label="已归档 Memory 加载中">
+        <section className="memory-months" aria-label="已归档 Memory 加载中" aria-busy="true">
+          <span className="visually-hidden" role="status" aria-live="polite">正在读取归档记忆…</span>
           {[0, 1].map((index) => (
-            <div className="memory-month-skeleton" key={index}>
+            <div className="memory-month-skeleton" aria-hidden="true" key={index}>
               <span className="memory-month-skeleton-label" />
               <div className="memory-month-skeleton-card">
                 <span />
@@ -1392,13 +1392,14 @@ function ArchivedMemoryList({
   } else if (state.status === "error") {
     body = (
       <MemoryMessage
-        title="暂时无法读取归档"
-        description="连接没有完成，请稍后重试。"
+        title="暂时无法读取归档记忆"
+        description="请稍后重试。"
+        role="alert"
         action={<button className="secondary-button" onClick={onRetry}>重新加载</button>}
       />
     );
   } else if (state.result.memories.length === 0) {
-    body = <MemoryMessage title="还没有归档记忆" description="归档区目前为空。" />;
+    body = <MemoryMessage title="还没有归档记忆" />;
   } else {
     const groups = groupMemoriesByMonth(state.result.memories);
     body = (
@@ -1487,33 +1488,28 @@ function ArchivedMemoryDetail({
           return true;
         }}
       >
-        <p className="memory-paper-status">正在读取归档记忆…</p>
+        <div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取归档记忆…</p></div>
       </PaperDetailDialog>
     );
   }
 
   if (state.status === "error" || state.status === "idle") {
     return (
-      <MemoryMessage
-        title="无法读取已归档记忆"
-        description="该记忆不存在、无权访问或暂时不可用。"
-        action={
-          <>
-            <button
-              className="secondary-button"
-              onClick={onRetry}
-            >
-              重新加载
-            </button>
-            <button
-              className="secondary-button"
-              onClick={onBack}
-            >
-              返回归档列表
-            </button>
-          </>
-        }
-      />
+      <PaperDetailDialog
+        id="memory-archive-detail-paper"
+        open
+        label="无法读取归档 Memory"
+        dateLabel=""
+        signature=""
+        triggerRef={triggerRef}
+        onRequestClose={() => { onBack(); return true; }}
+      >
+        <div className="paper-detail-state" role="alert">
+          <p>无法读取归档记忆</p>
+          <span>该归档记忆不存在、无权访问或暂时不可用。</span>
+          <button type="button" className="memory-paper-control" onClick={onRetry}>重试</button>
+        </div>
+      </PaperDetailDialog>
     );
   }
 
@@ -1565,10 +1561,6 @@ function ArchivedMemoryDetail({
         <h2 className="memory-paper-title">
           {memory.key}
         </h2>
-      ) : null}
-
-      {confirmingDelete ? (
-        <p className="memory-paper-status">永久删除后无法恢复，确认继续吗？</p>
       ) : null}
 
       <p className="memory-paper-content">
@@ -1636,7 +1628,7 @@ function MemoryDetail({
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
-        <p className="memory-paper-status">正在读取记忆…</p>
+        <div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取记忆…</p></div>
       </PaperDetailDialog>
     );
   }
@@ -1651,10 +1643,12 @@ function MemoryDetail({
         signature=""
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
-        topRight={<button className="memory-paper-control" onClick={onRetry}>重试</button>}
       >
-        <p className="memory-paper-status">无法读取记忆</p>
-        <p className="memory-paper-content">该记忆不存在、无权访问或暂时不可用。</p>
+        <div className="paper-detail-state" role="alert">
+          <p>无法读取记忆</p>
+          <span>该记忆不存在、无权访问或暂时不可用。</span>
+          <button type="button" className="memory-paper-control" onClick={onRetry}>重试</button>
+        </div>
       </PaperDetailDialog>
     );
   }
@@ -1741,20 +1735,22 @@ function MemoryDetail({
 function MemoryMessage({
   action,
   description,
+  role = "status",
   title,
 }: {
   action?: ReactNode;
-  description: string;
+  description?: string;
+  role?: "status" | "alert";
   title: string;
 }) {
   return (
-    <section className="memory-message memory-module-state">
+    <section className="memory-message memory-module-state records-state" role={role}>
       <div className="placeholder-icon">
         <MemoryIcon />
       </div>
 
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description ? <p>{description}</p> : null}
 
       {action}
     </section>

@@ -70,11 +70,13 @@ export function CalendarPreview({
       <div className="home-section-heading calendar-section-heading">
         <h2 id="calendar-preview-title">Calendar</h2>
       </div>
+      {status === "loading" ? <div className="home-module-state" role="status" aria-live="polite">正在读取 Calendar…</div> : null}
+      {status === "error" ? <div className="home-module-state" role="alert">Calendar 暂时无法读取。 {onRetry ? <button type="button" onClick={() => void onRetry()}>重试</button> : null}</div> : null}
       <div className="calendar-frame">
         <div className="calendar-preview-header">
-          <button className="calendar-month-button" type="button" aria-label="上一个月" onClick={() => shiftMonth(-1)}>‹</button>
+          <button className="calendar-month-button" type="button" aria-label="上一个月" disabled={status === "loading"} onClick={() => shiftMonth(-1)}>‹</button>
           <strong>{monthLabel}</strong>
-          <button className="calendar-month-button" type="button" aria-label="下一个月" onClick={() => shiftMonth(1)}>›</button>
+          <button className="calendar-month-button" type="button" aria-label="下一个月" disabled={status === "loading"} onClick={() => shiftMonth(1)}>›</button>
         </div>
         <div className="calendar-weekdays" aria-hidden="true">
           {WEEKDAYS.map((weekday) => <span key={weekday}>{weekday}</span>)}
@@ -101,12 +103,6 @@ export function CalendarPreview({
             );
           })}
         </div>
-        {status === "error" ? (
-          <div className="calendar-status calendar-status-error" role="alert">
-            Calendar 暂时无法读取。
-            {onRetry ? <button type="button" onClick={() => void onRetry()}>重试</button> : null}
-          </div>
-        ) : null}
       </div>
     </section>
   );

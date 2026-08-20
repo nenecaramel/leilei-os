@@ -291,7 +291,7 @@ export function SystemDataPageContent({
         aria-label="Data summary"
       >
         {state.status === "loading" ? (
-          <p className="system-state-copy">
+          <p className="system-state-copy" role="status" aria-live="polite">
             Reading data summary…
           </p>
         ) : null}

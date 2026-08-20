@@ -114,9 +114,12 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
       <h1 className="home-page-title">Todo</h1>
       <main className="home-prototype-content">
         {migrationNotice ? <div className="home-todo-notice" role="status">{migrationNotice}</div> : null}
-        {loadState === "error" ? <div className="home-todo-error" role="alert">Todo 暂时无法读取。<button type="button" onClick={() => void loadDay(dateKey)}>重试</button></div> : null}
-        <TodayPanel author="L" notes={loadState === "ready" ? papers.L?.entries ?? [] : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
-        <TodayPanel author="G" notes={loadState === "ready" ? papers.G?.entries ?? [] : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
+        {loadState === "loading" ? <div className="home-module-state" role="status" aria-live="polite">正在读取 Todo…</div> : null}
+        {loadState === "error" ? <div className="home-module-state" role="alert">Todo 暂时无法读取。 <button type="button" onClick={() => void loadDay(dateKey)}>重试</button></div> : null}
+        {loadState === "ready" ? <>
+          <TodayPanel author="L" notes={papers.L?.entries ?? []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
+          <TodayPanel author="G" notes={papers.G?.entries ?? []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
+        </> : null}
         <CalendarPreview
           contentDates={calendarContentDates}
           date={today}

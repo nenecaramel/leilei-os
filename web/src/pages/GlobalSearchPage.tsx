@@ -637,19 +637,19 @@ export function GlobalSearchPageContent({ api }: Props) {
       </p>
 
       {state === "idle" ? (
-        <p className="global-search-state-line">
+        <p className="global-search-state-line" role="status" aria-live="polite">
           搜索 Memory、Diary、Task 与 Universe 中保存的内容
         </p>
       ) : null}
 
       {state === "loading" ? (
-        <p className="global-search-state-line">
+        <p className="global-search-state-line" role="status" aria-live="polite">
           正在搜索…
         </p>
       ) : null}
 
       {state === "empty" ? (
-        <section className="memory-empty-state global-search-empty-state">
+        <section className="memory-empty-state global-search-empty-state" role="status">
           <p>没有找到匹配内容</p>
           <button
             type="button"
@@ -666,7 +666,7 @@ export function GlobalSearchPageContent({ api }: Props) {
       ) : null}
 
       {state === "error" ? (
-        <div className="global-search-state-line global-search-error-line global-search-state-line-offset">
+        <div className="global-search-state-line global-search-error-line global-search-state-line-offset" role="alert">
           <span>搜索暂时失败</span>
           <button
             type="button"
