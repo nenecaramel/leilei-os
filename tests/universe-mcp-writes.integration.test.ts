@@ -172,7 +172,7 @@ test("MCP Universe create transactions reject a concurrent disable before mutati
     const disableClient = connection();
     const locked = deferred();
     const release = deferred();
-    const disable = disableClient.begin(async (transaction) => {
+    const disable = disableClient.client.begin(async (transaction) => {
       await transaction`SELECT id FROM users WHERE id = ${nodeUserId}::uuid FOR UPDATE`;
       await transaction`UPDATE users SET status = 'disabled' WHERE id = ${nodeUserId}::uuid`;
       locked.resolve();
@@ -222,7 +222,7 @@ test("MCP Universe create transactions reject a concurrent disable before mutati
     const disableClient = connection();
     const locked = deferred();
     const release = deferred();
-    const disable = disableClient.begin(async (transaction) => {
+    const disable = disableClient.client.begin(async (transaction) => {
       await transaction`SELECT id FROM users WHERE id = ${relationUserId}::uuid FOR UPDATE`;
       await transaction`UPDATE users SET status = 'disabled' WHERE id = ${relationUserId}::uuid`;
       locked.resolve();
