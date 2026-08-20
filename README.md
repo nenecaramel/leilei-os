@@ -17,7 +17,8 @@ The current codebase contains the following working areas:
 - **Todo** — durable daily papers, revisions, status-aware entries, and
   legacy-data migration support.
 - **Universe** — spatial Universe nodes, weighted galaxy memberships,
-  relations, revisions, backups, import/export, and Global Search integration.
+  relations, revisions, backups, import/export, Global Search integration, and
+  explicit MCP node/relation writes.
 - **Global Search** — authenticated cross-module search for Memory, Diary, Task,
   and Universe with cursor pagination and deep links.
 - **System** — account, connections, activity, data export/import, and about
@@ -29,7 +30,7 @@ The current codebase contains the following working areas:
   source of truth for persisted application data.
 
 The current database migration head is
-`0023_faulty_sphinx` (see `drizzle/meta/_journal.json`). The migration chain
+`0025_wild_xavin` (see `drizzle/meta/_journal.json`). The migration chain
 must be reviewed before any production database change.
 
 ## Web application
@@ -45,7 +46,7 @@ The public MCP endpoint uses Auth0 and Streamable HTTP. The registered tools
 cover:
 
 - local context, weather, Memory, Diary, Task, Todo, Toy, and Global Search;
-- Universe search, node reads, and relation reads;
+- Universe search, node/relation reads, node create/update, and relation create;
 - Notion connection discovery, page/database/data-source reads, and safe
   parameterized data-source queries;
 - explicit `write_notion_page` and `write_notion_comment` operations, each
