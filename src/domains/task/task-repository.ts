@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  resourceLifecycleEvents,
   tasks,
   userSettings,
   users,
@@ -160,6 +161,7 @@ export interface TaskRepository {
   findArchivedTaskById?(userId: string, id: string): Promise<TaskRecord | null>;
   archiveTask?(input: TaskLifecycleMutationInput): Promise<boolean>;
   restoreTask?(input: TaskLifecycleMutationInput): Promise<boolean>;
+  permanentlyDeleteTask?(input: TaskLifecycleMutationInput): Promise<boolean>;
 }
 
 type Database = ReturnType<
@@ -613,6 +615,54 @@ export class DrizzleTaskRepository
       await this.lifecycleAudit.record(transaction, createLifecycleAuditEvent({
         userId: input.userId, resourceType: "task", resourceId: input.id,
         action: "restore", actorType: input.actorType, channel: input.channel,
+      }));
+      return true;
+    });
+  }
+
+  async permanentlyDeleteTask(input: TaskLifecycleMutationInput): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+
+      const eligible = await transaction
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(and(
+          eq(tasks.id, input.id),
+          eq(tasks.userId, input.userId),
+          eq(tasks.lifecycleStatus, "archived"),
+        ))
+        .limit(1);
+      if (eligible.length !== 1) return false;
+
+      await transaction.delete(resourceLifecycleEvents).where(and(
+        eq(resourceLifecycleEvents.userId, input.userId),
+        eq(resourceLifecycleEvents.resourceType, "task"),
+        eq(resourceLifecycleEvents.resourceId, input.id),
+      ));
+
+      const deleted = await transaction.delete(tasks).where(and(
+        eq(tasks.id, input.id),
+        eq(tasks.userId, input.userId),
+        eq(tasks.lifecycleStatus, "archived"),
+      )).returning({ id: tasks.id });
+      if (deleted.length !== 1) return false;
+
+      const remaining = await transaction.select({ id: tasks.id }).from(tasks).where(and(
+        eq(tasks.id, input.id),
+        eq(tasks.userId, input.userId),
+      )).limit(1);
+      if (remaining.length !== 0) {
+        throw new Error("Task permanent delete did not remove the task.");
+      }
+
+      await this.lifecycleAudit.record(transaction, createLifecycleAuditEvent({
+        userId: input.userId,
+        resourceType: "task",
+        resourceId: input.id,
+        action: "permanent_delete",
+        actorType: input.actorType,
+        channel: input.channel,
       }));
       return true;
     });
