@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
 import { and, eq } from "drizzle-orm";
-import { createDatabase } from "../src/database/client.js";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "../src/database/schema.js";
 import {
   coreMemories,
   diaryEntries,
@@ -29,7 +31,8 @@ test(
   "permanent deletion removes canonical rows from search, export, and direct reads while retaining minimal audit",
   { skip: !RUN },
   async () => {
-    const database = createDatabase(databaseUrl!);
+    const client = postgres(databaseUrl!, { max: 4, prepare: false, ssl: false });
+    const database = { db: drizzle(client, { schema }), close: () => client.end() };
     try {
       await assert.rejects(
         database.db.transaction(async (transaction) => {
@@ -54,7 +57,7 @@ test(
             content: "deleted memory secret",
             tags: ["deleted"],
             visibility: "assistant",
-            source: "web",
+            source: "mcp",
             status: "archived",
             author: "L",
             createdAt: now,
@@ -68,7 +71,7 @@ test(
             date: "2026-08-20",
             tags: ["deleted"],
             mood: null,
-            source: "web",
+            source: "chatgpt_mcp",
             status: "archived",
             author: "L",
             idempotencyKey: `delete-invariant-${diaryId}`,

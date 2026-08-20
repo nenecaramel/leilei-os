@@ -135,6 +135,7 @@ async function renderTaskPage(
   path: string,
   api: WebApiClient,
   historyState?: unknown,
+  mobile = false,
 ) {
   const dom = new JSDOM("<main id=\"root\"></main>", {
     url: `https://leilei-os.test${path}`,
@@ -165,6 +166,16 @@ async function renderTaskPage(
   installGlobal("PopStateEvent", dom.window.PopStateEvent);
   installGlobal("React", React);
   installGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  dom.window.matchMedia = () => ({
+    matches: mobile,
+    media: "(max-width: 760px)",
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() { return false; },
+  });
   (dom.window.HTMLElement.prototype as unknown as {
     attachEvent(name: string, listener: EventListener): void;
     detachEvent(name: string, listener: EventListener): void;
@@ -984,6 +995,71 @@ test("archived detail restore is strict single-flight and returns to the exact a
     assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
   } finally {
     await page.cleanup();
+  }
+});
+
+test("archived Task permanent-delete pending state blocks desktop and mobile detail exit", async () => {
+  const archivedResponse = {
+    ...TASK_RESPONSE,
+    data: {
+      ...TASK_RESPONSE.data,
+      lifecycle_status: "archived" as const,
+      allowed_actions: ["reopen"] as const,
+    },
+  };
+  for (const mobile of [false, true]) {
+    const deletion = deferred<unknown>();
+    const createPendingApi = () => createApi((path, init) => {
+      if (path === `/task/archived/${TASK_ID}`) return Promise.resolve(archivedResponse);
+      if (init?.method === "DELETE") return deletion.promise;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const { api, requests } = createPendingApi();
+    const page = await renderTaskPage(
+      createArchivedTaskDetailLocation(TASK_ID, "/task/archived"),
+      api,
+      undefined,
+      mobile,
+    );
+    try {
+      await React.act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const deleteButton = [...page.container.querySelectorAll("button")]
+        .find((button) => button.textContent === "删除");
+      assert.ok(deleteButton);
+      await React.act(async () => {
+        deleteButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      });
+      const confirm = [...page.container.querySelectorAll("button")]
+        .find((button) => button.textContent === "确认永久删除");
+      assert.ok(confirm);
+      await React.act(async () => {
+        confirm.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      });
+      assert.equal(requests.filter((request) => request.init?.method === "DELETE").length, 1);
+
+      if (!mobile) {
+        for (const button of [...page.container.querySelectorAll("button")]
+          .filter((candidate) => candidate.textContent === "返回归档列表")) {
+          assert.equal(button.disabled, true);
+        }
+      } else {
+        const dialog = page.container.querySelector("[role=dialog]");
+        assert.ok(dialog);
+        const close = dialog?.parentElement?.querySelector<HTMLButtonElement>(".paper-detail-veil");
+        if (close) {
+          await React.act(async () => {
+            close.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+          });
+          assert.match(page.container.textContent ?? "", /删除中…|永久删除后无法恢复/);
+        }
+      }
+    } finally {
+      deletion.reject(new Error("delete failed"));
+      await deletion.promise.catch(() => undefined);
+      await page.cleanup();
+    }
   }
 });
 

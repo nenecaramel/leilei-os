@@ -754,7 +754,9 @@ export class DrizzleDiaryRepository implements DiaryRepository {
           ),
         )
         .returning({ id: diaryEntries.id });
-      if (deleted.length !== 1) return false;
+      if (deleted.length !== 1) {
+        throw new Error("Diary permanent delete affected an unexpected number of rows.");
+      }
 
       const remaining = await transaction
         .select({ id: diaryEntries.id })

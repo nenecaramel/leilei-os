@@ -1023,7 +1023,7 @@ import {
             onRequestClose={() => { if (!confirmAndDiscardDraft()) return false; handleCloseTask(true); return true; }} /> : null}
         </> : <>
           {!isDetailMode || state.status === "ready" ? <MobileArchivedTaskList state={state} busy={busy} onBack={() => returnToActiveTaskList(taskLocation.returnTo)} onOpen={(id, trigger) => { paperTriggerRef.current = trigger; openArchivedTaskDetail(id); }} onRetry={() => setReloadKey((v) => v + 1)} /> : null}
-          {isDetailMode ? <MobileArchivedTaskDetail state={detailLoadState} task={selectedTask} triggerRef={paperTriggerRef} errorMessage={actionError || null} restoring={restoring} confirmingDelete={permanentDeleteConfirmId === selectedTask?.id} deleting={permanentDeletingId === selectedTask?.id} onRestore={() => void handleRestoreTask()} onRequestDelete={() => setPermanentDeleteConfirmId(selectedTask?.id ?? "")} onConfirmDelete={() => void handlePermanentDeleteTask()} onCancelDelete={() => setPermanentDeleteConfirmId("")} onRequestClose={() => { handleCloseTask(true); return true; }} /> : null}
+          {isDetailMode ? <MobileArchivedTaskDetail state={detailLoadState} task={selectedTask} triggerRef={paperTriggerRef} errorMessage={actionError || null} restoring={restoring} confirmingDelete={permanentDeleteConfirmId === selectedTask?.id} deleting={permanentDeletingId === selectedTask?.id} onRestore={() => void handleRestoreTask()} onRequestDelete={() => setPermanentDeleteConfirmId(selectedTask?.id ?? "")} onConfirmDelete={() => void handlePermanentDeleteTask()} onCancelDelete={() => setPermanentDeleteConfirmId("")} onRequestClose={() => { if (permanentDeletingId === selectedTask?.id) return false; handleCloseTask(true); return true; }} /> : null}
         </>}
       </div>;
     }
@@ -1036,7 +1036,7 @@ import {
           description="管理待办事项、截止时间与完成状态。"
           action={
             isDetailMode && isArchivedMode ? (
-              <button className="secondary-button" disabled={restoring} onClick={() => {
+              <button className="secondary-button" disabled={restoring || permanentDeletingId === selectedTask?.id} onClick={() => {
                 returnToArchivedTaskList(taskLocation.returnTo);
               }}>返回归档列表</button>
             ) : isDetailMode ? (
@@ -1382,7 +1382,7 @@ import {
 
               <button
                 className="secondary-button"
-                disabled={updatingStatus}
+                disabled={updatingStatus || (isArchivedMode && permanentDeletingId === selectedTask?.id)}
                 onClick={() => handleCloseTask()}
               >
                 {isArchivedMode ? "返回归档列表" : "返回任务列表"}

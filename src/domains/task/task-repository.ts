@@ -646,7 +646,9 @@ export class DrizzleTaskRepository
         eq(tasks.userId, input.userId),
         eq(tasks.lifecycleStatus, "archived"),
       )).returning({ id: tasks.id });
-      if (deleted.length !== 1) return false;
+      if (deleted.length !== 1) {
+        throw new Error("Task permanent delete affected an unexpected number of rows.");
+      }
 
       const remaining = await transaction.select({ id: tasks.id }).from(tasks).where(and(
         eq(tasks.id, input.id),

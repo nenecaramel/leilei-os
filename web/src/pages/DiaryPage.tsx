@@ -1336,7 +1336,11 @@ if (isMobile) {
         title="Diary"
         description="按时间记录、查看和整理属于蕾蕾的日常。"
         action={isArchivedDetail ? (
-          <button className="secondary-button" onClick={closeArchivedDiary}>
+          <button
+            className="secondary-button"
+            disabled={restoring || permanentDeletingId === archivedDetailLocation.diaryId}
+            onClick={closeArchivedDiary}
+          >
             返回归档列表
           </button>
         ) : isArchived ? (
@@ -1747,22 +1751,25 @@ function ArchivedDiaryDetail({
       {diary.tags.length > 0 && (
         <p>{diary.tags.map((tag) => `#${tag}`).join(" ")}</p>
       )}
-      <button
-        className="secondary-button"
-        disabled={restoring || deleting}
-        onClick={() => onRestore(diary.id)}
-      >
-        {restoring ? "恢复中…" : "恢复"}
-      </button>
-      <button className="secondary-button" disabled={restoring || deleting} onClick={() => onRequestDelete(diary.id)}>删除</button>
       {confirmingDelete ? (
         <>
           <p>永久删除后无法恢复，确认继续吗？</p>
           <button className="secondary-button" disabled={deleting} onClick={onCancelDelete}>取消</button>
           <button className="secondary-button" disabled={deleting} onClick={() => onConfirmDelete(diary.id)}>{deleting ? "删除中…" : "确认永久删除"}</button>
         </>
-      ) : null}
-      <button className="secondary-button" onClick={onBack}>返回归档列表</button>
+      ) : (
+        <>
+          <button
+            className="secondary-button"
+            disabled={restoring || deleting}
+            onClick={() => onRestore(diary.id)}
+          >
+            {restoring ? "恢复中…" : "恢复"}
+          </button>
+          <button className="secondary-button" disabled={restoring || deleting} onClick={() => onRequestDelete(diary.id)}>删除</button>
+        </>
+      )}
+      <button className="secondary-button" disabled={deleting} onClick={onBack}>返回归档列表</button>
     </section>
   );
 }
