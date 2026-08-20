@@ -511,6 +511,45 @@ test(
             null,
           );
 
+          const [beforePartial] = await transaction
+            .select({
+              title: diaryEntries.title,
+              content: diaryEntries.content,
+              date: diaryEntries.date,
+              tags: diaryEntries.tags,
+              mood: diaryEntries.mood,
+            })
+            .from(diaryEntries)
+            .where(eq(diaryEntries.id, activeId));
+          const partialContent = await repository.updateDiary({
+            id: activeId,
+            userId: owner,
+            content: "Content-only diary update",
+          });
+          assert.ok(partialContent);
+          assert.deepEqual(
+            {
+              title: partialContent.title,
+              content: partialContent.content,
+              date: partialContent.date,
+              tags: partialContent.tags,
+              mood: partialContent.mood,
+            },
+            {
+              ...beforePartial,
+              content: "Content-only diary update",
+            },
+          );
+          const partialCleared = await repository.updateDiary({
+            id: activeId,
+            userId: owner,
+            tags: [],
+            mood: null,
+          });
+          assert.ok(partialCleared);
+          assert.deepEqual(partialCleared.tags, []);
+          assert.equal(partialCleared.mood, null);
+
           const edited = await repository.updateDiary({
             id: activeId,
             userId: owner,

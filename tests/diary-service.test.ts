@@ -87,6 +87,83 @@ test("Diary MCP creation enables durable idempotency without changing Web creati
   assert.notEqual(repository.writes[0]?.diary.mcpRequestHash, repository.writes[0]?.diary.requestHash);
 });
 
+test("Diary MCP partial update forwards only supplied fields and returns fresh detail", async () => {
+  const repository = new MockDiaryRepository();
+  let current: DiaryEntryRecord = {
+    id: "diary-1",
+    title: "Original title",
+    content: "Original content",
+    date: "2026-08-20",
+    tags: ["keep"],
+    mood: "calm",
+    author: "L",
+    createdAt: new Date("2026-08-20T01:00:00Z"),
+    updatedAt: new Date("2026-08-20T02:00:00Z"),
+  };
+  repository.findDiaryById = async (userId, id) => {
+    assert.equal(userId, "user-1");
+    assert.equal(id, "diary-1");
+    return current;
+  };
+  const writes: unknown[] = [];
+  repository.updateDiary = async (input) => {
+    writes.push(input);
+    current = {
+      ...current,
+      ...input,
+      updatedAt: new Date("2026-08-20T03:00:00Z"),
+    };
+    return current;
+  };
+  const service = new DiaryService(repository);
+
+  const result = await service.updateMcpDiary(
+    { userId: "user-1" },
+    { id: " diary-1 ", content: " Updated content ", tags: [], mood: null },
+  );
+
+  assert.deepEqual(writes, [{
+    userId: "user-1",
+    id: "diary-1",
+    content: "Updated content",
+    tags: [],
+    mood: null,
+  }]);
+  assert.equal(result.content, "Updated content");
+  assert.equal(result.title, "Original title");
+  assert.equal(result.date, "2026-08-20");
+  assert.deepEqual(result.tags, []);
+  assert.equal(result.mood, null);
+  assert.equal(result.author, "L");
+});
+
+test("Diary MCP partial update rejects an empty patch before mutation", async () => {
+  const repository = new MockDiaryRepository();
+  let mutated = false;
+  repository.findDiaryById = async () => ({
+    id: "diary-1",
+    title: "Title",
+    content: "Content",
+    date: "2026-08-20",
+    tags: [],
+    mood: null,
+    author: null,
+    createdAt: new Date("2026-08-20T01:00:00Z"),
+    updatedAt: new Date("2026-08-20T02:00:00Z"),
+  });
+  repository.updateDiary = async () => {
+    mutated = true;
+    return null;
+  };
+  const service = new DiaryService(repository);
+
+  await assert.rejects(
+    service.updateMcpDiary({ userId: "user-1" }, { id: "diary-1" }),
+    (error: unknown) => error instanceof DiaryDomainError && error.code === "INVALID_DIARY_PATCH",
+  );
+  assert.equal(mutated, false);
+});
+
 test("creates a normalized diary using only the authenticated context user", async () => {
   const repository = new MockDiaryRepository();
   const service = new DiaryService(repository);

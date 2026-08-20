@@ -87,11 +87,11 @@ export type DiaryListQuery = {
 export type UpdateDiaryInput = {
   userId: string;
   id: string;
-  title: string;
-  content: string;
-  date: string;
-  tags: string[];
-  mood: string | null;
+  title?: string;
+  content?: string;
+  date?: string;
+  tags?: string[];
+  mood?: string | null;
   author?: ContentAuthor;
 };
 
@@ -534,11 +534,11 @@ export class DrizzleDiaryRepository implements DiaryRepository {
       const [updated] = await transaction
         .update(diaryEntries)
         .set({
-          title: input.title,
-          content: input.content,
-          date: input.date,
-          tags: input.tags,
-          mood: input.mood,
+          ...(input.title === undefined ? {} : { title: input.title }),
+          ...(input.content === undefined ? {} : { content: input.content }),
+          ...(input.date === undefined ? {} : { date: input.date }),
+          ...(input.tags === undefined ? {} : { tags: input.tags }),
+          ...(input.mood === undefined ? {} : { mood: input.mood }),
           ...(input.author === undefined ? {} : { author: input.author }),
           updatedAt: new Date(),
         })
