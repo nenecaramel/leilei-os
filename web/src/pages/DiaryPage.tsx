@@ -1857,7 +1857,7 @@ function MobileDiaryRows({
                   <span className="memory-row-title">{diary.title}</span>
                   <span className="memory-row-meta">
                     <span>{formatDiaryRowDate(diary.date)}</span>
-                    {metadata ? <span>{metadata}</span> : null}
+                    <span>{metadata}</span>
                   </span>
                 </button>
               );

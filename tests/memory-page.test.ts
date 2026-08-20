@@ -249,6 +249,9 @@ test("Memory populated list uses read-only month rows and empty list has no mont
     assert.equal(rows[0]?.getAttribute("data-memory-id"), "memory-1");
     assert.doesNotMatch(rows[0]?.textContent ?? "", /查看详情|编辑|归档/);
     assert.equal(populated.container.querySelector(".memory-row textarea"), null);
+    const memoryMetadata = rows[0]?.querySelector(".memory-row-meta");
+    assert.ok(memoryMetadata);
+    assert.equal(memoryMetadata.children.length, 2);
   } finally {
     await populated.cleanup();
   }

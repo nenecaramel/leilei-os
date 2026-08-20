@@ -179,6 +179,19 @@ test("mobile Diary matches Memory header and month-row hierarchy", async () => {
     assert.match(row.textContent ?? "", /August note/);
     assert.match(row.textContent ?? "", /8\/8/);
     assert.match(row.textContent ?? "", /calm · #work #MCP/);
+
+    const emptyMetadataRow = page.container.querySelector<HTMLElement>(
+      '[data-diary-id="diary-2"]',
+    );
+    assert.ok(emptyMetadataRow);
+
+    const emptyMetadata = emptyMetadataRow.querySelector(".memory-row-meta");
+    assert.ok(emptyMetadata);
+
+    const slots = [...emptyMetadata.children];
+    assert.equal(slots.length, 2);
+    assert.equal(slots[0]?.textContent, "7/31");
+    assert.equal(slots[1]?.textContent, "");
   } finally {
     await page.cleanup();
   }
