@@ -11,6 +11,7 @@ import {
 import type { createDatabase } from "../../database/client.js";
 import {
   diaryEntries,
+  resourceLifecycleEvents,
   toolCalls,
   users,
 } from "../../database/schema.js";
@@ -153,6 +154,8 @@ export interface DiaryRepository {
   archiveDiary(input: DiaryLifecycleMutationInput): Promise<boolean>;
 
   restoreDiary(input: DiaryLifecycleMutationInput): Promise<boolean>;
+
+  permanentlyDeleteDiary?(input: DiaryLifecycleMutationInput): Promise<boolean>;
 }
 
 function buildActiveDiaryConditions(
@@ -699,6 +702,85 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         actorType: input.actorType,
         channel: input.channel,
       }));
+      return true;
+    });
+  }
+
+  async permanentlyDeleteDiary(
+    input: DiaryLifecycleMutationInput,
+  ): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+
+      const eligible = await transaction
+        .select({ id: diaryEntries.id })
+        .from(diaryEntries)
+        .where(
+          and(
+            eq(diaryEntries.id, input.id),
+            eq(diaryEntries.userId, input.userId),
+            eq(diaryEntries.status, "archived"),
+          ),
+        )
+        .limit(1);
+      if (eligible.length !== 1) return false;
+
+      await transaction
+        .delete(toolCalls)
+        .where(
+          and(
+            eq(toolCalls.userId, input.userId),
+            eq(toolCalls.resourceType, "diary_entry"),
+            eq(toolCalls.resourceId, input.id),
+          ),
+        );
+      await transaction
+        .delete(resourceLifecycleEvents)
+        .where(
+          and(
+            eq(resourceLifecycleEvents.userId, input.userId),
+            eq(resourceLifecycleEvents.resourceType, "diary"),
+            eq(resourceLifecycleEvents.resourceId, input.id),
+          ),
+        );
+
+      const deleted = await transaction
+        .delete(diaryEntries)
+        .where(
+          and(
+            eq(diaryEntries.id, input.id),
+            eq(diaryEntries.userId, input.userId),
+            eq(diaryEntries.status, "archived"),
+          ),
+        )
+        .returning({ id: diaryEntries.id });
+      if (deleted.length !== 1) return false;
+
+      const remaining = await transaction
+        .select({ id: diaryEntries.id })
+        .from(diaryEntries)
+        .where(
+          and(
+            eq(diaryEntries.id, input.id),
+            eq(diaryEntries.userId, input.userId),
+          ),
+        )
+        .limit(1);
+      if (remaining.length !== 0) {
+        throw new Error("Diary permanent delete did not remove the entry.");
+      }
+
+      await this.lifecycleAudit.record(
+        transaction,
+        createLifecycleAuditEvent({
+          userId: input.userId,
+          resourceType: "diary",
+          resourceId: input.id,
+          action: "permanent_delete",
+          actorType: input.actorType,
+          channel: input.channel,
+        }),
+      );
       return true;
     });
   }
