@@ -1,100 +1,89 @@
 # ChatGPT Resource Updates Implementation Plan
 
-> **For Codex:** Execute this file task-by-task with `superpowers:executing-plans`. For every behavior change, use `superpowers:test-driven-development`. Before completion, use `superpowers:verification-before-completion`.
+> **For Codex:** Execute task-by-task. Use `superpowers:test-driven-development` for every behavior change and `superpowers:verification-before-completion` before claiming completion.
 
 **Base:** `b8e551307d22ee91914b6182e3ea5c956111307b`
 
 **Branch:** `feature/mcp-resource-updates`
 
-**Goal:** Add safe ChatGPT/MCP updates for Memory, Diary, and Task, plus explicit Task state actions.
+**Goal:** Add exactly four ChatGPT/MCP mutations: `update_memory`, `update_diary`, `update_task`, `transition_task`.
 
 ## Frozen contract
 
-Add exactly four MCP tools:
-
-- `update_memory`
-- `update_diary`
-- `update_task`
-- `transition_task`
-
 All four tools:
 
-- use `id: z.string().trim().min(1)` to match existing `get_memory`, `get_diary`, and `get_task` ID contracts;
-- use strict Zod objects;
-- never accept `user_id`, `userId`, or `idempotency_key`;
-- use annotations `{ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }`;
-- never blindly retry after an uncertain mutation outcome; read the target back first.
+- `id: z.string().trim().min(1)`;
+- strict Zod object;
+- no `user_id`, `userId`, or `idempotency_key`;
+- annotations exactly `{ readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }`;
+- no durable idempotency-ledger/schema changes;
+- after uncertain outcome: read target back; never blind-retry.
 
-`update_memory` mutable fields:
-
-- `category`: `profile | preference | goal | project`
-- `key`: string
-- `content`: string
-- `tags`: string[]
-- `author`: `L | G`
-
-`update_diary` mutable fields:
-
-- `title`: string
-- `content`: string
-- `date`: `YYYY-MM-DD`
-- `tags`: string[]
-- `mood`: string | null
-- `author`: `L | G`
-
-`update_task` mutable fields:
-
-- `title`: string
-- `description`: string
-- `priority`: `low | normal | high | urgent`
-- `due_time`: `null`, an ISO instant accepted by `Temporal.Instant.from`, or a local date-time matching `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$` and interpreted in the account timezone
-- `tags`: string[]
-- `author`: `L | G`
-
-The MCP Zod field for `due_time` is exactly `z.string().trim().min(1).max(64).nullable().optional()`; domain parsing remains authoritative.
-
-`update_task` must not expose `status`, `resumeStatus`, `completedAt`, or `timezone`. Task timezone remains account-owned; this PR does not add an MCP task-timezone mutation.
-
-Partial-patch semantics for all `update_*` tools:
-
-- omitted field = unchanged;
-- `tags: []` = clear tags;
-- `mood: null` = clear Diary mood;
-- `due_time: null` = clear Task due time;
-- no other mutable field accepts `null`;
-- at least one mutable field is required.
-
-`transition_task` input is exactly:
+`update_memory` fields:
 
 ```ts
-{
-  id: string;
-  action: "start" | "complete" | "cancel" | "reopen";
-}
+id: z.string().trim().min(1)
+category: z.enum(["profile", "preference", "goal", "project"]).optional()
+key: z.string().max(1_000).optional()
+content: z.string().max(20_000).optional()
+tags: z.array(z.string().max(500)).max(20).optional()
+author: z.enum(["L", "G"]).optional()
 ```
 
-Task actions must reuse the existing state semantics:
+Require at least one mutable field. Omitted = unchanged. `tags: []` = clear. No field accepts `null`.
 
-- `start` -> existing transition to `in_progress`;
-- `complete` -> existing transition to `completed`;
-- `cancel` -> existing transition to `cancelled`;
-- `reopen` -> existing `reopenTask`, preserving stored `resumeStatus`.
+`update_diary` fields:
 
-Repository mutation rule:
+```ts
+id: z.string().trim().min(1)
+title: z.string().min(1).max(200).optional()
+content: z.string().min(1).max(20_000).optional()
+date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+tags: z.array(z.string().min(1).max(50)).max(20).optional()
+mood: z.string().min(1).max(50).nullable().optional()
+author: z.enum(["L", "G"]).optional()
+```
 
-- service code validates only supplied fields;
-- service code must not read a record, merge omitted values, then issue a full update;
-- repository write transactions keep the existing active-user guard and active lifecycle predicate;
-- repository `.set()` includes only supplied mutable columns plus `updatedAt`;
-- successful MCP mutations return a fresh authoritative active readback.
+Require at least one mutable field. Omitted = unchanged. `tags: []` = clear. `mood: null` = clear mood.
 
-Do not add UI changes, database migrations, archive/restore/delete MCP tools, generic Page/Universe mutations, bulk/silent synchronization, production database acceptance writes, or unrelated refactors.
+`update_task` fields:
+
+```ts
+id: z.string().trim().min(1)
+title: z.string().min(1).max(200).optional()
+description: z.string().min(1).max(5_000).optional()
+priority: z.enum(["low", "normal", "high", "urgent"]).optional()
+due_time: z.string().trim().min(1).max(64).nullable().optional()
+tags: z.array(z.string().min(1).max(50)).max(20).optional()
+author: z.enum(["L", "G"]).optional()
+```
+
+Require at least one mutable field. Omitted = unchanged. `tags: []` = clear. `due_time: null` = clear due time. Do not expose `status`, `timezone`, `resumeStatus`, or `completedAt`. Domain `parseTaskDueTime` remains authoritative for accepted timestamp forms/account timezone.
+
+`transition_task` input:
+
+```ts
+id: z.string().trim().min(1)
+action: z.enum(["start", "complete", "cancel", "reopen"])
+```
+
+Allowed actions are the existing Task state-machine actions. `reopen` must preserve stored `resumeStatus`.
+
+Repository mutation rule for all ordinary patches:
+
+- validate only supplied fields;
+- never pre-read and reconstruct omitted values into a full update;
+- repository transaction retains active-user guard and active lifecycle predicate;
+- `.set()` contains only supplied fields plus `updatedAt`;
+- successful MCP mutation returns a fresh active read via existing `readMemoryDetail` / `readDiary` / `readTask`.
+
+Out of scope: UI, migrations, archive/restore/delete MCP tools, Page/Universe writes, state-machine redesign, production acceptance writes, unrelated refactors.
 
 ---
 
-## Task 1 — Memory partial update
+## Task 1 — Memory patch
 
-**Modify**
+Modify:
 
 - `src/domains/memory/memory-service.ts`
 - `src/domains/memory/memory-repository.ts`
@@ -102,32 +91,7 @@ Do not add UI changes, database migrations, archive/restore/delete MCP tools, ge
 - `tests/memory-repository-update-contract.test.ts`
 - `tests/memory-lifecycle-repository.integration.test.ts`
 
-### 1. RED tests
-
-Add service tests proving:
-
-1. content-only patch sends only `content` to repository mutation;
-2. omitted `key/category/tags/author` are not reconstructed from a pre-read;
-3. `tags: []` is preserved as an explicit patch value;
-4. supplied `category/key/content/tags/author` reuse current Memory validation;
-5. empty patch throws new `MemoryDomainError("INVALID_MEMORY_PATCH", ...)`;
-6. missing/archived target returns `MEMORY_NOT_FOUND` through the active mutation path.
-
-Update `tests/memory-repository-update-contract.test.ts` so it asserts `updateMemory` conditionally sets each mutable field by `!== undefined`/property presence and does not use truthiness for `tags`.
-
-Run:
-
-```bash
-pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
-  tests/memory-detail-service.test.ts \
-  tests/memory-repository-update-contract.test.ts
-```
-
-Expected: new tests fail for missing partial-update behavior.
-
-### 2. Implement
-
-In `memory-service.ts` add exactly:
+Add exactly:
 
 ```ts
 export type UpdateMcpMemoryInput = {
@@ -147,88 +111,49 @@ async updateMcpMemory(
 
 Add `INVALID_MEMORY_PATCH` to `MemoryDomainErrorCode`.
 
-`updateMcpMemory` must:
+Behavior:
 
-1. call existing active-user validation;
-2. trim/validate `id` as existing detail reads do;
-3. reject zero supplied mutable fields;
-4. normalize only supplied fields with existing Memory validators;
-5. call repository `updateMemory` with `{ userId, id, ...suppliedNormalizedPatch }` only;
-6. throw `MEMORY_NOT_FOUND` when repository returns false;
-7. return `readMemoryDetail({ userId, id })` after the write.
+1. validate active user and nonblank id;
+2. reject empty patch;
+3. normalize only supplied fields with existing Memory validators;
+4. call `repository.updateMemory({ userId, id, ...patch })` with supplied fields only;
+5. repository `UpdateMemoryInput` makes `key/category/content/tags/author` optional;
+6. repository `.set()` uses property presence/`!== undefined`, never truthiness (`tags: []` must write);
+7. retain current transaction guard and predicates: id, user, active status, assistant visibility;
+8. repository false -> `MEMORY_NOT_FOUND`;
+9. success -> `readMemoryDetail({ userId, id })`.
 
-Do not pre-read the Memory to fill omitted fields.
+RED/GREEN command:
 
-In `memory-repository.ts`, change repository `UpdateMemoryInput` so `key/category/content/tags/author` are optional. Keep `updateMemory` as the single repository update method. Build `.set()` from properties whose value is not `undefined`, then add `updatedAt: new Date()`.
-
-The transaction must retain:
-
-```ts
-requireActiveUserInTransaction(...)
-coreMemories.id === input.id
-coreMemories.userId === input.userId
-coreMemories.status === "active"
-coreMemories.visibility === "assistant"
+```bash
+pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
+  tests/memory-detail-service.test.ts \
+  tests/memory-repository-update-contract.test.ts
 ```
 
-Do not change create/idempotency/lifecycle methods.
-
-### 3. GREEN
-
-Run the same focused command. Then, with a configured test database, run:
+Integration gate:
 
 ```bash
 RUN_DATABASE_INTEGRATION_TEST=1 pnpm exec tsx --test --test-concurrency=1 \
   tests/memory-lifecycle-repository.integration.test.ts
 ```
 
-Add one integration assertion that a one-field `updateMemory` preserves unrelated stored fields and that `tags: []` clears tags.
+Integration assertions: content-only update preserves unrelated fields; `tags: []` clears tags.
 
-Commit:
-
-```bash
-git add src/domains/memory/memory-service.ts src/domains/memory/memory-repository.ts \
-  tests/memory-detail-service.test.ts tests/memory-repository-update-contract.test.ts \
-  tests/memory-lifecycle-repository.integration.test.ts
-git commit -m "feat: add safe Memory partial updates"
-```
+Commit: `feat: add safe Memory partial updates`.
 
 ---
 
-## Task 2 — Diary partial update
+## Task 2 — Diary patch
 
-**Modify**
+Modify:
 
 - `src/domains/diary/diary-service.ts`
 - `src/domains/diary/diary-repository.ts`
 - `tests/diary-service.test.ts`
 - `tests/diary-repository.integration.test.ts`
 
-### 1. RED tests
-
-Add service tests proving:
-
-1. a one-field patch sends only that field to repository mutation;
-2. omitted fields are not reconstructed;
-3. `tags: []` clears tags;
-4. `mood: null` is preserved and clears mood;
-5. omitted mood is absent from repository input;
-6. supplied fields reuse current title/content/date/tags/mood/author validation;
-7. empty patch throws new `DiaryDomainError("INVALID_DIARY_PATCH", ...)`;
-8. archived/missing target returns `DIARY_NOT_FOUND` through the active path.
-
-Run:
-
-```bash
-pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
-  tests/diary-service.test.ts
-```
-
-Expected: new tests fail.
-
-### 2. Implement
-
-In `diary-service.ts` add exactly:
+Add exactly:
 
 ```ts
 export type UpdateMcpDiaryInput = {
@@ -249,76 +174,46 @@ async updateMcpDiary(
 
 Add `INVALID_DIARY_PATCH` to `DiaryDomainErrorCode`.
 
-`updateMcpDiary` must validate only supplied fields. Extract field-level helpers from existing `normalizeDiaryFields`; `updateWebDiary` keeps its current full-update behavior.
+Behavior:
 
-Call repository `updateDiary` with only normalized supplied fields plus `userId/id`. Do not pre-read to fill omitted fields. After success, return `readDiary({ userId, id })`.
+1. validate active user and nonblank id;
+2. reject empty patch;
+3. extract/reuse field validators from current `normalizeDiaryFields`; keep `updateWebDiary` full-update semantics unchanged;
+4. normalize only supplied fields;
+5. repository `UpdateDiaryInput` makes `title/content/date/tags/mood/author` optional;
+6. repository `.set()` uses property presence, preserving `tags: []` and `mood: null`;
+7. retain active-user transaction guard and active Diary predicate;
+8. repository null -> `DIARY_NOT_FOUND`;
+9. success -> `readDiary({ userId, id })`.
 
-In `diary-repository.ts`, change `UpdateDiaryInput` so `title/content/date/tags/mood/author` are optional. `updateDiary` must build `.set()` from property presence, not truthiness, then add `updatedAt`.
-
-Retain the existing transaction-scoped active-user guard and active Diary lifecycle predicate.
-
-### 3. GREEN
-
-Run:
-
-```bash
-pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
-  tests/diary-service.test.ts
-```
-
-With a configured test database, run:
+RED/GREEN:
 
 ```bash
-RUN_DATABASE_INTEGRATION_TEST=1 pnpm exec tsx --test --test-concurrency=1 \
-  tests/diary-repository.integration.test.ts
+pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/diary-service.test.ts
 ```
 
-Add integration assertions for one-field preservation, `tags: []`, and `mood: null`.
-
-Commit:
+Integration:
 
 ```bash
-git add src/domains/diary/diary-service.ts src/domains/diary/diary-repository.ts \
-  tests/diary-service.test.ts tests/diary-repository.integration.test.ts
-git commit -m "feat: add safe Diary partial updates"
+RUN_DATABASE_INTEGRATION_TEST=1 pnpm exec tsx --test --test-concurrency=1 tests/diary-repository.integration.test.ts
 ```
+
+Integration assertions: one-field preservation; `tags: []`; `mood: null`.
+
+Commit: `feat: add safe Diary partial updates`.
 
 ---
 
-## Task 3 — Task ordinary-field partial update
+## Task 3 — Task ordinary-field patch
 
-**Modify**
+Modify:
 
 - `src/domains/task/task-service.ts`
 - `src/domains/task/task-repository.ts`
 - `tests/task-service.test.ts`
 - `tests/task-lifecycle-repository.integration.test.ts`
 
-### 1. RED tests
-
-Add service tests proving:
-
-1. one-field patch sends only that field to repository mutation;
-2. omitted fields are not reconstructed;
-3. `tags: []` clears tags;
-4. `dueTime: null` clears due time;
-5. title/description/priority/dueTime/tags/author reuse current validation;
-6. no MCP patch type contains status/resumeStatus/completedAt/timezone;
-7. empty patch throws new `TaskDomainError("INVALID_TASK_PATCH", ...)`;
-8. archived/missing target returns `TASK_NOT_FOUND` through the active path.
-
-Run:
-
-```bash
-pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
-  tests/task-service.test.ts
-```
-
-Expected: new tests fail.
-
-### 2. Implement
-
-In `task-service.ts` add exactly:
+Add exactly:
 
 ```ts
 export type UpdateMcpTaskInput = {
@@ -339,20 +234,7 @@ async updateMcpTask(
 
 Add `INVALID_TASK_PATCH` to `TaskDomainErrorCode`.
 
-`updateMcpTask` must:
-
-1. validate active user and exact nonblank id;
-2. reject zero supplied mutable fields;
-3. obtain the account timezone through existing Task behavior;
-4. normalize only supplied fields;
-5. normalize supplied `dueTime` with existing `normalizeDueTime(..., accountTimezone)`;
-6. call repository `updateTask` with only supplied normalized fields plus `userId/id`;
-7. never pass status/resumeStatus/completedAt/timezone;
-8. return `readTask({ userId, id })` after success.
-
-Refactor existing field validation into single-field helpers while preserving `createTask` and `updateWebTask` behavior.
-
-In `task-repository.ts`, add exactly:
+In repository add exactly:
 
 ```ts
 export type NormalizedTaskFields = {
@@ -371,81 +253,50 @@ export type NormalizedTaskUpdate = {
 } & Partial<NormalizedTaskFields>;
 ```
 
-Change `task-service.ts` `normalizeTaskFields(...)` return type to `NormalizedTaskFields`. Existing Web update continues to pass the full normalized field object; MCP passes only supplied patch fields.
+Change current `normalizeTaskFields(...)` return type to `NormalizedTaskFields`; Web create/update keep passing the full object.
 
-`updateTask` must conditionally set only supplied fields plus `updatedAt`.
+Behavior:
 
-Retain the existing transaction-scoped active-user guard and `lifecycleStatus === "active"` predicate. `updateTask` must never mutate `status`, `resumeStatus`, or `completedAt`.
+1. validate active user and nonblank id;
+2. reject empty patch;
+3. get account timezone using existing Task behavior;
+4. normalize only supplied title/description/priority/dueTime/tags/author;
+5. supplied `dueTime` uses existing `normalizeDueTime(..., accountTimezone)`;
+6. never put `timezone`, `status`, `resumeStatus`, or `completedAt` into the MCP repository patch;
+7. repository `.set()` includes supplied fields only plus `updatedAt`;
+8. retain active-user transaction guard and active lifecycle predicate;
+9. repository null -> `TASK_NOT_FOUND`;
+10. success -> `readTask({ userId, id })`.
 
-### 3. GREEN
-
-Run:
-
-```bash
-pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
-  tests/task-service.test.ts
-```
-
-With a configured test database, run:
-
-```bash
-RUN_DATABASE_INTEGRATION_TEST=1 pnpm exec tsx --test --test-concurrency=1 \
-  tests/task-lifecycle-repository.integration.test.ts
-```
-
-Add integration assertions for unrelated-field preservation, `tags: []`, and `dueTime: null`.
-
-Commit:
+RED/GREEN:
 
 ```bash
-git add src/domains/task/task-service.ts src/domains/task/task-repository.ts \
-  tests/task-service.test.ts tests/task-lifecycle-repository.integration.test.ts
-git commit -m "feat: add safe Task field patches"
+pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/task-service.test.ts
 ```
+
+Integration:
+
+```bash
+RUN_DATABASE_INTEGRATION_TEST=1 pnpm exec tsx --test --test-concurrency=1 tests/task-lifecycle-repository.integration.test.ts
+```
+
+Integration assertions: one-field preservation; `tags: []`; `dueTime: null`.
+
+Commit: `feat: add safe Task field patches`.
 
 ---
 
-## Task 4 — Task action dispatcher
+## Task 4 — Task action transition
 
-**Modify**
+Modify:
 
 - `src/domains/task/task-service.ts`
 - `tests/task-service.test.ts`
 - `tests/task-status-reopen.integration.test.ts`
 
-**Read only**
+Read only: `src/domains/task/task-state-machine.ts`.
 
-- `src/domains/task/task-state-machine.ts`
-
-### 1. RED tests
-
-Add tests for a new service method that maps actions exactly:
-
-```ts
-start    -> updateWebTaskStatus({ status: "in_progress" })
-complete -> updateWebTaskStatus({ status: "completed" })
-cancel   -> updateWebTaskStatus({ status: "cancelled" })
-reopen   -> reopenTask(...)
-```
-
-Verify:
-
-- invalid transitions still return `INVALID_TASK_STATUS_TRANSITION`;
-- concurrent state changes still return `TASK_STATUS_CONFLICT`;
-- reopening restores stored `resumeStatus` (`pending` or `in_progress`).
-
-Run:
-
-```bash
-pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
-  tests/task-service.test.ts
-```
-
-Expected: new dispatcher tests fail.
-
-### 2. Implement
-
-In `task-service.ts` add exactly:
+Add exactly:
 
 ```ts
 export type TransitionMcpTaskInput = {
@@ -459,30 +310,41 @@ async transitionMcpTask(
 ): Promise<TaskEntryResult>
 ```
 
-`transitionMcpTask` contains only the four-action switch above and delegates to existing `updateWebTaskStatus`/`reopenTask`. Do not add transition rules or repository writes here.
+Behavior:
 
-### 3. GREEN
+1. `const current = await readTask({ userId: context.userId, id: input.id })`;
+2. reject action unless `current.allowed_actions.includes(input.action)`;
+3. invalid `reopen` -> `INVALID_TASK_REOPEN_STATE`; other invalid actions -> `INVALID_TASK_STATUS_TRANSITION`;
+4. delegate only:
+   - `start` -> `updateWebTaskStatus(..., status: "in_progress")`;
+   - `complete` -> `updateWebTaskStatus(..., status: "completed")`;
+   - `cancel` -> `updateWebTaskStatus(..., status: "cancelled")`;
+   - `reopen` -> `reopenTask(...)`;
+5. do not add a second transition table;
+6. after delegated success, return `readTask({ userId: context.userId, id: input.id })`;
+7. keep existing `TASK_STATUS_CONFLICT` behavior; never retry automatically.
 
-Run the focused Task service test. With a configured test database, run:
+Tests must prove allowed action matrix, representative invalid actions, status conflict propagation, and `resumeStatus` reopening to both `pending` and `in_progress`.
+
+RED/GREEN:
 
 ```bash
-RUN_TASK_STATUS_REOPEN_DATABASE_TEST=1 pnpm exec tsx --test --test-concurrency=1 \
-  tests/task-status-reopen.integration.test.ts
+pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/task-service.test.ts
 ```
 
-Commit:
+Integration:
 
 ```bash
-git add src/domains/task/task-service.ts tests/task-service.test.ts \
-  tests/task-status-reopen.integration.test.ts
-git commit -m "feat: add Task MCP action dispatcher"
+RUN_TASK_STATUS_REOPEN_DATABASE_TEST=1 pnpm exec tsx --test --test-concurrency=1 tests/task-status-reopen.integration.test.ts
 ```
+
+Commit: `feat: add Task MCP action transition`.
 
 ---
 
-## Task 5 — Four MCP tools and server wiring
+## Task 5 — MCP tools + server wiring
 
-**Create**
+Create:
 
 - `src/mcp/tools/update-memory/register.ts`
 - `src/mcp/tools/update-diary/register.ts`
@@ -490,17 +352,13 @@ git commit -m "feat: add Task MCP action dispatcher"
 - `src/mcp/tools/transition-task/register.ts`
 - `tests/mcp-resource-update-tools.test.ts`
 
-**Modify**
+Modify:
 
 - `src/mcp/tools/write-context.ts`
 - `src/mcp/server/create-server.ts`
 - `tests/mcp-write-contract.test.ts`
 
-### 1. RED tests
-
-In `tests/mcp-resource-update-tools.test.ts`, use `createMcpServer({}, AUTHENTICATED_USER_ID)` + in-memory MCP transport to assert the four tools exist with the frozen input properties, required fields, strict unknown-field rejection, and exact annotations.
-
-Update `tests/mcp-write-contract.test.ts` expected `MCP_WRITE_TOOL_NAMES` to exactly:
+`MCP_WRITE_TOOL_NAMES` becomes exactly:
 
 ```ts
 [
@@ -517,113 +375,71 @@ Update `tests/mcp-write-contract.test.ts` expected `MCP_WRITE_TOOL_NAMES` to exa
 ]
 ```
 
-Rename the existing “exactly six write tools” test to “MCP exposes exactly ten write tools and preserves every annotation”. Update its author-bearing write-tool assertion so `update_memory`, `update_diary`, and `update_task` may expose `author`; `transition_task` may not.
+Do not modify `src/domains/mcp-write/mcp-write-idempotency.ts` or `src/database/schema.ts`.
 
-Run:
-
-```bash
-pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
-  tests/mcp-write-contract.test.ts \
-  tests/mcp-resource-update-tools.test.ts
-```
-
-Expected: failure because the four tools are not registered.
-
-### 2. Implement shared write context
-
-Append the four new names to `MCP_WRITE_TOOL_NAMES` in `src/mcp/tools/write-context.ts`.
-
-Do not modify `src/domains/mcp-write/mcp-write-idempotency.ts` or `src/database/schema.ts`. No durable idempotency ledger rows are added for these tools.
-
-### 3. Implement `update_memory`
-
-Input: `id` plus the frozen Memory patch fields. Require at least one patch field with schema refinement.
-
-Dependency interface calls only:
+Tool dependencies call only:
 
 ```ts
 memoryService.updateMcpMemory(context, input)
+diaryService.updateMcpDiary(context, input)
+taskService.updateMcpTask(context, input)
+taskService.transitionMcpTask(context, input)
 ```
 
-Use `UpdateMemoryAuthenticationError`. Return the service readback plus `lifecycle_status: "active"` in structured content. Map known Memory domain errors to safe text. Description must say uncertain outcomes require `get_memory` readback before any retry.
+Create authentication errors exactly:
 
-### 4. Implement `update_diary`
+- `UpdateMemoryAuthenticationError`
+- `UpdateDiaryAuthenticationError`
+- `UpdateTaskAuthenticationError`
+- `TransitionTaskAuthenticationError`
 
-Use `UpdateDiaryAuthenticationError`. Preserve `mood: null`. Return service readback plus `lifecycle_status: "active"`. Description must direct uncertain-outcome readback through `get_diary`.
+Each success output matches the corresponding existing `get_memory` / `get_diary` / `get_task` `data` shape, with `lifecycle_status: "active"`. Do not synthesize derived Task fields outside the domain result.
 
-### 5. Implement `update_task`
+`create-server.ts`:
 
-Input properties are exactly:
+- add four register imports/dependency types;
+- add four production adapters;
+- add explicit `McpServerDependencies` entries `updateMemory`, `updateDiary`, `updateTask`, `transitionTask`;
+- register each adjacent to its resource group;
+- do not redesign grouped dependency types.
 
-```ts
-id, title?, description?, priority?, due_time?, tags?, author?
-```
+Tests:
 
-`due_time` uses the frozen Zod schema above and maps to service `dueTime`. Do not expose `status`, `timezone`, `resumeStatus`, or `completedAt`. Use `UpdateTaskAuthenticationError`. Return service readback plus `lifecycle_status: "active"`. Description must direct uncertain-outcome readback through `get_task`.
-
-### 6. Implement `transition_task`
-
-Input properties are exactly `id` and `action`. Call only:
-
-```ts
-taskService.transitionMcpTask(context, { id, action })
-```
-
-Use `TransitionTaskAuthenticationError`. Return service readback plus `lifecycle_status: "active"`. Map not-found, invalid-transition/reopen-state, and status-conflict errors separately. Description must direct uncertain-outcome readback through `get_task`; do not retry a transition blindly.
-
-### 7. Wire server
-
-In `src/mcp/server/create-server.ts`:
-
-- import all four register functions and dependency types;
-- add production dependency adapters calling `updateMcpMemory`, `updateMcpDiary`, `updateMcpTask`, and `transitionMcpTask`;
-- add four explicit optional entries to `McpServerDependencies`: `updateMemory`, `updateDiary`, `updateTask`, `transitionTask`;
-- register each tool adjacent to its existing Memory/Diary/Task group;
-- use authenticated user ID exactly as existing write tools do.
-
-Do not redesign the existing grouped dependency types.
-
-### 8. Extend behavior tests and GREEN
-
-Extend `tests/mcp-resource-update-tools.test.ts` with injected dependencies and assert:
-
-- exact authenticated user context reaches each service;
-- omitted fields stay omitted in service input;
-- `tags: []`, `mood: null`, and `due_time: null` survive transport unchanged;
-- empty patches fail schema validation and never call service;
+- exact schemas/annotations;
+- no identity/idempotency arguments;
+- empty patches rejected before service call;
+- omitted fields remain omitted;
+- `tags: []`, `mood: null`, `due_time: null` preserved;
 - `update_task` rejects `status` and `timezone`;
-- `transition_task` rejects target statuses and accepts only the four actions;
-- successful structured content is the canonical active readback;
-- domain/auth failures return safe MCP errors.
+- `transition_task` accepts only four actions;
+- authenticated user context reaches service exactly once;
+- safe domain/auth errors;
+- canonical active readback.
 
-Run:
+Update existing write-contract test from six to ten write tools. `update_memory`, `update_diary`, `update_task` may expose `author`; `transition_task` may not.
+
+RED before registration:
 
 ```bash
 pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
-  tests/mcp-write-contract.test.ts \
-  tests/mcp-resource-update-tools.test.ts \
-  tests/write-memory-tool.test.ts \
-  tests/write-diary-tool.test.ts \
-  tests/create-task-tool.test.ts
+  tests/mcp-write-contract.test.ts tests/mcp-resource-update-tools.test.ts
 ```
 
-Expected: all pass.
-
-Commit:
+GREEN after implementation:
 
 ```bash
-git add src/mcp/tools/update-memory/register.ts src/mcp/tools/update-diary/register.ts \
-  src/mcp/tools/update-task/register.ts src/mcp/tools/transition-task/register.ts \
-  src/mcp/tools/write-context.ts src/mcp/server/create-server.ts \
-  tests/mcp-write-contract.test.ts tests/mcp-resource-update-tools.test.ts
-git commit -m "feat: expose safe MCP resource updates"
+pnpm exec tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 \
+  tests/mcp-write-contract.test.ts tests/mcp-resource-update-tools.test.ts \
+  tests/write-memory-tool.test.ts tests/write-diary-tool.test.ts tests/create-task-tool.test.ts
 ```
+
+Commit: `feat: expose safe MCP resource updates`.
 
 ---
 
-## Task 6 — Final verification and PR
+## Task 6 — Verification + PR
 
-Run from the final branch head:
+Run from final branch head:
 
 ```bash
 pnpm test
@@ -635,35 +451,18 @@ git diff --stat b8e551307d22ee91914b6182e3ea5c956111307b...HEAD
 git log --oneline b8e551307d22ee91914b6182e3ea5c956111307b..HEAD
 ```
 
-Required result:
+Required:
 
-- `pnpm test`: pass for every test that actually runs;
-- `pnpm typecheck`: exit 0;
-- `pnpm build`: exit 0;
-- `git diff --check`: clean;
-- diff contains only this plan plus Memory/Diary/Task partial-update, Task transition, MCP wiring, and related tests;
-- no migration, UI, lifecycle-tool, Page, Universe, or unrelated changes.
+- every executed test passes;
+- typecheck/build exit 0;
+- diff check clean;
+- no UI, migration, lifecycle-tool, Page, Universe, or unrelated changes;
+- database-gated tests green before merge; if not runnable locally, record **not run locally** and require configured CI/test environment to run them.
 
-Database-gated tests must also be green before merge. If the local environment lacks a test database, record them as **not run locally** and require CI or another configured test environment to execute them; never report skipped/gated tests as passed.
+Open exactly one PR to `main`.
 
-Open exactly one PR to `main`:
+Title: `feat: add safe MCP resource updates`.
 
-**Title**
+PR body: four tools; partial-patch semantics; transaction-level lost-update protection; Task action/state separation + `resumeStatus`; no idempotency migration; exact verification results; exact gated tests not run locally.
 
-```text
-feat: add safe MCP resource updates
-```
-
-PR body must contain:
-
-- the four new tool names;
-- partial-patch semantics;
-- transaction-level prevention of stale full-record overwrite;
-- Task state separation and `resumeStatus` reopen behavior;
-- no idempotency migration;
-- exact verification commands/results;
-- exact database-gated tests not run locally, if any.
-
-Do not merge until required CI is green on the reviewed PR head SHA. If the head SHA changes, rerun the relevant verification on the new head.
-
-A merged PR is not production acceptance. Production verification is a separate step and must use deployed-SHA/runtime evidence without synthetic or destructive production writes.
+Do not merge until required CI is green on the reviewed head SHA. A merged PR is not production acceptance.
