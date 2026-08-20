@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import test from "node:test";
 import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
+import { CalendarPreview } from "../web/src/pages/CalendarPreview.js";
 import type { TodoEntry } from "../web/src/pages/todo-types.js";
 
 const L_TODO_ENTRIES: TodoEntry[] = [
@@ -186,6 +187,51 @@ test("Home renders compact L/G Todo panels and performs real Calendar discovery"
   assert.deepEqual(requests, ["/todo/2026-08-12", "/todo/dates", "/diary/dates"]);
   root.unmount();
   await waitForPaint();
+  env.restore();
+});
+
+test("Home keeps both Todo panels visible while the day request is loading", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
+    now: () => new Date(2026, 7, 12, 12, 0, 0),
+    api: { request: async (path: string) => {
+      if (path === "/todo/dates" || path === "/diary/dates") {
+        return { success: true, data: { dates: [] } };
+      }
+      return new Promise(() => undefined);
+    } },
+  })));
+  await waitForCondition(
+    () => container.querySelector(".calendar-frame") !== null,
+    "Home Calendar shell while Todo is loading",
+  );
+  assert.equal(container.querySelectorAll(".today-panel").length, 2);
+  assert.doesNotMatch(container.textContent ?? "", /正在读取 Todo/);
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
+test("Calendar loading keeps its shell without visible loading copy", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  root.render(React.createElement(BrowserRouter, null, React.createElement(CalendarPreview, {
+    contentDates: [],
+    date: new Date(2026, 7, 12, 12, 0, 0),
+    status: "loading",
+  })));
+  await waitForCondition(
+    () => container.querySelector(".calendar-frame") !== null,
+    "Calendar loading shell",
+  );
+  assert.ok(container.querySelector(".calendar-frame"));
+  assert.ok(container.querySelector(".calendar-grid"));
+  assert.doesNotMatch(container.textContent ?? "", /正在读取 Calendar/);
+  assert.equal(container.querySelectorAll(".calendar-day-marker").length, 0);
+  root.unmount();
   env.restore();
 });
 

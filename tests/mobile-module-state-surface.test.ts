@@ -20,7 +20,7 @@ test("Memory, Diary and Task reusable message states opt into the lightweight mo
     [task, "TaskMessage"],
   ] as const) {
     const block = messageFunction(source, name);
-    assert.match(block, /className="memory-message memory-module-state(?: records-state)?"/);
+    assert.match(block, /className=(?:"memory-message memory-module-state(?: records-state)?"|\{`memory-message memory-module-state)/);
   }
 });
 

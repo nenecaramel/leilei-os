@@ -6092,6 +6092,14 @@ body:has(.system-page) {
     text-align: center;
   }
 
+  .memory-page .memory-module-state.memory-archive-empty-state {
+    width: min(100%, 280px);
+    min-height: 0;
+    margin: 96px auto 0;
+    padding: 0;
+    justify-content: center;
+  }
+
   .memory-page .memory-module-state .placeholder-icon {
     display: none;
   }

@@ -1399,7 +1399,7 @@ function ArchivedMemoryList({
       />
     );
   } else if (state.result.memories.length === 0) {
-    body = <MemoryMessage title="还没有归档记忆" />;
+    body = <MemoryMessage title="还没有归档记忆" className="memory-archive-empty-state" />;
   } else {
     const groups = groupMemoriesByMonth(state.result.memories);
     body = (
@@ -1734,17 +1734,19 @@ function MemoryDetail({
 
 function MemoryMessage({
   action,
+  className,
   description,
   role = "status",
   title,
 }: {
   action?: ReactNode;
+  className?: string;
   description?: string;
   role?: "status" | "alert";
   title: string;
 }) {
   return (
-    <section className="memory-message memory-module-state records-state" role={role}>
+    <section className={`memory-message memory-module-state records-state${className ? ` ${className}` : ""}`} role={role}>
       <div className="placeholder-icon">
         <MemoryIcon />
       </div>

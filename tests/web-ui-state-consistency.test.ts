@@ -54,8 +54,21 @@ test("paper error and loading states expose the frozen accessibility hooks", () 
     assert.match(source, /aria-hidden="true"/);
     assert.match(source, /paper-detail-state/);
   }
-  assert.match(page("DashboardPage.tsx"), /正在读取 Todo/);
-  assert.match(page("CalendarPreview.tsx"), /正在读取 Calendar/);
+  assert.doesNotMatch(page("DashboardPage.tsx"), /正在读取 Todo/);
+  assert.doesNotMatch(page("CalendarPreview.tsx"), /正在读取 Calendar/);
+});
+
+test("Memory archive true-empty uses the centered mobile empty-state geometry", () => {
+  const memory = page("MemoryPage.tsx");
+  const css = styles();
+  assert.match(memory, /<MemoryMessage title="还没有归档记忆" className="memory-archive-empty-state" \/>/);
+  const start = css.indexOf(".memory-page .memory-module-state.memory-archive-empty-state");
+  assert.ok(start >= 0, "Memory archive true-empty needs an explicit mobile geometry rule");
+  const end = css.indexOf("}", start);
+  const block = css.slice(start, end);
+  assert.match(block, /width:\s*min\(100%,\s*280px\)/);
+  assert.match(block, /margin:\s*96px auto 0/);
+  assert.match(block, /justify-content:\s*center/);
 });
 
 test("module state families retain their exact retry and clear labels", () => {
