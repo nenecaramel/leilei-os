@@ -80,7 +80,26 @@ function observeMcpLifecycle(
 ): void {
   const safeFields = Object.fromEntries(
     Object.entries(event).filter(([key]) =>
-      ["name", "namespace", "reason", "activeSessionCount", "activeNamespaceCount", "deletedRows", "durationMs"].includes(key),
+      [
+        "name",
+        "namespace",
+        "reason",
+        "activeSessionCount",
+        "activeNamespaceCount",
+        "deletedRows",
+        "durationMs",
+        "diagnosticSessionOrdinal",
+        "protocolVersion",
+        "clientName",
+        "clientVersion",
+        "hadUnknownSessionHeader",
+        "activeUserNamespaceCount",
+        "idleUserNamespaceCount",
+        "inFlightUserNamespaceCount",
+        "oldestIdleAgeMs",
+        "inFlightCountAtClose",
+        "idleAgeMsAtClose",
+      ].includes(key),
     ),
   );
   if (event.name === "mcp_idempotency_cleanup_failed") {

@@ -8,24 +8,42 @@ export type McpSessionCloseReason =
 
 export type McpSessionObserverEvent =
   | {
+      name: "mcp_initialize_observed";
+      namespace: McpSessionNamespace;
+      protocolVersion: string | null;
+      clientName: string | null;
+      clientVersion: string | null;
+      hadUnknownSessionHeader: boolean;
+      activeSessionCount: number;
+      activeNamespaceCount: number;
+    }
+  | {
       name: "mcp_session_created";
+      diagnosticSessionOrdinal: number;
       namespace: McpSessionNamespace;
       activeSessionCount: number;
       activeNamespaceCount: number;
     }
   | {
       name: "mcp_session_closed";
+      diagnosticSessionOrdinal: number;
       namespace: McpSessionNamespace;
       reason: McpSessionCloseReason;
       activeSessionCount: number;
       activeNamespaceCount: number;
       durationMs: number;
+      inFlightCountAtClose: number;
+      idleAgeMsAtClose: number;
     }
   | {
       name: "mcp_session_capacity_rejected";
       namespace: McpSessionNamespace;
       activeSessionCount: number;
       activeNamespaceCount: number;
+      activeUserNamespaceCount: number;
+      idleUserNamespaceCount: number;
+      inFlightUserNamespaceCount: number;
+      oldestIdleAgeMs: number | null;
     };
 
 type Closable = {
@@ -94,6 +112,7 @@ export function createMcpAbsoluteDeadlineScheduler(
 
 export type McpSessionRecord = {
   sessionId: string;
+  diagnosticSessionOrdinal: number;
   userId: string;
   namespace: McpSessionNamespace;
   server: Closable;
@@ -142,6 +161,7 @@ export class McpSessionRegistry {
   private readonly scheduleAbsoluteDeadline: McpAbsoluteDeadlineScheduler;
   private lastSweepAt = Number.NEGATIVE_INFINITY;
   private readonly reservations = new Set<McpSessionReservation>();
+  private diagnosticSessionOrdinal = 0;
 
   constructor(options: McpSessionRegistryOptions = {}) {
     this.now = options.now ?? Date.now;
@@ -251,6 +271,7 @@ export class McpSessionRegistry {
     const now = this.now();
     const record: McpSessionRecord = {
       ...input,
+      diagnosticSessionOrdinal: ++this.diagnosticSessionOrdinal,
       createdAt: now,
       lastActivityAt: now,
       inFlightCount: input.inFlightCount ?? 0,
@@ -263,6 +284,7 @@ export class McpSessionRegistry {
     );
     this.emit({
       name: "mcp_session_created",
+      diagnosticSessionOrdinal: record.diagnosticSessionOrdinal,
       namespace: record.namespace,
       activeSessionCount: this.size,
       activeNamespaceCount: this.countNamespace(record.namespace),
@@ -313,12 +335,39 @@ export class McpSessionRegistry {
       this.countUserNamespace(userId, namespace) + this.countReservedUserNamespace(userId, namespace) < this.maxPerUser;
   }
 
-  observeCapacityRejected(namespace: McpSessionNamespace): void {
+  observeInitialize(input: {
+    namespace: McpSessionNamespace;
+    protocolVersion: string | null;
+    clientName: string | null;
+    clientVersion: string | null;
+    hadUnknownSessionHeader: boolean;
+  }): void {
+    this.emit({
+      name: "mcp_initialize_observed",
+      ...input,
+      activeSessionCount: this.size,
+      activeNamespaceCount: this.countNamespace(input.namespace),
+    });
+  }
+
+  observeCapacityRejected(userId: string, namespace: McpSessionNamespace): void {
+    const userNamespaceRecords = [...this.sessions.values()].filter(
+      (record) => record.userId === userId && record.namespace === namespace,
+    );
+    const idleRecords = userNamespaceRecords.filter((record) => record.inFlightCount === 0);
+    const inFlightRecords = userNamespaceRecords.filter((record) => record.inFlightCount > 0);
+    const now = this.now();
     this.emit({
       name: "mcp_session_capacity_rejected",
       namespace,
       activeSessionCount: this.size,
       activeNamespaceCount: this.countNamespace(namespace),
+      activeUserNamespaceCount: userNamespaceRecords.length,
+      idleUserNamespaceCount: idleRecords.length,
+      inFlightUserNamespaceCount: inFlightRecords.length,
+      oldestIdleAgeMs: idleRecords.length === 0
+        ? null
+        : Math.max(...idleRecords.map((record) => Math.max(0, now - record.lastActivityAt))),
     });
   }
 
@@ -387,17 +436,21 @@ export class McpSessionRegistry {
     reason: McpSessionCloseReason,
   ): void {
     if (record.closed) return;
+    const now = this.now();
     record.closed = true;
     record.absoluteDeadlineCancel?.();
     record.absoluteDeadlineCancel = undefined;
     this.sessions.delete(record.sessionId);
     this.emit({
       name: "mcp_session_closed",
+      diagnosticSessionOrdinal: record.diagnosticSessionOrdinal,
       namespace: record.namespace,
       reason,
       activeSessionCount: this.size,
       activeNamespaceCount: this.countNamespace(record.namespace),
-      durationMs: Math.max(0, this.now() - record.createdAt),
+      durationMs: Math.max(0, now - record.createdAt),
+      inFlightCountAtClose: record.inFlightCount,
+      idleAgeMsAtClose: Math.max(0, now - record.lastActivityAt),
     });
   }
 

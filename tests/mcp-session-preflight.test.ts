@@ -301,3 +301,83 @@ test("concurrent HTTP initialize requests admit exactly one session at maxTotal 
     assert.equal(registry.capacitySize, 1);
   }, registry);
 });
+
+test("fresh initialize observes sanitized client metadata without exposing identifiers", async () => {
+  const events: Array<Record<string, unknown>> = [];
+  await withMcpServer(async (port) => {
+    const request = initializeRequest();
+    request.params.protocolVersion = "2025-06-18\u0000\n" + "p".repeat(140);
+    request.params.clientInfo = {
+      name: "client\u0001\t" + "n".repeat(140),
+      version: "1.0\u007f" + "v".repeat(140),
+    };
+    const response = await requestSsePost(port, "/mcp", request, {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "x-test-mcp-user": USER_ID,
+    });
+    assert.equal(response.status, 200);
+  }, new McpSessionRegistry({ observer: (event) => events.push(event) }));
+
+  const event = events.find((candidate) => candidate.name === "mcp_initialize_observed");
+  assert.ok(event);
+  for (const key of ["protocolVersion", "clientName", "clientVersion"] as const) {
+    const value = event[key];
+    assert.equal(typeof value, "string");
+    assert.ok((value as string).length <= 120);
+    assert.equal(/[\u0000-\u001f\u007f]/u.test(value as string), false);
+  }
+  assert.equal(event.hadUnknownSessionHeader, false);
+});
+
+test("fresh initialize with an unknown session header is observable without changing the response", async () => {
+  const events: Array<Record<string, unknown>> = [];
+  await withMcpServer(async (port) => {
+    const response = await requestSsePost(port, "/mcp", initializeRequest(), {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "mcp-session-id": "unknown-session-header",
+      "x-test-mcp-user": USER_ID,
+    });
+    assert.equal(response.status, 200);
+  }, new McpSessionRegistry({ observer: (event) => events.push(event) }));
+
+  const event = events.find((candidate) => candidate.name === "mcp_initialize_observed");
+  assert.ok(event);
+  assert.equal(event.hadUnknownSessionHeader, true);
+});
+
+test("HTTP capacity rejection reports exact user namespace idle and in-flight counts", async () => {
+  const events: Array<Record<string, unknown>> = [];
+  const registry = new McpSessionRegistry({
+    maxPerUser: 2,
+    maxTotal: 8,
+    observer: (event) => events.push(event),
+  });
+  await withMcpServer(async (port) => {
+    const headers = {
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
+      "x-test-mcp-user": USER_ID,
+    };
+    const first = await requestSsePost(port, "/mcp", initializeRequest(), headers);
+    const second = await requestSsePost(port, "/mcp", initializeRequest(), headers);
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    const firstSessionId = first.headers["mcp-session-id"];
+    assert.equal(typeof firstSessionId, "string");
+    const inFlight = await registry.acquire(firstSessionId as string, "public", USER_ID);
+    assert.ok(inFlight);
+
+    const rejected = await requestSsePost(port, "/mcp", initializeRequest(), headers);
+    assert.equal(rejected.status, 429);
+  }, registry);
+
+  const event = events.find((candidate) => candidate.name === "mcp_session_capacity_rejected");
+  assert.ok(event);
+  assert.equal(event.activeUserNamespaceCount, 2);
+  assert.equal(event.idleUserNamespaceCount, 1);
+  assert.equal(event.inFlightUserNamespaceCount, 1);
+  assert.equal(typeof event.oldestIdleAgeMs, "number");
+  assert.ok((event.oldestIdleAgeMs as number) >= 0);
+});
