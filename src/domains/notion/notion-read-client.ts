@@ -1,11 +1,18 @@
 import {
   NotionApiError,
   NotionTransport,
+  type NotionTransportOptions,
 } from "./notion-transport.js";
 
 const MAX_DEPTH = 8;
 const MAX_BLOCKS = 500;
 const MAX_TEXT_LENGTH = 60_000;
+export const DEFAULT_NOTION_PAGE_READ_TIMEOUT_MS = 30_000;
+
+export type NotionReadClientOptions = NotionTransportOptions & {
+  operationTimeoutMs?: number;
+  now?: () => number;
+};
 
 export type NotionReadErrorCode =
   | "NOT_CONFIGURED"
@@ -188,14 +195,27 @@ function mapTransportError(error: unknown): NotionReadError {
   }
 }
 
+function configuredOperationTimeout(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_NOTION_PAGE_READ_TIMEOUT_MS;
+  if (!Number.isFinite(value) || value <= 0) {
+    return DEFAULT_NOTION_PAGE_READ_TIMEOUT_MS;
+  }
+  return Math.max(1, Math.floor(value));
+}
+
 export class NotionReadClient {
   private readonly transport: NotionTransport;
+  private readonly operationTimeoutMs: number;
+  private readonly now: () => number;
 
   constructor(
     token: string | undefined,
     fetchImpl: typeof fetch = fetch,
+    options: NotionReadClientOptions = {},
   ) {
-    this.transport = new NotionTransport(token, fetchImpl);
+    this.transport = new NotionTransport(token, fetchImpl, options);
+    this.operationTimeoutMs = configuredOperationTimeout(options.operationTimeoutMs);
+    this.now = options.now ?? Date.now;
   }
 
   async searchPages(input: NotionSearchInput): Promise<NotionSearchResult> {
@@ -230,7 +250,21 @@ export class NotionReadClient {
   }
 
   async readPage(pageId: string): Promise<NotionPageReadResult> {
-    const pagePayload = await this.request(`/pages/${encodeURIComponent(pageId)}`);
+    const deadlineAt = this.now() + this.operationTimeoutMs;
+    const requestWithinDeadline = (
+      path: string,
+      init: RequestInit = {},
+    ): Promise<JsonObject> => {
+      const remainingMs = deadlineAt - this.now();
+      if (remainingMs <= 0) {
+        return Promise.reject(
+          new NotionReadError("UPSTREAM", "Notion is temporarily unavailable."),
+        );
+      }
+      return this.request(path, init, remainingMs);
+    };
+
+    const pagePayload = await requestWithinDeadline(`/pages/${encodeURIComponent(pageId)}`);
     const expectedPageId = normalizeNotionUuid(pageId);
     const returnedPageId = normalizeNotionUuid(pagePayload.id);
     if (pagePayload.object !== "page" || !expectedPageId || !returnedPageId || returnedPageId !== expectedPageId) {
@@ -257,7 +291,7 @@ export class NotionReadClient {
         const suffix = cursor
           ? `?page_size=100&start_cursor=${encodeURIComponent(cursor)}`
           : "?page_size=100";
-        const payload = await this.request(
+        const payload = await requestWithinDeadline(
           `/blocks/${encodeURIComponent(blockId)}/children${suffix}`,
         );
         if (
@@ -333,9 +367,13 @@ export class NotionReadClient {
     };
   }
 
-  private async request(path: string, init: RequestInit = {}): Promise<JsonObject> {
+  private async request(
+    path: string,
+    init: RequestInit = {},
+    timeoutMs?: number,
+  ): Promise<JsonObject> {
     try {
-      return await this.transport.requestJson(path, init);
+      return await this.transport.requestJson(path, init, { timeoutMs });
     } catch (error) {
       throw mapTransportError(error);
     }

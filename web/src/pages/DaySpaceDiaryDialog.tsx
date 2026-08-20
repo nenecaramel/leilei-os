@@ -71,7 +71,7 @@ export function DaySpaceDiaryDialog({
       open={open}
       label={`Diary ${formatDaySpaceDateLabel(diary.date)}`}
       dateLabel={formatDaySpaceDateLabel(diary.date)}
-      signature={author ?? "—"}
+      signature=""
       triggerRef={triggerRef}
       errorMessage={error}
       onRequestClose={async () => {

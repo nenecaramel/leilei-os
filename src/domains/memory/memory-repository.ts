@@ -24,6 +24,7 @@ import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
 } from "../mcp-write/mcp-write-idempotency.js";
+import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
 import type { ContentAuthor } from "../content-author.js";
 
 export type MemoryCategory = (typeof memoryCategoryEnum.enumValues)[number];
@@ -363,16 +364,19 @@ export class DrizzleMemoryRepository implements MemoryRepository {
   }
 
   async createMemory(input: CreateMemoryInput): Promise<void> {
-    await this.db.insert(coreMemories).values({
-      userId: input.userId,
-      category: input.category,
-      key: input.key,
-      content: input.content,
-      tags: input.tags,
-      source: input.source,
-      author: input.author,
-      visibility: "assistant",
-      status: "active",
+    await this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      await transaction.insert(coreMemories).values({
+        userId: input.userId,
+        category: input.category,
+        key: input.key,
+        content: input.content,
+        tags: input.tags,
+        source: input.source,
+        author: input.author,
+        visibility: "assistant",
+        status: "active",
+      });
     });
   }
 
@@ -382,6 +386,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
     requestHash: string;
   }): Promise<McpMemoryCreateResult> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const idempotency = await lockAndReadMcpIdempotency(transaction, {
         userId: input.userId,
         toolName: "write_memory",
@@ -481,33 +486,37 @@ export class DrizzleMemoryRepository implements MemoryRepository {
   }
 
   async updateMemory(input: UpdateMemoryInput): Promise<boolean> {
-    const updated = await this.db
-      .update(coreMemories)
-      .set({
-        key: input.key,
-        category: input.category,
-        content: input.content,
-        ...(input.tags ? { tags: input.tags } : {}),
-        ...(input.author === undefined ? {} : { author: input.author }),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(coreMemories.id, input.id),
-          eq(coreMemories.userId, input.userId),
-          eq(coreMemories.status, "active"),
-          eq(coreMemories.visibility, "assistant"),
-        ),
-      )
-      .returning({ id: coreMemories.id });
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const updated = await transaction
+        .update(coreMemories)
+        .set({
+          key: input.key,
+          category: input.category,
+          content: input.content,
+          ...(input.tags ? { tags: input.tags } : {}),
+          ...(input.author === undefined ? {} : { author: input.author }),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(coreMemories.id, input.id),
+            eq(coreMemories.userId, input.userId),
+            eq(coreMemories.status, "active"),
+            eq(coreMemories.visibility, "assistant"),
+          ),
+        )
+        .returning({ id: coreMemories.id });
 
-    return updated.length === 1;
+      return updated.length === 1;
+    });
   }
 
   async archiveMemory(
     input: MemoryLifecycleMutationInput,
   ): Promise<boolean> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const archived = await transaction
         .update(coreMemories)
         .set({
@@ -541,6 +550,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
     input: MemoryLifecycleMutationInput,
   ): Promise<boolean> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const restored = await transaction
         .update(coreMemories)
         .set({

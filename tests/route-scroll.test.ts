@@ -131,6 +131,19 @@ test("top-level Memory to Diary PUSH resets the window scroll position", async (
   env.restore();
 });
 
+test("top-level Memory to Day Space PUSH resets the window scroll position", async () => {
+  const env = installDom("https://leilei.test/memory");
+  const scrolls: unknown[] = [];
+  env.dom.window.scrollTo = ((options: unknown) => scrolls.push(options)) as typeof window.scrollTo;
+  const root = renderRoutes("/day-space");
+  await waitForEffects();
+  (document.getElementById("navigate") as HTMLButtonElement).click();
+  await waitForEffects();
+  assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
+  root.unmount();
+  env.restore();
+});
+
 test("navigateWithinApp preserves state, resets once, and consumes only its marker", async () => {
   const env = installDom("https://leilei.test/");
   const scrolls: unknown[] = [];

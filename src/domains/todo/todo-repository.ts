@@ -6,6 +6,7 @@ import {
   recordMcpIdempotency,
   type McpIdempotencyTransaction,
 } from "../mcp-write/mcp-write-idempotency.js";
+import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
 import type {
   ReplaceTodoPaperInput,
   ReplaceTodoPaperIdempotentlyInput,
@@ -122,6 +123,7 @@ export class DrizzleTodoRepository implements TodoRepository {
 
   async replacePaper(input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const result = await this.replacePaperWithinTransaction(
         transaction as McpIdempotencyTransaction,
         input,
@@ -136,6 +138,7 @@ export class DrizzleTodoRepository implements TodoRepository {
     input: ReplaceTodoPaperIdempotentlyInput,
   ): Promise<ReplaceTodoPaperIdempotentlyResult> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const idempotency = await lockAndReadMcpIdempotency(transaction, {
         userId: input.userId,
         toolName: "write_todo_paper",

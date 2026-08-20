@@ -24,6 +24,7 @@ import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
 } from "../mcp-write/mcp-write-idempotency.js";
+import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
 import type { ContentAuthor } from "../content-author.js";
 
 export type DiaryUserRecord = {
@@ -332,6 +333,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
     const startedAt = performance.now();
 
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, diary.userId);
       const idempotency = options.mcpWriteIdempotency
         ? await lockAndReadMcpIdempotency(transaction, {
             userId: diary.userId,
@@ -524,37 +526,40 @@ export class DrizzleDiaryRepository implements DiaryRepository {
   async updateDiary(
     input: UpdateDiaryInput,
   ): Promise<DiaryEntryRecord | null> {
-    const [updated] = await this.db
-      .update(diaryEntries)
-      .set({
-        title: input.title,
-        content: input.content,
-        date: input.date,
-        tags: input.tags,
-        mood: input.mood,
-        ...(input.author === undefined ? {} : { author: input.author }),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(diaryEntries.userId, input.userId),
-          eq(diaryEntries.id, input.id),
-          eq(diaryEntries.status, "active"),
-        ),
-      )
-      .returning({
-        id: diaryEntries.id,
-        title: diaryEntries.title,
-        content: diaryEntries.content,
-        date: diaryEntries.date,
-        tags: diaryEntries.tags,
-        mood: diaryEntries.mood,
-        author: diaryEntries.author,
-        createdAt: diaryEntries.createdAt,
-        updatedAt: diaryEntries.updatedAt,
-      });
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const [updated] = await transaction
+        .update(diaryEntries)
+        .set({
+          title: input.title,
+          content: input.content,
+          date: input.date,
+          tags: input.tags,
+          mood: input.mood,
+          ...(input.author === undefined ? {} : { author: input.author }),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(diaryEntries.userId, input.userId),
+            eq(diaryEntries.id, input.id),
+            eq(diaryEntries.status, "active"),
+          ),
+        )
+        .returning({
+          id: diaryEntries.id,
+          title: diaryEntries.title,
+          content: diaryEntries.content,
+          date: diaryEntries.date,
+          tags: diaryEntries.tags,
+          mood: diaryEntries.mood,
+          author: diaryEntries.author,
+          createdAt: diaryEntries.createdAt,
+          updatedAt: diaryEntries.updatedAt,
+        });
 
-    return updated ?? null;
+      return updated ?? null;
+    });
   }
 
   async findArchivedDiaries(
@@ -636,6 +641,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
     input: DiaryLifecycleMutationInput,
   ): Promise<boolean> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const archived = await transaction
         .update(diaryEntries)
         .set({
@@ -668,6 +674,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
     input: DiaryLifecycleMutationInput,
   ): Promise<boolean> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const restored = await transaction
         .update(diaryEntries)
         .set({

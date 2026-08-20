@@ -27,6 +27,7 @@ import {
   lockAndReadMcpIdempotency,
   recordMcpIdempotency,
 } from "../mcp-write/mcp-write-idempotency.js";
+import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
 import type { ContentAuthor } from "../content-author.js";
 
 export type TaskPriority =
@@ -293,45 +294,48 @@ export class DrizzleTaskRepository
   async createTask(
     input: NormalizedTaskCreate,
   ): Promise<TaskRecord> {
-    const [task] = await this.db
-      .insert(tasks)
-      .values({
-        userId: input.userId,
-        title: input.title,
-        description: input.description,
-        status: input.status,
-        resumeStatus: null,
-        lifecycleStatus: "active",
-        priority: input.priority,
-        dueTime: input.dueTime,
-        timezone: input.timezone,
-        tags: input.tags,
-        completedAt: input.completedAt,
-        author: input.author,
-      })
-      .returning({
-        id: tasks.id,
-        title: tasks.title,
-        description: tasks.description,
-        status: tasks.status,
-        priority: tasks.priority,
-        dueTime: tasks.dueTime,
-        timezone: tasks.timezone,
-        tags: tasks.tags,
-        createdAt: tasks.createdAt,
-        updatedAt: tasks.updatedAt,
-        completedAt: tasks.completedAt,
-        resumeStatus: tasks.resumeStatus,
-        author: tasks.author,
-      });
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const [task] = await transaction
+        .insert(tasks)
+        .values({
+          userId: input.userId,
+          title: input.title,
+          description: input.description,
+          status: input.status,
+          resumeStatus: null,
+          lifecycleStatus: "active",
+          priority: input.priority,
+          dueTime: input.dueTime,
+          timezone: input.timezone,
+          tags: input.tags,
+          completedAt: input.completedAt,
+          author: input.author,
+        })
+        .returning({
+          id: tasks.id,
+          title: tasks.title,
+          description: tasks.description,
+          status: tasks.status,
+          priority: tasks.priority,
+          dueTime: tasks.dueTime,
+          timezone: tasks.timezone,
+          tags: tasks.tags,
+          createdAt: tasks.createdAt,
+          updatedAt: tasks.updatedAt,
+          completedAt: tasks.completedAt,
+          resumeStatus: tasks.resumeStatus,
+          author: tasks.author,
+        });
 
-    if (!task) {
-      throw new Error(
-        "Task insert did not return a record.",
-      );
-    }
+      if (!task) {
+        throw new Error(
+          "Task insert did not return a record.",
+        );
+      }
 
-    return task;
+      return task;
+    });
   }
 
   async createTaskIdempotently(
@@ -341,6 +345,7 @@ export class DrizzleTaskRepository
     },
   ): Promise<TaskIdempotentCreateResult> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const idempotency = await lockAndReadMcpIdempotency(transaction, {
         userId: input.userId,
         toolName: "create_task",
@@ -429,119 +434,128 @@ export class DrizzleTaskRepository
   async updateTaskStatus(
     input: UpdateTaskStatusInput,
   ): Promise<TaskRecord | null> {
-    const [task] = await this.db
-      .update(tasks)
-      .set({
-        status: input.status,
-        resumeStatus: input.resumeStatus ?? null,
-        completedAt: input.completedAt,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(tasks.userId, input.userId),
-          eq(tasks.id, input.id),
-          eq(tasks.lifecycleStatus, "active"),
-          ...(input.expectedStatus ? [eq(tasks.status, input.expectedStatus)] : []),
-        ),
-      )
-      .returning({
-        id: tasks.id,
-        title: tasks.title,
-        description: tasks.description,
-        status: tasks.status,
-        priority: tasks.priority,
-        dueTime: tasks.dueTime,
-        timezone: tasks.timezone,
-        tags: tasks.tags,
-        createdAt: tasks.createdAt,
-        updatedAt: tasks.updatedAt,
-        completedAt: tasks.completedAt,
-        resumeStatus: tasks.resumeStatus,
-        author: tasks.author,
-      });
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const [task] = await transaction
+        .update(tasks)
+        .set({
+          status: input.status,
+          resumeStatus: input.resumeStatus ?? null,
+          completedAt: input.completedAt,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(tasks.userId, input.userId),
+            eq(tasks.id, input.id),
+            eq(tasks.lifecycleStatus, "active"),
+            ...(input.expectedStatus ? [eq(tasks.status, input.expectedStatus)] : []),
+          ),
+        )
+        .returning({
+          id: tasks.id,
+          title: tasks.title,
+          description: tasks.description,
+          status: tasks.status,
+          priority: tasks.priority,
+          dueTime: tasks.dueTime,
+          timezone: tasks.timezone,
+          tags: tasks.tags,
+          createdAt: tasks.createdAt,
+          updatedAt: tasks.updatedAt,
+          completedAt: tasks.completedAt,
+          resumeStatus: tasks.resumeStatus,
+          author: tasks.author,
+        });
 
-    return task ?? null;
+      return task ?? null;
+    });
   }
 
   async reopenTask(
     input: ReopenTaskInput,
   ): Promise<TaskRecord | null> {
-    const [task] = await this.db
-      .update(tasks)
-      .set({
-        status: input.resumeStatus,
-        resumeStatus: null,
-        completedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(tasks.userId, input.userId),
-          eq(tasks.id, input.id),
-          eq(tasks.lifecycleStatus, "active"),
-          eq(tasks.status, input.expectedStatus),
-          eq(tasks.resumeStatus, input.resumeStatus),
-        ),
-      )
-      .returning({
-        id: tasks.id,
-        title: tasks.title,
-        description: tasks.description,
-        status: tasks.status,
-        priority: tasks.priority,
-        dueTime: tasks.dueTime,
-        timezone: tasks.timezone,
-        tags: tasks.tags,
-        createdAt: tasks.createdAt,
-        updatedAt: tasks.updatedAt,
-        completedAt: tasks.completedAt,
-        resumeStatus: tasks.resumeStatus,
-        author: tasks.author,
-      });
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const [task] = await transaction
+        .update(tasks)
+        .set({
+          status: input.resumeStatus,
+          resumeStatus: null,
+          completedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(tasks.userId, input.userId),
+            eq(tasks.id, input.id),
+            eq(tasks.lifecycleStatus, "active"),
+            eq(tasks.status, input.expectedStatus),
+            eq(tasks.resumeStatus, input.resumeStatus),
+          ),
+        )
+        .returning({
+          id: tasks.id,
+          title: tasks.title,
+          description: tasks.description,
+          status: tasks.status,
+          priority: tasks.priority,
+          dueTime: tasks.dueTime,
+          timezone: tasks.timezone,
+          tags: tasks.tags,
+          createdAt: tasks.createdAt,
+          updatedAt: tasks.updatedAt,
+          completedAt: tasks.completedAt,
+          resumeStatus: tasks.resumeStatus,
+          author: tasks.author,
+        });
 
-    return task ?? null;
+      return task ?? null;
+    });
   }
 
   async updateTask(
     input: NormalizedTaskUpdate,
   ): Promise<TaskRecord | null> {
-    const [task] = await this.db
-      .update(tasks)
-      .set({
-        title: input.title,
-        description: input.description,
-        priority: input.priority,
-        dueTime: input.dueTime,
-        timezone: input.timezone,
-        tags: input.tags,
-        updatedAt: new Date(),
-        ...(input.author === undefined ? {} : { author: input.author }),
-      })
-      .where(
-        and(
-          eq(tasks.userId, input.userId),
-          eq(tasks.id, input.id),
-          eq(tasks.lifecycleStatus, "active"),
-        ),
-      )
-      .returning({
-        id: tasks.id,
-        title: tasks.title,
-        description: tasks.description,
-        status: tasks.status,
-        priority: tasks.priority,
-        dueTime: tasks.dueTime,
-        timezone: tasks.timezone,
-        tags: tasks.tags,
-        createdAt: tasks.createdAt,
-        updatedAt: tasks.updatedAt,
-        completedAt: tasks.completedAt,
-        resumeStatus: tasks.resumeStatus,
-        author: tasks.author,
-      });
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const [task] = await transaction
+        .update(tasks)
+        .set({
+          title: input.title,
+          description: input.description,
+          priority: input.priority,
+          dueTime: input.dueTime,
+          timezone: input.timezone,
+          tags: input.tags,
+          updatedAt: new Date(),
+          ...(input.author === undefined ? {} : { author: input.author }),
+        })
+        .where(
+          and(
+            eq(tasks.userId, input.userId),
+            eq(tasks.id, input.id),
+            eq(tasks.lifecycleStatus, "active"),
+          ),
+        )
+        .returning({
+          id: tasks.id,
+          title: tasks.title,
+          description: tasks.description,
+          status: tasks.status,
+          priority: tasks.priority,
+          dueTime: tasks.dueTime,
+          timezone: tasks.timezone,
+          tags: tasks.tags,
+          createdAt: tasks.createdAt,
+          updatedAt: tasks.updatedAt,
+          completedAt: tasks.completedAt,
+          resumeStatus: tasks.resumeStatus,
+          author: tasks.author,
+        });
 
-    return task ?? null;
+      return task ?? null;
+    });
   }
 
   async findArchivedTasks(userId: string, limit: number): Promise<TaskRecord[]> {
@@ -576,6 +590,7 @@ export class DrizzleTaskRepository
 
   async archiveTask(input: TaskLifecycleMutationInput): Promise<boolean> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const rows = await transaction.update(tasks).set({ lifecycleStatus: "archived" })
         .where(and(eq(tasks.id, input.id), eq(tasks.userId, input.userId), eq(tasks.lifecycleStatus, "active")))
         .returning({ id: tasks.id });
@@ -590,6 +605,7 @@ export class DrizzleTaskRepository
 
   async restoreTask(input: TaskLifecycleMutationInput): Promise<boolean> {
     return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
       const rows = await transaction.update(tasks).set({ lifecycleStatus: "active" })
         .where(and(eq(tasks.id, input.id), eq(tasks.userId, input.userId), eq(tasks.lifecycleStatus, "archived")))
         .returning({ id: tasks.id });
