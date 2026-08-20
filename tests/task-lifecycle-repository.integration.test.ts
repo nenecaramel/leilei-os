@@ -174,6 +174,27 @@ test(
             timezone: tasks.timezone,
             tags: tasks.tags,
           }).from(tasks).where(eq(tasks.id, lifecycleIds[0]!));
+          assert.ok(beforePartial?.dueTime, "fixture must start with a due time");
+          const dueTimeCleared = await repository.updateTask({
+            id: lifecycleIds[0]!,
+            userId: owner,
+            dueTime: null,
+          });
+          assert.ok(dueTimeCleared);
+          assert.equal(dueTimeCleared.dueTime, null);
+          assert.deepEqual({
+            title: dueTimeCleared.title,
+            description: dueTimeCleared.description,
+            priority: dueTimeCleared.priority,
+            timezone: dueTimeCleared.timezone,
+            tags: dueTimeCleared.tags,
+          }, {
+            title: beforePartial.title,
+            description: beforePartial.description,
+            priority: beforePartial.priority,
+            timezone: beforePartial.timezone,
+            tags: beforePartial.tags,
+          });
           const partial = await repository.updateTask({
             id: lifecycleIds[0]!,
             userId: owner,

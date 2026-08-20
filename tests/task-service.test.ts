@@ -577,6 +577,17 @@ test("Task MCP action transition rejects invalid actions using domain error cont
   );
 });
 
+test("Task MCP action transition propagates repository status conflicts", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository, "pending");
+  repository.statusWriteConflict = true;
+  const service = new TaskService(repository);
+  await assert.rejects(
+    service.transitionMcpTask({ userId: "user-1" }, { id: "task-1", action: "start" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "TASK_STATUS_CONFLICT",
+  );
+});
+
 test("Task status and lifecycle mutations preserve the stored author", async () => {
   const repository = new MockTaskRepository();
   const service = new TaskService(repository);

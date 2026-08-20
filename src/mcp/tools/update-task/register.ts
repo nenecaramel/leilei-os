@@ -24,7 +24,7 @@ export interface UpdateTaskToolService { updateMcpTask(context: AuthenticatedTas
 export type UpdateTaskToolDependencies = { taskService: UpdateTaskToolService; getAuthenticatedUserId: () => string };
 
 export function registerUpdateTaskTool(server: McpServer, dependencies: UpdateTaskToolDependencies): void {
-  server.registerTool("update_task", { title: "Update one Task", description: "Update only explicitly supplied ordinary fields on one active Task.", inputSchema: updateTaskInputSchema, outputSchema: updateTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, title, description, priority, due_time, tags, author }) => invokeMcpWrite({
+  server.registerTool("update_task", { title: "Update one Task", description: "Update only explicitly supplied ordinary fields on one active Task. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly retry.", inputSchema: updateTaskInputSchema, outputSchema: updateTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, title, description, priority, due_time, tags, author }) => invokeMcpWrite({
     toolName: "update_task", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
       const data = await dependencies.taskService.updateMcpTask({ userId }, { id, ...(title === undefined ? {} : { title }), ...(description === undefined ? {} : { description }), ...(priority === undefined ? {} : { priority }), ...(due_time === undefined ? {} : { dueTime: due_time }), ...(tags === undefined ? {} : { tags }), ...(author === undefined ? {} : { author }) });

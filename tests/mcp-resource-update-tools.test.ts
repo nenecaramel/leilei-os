@@ -3,6 +3,8 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
+import { MemoryDomainError } from "../src/domains/memory/memory-service.js";
+import { UpdateMemoryAuthenticationError } from "../src/mcp/tools/update-memory/register.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 
@@ -49,14 +51,20 @@ const task = {
   author: "L" as const,
 };
 
-async function connect() {
+type ConnectOptions = {
+  memoryAuthError?: Error;
+  memoryError?: Error;
+};
+
+async function connect(options: ConnectOptions = {}) {
   const calls = { memory: [] as unknown[], diary: [] as unknown[], task: [] as unknown[], transition: [] as unknown[] };
   const auth = { memory: 0, diary: 0, task: 0 };
   const server = createMcpServer({
     updateMemory: {
-      getAuthenticatedUserId: () => { auth.memory += 1; return USER_ID; },
+      getAuthenticatedUserId: () => { auth.memory += 1; if (options.memoryAuthError) throw options.memoryAuthError; return USER_ID; },
       memoryService: {
         async updateMcpMemory(context, input) {
+          if (options.memoryError) throw options.memoryError;
           calls.memory.push({ context, input });
           return memory;
         },
@@ -110,6 +118,13 @@ test("resource update tools expose strict destructive non-idempotent contracts",
       idempotentHint: false,
       openWorldHint: false,
     });
+    const description = tool.description ?? "";
+    const expectedReadback = name === "update_memory" || name === "update_diary" ? `get_${name.slice("update_".length)}` : "get_task";
+    assert.match(description, new RegExp(expectedReadback));
+    assert.match(description, /uncertain/i);
+    assert.match(description, /readback/i);
+    assert.match(description, /blind(?:ly)?\s+(?:retry|repeat)|retry.*without.*read/i);
+    if (name === "transition_task") assert.match(description, /same action|repeat/i);
     assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
     assert.equal("userId" in (tool.inputSchema.properties ?? {}), false);
     assert.equal("idempotency_key" in (tool.inputSchema.properties ?? {}), false);
@@ -145,10 +160,40 @@ test("resource update schemas reject empty patches and forbidden fields before s
     const response = await client.callTool({ name, arguments: { id: "resource-id" } });
     assert.equal(response.isError, true);
   }
-  const forbidden = await client.callTool({ name: "update_task", arguments: { id: "task", status: "completed" } });
-  assert.equal(forbidden.isError, true);
+  for (const name of ["update_memory", "update_diary", "update_task"] as const) {
+    for (const field of ["user_id", "userId", "idempotency_key", "idempotencyKey"] as const) {
+      const forbidden = await client.callTool({ name, arguments: { id: "resource", content: "patch", [field]: "forbidden" } });
+      assert.equal(forbidden.isError, true, `${name} should reject ${field}`);
+    }
+  }
+  for (const field of ["user_id", "userId", "idempotency_key", "idempotencyKey"] as const) {
+    const forbidden = await client.callTool({ name: "transition_task", arguments: { id: "task", action: "start", [field]: "forbidden" } });
+    assert.equal(forbidden.isError, true, `transition_task should reject ${field}`);
+  }
+  const forbiddenStatus = await client.callTool({ name: "update_task", arguments: { id: "task", status: "completed" } });
+  assert.equal(forbiddenStatus.isError, true);
+  const invalidAction = await client.callTool({ name: "transition_task", arguments: { id: "task", action: "pause" } });
+  assert.equal(invalidAction.isError, true);
   assert.equal(calls.memory.length, 0);
   assert.equal(calls.diary.length, 0);
   assert.equal(calls.task.length, 0);
+  assert.equal(calls.transition.length, 0);
   assert.deepEqual(auth, { memory: 0, diary: 0, task: 0 });
+});
+
+test("resource update tools safely map auth and domain failures without leaking details", async () => {
+  const authPair = await connect({ memoryAuthError: new UpdateMemoryAuthenticationError() });
+  const authResponse = await authPair.client.callTool({ name: "update_memory", arguments: { id: memory.id, content: "next" } });
+  assert.equal(authResponse.isError, true);
+  assert.match(String(authResponse.content?.[0]?.text), /Authentication is required/);
+  await authPair.client.close();
+  await authPair.server.close();
+
+  const domainPair = await connect({ memoryError: new MemoryDomainError("MEMORY_NOT_FOUND", "private record details") });
+  const domainResponse = await domainPair.client.callTool({ name: "update_memory", arguments: { id: memory.id, content: "next" } });
+  assert.equal(domainResponse.isError, true);
+  assert.match(String(domainResponse.content?.[0]?.text), /not found/);
+  assert.equal(String(domainResponse.content?.[0]?.text).includes("private record details"), false);
+  await domainPair.client.close();
+  await domainPair.server.close();
 });
