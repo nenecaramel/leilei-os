@@ -69,6 +69,11 @@ export type MemoryApiDependencies = {
       userId: string;
       id: string;
     }): Promise<void>;
+
+    permanentlyDeleteMemory(input: {
+      userId: string;
+      id: string;
+    }): Promise<void>;
   };
 };
 
@@ -90,6 +95,10 @@ export function createMemoryApiRouter(
   router.post(
     "/archived/:id/restore",
     createRestoreMemoryApiHandler(dependencies),
+  );
+  router.delete(
+    "/archived/:id/permanent",
+    createMemoryPermanentDeleteApiHandler(dependencies),
   );
   router.post("/", createCreateMemoryApiHandler(dependencies));
   router.patch("/", createUpdateMemoryApiHandler(dependencies));
@@ -136,6 +145,63 @@ export function createRestoreMemoryApiHandler(
           error.code === "USER_NOT_FOUND" ||
           error.code === "USER_DISABLED"
         ) {
+          response.status(403).json({
+            success: false,
+            error: {
+              code: "MEMORY_UNAVAILABLE",
+              message: "Memory is unavailable for the authenticated user.",
+            },
+          });
+          return;
+        }
+      }
+
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "MEMORY_UNAVAILABLE",
+          message: "Memory is temporarily unavailable.",
+        },
+      });
+    }
+  };
+}
+
+export function createMemoryPermanentDeleteApiHandler(
+  dependencies: MemoryApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!request.webUserId) {
+      response.status(401).json({
+        success: false,
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Web API authentication is required.",
+        },
+      });
+      return;
+    }
+
+    try {
+      await dependencies.memoryService.permanentlyDeleteMemory({
+        userId: request.webUserId,
+        id: getRouteParam(request.params.id),
+      });
+      response.status(204).end();
+    } catch (error) {
+      if (error instanceof MemoryDomainError) {
+        if (error.code === "MEMORY_NOT_FOUND") {
+          response.status(404).json({
+            success: false,
+            error: {
+              code: "MEMORY_NOT_FOUND",
+              message: "Memory was not found.",
+            },
+          });
+          return;
+        }
+
+        if (error.code === "USER_NOT_FOUND" || error.code === "USER_DISABLED") {
           response.status(403).json({
             success: false,
             error: {

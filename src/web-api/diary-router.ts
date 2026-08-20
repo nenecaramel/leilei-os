@@ -71,6 +71,11 @@ import {
         userId: string;
         id: string;
       }): Promise<void>;
+
+      permanentlyDeleteDiary(input: {
+        userId: string;
+        id: string;
+      }): Promise<void>;
     };
   };
   
@@ -93,6 +98,10 @@ import {
     router.post(
       "/archived/:id/restore",
       createRestoreDiaryApiHandler(dependencies),
+    );
+    router.delete(
+      "/archived/:id/permanent",
+      createDiaryPermanentDeleteApiHandler(dependencies),
     );
     router.get("/:id", createReadDiaryApiHandler(dependencies));
     router.post("/", createCreateDiaryApiHandler(dependencies));
@@ -214,6 +223,26 @@ export function createListDiariesByDateApiHandler(
           id: getRouteParam(request.params.id),
         });
         response.json({ success: true });
+      } catch (error) {
+        sendDiaryError(response, error);
+      }
+    };
+  }
+
+  export function createDiaryPermanentDeleteApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      try {
+        await dependencies.diaryService.permanentlyDeleteDiary({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.id),
+        });
+        response.status(204).end();
       } catch (error) {
         sendDiaryError(response, error);
       }

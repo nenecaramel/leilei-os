@@ -60,6 +60,7 @@ import {
       readArchivedTask?(input: { userId: string; id: string }): Promise<TaskEntryResult>;
       archiveTask?(input: { userId: string; id: string }): Promise<void>;
       restoreTask?(input: { userId: string; id: string }): Promise<void>;
+      permanentlyDeleteTask?(input: { userId: string; id: string }): Promise<void>;
     };
   };
   
@@ -71,6 +72,7 @@ import {
     router.get("/archived", createListArchivedTasksApiHandler(dependencies));
     router.get("/archived/:id", createReadArchivedTaskApiHandler(dependencies));
     router.post("/archived/:id/restore", createRestoreTaskApiHandler(dependencies));
+    router.delete("/archived/:id/permanent", createTaskPermanentDeleteApiHandler(dependencies));
     router.post("/:id/reopen", createReopenTaskApiHandler(dependencies));
     router.get("/", createListTasksApiHandler(dependencies));
     router.get("/:id", createReadTaskApiHandler(dependencies));
@@ -114,6 +116,21 @@ import {
       if (!request.webUserId) return sendUnauthorized(response);
       try { await dependencies.taskService.restoreTask!({ userId: request.webUserId, id: getRouteParam(request.params.id) }); response.json({ success: true, data: {} }); }
       catch (error) { sendTaskError(response, error); }
+    };
+  }
+
+  export function createTaskPermanentDeleteApiHandler(dependencies: TaskApiDependencies): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) return sendUnauthorized(response);
+      try {
+        await dependencies.taskService.permanentlyDeleteTask!({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.id),
+        });
+        response.status(204).end();
+      } catch (error) {
+        sendTaskError(response, error);
+      }
     };
   }
 
