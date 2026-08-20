@@ -8,6 +8,16 @@ export type McpSessionCloseReason =
 
 export type McpSessionObserverEvent =
   | {
+      name: "mcp_initialize_observed";
+      namespace: McpSessionNamespace;
+      protocolVersion: string | null;
+      clientName: string | null;
+      clientVersion: string | null;
+      hadUnknownSessionHeader: boolean;
+      activeSessionCount: number;
+      activeNamespaceCount: number;
+    }
+  | {
       name: "mcp_session_created";
       diagnosticSessionOrdinal: number;
       namespace: McpSessionNamespace;
@@ -323,6 +333,21 @@ export class McpSessionRegistry {
   canCreate(userId: string, namespace: McpSessionNamespace): boolean {
     return this.capacitySize < this.maxTotal &&
       this.countUserNamespace(userId, namespace) + this.countReservedUserNamespace(userId, namespace) < this.maxPerUser;
+  }
+
+  observeInitialize(input: {
+    namespace: McpSessionNamespace;
+    protocolVersion: string | null;
+    clientName: string | null;
+    clientVersion: string | null;
+    hadUnknownSessionHeader: boolean;
+  }): void {
+    this.emit({
+      name: "mcp_initialize_observed",
+      ...input,
+      activeSessionCount: this.size,
+      activeNamespaceCount: this.countNamespace(input.namespace),
+    });
   }
 
   observeCapacityRejected(userId: string, namespace: McpSessionNamespace): void {

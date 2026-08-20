@@ -14,6 +14,37 @@ import {
   type McpSessionRecord,
 } from "./session-registry.js";
 
+const DIAGNOSTIC_LABEL_MAX_LENGTH = 120;
+
+function sanitizeDiagnosticLabel(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const sanitized = value.replace(/[\u0000-\u001f\u007f]/gu, " ").trim();
+  return sanitized ? sanitized.slice(0, DIAGNOSTIC_LABEL_MAX_LENGTH) : null;
+}
+
+function readInitializeDiagnosticMetadata(body: unknown): {
+  protocolVersion: string | null;
+  clientName: string | null;
+  clientVersion: string | null;
+} {
+  if (!body || typeof body !== "object") {
+    return { protocolVersion: null, clientName: null, clientVersion: null };
+  }
+  const params = (body as { params?: unknown }).params;
+  if (!params || typeof params !== "object") {
+    return { protocolVersion: null, clientName: null, clientVersion: null };
+  }
+  const clientInfo = (params as { clientInfo?: unknown }).clientInfo;
+  const clientRecord = clientInfo && typeof clientInfo === "object"
+    ? clientInfo as { name?: unknown; version?: unknown }
+    : undefined;
+  return {
+    protocolVersion: sanitizeDiagnosticLabel((params as { protocolVersion?: unknown }).protocolVersion),
+    clientName: sanitizeDiagnosticLabel(clientRecord?.name),
+    clientVersion: sanitizeDiagnosticLabel(clientRecord?.version),
+  };
+}
+
 export type McpRouterOptions = {
   namespace?: McpSessionNamespace;
   registry?: McpSessionRegistry;
@@ -92,9 +123,14 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
         : null;
 
       if (!activeSession && !knownSession && isInitializeRequest(request.body)) {
+        registry.observeInitialize({
+          namespace,
+          ...readInitializeDiagnosticMetadata(request.body),
+          hadUnknownSessionHeader: Boolean(sessionId),
+        });
         const reservation = await registry.admit(userId, namespace);
         if (!reservation) {
-          registry.observeCapacityRejected(namespace);
+          registry.observeCapacityRejected(userId, namespace);
           sendError(response, 429, -32029, "MCP session capacity exceeded.");
           return;
         }
