@@ -11,14 +11,34 @@ export type UniverseReadResult = {
   version: number;
 };
 
+export type UniverseMcpCreateResult<T> = {
+  outcome: "created" | "replayed";
+  value: T;
+  version: number;
+};
+
 export interface UniverseRepository {
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   loadUniverse(userId: string): Promise<UniverseReadResult | null>;
   saveUniverse(userId: string, snapshot: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult>;
   createNode(userId: string, node: UniverseNode, expectedVersion: number): Promise<UniverseReadResult>;
+  createNodeIdempotently?(
+    userId: string,
+    node: UniverseNode,
+    expectedVersion: number,
+    idempotencyKey: string,
+    requestHash: string,
+  ): Promise<UniverseMcpCreateResult<UniverseNode>>;
   updateNode(userId: string, node: UniverseNode, reason: string, expectedVersion: number): Promise<UniverseReadResult>;
   deleteNode(userId: string, nodeId: string, expectedVersion: number): Promise<UniverseReadResult>;
   createRelation(userId: string, relation: UniverseRelation, expectedVersion: number): Promise<UniverseReadResult>;
+  createRelationIdempotently?(
+    userId: string,
+    relation: UniverseRelation,
+    expectedVersion: number,
+    idempotencyKey: string,
+    requestHash: string,
+  ): Promise<UniverseMcpCreateResult<UniverseRelation>>;
   deleteRelation(userId: string, relationId: string, expectedVersion: number): Promise<UniverseReadResult>;
   latestRevision(userId: string, nodeId: string): Promise<UniverseRevision | null>;
   restoreLatestRevision(userId: string, nodeId: string, expectedVersion: number): Promise<UniverseReadResult>;

@@ -18,9 +18,17 @@ export function safeUniverseError(error: unknown, notFoundMessage: string) {
     const text = error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND"
       ? "Universe is unavailable for the authenticated user."
       : error.code === "UNIVERSE_NOT_INITIALIZED"
-        ? "Universe is not initialized."
+      ? "Universe is not initialized."
         : error.code === "NODE_NOT_FOUND" || error.code === "RELATION_NOT_FOUND"
           ? notFoundMessage
+          : error.code === "VERSION_CONFLICT"
+            ? "Universe changed since expected_version; fresh-read before deciding whether to retry."
+            : error.code === "RELATION_CONFLICT"
+              ? "That directional Universe relation already exists."
+              : error.code === "RELATION_INVALID"
+                ? "The Universe relation request is invalid."
+                : error.code === "IDEMPOTENCY_CONFLICT"
+                  ? "This idempotency key was already used for different Universe content."
           : "The Universe request is invalid.";
     return { isError: true as const, content: [{ type: "text" as const, text }] };
   }

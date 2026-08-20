@@ -27,7 +27,10 @@ class FakeRepository implements UniverseRepository {
   updateNodeCalls = 0;
   lastCreatedNode: UniverseSnapshot["nodes"][number] | undefined;
   lastUpdatedNode: UniverseSnapshot["nodes"][number] | undefined;
+  lastUpdateReason: string | undefined;
   backupCalls = 0;
+  mcpNodeCalls = 0;
+  mcpRelationCalls = 0;
 
   async findUserById(): Promise<{ status: "active" | "disabled" } | null> {
     return { status: this.userStatus };
@@ -51,9 +54,15 @@ class FakeRepository implements UniverseRepository {
     this.version += 1;
     return { snapshot: this.snapshot, version: this.version };
   }
-  async updateNode(_userId: string, node: UniverseSnapshot["nodes"][number], _reason: string, expectedVersion: number): Promise<UniverseReadResult> {
+  async createNodeIdempotently(_userId: string, node: UniverseSnapshot["nodes"][number], expectedVersion: number): Promise<{ outcome: "created"; value: UniverseSnapshot["nodes"][number]; version: number }> {
+    this.mcpNodeCalls += 1;
+    this.lastExpectedVersion = expectedVersion;
+    return { outcome: "created", value: node, version: expectedVersion + 1 };
+  }
+  async updateNode(_userId: string, node: UniverseSnapshot["nodes"][number], reason: string, expectedVersion: number): Promise<UniverseReadResult> {
     this.updateNodeCalls += 1;
     this.lastUpdatedNode = node;
+    this.lastUpdateReason = reason;
     this.lastExpectedVersion = expectedVersion;
     if (expectedVersion !== this.version) throw new UniverseServiceError("VERSION_CONFLICT");
     this.snapshot = { ...this.snapshot!, nodes: this.snapshot!.nodes.map((item) => item.id === node.id ? node : item) };
@@ -62,6 +71,11 @@ class FakeRepository implements UniverseRepository {
   }
   async deleteNode(): Promise<UniverseReadResult> { throw new Error("not used"); }
   async createRelation(): Promise<UniverseReadResult> { throw new Error("not used"); }
+  async createRelationIdempotently(_userId: string, relation: UniverseSnapshot["relations"][number], expectedVersion: number): Promise<{ outcome: "created"; value: UniverseSnapshot["relations"][number]; version: number }> {
+    this.mcpRelationCalls += 1;
+    this.lastExpectedVersion = expectedVersion;
+    return { outcome: "created", value: relation, version: expectedVersion + 1 };
+  }
   async deleteRelation(): Promise<UniverseReadResult> { throw new Error("not used"); }
   async latestRevision(): Promise<UniverseSnapshot["revisions"][number] | null> { throw new Error("not used"); }
   async restoreLatestRevision(): Promise<UniverseReadResult> { throw new Error("not used"); }
@@ -170,4 +184,57 @@ test("service converts canonical validation failures into the stable domain erro
     }, 1),
     (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE",
   );
+});
+
+test("MCP Universe service creates authoritative node/relation results with durable request boundaries", async () => {
+  const repository = new FakeRepository();
+  const service = new UniverseService(repository);
+  const nodeResult = await service.createMcpNode("user-1", {
+    title: "MCP node", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 0, y: 100 },
+  }, 1, "universe-node-create-0001");
+  assert.equal(nodeResult.node.id.startsWith("node-"), true);
+  assert.equal(nodeResult.universe_version, 2);
+  assert.deepEqual(nodeResult.metadata, { created: true, idempotent_replay: false });
+  assert.equal(repository.mcpNodeCalls, 1);
+
+  const relationResult = await service.createMcpRelation("user-1", {
+    source: "node-a", target: "node-b", relationType: "supports", strength: 0,
+  }, 1, "universe-relation-create-0001");
+  assert.equal(relationResult.relation.id.startsWith("edge-"), true);
+  assert.equal(relationResult.relation.strength, 0);
+  assert.equal(repository.mcpRelationCalls, 1);
+});
+
+test("MCP Universe service rejects forbidden generated-field input and self relations", async () => {
+  const repository = new FakeRepository();
+  const service = new UniverseService(repository);
+  await assert.rejects(
+    service.createMcpNode("user-1", {
+      id: "caller-id", title: "Node", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 1, y: 1 },
+    }, 1, "universe-node-create-0002"),
+    (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE",
+  );
+  await assert.rejects(
+    service.createMcpRelation("user-1", { source: "node-a", target: "node-a", relationType: "supports", strength: 0.5 }, 1, "universe-relation-create-0002"),
+    (error: unknown) => error instanceof UniverseServiceError && error.code === "RELATION_INVALID",
+  );
+});
+
+test("MCP Universe update keeps partial patch semantics and fixed revision reason", async () => {
+  const repository = new FakeRepository();
+  const existing = {
+    id: "node-existing", title: "Title", summary: "Summary", content: "Content", type: "concept", tags: ["old"], galaxies: [],
+    position: { x: 10, y: 20 }, createdAt: timestamp, updatedAt: timestamp,
+  } as const;
+  repository.snapshot = { ...emptySnapshot, nodes: [existing] };
+  repository.version = 1;
+  const service = new UniverseService(repository);
+  const result = await service.updateMcpNode("user-1", existing.id, { summary: "", tags: [] }, 1);
+  const updated = result.snapshot.nodes[0]!;
+  assert.equal(updated.summary, "");
+  assert.deepEqual(updated.tags, []);
+  assert.equal(updated.content, existing.content);
+  assert.deepEqual(updated.position, existing.position);
+  assert.equal(repository.lastUpdateReason, "mcp_update");
+  await assert.rejects(service.updateMcpNode("user-1", existing.id, {}, 2), (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE");
 });
