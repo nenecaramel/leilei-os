@@ -487,6 +487,39 @@ export class MemoryService {
     }
   }
 
+  async permanentlyDeleteMemory(input: {
+    userId: string;
+    id: string;
+  }): Promise<void> {
+    await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+
+    if (!id) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+
+    const permanentlyDelete = this.repository.permanentlyDeleteMemory;
+    if (!permanentlyDelete) {
+      throw new Error("Memory permanent delete persistence is unavailable.");
+    }
+
+    const deleted = await permanentlyDelete.call(this.repository, {
+      userId: input.userId,
+      id,
+      ...WEB_USER_LIFECYCLE_CONTEXT,
+    });
+
+    if (!deleted) {
+      throw new MemoryDomainError(
+        "MEMORY_NOT_FOUND",
+        "Memory was not found.",
+      );
+    }
+  }
+
   private async requireActiveUser(
     userId: string,
   ): Promise<MemoryUserRecord> {

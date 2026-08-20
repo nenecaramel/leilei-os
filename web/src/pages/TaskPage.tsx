@@ -265,6 +265,8 @@ import {
       useState(false);
     const [archiving, setArchiving] = useState(false);
     const [restoring, setRestoring] = useState(false);
+    const [permanentDeleteConfirmId, setPermanentDeleteConfirmId] = useState("");
+    const [permanentDeletingId, setPermanentDeletingId] = useState("");
     const [editing, setEditing] = useState(false);
     const [updating, setUpdating] = useState(false);
     const [editingTitle, setEditingTitle] = useState("");
@@ -677,6 +679,8 @@ import {
     }
 
     function openArchivedTaskDetail(id: string) {
+      setPermanentDeleteConfirmId("");
+      setPermanentDeletingId("");
       const returnTo = `${window.location.pathname}${window.location.search}`;
       window.history.pushState(null, "", createArchivedTaskDetailLocation(id, returnTo));
       setSelectedTask(null);
@@ -720,6 +724,27 @@ import {
       }
     }
 
+    async function handlePermanentDeleteTask() {
+      if (!selectedTask || !permanentDeleteConfirmId || !mutationGate.current.enter()) return;
+      const ticket = mutationOwnership.current.begin();
+      setPermanentDeletingId(selectedTask.id);
+      setActionError("");
+      try {
+        await api.request(`/task/archived/${encodeURIComponent(selectedTask.id)}/permanent`, { method: "DELETE" });
+        if (mutationOwnership.current.owns(ticket)) {
+          setPermanentDeleteConfirmId("");
+          setPermanentDeletingId("");
+          setReloadKey((value) => value + 1);
+          handleCloseTask(true);
+        }
+      } catch {
+        if (mutationOwnership.current.owns(ticket)) setActionError("永久删除任务失败，请稍后重试。");
+      } finally {
+        mutationGate.current.leave();
+        if (mutationOwnership.current.owns(ticket)) setPermanentDeletingId("");
+      }
+    }
+
     function returnToActiveTaskList(
       returnTo: string,
       restoreScroll = false,
@@ -760,6 +785,8 @@ import {
       }
       window.history.pushState(null, "", returnTo);
       setSelectedTask(null);
+      setPermanentDeleteConfirmId("");
+      setPermanentDeletingId("");
       setEditing(false);
       setEditingAuthor(null);
       setActionError("");
@@ -996,7 +1023,7 @@ import {
             onRequestClose={() => { if (!confirmAndDiscardDraft()) return false; handleCloseTask(true); return true; }} /> : null}
         </> : <>
           {!isDetailMode || state.status === "ready" ? <MobileArchivedTaskList state={state} busy={busy} onBack={() => returnToActiveTaskList(taskLocation.returnTo)} onOpen={(id, trigger) => { paperTriggerRef.current = trigger; openArchivedTaskDetail(id); }} onRetry={() => setReloadKey((v) => v + 1)} /> : null}
-          {isDetailMode ? <MobileArchivedTaskDetail state={detailLoadState} task={selectedTask} triggerRef={paperTriggerRef} errorMessage={actionError || null} restoring={restoring} onRestore={() => void handleRestoreTask()} onRequestClose={() => { handleCloseTask(true); return true; }} /> : null}
+          {isDetailMode ? <MobileArchivedTaskDetail state={detailLoadState} task={selectedTask} triggerRef={paperTriggerRef} errorMessage={actionError || null} restoring={restoring} confirmingDelete={permanentDeleteConfirmId === selectedTask?.id} deleting={permanentDeletingId === selectedTask?.id} onRestore={() => void handleRestoreTask()} onRequestDelete={() => setPermanentDeleteConfirmId(selectedTask?.id ?? "")} onConfirmDelete={() => void handlePermanentDeleteTask()} onCancelDelete={() => setPermanentDeleteConfirmId("")} onRequestClose={() => { if (permanentDeletingId === selectedTask?.id) return false; handleCloseTask(true); return true; }} /> : null}
         </>}
       </div>;
     }
@@ -1009,7 +1036,7 @@ import {
           description="管理待办事项、截止时间与完成状态。"
           action={
             isDetailMode && isArchivedMode ? (
-              <button className="secondary-button" disabled={restoring} onClick={() => {
+              <button className="secondary-button" disabled={restoring || permanentDeletingId === selectedTask?.id} onClick={() => {
                 returnToArchivedTaskList(taskLocation.returnTo);
               }}>返回归档列表</button>
             ) : isDetailMode ? (
@@ -1335,14 +1362,27 @@ import {
               )}
 
               {isArchivedMode && (
-                <button className="secondary-button" disabled={restoring} onClick={() => void handleRestoreTask()}>
-                  {restoring ? "恢复中…" : "恢复"}
-                </button>
+                permanentDeleteConfirmId === selectedTask?.id ? (
+                  <>
+                    <button className="secondary-button" disabled={permanentDeletingId === selectedTask?.id} onClick={() => setPermanentDeleteConfirmId("")}>取消</button>
+                    <button className="secondary-button" disabled={permanentDeletingId === selectedTask?.id} onClick={() => void handlePermanentDeleteTask()}>{permanentDeletingId === selectedTask?.id ? "删除中…" : "确认永久删除"}</button>
+                  </>
+                ) : (
+                  <>
+                    <button className="secondary-button" disabled={restoring || permanentDeletingId === selectedTask?.id} onClick={() => void handleRestoreTask()}>
+                      {restoring ? "恢复中…" : "恢复"}
+                    </button>
+                    <button className="secondary-button" disabled={restoring || permanentDeletingId === selectedTask?.id} onClick={() => setPermanentDeleteConfirmId(selectedTask?.id ?? "")}>删除</button>
+                  </>
+                )
               )}
+              {isArchivedMode && permanentDeleteConfirmId === selectedTask?.id ? (
+                <p className="memory-paper-status">永久删除后无法恢复，确认继续吗？</p>
+              ) : null}
 
               <button
                 className="secondary-button"
-                disabled={updatingStatus}
+                disabled={updatingStatus || (isArchivedMode && permanentDeletingId === selectedTask?.id)}
                 onClick={() => handleCloseTask()}
               >
                 {isArchivedMode ? "返回归档列表" : "返回任务列表"}
@@ -1485,11 +1525,11 @@ function MobileArchivedTaskList({ state, busy, onBack, onOpen, onRetry }: { stat
     {state.status === "loading" ? <MobileTaskLoading label="Task Archive 加载中" /> : null}
     {state.status === "error" ? <TaskMessage title="暂时无法读取归档任务" description="请稍后重试。" action={<button className="secondary-button" onClick={onRetry}>重新加载</button>} /> : null}</>;
 }
-function MobileArchivedTaskDetail(props: { state: DetailLoadState; task: TaskEntry | null; triggerRef: RefObject<HTMLElement | null>; errorMessage: string | null; restoring: boolean; onRestore(): void; onRequestClose(): boolean }) {
+function MobileArchivedTaskDetail(props: { state: DetailLoadState; task: TaskEntry | null; triggerRef: RefObject<HTMLElement | null>; errorMessage: string | null; restoring: boolean; confirmingDelete: boolean; deleting: boolean; onRestore(): void; onRequestDelete(): void; onConfirmDelete(): void; onCancelDelete(): void; onRequestClose(): boolean }) {
   if (props.state === "loading") return <PaperDetailDialog id="task-archive-detail-paper" open label="正在读取归档 Task" dateLabel="" signature="" triggerRef={props.triggerRef} onRequestClose={props.onRequestClose}><p className="memory-paper-status">正在读取归档任务…</p></PaperDetailDialog>;
   if (props.state === "error" || !props.task) return <PaperDetailDialog id="task-archive-detail-paper" open label="无法读取归档 Task" dateLabel="" signature="" triggerRef={props.triggerRef} onRequestClose={props.onRequestClose}><p className="memory-paper-status">无法读取归档任务</p></PaperDetailDialog>;
   const task = props.task;
-  return <PaperDetailDialog id="task-archive-detail-paper" open label={`已归档 Task ${task.title}`} dateLabel={formatTaskPaperDeadline(task.due_time, task.timezone)} signature="" triggerRef={props.triggerRef} errorMessage={props.errorMessage} onRequestClose={props.onRequestClose} topRight={<button className="memory-paper-control" disabled={props.restoring} onClick={props.onRestore}>{props.restoring ? "恢复中…" : "恢复"}</button>} bottomLeft={<><TaskPaperMetadataRead status={task.status} tags={task.tags} actions={[]} disabled /><PaperAuthorSignature value={task.author} editable={false} /></>}><h2 className="memory-paper-title">{task.title}</h2><p className="memory-paper-content">{task.description}</p></PaperDetailDialog>;
+  return <PaperDetailDialog id="task-archive-detail-paper" open label={`已归档 Task ${task.title}`} dateLabel={formatTaskPaperDeadline(task.due_time, task.timezone)} signature="" triggerRef={props.triggerRef} errorMessage={props.errorMessage} onRequestClose={props.onRequestClose} topRight={props.confirmingDelete ? <><button className="memory-paper-control" disabled={props.deleting} onClick={props.onCancelDelete}>取消</button><span>·</span><button className="memory-paper-control" disabled={props.deleting} onClick={props.onConfirmDelete}>{props.deleting ? "删除中…" : "确认永久删除"}</button></> : <><button className="memory-paper-control" disabled={props.restoring || props.deleting} onClick={props.onRestore}>{props.restoring ? "恢复中…" : "恢复"}</button><span>·</span><button className="memory-paper-control" disabled={props.restoring || props.deleting} onClick={props.onRequestDelete}>删除</button></>} bottomLeft={<><TaskPaperMetadataRead status={task.status} tags={task.tags} actions={[]} disabled /><PaperAuthorSignature value={task.author} editable={false} /></>}><h2 className="memory-paper-title">{task.title}</h2>{props.confirmingDelete ? <p className="memory-paper-status">永久删除后无法恢复，确认继续吗？</p> : null}<p className="memory-paper-content">{task.description}</p></PaperDetailDialog>;
 }
 
   function TaskLoading() {

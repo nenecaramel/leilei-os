@@ -387,6 +387,37 @@ export class DiaryService {
     }
   }
 
+  async permanentlyDeleteDiary(input: ReadDiaryInput): Promise<void> {
+    const userId = await this.requireActiveUser(input.userId);
+    const id = input.id.trim();
+    if (!id) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    const permanentlyDelete = this.repository.permanentlyDeleteDiary;
+    if (!permanentlyDelete) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+
+    const deleted = await permanentlyDelete.call(this.repository, {
+      userId,
+      id,
+      ...WEB_USER_LIFECYCLE_CONTEXT,
+    });
+    if (!deleted) {
+      throw new DiaryDomainError(
+        "DIARY_NOT_FOUND",
+        "Diary entry was not found.",
+      );
+    }
+  }
+
   async createWebDiary(
     input: CreateWebDiaryInput,
   ): Promise<DiaryEntryResult> {

@@ -42,6 +42,9 @@ export function useWebApiClient(): WebApiClient {
         } catch { /* malformed error responses retain the safe fallback */ }
         throw new WebApiError(response.status, code, message);
       }
+      if (response.status === 204) {
+        return undefined as T;
+      }
       return (await response.json()) as T;
     },
   }), [getAccessTokenSilently]);

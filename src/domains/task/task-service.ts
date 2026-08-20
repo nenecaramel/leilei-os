@@ -340,6 +340,19 @@ export class TaskService {
     }
   }
 
+  async permanentlyDeleteTask(input: { userId: string; id: string }): Promise<void> {
+    const userId = await this.requireActiveUser(input.userId);
+    const repository = this.repository.permanentlyDeleteTask;
+    const id = input.id.trim();
+    if (!id || !repository || !(await repository.call(this.repository, {
+      id,
+      userId,
+      ...WEB_USER_LIFECYCLE_CONTEXT,
+    }))) {
+      throw new TaskDomainError("TASK_NOT_FOUND", "Task was not found.");
+    }
+  }
+
   async createWebTask(
     input: CreateWebTaskInput,
   ): Promise<TaskEntryResult> {

@@ -564,6 +564,64 @@ test("Diary archived direct refresh requests only archived detail", async () => 
   }
 });
 
+test("Diary desktop permanent-delete confirmation replaces regular actions and blocks archive return while pending", async () => {
+  const deletion = deferred<unknown>();
+  const requests: Request[] = [];
+  const api: WebApiClient = {
+    request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/diary/archived/diary-1") {
+        return Promise.resolve({ success: true, data: diary }) as Promise<T>;
+      }
+      if (init?.method === "DELETE") return deletion.promise as Promise<T>;
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  };
+  const page = await render(
+    createArchivedDiaryDetailLocation("diary-1", "/diary/archived"),
+    api,
+  );
+  try {
+    await React.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const detail = page.container.querySelector(".memory-message");
+    assert.ok(detail);
+    const deleteButton = [...detail.querySelectorAll("button")]
+      .find((button) => button.textContent === "删除");
+    assert.ok(deleteButton);
+    await React.act(async () => {
+      deleteButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter((request) => request.init?.method === "DELETE").length, 0);
+    assert.deepEqual(
+      [...detail.querySelectorAll("button")].map((button) => button.textContent),
+      ["取消", "确认永久删除", "返回归档列表"],
+    );
+
+    const confirm = [...detail.querySelectorAll("button")]
+      .find((button) => button.textContent === "确认永久删除");
+    assert.ok(confirm);
+    await React.act(async () => {
+      confirm.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    });
+    assert.equal(requests.filter((request) => request.init?.method === "DELETE").length, 1);
+    for (const button of [...page.container.querySelectorAll("button")]
+      .filter((candidate) => candidate.textContent === "返回归档列表")) {
+      assert.equal(button.disabled, true);
+    }
+
+    deletion.reject(new Error("delete failed"));
+    await React.act(async () => {
+      await deletion.promise.catch(() => undefined);
+    });
+    assert.match(page.container.textContent ?? "", /永久删除日记失败/);
+    assert.match(page.container.textContent ?? "", /确认永久删除/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Diary active detail archives once with archive wording", async () => {
   const calls: Request[] = [];
   const archive = deferred<unknown>();
