@@ -462,7 +462,13 @@ export class MemoryService {
     }
 
     let hasPatch = false;
-    const patch: Omit<UpdateMemoryInput, "userId" | "id"> = {};
+    const patch: {
+      category?: MemoryCategory;
+      key?: string;
+      content?: string;
+      tags?: string[];
+      author?: ContentAuthor;
+    } = {};
     if (input.category !== undefined) {
       patch.category = this.validateCategories([input.category])![0]!;
       hasPatch = true;

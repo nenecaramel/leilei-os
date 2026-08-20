@@ -139,12 +139,12 @@ class MockTaskRepository implements TaskRepository {
     if (!record || record.userId !== input.userId) return null;
     record.task = {
       ...record.task,
-      title: input.title,
-      description: input.description,
-      priority: input.priority,
-      dueTime: input.dueTime,
-      timezone: input.timezone,
-      tags: input.tags,
+      ...(input.title === undefined ? {} : { title: input.title }),
+      ...(input.description === undefined ? {} : { description: input.description }),
+      ...(input.priority === undefined ? {} : { priority: input.priority }),
+      ...(input.dueTime === undefined ? {} : { dueTime: input.dueTime }),
+      ...(input.timezone === undefined ? {} : { timezone: input.timezone }),
+      ...(input.tags === undefined ? {} : { tags: input.tags }),
       updatedAt: new Date("2026-07-22T10:00:00.000Z"),
       author: input.author ?? record.task.author ?? null,
     };
@@ -504,6 +504,44 @@ test("Task legacy-null edits require an author while authored edits preserve or 
   assert.equal(repository.records.get(authored.id)?.task.author, "L");
   await service.updateWebTask({ ...base, id: authored.id, author: "G" });
   assert.equal(repository.records.get(authored.id)?.task.author, "G");
+});
+
+test("Task MCP partial update forwards only supplied fields and returns fresh detail", async () => {
+  const repository = new MockTaskRepository();
+  const task = seedTask(repository, "in_progress");
+  task.author = "L";
+  const service = new TaskService(repository);
+
+  const result = await service.updateMcpTask(
+    { userId: "user-1" },
+    { id: " task-1 ", description: " Updated description ", dueTime: null, author: "G" },
+  );
+
+  assert.deepEqual(repository.updateWrites, [{
+    userId: "user-1",
+    id: "task-1",
+    description: "Updated description",
+    dueTime: null,
+    author: "G",
+  }]);
+  assert.equal(result.title, "原任务");
+  assert.equal(result.description, "Updated description");
+  assert.equal(result.due_time, null);
+  assert.equal(result.priority, "normal");
+  assert.equal(result.author, "G");
+  assert.equal(result.status, "in_progress");
+});
+
+test("Task MCP partial update rejects an empty patch before mutation", async () => {
+  const repository = new MockTaskRepository();
+  seedTask(repository);
+  const service = new TaskService(repository);
+
+  await assert.rejects(
+    service.updateMcpTask({ userId: "user-1" }, { id: "task-1" }),
+    (error: unknown) => error instanceof TaskDomainError && error.code === "INVALID_TASK_PATCH",
+  );
+  assert.equal(repository.updateWrites.length, 0);
 });
 
 test("Task status and lifecycle mutations preserve the stored author", async () => {

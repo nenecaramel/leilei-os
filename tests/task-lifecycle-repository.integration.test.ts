@@ -166,6 +166,39 @@ test(
           );
           assert.equal(roundTrip.find((row) => row.id === lifecycleIds[0])?.author, "L");
           assert.equal(roundTrip.find((row) => row.id === lifecycleIds[1])?.author, "G");
+          const [beforePartial] = await transaction.select({
+            title: tasks.title,
+            description: tasks.description,
+            priority: tasks.priority,
+            dueTime: tasks.dueTime,
+            timezone: tasks.timezone,
+            tags: tasks.tags,
+          }).from(tasks).where(eq(tasks.id, lifecycleIds[0]!));
+          const partial = await repository.updateTask({
+            id: lifecycleIds[0]!,
+            userId: owner,
+            description: "Content-only task update",
+          });
+          assert.ok(partial);
+          assert.deepEqual({
+            title: partial.title,
+            description: partial.description,
+            priority: partial.priority,
+            dueTime: partial.dueTime,
+            timezone: partial.timezone,
+            tags: partial.tags,
+          }, {
+            ...beforePartial,
+            description: "Content-only task update",
+          });
+          const cleared = await repository.updateTask({
+            id: lifecycleIds[0]!,
+            userId: owner,
+            tags: [],
+          });
+          assert.ok(cleared);
+          assert.deepEqual(cleared.tags, []);
+
           const edited = await repository.updateTask({
             id: lifecycleIds[0]!,
             userId: owner,
