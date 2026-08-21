@@ -16,27 +16,12 @@ function asHistoryState(state: unknown): Record<string, unknown> {
   return { ...(state as Record<string, unknown>) };
 }
 
-export function shouldReloadAcrossVisualSurface(
-  currentPathname: string,
-  targetPathname: string,
-): boolean {
-  return (
-    (currentPathname === "/universe" && targetPathname === "/diary") ||
-    (currentPathname === "/diary" && targetPathname === "/universe")
-  );
-}
-
 export function navigateWithinApp(
   location: string,
   state: unknown = null,
   options: NavigateWithinAppOptions = {},
 ): void {
   const targetPathname = new URL(location, window.location.origin).pathname;
-  if (shouldReloadAcrossVisualSurface(window.location.pathname, targetPathname)) {
-    window.location.assign(location);
-    return;
-  }
-
   const nextState = asHistoryState(state);
   delete nextState[ROUTE_SCROLL_STATE_KEY];
   if (options.resetScroll !== false && targetPathname !== window.location.pathname) {
