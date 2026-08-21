@@ -203,10 +203,10 @@ test("Web Universe node writes carry source ids through one CAS-aware repository
   const service = new UniverseService(repository);
   const node = { title: "Title", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 0, y: 0 } };
   repository.snapshot = { ...emptySnapshot, nodes: [{ id: "node-existing", ...node, createdAt: timestamp, updatedAt: timestamp }] };
-  await service.createNodeWeb("user-1", node, ["00000000-0000-4000-8000-000000000001"], 1);
+  await service.createNodeWeb("user-1", node, ["00000000-0000-1000-8000-000000000001"], 1);
   await service.updateNodeWeb("user-1", "node-existing", { content: "changed" }, undefined, "edit", 1);
   await service.updateNodeWeb("user-1", "node-existing", { content: "changed" }, [], "edit", 1);
-  assert.deepEqual(sourceCalls, [["00000000-0000-4000-8000-000000000001"], undefined, []]);
+  assert.deepEqual(sourceCalls, [["00000000-0000-1000-8000-000000000001"], undefined, []]);
 });
 
 test("Web Universe source ids reject duplicate or malformed values before repository mutation", async () => {
