@@ -60,4 +60,4 @@ test("Universe Diary SPA crossing switches browser chrome to the destination sur
     appNavigationSource,
     /meta\[name=["']theme-color["']\][\s\S]*setAttribute\(["']content["'],\s*themeColor\)/,
   );
-} catch {}
+});
