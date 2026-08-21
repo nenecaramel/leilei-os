@@ -61,7 +61,7 @@ test("initial HTML no longer prehydrates Settings or legacy theme caches", () =>
   );
   assert.match(
     indexHtml,
-    /<meta name="theme-color" content="#[0-9a-fA-F]{6}" \/>/,
+    /<meta[^>]*name="theme-color"[^>]*content="#[0-9a-fA-F]{6}"[^>]*\/>/,
   );
 });
 
