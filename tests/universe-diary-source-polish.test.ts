@@ -6,10 +6,6 @@ const paperSource = readFileSync(
   new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url),
   "utf8",
 );
-const mobileCss = readFileSync(
-  new URL("../web/src/pages/universe/universe-node-paper-web-mobile.css", import.meta.url),
-  "utf8",
-);
 const finalGeometryCss = readFileSync(
   new URL("../web/src/pages/universe-mobile-final-geometry.css", import.meta.url),
   "utf8",
@@ -48,8 +44,8 @@ test("Diary source picker heading is regular weight and aligned with search text
     /universe-standalone-source-picker-head[^\n]*<span>选择来源日记<\/span>/,
   );
   assert.match(
-    mobileCss,
-    /\.universe-standalone-source-picker-head\s*\{[^}]*padding-left:\s*12px;[^}]*font-weight:\s*400;/,
+    finalGeometryCss,
+    /\.universe-standalone-source-picker-head\s*\{[^}]*padding-left:\s*12px\s*!important;[^}]*font-weight:\s*400\s*!important;/,
   );
 });
 
