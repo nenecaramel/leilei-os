@@ -180,8 +180,12 @@ test("Universe Diary provenance relations enforce ownership, duplicate, status, 
         { userId, nodeId: "n1", diaryId: sourceDiary[0]!.id },
         { userId, nodeId: "n2", diaryId: sourceDiary[1]!.id },
       ]);
-      await assert.rejects(tx.insert(schema.universeDiarySources).values({ userId, nodeId: "n1", diaryId: sourceDiary[0]!.id }));
-      await assert.rejects(tx.insert(schema.universeDiarySources).values({ userId, nodeId: "n1", diaryId: otherDiary[0]!.id }));
+      await assert.rejects(tx.transaction(async (savepoint) => {
+        await savepoint.insert(schema.universeDiarySources).values({ userId, nodeId: "n1", diaryId: sourceDiary[0]!.id });
+      }));
+      await assert.rejects(tx.transaction(async (savepoint) => {
+        await savepoint.insert(schema.universeDiarySources).values({ userId, nodeId: "n1", diaryId: otherDiary[0]!.id });
+      }));
       await tx.update(schema.diaryEntries).set({ status: "archived" }).where(eq(schema.diaryEntries.id, sourceDiary[0]!.id));
       assert.equal((await tx.select().from(schema.universeDiarySources).where(eq(schema.universeDiarySources.userId, userId))).length, 2);
       await tx.delete(schema.diaryEntries).where(eq(schema.diaryEntries.id, sourceDiary[0]!.id));

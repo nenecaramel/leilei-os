@@ -166,7 +166,8 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     try {
       if (editingNode) {
         const editedNodeId = editingNode.id;
-        await service.updateNode(editedNodeId, values, "Universe Web 编辑", values.sourceDiaryIds);
+        const { sourceDiaryIds, ...nodePatch } = values;
+        await service.updateNode(editedNodeId, nodePatch, "Universe Web 编辑", sourceDiaryIds);
         showNotice("星球已更新。");
         refreshFromService();
         setEditingNode(null);
