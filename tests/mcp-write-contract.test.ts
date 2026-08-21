@@ -242,7 +242,7 @@ async function invokeAllWrites(client: Client) {
   ]);
 }
 
-test("MCP exposes exactly thirteen write tools and preserves every annotation", async (t) => {
+test("MCP exposes exactly sixteen write tools and preserves every annotation", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
@@ -265,6 +265,9 @@ test("MCP exposes exactly thirteen write tools and preserves every annotation", 
     "create_universe_node",
     "update_universe_node",
     "create_universe_relation",
+    "delete_universe_relation",
+    "add_universe_diary_source",
+    "delete_universe_diary_source",
   ]);
   assert.deepEqual(
     writes.map((tool) => tool.name).sort(),

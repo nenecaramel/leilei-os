@@ -41,6 +41,7 @@ export interface UniverseRepository {
   loadUniverse(userId: string): Promise<UniverseReadResult | null>;
   loadUniverseWeb?(userId: string): Promise<UniverseWebReadResult | null>;
   searchUniverseDiarySourceOptions?(userId: string, query: string): Promise<UniverseDiarySourceOption[]>;
+  readUniverseDiarySources?(userId: string, nodeId: string): Promise<UniverseDiarySourceSummary[] | null>;
   saveUniverse(userId: string, snapshot: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult>;
   createNode(userId: string, node: UniverseNode, expectedVersion: number): Promise<UniverseReadResult>;
   createNodeWithSources?(
@@ -74,6 +75,8 @@ export interface UniverseRepository {
     requestHash: string,
   ): Promise<UniverseMcpCreateResult<UniverseRelation>>;
   deleteRelation(userId: string, relationId: string, expectedVersion: number): Promise<UniverseReadResult>;
+  addUniverseDiarySource(userId: string, nodeId: string, diaryId: string, expectedVersion: number): Promise<UniverseReadResult>;
+  deleteUniverseDiarySource(userId: string, nodeId: string, diaryId: string, expectedVersion: number): Promise<UniverseReadResult>;
   latestRevision(userId: string, nodeId: string): Promise<UniverseRevision | null>;
   restoreLatestRevision(userId: string, nodeId: string, expectedVersion: number): Promise<UniverseReadResult>;
   createBackup(userId: string, reason: string): Promise<UniverseBackup>;

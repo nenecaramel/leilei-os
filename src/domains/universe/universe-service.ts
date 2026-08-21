@@ -37,6 +37,8 @@ export type UniverseServiceErrorCode =
   | "RELATION_NOT_FOUND"
   | "RELATION_INVALID"
   | "RELATION_CONFLICT"
+  | "DIARY_SOURCE_NOT_FOUND"
+  | "DIARY_SOURCE_CONFLICT"
   | "IDEMPOTENCY_CONFLICT"
   | "REVISION_NOT_FOUND"
   | "BACKUP_NOT_FOUND"
@@ -284,6 +286,36 @@ export class UniverseService {
     return this.repository.deleteRelation(userId, relationId, expectedVersion);
   }
 
+  async getUniverseDiarySources(userId: string, nodeId: string) {
+    await this.requireActiveUser(userId);
+    validateUniverseNodeId(nodeId);
+    const universe = await this.repository.loadUniverse(userId);
+    if (!universe) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
+    const sources = await this.repository.readUniverseDiarySources?.(userId, nodeId);
+    if (!sources) throw new UniverseServiceError("NODE_NOT_FOUND");
+    return { nodeId, sources, version: universe.version };
+  }
+
+  async addUniverseDiarySource(userId: string, nodeId: string, diaryId: string, expectedVersion: number): Promise<UniverseReadResult> {
+    await this.requireActiveUser(userId);
+    validateUniverseNodeId(nodeId);
+    const normalizedDiaryId = normalizeRequiredDiaryId(diaryId);
+    validateExpectedVersion(expectedVersion);
+    const result = await this.repository.addUniverseDiarySource?.(userId, nodeId, normalizedDiaryId, expectedVersion);
+    if (!result) throw new UniverseServiceError("UNIVERSE_FAILED");
+    return result;
+  }
+
+  async deleteUniverseDiarySource(userId: string, nodeId: string, diaryId: string, expectedVersion: number): Promise<UniverseReadResult> {
+    await this.requireActiveUser(userId);
+    validateUniverseNodeId(nodeId);
+    const normalizedDiaryId = normalizeRequiredDiaryId(diaryId);
+    validateExpectedVersion(expectedVersion);
+    const result = await this.repository.deleteUniverseDiarySource?.(userId, nodeId, normalizedDiaryId, expectedVersion);
+    if (!result) throw new UniverseServiceError("UNIVERSE_FAILED");
+    return result;
+  }
+
   async latestRevision(userId: string, nodeId: string) {
     await this.requireActiveUser(userId);
     const revision = await this.repository.latestRevision(userId, nodeId);
@@ -336,6 +368,18 @@ function validateExpectedVersion(version: number): void {
   if (!Number.isInteger(version) || version < 0) {
     throw new UniverseServiceError("INVALID_UNIVERSE", "expected_version must be a non-negative integer.");
   }
+}
+
+function validateUniverseNodeId(nodeId: unknown): asserts nodeId is string {
+  if (typeof nodeId !== "string" || nodeId.trim().length === 0 || nodeId.length > 256) {
+    throw new UniverseServiceError("INVALID_UNIVERSE");
+  }
+}
+
+function normalizeRequiredDiaryId(diaryId: unknown): string {
+  const [normalized] = normalizeSourceDiaryIds([diaryId], false) ?? [];
+  if (!normalized) throw new UniverseServiceError("INVALID_UNIVERSE");
+  return normalized;
 }
 
 function invalidAsServiceError<T>(operation: () => T): T {

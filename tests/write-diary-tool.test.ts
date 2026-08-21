@@ -95,14 +95,18 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
   assert.deepEqual(
     response.tools.map((tool) => tool.name).sort(),
     [
+      "add_universe_diary_source",
       "create_task",
       "create_universe_node",
       "create_universe_relation",
+      "delete_universe_diary_source",
+      "delete_universe_relation",
       "get_diary",
       "get_local_context",
       "get_memory",
       "get_notion_connection",
       "get_task",
+      "get_universe_diary_sources",
       "get_universe_node",
       "get_universe_relations",
       "get_weather_context",

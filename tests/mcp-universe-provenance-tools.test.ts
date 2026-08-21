@@ -17,7 +17,7 @@ async function connect(dependencies: Record<string, unknown> = {}) {
   return { client, server };
 }
 
-const sources = [{ diary_id: DIARY_ID, title: "A diary", date: "2026-08-21", status: "archived" as const }];
+const sources = [{ diaryId: DIARY_ID, title: "A diary", date: "2026-08-21", status: "archived" as const }];
 
 test("registers the four Universe provenance/relation MCP tools with frozen annotations", async (t) => {
   const fixture = await connect();
@@ -40,6 +40,10 @@ test("registers the four Universe provenance/relation MCP tools with frozen anno
   assert.deepEqual(byName.get("delete_universe_diary_source")?.annotations, {
     readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false,
   });
+  for (const name of ["delete_universe_relation", "add_universe_diary_source", "delete_universe_diary_source"]) {
+    assert.match(byName.get(name)?.description ?? "", /fresh-read/i);
+    assert.match(byName.get(name)?.description ?? "", /never blindly retry/i);
+  }
 });
 
 test("get_universe_diary_sources returns live source metadata and version without body content", async (t) => {
@@ -63,9 +67,9 @@ test("get_universe_diary_sources returns live source metadata and version withou
   const result = await fixture.client.callTool({ name: "get_universe_diary_sources", arguments: { node_id: "node-1" } });
   assert.equal(result.isError, undefined);
   assert.deepEqual((result.structuredContent as { data: unknown }).data, {
-    node_id: "node-1", sources, metadata: { count: 1 }, universe_version: 7,
+    node_id: "node-1", sources: [{ diary_id: DIARY_ID, title: "A diary", date: "2026-08-21", status: "archived" }], metadata: { count: 1 }, universe_version: 7,
   });
-  assert.doesNotMatch(JSON.stringify(result), /content|body/i);
+  assert.doesNotMatch(JSON.stringify(result.structuredContent), /content|body/i);
   assert.equal(calls, 1);
 });
 
