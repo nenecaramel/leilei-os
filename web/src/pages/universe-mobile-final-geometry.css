@@ -7,6 +7,11 @@
     padding-bottom: 14px !important;
   }
 
+  /* Keep the provenance source group on the same section rhythm as galaxies. */
+  .universe-standalone-source-field {
+    margin-top: 30px !important;
+  }
+
   .universe-standalone-detail-actions button,
   .universe-standalone-editor-footer button,
   .universe-standalone-connection-footer button {
