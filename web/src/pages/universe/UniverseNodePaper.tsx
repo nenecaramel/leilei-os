@@ -331,7 +331,6 @@ export function UniverseNodePaper({
       <textarea className="universe-paper-summary-editor" aria-label="星球摘要" placeholder=" " value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} />
       <textarea className="universe-paper-content-editor" aria-label="星球正文" placeholder="记录这颗星球的想法" value={content} rows={6} onChange={(event) => setContent(event.target.value)} />
       {!isCreate && connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button>{onDeleteRelation ? <span className="universe-node-connection-actions"><button type="button" className="universe-node-connection-overflow" aria-label="连接操作" disabled={saving} onClick={(event) => { connectionAnchorRef.current = event.currentTarget; setConnectionMenuId((current) => current === relation.id ? null : relation.id); }}>···</button>{connectionMenuId === relation.id ? <UniverseFloatingPopover open anchorRef={connectionAnchorRef} className="universe-connection-popover" ariaLabel="连接操作" onRequestClose={() => setConnectionMenuId(null)}><button type="button" disabled={saving} onClick={() => { setConnectionMenuId(null); onDeleteRelation(relation); }}>移除连接</button></UniverseFloatingPopover> : null}</span> : null}</div>)}</section> : null}
-      {!isCreate ? <DiaryProvenanceTimeline sources={sources} onOpen={onOpenDiarySource} /> : null}
       {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-paper-inline-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
     </div>
   ) : (
@@ -340,6 +339,7 @@ export function UniverseNodePaper({
       {effectiveNode!.summary ? <p>{effectiveNode!.summary}</p> : null}
       {effectiveNode!.content ? <p>{effectiveNode!.content}</p> : null}
       {connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button></div>)}</section> : null}
+      <DiaryProvenanceTimeline sources={sources} onOpen={onOpenDiarySource} />
     </div>
   );
 
