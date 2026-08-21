@@ -37,8 +37,8 @@ test("current snapshot and journal append Stage B without rewriting history", ()
   const journal = JSON.parse(read("drizzle/meta/_journal.json")) as {
     entries: Array<{ idx: number; tag: string }>;
   };
-  assert.equal(journal.entries.length, 26);
-  assert.deepEqual(journal.entries.slice(0, 25).map(({ idx, tag }) => ({ idx, tag })), [
+  assert.equal(journal.entries.length, 27);
+  assert.deepEqual(journal.entries.slice(0, 26).map(({ idx, tag }) => ({ idx, tag })), [
     { idx: 0, tag: "0000_phase_2_core_memory_schema" },
     { idx: 1, tag: "0001_phase_3_diary_audit_schema" },
     { idx: 2, tag: "0002_phase_4_task_schema" },
@@ -64,6 +64,7 @@ test("current snapshot and journal append Stage B without rewriting history", ()
     { idx: 22, tag: "0022_toy_duration" },
     { idx: 23, tag: "0023_faulty_sphinx" },
     { idx: 24, tag: "0024_brainy_wildside" },
+    { idx: 25, tag: "0025_wild_xavin" },
   ]);
   const latestEntry = journal.entries.at(-1);
   assert.deepEqual(
@@ -74,9 +75,9 @@ test("current snapshot and journal append Stage B without rewriting history", ()
       breakpoints: (latestEntry as { breakpoints?: boolean }).breakpoints,
     },
     {
-      idx: 25,
+      idx: 26,
       version: "7",
-      tag: "0025_wild_xavin",
+      tag: "0026_universe_diary_provenance",
       breakpoints: true,
     },
   );

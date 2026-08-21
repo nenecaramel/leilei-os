@@ -15,7 +15,7 @@ const snapshot: UniverseSnapshot = {
   relations: [],
   revisions: [],
 };
-const fresh: UniverseReadResult = { snapshot, version: 1 };
+const fresh: UniverseReadResult = { snapshot, version: 1, sources: [] };
 
 function notInitializedError(): Error & { code: string } {
   return Object.assign(new Error("not initialized"), { code: "UNIVERSE_NOT_INITIALIZED" });
