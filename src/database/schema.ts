@@ -3,6 +3,7 @@ import {
   check,
   date,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -286,6 +287,7 @@ export const diaryEntries = pgTable(
       table.userId,
       table.idempotencyKey,
     ),
+    uniqueIndex("diary_entries_user_id_id_uidx").on(table.userId, table.id),
     index("diary_entries_user_date_created_idx").on(
       table.userId,
       table.date.desc(),
@@ -628,6 +630,30 @@ export const universeNodes = pgTable(
       "universe_nodes_legacy_galaxies_empty",
       sql`cardinality(${table.galaxies}) = 0`,
     ),
+  ],
+);
+
+export const universeDiarySources = pgTable(
+  "universe_diary_sources",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    diaryId: uuid("diary_id").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.nodeId, table.diaryId] }),
+    foreignKey({
+      columns: [table.userId, table.nodeId],
+      foreignColumns: [universeNodes.userId, universeNodes.id],
+      name: "universe_diary_sources_node_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.userId, table.diaryId],
+      foreignColumns: [diaryEntries.userId, diaryEntries.id],
+      name: "universe_diary_sources_diary_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
   ],
 );
 

@@ -52,8 +52,8 @@ test("0026 creates owned Universe Diary provenance relations with cascading iden
   const sql = await readFile(new URL("../drizzle/0026_universe_diary_provenance.sql", import.meta.url), "utf8");
   assert.match(sql, /CREATE TABLE "universe_diary_sources"/u);
   assert.match(sql, /PRIMARY KEY\("user_id","node_id","diary_id"\)/u);
-  assert.match(sql, /FOREIGN KEY \("user_id","node_id"\)[\s\S]*?ON DELETE CASCADE[\s\S]*?ON UPDATE CASCADE/u);
-  assert.match(sql, /FOREIGN KEY \("user_id","diary_id"\)[\s\S]*?ON DELETE CASCADE[\s\S]*?ON UPDATE CASCADE/u);
+  assert.match(sql, /FOREIGN KEY \("user_id","node_id"\)[\s\S]*?ON DELETE cascade[\s\S]*?ON UPDATE cascade/u);
+  assert.match(sql, /FOREIGN KEY \("user_id","diary_id"\)[\s\S]*?ON DELETE cascade[\s\S]*?ON UPDATE cascade/u);
   assert.match(sql, /diary_entries_user_id_id_uidx/u);
   assert.doesNotMatch(sql, /title|status|snapshot|metadata|created_at/u);
 });

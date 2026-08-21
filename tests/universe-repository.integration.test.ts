@@ -133,3 +133,64 @@ test("Universe initialization refuses to overwrite an existing version-zero meta
     await client.end();
   }
 });
+
+test("Universe Diary provenance relations enforce ownership, duplicate, status, and cascade invariants", { skip: !runIntegration }, async () => {
+  const client = postgres(databaseUrl!, { prepare: false, ssl: false, max: 2 });
+  const db = drizzle(client, { schema });
+  const userId = randomUUID();
+  const otherUserId = randomUUID();
+  const now = "2026-08-21T00:00:00.000Z";
+  const snapshot = {
+    schemaVersion: 2 as const,
+    meta: { name: "Universe", createdAt: now, updatedAt: now },
+    galaxies: [],
+    nodes: [
+      { id: "n1", title: "N1", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 1, y: 1 }, createdAt: now, updatedAt: now },
+      { id: "n2", title: "N2", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 2, y: 2 }, createdAt: now, updatedAt: now },
+    ],
+    relations: [],
+    revisions: [],
+  };
+  const diary = (id: string, owner: string) => ({
+    id,
+    userId: owner,
+    title: id,
+    content: "content",
+    date: "2026-08-21",
+    tags: [],
+    source: "chatgpt_mcp" as const,
+    status: "active" as const,
+    idempotencyKey: `key-${id}`,
+    requestHash: "a".repeat(64),
+    createdAt: new Date(now),
+    updatedAt: new Date(now),
+  });
+  try {
+    await assert.rejects(db.transaction(async (tx) => {
+      await tx.insert(schema.users).values([
+        { id: userId, email: `universe-source-${userId}@example.invalid`, displayName: "Universe source test", status: "active" },
+        { id: otherUserId, email: `universe-source-${otherUserId}@example.invalid`, displayName: "Other source test", status: "active" },
+      ]);
+      await tx.insert(schema.diaryEntries).values([diary(randomUUID(), userId), diary(randomUUID(), userId), diary(randomUUID(), otherUserId)]);
+      const sourceDiary = await tx.select({ id: schema.diaryEntries.id }).from(schema.diaryEntries).where(eq(schema.diaryEntries.userId, userId));
+      const otherDiary = await tx.select({ id: schema.diaryEntries.id }).from(schema.diaryEntries).where(eq(schema.diaryEntries.userId, otherUserId));
+      const service = new UniverseService(new DrizzleUniverseRepository(tx as never));
+      await service.saveUniverse(userId, snapshot, 0);
+      await tx.insert(schema.universeDiarySources).values([
+        { userId, nodeId: "n1", diaryId: sourceDiary[0]!.id },
+        { userId, nodeId: "n2", diaryId: sourceDiary[1]!.id },
+      ]);
+      await assert.rejects(tx.insert(schema.universeDiarySources).values({ userId, nodeId: "n1", diaryId: sourceDiary[0]!.id }));
+      await assert.rejects(tx.insert(schema.universeDiarySources).values({ userId, nodeId: "n1", diaryId: otherDiary[0]!.id }));
+      await tx.update(schema.diaryEntries).set({ status: "archived" }).where(eq(schema.diaryEntries.id, sourceDiary[0]!.id));
+      assert.equal((await tx.select().from(schema.universeDiarySources).where(eq(schema.universeDiarySources.userId, userId))).length, 2);
+      await tx.delete(schema.diaryEntries).where(eq(schema.diaryEntries.id, sourceDiary[0]!.id));
+      assert.equal((await tx.select().from(schema.universeDiarySources).where(eq(schema.universeDiarySources.userId, userId))).length, 1);
+      await tx.delete(schema.universeNodes).where(eq(schema.universeNodes.id, "n2"));
+      assert.equal((await tx.select().from(schema.universeDiarySources).where(eq(schema.universeDiarySources.userId, userId))).length, 0);
+      throw new RollbackUniverseTest();
+    }), RollbackUniverseTest);
+  } finally {
+    await client.end();
+  }
+});
