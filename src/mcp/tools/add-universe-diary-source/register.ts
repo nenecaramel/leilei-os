@@ -11,8 +11,8 @@ const inputSchema = z.object({
 }).strict();
 
 const outputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({ node_id: z.string().min(1).max(256), diary_id: z.string().uuid(), universe_version: z.number().int().nonnegative() }).strict(),
+  success: z.boolean(),
+  data: z.object({ node_id: z.string().min(1).max(256), diary_id: z.string().uuid(), universe_version: z.number().int().nonnegative() }).strict().optional(),
   error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 

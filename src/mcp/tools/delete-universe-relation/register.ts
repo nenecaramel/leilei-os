@@ -10,8 +10,8 @@ const inputSchema = z.object({
 }).strict();
 
 const outputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({ relation_id: z.string().min(1).max(256), universe_version: z.number().int().nonnegative() }).strict(),
+  success: z.boolean(),
+  data: z.object({ relation_id: z.string().min(1).max(256), universe_version: z.number().int().nonnegative() }).strict().optional(),
   error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 

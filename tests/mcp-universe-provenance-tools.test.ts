@@ -43,6 +43,12 @@ test("registers the four Universe provenance/relation MCP tools with frozen anno
   for (const name of ["delete_universe_relation", "add_universe_diary_source", "delete_universe_diary_source"]) {
     assert.match(byName.get(name)?.description ?? "", /fresh-read/i);
     assert.match(byName.get(name)?.description ?? "", /never blindly retry/i);
+    const outputSchema = byName.get(name)?.outputSchema as {
+      properties?: { success?: { type?: string; const?: unknown; enum?: unknown[] } };
+    };
+    assert.equal(outputSchema.properties?.success?.type, "boolean");
+    assert.equal("const" in (outputSchema.properties?.success ?? {}), false);
+    assert.equal("enum" in (outputSchema.properties?.success ?? {}), false);
   }
 });
 
@@ -133,12 +139,15 @@ test("Universe provenance tools reject malformed input and map auth/domain error
   assert.equal(mutationCalls, 0);
   const conflict = await fixture.client.callTool({ name: "add_universe_diary_source", arguments: { node_id: "node-1", diary_id: DIARY_ID, expected_version: 1 } });
   assert.equal(conflict.isError, true);
+  assert.equal((conflict.structuredContent as { success?: boolean }).success, false);
   assert.match(JSON.stringify(conflict), /DIARY_SOURCE_CONFLICT/);
   const notFound = await fixture.client.callTool({ name: "delete_universe_diary_source", arguments: { node_id: "node-1", diary_id: DIARY_ID, expected_version: 1 } });
   assert.equal(notFound.isError, true);
+  assert.equal((notFound.structuredContent as { success?: boolean }).success, false);
   assert.match(JSON.stringify(notFound), /DIARY_SOURCE_NOT_FOUND/);
   const stale = await fixture.client.callTool({ name: "delete_universe_relation", arguments: { relation_id: "edge-1", expected_version: 1 } });
   assert.equal(stale.isError, true);
+  assert.equal((stale.structuredContent as { success?: boolean }).success, false);
   assert.match(JSON.stringify(stale), /VERSION_CONFLICT/);
 
   const unauthenticated = await connect({

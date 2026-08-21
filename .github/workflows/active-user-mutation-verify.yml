@@ -21,6 +21,7 @@ on:
       - tests/universe-mcp-writes.integration.test.ts
       - tests/mcp-universe-write-migration.integration.test.ts
       - tests/mcp-write-idempotency.integration.test.ts
+      - tests/universe-mcp-provenance.integration.test.ts
       - .github/workflows/active-user-mutation-verify.yml
 
 jobs:
@@ -80,12 +81,14 @@ jobs:
       - name: Run Universe MCP PostgreSQL integration
         env:
           RUN_UNIVERSE_MCP_WRITE_DATABASE_TEST: "1"
+          RUN_UNIVERSE_MCP_PROVENANCE_DATABASE_TEST: "1"
           RUN_MCP_WRITE_IDEMPOTENCY_DATABASE_TEST: "1"
         run: >-
           pnpm exec tsx --test --test-concurrency=1 --test-reporter=spec
           tests/universe-mcp-writes.integration.test.ts
           tests/mcp-universe-write-migration.integration.test.ts
           tests/mcp-write-idempotency.integration.test.ts
+          tests/universe-mcp-provenance.integration.test.ts
       - name: Run deterministic canonical test suite
         run: pnpm test
       - run: pnpm typecheck

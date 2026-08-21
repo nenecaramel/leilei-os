@@ -111,6 +111,16 @@ test("Universe MCP provenance mutations preserve node content, revisions, owners
       const removed = await service.deleteUniverseDiarySource(userId, "node-1", activeDiaryId, version);
       version = removed.version;
       assert.equal((await service.getUniverseDiarySources(userId, "node-1")).sources.length, 1);
+      const beforeDeleteStale = await service.loadUniverse(userId);
+      await assert.rejects(
+        service.deleteUniverseDiarySource(userId, "node-1", archivedDiaryId, version - 1),
+        (error: unknown) => error instanceof UniverseServiceError && error.code === "VERSION_CONFLICT",
+      );
+      const afterDeleteStale = await service.loadUniverse(userId);
+      assert.equal(afterDeleteStale.version, version);
+      assert.deepEqual(afterDeleteStale.snapshot, beforeDeleteStale.snapshot);
+      assert.deepEqual((await service.getUniverseDiarySources(userId, "node-1")).sources.map((source) => source.diaryId), [archivedDiaryId]);
+      assert.deepEqual(afterDeleteStale.snapshot.revisions, []);
       await assert.rejects(
         service.deleteUniverseDiarySource(userId, "node-1", activeDiaryId, version),
         (error: unknown) => error instanceof UniverseServiceError && error.code === "DIARY_SOURCE_NOT_FOUND",
