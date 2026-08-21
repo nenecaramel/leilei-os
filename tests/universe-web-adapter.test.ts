@@ -161,6 +161,30 @@ test("LeileiOSAdapter round-trips canonical node migration metadata", async () =
   assert.deepEqual(jsonBody(requests[1]?.init).snapshot, migratedSnapshot);
 });
 
+test("LeileiOSAdapter retains sibling source summaries and sends explicit editor source ids", async () => {
+  const source = { nodeId: "node-1", diaryId: "00000000-0000-4000-8000-000000000001", title: "Diary", date: "2026-08-21", status: "archived" as const };
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      if (path === "/universe/diary-source-options?q=Diary") return { success: true, data: [{ id: source.diaryId, title: source.title, date: source.date, status: source.status }] } as T;
+      return { success: true, data: { ...readResult, sources: [source] } } as T;
+    },
+  };
+  const adapter = createLeileiOSUniverseAdapter(api) as typeof createLeileiOSUniverseAdapter extends (...args: never[]) => infer T ? T & {
+    createNode(value: UniverseNode, expectedVersion: number, sourceDiaryIds: string[]): Promise<unknown>;
+    updateNode(nodeId: string, patch: Partial<UniverseNode>, reason: string, expectedVersion: number, sourceDiaryIds: string[]): Promise<unknown>;
+    searchDiarySourceOptions(query: string): Promise<unknown>;
+  } : never;
+  const loaded = await adapter.loadUniverse();
+  assert.deepEqual(loaded.sources, [source]);
+  await adapter.createNode({ id: "node-1", title: "n", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 1, y: 1 }, createdAt: "now", updatedAt: "now" }, 4, [source.diaryId]);
+  await adapter.updateNode("node-1", { title: "updated" }, "edit", 5, [source.diaryId]);
+  assert.deepEqual(await adapter.searchDiarySourceOptions("Diary"), [{ id: source.diaryId, title: source.title, date: source.date, status: source.status }]);
+  assert.deepEqual(jsonBody(requests[1]?.init), { node: { id: "node-1", title: "n", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 1, y: 1 }, createdAt: "now", updatedAt: "now" }, source_diary_ids: [source.diaryId], expected_version: 4 });
+  assert.deepEqual(jsonBody(requests[2]?.init), { patch: { title: "updated" }, source_diary_ids: [source.diaryId], reason: "edit", expected_version: 5 });
+});
+
 test("LeileiOSUniverseService replaces canonical version after each mutation and surfaces conflicts", async () => {
   let current = readResult;
   const calls: Array<{ expectedVersion: number; kind: string }> = [];

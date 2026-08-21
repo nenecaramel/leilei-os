@@ -27,7 +27,7 @@ export class UniverseInitializationError extends Error {
 export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAdapter }) {
   let state: UniverseClientState = null;
   const set = (result: UniverseReadResult) => {
-    state = { snapshot: result.snapshot, version: result.version };
+    state = { ...result, sources: result.sources ?? [] };
     return state;
   };
   const expected = () => {
@@ -68,11 +68,14 @@ export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAd
         throw new UniverseInitializationError("UNIVERSE_IMPORT_UNCERTAIN");
       }
     },
-    async createNode(node: UniverseNodeCreateInput) {
-      return set(await adapter.createNode(node, expected()));
+    async createNode(node: UniverseNodeCreateInput, sourceDiaryIds: string[] = []) {
+      return set(await adapter.createNode(node, expected(), sourceDiaryIds));
     },
-    async updateNode(nodeId: string, patch: Partial<UniverseNode>, reason = "认知内容更新") {
-      return set(await adapter.updateNode(nodeId, patch, reason, expected()));
+    async updateNode(nodeId: string, patch: Partial<UniverseNode>, reason = "认知内容更新", sourceDiaryIds?: string[]) {
+      return set(await adapter.updateNode(nodeId, patch, reason, expected(), sourceDiaryIds));
+    },
+    async searchDiarySourceOptions(query: string) {
+      return adapter.searchDiarySourceOptions(query);
     },
     async deleteNode(nodeId: string) {
       return set(await adapter.deleteNode(nodeId, expected()));
