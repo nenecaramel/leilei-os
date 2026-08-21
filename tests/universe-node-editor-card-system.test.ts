@@ -23,6 +23,23 @@ test("mobile create/edit uses the approved lightweight card hierarchy", () => {
   assert.match(nodePaper, /placeholder="自我观察, 认知演化"/);
 });
 
+test("mobile create/edit keeps context fixed while the large title belongs to the scrollable form body", () => {
+  const heading = nodePaper.match(
+    /<header className="universe-standalone-editor-heading">([\s\S]*?)<\/header>/,
+  )?.[1] ?? "";
+  const bodyLead = nodePaper.match(
+    /<div className="universe-standalone-editor-body">([\s\S]*?)<div className="universe-standalone-form-field">/,
+  )?.[1] ?? "";
+
+  assert.match(heading, /universe-standalone-editor-context/);
+  assert.match(heading, /universe-standalone-editor-management/);
+  assert.doesNotMatch(heading, /<h2>/);
+  assert.match(
+    bodyLead,
+    /<h2>\{isCreate \? "点亮一颗新星" : "调整这颗星球"\}<\/h2>/,
+  );
+});
+
 test("galaxy weight UI converts percentage text back to canonical decimals", () => {
   assert.match(nodePaper, /function canonicalWeightTextToPercentText\(weightText: string\)/);
   assert.match(nodePaper, /function percentWeightTextToCanonicalText\(percentText: string\)/);
@@ -42,6 +59,14 @@ test("mobile editor shell exactly matches accepted card geometry and compact con
   assert.match(shellCss, /\.universe-standalone-editor \.universe-standalone-form-field input,[\s\S]*?height:\s*44px !important/);
   assert.match(shellCss, /textarea\[id\$="-summary"\][\s\S]*?height:\s*62px !important/);
   assert.match(shellCss, /textarea\[id\$="-content"\][\s\S]*?height:\s*96px !important/);
+  assert.match(
+    shellCss,
+    /\.universe-standalone-editor-body\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?padding-top:\s*0;/,
+  );
+  assert.match(
+    shellCss,
+    /\.universe-standalone-editor-body > h2 \+ \.universe-standalone-form-field\s*\{[\s\S]*?margin-top:\s*24px;/,
+  );
   assert.match(shellCss, /\.universe-standalone-editor-footer[\s\S]*?border-top:\s*0/);
   assert.match(shellCss, /\.universe-standalone-editor \.universe-standalone-primary[\s\S]*?background:\s*transparent/);
 });
