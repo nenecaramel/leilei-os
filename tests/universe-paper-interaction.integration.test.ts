@@ -271,8 +271,9 @@ test("Universe detail renders Diary provenance as an ordered timeline and opens 
         onSave: async () => {},
       }));
     });
-    const rows = [...context.dom.window.document.querySelectorAll<HTMLElement>(".universe-diary-provenance-row")];
+    const rows = [...context.dom.window.document.querySelectorAll<HTMLElement>(".universe-node-original-web-mobile .universe-diary-provenance-row")];
     assert.equal(rows.length, 2);
+    assert.equal(context.dom.window.document.querySelectorAll(".universe-node-paper-desktop .universe-diary-provenance-row").length, 2);
     assert.match(rows[0]?.textContent ?? "", /2026\.08\.01/);
     assert.match(rows[0]?.textContent ?? "", /较旧日记/);
     assert.match(rows[1]?.textContent ?? "", /2026\.08\.21/);
