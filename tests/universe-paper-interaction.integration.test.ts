@@ -247,3 +247,63 @@ test("Universe metadata is fixed in the paper footer while connections stay in t
     restoreDom(context.dom, context.previous);
   }
 });
+
+test("Universe detail renders Diary provenance as an ordered timeline and opens the source", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const opened: string[] = [];
+  const sources = [
+    { nodeId: "n1", diaryId: "diary-new", title: "较新日记", date: "2026-08-21", status: "active" as const },
+    { nodeId: "n1", diaryId: "diary-old", title: "较旧日记", date: "2026-08-01", status: "archived" as const },
+  ];
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "detail", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        sources,
+        onOpenDiarySource: (id: string) => opened.push(id),
+        onRequestClose: () => true,
+        onSave: async () => {},
+      }));
+    });
+    const rows = [...context.dom.window.document.querySelectorAll<HTMLElement>(".universe-diary-provenance-row")];
+    assert.equal(rows.length, 2);
+    assert.match(rows[0]?.textContent ?? "", /2026\.08\.01/);
+    assert.match(rows[0]?.textContent ?? "", /较旧日记/);
+    assert.match(rows[1]?.textContent ?? "", /2026\.08\.21/);
+    await React.act(async () => { (rows[0]?.querySelector("button") as HTMLButtonElement)?.click(); });
+    assert.deepEqual(opened, ["diary-old"]);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("Universe detail omits the Diary provenance timeline when no sources exist", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "detail", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        sources: [],
+        onRequestClose: () => true,
+        onSave: async () => {},
+      }));
+    });
+    assert.equal(context.dom.window.document.querySelector(".universe-diary-provenance"), null);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
