@@ -19,16 +19,8 @@
     margin-top: 30px !important;
   }
 
-  /* Search text starts at picker padding 14px + input border 1px + input padding 12px. */
   .universe-standalone-source-picker-head {
-    padding-left: 13px !important;
-    color: #777988 !important;
-    font-size: 13px !important;
-    line-height: 1.35 !important;
-  }
-
-  .universe-standalone-source-picker-head strong {
-    font-weight: 400 !important;
+    display: none !important;
   }
 
   .universe-standalone-detail-actions button,
