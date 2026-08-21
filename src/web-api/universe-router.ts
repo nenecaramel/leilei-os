@@ -16,7 +16,7 @@ export type UniverseApiDependencies = {
     | "latestBackup"
     | "restoreBackup"
     | "ensureDailyBackup"
-  >;
+  > & Partial<Pick<UniverseService, "loadUniverseWeb" | "createNodeWeb" | "updateNodeWeb" | "searchDiarySourceOptions">>;
 };
 
 /**
@@ -26,7 +26,9 @@ export type UniverseApiDependencies = {
  */
 export function createUniverseApiRouter(dependencies: UniverseApiDependencies): Router {
   const router = Router();
-  router.get("/", handler(dependencies, async (request) => dependencies.universeService.loadUniverse(request.webUserId!)));
+  router.get("/", handler(dependencies, async (request) => dependencies.universeService.loadUniverseWeb
+    ? dependencies.universeService.loadUniverseWeb(request.webUserId!)
+    : dependencies.universeService.loadUniverse(request.webUserId!)));
   router.put("/", handler(dependencies, async (request) => {
     const body = bodyRecord(request.body);
     const expectedVersion = readExpectedVersion(body);
@@ -37,19 +39,31 @@ export function createUniverseApiRouter(dependencies: UniverseApiDependencies): 
   router.post("/nodes", handler(dependencies, async (request) => {
     const body = bodyRecord(request.body);
     const expectedVersion = readExpectedVersion(body);
-    return dependencies.universeService.createNode(request.webUserId!, body.node ?? omit(body, "expected_version"), expectedVersion);
+    const node = body.node ?? omit(body, "expected_version", "source_diary_ids");
+    return dependencies.universeService.createNodeWeb
+      ? dependencies.universeService.createNodeWeb(request.webUserId!, node, body.source_diary_ids, expectedVersion)
+      : dependencies.universeService.createNode(request.webUserId!, node, expectedVersion);
   }));
   router.patch("/nodes/:id", handler(dependencies, async (request) => {
     const body = bodyRecord(request.body);
     const expectedVersion = readExpectedVersion(body);
     const patch = body.patch ?? omit(body, "expected_version", "reason");
     const reason = body.reason === undefined ? "update" : readString(body.reason, "reason");
-    return dependencies.universeService.updateNode(request.webUserId!, routeParam(request.params.id), patch as never, reason, expectedVersion);
+    return dependencies.universeService.updateNodeWeb
+      ? dependencies.universeService.updateNodeWeb(request.webUserId!, routeParam(request.params.id), patch as never, body.source_diary_ids, reason, expectedVersion)
+      : dependencies.universeService.updateNode(request.webUserId!, routeParam(request.params.id), patch as never, reason, expectedVersion);
   }));
   router.delete("/nodes/:id", handler(dependencies, async (request) => {
     const body = bodyRecord(request.body);
     const expectedVersion = readExpectedVersion(body);
     return dependencies.universeService.deleteNode(request.webUserId!, routeParam(request.params.id), expectedVersion);
+  }));
+
+  router.get("/diary-source-options", handler(dependencies, async (request) => {
+    if (!dependencies.universeService.searchDiarySourceOptions) throw new UniverseServiceError("UNIVERSE_FAILED");
+    const query = request.query.q;
+    if (Array.isArray(query) || (query !== undefined && typeof query !== "string")) throw new UniverseServiceError("INVALID_UNIVERSE");
+    return dependencies.universeService.searchDiarySourceOptions(request.webUserId!, query ?? "");
   }));
 
   router.post("/relations", handler(dependencies, async (request) => {

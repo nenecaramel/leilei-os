@@ -71,6 +71,37 @@ test("Universe command APIs pass expected version and reject client identity", a
   });
 });
 
+test("Universe Web API exposes sibling source summaries and atomic source-aware commands", async () => {
+  const calls: unknown[][] = [];
+  const sources = [{ nodeId: "node-1", diaryId: "00000000-0000-4000-8000-000000000001", title: "Diary", date: "2026-08-21", status: "archived" }];
+  await withServer({
+    async loadUniverseWeb() { return { snapshot, version: 3, sources }; },
+    async createNodeWeb(...args: never[]) { calls.push(args); return { snapshot, version: 4, sources }; },
+    async updateNodeWeb(...args: never[]) { calls.push(args); return { snapshot, version: 5, sources }; },
+    async searchDiarySourceOptions(...args: never[]) { calls.push(args); return [{ id: sources[0]!.diaryId, title: "Diary", date: "2026-08-21", status: "archived" }]; },
+  }, async (baseUrl) => {
+    const headers = { "content-type": "application/json", "x-test-user": "yes" };
+    const loaded = await fetch(`${baseUrl}/api/v1/universe`, { headers });
+    assert.deepEqual((await loaded.json()).data.sources, sources);
+    const created = await fetch(`${baseUrl}/api/v1/universe/nodes`, {
+      method: "POST", headers,
+      body: JSON.stringify({ expected_version: 3, node: { title: "node" }, source_diary_ids: [sources[0]!.diaryId] }),
+    });
+    assert.equal(created.status, 200);
+    const updated = await fetch(`${baseUrl}/api/v1/universe/nodes/node-1`, {
+      method: "PATCH", headers,
+      body: JSON.stringify({ expected_version: 4, patch: { title: "updated" }, source_diary_ids: [] }),
+    });
+    assert.equal(updated.status, 200);
+    const options = await fetch(`${baseUrl}/api/v1/universe/diary-source-options?q=Diary`, { headers });
+    assert.equal(options.status, 200);
+    assert.deepEqual((await options.json()).data, [{ id: sources[0]!.diaryId, title: "Diary", date: "2026-08-21", status: "archived" }]);
+  });
+  assert.deepEqual(calls[0]?.[2], [sources[0]!.diaryId]);
+  assert.deepEqual(calls[1]?.[3], []);
+  assert.deepEqual(calls[2], [USER_ID, "Diary"]);
+});
+
 test("Universe API forwards weighted membership payloads without normalization", async () => {
   const calls: unknown[][] = [];
   const memberships = [{ id: "galaxy-a", weight: 0.125 }, { id: "galaxy-b", weight: 0.875 }];
