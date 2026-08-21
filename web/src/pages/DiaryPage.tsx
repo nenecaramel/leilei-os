@@ -58,6 +58,7 @@ import {
   readDiaryFilters,
   type DiaryFilters,
 } from "./diary-location";
+import { isUniverseNodeReturnTo } from "./universe/universe-location";
 import {
   getDiaryScrollStorage,
   readDiaryScrollPosition,
@@ -662,6 +663,10 @@ export function DiaryPageContent({
     if (!skipSafety && !confirmAndDiscardDraft()) return;
     if (!skipSafety) invalidateMutationContext();
     const returnTo = getSafeDiaryReturnTo(location.returnTo);
+    if (isUniverseNodeReturnTo(returnTo)) {
+      navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
+      return;
+    }
     if (isSearchLocation(returnTo)) {
       navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
@@ -770,6 +775,10 @@ export function DiaryPageContent({
     const returnTo = getSafeDiaryArchiveReturnTo(
       archivedDetailLocation.returnTo,
     );
+    if (isUniverseNodeReturnTo(returnTo)) {
+      navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
+      return;
+    }
     if (isSearchLocation(returnTo)) {
       navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
       return;
@@ -810,7 +819,9 @@ export function DiaryPageContent({
       if (!mutationOwnership.current.owns(ticket)) return;
       listAvailableRef.current = false;
       loadedListUrlRef.current = "";
-      closeDiary(true);
+      const returnTo = getSafeDiaryReturnTo(location.returnTo);
+      if (isUniverseNodeReturnTo(returnTo)) navigateWithinApp(returnTo, window.history.state, { resetScroll: false });
+      else closeDiary(true);
       setReloadKey((value) => value + 1);
     } catch {
       if (mutationOwnership.current.owns(ticket)) {
@@ -832,6 +843,11 @@ export function DiaryPageContent({
         method: "POST",
       });
       if (!mutationOwnership.current.owns(ticket)) return;
+      const directReturnTo = getSafeDiaryArchiveReturnTo(archivedDetailLocation.returnTo);
+      if (isUniverseNodeReturnTo(directReturnTo)) {
+        navigateWithinApp(directReturnTo, window.history.state, { resetScroll: false });
+        return;
+      }
       const activeReturnTo = getDiaryArchiveLocation(
         new URL(
           archivedDetailLocation.returnTo,

@@ -17,7 +17,9 @@ import { UniverseGalaxyPicker } from "./universe/UniverseGalaxyPicker";
 import { UniverseNodePaper, type UniverseNodePaperDraft, type UniverseNodePaperMode } from "./universe/UniverseNodePaper";
 import { UniverseRelationPaper } from "./universe/UniverseRelationPaper";
 import { UniverseFloatingPopover } from "./universe/UniverseFloatingPopover";
-import { consumeUniverseNodeTarget } from "./universe/universe-location";
+import { consumeUniverseNodeTarget, createUniverseNodeReturnTo } from "./universe/universe-location";
+import { createArchivedDiaryDetailLocation, createDiaryDetailLocation } from "./diary-location";
+import { navigateWithinApp } from "./app-navigation";
 import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
@@ -343,6 +345,16 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         connections={selectedConnections}
         sources={selectedSources}
         onSearchDiarySourceOptions={(query) => service.searchDiarySourceOptions(query)}
+        onOpenDiarySource={(diaryId) => {
+          if (!selectedNode) return;
+          const source = selectedSources.find((item) => item.diaryId === diaryId);
+          if (!source) return;
+          const returnTo = createUniverseNodeReturnTo(selectedNode.id);
+          const next = source.status === "archived"
+            ? createArchivedDiaryDetailLocation(diaryId, returnTo)
+            : createDiaryDetailLocation(diaryId, returnTo);
+          navigateWithinApp(next, window.history.state, { resetScroll: false });
+        }}
         onRequestClose={() => { setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}
