@@ -27,14 +27,10 @@ test("Universe editor micro-labels use one explicit zero-padding left edge", () 
   );
 });
 
-test("Diary source picker heading is regular weight and exactly aligned with search text", () => {
+test("Diary source picker heading is removed from the mobile layout", () => {
   assert.match(
     finalGeometryCss,
-    /\.universe-standalone-source-picker-head\s*\{[^}]*padding-left:\s*13px\s*!important;[^}]*font-size:\s*13px\s*!important;[^}]*line-height:\s*1\.35\s*!important;/,
-  );
-  assert.match(
-    finalGeometryCss,
-    /\.universe-standalone-source-picker-head\s+strong\s*\{[^}]*font-weight:\s*400\s*!important;/,
+    /\.universe-standalone-source-picker-head\s*\{[^}]*display:\s*none\s*!important;/,
   );
 });
 
