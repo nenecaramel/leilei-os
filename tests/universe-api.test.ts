@@ -76,7 +76,11 @@ test("Universe Web API exposes sibling source summaries and atomic source-aware 
   const sources = [{ nodeId: "node-1", diaryId: "00000000-0000-4000-8000-000000000001", title: "Diary", date: "2026-08-21", status: "archived" }];
   await withServer({
     async loadUniverseWeb() { return { snapshot, version: 3, sources }; },
-    async createNodeWeb(...args: never[]) { calls.push(args); return { snapshot, version: 4, sources }; },
+    async createNodeWeb(...args: never[]) {
+      calls.push(args);
+      if (args[2] === null) throw new UniverseServiceError("INVALID_UNIVERSE");
+      return { snapshot, version: 4, sources };
+    },
     async updateNodeWeb(...args: never[]) { calls.push(args); return { snapshot, version: 5, sources }; },
     async searchDiarySourceOptions(...args: never[]) { calls.push(args); return [{ id: sources[0]!.diaryId, title: "Diary", date: "2026-08-21", status: "archived" }]; },
   }, async (baseUrl) => {
@@ -95,9 +99,10 @@ test("Universe Web API exposes sibling source summaries and atomic source-aware 
     assert.equal(explicitNull.status, 400);
     assert.deepEqual(await explicitNull.json(), {
       success: false,
-      error: { code: "INVALID_UNIVERSE", message: "INVALID_UNIVERSE" },
+      error: { code: "INVALID_UNIVERSE", message: "Universe request is invalid." },
     });
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1]?.[2], null);
     const created = await fetch(`${baseUrl}/api/v1/universe/nodes`, {
       method: "POST", headers,
       body: JSON.stringify({ expected_version: 3, node: { title: "node" }, source_diary_ids: [sources[0]!.diaryId] }),
@@ -113,9 +118,9 @@ test("Universe Web API exposes sibling source summaries and atomic source-aware 
     assert.deepEqual((await options.json()).data, [{ id: sources[0]!.diaryId, title: "Diary", date: "2026-08-21", status: "archived" }]);
   });
   assert.deepEqual(calls[0]?.[2], []);
-  assert.deepEqual(calls[1]?.[2], [sources[0]!.diaryId]);
-  assert.deepEqual(calls[2]?.[3], []);
-  assert.deepEqual(calls[3], [USER_ID, "Diary"]);
+  assert.deepEqual(calls[2]?.[2], [sources[0]!.diaryId]);
+  assert.deepEqual(calls[3]?.[3], []);
+  assert.deepEqual(calls[4], [USER_ID, "Diary"]);
 });
 
 test("Universe API forwards weighted membership payloads without normalization", async () => {
