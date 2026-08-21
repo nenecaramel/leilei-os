@@ -1,39 +1,31 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { shouldReloadAcrossVisualSurface } from "../web/src/pages/app-navigation.js";
 
-const mobileCss = readFileSync(
-  new URL("../web/src/pages/universe/universe-node-paper-web-mobile.css", import.meta.url),
+const finalGeometryCss = readFileSync(
+  new URL("../web/src/pages/universe-mobile-final-geometry.css", import.meta.url),
   "utf8",
 );
 const appNavigationSource = readFileSync(
   new URL("../web/src/pages/app-navigation.ts", import.meta.url),
   "utf8",
 );
-const universePageSource = readFileSync(
-  new URL("../web/src/pages/UniversePage.tsx", import.meta.url),
-  "utf8",
-);
-const diaryPageSource = readFileSync(
-  new URL("../web/src/pages/DiaryPage.tsx", import.meta.url),
-  "utf8",
-);
 
 test("Universe source field follows the same section spacing rhythm as the galaxy group", () => {
   assert.match(
-    mobileCss,
-    /\.universe-standalone-source-field\s*\{[^}]*margin-top:\s*30px;/,
+    finalGeometryCss,
+    /\.universe-standalone-source-field\s*\{[^}]*margin-top:\s*30px\s*!important;/,
   );
 });
 
-test("Universe and Diary provenance cross-surface navigation reloads the document", () => {
+test("Universe and Diary cross-surface navigation reloads the document", () => {
+  assert.equal(shouldReloadAcrossVisualSurface("/universe", "/diary"), true);
+  assert.equal(shouldReloadAcrossVisualSurface("/diary", "/universe"), true);
+  assert.equal(shouldReloadAcrossVisualSurface("/universe", "/search"), false);
+  assert.equal(shouldReloadAcrossVisualSurface("/diary", "/search"), false);
   assert.match(
     appNavigationSource,
-    /export function navigateAcrossVisualSurface\([\s\S]*window\.location\.assign\(location\)/,
-  );
-  assert.match(universePageSource, /navigateAcrossVisualSurface\(next\)/);
-  assert.ok(
-    [...diaryPageSource.matchAll(/navigateAcrossVisualSurface\(returnTo\)/g)].length >= 4,
-    "all direct Diary → Universe return paths should reload across the light/dark surface boundary",
+    /shouldReloadAcrossVisualSurface\(window\.location\.pathname,\s*targetPathname\)[\s\S]*window\.location\.assign\(location\);[\s\S]*return;/,
   );
 });
