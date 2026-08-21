@@ -307,3 +307,42 @@ test("Universe detail omits the Diary provenance timeline when no sources exist"
     restoreDom(context.dom, context.previous);
   }
 });
+
+test("Universe editor keeps source selection draft until picker completion and saves exact Diary IDs", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const saves: unknown[] = [];
+  const oldSource = { nodeId: "n1", diaryId: "diary-old", title: "旧日记", date: "2026-08-01", status: "archived" as const };
+  const newSource = { nodeId: "n1", diaryId: "diary-new", title: "新日记", date: "2026-08-21", status: "active" as const };
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "edit", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        sources: [oldSource],
+        diarySourceOptions: [oldSource, newSource],
+        onRequestClose: () => true,
+        onSave: async (draft: unknown) => { saves.push(draft); },
+      }));
+    });
+    assert.match(context.dom.window.document.body.textContent ?? "", /2026\.08\.01 · 旧日记 ×/);
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋ 添加")?.click(); });
+    assert.ok(context.dom.window.document.querySelector("[aria-label='选择来源日记']"));
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("2026.08.21 · 新日记"))?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "取消")?.click(); });
+    assert.equal(context.dom.window.document.querySelector("[aria-label='选择来源日记']"), null);
+    assert.doesNotMatch(context.dom.window.document.body.textContent ?? "", /2026\.08\.21 · 新日记 ×/);
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋ 添加")?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("2026.08.21 · 新日记"))?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "完成")?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "保存星球")?.click(); });
+    assert.deepEqual((saves.at(-1) as { sourceDiaryIds: string[] }).sourceDiaryIds, ["diary-old", "diary-new"]);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
