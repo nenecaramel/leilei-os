@@ -160,6 +160,7 @@ export function UniverseNodePaper({
   const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
   const [connectionMenuId, setConnectionMenuId] = useState<string | null>(null);
   const connectionAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const sourcePickerSearchRef = useRef<HTMLInputElement | null>(null);
   const createTimestampRef = useRef<string | null>(null);
 
   if (isCreate && !createTimestampRef.current) createTimestampRef.current = new Date().toISOString();
@@ -212,6 +213,17 @@ export function UniverseNodePaper({
     });
     return () => { active = false; };
   }, [onSearchDiarySourceOptions, sourcePickerOpen, sourcePickerQuery]);
+
+  useEffect(() => {
+    if (!sourcePickerOpen) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      sourcePickerSearchRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [sourcePickerOpen]);
 
   if (!effectiveNode && !isCreate) return null;
   const id = isCreate ? "universe-node-create-paper" : `universe-node-paper-${effectiveNode!.id}`;
@@ -292,8 +304,8 @@ export function UniverseNodePaper({
       </div>
       {sourcePickerOpen ? (
         <div className="universe-standalone-source-picker" role="dialog" aria-label="选择来源日记">
-          <div className="universe-standalone-source-picker-head"><strong>选择来源日记</strong></div>
-          <input aria-label="搜索来源日记" placeholder="搜索标题、日期或标签" value={sourcePickerQuery} onChange={(event) => setSourcePickerQuery(event.target.value)} />
+          <div className="universe-standalone-source-picker-head"><span>选择来源日记</span></div>
+          <input ref={sourcePickerSearchRef} aria-label="搜索来源日记" placeholder="搜索标题、日期或标签" value={sourcePickerQuery} onChange={(event) => setSourcePickerQuery(event.target.value)} />
           <div className="universe-standalone-source-results">
             {sourcePickerResults.map((option) => {
               const selected = sourcePickerSelection.includes(option.id);
