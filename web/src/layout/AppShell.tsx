@@ -1,11 +1,9 @@
 import React, {
-  useEffect,
   useRef,
   useState,
 } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { Outlet, useLocation } from "react-router-dom";
-import { syncThemeColorMeta } from "../auth/theme-color";
+import { Outlet } from "react-router-dom";
 import { PwaStatus } from "../pwa/PwaStatus";
 import { pwaStateStore } from "../pwa/pwa-runtime-state";
 import { useWebApiClient } from "../api/useWebApiClient";
@@ -20,7 +18,6 @@ export { NAV_ITEMS } from "./NavigationGroups";
 export function AppShell() {
   const { logout, user } = useAuth0();
   const api = useWebApiClient();
-  const location = useLocation();
 
   const [mobileMenuOpen, setMobileMenuOpen] =
     useState(false);
@@ -31,13 +28,6 @@ export function AppShell() {
     useRef<HTMLButtonElement>(null);
   const searchButtonRef =
     useRef<HTMLButtonElement>(null);
-
-  const routeThemeColor =
-    location.pathname === "/universe" ? "#0b0c12" : "#ebeae4";
-
-  useEffect(() => {
-    syncThemeColorMeta(document, routeThemeColor);
-  }, [routeThemeColor]);
 
   const displayName =
     user?.name ||
