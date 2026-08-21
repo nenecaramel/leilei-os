@@ -3,7 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#ebeae4" />
+    <meta id="theme-color" name="theme-color" content="#ebeae4" />
+    <script>
+      if (window.location.pathname === "/universe") {
+        const themeColor = document.getElementById("theme-color");
+        if (themeColor) themeColor.content = "#0b0c12";
+      }
+    </script>
     <meta
       name="description"
       content="Leilei OS personal operations dashboard"
