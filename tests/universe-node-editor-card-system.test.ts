@@ -59,6 +59,14 @@ test("mobile editor shell exactly matches accepted card geometry and compact con
   assert.match(shellCss, /\.universe-standalone-editor \.universe-standalone-form-field input,[\s\S]*?height:\s*44px !important/);
   assert.match(shellCss, /textarea\[id\$="-summary"\][\s\S]*?height:\s*62px !important/);
   assert.match(shellCss, /textarea\[id\$="-content"\][\s\S]*?height:\s*96px !important/);
+  assert.match(
+    shellCss,
+    /\.universe-standalone-editor-body\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?padding-top:\s*0;/,
+  );
+  assert.match(
+    shellCss,
+    /\.universe-standalone-editor-body > h2 \+ \.universe-standalone-form-field\s*\{[\s\S]*?margin-top:\s*24px;/,
+  );
   assert.match(shellCss, /\.universe-standalone-editor-footer[\s\S]*?border-top:\s*0/);
   assert.match(shellCss, /\.universe-standalone-editor \.universe-standalone-primary[\s\S]*?background:\s*transparent/);
 });
