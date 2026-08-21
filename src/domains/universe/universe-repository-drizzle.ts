@@ -81,6 +81,12 @@ export class DrizzleUniverseRepository implements UniverseRepository {
     }).slice(0, 100).map((row) => ({ id: row.id, title: row.title, date: row.date, status: row.status }));
   }
 
+  async readUniverseDiarySources(userId: string, nodeId: string): Promise<UniverseDiarySourceSummary[] | null> {
+    const node = await this.findNode(userId, nodeId);
+    if (!node) return null;
+    return readDiarySourceSummaries(this.db, userId, nodeId);
+  }
+
   async saveUniverse(userId: string, snapshot: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult> {
     return this.inTransaction(userId, async (repository) => {
       const meta = await repository.lockMeta(userId);
@@ -356,6 +362,48 @@ export class DrizzleUniverseRepository implements UniverseRepository {
     });
   }
 
+  async addUniverseDiarySource(userId: string, nodeId: string, diaryId: string, expectedVersion: number): Promise<UniverseReadResult> {
+    return this.inTransaction(userId, async (repository) => {
+      await repository.assertVersion(userId, expectedVersion);
+      const node = await repository.findNode(userId, nodeId);
+      if (!node) throw new UniverseServiceError("NODE_NOT_FOUND");
+      await repository.assertDiarySource(userId, diaryId);
+      const [existing] = await repository.db.select({ diaryId: universeDiarySources.diaryId })
+        .from(universeDiarySources)
+        .where(and(
+          eq(universeDiarySources.userId, userId),
+          eq(universeDiarySources.nodeId, nodeId),
+          eq(universeDiarySources.diaryId, diaryId),
+        ))
+        .limit(1);
+      if (existing) throw new UniverseServiceError("DIARY_SOURCE_CONFLICT");
+      try {
+        await repository.db.insert(universeDiarySources).values({ userId, nodeId, diaryId });
+      } catch (error) {
+        if (hasCode(error, "23505")) throw new UniverseServiceError("DIARY_SOURCE_CONFLICT");
+        throw error;
+      }
+      await repository.bumpVersion(userId, expectedVersion, new Date().toISOString());
+      return repository.requireUniverse(userId);
+    });
+  }
+
+  async deleteUniverseDiarySource(userId: string, nodeId: string, diaryId: string, expectedVersion: number): Promise<UniverseReadResult> {
+    return this.inTransaction(userId, async (repository) => {
+      await repository.assertVersion(userId, expectedVersion);
+      const node = await repository.findNode(userId, nodeId);
+      if (!node) throw new UniverseServiceError("NODE_NOT_FOUND");
+      const deleted = await repository.db.delete(universeDiarySources).where(and(
+        eq(universeDiarySources.userId, userId),
+        eq(universeDiarySources.nodeId, nodeId),
+        eq(universeDiarySources.diaryId, diaryId),
+      )).returning({ diaryId: universeDiarySources.diaryId });
+      if (deleted.length !== 1) throw new UniverseServiceError("DIARY_SOURCE_NOT_FOUND");
+      await repository.bumpVersion(userId, expectedVersion, new Date().toISOString());
+      return repository.requireUniverse(userId);
+    });
+  }
+
   async latestRevision(userId: string, nodeId: string): Promise<UniverseRevision | null> {
     const [row] = await this.db.select().from(universeRevisions).where(
       and(eq(universeRevisions.userId, userId), eq(universeRevisions.nodeId, nodeId)),
@@ -552,6 +600,14 @@ export class DrizzleUniverseRepository implements UniverseRepository {
     void nodeId;
   }
 
+  private async assertDiarySource(userId: string, diaryId: string): Promise<void> {
+    const [row] = await this.db.select({ id: diaryEntries.id }).from(diaryEntries).where(and(
+      eq(diaryEntries.userId, userId),
+      eq(diaryEntries.id, diaryId),
+    )).limit(1);
+    if (!row) throw new UniverseServiceError("DIARY_SOURCE_NOT_FOUND");
+  }
+
   private async insertDiarySources(userId: string, nodeId: string, sourceDiaryIds: string[]): Promise<void> {
     if (sourceDiaryIds.length === 0) return;
     await this.db.insert(universeDiarySources).values(sourceDiaryIds.map((diaryId) => ({ userId, nodeId, diaryId })));
@@ -578,7 +634,7 @@ async function readUniverse(db: Executor, userId: string): Promise<UniverseReadR
   return { snapshot, version: meta.version };
 }
 
-async function readDiarySourceSummaries(db: Executor, userId: string): Promise<UniverseDiarySourceSummary[]> {
+async function readDiarySourceSummaries(db: Executor, userId: string, nodeId?: string): Promise<UniverseDiarySourceSummary[]> {
   const rows = await db.select({
     nodeId: universeDiarySources.nodeId,
     diaryId: universeDiarySources.diaryId,
@@ -588,7 +644,10 @@ async function readDiarySourceSummaries(db: Executor, userId: string): Promise<U
   }).from(universeDiarySources).innerJoin(diaryEntries, and(
     eq(universeDiarySources.userId, diaryEntries.userId),
     eq(universeDiarySources.diaryId, diaryEntries.id),
-  )).where(eq(universeDiarySources.userId, userId)).orderBy(asc(diaryEntries.date), asc(diaryEntries.id));
+  )).where(nodeId === undefined
+    ? eq(universeDiarySources.userId, userId)
+    : and(eq(universeDiarySources.userId, userId), eq(universeDiarySources.nodeId, nodeId)))
+    .orderBy(asc(diaryEntries.date), asc(diaryEntries.id));
   return rows;
 }
 

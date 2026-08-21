@@ -89,14 +89,18 @@ test("Phase 8.5 registers dedicated Universe read tools", async (t) => {
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
   const names = (await fixture.client.listTools()).tools.map((tool) => tool.name);
   assert.deepEqual(names.filter((name) => name.includes("universe")).sort(), [
+    "add_universe_diary_source",
     "create_universe_node",
     "create_universe_relation",
+    "delete_universe_diary_source",
+    "delete_universe_relation",
+    "get_universe_diary_sources",
     "get_universe_node",
     "get_universe_relations",
     "search_universe",
     "update_universe_node",
   ]);
-  assert.equal(names.length, 35);
+  assert.equal(names.length, 39);
 });
 
 test("search_universe validates input, forwards limit/cursor, and preserves pagination output", async (t) => {

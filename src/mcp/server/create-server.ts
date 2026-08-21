@@ -139,6 +139,10 @@ import { registerGetUniverseRelationsTool, type GetUniverseRelationsToolDependen
 import { registerCreateUniverseNodeTool, type CreateUniverseNodeToolDependencies } from "../tools/create-universe-node/register.js";
 import { registerUpdateUniverseNodeTool, type UpdateUniverseNodeToolDependencies } from "../tools/update-universe-node/register.js";
 import { registerCreateUniverseRelationTool, type CreateUniverseRelationToolDependencies } from "../tools/create-universe-relation/register.js";
+import { registerDeleteUniverseRelationTool, type DeleteUniverseRelationToolDependencies } from "../tools/delete-universe-relation/register.js";
+import { registerGetUniverseDiarySourcesTool, type GetUniverseDiarySourcesToolDependencies } from "../tools/get-universe-diary-sources/register.js";
+import { registerAddUniverseDiarySourceTool, type AddUniverseDiarySourceToolDependencies } from "../tools/add-universe-diary-source/register.js";
+import { registerDeleteUniverseDiarySourceTool, type DeleteUniverseDiarySourceToolDependencies } from "../tools/delete-universe-diary-source/register.js";
 import { UniverseAuthenticationError } from "../tools/universe/shared.js";
 import {
   ActiveUserAuthorizationError,
@@ -443,12 +447,19 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
 
 const productionUniverseService: SearchUniverseToolDependencies["globalSearchService"] &
   GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
-  CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] & CreateUniverseRelationToolDependencies["universeService"] = {
+  CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] &
+  CreateUniverseRelationToolDependencies["universeService"] & DeleteUniverseRelationToolDependencies["relationService"] &
+  GetUniverseDiarySourcesToolDependencies["sourceService"] & AddUniverseDiarySourceToolDependencies["sourceService"] &
+  DeleteUniverseDiarySourceToolDependencies["sourceService"] = {
   search: (input) => getDefaultGlobalSearchService().search(input),
   loadUniverse: (userId) => getDefaultUniverseService().loadUniverse(userId),
   createMcpNode: (userId, input, expectedVersion, idempotencyKey) => getDefaultUniverseService().createMcpNode(userId, input, expectedVersion, idempotencyKey),
   updateMcpNode: (userId, nodeId, patch, expectedVersion) => getDefaultUniverseService().updateMcpNode(userId, nodeId, patch, expectedVersion),
   createMcpRelation: (userId, input, expectedVersion, idempotencyKey) => getDefaultUniverseService().createMcpRelation(userId, input, expectedVersion, idempotencyKey),
+  deleteRelation: (userId, relationId, expectedVersion) => getDefaultUniverseService().deleteRelation(userId, relationId, expectedVersion),
+  getUniverseDiarySources: (userId, nodeId) => getDefaultUniverseService().getUniverseDiarySources(userId, nodeId),
+  addUniverseDiarySource: (userId, nodeId, diaryId, expectedVersion) => getDefaultUniverseService().addUniverseDiarySource(userId, nodeId, diaryId, expectedVersion),
+  deleteUniverseDiarySource: (userId, nodeId, diaryId, expectedVersion) => getDefaultUniverseService().deleteUniverseDiarySource(userId, nodeId, diaryId, expectedVersion),
 };
 
 const productionNotionService: SearchNotionToolDependencies["notionService"] &
@@ -497,6 +508,14 @@ type UniverseWriteToolsDependencies = {
   getAuthenticatedUserId: () => string;
 };
 
+type UniverseProvenanceToolsDependencies = {
+  relationService: DeleteUniverseRelationToolDependencies["relationService"];
+  sourceService: GetUniverseDiarySourcesToolDependencies["sourceService"] &
+    AddUniverseDiarySourceToolDependencies["sourceService"] &
+    DeleteUniverseDiarySourceToolDependencies["sourceService"];
+  getAuthenticatedUserId: () => string;
+};
+
 export type McpServerDependencies = {
   activeUserAuthorization?: () => Promise<string>;
   memoryReads?: {
@@ -538,6 +557,7 @@ export type McpServerDependencies = {
   notionRead?: NotionReadDependencies;
   universeTools?: UniverseToolsDependencies;
   universeWriteTools?: UniverseWriteToolsDependencies;
+  universeProvenanceTools?: UniverseProvenanceToolsDependencies;
 };
 
 export function createMcpServer(
@@ -744,6 +764,15 @@ export function createMcpServer(
   registerCreateUniverseNodeTool(server, { universeService: universeWriteTools.nodeService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
   registerUpdateUniverseNodeTool(server, { universeService: universeWriteTools.nodeService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
   registerCreateUniverseRelationTool(server, { universeService: universeWriteTools.relationService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
+  const universeProvenanceTools = dependencies.universeProvenanceTools ?? {
+    relationService: productionUniverseService,
+    sourceService: productionUniverseService,
+    getAuthenticatedUserId: universeTools.getAuthenticatedUserId,
+  } satisfies UniverseProvenanceToolsDependencies;
+  registerDeleteUniverseRelationTool(server, { relationService: universeProvenanceTools.relationService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
+  registerGetUniverseDiarySourcesTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
+  registerAddUniverseDiarySourceTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
+  registerDeleteUniverseDiarySourceTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
   const notionTools = dependencies.notionTools
     ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
       ? { ...dependencies.notionTools, requireActiveUser: activeUserAuthorization }
