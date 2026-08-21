@@ -11,6 +11,10 @@ const appNavigationSource = readFileSync(
   new URL("../web/src/pages/app-navigation.ts", import.meta.url),
   "utf8",
 );
+const indexHtml = readFileSync(
+  new URL("../web/index.html", import.meta.url),
+  "utf8",
+);
 
 test("Universe source field follows the same section spacing rhythm as the galaxy group", () => {
   assert.match(
@@ -27,5 +31,13 @@ test("Universe and Diary cross-surface navigation reloads the document", () => {
   assert.match(
     appNavigationSource,
     /shouldReloadAcrossVisualSurface\(window\.location\.pathname,\s*targetPathname\)[\s\S]*window\.location\.assign\(location\);[\s\S]*return;/,
+  );
+});
+
+test("hard reload initializes browser chrome for the destination visual surface", () => {
+  assert.match(indexHtml, /id="theme-color"\s+name="theme-color"\s+content="#ebeae4"/);
+  assert.match(
+    indexHtml,
+    /window\.location\.pathname === "\/universe"[\s\S]*themeColor\.content = "#0b0c12"/,
   );
 });
