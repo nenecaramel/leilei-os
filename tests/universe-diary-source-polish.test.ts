@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { shouldReloadAcrossVisualSurface } from "../web/src/pages/app-navigation.js";
 
+const appNavigation = await import("../web/src/pages/app-navigation.js");
 const finalGeometryCss = readFileSync(
   new URL("../web/src/pages/universe-mobile-final-geometry.css", import.meta.url),
   "utf8",
@@ -24,6 +24,8 @@ test("Universe source field follows the same section spacing rhythm as the galax
 });
 
 test("Universe and Diary cross-surface navigation reloads the document", () => {
+  const shouldReloadAcrossVisualSurface = appNavigation.shouldReloadAcrossVisualSurface;
+  assert.equal(typeof shouldReloadAcrossVisualSurface, "function");
   assert.equal(shouldReloadAcrossVisualSurface("/universe", "/diary"), true);
   assert.equal(shouldReloadAcrossVisualSurface("/diary", "/universe"), true);
   assert.equal(shouldReloadAcrossVisualSurface("/universe", "/search"), false);
