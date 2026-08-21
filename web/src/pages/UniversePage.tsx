@@ -22,6 +22,7 @@ import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
   UniverseGalaxy,
+  UniverseDiarySourceSummary,
   UniverseNode,
   UniverseNodeCreateInput,
   UniverseRelation,
@@ -45,7 +46,7 @@ type UniverseState =
   | { status: "loading" }
   | { status: "not-initialized" }
   | { status: "error"; message: string }
-  | { status: "ready"; snapshot: UniverseSnapshot; version: number };
+  | { status: "ready"; snapshot: UniverseSnapshot; version: number; sources?: UniverseDiarySourceSummary[] };
 
 type UniverseNotice = { id: number; message: string };
 
@@ -258,6 +259,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
 
   const { snapshot } = state;
   const selectedNode = snapshot.nodes.find((node) => node.id === selectedId) ?? null;
+  const selectedSources = selectedNode ? (state.sources ?? []).filter((source) => source.nodeId === selectedNode.id) : [];
   const selectedConnections = selectedNode
     ? snapshot.relations.filter((relation) => relation.source === selectedNode.id || relation.target === selectedNode.id).map((relation) => ({
       relation,
@@ -339,6 +341,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         triggerRef={paperTriggerRef}
         revisionsAvailable={selectedNode ? snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) : false}
         connections={selectedConnections}
+        sources={selectedSources}
         onRequestClose={() => { setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}

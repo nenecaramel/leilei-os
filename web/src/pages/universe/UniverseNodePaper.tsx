@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { PaperDetailDialog } from "../PaperDetailDialog";
-import type { UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
+import type { UniverseDiarySourceSummary, UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
 import type { UniversePoint } from "./universe-map-transform";
 import { relationTypeLabel } from "./universe-map-presentation";
 import { UniverseNodeMetadata, parseUniverseTags, toCanonicalMemberships, type MembershipDraft } from "./UniverseNodeMetadata";
@@ -13,6 +13,29 @@ export type UniverseNodePaperMode =
   | { kind: "create"; position: UniversePoint };
 
 export type UniverseNodePaperDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string };
+
+function formatDiarySourceDate(value: string): string {
+  const match = value.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[1]}.${match[2]}.${match[3]}` : value;
+}
+
+function DiaryProvenanceTimeline({ sources, onOpen }: { sources: UniverseDiarySourceSummary[]; onOpen?: (diaryId: string) => void }) {
+  if (!sources.length) return null;
+  const ordered = sources.slice().sort((left, right) => left.date.localeCompare(right.date) || left.diaryId.localeCompare(right.diaryId));
+  return (
+    <div className="universe-diary-provenance" aria-label="来源日记">
+      {ordered.map((source) => (
+        <div className="universe-diary-provenance-row" key={source.diaryId}>
+          <span className="universe-diary-provenance-line" aria-hidden="true"><i /></span>
+          <button type="button" className="universe-diary-provenance-link" onClick={() => onOpen?.(source.diaryId)}>
+            <span className="universe-diary-provenance-date">{formatDiarySourceDate(source.date)}</span>
+            <span className="universe-diary-provenance-title" title={source.title}>{source.title}</span>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const NODE_TYPES: UniverseNode["type"][] = ["concept", "question", "claim", "experience", "project", "source", "reflection"];
 const IMPORTANCE_OPTIONS = ["anchor", "major", "normal"];
@@ -81,6 +104,8 @@ export function UniverseNodePaper({
   onEdit,
   onCancelEdit,
   connections = [],
+  sources = [],
+  onOpenDiarySource,
 }: {
   node: UniverseNode | null;
   galaxies: UniverseGalaxy[];
@@ -100,6 +125,8 @@ export function UniverseNodePaper({
   onEdit?(node: UniverseNode): void;
   onCancelEdit?: (node: UniverseNode) => void;
   connections?: Array<{ relation: UniverseRelation; node: UniverseNode }>;
+  sources?: UniverseDiarySourceSummary[];
+  onOpenDiarySource?: (diaryId: string) => void;
 }) {
   const isCreate = mode?.kind === "create";
   const isEdit = mode?.kind === "edit" || isCreate;
@@ -240,6 +267,7 @@ export function UniverseNodePaper({
       <textarea className="universe-paper-summary-editor" aria-label="星球摘要" placeholder=" " value={summary} rows={2} onChange={(event) => setSummary(event.target.value)} />
       <textarea className="universe-paper-content-editor" aria-label="星球正文" placeholder="记录这颗星球的想法" value={content} rows={6} onChange={(event) => setContent(event.target.value)} />
       {!isCreate && connections.length ? <section className="universe-node-connections" aria-label="思想连接"><h3>Connections</h3>{connections.map(({ relation, node: relatedNode }) => <div className="universe-node-connection" key={relation.id}><button type="button" className="universe-node-connection-link" onClick={() => onOpenRelatedNode?.(relatedNode.id)}><span>{relatedNode.title}</span><small>{relationTypeLabel(relation.relationType)}</small></button>{onDeleteRelation ? <span className="universe-node-connection-actions"><button type="button" className="universe-node-connection-overflow" aria-label="连接操作" disabled={saving} onClick={(event) => { connectionAnchorRef.current = event.currentTarget; setConnectionMenuId((current) => current === relation.id ? null : relation.id); }}>···</button>{connectionMenuId === relation.id ? <UniverseFloatingPopover open anchorRef={connectionAnchorRef} className="universe-connection-popover" ariaLabel="连接操作" onRequestClose={() => setConnectionMenuId(null)}><button type="button" disabled={saving} onClick={() => { setConnectionMenuId(null); onDeleteRelation(relation); }}>移除连接</button></UniverseFloatingPopover> : null}</span> : null}</div>)}</section> : null}
+      {!isCreate ? <DiaryProvenanceTimeline sources={sources} onOpen={onOpenDiarySource} /> : null}
       {membershipError || (canonicalMemberships === null && memberships.length > 0) ? <p className="universe-paper-inline-error" role="alert">{membershipError ?? "请填写星系权重"}</p> : null}
     </div>
   ) : (
@@ -367,6 +395,8 @@ export function UniverseNodePaper({
             ))}
           </div>
         ) : null}
+
+        <DiaryProvenanceTimeline sources={sources} onOpen={onOpenDiarySource} />
 
         {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
       </div>

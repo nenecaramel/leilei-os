@@ -15,6 +15,10 @@ const mobileCss = readFileSync(
   new URL("../web/src/pages/universe/universe-node-paper-web-mobile.css", import.meta.url),
   "utf8",
 );
+const detailCss = readFileSync(
+  new URL("../web/src/pages/universe/universe-node-detail-memory-shell.css", import.meta.url),
+  "utf8",
+);
 
 test("Universe mobile editor matches the standalone Mind Universe form language", () => {
   assert.match(paperSource, /className="universe-standalone-editor"/);
@@ -88,4 +92,13 @@ test("Universe mobile presentation keeps desktop Paper and homepage implementati
   assert.match(paperSource, /className="universe-node-paper-desktop"/);
   assert.match(paperSource, /bottomLeft=\{metadata\}/);
   assert.match(mobileCss, /\.universe-node-paper-desktop,\s*\.universe-relation-paper-desktop\s*\{[\s\S]*display:\s*none/);
+});
+
+test("Universe Diary provenance timeline keeps the frozen subdued geometry", () => {
+  assert.match(paperSource, /universe-diary-provenance-row/);
+  assert.match(paperSource, /formatDiarySourceDate/);
+  assert.match(detailCss, /\.universe-diary-provenance-line[\s\S]*background:\s*#30323b/);
+  assert.match(detailCss, /\.universe-diary-provenance-date[\s\S]*font-size:\s*10px/);
+  assert.match(detailCss, /\.universe-diary-provenance-title[\s\S]*font-size:\s*11px/);
+  assert.match(detailCss, /\.universe-diary-provenance-date[\s\S]*color:\s*#7d7f8c|\.universe-diary-provenance-link[\s\S]*color:\s*#7d7f8c/);
 });
