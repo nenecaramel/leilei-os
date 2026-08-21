@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  diaryEntries,
   universeBackups,
+  universeDiarySources,
   universeGalaxies,
   universeMeta,
   universeNodes,
@@ -28,8 +30,11 @@ import type {
 import { validateUniverseBackup, validateUniverseSnapshot } from "./universe-validation.js";
 import type {
   UniverseMcpCreateResult,
+  UniverseDiarySourceOption,
+  UniverseDiarySourceSummary,
   UniverseReadResult,
   UniverseRepository,
+  UniverseWebReadResult,
 } from "./universe-repository.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -50,6 +55,30 @@ export class DrizzleUniverseRepository implements UniverseRepository {
 
   async loadUniverse(userId: string): Promise<UniverseReadResult | null> {
     return readUniverse(this.db, userId);
+  }
+
+  async loadUniverseWeb(userId: string): Promise<UniverseWebReadResult | null> {
+    const result = await readUniverse(this.db, userId);
+    if (!result) return null;
+    return { ...result, sources: await readDiarySourceSummaries(this.db, userId) };
+  }
+
+  async searchUniverseDiarySourceOptions(userId: string, query: string): Promise<UniverseDiarySourceOption[]> {
+    const rows = await this.db.select({
+      id: diaryEntries.id,
+      title: diaryEntries.title,
+      date: diaryEntries.date,
+      tags: diaryEntries.tags,
+      status: diaryEntries.status,
+      updatedAt: diaryEntries.updatedAt,
+    }).from(diaryEntries).where(eq(diaryEntries.userId, userId)).orderBy(desc(diaryEntries.date), desc(diaryEntries.updatedAt), desc(diaryEntries.id));
+    const normalized = query.trim().toLocaleLowerCase();
+    return rows.filter((row) => {
+      if (!normalized) return true;
+      return row.title.toLocaleLowerCase().includes(normalized)
+        || row.date.includes(normalized)
+        || row.tags.some((tag) => tag.toLocaleLowerCase().includes(normalized));
+    }).slice(0, 100).map((row) => ({ id: row.id, title: row.title, date: row.date, status: row.status }));
   }
 
   async saveUniverse(userId: string, snapshot: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult> {
@@ -101,6 +130,23 @@ export class DrizzleUniverseRepository implements UniverseRepository {
       }
       await repository.bumpVersion(userId, expectedVersion, node.updatedAt);
       return repository.requireUniverse(userId);
+    });
+  }
+
+  async createNodeWithSources(userId: string, node: UniverseNode, sourceDiaryIds: string[], expectedVersion: number): Promise<UniverseWebReadResult> {
+    return this.inTransaction(userId, async (repository) => {
+      await repository.assertVersion(userId, expectedVersion);
+      await repository.assertGalaxyReferences(userId, node.galaxies);
+      await repository.assertDiarySources(userId, node.id, sourceDiaryIds);
+      try {
+        await repository.db.insert(universeNodes).values(toNodeInsert(userId, node));
+      } catch (error) {
+        if (hasCode(error, "23505")) throw new UniverseServiceError("NODE_CONFLICT");
+        throw error;
+      }
+      await repository.insertDiarySources(userId, node.id, sourceDiaryIds);
+      await repository.bumpVersion(userId, expectedVersion, node.updatedAt);
+      return repository.requireWebUniverse(userId);
     });
   }
 
@@ -172,6 +218,35 @@ export class DrizzleUniverseRepository implements UniverseRepository {
       );
       await repository.bumpVersion(userId, expectedVersion, node.updatedAt);
       return repository.requireUniverse(userId);
+    });
+  }
+
+  async updateNodeWithSources(userId: string, node: UniverseNode, reason: string, sourceDiaryIds: string[] | undefined, expectedVersion: number): Promise<UniverseWebReadResult> {
+    return this.inTransaction(userId, async (repository) => {
+      await repository.assertVersion(userId, expectedVersion);
+      const existing = await repository.findNode(userId, node.id);
+      if (!existing) throw new UniverseServiceError("NODE_NOT_FOUND");
+      await repository.assertGalaxyReferences(userId, node.galaxies);
+      if (sourceDiaryIds !== undefined) await repository.assertDiarySources(userId, node.id, sourceDiaryIds);
+      await repository.db.insert(universeRevisions).values({
+        userId,
+        id: `revision-${randomUUID()}`,
+        nodeId: node.id,
+        createdAt: new Date(node.updatedAt),
+        reason,
+        snapshot: toRevisionSnapshot(existing),
+      });
+      if (sourceDiaryIds !== undefined) {
+        await repository.db.delete(universeDiarySources).where(
+          and(eq(universeDiarySources.userId, userId), eq(universeDiarySources.nodeId, node.id)),
+        );
+      }
+      await repository.db.update(universeNodes).set(toNodeInsert(userId, node)).where(
+        and(eq(universeNodes.userId, userId), eq(universeNodes.id, node.id)),
+      );
+      if (sourceDiaryIds !== undefined) await repository.insertDiarySources(userId, node.id, sourceDiaryIds);
+      await repository.bumpVersion(userId, expectedVersion, node.updatedAt);
+      return repository.requireWebUniverse(userId);
     });
   }
 
@@ -428,11 +503,16 @@ export class DrizzleUniverseRepository implements UniverseRepository {
   }
 
   private async replaceCanonical(userId: string, snapshot: UniverseSnapshot): Promise<void> {
+    const incomingNodeIds = snapshot.nodes.map((node) => node.id);
+    const preservedSources = incomingNodeIds.length === 0 ? [] : await this.db.select().from(universeDiarySources).where(
+      and(eq(universeDiarySources.userId, userId), inArray(universeDiarySources.nodeId, incomingNodeIds)),
+    );
     await this.db.delete(universeRelations).where(eq(universeRelations.userId, userId));
     await this.db.delete(universeNodes).where(eq(universeNodes.userId, userId));
     await this.db.delete(universeRevisions).where(eq(universeRevisions.userId, userId));
     await this.db.delete(universeGalaxies).where(eq(universeGalaxies.userId, userId));
     await this.insertCanonical(userId, snapshot);
+    if (preservedSources.length > 0) await this.db.insert(universeDiarySources).values(preservedSources);
   }
 
   private async insertCanonical(userId: string, snapshot: UniverseSnapshot): Promise<void> {
@@ -455,6 +535,27 @@ export class DrizzleUniverseRepository implements UniverseRepository {
     if (!result) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
     return result;
   }
+
+  private async requireWebUniverse(userId: string): Promise<UniverseWebReadResult> {
+    const result = await this.loadUniverseWeb(userId);
+    if (!result) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
+    return result;
+  }
+
+  private async assertDiarySources(userId: string, nodeId: string, sourceDiaryIds: string[]): Promise<void> {
+    if (new Set(sourceDiaryIds).size !== sourceDiaryIds.length) throw new UniverseServiceError("INVALID_UNIVERSE");
+    if (sourceDiaryIds.length === 0) return;
+    const rows = await this.db.select({ id: diaryEntries.id }).from(diaryEntries).where(
+      and(eq(diaryEntries.userId, userId), inArray(diaryEntries.id, sourceDiaryIds)),
+    );
+    if (rows.length !== sourceDiaryIds.length) throw new UniverseServiceError("INVALID_UNIVERSE");
+    void nodeId;
+  }
+
+  private async insertDiarySources(userId: string, nodeId: string, sourceDiaryIds: string[]): Promise<void> {
+    if (sourceDiaryIds.length === 0) return;
+    await this.db.insert(universeDiarySources).values(sourceDiaryIds.map((diaryId) => ({ userId, nodeId, diaryId })));
+  }
 }
 
 async function readUniverse(db: Executor, userId: string): Promise<UniverseReadResult | null> {
@@ -475,6 +576,20 @@ async function readUniverse(db: Executor, userId: string): Promise<UniverseReadR
     revisions: revisions.map(fromRevisionRow),
   });
   return { snapshot, version: meta.version };
+}
+
+async function readDiarySourceSummaries(db: Executor, userId: string): Promise<UniverseDiarySourceSummary[]> {
+  const rows = await db.select({
+    nodeId: universeDiarySources.nodeId,
+    diaryId: universeDiarySources.diaryId,
+    title: diaryEntries.title,
+    date: diaryEntries.date,
+    status: diaryEntries.status,
+  }).from(universeDiarySources).innerJoin(diaryEntries, and(
+    eq(universeDiarySources.userId, diaryEntries.userId),
+    eq(universeDiarySources.diaryId, diaryEntries.id),
+  )).where(eq(universeDiarySources.userId, userId)).orderBy(asc(diaryEntries.date), asc(diaryEntries.id));
+  return rows;
 }
 
 function toNodeInsert(userId: string, node: UniverseNode) {

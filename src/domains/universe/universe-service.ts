@@ -20,6 +20,7 @@ import { UniverseValidationError } from "./universe-validation.js";
 import type {
   UniverseReadResult,
   UniverseRepository,
+  UniverseWebReadResult,
 } from "./universe-repository.js";
 import {
   hashMcpWriteRequest,
@@ -83,6 +84,21 @@ export class UniverseService {
     return result;
   }
 
+  async loadUniverseWeb(userId: string): Promise<UniverseWebReadResult> {
+    await this.requireActiveUser(userId);
+    const result = await this.repository.loadUniverseWeb?.(userId);
+    if (!result) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
+    return result;
+  }
+
+  async searchDiarySourceOptions(userId: string, query: unknown) {
+    await this.requireActiveUser(userId);
+    if (typeof query !== "string") throw new UniverseServiceError("INVALID_UNIVERSE");
+    const result = await this.repository.searchUniverseDiarySourceOptions?.(userId, query.trim());
+    if (!result) throw new UniverseServiceError("UNIVERSE_FAILED");
+    return result;
+  }
+
   async saveUniverse(userId: string, value: unknown, expectedVersion: number): Promise<UniverseReadResult> {
     await this.requireActiveUser(userId);
     const snapshot = invalidAsServiceError(() => validateUniverseSnapshot(value));
@@ -95,6 +111,16 @@ export class UniverseService {
     validateExpectedVersion(expectedVersion);
     const node = invalidAsServiceError(() => normalizeNodeCreate(value));
     return this.repository.createNode(userId, node, expectedVersion);
+  }
+
+  async createNodeWeb(userId: string, value: unknown, sourceDiaryIds: unknown, expectedVersion: number): Promise<UniverseWebReadResult> {
+    await this.requireActiveUser(userId);
+    validateExpectedVersion(expectedVersion);
+    const node = invalidAsServiceError(() => normalizeNodeCreate(value));
+    const sources = normalizeSourceDiaryIds(sourceDiaryIds, false) ?? [];
+    const result = await this.repository.createNodeWithSources?.(userId, node, sources, expectedVersion);
+    if (!result) throw new UniverseServiceError("UNIVERSE_FAILED");
+    return result;
   }
 
   async createMcpNode(
@@ -158,6 +184,35 @@ export class UniverseService {
       updatedAt: new Date().toISOString(),
     }));
     return this.repository.updateNode(userId, node, reason, expectedVersion);
+  }
+
+  async updateNodeWeb(
+    userId: string,
+    nodeId: string,
+    patch: UniverseNodeUpdate,
+    sourceDiaryIds: unknown,
+    reason: string,
+    expectedVersion: number,
+  ): Promise<UniverseWebReadResult> {
+    await this.requireActiveUser(userId);
+    validateExpectedVersion(expectedVersion);
+    if (!nodeId || typeof nodeId !== "string") throw new UniverseServiceError("NODE_NOT_FOUND");
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new UniverseServiceError("INVALID_UNIVERSE");
+    const current = await this.repository.loadUniverse(userId);
+    if (!current) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
+    const existing = current.snapshot.nodes.find((node) => node.id === nodeId);
+    if (!existing) throw new UniverseServiceError("NODE_NOT_FOUND");
+    const node = invalidAsServiceError(() => validateUniverseNode({
+      ...existing,
+      ...patch,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: new Date().toISOString(),
+    }));
+    const sources = normalizeSourceDiaryIds(sourceDiaryIds, true);
+    const result = await this.repository.updateNodeWithSources?.(userId, node, reason, sources, expectedVersion);
+    if (!result) throw new UniverseServiceError("UNIVERSE_FAILED");
+    return result;
   }
 
   async updateMcpNode(
@@ -343,6 +398,17 @@ function assertMcpStrength(strength: number): void {
   if (!Number.isFinite(strength) || strength < 0 || strength > 1) {
     throw new UniverseServiceError("RELATION_INVALID");
   }
+}
+
+function normalizeSourceDiaryIds(value: unknown, allowOmitted: boolean): string[] | undefined {
+  if (value === undefined && allowOmitted) return undefined;
+  if (!Array.isArray(value)) throw new UniverseServiceError("INVALID_UNIVERSE");
+  const ids = value.map((id) => typeof id === "string" ? id.trim() : "");
+  if (ids.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(id))) {
+    throw new UniverseServiceError("INVALID_UNIVERSE");
+  }
+  if (new Set(ids).size !== ids.length) throw new UniverseServiceError("INVALID_UNIVERSE");
+  return ids;
 }
 
 export type { UniverseBackup, UniverseNode, UniverseRelation, UniverseSnapshot };
