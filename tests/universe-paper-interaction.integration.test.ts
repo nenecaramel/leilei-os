@@ -314,6 +314,10 @@ test("Universe editor keeps source selection draft until picker completion and s
   const saves: unknown[] = [];
   const oldSource = { nodeId: "n1", diaryId: "diary-old", title: "旧日记", date: "2026-08-01", status: "archived" as const };
   const newSource = { nodeId: "n1", diaryId: "diary-new", title: "新日记", date: "2026-08-21", status: "active" as const };
+  const sourceOptions = [
+    { id: oldSource.diaryId, title: oldSource.title, date: oldSource.date, status: oldSource.status },
+    { id: newSource.diaryId, title: newSource.title, date: newSource.date, status: newSource.status },
+  ];
   try {
     await React.act(async () => {
       root.render(React.createElement(UniverseNodePaper, {
@@ -324,7 +328,7 @@ test("Universe editor keeps source selection draft until picker completion and s
         saving: false,
         triggerRef: { current: null },
         sources: [oldSource],
-        diarySourceOptions: [oldSource, newSource],
+        diarySourceOptions: sourceOptions,
         onRequestClose: () => true,
         onSave: async (draft: unknown) => { saves.push(draft); },
       }));
@@ -333,7 +337,7 @@ test("Universe editor keeps source selection draft until picker completion and s
     await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋ 添加")?.click(); });
     assert.ok(context.dom.window.document.querySelector("[aria-label='选择来源日记']"));
     await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("2026.08.21 · 新日记"))?.click(); });
-    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "取消")?.click(); });
+    await React.act(async () => { context.dom.window.document.querySelector<HTMLButtonElement>("[aria-label='取消来源选择']")?.click(); });
     assert.equal(context.dom.window.document.querySelector("[aria-label='选择来源日记']"), null);
     assert.doesNotMatch(context.dom.window.document.body.textContent ?? "", /2026\.08\.21 · 新日记 ×/);
     await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋ 添加")?.click(); });
@@ -341,6 +345,30 @@ test("Universe editor keeps source selection draft until picker completion and s
     await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "完成")?.click(); });
     await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "保存星球")?.click(); });
     assert.deepEqual((saves.at(-1) as { sourceDiaryIds: string[] }).sourceDiaryIds, ["diary-old", "diary-new"]);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("Universe create editor initializes an explicit empty source set", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node: null,
+        galaxies: [],
+        mode: { kind: "create", position: { x: 20, y: 30 } },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        onRequestClose: () => true,
+        onSave: async () => {},
+      }));
+    });
+    assert.ok(context.dom.window.document.querySelector(".universe-standalone-source-field"));
+    assert.equal(context.dom.window.document.querySelectorAll(".universe-standalone-source-chip").length, 0);
   } finally {
     await React.act(async () => root.unmount());
     restoreDom(context.dom, context.previous);

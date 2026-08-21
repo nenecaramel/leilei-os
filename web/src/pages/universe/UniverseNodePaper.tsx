@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { PaperDetailDialog } from "../PaperDetailDialog";
-import type { UniverseDiarySourceSummary, UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
+import type { UniverseDiarySourceOption, UniverseDiarySourceSummary, UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
 import type { UniversePoint } from "./universe-map-transform";
 import { relationTypeLabel } from "./universe-map-presentation";
 import { UniverseNodeMetadata, parseUniverseTags, toCanonicalMemberships, type MembershipDraft } from "./UniverseNodeMetadata";
@@ -12,7 +12,7 @@ export type UniverseNodePaperMode =
   | { kind: "edit"; nodeId: string }
   | { kind: "create"; position: UniversePoint };
 
-export type UniverseNodePaperDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string };
+export type UniverseNodePaperDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string; sourceDiaryIds: string[] };
 
 function formatDiarySourceDate(value: string): string {
   const match = value.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -106,6 +106,8 @@ export function UniverseNodePaper({
   connections = [],
   sources = [],
   onOpenDiarySource,
+  diarySourceOptions = [],
+  onSearchDiarySourceOptions,
 }: {
   node: UniverseNode | null;
   galaxies: UniverseGalaxy[];
@@ -127,6 +129,8 @@ export function UniverseNodePaper({
   connections?: Array<{ relation: UniverseRelation; node: UniverseNode }>;
   sources?: UniverseDiarySourceSummary[];
   onOpenDiarySource?: (diaryId: string) => void;
+  diarySourceOptions?: UniverseDiarySourceOption[];
+  onSearchDiarySourceOptions?: (query: string) => Promise<UniverseDiarySourceOption[]>;
 }) {
   const isCreate = mode?.kind === "create";
   const isEdit = mode?.kind === "edit" || isCreate;
@@ -138,6 +142,11 @@ export function UniverseNodePaper({
   const [importance, setImportance] = useState(effectiveNode?.importance ?? "normal");
   const [tags, setTags] = useState((effectiveNode?.tags ?? []).join(", "));
   const [memberships, setMemberships] = useState<MembershipDraft[]>(() => (effectiveNode?.galaxies ?? []).map((membership) => ({ id: membership.id, weightText: String(membership.weight) })));
+  const [sourceDiaryIds, setSourceDiaryIds] = useState<string[]>(() => (!isCreate ? sources.map((source) => source.diaryId) : []));
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [sourcePickerQuery, setSourcePickerQuery] = useState("");
+  const [sourcePickerSelection, setSourcePickerSelection] = useState<string[]>([]);
+  const [sourcePickerResults, setSourcePickerResults] = useState<UniverseDiarySourceOption[]>(diarySourceOptions);
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [detailOverflowOpen, setDetailOverflowOpen] = useState(false);
   const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
@@ -156,12 +165,27 @@ export function UniverseNodePaper({
     setTags((effectiveNode?.tags ?? []).join(", "));
     const nextMemberships = effectiveNode?.galaxies ?? [];
     setMemberships(nextMemberships.map((membership) => ({ id: membership.id, weightText: String(membership.weight) })));
+    setSourceDiaryIds(!isCreate ? sources.map((source) => source.diaryId) : []);
+    setSourcePickerOpen(false);
+    setSourcePickerQuery("");
+    setSourcePickerResults(diarySourceOptions);
     setMembershipError(null);
     setConnectionMenuId(null);
     setDetailOverflowOpen(false);
     setDeleteConfirmPending(false);
     if (!isCreate) createTimestampRef.current = null;
   }, [effectiveNode, mode?.kind]);
+
+  useEffect(() => {
+    if (!sourcePickerOpen || !onSearchDiarySourceOptions) return;
+    let active = true;
+    void onSearchDiarySourceOptions(sourcePickerQuery).then((results) => {
+      if (active) setSourcePickerResults(results);
+    }).catch(() => {
+      if (active) setSourcePickerResults([]);
+    });
+    return () => { active = false; };
+  }, [onSearchDiarySourceOptions, sourcePickerOpen, sourcePickerQuery]);
 
   if (!effectiveNode && !isCreate) return null;
   const id = isCreate ? "universe-node-create-paper" : `universe-node-paper-${effectiveNode!.id}`;
@@ -176,10 +200,24 @@ export function UniverseNodePaper({
     return next;
   };
   const canonicalMemberships = toCanonicalMemberships(memberships);
+  const sourceById = (diaryId: string) => sources.find((source) => source.diaryId === diaryId) ?? diarySourceOptions.find((source) => source.id === diaryId);
+  const formatSourceChip = (diaryId: string) => {
+    const source = sourceById(diaryId);
+    return `${formatDiarySourceDate(source?.date ?? "")} · ${source?.title ?? diaryId} ×`;
+  };
+  const openSourcePicker = () => {
+    setSourcePickerSelection(sourceDiaryIds);
+    setSourcePickerResults(diarySourceOptions);
+    setSourcePickerQuery("");
+    setSourcePickerOpen(true);
+  };
+  const toggleSourcePickerSelection = (diaryId: string) => {
+    setSourcePickerSelection((current) => current.includes(diaryId) ? current.filter((id) => id !== diaryId) : [...current, diaryId]);
+  };
   const submit = () => {
     const nextMemberships = buildMemberships();
     if (!nextMemberships) return;
-    void onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: parseUniverseTags(tags), galaxies: nextMemberships });
+    void onSave({ title: title.trim(), summary: summary.trim(), content: content.trim(), type, importance, tags: parseUniverseTags(tags), galaxies: nextMemberships, sourceDiaryIds });
   };
 
   const cancelEditor = () => {
@@ -217,6 +255,32 @@ export function UniverseNodePaper({
       onMembershipsChange={(value) => { setMembershipError(null); setMemberships(value); }}
     />
   );
+
+  const sourceEditorField = isEdit ? (
+    <div className="universe-standalone-form-field universe-standalone-source-field">
+      <label>来源日记 · 可选</label>
+      <div className="universe-standalone-source-chips">
+        {sourceDiaryIds.map((diaryId) => <button type="button" className="universe-standalone-source-chip" key={diaryId} onClick={() => setSourceDiaryIds((current) => current.filter((id) => id !== diaryId))}>{formatSourceChip(diaryId)}</button>)}
+        <button type="button" className="universe-standalone-source-add" onClick={openSourcePicker}>＋ 添加</button>
+      </div>
+      {sourcePickerOpen ? (
+        <div className="universe-standalone-source-picker" role="dialog" aria-label="选择来源日记">
+          <div className="universe-standalone-source-picker-head"><strong>选择来源日记</strong></div>
+          <input aria-label="搜索来源日记" placeholder="搜索标题、日期或标签" value={sourcePickerQuery} onChange={(event) => setSourcePickerQuery(event.target.value)} />
+          <div className="universe-standalone-source-results">
+            {sourcePickerResults.map((option) => {
+              const selected = sourcePickerSelection.includes(option.id);
+              return <button type="button" key={option.id} className={selected ? "is-selected" : undefined} aria-pressed={selected} onClick={() => toggleSourcePickerSelection(option.id)}><span>{formatDiarySourceDate(option.date)} · {option.title}</span>{option.status === "archived" ? <small>归档</small> : null}</button>;
+            })}
+          </div>
+          <div className="universe-standalone-source-picker-actions">
+            <button type="button" aria-label="取消来源选择" onClick={() => setSourcePickerOpen(false)}>取消</button>
+            <button type="button" onClick={() => { setSourceDiaryIds(sourcePickerSelection); setSourcePickerOpen(false); }}>完成</button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
 
   const renderManagementMenu = (className?: string) => effectiveNode ? (
     <span className={className ? `universe-node-paper-overflow ${className}` : "universe-node-paper-overflow"}>
@@ -348,6 +412,8 @@ export function UniverseNodePaper({
             </div>
           </fieldset>
         ) : null}
+
+        {sourceEditorField}
 
         {errorMessage ? <p className="universe-standalone-error" role="alert">{errorMessage}</p> : null}
       </div>

@@ -164,7 +164,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     try {
       if (editingNode) {
         const editedNodeId = editingNode.id;
-        await service.updateNode(editedNodeId, values, "Universe Web 编辑");
+        await service.updateNode(editedNodeId, values, "Universe Web 编辑", values.sourceDiaryIds);
         showNotice("星球已更新。");
         refreshFromService();
         setEditingNode(null);
@@ -186,7 +186,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
           position: pendingPosition,
           importance: values.importance,
         };
-        await service.createNode(node);
+        await service.createNode(node, values.sourceDiaryIds);
         showNotice("一颗新星已经亮起。");
         setEditorOpen(false);
         setEditingNode(null);
@@ -342,6 +342,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         revisionsAvailable={selectedNode ? snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) : false}
         connections={selectedConnections}
         sources={selectedSources}
+        onSearchDiarySourceOptions={(query) => service.searchDiarySourceOptions(query)}
         onRequestClose={() => { setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}
