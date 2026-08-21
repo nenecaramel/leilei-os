@@ -27,8 +27,16 @@ export class UniverseInitializationError extends Error {
 export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAdapter }) {
   let state: UniverseClientState = null;
   const set = (result: UniverseReadResult) => {
-    state = { ...result, sources: result.sources ?? [] };
+    state = { ...result, sources: result.sources ?? state?.sources ?? [] };
     return state;
+  };
+  const setMutation = async (result: UniverseReadResult) => {
+    if (result.sources !== undefined) return set(result);
+    try {
+      return set(await adapter.loadUniverse());
+    } catch {
+      return set(result);
+    }
   };
   const expected = () => {
     if (!state) throw new Error("Universe 尚未初始化。");
@@ -42,7 +50,7 @@ export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAd
       return state;
     },
     async saveUniverse(snapshot: UniverseSnapshot) {
-      return set(await adapter.saveUniverse(snapshot, expected()));
+      return setMutation(await adapter.saveUniverse(snapshot, expected()));
     },
     async initializeUniverse(snapshot: UniverseSnapshot) {
       try {
@@ -69,28 +77,28 @@ export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAd
       }
     },
     async createNode(node: UniverseNodeCreateInput, sourceDiaryIds: string[] = []) {
-      return set(await adapter.createNode(node, expected(), sourceDiaryIds));
+      return setMutation(await adapter.createNode(node, expected(), sourceDiaryIds));
     },
     async updateNode(nodeId: string, patch: Partial<UniverseNode>, reason = "认知内容更新", sourceDiaryIds?: string[]) {
-      return set(await adapter.updateNode(nodeId, patch, reason, expected(), sourceDiaryIds));
+      return setMutation(await adapter.updateNode(nodeId, patch, reason, expected(), sourceDiaryIds));
     },
     async searchDiarySourceOptions(query: string) {
       return adapter.searchDiarySourceOptions(query);
     },
     async deleteNode(nodeId: string) {
-      return set(await adapter.deleteNode(nodeId, expected()));
+      return setMutation(await adapter.deleteNode(nodeId, expected()));
     },
     async createRelation(relation: UniverseRelationCreateInput) {
-      return set(await adapter.createRelation(relation, expected()));
+      return setMutation(await adapter.createRelation(relation, expected()));
     },
     async deleteRelation(relationId: string) {
-      return set(await adapter.deleteRelation(relationId, expected()));
+      return setMutation(await adapter.deleteRelation(relationId, expected()));
     },
     async latestRevision(nodeId: string): Promise<UniverseRevision> {
       return adapter.latestRevision(nodeId);
     },
     async restoreLatestRevision(nodeId: string) {
-      return set(await adapter.restoreLatestRevision(nodeId, expected()));
+      return setMutation(await adapter.restoreLatestRevision(nodeId, expected()));
     },
     async createBackup(reason = "手动恢复点"): Promise<UniverseBackup> {
       return adapter.createBackup(reason);
@@ -102,13 +110,13 @@ export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAd
       return adapter.ensureDailyBackup();
     },
     async restoreBackup(backupId: string) {
-      return set(await adapter.restoreBackup(backupId, expected()));
+      return setMutation(await adapter.restoreBackup(backupId, expected()));
     },
     async createEdge(relation: UniverseRelationCreateInput) {
-      return set(await adapter.createRelation(relation, expected()));
+      return setMutation(await adapter.createRelation(relation, expected()));
     },
     async deleteEdge(relationId: string) {
-      return set(await adapter.deleteRelation(relationId, expected()));
+      return setMutation(await adapter.deleteRelation(relationId, expected()));
     },
     async exportData() {
       const current = state ?? set(await adapter.loadUniverse());

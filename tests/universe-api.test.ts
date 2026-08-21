@@ -83,6 +83,11 @@ test("Universe Web API exposes sibling source summaries and atomic source-aware 
     const headers = { "content-type": "application/json", "x-test-user": "yes" };
     const loaded = await fetch(`${baseUrl}/api/v1/universe`, { headers });
     assert.deepEqual((await loaded.json()).data.sources, sources);
+    const omitted = await fetch(`${baseUrl}/api/v1/universe/nodes`, {
+      method: "POST", headers,
+      body: JSON.stringify({ expected_version: 3, node: { title: "without sources" } }),
+    });
+    assert.equal(omitted.status, 200);
     const created = await fetch(`${baseUrl}/api/v1/universe/nodes`, {
       method: "POST", headers,
       body: JSON.stringify({ expected_version: 3, node: { title: "node" }, source_diary_ids: [sources[0]!.diaryId] }),
@@ -97,9 +102,10 @@ test("Universe Web API exposes sibling source summaries and atomic source-aware 
     assert.equal(options.status, 200);
     assert.deepEqual((await options.json()).data, [{ id: sources[0]!.diaryId, title: "Diary", date: "2026-08-21", status: "archived" }]);
   });
-  assert.deepEqual(calls[0]?.[2], [sources[0]!.diaryId]);
-  assert.deepEqual(calls[1]?.[3], []);
-  assert.deepEqual(calls[2], [USER_ID, "Diary"]);
+  assert.deepEqual(calls[0]?.[2], []);
+  assert.deepEqual(calls[1]?.[2], [sources[0]!.diaryId]);
+  assert.deepEqual(calls[2]?.[3], []);
+  assert.deepEqual(calls[3], [USER_ID, "Diary"]);
 });
 
 test("Universe API forwards weighted membership payloads without normalization", async () => {

@@ -375,3 +375,32 @@ test("Universe create editor initializes an explicit empty source set", async ()
     restoreDom(context.dom, context.previous);
   }
 });
+
+test("Universe source picker keeps searched Diary metadata for the selected chip", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const searched = { id: "diary-search", title: "搜索日记", date: "2026-08-21", status: "active" as const };
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "edit", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        sources: [],
+        onRequestClose: () => true,
+        onSave: async () => {},
+        onSearchDiarySourceOptions: async () => [searched],
+      }));
+    });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋ 添加")?.click(); await Promise.resolve(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("2026.08.21 · 搜索日记"))?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "完成")?.click(); });
+    assert.match(context.dom.window.document.body.textContent ?? "", /2026\.08\.21 · 搜索日记 ×/);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});

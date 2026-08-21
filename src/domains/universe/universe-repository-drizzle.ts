@@ -70,8 +70,8 @@ export class DrizzleUniverseRepository implements UniverseRepository {
       date: diaryEntries.date,
       tags: diaryEntries.tags,
       status: diaryEntries.status,
-      updatedAt: diaryEntries.updatedAt,
-    }).from(diaryEntries).where(eq(diaryEntries.userId, userId)).orderBy(desc(diaryEntries.date), desc(diaryEntries.updatedAt), desc(diaryEntries.id));
+      createdAt: diaryEntries.createdAt,
+    }).from(diaryEntries).where(eq(diaryEntries.userId, userId)).orderBy(desc(diaryEntries.date), desc(diaryEntries.createdAt), desc(diaryEntries.id));
     const normalized = query.trim().toLocaleLowerCase();
     return rows.filter((row) => {
       if (!normalized) return true;

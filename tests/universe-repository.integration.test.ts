@@ -198,3 +198,68 @@ test("Universe Diary provenance relations enforce ownership, duplicate, status, 
     await client.end();
   }
 });
+
+test("Universe Diary source options honor ownership, active/archive scope, field matching, cap, and Diary ordering", { skip: !runIntegration }, async () => {
+  const client = postgres(databaseUrl!, { prepare: false, ssl: false, max: 2 });
+  const db = drizzle(client, { schema });
+  const userId = randomUUID();
+  const otherUserId = randomUUID();
+  const baseCreatedAt = Date.parse("2026-08-21T00:00:00.000Z");
+  const diary = (owner: string, index: number, overrides: Partial<typeof schema.diaryEntries.$inferInsert> = {}) => ({
+    id: randomUUID(),
+    userId: owner,
+    title: `Diary ${String(index).padStart(3, "0")}`,
+    content: "ordinary body",
+    date: "2026-08-21",
+    tags: [],
+    source: "chatgpt_mcp" as const,
+    status: "active" as const,
+    idempotencyKey: `source-option-${randomUUID()}`,
+    requestHash: "a".repeat(64),
+    createdAt: new Date(baseCreatedAt + index * 1000),
+    updatedAt: new Date(baseCreatedAt + index * 1000),
+    ...overrides,
+  });
+  try {
+    await assert.rejects(db.transaction(async (tx) => {
+      await tx.insert(schema.users).values([
+        { id: userId, email: `universe-options-${userId}@example.invalid`, displayName: "Options", status: "active" },
+        { id: otherUserId, email: `universe-options-${otherUserId}@example.invalid`, displayName: "Other", status: "active" },
+      ]);
+      const rows = [
+        ...Array.from({ length: 102 }, (_, index) => diary(userId, index)),
+        diary(userId, 200, { title: "Archived source", date: "2026-08-30", status: "archived" }),
+        diary(userId, 201, { title: "Tagged source", tags: ["tag-match"] }),
+        diary(userId, 202, { title: "Date source", date: "2026-09-09" }),
+        diary(userId, 203, { title: "Body source", content: "needle-body" }),
+        diary(otherUserId, 204, { title: "Foreign source" }),
+        diary(userId, 205, { id: "00000000-0000-4000-8000-000000000001", title: "Tie source", createdAt: new Date(baseCreatedAt), updatedAt: new Date(baseCreatedAt) }),
+        diary(userId, 206, { id: "00000000-0000-4000-8000-000000000002", title: "Tie source", createdAt: new Date(baseCreatedAt), updatedAt: new Date(baseCreatedAt) }),
+        diary(userId, 207, { id: "00000000-0000-4000-8000-000000000003", title: "Order source", createdAt: new Date(baseCreatedAt + 1000), updatedAt: new Date(baseCreatedAt + 2000) }),
+        diary(userId, 208, { id: "00000000-0000-4000-8000-000000000004", title: "Order source", createdAt: new Date(baseCreatedAt + 2000), updatedAt: new Date(baseCreatedAt + 1000) }),
+      ];
+      await tx.insert(schema.diaryEntries).values(rows);
+      const repository = new DrizzleUniverseRepository(tx as never);
+      const newest = await repository.searchUniverseDiarySourceOptions(userId, "");
+      assert.equal(newest.length, 100);
+      assert.equal(newest[0]?.date, "2026-09-09");
+      const archived = await repository.searchUniverseDiarySourceOptions(userId, "Archived source");
+      assert.deepEqual(archived.map((option) => ({ title: option.title, status: option.status })), [{ title: "Archived source", status: "archived" }]);
+      assert.equal((await repository.searchUniverseDiarySourceOptions(userId, "2026-09-09"))[0]?.title, "Date source");
+      assert.equal((await repository.searchUniverseDiarySourceOptions(userId, "tag-match"))[0]?.title, "Tagged source");
+      assert.deepEqual(await repository.searchUniverseDiarySourceOptions(userId, "needle-body"), []);
+      assert.deepEqual(await repository.searchUniverseDiarySourceOptions(userId, "Foreign source"), []);
+      assert.deepEqual((await repository.searchUniverseDiarySourceOptions(userId, "Tie source")).map((option) => option.id), [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001",
+      ]);
+      assert.deepEqual((await repository.searchUniverseDiarySourceOptions(userId, "Order source")).map((option) => option.id), [
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000003",
+      ]);
+      throw new RollbackUniverseTest();
+    }), RollbackUniverseTest);
+  } finally {
+    await client.end();
+  }
+});

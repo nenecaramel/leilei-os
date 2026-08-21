@@ -19,6 +19,10 @@ function formatDiarySourceDate(value: string): string {
   return match ? `${match[1]}.${match[2]}.${match[3]}` : value;
 }
 
+function sourceOptionFromSummary(source: UniverseDiarySourceSummary): UniverseDiarySourceOption {
+  return { id: source.diaryId, title: source.title, date: source.date, status: source.status };
+}
+
 function DiaryProvenanceTimeline({ sources, onOpen }: { sources: UniverseDiarySourceSummary[]; onOpen?: (diaryId: string) => void }) {
   if (!sources.length) return null;
   const ordered = sources.slice().sort((left, right) => left.date.localeCompare(right.date) || left.diaryId.localeCompare(right.diaryId));
@@ -147,6 +151,10 @@ export function UniverseNodePaper({
   const [sourcePickerQuery, setSourcePickerQuery] = useState("");
   const [sourcePickerSelection, setSourcePickerSelection] = useState<string[]>([]);
   const [sourcePickerResults, setSourcePickerResults] = useState<UniverseDiarySourceOption[]>(diarySourceOptions);
+  const [sourceMetadataById, setSourceMetadataById] = useState<Record<string, UniverseDiarySourceOption>>(() => Object.fromEntries([
+    ...sources.map(sourceOptionFromSummary),
+    ...diarySourceOptions,
+  ].map((source) => [source.id, source])));
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [detailOverflowOpen, setDetailOverflowOpen] = useState(false);
   const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
@@ -177,10 +185,28 @@ export function UniverseNodePaper({
   }, [effectiveNode, mode?.kind]);
 
   useEffect(() => {
+    const incoming = [...sources.map(sourceOptionFromSummary), ...diarySourceOptions];
+    setSourceMetadataById((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const source of incoming) {
+        if (next[source.id]?.title !== source.title || next[source.id]?.date !== source.date || next[source.id]?.status !== source.status) {
+          next[source.id] = source;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [sources, diarySourceOptions]);
+
+  useEffect(() => {
     if (!sourcePickerOpen || !onSearchDiarySourceOptions) return;
     let active = true;
     void onSearchDiarySourceOptions(sourcePickerQuery).then((results) => {
-      if (active) setSourcePickerResults(results);
+      if (active) {
+        setSourcePickerResults(results);
+        setSourceMetadataById((current) => ({ ...current, ...Object.fromEntries(results.map((source) => [source.id, source])) }));
+      }
     }).catch(() => {
       if (active) setSourcePickerResults([]);
     });
@@ -200,7 +226,7 @@ export function UniverseNodePaper({
     return next;
   };
   const canonicalMemberships = toCanonicalMemberships(memberships);
-  const sourceById = (diaryId: string) => sources.find((source) => source.diaryId === diaryId) ?? diarySourceOptions.find((source) => source.id === diaryId);
+  const sourceById = (diaryId: string) => sourceMetadataById[diaryId];
   const formatSourceChip = (diaryId: string) => {
     const source = sourceById(diaryId);
     return `${formatDiarySourceDate(source?.date ?? "")} · ${source?.title ?? diaryId} ×`;
@@ -208,6 +234,7 @@ export function UniverseNodePaper({
   const openSourcePicker = () => {
     setSourcePickerSelection(sourceDiaryIds);
     setSourcePickerResults(diarySourceOptions);
+    setSourceMetadataById((current) => ({ ...current, ...Object.fromEntries(diarySourceOptions.map((source) => [source.id, source])) }));
     setSourcePickerQuery("");
     setSourcePickerOpen(true);
   };

@@ -117,7 +117,7 @@ export class UniverseService {
     await this.requireActiveUser(userId);
     validateExpectedVersion(expectedVersion);
     const node = invalidAsServiceError(() => normalizeNodeCreate(value));
-    const sources = normalizeSourceDiaryIds(sourceDiaryIds, false) ?? [];
+    const sources = normalizeSourceDiaryIds(sourceDiaryIds, true) ?? [];
     const result = await this.repository.createNodeWithSources?.(userId, node, sources, expectedVersion);
     if (!result) throw new UniverseServiceError("UNIVERSE_FAILED");
     return result;

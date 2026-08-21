@@ -209,6 +209,21 @@ test("Web Universe node writes carry source ids through one CAS-aware repository
   assert.deepEqual(sourceCalls, [["00000000-0000-1000-8000-000000000001"], undefined, []]);
 });
 
+test("Web Universe create defaults omitted source ids to an empty set", async () => {
+  const sourceCalls: Array<string[] | undefined> = [];
+  const webResult = { snapshot: emptySnapshot, version: 2, sources: [] };
+  const repository = Object.assign(new FakeRepository(), {
+    async createNodeWithSources(_userId: string, _node: UniverseSnapshot["nodes"][number], sourceIds: string[], _expectedVersion: number) {
+      sourceCalls.push(sourceIds);
+      return webResult;
+    },
+  }) as FakeRepository & UniverseRepository;
+  const service = new UniverseService(repository);
+  const node = { title: "Title", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 0, y: 0 } };
+  await service.createNodeWeb("user-1", node, undefined, 1);
+  assert.deepEqual(sourceCalls, [[]]);
+});
+
 test("Web Universe source ids reject duplicate or malformed values before repository mutation", async () => {
   const repository = Object.assign(new FakeRepository(), {
     async createNodeWithSources() { throw new Error("must not call repository"); },

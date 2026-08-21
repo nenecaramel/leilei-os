@@ -41,7 +41,7 @@ export function createUniverseApiRouter(dependencies: UniverseApiDependencies): 
     const expectedVersion = readExpectedVersion(body);
     const node = body.node ?? omit(body, "expected_version", "source_diary_ids");
     return dependencies.universeService.createNodeWeb
-      ? dependencies.universeService.createNodeWeb(request.webUserId!, node, body.source_diary_ids, expectedVersion)
+      ? dependencies.universeService.createNodeWeb(request.webUserId!, node, body.source_diary_ids ?? [], expectedVersion)
       : dependencies.universeService.createNode(request.webUserId!, node, expectedVersion);
   }));
   router.patch("/nodes/:id", handler(dependencies, async (request) => {
