@@ -285,9 +285,16 @@ test("Global Search date fields share NativeDateInput and its constrained class"
   assert.match(styles, /\.global-search-filters > \.native-date-field/);
 });
 
-test("Web shell reserves the iPhone safe area and uses a static theme color", () => {
+test("Web shell reserves the iPhone safe area and preloads route-aware theme colors", () => {
   assert.match(indexHtml, /viewport-fit=cover/);
-  assert.match(indexHtml, /<meta name="theme-color" content="#ebeae4"/);
+  assert.match(
+    indexHtml,
+    /<meta id="theme-color" name="theme-color" content="#ebeae4" \/>/,
+  );
+  assert.match(
+    indexHtml,
+    /window\.location\.pathname === "\/universe"[\s\S]*themeColor\.content = "#0b0c12"/,
+  );
   assert.doesNotMatch(
     indexHtml,
     /leilei-os\.settings\.v1|leilei-os\.theme\.v1|--theme-page-background/,
