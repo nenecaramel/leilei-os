@@ -7,9 +7,25 @@
     padding-bottom: 14px !important;
   }
 
-  /* Keep the provenance source group on the same section rhythm as galaxies. */
+  /* Keep the provenance source group on the same section rhythm and left edge. */
   .universe-standalone-source-field {
+    width: 100%;
     margin-top: 30px !important;
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+  }
+
+  .universe-standalone-source-field > label {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+  }
+
+  .universe-standalone-source-picker-head {
+    padding-left: 12px !important;
+    color: #777988;
+    font-size: 13px;
+    font-weight: 400 !important;
+    line-height: 1.35;
   }
 
   .universe-standalone-detail-actions button,
