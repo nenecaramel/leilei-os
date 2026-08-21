@@ -88,6 +88,16 @@ test("Universe Web API exposes sibling source summaries and atomic source-aware 
       body: JSON.stringify({ expected_version: 3, node: { title: "without sources" } }),
     });
     assert.equal(omitted.status, 200);
+    const explicitNull = await fetch(`${baseUrl}/api/v1/universe/nodes`, {
+      method: "POST", headers,
+      body: JSON.stringify({ expected_version: 4, node: { title: "null sources" }, source_diary_ids: null }),
+    });
+    assert.equal(explicitNull.status, 400);
+    assert.deepEqual(await explicitNull.json(), {
+      success: false,
+      error: { code: "INVALID_UNIVERSE", message: "INVALID_UNIVERSE" },
+    });
+    assert.equal(calls.length, 1);
     const created = await fetch(`${baseUrl}/api/v1/universe/nodes`, {
       method: "POST", headers,
       body: JSON.stringify({ expected_version: 3, node: { title: "node" }, source_diary_ids: [sources[0]!.diaryId] }),
