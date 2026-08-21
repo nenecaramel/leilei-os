@@ -1,4 +1,5 @@
 import { getSafeGlobalSearchReturnTo } from "./global-search-location";
+import { getSafeUniverseNodeReturnTo } from "./universe/universe-location";
 
 export type DiaryFilters = {
   q: string;
@@ -100,6 +101,7 @@ export function getSafeDiaryArchiveReturnTo(value: string | null): string {
   try {
     const parsed = new URL(value, "https://leilei-os.invalid");
     if (parsed.pathname === "/search") return getSafeGlobalSearchReturnTo(value);
+    if (parsed.pathname === "/universe") return getSafeUniverseNodeReturnTo(value);
     const keys = [...parsed.searchParams.keys()];
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
@@ -125,6 +127,7 @@ export function getSafeDiaryReturnTo(value: string | null): string {
   try {
     const parsed = new URL(value, "https://leilei-os.invalid");
     if (parsed.pathname === "/search") return getSafeGlobalSearchReturnTo(value);
+    if (parsed.pathname === "/universe") return getSafeUniverseNodeReturnTo(value);
     if (
       parsed.origin !== "https://leilei-os.invalid" ||
       parsed.pathname !== "/diary" ||

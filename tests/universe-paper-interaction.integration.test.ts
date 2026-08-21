@@ -247,3 +247,160 @@ test("Universe metadata is fixed in the paper footer while connections stay in t
     restoreDom(context.dom, context.previous);
   }
 });
+
+test("Universe detail renders Diary provenance as an ordered timeline and opens the source", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const opened: string[] = [];
+  const sources = [
+    { nodeId: "n1", diaryId: "diary-new", title: "较新日记", date: "2026-08-21", status: "active" as const },
+    { nodeId: "n1", diaryId: "diary-old", title: "较旧日记", date: "2026-08-01", status: "archived" as const },
+  ];
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "detail", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        sources,
+        onOpenDiarySource: (id: string) => opened.push(id),
+        onRequestClose: () => true,
+        onSave: async () => {},
+      }));
+    });
+    const rows = [...context.dom.window.document.querySelectorAll<HTMLElement>(".universe-node-original-web-mobile .universe-diary-provenance-row")];
+    assert.equal(rows.length, 2);
+    assert.equal(context.dom.window.document.querySelectorAll(".universe-node-paper-desktop .universe-diary-provenance-row").length, 2);
+    assert.match(rows[0]?.textContent ?? "", /2026\.08\.01/);
+    assert.match(rows[0]?.textContent ?? "", /较旧日记/);
+    assert.match(rows[1]?.textContent ?? "", /2026\.08\.21/);
+    await React.act(async () => { (rows[0]?.querySelector("button") as HTMLButtonElement)?.click(); });
+    assert.deepEqual(opened, ["diary-old"]);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("Universe detail omits the Diary provenance timeline when no sources exist", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "detail", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        sources: [],
+        onRequestClose: () => true,
+        onSave: async () => {},
+      }));
+    });
+    assert.equal(context.dom.window.document.querySelector(".universe-diary-provenance"), null);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("Universe editor keeps source selection draft until picker completion and saves exact Diary IDs", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const saves: unknown[] = [];
+  const oldSource = { nodeId: "n1", diaryId: "diary-old", title: "旧日记", date: "2026-08-01", status: "archived" as const };
+  const newSource = { nodeId: "n1", diaryId: "diary-new", title: "新日记", date: "2026-08-21", status: "active" as const };
+  const sourceOptions = [
+    { id: oldSource.diaryId, title: oldSource.title, date: oldSource.date, status: oldSource.status },
+    { id: newSource.diaryId, title: newSource.title, date: newSource.date, status: newSource.status },
+  ];
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "edit", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        sources: [oldSource],
+        diarySourceOptions: sourceOptions,
+        onRequestClose: () => true,
+        onSave: async (draft: unknown) => { saves.push(draft); },
+      }));
+    });
+    assert.match(context.dom.window.document.body.textContent ?? "", /2026\.08\.01 · 旧日记 ×/);
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋ 添加")?.click(); });
+    assert.ok(context.dom.window.document.querySelector("[aria-label='选择来源日记']"));
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("2026.08.21 · 新日记"))?.click(); });
+    await React.act(async () => { context.dom.window.document.querySelector<HTMLButtonElement>("[aria-label='取消来源选择']")?.click(); });
+    assert.equal(context.dom.window.document.querySelector("[aria-label='选择来源日记']"), null);
+    assert.doesNotMatch(context.dom.window.document.body.textContent ?? "", /2026\.08\.21 · 新日记 ×/);
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋ 添加")?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("2026.08.21 · 新日记"))?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "完成")?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "保存星球")?.click(); });
+    assert.deepEqual((saves.at(-1) as { sourceDiaryIds: string[] }).sourceDiaryIds, ["diary-old", "diary-new"]);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("Universe create editor initializes an explicit empty source set", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node: null,
+        galaxies: [],
+        mode: { kind: "create", position: { x: 20, y: 30 } },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        onRequestClose: () => true,
+        onSave: async () => {},
+      }));
+    });
+    assert.ok(context.dom.window.document.querySelector(".universe-standalone-source-field"));
+    assert.equal(context.dom.window.document.querySelectorAll(".universe-standalone-source-chip").length, 0);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});
+
+test("Universe source picker keeps searched Diary metadata for the selected chip", async () => {
+  const context = installDom();
+  const root = createRoot(context.dom.window.document.querySelector("#root")!);
+  const searched = { id: "diary-search", title: "搜索日记", date: "2026-08-21", status: "active" as const };
+  try {
+    await React.act(async () => {
+      root.render(React.createElement(UniverseNodePaper, {
+        node,
+        galaxies: [],
+        mode: { kind: "edit", nodeId: node.id },
+        open: true,
+        saving: false,
+        triggerRef: { current: null },
+        sources: [],
+        onRequestClose: () => true,
+        onSave: async () => {},
+        onSearchDiarySourceOptions: async () => [searched],
+      }));
+    });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "＋ 添加")?.click(); await Promise.resolve(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("2026.08.21 · 搜索日记"))?.click(); });
+    await React.act(async () => { [...context.dom.window.document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "完成")?.click(); });
+    assert.match(context.dom.window.document.body.textContent ?? "", /2026\.08\.21 · 搜索日记 ×/);
+  } finally {
+    await React.act(async () => root.unmount());
+    restoreDom(context.dom, context.previous);
+  }
+});

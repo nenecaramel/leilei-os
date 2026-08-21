@@ -17,11 +17,14 @@ import { UniverseGalaxyPicker } from "./universe/UniverseGalaxyPicker";
 import { UniverseNodePaper, type UniverseNodePaperDraft, type UniverseNodePaperMode } from "./universe/UniverseNodePaper";
 import { UniverseRelationPaper } from "./universe/UniverseRelationPaper";
 import { UniverseFloatingPopover } from "./universe/UniverseFloatingPopover";
-import { consumeUniverseNodeTarget } from "./universe/universe-location";
+import { consumeUniverseNodeTarget, createUniverseNodeReturnTo } from "./universe/universe-location";
+import { createArchivedDiaryDetailLocation, createDiaryDetailLocation } from "./diary-location";
+import { navigateWithinApp } from "./app-navigation";
 import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
   UniverseGalaxy,
+  UniverseDiarySourceSummary,
   UniverseNode,
   UniverseNodeCreateInput,
   UniverseRelation,
@@ -45,7 +48,7 @@ type UniverseState =
   | { status: "loading" }
   | { status: "not-initialized" }
   | { status: "error"; message: string }
-  | { status: "ready"; snapshot: UniverseSnapshot; version: number };
+  | { status: "ready"; snapshot: UniverseSnapshot; version: number; sources?: UniverseDiarySourceSummary[] };
 
 type UniverseNotice = { id: number; message: string };
 
@@ -163,7 +166,8 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     try {
       if (editingNode) {
         const editedNodeId = editingNode.id;
-        await service.updateNode(editedNodeId, values, "Universe Web 编辑");
+        const { sourceDiaryIds, ...nodePatch } = values;
+        await service.updateNode(editedNodeId, nodePatch, "Universe Web 编辑", sourceDiaryIds);
         showNotice("星球已更新。");
         refreshFromService();
         setEditingNode(null);
@@ -185,7 +189,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
           position: pendingPosition,
           importance: values.importance,
         };
-        await service.createNode(node);
+        await service.createNode(node, values.sourceDiaryIds);
         showNotice("一颗新星已经亮起。");
         setEditorOpen(false);
         setEditingNode(null);
@@ -258,6 +262,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
 
   const { snapshot } = state;
   const selectedNode = snapshot.nodes.find((node) => node.id === selectedId) ?? null;
+  const selectedSources = selectedNode ? (state.sources ?? []).filter((source) => source.nodeId === selectedNode.id) : [];
   const selectedConnections = selectedNode
     ? snapshot.relations.filter((relation) => relation.source === selectedNode.id || relation.target === selectedNode.id).map((relation) => ({
       relation,
@@ -339,6 +344,18 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
         triggerRef={paperTriggerRef}
         revisionsAvailable={selectedNode ? snapshot.revisions.some((revision) => revision.nodeId === selectedNode.id) : false}
         connections={selectedConnections}
+        sources={selectedSources}
+        onSearchDiarySourceOptions={(query) => service.searchDiarySourceOptions(query)}
+        onOpenDiarySource={(diaryId) => {
+          if (!selectedNode) return;
+          const source = selectedSources.find((item) => item.diaryId === diaryId);
+          if (!source) return;
+          const returnTo = createUniverseNodeReturnTo(selectedNode.id);
+          const next = source.status === "archived"
+            ? createArchivedDiaryDetailLocation(diaryId, returnTo)
+            : createDiaryDetailLocation(diaryId, returnTo);
+          navigateWithinApp(next, window.history.state, { resetScroll: false });
+        }}
         onRequestClose={() => { setEditorOpen(false); setPaperMode(null); setPaperError(null); return true; }}
         onSave={saveNode}
         onDelete={(node) => void removeNode(node)}

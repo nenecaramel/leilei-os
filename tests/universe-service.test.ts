@@ -186,6 +186,58 @@ test("service converts canonical validation failures into the stable domain erro
   );
 });
 
+test("Web Universe node writes carry source ids through one CAS-aware repository call", async () => {
+  const sourceCalls: Array<string[] | undefined> = [];
+  const webResult = { snapshot: emptySnapshot, version: 2, sources: [] };
+  const repository = Object.assign(new FakeRepository(), {
+    async loadUniverseWeb() { return webResult; },
+    async createNodeWithSources(_userId: string, _node: UniverseSnapshot["nodes"][number], sourceIds: string[], _expectedVersion: number) {
+      sourceCalls.push(sourceIds);
+      return webResult;
+    },
+    async updateNodeWithSources(_userId: string, _node: UniverseSnapshot["nodes"][number], _reason: string, sourceIds: string[] | undefined, _expectedVersion: number) {
+      sourceCalls.push(sourceIds);
+      return webResult;
+    },
+  }) as FakeRepository & UniverseRepository;
+  const service = new UniverseService(repository);
+  const node = { title: "Title", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 0, y: 0 } };
+  repository.snapshot = { ...emptySnapshot, nodes: [{ id: "node-existing", ...node, createdAt: timestamp, updatedAt: timestamp }] };
+  await service.createNodeWeb("user-1", node, ["00000000-0000-1000-8000-000000000001"], 1);
+  await service.updateNodeWeb("user-1", "node-existing", { content: "changed" }, undefined, "edit", 1);
+  await service.updateNodeWeb("user-1", "node-existing", { content: "changed" }, [], "edit", 1);
+  assert.deepEqual(sourceCalls, [["00000000-0000-1000-8000-000000000001"], undefined, []]);
+});
+
+test("Web Universe create defaults omitted source ids to an empty set", async () => {
+  const sourceCalls: Array<string[] | undefined> = [];
+  const webResult = { snapshot: emptySnapshot, version: 2, sources: [] };
+  const repository = Object.assign(new FakeRepository(), {
+    async createNodeWithSources(_userId: string, _node: UniverseSnapshot["nodes"][number], sourceIds: string[], _expectedVersion: number) {
+      sourceCalls.push(sourceIds);
+      return webResult;
+    },
+  }) as FakeRepository & UniverseRepository;
+  const service = new UniverseService(repository);
+  const node = { title: "Title", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 0, y: 0 } };
+  await service.createNodeWeb("user-1", node, undefined, 1);
+  assert.deepEqual(sourceCalls, [[]]);
+});
+
+test("Web Universe source ids reject duplicate or malformed values before repository mutation", async () => {
+  const repository = Object.assign(new FakeRepository(), {
+    async createNodeWithSources() { throw new Error("must not call repository"); },
+  }) as FakeRepository & UniverseRepository;
+  const service = new UniverseService(repository);
+  const node = { title: "Title", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 0, y: 0 } };
+  for (const sourceIds of [["not-a-uuid", "not-a-uuid"], "not-an-array"] as unknown[]) {
+    await assert.rejects(
+      service.createNodeWeb("user-1", node, sourceIds, 1),
+      (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE",
+    );
+  }
+});
+
 test("MCP Universe service creates authoritative node/relation results with durable request boundaries", async () => {
   const repository = new FakeRepository();
   const service = new UniverseService(repository);

@@ -11,6 +11,25 @@ export type UniverseReadResult = {
   version: number;
 };
 
+export type UniverseDiarySourceSummary = {
+  nodeId: string;
+  diaryId: string;
+  title: string;
+  date: string;
+  status: "active" | "archived";
+};
+
+export type UniverseDiarySourceOption = {
+  id: string;
+  title: string;
+  date: string;
+  status: "active" | "archived";
+};
+
+export type UniverseWebReadResult = UniverseReadResult & {
+  sources: UniverseDiarySourceSummary[];
+};
+
 export type UniverseMcpCreateResult<T> = {
   outcome: "created" | "replayed";
   value: T;
@@ -20,8 +39,16 @@ export type UniverseMcpCreateResult<T> = {
 export interface UniverseRepository {
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   loadUniverse(userId: string): Promise<UniverseReadResult | null>;
+  loadUniverseWeb?(userId: string): Promise<UniverseWebReadResult | null>;
+  searchUniverseDiarySourceOptions?(userId: string, query: string): Promise<UniverseDiarySourceOption[]>;
   saveUniverse(userId: string, snapshot: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult>;
   createNode(userId: string, node: UniverseNode, expectedVersion: number): Promise<UniverseReadResult>;
+  createNodeWithSources?(
+    userId: string,
+    node: UniverseNode,
+    sourceDiaryIds: string[],
+    expectedVersion: number,
+  ): Promise<UniverseWebReadResult>;
   createNodeIdempotently?(
     userId: string,
     node: UniverseNode,
@@ -30,6 +57,13 @@ export interface UniverseRepository {
     requestHash: string,
   ): Promise<UniverseMcpCreateResult<UniverseNode>>;
   updateNode(userId: string, node: UniverseNode, reason: string, expectedVersion: number): Promise<UniverseReadResult>;
+  updateNodeWithSources?(
+    userId: string,
+    node: UniverseNode,
+    reason: string,
+    sourceDiaryIds: string[] | undefined,
+    expectedVersion: number,
+  ): Promise<UniverseWebReadResult>;
   deleteNode(userId: string, nodeId: string, expectedVersion: number): Promise<UniverseReadResult>;
   createRelation(userId: string, relation: UniverseRelation, expectedVersion: number): Promise<UniverseReadResult>;
   createRelationIdempotently?(

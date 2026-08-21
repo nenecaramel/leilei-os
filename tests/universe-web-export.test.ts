@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { downloadUniverseJson } from "../web/src/pages/universe/universe-export.js";
+import { createLeileiOSUniverseService } from "../web/src/pages/universe/universe-service.js";
 import type { UniverseSnapshot } from "../web/src/pages/universe/universe-types.js";
 
 const snapshot: UniverseSnapshot = {
@@ -54,4 +55,21 @@ test("JSON export downloads the loaded canonical snapshot without IndexedDB", as
   assert.deepEqual(result.meta, { ...snapshot.meta, exportedAt: "2026-08-15T12:00:00.000Z" });
   assert.deepEqual(result.nodes[0]?.galaxies, [{ id: "galaxy-1", weight: 0.37 }]);
   assert.deepEqual(JSON.parse(await blobs[0]!.text()), result);
+});
+
+test("Universe service export excludes Web-only Diary provenance", async () => {
+  const service = createLeileiOSUniverseService({
+    adapter: {
+      async loadUniverse() {
+        return {
+          snapshot,
+          version: 3,
+          sources: [{ nodeId: "node-1", diaryId: "diary-1", title: "日记", date: "2026-08-15", status: "active" as const }],
+        };
+      },
+    } as never,
+  });
+  const exported = await service.exportData();
+  assert.equal(Object.hasOwn(exported, "sources"), false);
+  assert.equal(Object.hasOwn(exported.nodes[0]!, "sources"), false);
 });

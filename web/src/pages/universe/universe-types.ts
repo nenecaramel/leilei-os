@@ -94,6 +94,22 @@ export type UniverseSnapshot = {
 export type UniverseReadResult = {
   snapshot: UniverseSnapshot;
   version: number;
+  sources?: UniverseDiarySourceSummary[];
+};
+
+export type UniverseDiarySourceSummary = {
+  nodeId: string;
+  diaryId: string;
+  title: string;
+  date: string;
+  status: "active" | "archived";
+};
+
+export type UniverseDiarySourceOption = {
+  id: string;
+  title: string;
+  date: string;
+  status: "active" | "archived";
 };
 
 export type UniverseBackup = {

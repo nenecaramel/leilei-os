@@ -1,6 +1,7 @@
 import type { WebApiClient } from "../../api/useWebApiClient";
 import type {
   UniverseBackup,
+  UniverseDiarySourceOption,
   UniverseNode,
   UniverseNodeCreateInput,
   UniverseReadResult,
@@ -15,8 +16,9 @@ type ApiEnvelope<T> = { success: true; data: T };
 export type UniverseAdapter = {
   loadUniverse(): Promise<UniverseReadResult>;
   saveUniverse(value: UniverseSnapshot, expectedVersion: number): Promise<UniverseReadResult>;
-  createNode(value: UniverseNodeCreateInput, expectedVersion: number): Promise<UniverseReadResult>;
-  updateNode(nodeId: string, patch: Partial<UniverseNode>, reason: string, expectedVersion: number): Promise<UniverseReadResult>;
+  createNode(value: UniverseNodeCreateInput, expectedVersion: number, sourceDiaryIds?: string[]): Promise<UniverseReadResult>;
+  updateNode(nodeId: string, patch: Partial<UniverseNode>, reason: string, expectedVersion: number, sourceDiaryIds?: string[]): Promise<UniverseReadResult>;
+  searchDiarySourceOptions(query: string): Promise<UniverseDiarySourceOption[]>;
   deleteNode(nodeId: string, expectedVersion: number): Promise<UniverseReadResult>;
   createRelation(value: UniverseRelationCreateInput, expectedVersion: number): Promise<UniverseReadResult>;
   deleteRelation(relationId: string, expectedVersion: number): Promise<UniverseReadResult>;
@@ -39,10 +41,11 @@ function createRemoteUniverseAdapter(api: WebApiClient): UniverseAdapter {
     loadUniverse: () => read<UniverseReadResult>("/universe"),
     saveUniverse: (snapshot, expectedVersion) =>
       read<UniverseReadResult>("/universe", { method: "PUT", ...json({ snapshot, expected_version: expectedVersion }) }),
-    createNode: (node, expectedVersion) =>
-      read<UniverseReadResult>("/universe/nodes", { method: "POST", ...json({ node, expected_version: expectedVersion }) }),
-    updateNode: (nodeId, patch, reason, expectedVersion) =>
-      read<UniverseReadResult>(`/universe/nodes/${encodeURIComponent(nodeId)}`, { method: "PATCH", ...json({ patch, reason, expected_version: expectedVersion }) }),
+    createNode: (node, expectedVersion, sourceDiaryIds) =>
+      read<UniverseReadResult>("/universe/nodes", { method: "POST", ...json({ node, ...(sourceDiaryIds === undefined ? {} : { source_diary_ids: sourceDiaryIds }), expected_version: expectedVersion }) }),
+    updateNode: (nodeId, patch, reason, expectedVersion, sourceDiaryIds) =>
+      read<UniverseReadResult>(`/universe/nodes/${encodeURIComponent(nodeId)}`, { method: "PATCH", ...json({ patch, ...(sourceDiaryIds === undefined ? {} : { source_diary_ids: sourceDiaryIds }), reason, expected_version: expectedVersion }) }),
+    searchDiarySourceOptions: (query) => read<UniverseDiarySourceOption[]>(`/universe/diary-source-options?q=${encodeURIComponent(query)}`),
     deleteNode: (nodeId, expectedVersion) =>
       read<UniverseReadResult>(`/universe/nodes/${encodeURIComponent(nodeId)}`, { method: "DELETE", ...json({ expected_version: expectedVersion }) }),
     createRelation: (relation, expectedVersion) =>
@@ -73,8 +76,9 @@ export class LeileiOSAdapter implements UniverseAdapter {
 
   loadUniverse() { return this.delegate.loadUniverse(); }
   saveUniverse(value: UniverseSnapshot, expectedVersion: number) { return this.delegate.saveUniverse(value, expectedVersion); }
-  createNode(value: UniverseNodeCreateInput, expectedVersion: number) { return this.delegate.createNode(value, expectedVersion); }
-  updateNode(nodeId: string, patch: Partial<UniverseNode>, reason: string, expectedVersion: number) { return this.delegate.updateNode(nodeId, patch, reason, expectedVersion); }
+  createNode(value: UniverseNodeCreateInput, expectedVersion: number, sourceDiaryIds?: string[]) { return this.delegate.createNode(value, expectedVersion, sourceDiaryIds); }
+  updateNode(nodeId: string, patch: Partial<UniverseNode>, reason: string, expectedVersion: number, sourceDiaryIds?: string[]) { return this.delegate.updateNode(nodeId, patch, reason, expectedVersion, sourceDiaryIds); }
+  searchDiarySourceOptions(query: string) { return this.delegate.searchDiarySourceOptions(query); }
   deleteNode(nodeId: string, expectedVersion: number) { return this.delegate.deleteNode(nodeId, expectedVersion); }
   createRelation(value: UniverseRelationCreateInput, expectedVersion: number) { return this.delegate.createRelation(value, expectedVersion); }
   deleteRelation(relationId: string, expectedVersion: number) { return this.delegate.deleteRelation(relationId, expectedVersion); }

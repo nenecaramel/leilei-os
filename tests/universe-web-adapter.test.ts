@@ -3,6 +3,7 @@ import test from "node:test";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
 import {
   createLeileiOSUniverseAdapter,
+  type UniverseAdapter,
   type UniverseReadResult,
 } from "../web/src/pages/universe/universe-adapter.js";
 import {
@@ -161,6 +162,30 @@ test("LeileiOSAdapter round-trips canonical node migration metadata", async () =
   assert.deepEqual(jsonBody(requests[1]?.init).snapshot, migratedSnapshot);
 });
 
+test("LeileiOSAdapter retains sibling source summaries and sends explicit editor source ids", async () => {
+  const source = { nodeId: "node-1", diaryId: "00000000-0000-4000-8000-000000000001", title: "Diary", date: "2026-08-21", status: "archived" as const };
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const api: WebApiClient = {
+    async request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      if (path === "/universe/diary-source-options?q=Diary") return { success: true, data: [{ id: source.diaryId, title: source.title, date: source.date, status: source.status }] } as T;
+      return { success: true, data: { ...readResult, sources: [source] } } as T;
+    },
+  };
+  const adapter = createLeileiOSUniverseAdapter(api) as typeof createLeileiOSUniverseAdapter extends (...args: never[]) => infer T ? T & {
+    createNode(value: UniverseNode, expectedVersion: number, sourceDiaryIds: string[]): Promise<unknown>;
+    updateNode(nodeId: string, patch: Partial<UniverseNode>, reason: string, expectedVersion: number, sourceDiaryIds: string[]): Promise<unknown>;
+    searchDiarySourceOptions(query: string): Promise<unknown>;
+  } : never;
+  const loaded = await adapter.loadUniverse();
+  assert.deepEqual(loaded.sources, [source]);
+  await adapter.createNode({ id: "node-1", title: "n", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 1, y: 1 }, createdAt: "now", updatedAt: "now" }, 4, [source.diaryId]);
+  await adapter.updateNode("node-1", { title: "updated" }, "edit", 5, [source.diaryId]);
+  assert.deepEqual(await adapter.searchDiarySourceOptions("Diary"), [{ id: source.diaryId, title: source.title, date: source.date, status: source.status }]);
+  assert.deepEqual(jsonBody(requests[1]?.init), { node: { id: "node-1", title: "n", summary: "", content: "", type: "concept", tags: [], galaxies: [], position: { x: 1, y: 1 }, createdAt: "now", updatedAt: "now" }, source_diary_ids: [source.diaryId], expected_version: 4 });
+  assert.deepEqual(jsonBody(requests[2]?.init), { patch: { title: "updated" }, source_diary_ids: [source.diaryId], reason: "edit", expected_version: 5 });
+});
+
 test("LeileiOSUniverseService replaces canonical version after each mutation and surfaces conflicts", async () => {
   let current = readResult;
   const calls: Array<{ expectedVersion: number; kind: string }> = [];
@@ -201,4 +226,38 @@ test("LeileiOSUniverseService replaces canonical version after each mutation and
   adapter.createNode = async () => { throw conflict; };
   await assert.rejects(() => service.createNode(node), (error: unknown) => error === conflict);
   assert.equal(service.getState().version, 5);
+});
+
+test("LeileiOSUniverseService refreshes sibling Diary sources after canonical mutations", async () => {
+  const source = { nodeId: "node-1", diaryId: "diary-1", title: "来源日记", date: "2026-08-21", status: "active" as const };
+  const canonical: UniverseReadResult = { snapshot, version: 5 };
+  const fresh: UniverseReadResult = { ...canonical, sources: [source] };
+  const adapter: UniverseAdapter = {
+    loadUniverse: async () => fresh,
+    saveUniverse: async () => canonical,
+    createNode: async () => canonical,
+    updateNode: async () => canonical,
+    deleteNode: async () => canonical,
+    createRelation: async () => canonical,
+    deleteRelation: async () => canonical,
+    latestRevision: async () => ({ id: "revision-1", nodeId: "node-1", createdAt: "now", reason: "test", snapshot: { title: "", summary: "", content: "", type: "concept", tags: [], galaxies: [] } }),
+    restoreLatestRevision: async () => canonical,
+    createBackup: async () => ({ id: "backup-1", createdAt: "now", reason: "test", data: snapshot }),
+    latestBackup: async () => null,
+    ensureDailyBackup: async () => null,
+    restoreBackup: async () => canonical,
+    searchDiarySourceOptions: async () => [],
+  };
+  const service = createLeileiOSUniverseService({ adapter });
+  await service.load();
+  const assertSources = async (mutation: () => Promise<unknown>) => {
+    await mutation();
+    assert.deepEqual(service.getState()?.sources, [source]);
+  };
+  await assertSources(() => service.createRelation({ source: "node-1", target: "node-1", relationType: "supports", strength: 1 }));
+  await assertSources(() => service.updateNode("node-1", { title: "edited" }));
+  await assertSources(() => service.deleteNode("node-1"));
+  await assertSources(() => service.restoreLatestRevision("node-1"));
+  await assertSources(() => service.restoreBackup("backup-1"));
+  await assertSources(() => service.saveUniverse(snapshot));
 });
