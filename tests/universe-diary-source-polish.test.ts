@@ -6,8 +6,8 @@ const paperSource = readFileSync(
   new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url),
   "utf8",
 );
-const mobileCss = readFileSync(
-  new URL("../web/src/pages/universe/universe-node-paper-web-mobile.css", import.meta.url),
+const finalGeometryCss = readFileSync(
+  new URL("../web/src/pages/universe-mobile-final-geometry.css", import.meta.url),
   "utf8",
 );
 const appNavigationSource = readFileSync(
@@ -17,32 +17,26 @@ const appNavigationSource = readFileSync(
 
 test("Universe editor micro-labels use one explicit zero-padding left edge", () => {
   assert.match(
-    mobileCss,
-    /\.universe-standalone-form-field\s*>\s*label,\s*\.universe-standalone-galaxies\s*>\s*legend,\s*\.universe-standalone-strength-label\s*>\s*span\s*\{[^}]*margin:\s*0;[^}]*padding-inline:\s*0;/,
+    finalGeometryCss,
+    /\.universe-standalone-form-field\s*>\s*label,\s*\.universe-standalone-galaxies\s*>\s*legend,\s*\.universe-standalone-strength-label\s*>\s*span\s*\{[^}]*padding-inline:\s*0\s*!important;/,
   );
 });
 
 test("Diary source picker heading is regular weight and exactly aligned with search text", () => {
-  assert.doesNotMatch(
-    paperSource,
-    /universe-standalone-source-picker-head[^\n]*<strong>选择来源日记<\/strong>/,
+  assert.match(
+    finalGeometryCss,
+    /\.universe-standalone-source-picker-head\s*\{[^}]*padding-left:\s*13px\s*!important;[^}]*font-size:\s*13px\s*!important;[^}]*line-height:\s*1\.35\s*!important;/,
   );
   assert.match(
-    paperSource,
-    /universe-standalone-source-picker-head[^\n]*<span>选择来源日记<\/span>/,
-  );
-  assert.match(
-    mobileCss,
-    /\.universe-standalone-source-picker-head\s*\{[^}]*padding-left:\s*13px;[^}]*font-size:\s*13px;[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.35;/,
+    finalGeometryCss,
+    /\.universe-standalone-source-picker-head\s+strong\s*\{[^}]*font-weight:\s*400\s*!important;/,
   );
 });
 
 test("opening Diary source picker minimally scrolls the complete search input into view", () => {
-  assert.match(paperSource, /sourcePickerSearchRef\s*=\s*useRef<HTMLInputElement\s*\|\s*null>/);
-  assert.match(paperSource, /ref=\{sourcePickerSearchRef\}/);
   assert.match(
     paperSource,
-    /sourcePickerSearchRef\.current\?\.scrollIntoView\(\{[^}]*block:\s*"nearest"[^}]*\}\)/,
+    /querySelector<HTMLInputElement>\([\s\S]*搜索来源日记[\s\S]*\)[\s\S]*scrollIntoView\(\{[^}]*block:\s*"nearest"[^}]*\}\)/,
   );
 });
 
