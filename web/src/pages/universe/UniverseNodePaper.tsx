@@ -237,11 +237,6 @@ export function UniverseNodePaper({
     setSourceMetadataById((current) => ({ ...current, ...Object.fromEntries(diarySourceOptions.map((source) => [source.id, source])) }));
     setSourcePickerQuery("");
     setSourcePickerOpen(true);
-    window.requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLInputElement>('.universe-standalone-source-picker input[aria-label="搜索来源日记"]')
-        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    });
   };
   const toggleSourcePickerSelection = (diaryId: string) => {
     setSourcePickerSelection((current) => current.includes(diaryId) ? current.filter((id) => id !== diaryId) : [...current, diaryId]);
@@ -263,13 +258,13 @@ export function UniverseNodePaper({
   const toggleMembership = (galaxyId: string) => {
     setMembershipError(null);
     setMemberships((current) => current.some((membership) => membership.id === galaxyId)
-      ? current.filter((id) => id !== galaxyId)
+      ? current.filter((membership) => membership.id !== galaxyId)
       : [...current, { id: galaxyId, weightText: "" }]);
   };
 
   const updateMembershipWeight = (galaxyId: string, weightText: string) => {
     setMembershipError(null);
-    setMemberships((current) => current.map((membership) => membership.id === galaxyId ? { id: galaxyId, weightText } : membership));
+    setMemberships((current) => current.map((membership) => membership.id === galaxyId ? { ...membership, weightText } : membership));
   };
 
   const metadata = (
