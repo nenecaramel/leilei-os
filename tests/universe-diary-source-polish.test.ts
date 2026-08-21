@@ -2,10 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const paperSource = readFileSync(
-  new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url),
-  "utf8",
-);
 const finalGeometryCss = readFileSync(
   new URL("../web/src/pages/universe-mobile-final-geometry.css", import.meta.url),
   "utf8",
@@ -14,6 +10,15 @@ const appNavigationSource = readFileSync(
   new URL("../web/src/pages/app-navigation.ts", import.meta.url),
   "utf8",
 );
+let sourcePickerAutoRevealSource = "";
+try {
+  sourcePickerAutoRevealSource = readFileSync(
+    new URL("../web/src/pages/universe/source-picker-auto-reveal.ts", import.meta.url),
+    "utf8",
+  );
+} catch {
+  sourcePickerAutoRevealSource = "";
+}
 
 test("Universe editor micro-labels use one explicit zero-padding left edge", () => {
   assert.match(
@@ -34,9 +39,11 @@ test("Diary source picker heading is regular weight and exactly aligned with sea
 });
 
 test("opening Diary source picker minimally scrolls the complete search input into view", () => {
+  assert.match(sourcePickerAutoRevealSource, /universe-standalone-source-add/);
+  assert.match(sourcePickerAutoRevealSource, /搜索来源日记/);
   assert.match(
-    paperSource,
-    /querySelector<HTMLInputElement>\([\s\S]*搜索来源日记[\s\S]*\)[\s\S]*scrollIntoView\(\{[^}]*block:\s*"nearest"[^}]*\}\)/,
+    sourcePickerAutoRevealSource,
+    /scrollIntoView\(\{[^}]*block:\s*"nearest"[^}]*\}\)/,
   );
 });
 
