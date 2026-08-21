@@ -255,11 +255,11 @@ export function UniverseNodePaper({
     <section className="universe-standalone-editor" aria-label={isCreate ? "点亮星球" : "调整星球"}>
       <header className="universe-standalone-editor-heading">
         <p className="universe-standalone-editor-context">{isCreate ? "新星 · 待点亮" : <>当前思想 · {effectiveNode!.title}</>}</p>
-        <h2>{isCreate ? "点亮一颗新星" : "调整这颗星球"}</h2>
         {!isCreate ? renderManagementMenu("universe-standalone-editor-management") : null}
       </header>
 
       <div className="universe-standalone-editor-body">
+        <h2>{isCreate ? "点亮一颗新星" : "调整这颗星球"}</h2>
         <div className="universe-standalone-form-field">
           <label htmlFor={`${id}-title`}>它叫什么？</label>
           <input id={`${id}-title`} value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="一个概念、问题或经历" />

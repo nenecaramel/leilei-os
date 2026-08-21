@@ -374,7 +374,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-top: 24px;
+    padding-top: 0;
     padding-bottom: 4px;
     scrollbar-width: none;
   }
@@ -387,6 +387,10 @@
     display: grid;
     gap: 8px;
     margin-top: 0;
+  }
+
+  .universe-standalone-editor-body > h2 + .universe-standalone-form-field {
+    margin-top: 24px;
   }
 
   .universe-standalone-editor .universe-standalone-form-field + .universe-standalone-form-field {
