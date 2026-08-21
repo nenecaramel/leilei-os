@@ -16,6 +16,19 @@ function asHistoryState(state: unknown): Record<string, unknown> {
   return { ...(state as Record<string, unknown>) };
 }
 
+function syncUniverseDiaryThemeColor(targetPathname: string): void {
+  const themeColor =
+    targetPathname === "/universe"
+      ? "#0b0c12"
+      : targetPathname === "/diary"
+        ? "#ebeae4"
+        : null;
+  if (!themeColor) return;
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute("content", themeColor);
+}
+
 export function navigateWithinApp(
   location: string,
   state: unknown = null,
@@ -31,6 +44,7 @@ export function navigateWithinApp(
     };
     nextState[ROUTE_SCROLL_STATE_KEY] = marker;
   }
+  syncUniverseDiaryThemeColor(targetPathname);
   window.history.pushState(nextState, "", location);
   window.dispatchEvent(new window.PopStateEvent("popstate"));
 }

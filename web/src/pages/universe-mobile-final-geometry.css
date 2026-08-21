@@ -7,9 +7,28 @@
     padding-bottom: 14px !important;
   }
 
+  /* Keep all editor micro-labels on one deterministic left edge. */
+  .universe-standalone-form-field > label,
+  .universe-standalone-galaxies > legend,
+  .universe-standalone-strength-label > span {
+    padding-inline: 0 !important;
+  }
+
   /* Keep the provenance source group on the same section rhythm as galaxies. */
   .universe-standalone-source-field {
     margin-top: 30px !important;
+  }
+
+  /* Search text starts at picker padding 14px + input border 1px + input padding 12px. */
+  .universe-standalone-source-picker-head {
+    padding-left: 13px !important;
+    color: #777988 !important;
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+  }
+
+  .universe-standalone-source-picker-head strong {
+    font-weight: 400 !important;
   }
 
   .universe-standalone-detail-actions button,
