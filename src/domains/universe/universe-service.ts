@@ -404,7 +404,7 @@ function normalizeSourceDiaryIds(value: unknown, allowOmitted: boolean): string[
   if (value === undefined && allowOmitted) return undefined;
   if (!Array.isArray(value)) throw new UniverseServiceError("INVALID_UNIVERSE");
   const ids = value.map((id) => typeof id === "string" ? id.trim() : "");
-  if (ids.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(id))) {
+  if (ids.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(id))) {
     throw new UniverseServiceError("INVALID_UNIVERSE");
   }
   if (new Set(ids).size !== ids.length) throw new UniverseServiceError("INVALID_UNIVERSE");
