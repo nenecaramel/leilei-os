@@ -6,6 +6,10 @@ const css = readFileSync(
   new URL("../web/src/pages/lg-author-editor-layout-fix.css", import.meta.url),
   "utf8",
 );
+const appStyles = readFileSync(
+  new URL("../web/src/styles.css", import.meta.url),
+  "utf8",
+);
 const main = readFileSync(
   new URL("../web/src/main.tsx", import.meta.url),
   "utf8",
@@ -47,6 +51,13 @@ test("author hotfix never overrides module metadata editor geometry or typograph
     assert.doesNotMatch(css, new RegExp(`\\.${selector}\\b`));
   }
   assert.doesNotMatch(css, /\bzoom\s*:/);
+});
+
+test("Memory and Task metadata menus can overflow their bottom-left metadata container", () => {
+  assert.match(
+    appStyles,
+    /\.paper-detail-paper\[id\^="memory-"\]\s+\.paper-detail-bottom-left\s*>\s*\.memory-paper-metadata,\s*\.paper-detail-paper\[id\^="task-"\]\s+\.paper-detail-bottom-left\s*>\s*\.memory-paper-metadata\s*\{[\s\S]*?overflow:\s*visible\s*;/,
+  );
 });
 
 test("author integration contributes no DOM node to bottom-left metadata", () => {
