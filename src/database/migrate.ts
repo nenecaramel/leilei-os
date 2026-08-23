@@ -19,8 +19,6 @@ import { resolveRailwayMigrationDatabaseUrl } from "./railway-private-postgres.j
 
 const MIGRATIONS_FOLDER = "./drizzle";
 const MIGRATION_LOCK_KEY = "leilei-os-schema-migrations";
-const MIGRATION_CONNECT_TIMEOUT_SECONDS = 3;
-const MIGRATION_IDLE_TIMEOUT_SECONDS = 5;
 
 let migrationStage = "initialization";
 
@@ -78,8 +76,8 @@ async function main(): Promise<void> {
     max: 1,
     prepare: false,
     ssl: "require",
-    connect_timeout: MIGRATION_CONNECT_TIMEOUT_SECONDS,
-    idle_timeout: MIGRATION_IDLE_TIMEOUT_SECONDS,
+    connect_timeout: 3,
+    idle_timeout: 5,
   });
 
   try {
