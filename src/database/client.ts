@@ -2,16 +2,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
 
-const DATABASE_CONNECT_TIMEOUT_SECONDS = 3;
-const DATABASE_IDLE_TIMEOUT_SECONDS = 5;
-
 function createPostgresClient(databaseUrl: string, maxConnections: number) {
   return postgres(databaseUrl, {
     max: maxConnections,
     prepare: false,
     ssl: "require",
-    connect_timeout: DATABASE_CONNECT_TIMEOUT_SECONDS,
-    idle_timeout: DATABASE_IDLE_TIMEOUT_SECONDS,
+    connect_timeout: 3,
+    idle_timeout: 5,
   });
 }
 
