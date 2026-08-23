@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "prebuild": "node --test ../tests/paper-author-editor-layout-regression.test.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b"
@@ -16,7 +17,7 @@
   "dependencies": {
     "@auth0/auth0-react": "^2.4.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react-dom": "^19.1.6",
     "react-router-dom": "^7.7.1"
   },
   "devDependencies": {
