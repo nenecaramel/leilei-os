@@ -7,7 +7,13 @@ import {
 import { createOAuthMiddleware } from "../auth/oauth-middleware.js";
 import { env, getMcpGovernanceConfig, requireOAuthConfig } from "../config/env.js";
 import { getWebApiConfig } from "../config/env.js";
-import { createDatabase } from "../database/client.js";
+import { createDatabase, createDatabaseReadinessProbe } from "../database/client.js";
+import {
+  createDatabaseReadinessGate,
+  MIGRATION_READINESS_BACKOFF_MS,
+  MIGRATION_READINESS_MAX_ATTEMPTS,
+  MIGRATION_READINESS_MAX_BACKOFF_MS,
+} from "../database/migration-readiness.js";
 import { createMcpRouter } from "../mcp/server/router.js";
 import {
   McpSessionRegistry,
@@ -122,6 +128,47 @@ export function createApp(
     maxTotal: mcpGovernance.maxTotal,
     observer: observeMcpLifecycle,
   });
+
+  const databaseReadiness = env.DATABASE_URL
+    ? createDatabaseReadinessGate(
+        createDatabaseReadinessProbe(env.DATABASE_URL),
+        {
+          maxAttempts: MIGRATION_READINESS_MAX_ATTEMPTS,
+          backoffMs: MIGRATION_READINESS_BACKOFF_MS,
+          maxBackoffMs: MIGRATION_READINESS_MAX_BACKOFF_MS,
+          onRetry: ({ attempt, maxAttempts, name, code }) => {
+            console.warn(
+              `Database readiness retry. stage=request attempt=${attempt}/${maxAttempts} name=${name} code=${code}`,
+            );
+          },
+        },
+      )
+    : undefined;
+
+  const databaseReadinessMiddleware: express.RequestHandler = async (
+    _request,
+    response,
+    next,
+  ) => {
+    if (!databaseReadiness) {
+      next();
+      return;
+    }
+    try {
+      await databaseReadiness();
+      next();
+    } catch {
+      console.error("Database readiness failed after bounded retry. stage=request");
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "DATABASE_UNAVAILABLE",
+          message: "Database is temporarily unavailable.",
+        },
+      });
+    }
+  };
+
   let mcpIdempotencyCleanup: McpIdempotencyCleanupCoordinator | undefined;
   if (env.DATABASE_URL) {
     const { db } = createDatabase(env.DATABASE_URL);
@@ -300,6 +347,7 @@ export function createApp(
         webApiConfig,
         verifyWebAccessToken,
       ),
+      databaseReadinessMiddleware,
       createWebApiRouter({
         memory: {
           memoryService: webMemoryService,
@@ -326,6 +374,7 @@ export function createApp(
   app.use(
     "/mcp",
     createOAuthMiddleware(config, verifyAccessToken),
+    databaseReadinessMiddleware,
     createMcpRouter({
       namespace: "public",
       registry: mcpSessionRegistry,
@@ -340,6 +389,7 @@ export function createApp(
         config.MCP_AUTH_TOKEN,
         config.MCP_USER_ID,
       ),
+      databaseReadinessMiddleware,
       createMcpRouter({
         namespace: "internal",
         registry: mcpSessionRegistry,

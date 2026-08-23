@@ -12,6 +12,7 @@ import {
 import {
   MIGRATION_READINESS_BACKOFF_MS,
   MIGRATION_READINESS_MAX_ATTEMPTS,
+  MIGRATION_READINESS_MAX_BACKOFF_MS,
   waitForMigrationDatabaseReady,
 } from "./migration-readiness.js";
 import { resolveRailwayMigrationDatabaseUrl } from "./railway-private-postgres.js";
@@ -75,6 +76,8 @@ async function main(): Promise<void> {
     max: 1,
     prepare: false,
     ssl: "require",
+    connect_timeout: 3,
+    idle_timeout: 5,
   });
 
   try {
@@ -84,6 +87,7 @@ async function main(): Promise<void> {
       {
         maxAttempts: MIGRATION_READINESS_MAX_ATTEMPTS,
         backoffMs: MIGRATION_READINESS_BACKOFF_MS,
+        maxBackoffMs: MIGRATION_READINESS_MAX_BACKOFF_MS,
         onRetry: ({ attempt, maxAttempts, name, code }) => {
           console.error(
             `Database readiness retry. stage=readiness attempt=${attempt}/${maxAttempts} name=${name} code=${code}`,
