@@ -6703,6 +6703,11 @@ body:has(.system-page) {
   white-space: nowrap;
 }
 
+.paper-detail-paper[id^="memory-"] .paper-detail-bottom-left > .memory-paper-metadata,
+.paper-detail-paper[id^="task-"] .paper-detail-bottom-left > .memory-paper-metadata {
+  overflow: visible;
+}
+
 .paper-detail-paper:has(.paper-detail-error) .paper-detail-scroll {
   inset: 42px 0 82px;
 }
