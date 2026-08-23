@@ -5,6 +5,10 @@ on:
     branches:
       - main
     paths:
+      - src/app/create-app.ts
+      - src/database/client.ts
+      - src/database/migrate.ts
+      - src/database/migration-readiness.ts
       - src/domains/require-active-user-transaction.ts
       - src/domains/memory/memory-repository.ts
       - src/domains/diary/diary-repository.ts
@@ -18,6 +22,8 @@ on:
       - drizzle/0025_wild_xavin.sql
       - tests/active-user-mutation-atomicity.test.ts
       - tests/active-user-mutation-atomicity.integration.test.ts
+      - tests/database-readiness-wiring.test.ts
+      - tests/migration-readiness.test.ts
       - tests/universe-mcp-writes.integration.test.ts
       - tests/mcp-universe-write-migration.integration.test.ts
       - tests/mcp-write-idempotency.integration.test.ts
