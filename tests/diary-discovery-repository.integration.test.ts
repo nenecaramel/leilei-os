@@ -40,6 +40,8 @@ test("Diary compact search keeps long bodies out of discovery results", { skip: 
           tags: ["travel"],
           mood: "focused",
           status: "active",
+          idempotencyKey: "discovery-diary-title-1",
+          requestHash: "a".repeat(64),
           updatedAt: now,
         },
         {
@@ -50,6 +52,8 @@ test("Diary compact search keeps long bodies out of discovery results", { skip: 
           tags: ["travel"],
           mood: "focused",
           status: "active",
+          idempotencyKey: "discovery-diary-title-2",
+          requestHash: "b".repeat(64),
           updatedAt: new Date(now.getTime() - 1_000),
         },
         {
@@ -60,6 +64,8 @@ test("Diary compact search keeps long bodies out of discovery results", { skip: 
           tags: ["other"],
           mood: "focused",
           status: "active",
+          idempotencyKey: "discovery-diary-body-3",
+          requestHash: "c".repeat(64),
           updatedAt: new Date(now.getTime() - 2_000),
         },
       ]);
