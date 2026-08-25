@@ -79,9 +79,9 @@ test("Memory discovery keeps long bodies out of compact repository/service proje
 
       const service = new MemoryService(new DrizzleMemoryRepository(transaction as never));
       const directory = await service.readMemoryDiscovery({ userId });
-      assert.equal(directory.memories.length, 1);
-      assert.equal("content" in directory.memories[0]!, false);
-      assert.equal(Array.from(directory.memories[0]!.preview).length <= 240, true);
+      assert.equal(directory.memories.length, 3);
+      assert.equal(directory.memories.every((memory) => !("content" in memory)), true);
+      assert.equal(directory.memories.every((memory) => Array.from(memory.preview).length <= 240), true);
 
       const bodyMatch = await service.searchMemoryDiscovery({ userId, query: "bodyneedle" });
       assert.equal(bodyMatch.memories.length, 1);
