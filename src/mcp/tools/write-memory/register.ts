@@ -11,11 +11,12 @@ import {
   MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
   MCP_IDEMPOTENCY_KEY_PATTERN,
 } from "../../../domains/mcp-write/mcp-write-idempotency.js";
+import { MEMORY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
 
 const memoryCategorySchema = z.enum(["profile", "preference", "goal", "project"]);
 const rawMemoryKeySchema = z.string().max(1_000);
-const rawMemoryContentSchema = z.string().max(20_000);
+const rawMemoryContentSchema = z.string().max(MEMORY_CONTENT_MAX_LENGTH);
 const rawMemoryTagSchema = z.string().max(500);
 const contentAuthorSchema = z.enum(["L", "G"]);
 const writeMemoryInputSchema = z.object({

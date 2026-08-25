@@ -6,6 +6,7 @@ import {
   type CreateDiaryInput,
   type CreateDiaryResult,
 } from "../../../domains/diary/diary-service.js";
+import { DIARY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
 
 const contentAuthorSchema = z.enum(["L", "G"]);
@@ -20,7 +21,7 @@ const writeDiaryInputSchema = z
     content: z
       .string()
       .min(1)
-      .max(20_000)
+      .max(DIARY_CONTENT_MAX_LENGTH)
       .describe("The complete diary entry content."),
     date: z
       .string()

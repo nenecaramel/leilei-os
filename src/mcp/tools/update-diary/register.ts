@@ -1,12 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { DiaryDomainError, type AuthenticatedDiaryContext, type DiaryEntryResult, type UpdateMcpDiaryInput } from "../../../domains/diary/diary-service.js";
+import { DIARY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
 
 const updateDiaryInputSchema = z.object({
   id: z.string().trim().min(1),
   title: z.string().min(1).max(200).optional(),
-  content: z.string().min(1).max(20_000).optional(),
+  content: z.string().min(1).max(DIARY_CONTENT_MAX_LENGTH).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   mood: z.string().min(1).max(50).nullable().optional(),

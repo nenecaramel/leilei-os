@@ -6,13 +6,14 @@ import {
   type ReadMemoryDetailResult,
   type UpdateMcpMemoryInput,
 } from "../../../domains/memory/memory-service.js";
+import { MEMORY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
 
 const updateMemoryInputSchema = z.object({
   id: z.string().trim().min(1),
   category: z.enum(["profile", "preference", "goal", "project"]).optional(),
   key: z.string().max(1_000).optional(),
-  content: z.string().max(20_000).optional(),
+  content: z.string().max(MEMORY_CONTENT_MAX_LENGTH).optional(),
   tags: z.array(z.string().max(500)).max(20).optional(),
   author: z.enum(["L", "G"]).optional(),
 }).strict().refine((value) => Object.keys(value).some((key) => key !== "id"), {

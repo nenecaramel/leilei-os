@@ -195,7 +195,7 @@ export function createApp(
   const webApiConfig = getWebApiConfig(env);
 
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "256kb" }));
+  app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_request, response) => {
     response.json({
