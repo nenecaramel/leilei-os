@@ -21,32 +21,39 @@ function configureEnvironment(): void {
 
 async function withApp(callback: (baseUrl: string, calls: string[]) => Promise<void>): Promise<void> {
   configureEnvironment();
-  const { createApp } = await import("../src/app/create-app.js");
-  const calls: string[] = [];
-  const app = createApp({
-    verifyAccessToken: async () => ({ subject: "allowed-subject", issuer: "https://issuer.example.test/", audience: [], scopes: ["mcp:access"] }),
-    verifyWebAccessToken: async () => ({ subject: "allowed-subject", issuer: "https://issuer.example.test/", audience: [], scopes: ["web:access"] }),
-    webMemoryService: {
-      async createMemory(input: { content: string }) { calls.push(input.content); },
-    } as never,
-    webDiaryService: {} as never,
-    webTaskService: {} as never,
-    webSystemService: {} as never,
-    toyService: {} as never,
-    webGlobalSearchService: {} as never,
-    webTodoService: {} as never,
-    webExportService: {} as never,
-    webImportService: {} as never,
-    webUniverseService: {} as never,
-  });
-  const server = await new Promise<import("node:http").Server>((resolve) => {
-    const instance = app.listen(0, () => resolve(instance));
-  });
-  const address = server.address() as AddressInfo;
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  delete process.env.DATABASE_URL;
   try {
-    await callback(`http://127.0.0.1:${address.port}`, calls);
+    const { createApp } = await import("../src/app/create-app.js");
+    const calls: string[] = [];
+    const app = createApp({
+      verifyAccessToken: async () => ({ subject: "allowed-subject", issuer: "https://issuer.example.test/", audience: [], scopes: ["mcp:access"] }),
+      verifyWebAccessToken: async () => ({ subject: "allowed-subject", issuer: "https://issuer.example.test/", audience: [], scopes: ["web:access"] }),
+      webMemoryService: {
+        async createMemory(input: { content: string }) { calls.push(input.content); },
+      } as never,
+      webDiaryService: {} as never,
+      webTaskService: {} as never,
+      webSystemService: {} as never,
+      toyService: {} as never,
+      webGlobalSearchService: {} as never,
+      webTodoService: {} as never,
+      webExportService: {} as never,
+      webImportService: {} as never,
+      webUniverseService: {} as never,
+    });
+    const server = await new Promise<import("node:http").Server>((resolve) => {
+      const instance = app.listen(0, () => resolve(instance));
+    });
+    const address = server.address() as AddressInfo;
+    try {
+      await callback(`http://127.0.0.1:${address.port}`, calls);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
   }
 }
 
