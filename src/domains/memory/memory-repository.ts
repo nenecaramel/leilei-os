@@ -64,6 +64,7 @@ export type MemorySearchRecord = {
   author?: ContentAuthor | null;
   updatedAt: Date;
   bodyExcerpt: string;
+  bodyMatched: boolean;
 };
 
 export type TrustedMemorySource =
@@ -277,6 +278,10 @@ export class DrizzleMemoryRepository implements MemoryRepository {
           const pattern = `%${escaped}%`;
           return or(
             ilike(coreMemories.key, pattern),
+            ilike(
+              sql<string>`replace(${coreMemories.key}, '_', ' ')`,
+              pattern,
+            ),
             ilike(sql<string>`${coreMemories.category}::text`, pattern),
             ilike(coreMemories.content, pattern),
           );
@@ -325,8 +330,13 @@ export class DrizzleMemoryRepository implements MemoryRepository {
     const query = input.query ?? "";
     const escaped = query.replace(/[\\%_]/g, "\\$&");
     const pattern = `%${escaped}%`;
+    const bodyMatched = sql<boolean>`${coreMemories.content} ILIKE ${pattern} ESCAPE '\\'`;
     const queryFilter = or(
       ilike(coreMemories.key, pattern),
+      ilike(
+        sql<string>`replace(${coreMemories.key}, '_', ' ')`,
+        pattern,
+      ),
       ilike(sql<string>`${coreMemories.category}::text`, pattern),
       ilike(coreMemories.content, pattern),
     );
@@ -346,6 +356,7 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         author: coreMemories.author,
         updatedAt: coreMemories.updatedAt,
         bodyExcerpt: sql<string>`substring(${coreMemories.content} from greatest(1, strpos(lower(${coreMemories.content}), lower(${query})) - 256) for 768)`,
+        bodyMatched,
       })
       .from(coreMemories)
       .where(and(

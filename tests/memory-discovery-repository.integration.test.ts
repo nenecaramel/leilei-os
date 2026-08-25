@@ -23,6 +23,7 @@ test("Memory discovery keeps long bodies out of compact repository/service proje
       const userId = randomUUID();
       const memoryId = randomUUID();
       const now = new Date("2026-08-25T00:00:00.000Z");
+      const longBody = `${"前".repeat(49_990)} bodyneedle ${"后".repeat(49_990)}`;
       await transaction.insert(users).values({
         id: userId,
         email: `memory-discovery-${userId}@example.invalid`,
@@ -37,7 +38,7 @@ test("Memory discovery keeps long bodies out of compact repository/service proje
           userId,
           category: "goal",
           key: "keyneedle",
-          content: `${"前".repeat(200)} bodyneedle ${"后".repeat(200)}`,
+          content: longBody,
           tags: ["visible"],
           visibility: "assistant",
           source: "integration",
@@ -51,6 +52,26 @@ test("Memory discovery keeps long bodies out of compact repository/service proje
           content: "private bodyneedle",
           tags: ["private"],
           visibility: "private",
+          source: "integration",
+          status: "active",
+        },
+        {
+          userId,
+          category: "goal",
+          key: "project_alpha",
+          content: "metadata only",
+          tags: ["visible"],
+          visibility: "assistant",
+          source: "integration",
+          status: "active",
+        },
+        {
+          userId,
+          category: "goal",
+          key: "foo_bar",
+          content: "foo   bar",
+          tags: ["visible"],
+          visibility: "assistant",
           source: "integration",
           status: "active",
         },
@@ -70,6 +91,14 @@ test("Memory discovery keeps long bodies out of compact repository/service proje
       const keyOnly = await service.searchMemoryDiscovery({ userId, query: "keyneedle" });
       assert.equal(keyOnly.memories.length, 1);
       assert.equal(keyOnly.memories[0]!.snippet, null);
+
+      const underscoreKey = await service.searchMemoryDiscovery({ userId, query: "project alpha" });
+      assert.deepEqual(underscoreKey.memories.map((memory) => memory.key), ["project_alpha"]);
+      assert.equal(underscoreKey.memories[0]!.snippet, null);
+
+      const whitespaceKey = await service.searchMemoryDiscovery({ userId, query: "foo bar" });
+      assert.deepEqual(whitespaceKey.memories.map((memory) => memory.key), ["foo_bar"]);
+      assert.equal(whitespaceKey.memories[0]!.snippet, null);
 
       throw new RollbackMemoryDiscoveryTest();
     }), RollbackMemoryDiscoveryTest);

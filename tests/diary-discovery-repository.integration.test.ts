@@ -22,6 +22,7 @@ test("Diary compact search keeps long bodies out of discovery results", { skip: 
     await assert.rejects(database.db.transaction(async (transaction) => {
       const userId = randomUUID();
       const now = new Date("2026-08-25T00:00:00.000Z");
+      const longBody = `${"前".repeat(49_990)} bodyneedle ${"后".repeat(49_990)}`;
       await transaction.insert(users).values({
         id: userId,
         email: `diary-discovery-${userId}@example.invalid`,
@@ -30,16 +31,38 @@ test("Diary compact search keeps long bodies out of discovery results", { skip: 
         createdAt: now,
         updatedAt: now,
       });
-      await transaction.insert(diaryEntries).values({
-        userId,
-        title: "title needle",
-        content: `${"前".repeat(200)} bodyneedle ${"后".repeat(200)}`,
-        date: "2026-08-25",
-        tags: ["travel"],
-        mood: "focused",
-        status: "active",
-        updatedAt: now,
-      });
+      await transaction.insert(diaryEntries).values([
+        {
+          userId,
+          title: "title needle",
+          content: longBody,
+          date: "2026-08-25",
+          tags: ["travel"],
+          mood: "focused",
+          status: "active",
+          updatedAt: now,
+        },
+        {
+          userId,
+          title: "another title needle",
+          content: "metadata only",
+          date: "2026-08-25",
+          tags: ["travel"],
+          mood: "focused",
+          status: "active",
+          updatedAt: new Date(now.getTime() - 1_000),
+        },
+        {
+          userId,
+          title: "foo bar",
+          content: "foo   bar",
+          date: "2026-08-25",
+          tags: ["other"],
+          mood: "focused",
+          status: "active",
+          updatedAt: new Date(now.getTime() - 2_000),
+        },
+      ]);
 
       const service = new DiaryService(new DrizzleDiaryRepository(transaction as never));
       const bodyMatch = await service.searchDiaryDiscovery({ userId, query: { q: "bodyneedle" } });
@@ -49,9 +72,20 @@ test("Diary compact search keeps long bodies out of discovery results", { skip: 
       assert.equal(Array.from(String(bodyMatch.diaries[0]!.snippet)).length <= 240, true);
 
       const titleOnly = await service.searchDiaryDiscovery({ userId, query: { q: "title needle" } });
-      assert.equal(titleOnly.diaries[0]!.snippet, null);
+      const titleOnlyItem = titleOnly.diaries.find((diary) => diary.title === "title needle");
+      assert.ok(titleOnlyItem);
+      assert.equal(titleOnlyItem.snippet, null);
       const filterOnly = await service.searchDiaryDiscovery({ userId, query: { tag: "travel" } });
-      assert.equal(filterOnly.diaries[0]!.snippet, null);
+      assert.equal(filterOnly.metadata.count, 2);
+      assert.equal(filterOnly.diaries.every((diary) => diary.snippet === null), true);
+
+      const limited = await service.searchDiaryDiscovery({ userId, query: { q: "needle" }, limit: 1 });
+      assert.equal(limited.diaries.length, 1);
+      assert.equal(limited.metadata.count, 2);
+
+      const whitespaceBody = await service.searchDiaryDiscovery({ userId, query: { q: "foo bar" } });
+      assert.deepEqual(whitespaceBody.diaries.map((diary) => diary.title), ["foo bar"]);
+      assert.equal(whitespaceBody.diaries[0]!.snippet, null);
 
       throw new RollbackDiaryDiscoveryTest();
     }), RollbackDiaryDiscoveryTest);

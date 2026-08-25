@@ -281,7 +281,10 @@ export class DiaryService {
     const userId = await this.requireActiveUser(input.userId);
     const limit = this.resolveLimit(input.limit);
     const query = this.normalizeListQuery(input.query ?? {});
-    const diaries = await this.repository.findDiaryEntriesCompact(userId, limit, query);
+    const [diaries, count] = await Promise.all([
+      this.repository.findDiaryEntriesCompact(userId, limit, query),
+      this.repository.countDiaryEntries(userId, query),
+    ]);
     return {
       diaries: diaries.map((diary) => ({
         id: diary.id,
@@ -292,9 +295,11 @@ export class DiaryService {
         created_at: diary.createdAt.toISOString(),
         updated_at: diary.updatedAt.toISOString(),
         author: diary.author ?? null,
-        snippet: createBodyMatchSnippet(diary.bodyExcerpt, query.q ?? ""),
+        snippet: diary.bodyMatched
+          ? createBodyMatchSnippet(diary.bodyExcerpt, query.q ?? "")
+          : null,
       })),
-      metadata: { count: diaries.length },
+      metadata: { count },
     };
   }
 

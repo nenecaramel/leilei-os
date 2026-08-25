@@ -280,7 +280,9 @@ export class MemoryService {
         tags: memory.tags,
         author: memory.author ?? null,
         updated_at: memory.updatedAt.toISOString(),
-        snippet: createBodyMatchSnippet(memory.bodyExcerpt, query ?? ""),
+        snippet: memory.bodyMatched
+          ? createBodyMatchSnippet(memory.bodyExcerpt, query ?? "")
+          : null,
       })),
       metadata: { count: memories.length },
     };

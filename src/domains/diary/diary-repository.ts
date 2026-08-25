@@ -86,6 +86,7 @@ export type DiarySearchRecord = {
   updatedAt: Date;
   author?: ContentAuthor | null;
   bodyExcerpt: string;
+  bodyMatched: boolean;
 };
 
 export type DiaryListQuery = {
@@ -272,6 +273,10 @@ export class DrizzleDiaryRepository implements DiaryRepository {
     const bodyExcerpt = query.q
       ? sql<string>`substring(${diaryEntries.content} from greatest(1, strpos(lower(${diaryEntries.content}), lower(${query.q})) - 256) for 768)`
       : sql<string>`''`;
+    const escapedQuery = query.q?.replace(/[\\%_]/g, "\\$&");
+    const bodyMatched = escapedQuery
+      ? sql<boolean>`${diaryEntries.content} ILIKE ${`%${escapedQuery}%`} ESCAPE '\\'`
+      : sql<boolean>`false`;
     return this.db
       .select({
         id: diaryEntries.id,
@@ -283,6 +288,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         updatedAt: diaryEntries.updatedAt,
         author: diaryEntries.author,
         bodyExcerpt,
+        bodyMatched,
       })
       .from(diaryEntries)
       .where(and(...buildActiveDiaryConditions(userId, query)))
