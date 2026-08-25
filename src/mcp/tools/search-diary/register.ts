@@ -2,9 +2,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   DiaryDomainError,
+  type SearchDiaryDiscoveryResult,
   type ListDiariesInput,
   type ListDiariesResult,
 } from "../../../domains/diary/diary-service.js";
+import { createBodyMatchSnippet } from "../../../domains/compact-text.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const contentAuthorSchema = z.enum(["L", "G"]);
@@ -33,6 +35,9 @@ const searchDiaryOutputSchema = z.object({
         created_at: z.string().datetime(),
         updated_at: z.string().datetime(),
         author: contentAuthorSchema.nullable(),
+        snippet: z.string().nullable(),
+        detail_tool: z.literal("get_diary"),
+        detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
       }),
     ),
     metadata: z.object({
@@ -43,6 +48,7 @@ const searchDiaryOutputSchema = z.object({
 
 export interface SearchDiaryToolService {
   listDiaries(input: ListDiariesInput): Promise<ListDiariesResult>;
+  searchDiaryDiscovery?(input: ListDiariesInput): Promise<SearchDiaryDiscoveryResult>;
 }
 
 export type SearchDiaryToolDependencies = {
@@ -72,7 +78,7 @@ export function registerSearchDiaryTool(
     async ({ query, tag, mood, date_from, date_to, limit }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const result = await dependencies.diaryService.listDiaries({
+        const input = {
           userId,
           limit,
           query: {
@@ -82,31 +88,10 @@ export function registerSearchDiaryTool(
             dateFrom: date_from,
             dateTo: date_to,
           },
-        });
-        const data = {
-          diaries: result.diaries.map(
-            ({
-              id,
-              title,
-              date,
-              tags,
-              mood: diaryMood,
-              created_at,
-              updated_at,
-              author,
-            }) => ({
-              id,
-              title,
-              date,
-              tags,
-              mood: diaryMood,
-              created_at,
-              updated_at,
-              author,
-            }),
-          ),
-          metadata: result.metadata,
-        };
+        } satisfies ListDiariesInput;
+        const data = dependencies.diaryService.searchDiaryDiscovery
+          ? await dependencies.diaryService.searchDiaryDiscovery(input)
+          : compactFallback(await dependencies.diaryService.listDiaries(input), query ?? "");
 
         return {
           content: [
@@ -125,6 +110,25 @@ export function registerSearchDiaryTool(
       }
     },
   );
+}
+
+function compactFallback(result: ListDiariesResult, query: string): SearchDiaryDiscoveryResult {
+  return {
+    diaries: result.diaries.map(({ id, title, date, tags, mood, created_at, updated_at, author, content }) => ({
+      id,
+      title,
+      date,
+      tags,
+      mood,
+      created_at,
+      updated_at,
+      author: author ?? null,
+      snippet: createBodyMatchSnippet(content, query),
+      detail_tool: "get_diary" as const,
+      detail_arguments: { id, scope: "active" as const },
+    })),
+    metadata: result.metadata,
+  };
 }
 
 function toSafeSearchDiaryError(error: unknown) {

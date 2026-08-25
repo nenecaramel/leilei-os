@@ -359,6 +359,7 @@ const productionUpdateDiaryDependencies: UpdateDiaryToolDependencies = {
 const productionSearchDiaryDependencies: SearchDiaryToolDependencies = {
   diaryService: {
     listDiaries: (input) => getDefaultDiaryService().listDiaries(input),
+    searchDiaryDiscovery: (input) => getDefaultDiaryService().searchDiaryDiscovery(input),
   },
   getAuthenticatedUserId: () => {
     throw new DiaryReadAuthenticationError();

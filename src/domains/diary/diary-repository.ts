@@ -76,6 +76,18 @@ export type DiaryEntryRecord = {
   author?: ContentAuthor | null;
 };
 
+export type DiarySearchRecord = {
+  id: string;
+  title: string;
+  date: string;
+  tags: string[];
+  mood: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  author?: ContentAuthor | null;
+  bodyExcerpt: string;
+};
+
 export type DiaryListQuery = {
   q?: string;
   tag?: string;
@@ -110,6 +122,12 @@ export interface DiaryRepository {
     limit: number,
     query?: DiaryListQuery,
   ): Promise<DiaryEntryRecord[]>;
+
+  findDiaryEntriesCompact(
+    userId: string,
+    limit: number,
+    query?: DiaryListQuery,
+  ): Promise<DiarySearchRecord[]>;
 
   /** All active business dates with content, newest first. */
   listActiveContentDates(userId: string): Promise<string[]>;
@@ -243,6 +261,32 @@ export class DrizzleDiaryRepository implements DiaryRepository {
         desc(diaryEntries.date),
         desc(diaryEntries.createdAt),
       )
+      .limit(limit);
+  }
+
+  async findDiaryEntriesCompact(
+    userId: string,
+    limit: number,
+    query: DiaryListQuery = {},
+  ): Promise<DiarySearchRecord[]> {
+    const bodyExcerpt = query.q
+      ? sql<string>`substring(${diaryEntries.content} from greatest(1, strpos(lower(${diaryEntries.content}), lower(${query.q})) - 256) for 768)`
+      : sql<string>`''`;
+    return this.db
+      .select({
+        id: diaryEntries.id,
+        title: diaryEntries.title,
+        date: diaryEntries.date,
+        tags: diaryEntries.tags,
+        mood: diaryEntries.mood,
+        createdAt: diaryEntries.createdAt,
+        updatedAt: diaryEntries.updatedAt,
+        author: diaryEntries.author,
+        bodyExcerpt,
+      })
+      .from(diaryEntries)
+      .where(and(...buildActiveDiaryConditions(userId, query)))
+      .orderBy(desc(diaryEntries.date), desc(diaryEntries.createdAt))
       .limit(limit);
   }
 

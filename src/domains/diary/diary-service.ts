@@ -8,6 +8,7 @@ import type {
   NormalizedDiaryCreate,
   UpdateDiaryInput,
 } from "./diary-repository.js";
+import { createBodyMatchSnippet } from "../compact-text.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
 import { hashMcpWriteRequest } from "../mcp-write/mcp-write-idempotency.js";
 import {
@@ -97,6 +98,23 @@ export type ListDiariesResult = {
   metadata: {
     count: number;
   };
+};
+
+export type DiarySearchDiscoveryItem = {
+  id: string;
+  title: string;
+  date: string;
+  tags: string[];
+  mood: string | null;
+  created_at: string;
+  updated_at: string;
+  author: ContentAuthor | null;
+  snippet: string | null;
+};
+
+export type SearchDiaryDiscoveryResult = {
+  diaries: DiarySearchDiscoveryItem[];
+  metadata: { count: number };
 };
 
 export type DiaryContentDatesResult = {
@@ -254,6 +272,29 @@ export class DiaryService {
       metadata: {
         count,
       },
+    };
+  }
+
+  async searchDiaryDiscovery(
+    input: ListDiariesInput,
+  ): Promise<SearchDiaryDiscoveryResult> {
+    const userId = await this.requireActiveUser(input.userId);
+    const limit = this.resolveLimit(input.limit);
+    const query = this.normalizeListQuery(input.query ?? {});
+    const diaries = await this.repository.findDiaryEntriesCompact(userId, limit, query);
+    return {
+      diaries: diaries.map((diary) => ({
+        id: diary.id,
+        title: diary.title,
+        date: diary.date,
+        tags: diary.tags,
+        mood: diary.mood,
+        created_at: diary.createdAt.toISOString(),
+        updated_at: diary.updatedAt.toISOString(),
+        author: diary.author ?? null,
+        snippet: createBodyMatchSnippet(diary.bodyExcerpt, query.q ?? ""),
+      })),
+      metadata: { count: diaries.length },
     };
   }
 
