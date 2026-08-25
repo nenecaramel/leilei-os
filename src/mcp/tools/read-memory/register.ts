@@ -2,9 +2,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   MemoryDomainError,
+  type ReadMemoryDiscoveryResult,
   type ReadMemoryInput,
   type ReadMemoryResult,
 } from "../../../domains/memory/memory-service.js";
+import { createLeadingPreview } from "../../../domains/compact-text.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -37,11 +39,15 @@ const readMemoryOutputSchema = z.object({
     }),
     memories: z.array(
       z.object({
+        id: z.string(),
         category: memoryCategorySchema,
         key: z.string(),
-        content: z.string(),
+        tags: z.array(z.string()),
         author: contentAuthorSchema.nullable(),
         updated_at: z.string().datetime(),
+        preview: z.string(),
+        detail_tool: z.literal("get_memory"),
+        detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
       }),
     ),
     metadata: z.object({
@@ -52,6 +58,7 @@ const readMemoryOutputSchema = z.object({
 
 export interface ReadMemoryToolService {
   readMemory(input: ReadMemoryInput): Promise<ReadMemoryResult>;
+  readMemoryDiscovery?(input: ReadMemoryInput): Promise<ReadMemoryDiscoveryResult>;
 }
 
 export type ReadMemoryToolDependencies = {
@@ -68,7 +75,7 @@ export function registerReadMemoryTool(
     {
       title: "Read Leilei's core memory",
       description:
-        "Read authorized core memories, stable preferences, long-term goals, and current projects from Leilei OS. This tool is read-only and cannot create, modify, or delete memories.",
+        "Discover authorized core memories with compact previews and stable IDs. This tool is read-only; call get_memory for the complete content of a selected record.",
       inputSchema: readMemoryInputSchema,
       outputSchema: readMemoryOutputSchema,
       annotations: {
@@ -81,11 +88,15 @@ export function registerReadMemoryTool(
     async ({ categories, keys }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const data = await dependencies.memoryService.readMemory({
+        const input = {
           userId,
           categories,
           keys,
-        });
+        };
+        const discovery = dependencies.memoryService.readMemoryDiscovery
+          ? await dependencies.memoryService.readMemoryDiscovery(input)
+          : compactFallback(await dependencies.memoryService.readMemory(input));
+        const data = withDetailPointers(discovery);
         const result = {
           success: true as const,
           data,
@@ -105,6 +116,35 @@ export function registerReadMemoryTool(
       }
     },
   );
+}
+
+function compactFallback(result: ReadMemoryResult): ReadMemoryDiscoveryResult {
+  return {
+    user: result.user,
+    memories: result.memories.map(({ id, category, key, tags, author, updated_at, content }) => ({
+      id,
+      category,
+      key,
+      tags,
+      author: author ?? null,
+      updated_at,
+      preview: createLeadingPreview(content),
+      detail_tool: "get_memory" as const,
+      detail_arguments: { id, scope: "active" as const },
+    })),
+    metadata: result.metadata,
+  };
+}
+
+function withDetailPointers(result: ReadMemoryDiscoveryResult): ReadMemoryDiscoveryResult {
+  return {
+    ...result,
+    memories: result.memories.map((memory) => ({
+      ...memory,
+      detail_tool: "get_memory" as const,
+      detail_arguments: { id: memory.id, scope: "active" as const },
+    })),
+  };
 }
 
 function toSafeToolError(error: unknown) {

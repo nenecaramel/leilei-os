@@ -11,6 +11,28 @@ export type UniverseReadResult = {
   version: number;
 };
 
+export type UniverseNodeDirectoryRecord = {
+  id: string;
+  title: string;
+  type: string;
+  tags: string[];
+  galaxies: string[];
+  importance: string | null;
+  updatedAt: Date;
+  summaryPreview: string;
+};
+
+export type UniverseNodeListResult = {
+  nodes: UniverseNodeDirectoryRecord[];
+  hasMore: boolean;
+  version: number;
+};
+
+export type UniverseNodeReadResult = {
+  node: UniverseNode;
+  version: number;
+};
+
 export type UniverseDiarySourceSummary = {
   nodeId: string;
   diaryId: string;
@@ -39,6 +61,8 @@ export type UniverseMcpCreateResult<T> = {
 export interface UniverseRepository {
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   loadUniverse(userId: string): Promise<UniverseReadResult | null>;
+  listUniverseNodes?(userId: string, limit: number, after?: { updatedAt: string; id: string }): Promise<UniverseNodeListResult | null>;
+  readUniverseNode?(userId: string, nodeId: string): Promise<{ node: UniverseNode | null; version: number } | null>;
   loadUniverseWeb?(userId: string): Promise<UniverseWebReadResult | null>;
   searchUniverseDiarySourceOptions?(userId: string, query: string): Promise<UniverseDiarySourceOption[]>;
   readUniverseDiarySources?(userId: string, nodeId: string): Promise<UniverseDiarySourceSummary[] | null>;

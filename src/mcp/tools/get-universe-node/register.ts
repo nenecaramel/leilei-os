@@ -18,7 +18,10 @@ const outputSchema = z.object({
   data: nodeSchema.extend({ universe_version: z.number().int().nonnegative() }),
 }).strict();
 
-export type GetUniverseNodeToolDependencies = { universeService: Pick<UniverseService, "loadUniverse">; getAuthenticatedUserId: () => string };
+export type GetUniverseNodeToolDependencies = {
+  universeService: Partial<Pick<UniverseService, "readUniverseNode" | "loadUniverse">>;
+  getAuthenticatedUserId: () => string;
+};
 
 export function registerGetUniverseNodeTool(server: McpServer, dependencies: GetUniverseNodeToolDependencies): void {
   server.registerTool("get_universe_node", {
@@ -27,12 +30,13 @@ export function registerGetUniverseNodeTool(server: McpServer, dependencies: Get
   }, async ({ id }) => {
     try {
       const userId = dependencies.getAuthenticatedUserId();
-      const { snapshot, version } = await dependencies.universeService.loadUniverse(userId);
-      const node = snapshot.nodes.find((candidate) => candidate.id === id);
-      if (!node) throw new UniverseServiceError("NODE_NOT_FOUND");
+      const result = dependencies.universeService.readUniverseNode
+        ? await dependencies.universeService.readUniverseNode(userId, id)
+        : await dependencies.universeService.loadUniverse!(userId).then(({ snapshot, version }) => ({ node: snapshot.nodes.find((candidate) => candidate.id === id) ?? null, version }));
+      if (!result.node) throw new UniverseServiceError("NODE_NOT_FOUND");
       return {
         content: [{ type: "text", text: "Universe node retrieved." }],
-        structuredContent: { success: true as const, data: { ...(node as UniverseNode), universe_version: version } },
+        structuredContent: { success: true as const, data: { ...(result.node as UniverseNode), universe_version: result.version } },
       };
     } catch (error) {
       return safeUniverseError(error, "Universe node was not found.");

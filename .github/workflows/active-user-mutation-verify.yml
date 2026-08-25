@@ -11,7 +11,14 @@ on:
       - src/database/migration-readiness.ts
       - src/domains/require-active-user-transaction.ts
       - src/domains/memory/memory-repository.ts
+      - src/domains/memory/memory-service.ts
       - src/domains/diary/diary-repository.ts
+      - src/domains/diary/diary-service.ts
+      - src/domains/compact-text.ts
+      - src/domains/resource-limits.ts
+      - src/mcp/tools/read-memory/register.ts
+      - src/mcp/tools/search-memory/register.ts
+      - src/mcp/tools/search-diary/register.ts
       - src/domains/task/task-repository.ts
       - src/domains/todo/todo-repository.ts
       - src/domains/universe/universe-repository-drizzle.ts
@@ -28,6 +35,14 @@ on:
       - tests/mcp-universe-write-migration.integration.test.ts
       - tests/mcp-write-idempotency.integration.test.ts
       - tests/universe-mcp-provenance.integration.test.ts
+      - tests/memory-discovery-repository.integration.test.ts
+      - tests/diary-discovery-repository.integration.test.ts
+      - tests/universe-compact-read.integration.test.ts
+      - tests/app-json-body-limit.test.ts
+      - tests/mcp-memory-staged-retrieval.test.ts
+      - tests/mcp-diary-staged-retrieval.test.ts
+      - tests/mcp-universe-staged-retrieval.test.ts
+      - tests/global-search-long-content.test.ts
       - .github/workflows/active-user-mutation-verify.yml
 
 jobs:
@@ -80,6 +95,9 @@ jobs:
           tests/diary-repository.integration.test.ts
           tests/task-lifecycle-repository.integration.test.ts
           tests/task-status-reopen.integration.test.ts
+          tests/memory-discovery-repository.integration.test.ts
+          tests/diary-discovery-repository.integration.test.ts
+          tests/universe-compact-read.integration.test.ts
       - name: Run active-user source contract
         run: pnpm exec tsx --test tests/active-user-mutation-atomicity.test.ts
       - name: Run PostgreSQL concurrency regression

@@ -1,10 +1,10 @@
 export const MEMORY_KEY_MAX_LENGTH = 100;
-export const MEMORY_CONTENT_MAX_LENGTH = 4_000;
+export const MEMORY_CONTENT_MAX_LENGTH = 100_000;
 export const MEMORY_TAGS_MAX_COUNT = 20;
 export const MEMORY_TAG_MAX_LENGTH = 50;
 
 export const DIARY_TITLE_MAX_LENGTH = 200;
-export const DIARY_CONTENT_MAX_LENGTH = 20_000;
+export const DIARY_CONTENT_MAX_LENGTH = 100_000;
 export const DIARY_TAGS_MAX_COUNT = 20;
 export const DIARY_TAG_MAX_LENGTH = 50;
 export const DIARY_MOOD_MAX_LENGTH = 50;

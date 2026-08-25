@@ -114,6 +114,7 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
       "hello",
       "list_tasks",
       "list_todo_dates",
+      "list_universe_nodes",
       "query_notion_data_source",
       "read_memory",
       "read_notion_data_source",

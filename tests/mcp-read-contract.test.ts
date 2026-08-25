@@ -300,10 +300,12 @@ test("Memory, Diary, and Task discovery-to-detail flows remain isolated", async 
     id: MEMORY.id,
     category: MEMORY.category,
     key: MEMORY.key,
-    content: MEMORY.searchContent,
+    snippet: null,
     tags: MEMORY.tags,
     author: MEMORY.author,
     updated_at: MEMORY.updated_at,
+    detail_tool: "get_memory",
+    detail_arguments: { id: MEMORY.id, scope: "active" },
   });
   assert.equal("source" in memoryItem, false);
 

@@ -141,7 +141,7 @@ test("search_memory injects identity and forces updated ordering without source"
     },
   });
 
-  assert.equal(result.isError, undefined);
+  assert.equal(result.isError, undefined, textOf(result));
   assert.deepEqual(service.readCalls, [
     {
       userId: USER_ID,
@@ -161,10 +161,12 @@ test("search_memory injects identity and forces updated ordering without source"
           id: MEMORY_ID,
           category: "project",
           key: "leilei-os",
-          content: "Bounded Memory search result.",
+          snippet: null,
           tags: ["MCP", "Memory"],
-    updated_at: UPDATED_AT,
-    author: null,
+          updated_at: UPDATED_AT,
+          author: null,
+          detail_tool: "get_memory",
+          detail_arguments: { id: MEMORY_ID, scope: "active" },
         },
       ],
       metadata: { count: 1 },
@@ -248,7 +250,7 @@ test("get_memory injects identity, trims id, and returns only safe fields", asyn
     arguments: { id: `  ${MEMORY_ID}  ` },
   });
 
-  assert.equal(result.isError, undefined);
+  assert.equal(result.isError, undefined, textOf(result));
   assert.deepEqual(service.detailCalls, [
     { userId: USER_ID, id: MEMORY_ID },
   ]);
@@ -385,7 +387,7 @@ test("legacy read_memory contract and default ordering remain unchanged", async 
     },
   });
 
-  assert.equal(result.isError, undefined);
+  assert.equal(result.isError, undefined, textOf(result));
   assert.deepEqual(service.readCalls, [
     {
       userId: USER_ID,
@@ -402,10 +404,12 @@ test("legacy read_memory contract and default ordering remain unchanged", async 
           id: MEMORY_ID,
           category: "project",
           key: "leilei-os",
-          content: "Bounded Memory search result.",
+          preview: "Bounded Memory search result.",
           tags: ["MCP", "Memory"],
           updated_at: UPDATED_AT,
           author: null,
+          detail_tool: "get_memory",
+          detail_arguments: { id: MEMORY_ID, scope: "active" },
         },
       ],
       metadata: { count: 1 },

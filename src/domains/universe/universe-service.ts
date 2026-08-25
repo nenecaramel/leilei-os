@@ -21,6 +21,7 @@ import type {
   UniverseReadResult,
   UniverseRepository,
   UniverseWebReadResult,
+  UniverseNodeListResult,
 } from "./universe-repository.js";
 import {
   hashMcpWriteRequest,
@@ -76,6 +77,25 @@ export type UniverseMcpRelationCreateResult = {
   metadata: { created: boolean; idempotent_replay: boolean };
 };
 
+export type UniverseNodeDirectoryItem = {
+  id: string;
+  title: string;
+  type: string;
+  tags: string[];
+  galaxies: string[];
+  importance: string | null;
+  updated_at: string;
+  summary_preview: string;
+};
+
+export type ListUniverseNodesResult = {
+  nodes: UniverseNodeDirectoryItem[];
+  count: number;
+  has_more: boolean;
+  next_cursor: string | null;
+  universe_version: number;
+};
+
 export class UniverseService {
   constructor(private readonly repository: UniverseRepository) {}
 
@@ -91,6 +111,37 @@ export class UniverseService {
     const result = await this.repository.loadUniverseWeb?.(userId);
     if (!result) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
     return result;
+  }
+
+  async listUniverseNodes(
+    userId: string,
+    limit: number,
+    after?: { updatedAt: string; id: string },
+  ): Promise<UniverseNodeListResult> {
+    await this.requireActiveUser(userId);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+      throw new UniverseServiceError("INVALID_UNIVERSE");
+    }
+    const result = await this.repository.listUniverseNodes?.(userId, limit, after);
+    if (!result) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
+    return result;
+  }
+
+  async readUniverseNode(userId: string, nodeId: string): Promise<{ node: UniverseNode; version: number }> {
+    await this.requireActiveUser(userId);
+    validateUniverseNodeId(nodeId);
+    const result = this.repository.readUniverseNode
+      ? await this.repository.readUniverseNode(userId, nodeId)
+      : await this.fallbackReadUniverseNode(userId, nodeId);
+    if (!result) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
+    if (!result.node) throw new UniverseServiceError("NODE_NOT_FOUND");
+    return result as { node: UniverseNode; version: number };
+  }
+
+  private async fallbackReadUniverseNode(userId: string, nodeId: string): Promise<{ node: UniverseNode | null; version: number } | null> {
+    const result = await this.repository.loadUniverse(userId);
+    if (!result) return null;
+    return { node: result.snapshot.nodes.find((node) => node.id === nodeId) ?? null, version: result.version };
   }
 
   async searchDiarySourceOptions(userId: string, query: unknown) {
