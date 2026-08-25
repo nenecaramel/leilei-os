@@ -2,10 +2,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   MemoryDomainError,
+  type SearchMemoryDiscoveryResult,
   type ReadMemoryInput,
   type ReadMemoryResult,
 } from "../../../domains/memory/memory-service.js";
 import { ReadMemoryAuthenticationError } from "../read-memory/register.js";
+import { createBodyMatchSnippet } from "../../../domains/compact-text.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -53,10 +55,12 @@ const searchMemoryOutputSchema = z.object({
         id: z.string(),
         category: memoryCategorySchema,
         key: z.string(),
-        content: z.string(),
         tags: z.array(z.string()),
         updated_at: z.string().datetime(),
         author: contentAuthorSchema.nullable(),
+        snippet: z.string().nullable(),
+        detail_tool: z.literal("get_memory"),
+        detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
       }),
     ),
     metadata: z.object({
@@ -67,6 +71,7 @@ const searchMemoryOutputSchema = z.object({
 
 export interface SearchMemoryToolService {
   readMemory(input: ReadMemoryInput): Promise<ReadMemoryResult>;
+  searchMemoryDiscovery?(input: ReadMemoryInput): Promise<SearchMemoryDiscoveryResult>;
 }
 
 export type SearchMemoryToolDependencies = {
@@ -83,7 +88,7 @@ export function registerSearchMemoryTool(
     {
       title: "Search Leilei's memory",
       description:
-        "Search authorized active Memory records by text, category, and exact tag. Results are read-only, bounded, and ordered from most recently updated.",
+        "Search authorized active Memory records by text, category, and exact tag. Results are compact and bounded; call get_memory for the complete content of a selected record.",
       inputSchema: searchMemoryInputSchema,
       outputSchema: searchMemoryOutputSchema,
       annotations: {
@@ -96,28 +101,17 @@ export function registerSearchMemoryTool(
     async ({ query, categories, tag, limit }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const result = await dependencies.memoryService.readMemory({
+        const input = {
           userId,
           query,
           categories,
           tag,
           ordering: "updated_desc",
           limit,
-        });
-        const data = {
-          memories: result.memories.map(
-            ({ id, category, key, content, tags, updated_at, author }) => ({
-              id,
-              category,
-              key,
-              content,
-              tags,
-              updated_at,
-              author,
-            }),
-          ),
-          metadata: result.metadata,
-        };
+        } as ReadMemoryInput;
+        const data = dependencies.memoryService.searchMemoryDiscovery
+          ? await dependencies.memoryService.searchMemoryDiscovery(input)
+          : compactFallback(await dependencies.memoryService.readMemory(input), query ?? "");
 
         return {
           content: [
@@ -136,6 +130,23 @@ export function registerSearchMemoryTool(
       }
     },
   );
+}
+
+function compactFallback(result: ReadMemoryResult, query: string): SearchMemoryDiscoveryResult {
+  return {
+    memories: result.memories.map(({ id, category, key, content, tags, updated_at, author }) => ({
+      id,
+      category,
+      key,
+      tags,
+      updated_at,
+      author: author ?? null,
+      snippet: createBodyMatchSnippet(content, query),
+      detail_tool: "get_memory" as const,
+      detail_arguments: { id, scope: "active" as const },
+    })),
+    metadata: result.metadata,
+  };
 }
 
 function toSafeSearchMemoryError(error: unknown) {

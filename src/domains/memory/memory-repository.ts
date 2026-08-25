@@ -46,6 +46,26 @@ export type ActiveAssistantMemoryRecord = {
   updatedAt: Date;
 };
 
+export type MemoryDirectoryRecord = {
+  id: string;
+  category: MemoryCategory;
+  key: string;
+  tags: string[];
+  author?: ContentAuthor | null;
+  updatedAt: Date;
+  contentPreview: string;
+};
+
+export type MemorySearchRecord = {
+  id: string;
+  category: MemoryCategory;
+  key: string;
+  tags: string[];
+  author?: ContentAuthor | null;
+  updatedAt: Date;
+  bodyExcerpt: string;
+};
+
 export type TrustedMemorySource =
   | "web"
   | "mcp"
@@ -106,6 +126,14 @@ export interface MemoryRepository {
   findActiveAssistantMemories(
     input: FindMemoriesInput,
   ): Promise<ActiveAssistantMemoryRecord[]>;
+
+  findActiveAssistantMemoryDirectory(
+    input: FindMemoriesInput,
+  ): Promise<MemoryDirectoryRecord[]>;
+
+  findActiveAssistantMemorySearch(
+    input: FindMemoriesInput,
+  ): Promise<MemorySearchRecord[]>;
 
   findActiveAssistantMemoryCategories(
     userId: string,
@@ -237,6 +265,98 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         ),
       )
       .orderBy(...ordering)
+      .limit(input.limit);
+  }
+
+  async findActiveAssistantMemoryDirectory(
+    input: FindMemoriesInput,
+  ): Promise<MemoryDirectoryRecord[]> {
+    const queryFilter = input.query
+      ? (() => {
+          const escaped = input.query!.replace(/[\\%_]/g, "\\$&");
+          const pattern = `%${escaped}%`;
+          return or(
+            ilike(coreMemories.key, pattern),
+            ilike(sql<string>`${coreMemories.category}::text`, pattern),
+            ilike(coreMemories.content, pattern),
+          );
+        })()
+      : undefined;
+    const categoryFilter = input.categories && input.categories.length > 0
+      ? inArray(coreMemories.category, [...input.categories])
+      : undefined;
+    const keyFilter = input.keys && input.keys.length > 0
+      ? inArray(coreMemories.key, [...input.keys])
+      : undefined;
+    const tagFilter = input.tag
+      ? sql`${input.tag}::varchar(50) = any(${coreMemories.tags})`
+      : undefined;
+    const ordering = input.ordering === "updated_desc"
+      ? [desc(coreMemories.updatedAt), desc(coreMemories.id)]
+      : [asc(coreMemories.sortOrder), asc(coreMemories.category), asc(coreMemories.key), asc(coreMemories.id)];
+
+    return this.db
+      .select({
+        id: coreMemories.id,
+        category: coreMemories.category,
+        key: coreMemories.key,
+        tags: coreMemories.tags,
+        author: coreMemories.author,
+        updatedAt: coreMemories.updatedAt,
+        contentPreview: sql<string>`left(${coreMemories.content}, 1024)`,
+      })
+      .from(coreMemories)
+      .where(and(
+        eq(coreMemories.userId, input.userId),
+        eq(coreMemories.status, "active"),
+        eq(coreMemories.visibility, "assistant"),
+        queryFilter,
+        categoryFilter,
+        keyFilter,
+        tagFilter,
+      ))
+      .orderBy(...ordering)
+      .limit(input.limit);
+  }
+
+  async findActiveAssistantMemorySearch(
+    input: FindMemoriesInput,
+  ): Promise<MemorySearchRecord[]> {
+    const query = input.query ?? "";
+    const escaped = query.replace(/[\\%_]/g, "\\$&");
+    const pattern = `%${escaped}%`;
+    const queryFilter = or(
+      ilike(coreMemories.key, pattern),
+      ilike(sql<string>`${coreMemories.category}::text`, pattern),
+      ilike(coreMemories.content, pattern),
+    );
+    const categoryFilter = input.categories && input.categories.length > 0
+      ? inArray(coreMemories.category, [...input.categories])
+      : undefined;
+    const tagFilter = input.tag
+      ? sql`${input.tag}::varchar(50) = any(${coreMemories.tags})`
+      : undefined;
+
+    return this.db
+      .select({
+        id: coreMemories.id,
+        category: coreMemories.category,
+        key: coreMemories.key,
+        tags: coreMemories.tags,
+        author: coreMemories.author,
+        updatedAt: coreMemories.updatedAt,
+        bodyExcerpt: sql<string>`substring(${coreMemories.content} from greatest(1, strpos(lower(${coreMemories.content}), lower(${query})) - 256) for 768)`,
+      })
+      .from(coreMemories)
+      .where(and(
+        eq(coreMemories.userId, input.userId),
+        eq(coreMemories.status, "active"),
+        eq(coreMemories.visibility, "assistant"),
+        queryFilter,
+        categoryFilter,
+        tagFilter,
+      ))
+      .orderBy(desc(coreMemories.updatedAt), desc(coreMemories.id))
       .limit(input.limit);
   }
 

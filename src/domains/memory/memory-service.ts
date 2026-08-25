@@ -3,7 +3,9 @@ import type {
   MemoryOrdering,
   MemoryRepository,
   MemoryUserRecord,
+  MemoryDirectoryRecord,
 } from "./memory-repository.js";
+import { createBodyMatchSnippet, createLeadingPreview } from "../compact-text.js";
 import { WEB_USER_LIFECYCLE_CONTEXT } from "../lifecycle/lifecycle-audit-repository.js";
 import {
   hashMcpWriteRequest,
@@ -119,6 +121,31 @@ export type ReadMemoryResult = {
   };
 };
 
+export type MemoryDiscoveryItem = {
+  id: string;
+  category: MemoryCategory;
+  key: string;
+  tags: string[];
+  author: ContentAuthor | null;
+  updated_at: string;
+  preview: string;
+};
+
+export type MemorySearchDiscoveryItem = Omit<MemoryDiscoveryItem, "preview"> & {
+  snippet: string | null;
+};
+
+export type ReadMemoryDiscoveryResult = {
+  user: { display_name: string };
+  memories: MemoryDiscoveryItem[];
+  metadata: { count: number };
+};
+
+export type SearchMemoryDiscoveryResult = {
+  memories: MemorySearchDiscoveryItem[];
+  metadata: { count: number };
+};
+
 export type ReadMemoryDetailResult =
   ReadMemoryResult["memories"][number];
 
@@ -203,6 +230,59 @@ export class MemoryService {
       metadata: {
         count: memories.length,
       },
+    };
+  }
+
+  async readMemoryDiscovery(input: ReadMemoryInput): Promise<ReadMemoryDiscoveryResult> {
+    const user = await this.requireActiveUser(input.userId);
+    const categories = this.validateCategories(input.categories);
+    const keys = this.normalizeKeys(input.keys);
+    const query = this.normalizeQuery(input.query);
+    const tag = this.normalizeTagFilter(input.tag);
+    const limit = this.resolveLimit(input.limit);
+    const memories = await this.repository.findActiveAssistantMemoryDirectory({
+      userId: input.userId,
+      query,
+      categories,
+      keys,
+      tag,
+      ordering: input.ordering ?? "default",
+      limit,
+    });
+
+    return {
+      user: { display_name: user.displayName },
+      memories: memories.map((memory) => this.toDiscoveryItem(memory)),
+      metadata: { count: memories.length },
+    };
+  }
+
+  async searchMemoryDiscovery(input: ReadMemoryInput): Promise<SearchMemoryDiscoveryResult> {
+    const user = await this.requireActiveUser(input.userId);
+    const categories = this.validateCategories(input.categories);
+    const query = this.normalizeQuery(input.query);
+    const tag = this.normalizeTagFilter(input.tag);
+    const limit = this.resolveLimit(input.limit);
+    const memories = await this.repository.findActiveAssistantMemorySearch({
+      userId: input.userId,
+      query,
+      categories,
+      tag,
+      ordering: "updated_desc",
+      limit,
+    });
+
+    return {
+      memories: memories.map((memory) => ({
+        id: memory.id,
+        category: memory.category,
+        key: memory.key,
+        tags: memory.tags,
+        author: memory.author ?? null,
+        updated_at: memory.updatedAt.toISOString(),
+        snippet: createBodyMatchSnippet(memory.bodyExcerpt, query ?? ""),
+      })),
+      metadata: { count: memories.length },
     };
   }
 
@@ -747,5 +827,17 @@ export class MemoryService {
     }
 
     return `${content.slice(0, MAX_CONTENT_LENGTH - 1)}…`;
+  }
+
+  private toDiscoveryItem(memory: MemoryDirectoryRecord): MemoryDiscoveryItem {
+    return {
+      id: memory.id,
+      category: memory.category,
+      key: memory.key,
+      tags: memory.tags,
+      author: memory.author ?? null,
+      updated_at: memory.updatedAt.toISOString(),
+      preview: createLeadingPreview(memory.contentPreview),
+    };
   }
 }

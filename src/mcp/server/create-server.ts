@@ -287,6 +287,7 @@ function getDefaultToyCommandService(): ToyCommandService {
 const productionReadMemoryDependencies: ReadMemoryToolDependencies = {
   memoryService: {
     readMemory: (input) => getDefaultMemoryService().readMemory(input),
+    readMemoryDiscovery: (input) => getDefaultMemoryService().readMemoryDiscovery(input),
   },
   getAuthenticatedUserId: () => {
     throw new ReadMemoryAuthenticationError();
@@ -296,6 +297,7 @@ const productionReadMemoryDependencies: ReadMemoryToolDependencies = {
 const productionSearchMemoryDependencies: SearchMemoryToolDependencies = {
   memoryService: {
     readMemory: (input) => getDefaultMemoryService().readMemory(input),
+    searchMemoryDiscovery: (input) => getDefaultMemoryService().searchMemoryDiscovery(input),
   },
   getAuthenticatedUserId: () => {
     throw new ReadMemoryAuthenticationError();
