@@ -117,7 +117,7 @@ import {
 } from "../tools/query-notion-data-source/register.js";
 import { TodoService } from "../../domains/todo/todo-service.js";
 import { DrizzleTodoRepository } from "../../domains/todo/todo-repository.js";
-import { UniverseService } from "../../domains/universe/universe-service.js";
+import { UniverseService, UniverseServiceError } from "../../domains/universe/universe-service.js";
 import { DrizzleUniverseRepository } from "../../domains/universe/universe-repository-drizzle.js";
 import {
   registerReadTodoDayTool,
@@ -135,6 +135,7 @@ import {
 } from "../tools/write-todo-paper/register.js";
 import { registerSearchUniverseTool, type SearchUniverseToolDependencies } from "../tools/search-universe/register.js";
 import { registerGetUniverseNodeTool, type GetUniverseNodeToolDependencies } from "../tools/get-universe-node/register.js";
+import { registerListUniverseNodesTool, type ListUniverseNodesToolDependencies } from "../tools/list-universe-nodes/register.js";
 import { registerGetUniverseRelationsTool, type GetUniverseRelationsToolDependencies } from "../tools/get-universe-relations/register.js";
 import { registerCreateUniverseNodeTool, type CreateUniverseNodeToolDependencies } from "../tools/create-universe-node/register.js";
 import { registerUpdateUniverseNodeTool, type UpdateUniverseNodeToolDependencies } from "../tools/update-universe-node/register.js";
@@ -449,13 +450,15 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
 };
 
 const productionUniverseService: SearchUniverseToolDependencies["globalSearchService"] &
-  GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
+  GetUniverseNodeToolDependencies["universeService"] & ListUniverseNodesToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
   CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] &
   CreateUniverseRelationToolDependencies["universeService"] & DeleteUniverseRelationToolDependencies["relationService"] &
   GetUniverseDiarySourcesToolDependencies["sourceService"] & AddUniverseDiarySourceToolDependencies["sourceService"] &
   DeleteUniverseDiarySourceToolDependencies["sourceService"] = {
   search: (input) => getDefaultGlobalSearchService().search(input),
   loadUniverse: (userId) => getDefaultUniverseService().loadUniverse(userId),
+  readUniverseNode: (userId, nodeId) => getDefaultUniverseService().readUniverseNode(userId, nodeId),
+  listUniverseNodes: (userId, limit, after) => getDefaultUniverseService().listUniverseNodes(userId, limit, after),
   createMcpNode: (userId, input, expectedVersion, idempotencyKey) => getDefaultUniverseService().createMcpNode(userId, input, expectedVersion, idempotencyKey),
   updateMcpNode: (userId, nodeId, patch, expectedVersion) => getDefaultUniverseService().updateMcpNode(userId, nodeId, patch, expectedVersion),
   createMcpRelation: (userId, input, expectedVersion, idempotencyKey) => getDefaultUniverseService().createMcpRelation(userId, input, expectedVersion, idempotencyKey),
@@ -500,7 +503,7 @@ type NotionReadDependencies =
   QueryNotionDataSourceToolDependencies;
 
 type UniverseToolsDependencies = {
-  universeService: GetUniverseNodeToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"];
+  universeService: GetUniverseNodeToolDependencies["universeService"] & Partial<ListUniverseNodesToolDependencies["universeService"]> & GetUniverseRelationsToolDependencies["universeService"];
   globalSearchService: SearchUniverseToolDependencies["globalSearchService"];
   getAuthenticatedUserId: () => string;
 };
@@ -746,6 +749,12 @@ export function createMcpServer(
   } satisfies UniverseToolsDependencies;
   registerSearchUniverseTool(server, universeTools);
   registerGetUniverseNodeTool(server, universeTools);
+  registerListUniverseNodesTool(server, {
+    universeService: universeTools.universeService?.listUniverseNodes
+      ? universeTools.universeService as ListUniverseNodesToolDependencies["universeService"]
+      : { listUniverseNodes: async () => { throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED"); } },
+    getAuthenticatedUserId: universeTools.getAuthenticatedUserId,
+  });
   registerGetUniverseRelationsTool(server, universeTools);
   const sharedUniverseService = universeTools.universeService;
   const universeWriteTools = dependencies.universeWriteTools ?? (

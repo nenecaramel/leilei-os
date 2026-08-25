@@ -97,10 +97,11 @@ test("Phase 8.5 registers dedicated Universe read tools", async (t) => {
     "get_universe_diary_sources",
     "get_universe_node",
     "get_universe_relations",
+    "list_universe_nodes",
     "search_universe",
     "update_universe_node",
   ]);
-  assert.equal(names.length, 39);
+  assert.equal(names.length, 40);
 });
 
 test("search_universe validates input, forwards limit/cursor, and preserves pagination output", async (t) => {

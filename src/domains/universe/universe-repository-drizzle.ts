@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   diaryEntries,
@@ -33,6 +33,8 @@ import type {
   UniverseDiarySourceOption,
   UniverseDiarySourceSummary,
   UniverseReadResult,
+  UniverseNodeListResult,
+  UniverseNodeDirectoryRecord,
   UniverseRepository,
   UniverseWebReadResult,
 } from "./universe-repository.js";
@@ -55,6 +57,59 @@ export class DrizzleUniverseRepository implements UniverseRepository {
 
   async loadUniverse(userId: string): Promise<UniverseReadResult | null> {
     return readUniverse(this.db, userId);
+  }
+
+  async listUniverseNodes(
+    userId: string,
+    limit: number,
+    after?: { updatedAt: string; id: string },
+  ): Promise<UniverseNodeListResult | null> {
+    const [meta] = await this.db.select({ version: universeMeta.version })
+      .from(universeMeta)
+      .where(eq(universeMeta.userId, userId))
+      .limit(1);
+    if (!meta) return null;
+    const afterDate = after ? new Date(after.updatedAt) : undefined;
+    const afterFilter = afterDate
+      ? or(
+          lt(universeNodes.updatedAt, afterDate),
+          and(eq(universeNodes.updatedAt, afterDate), gt(universeNodes.id, after!.id)),
+        )
+      : undefined;
+    const rows = await this.db.select({
+      id: universeNodes.id,
+      title: universeNodes.title,
+      type: universeNodes.type,
+      tags: universeNodes.tags,
+      galaxies: universeNodes.galaxyMemberships,
+      importance: universeNodes.importance,
+      updatedAt: universeNodes.updatedAt,
+      summaryPreview: sql<string>`left(${universeNodes.summary}, 1024)`,
+    }).from(universeNodes)
+      .where(and(eq(universeNodes.userId, userId), afterFilter))
+      .orderBy(desc(universeNodes.updatedAt), asc(universeNodes.id))
+      .limit(limit + 1);
+    const hasMore = rows.length > limit;
+    return {
+      hasMore,
+      version: meta.version,
+      nodes: rows.slice(0, limit).map((row): UniverseNodeDirectoryRecord => ({
+        ...row,
+        galaxies: row.galaxies.map((membership) => membership.id),
+      })),
+    };
+  }
+
+  async readUniverseNode(userId: string, nodeId: string): Promise<{ node: UniverseNode | null; version: number } | null> {
+    const [meta] = await this.db.select({ version: universeMeta.version })
+      .from(universeMeta)
+      .where(eq(universeMeta.userId, userId))
+      .limit(1);
+    if (!meta) return null;
+    const [row] = await this.db.select().from(universeNodes).where(
+      and(eq(universeNodes.userId, userId), eq(universeNodes.id, nodeId)),
+    ).limit(1);
+    return { node: row ? fromNodeRow(row) : null, version: meta.version };
   }
 
   async loadUniverseWeb(userId: string): Promise<UniverseWebReadResult | null> {
