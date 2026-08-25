@@ -112,15 +112,15 @@ test("MCP Memory length limits apply after NFC normalization and trim", async ()
   await service.createMcpMemory({ userId: "user-a" }, {
     category: "goal",
     key: ` ${"k".repeat(100)} `,
-    content: ` ${"c".repeat(4_000)} `,
+    content: ` ${"c".repeat(100_000)} `,
     tags: [` ${"e\u0301".repeat(50)} `],
     author: "L",
   }, "memory-boundary-0001");
-  assert.deepEqual(calls[0], { key: "k".repeat(100), content: "c".repeat(4_000), tags: ["é".repeat(50)] });
+  assert.deepEqual(calls[0], { key: "k".repeat(100), content: "c".repeat(100_000), tags: ["é".repeat(50)] });
 
   for (const input of [
     { category: "goal" as const, key: ` ${"k".repeat(101)} `, content: "content", author: "L" },
-    { category: "goal" as const, key: "key", content: ` ${"c".repeat(4_001)} `, author: "L" },
+    { category: "goal" as const, key: "key", content: ` ${"c".repeat(100_001)} `, author: "L" },
     { category: "goal" as const, key: "key", content: "content", tags: [` ${"e\u0301".repeat(51)} `], author: "L" },
   ]) {
     await assert.rejects(service.createMcpMemory({ userId: "user-a" }, input, "memory-boundary-0002"), (error) => error instanceof MemoryDomainError && ["INVALID_MEMORY_KEY", "INVALID_MEMORY_CONTENT", "INVALID_MEMORY_TAGS"].includes(error.code));
@@ -145,7 +145,7 @@ test("Web Memory creation uses the canonical key, content, and tag boundaries", 
     userId: "user-a",
     category: "profile",
     key: "k".repeat(100),
-    content: "c".repeat(4_000),
+    content: "c".repeat(100_000),
     tags: Array.from({ length: 20 }, (_, index) => `tag-${index}`),
     author: "L",
   });
@@ -154,7 +154,7 @@ test("Web Memory creation uses the canonical key, content, and tag boundaries", 
   for (const input of [
     { category: "unknown" as never, key: "key", content: "content", tags: [] },
     { key: "k".repeat(101), content: "content", tags: [] },
-    { key: "key", content: "c".repeat(4_001), tags: [] },
+    { key: "key", content: "c".repeat(100_001), tags: [] },
     { key: "key", content: "content", tags: Array.from({ length: 21 }, (_, index) => `tag-${index}`) },
     { key: "key", content: "content", tags: ["t".repeat(51)] },
     { key: " ", content: "content", tags: [] },

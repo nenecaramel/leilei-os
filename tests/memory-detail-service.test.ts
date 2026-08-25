@@ -163,7 +163,7 @@ test("Memory archived detail validates the user and returns safe fields", async 
 });
 
 test("Memory archived detail returns complete content while archived list remains bounded", async () => {
-  const completeContent = "A".repeat(4_050);
+  const completeContent = "A".repeat(100_050);
   const record = {
     id: "archived-long",
     category: "project" as const,
@@ -555,7 +555,7 @@ test("Memory update rejects an invalid category", async () => {
   );
 });
 
-for (const content of ["   ", "x".repeat(4001)]) {
+for (const content of ["   ", "x".repeat(100_001)]) {
   test("Memory update rejects invalid content", async () => {
     const service = new MemoryService(repository());
 
@@ -566,6 +566,7 @@ for (const content of ["   ", "x".repeat(4001)]) {
         key: "valid_key",
         category: "goal",
         content,
+        author: "L",
       }),
       (error) =>
         error instanceof MemoryDomainError &&
