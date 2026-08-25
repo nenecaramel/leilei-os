@@ -21,6 +21,22 @@ const diary = {
 
 async function connect() {
   const service = {
+    async searchDiaryDiscovery(input: { query?: { q?: string } }) {
+      return {
+        diaries: [{
+          id: DIARY_ID,
+          title: diary.title,
+          date: diary.date,
+          tags: diary.tags,
+          mood: diary.mood,
+          created_at: diary.created_at,
+          updated_at: diary.updated_at,
+          author: diary.author,
+          snippet: input.query?.q === "bodyneedle" ? "bodyneedle" : null,
+        }],
+        metadata: { count: 1 },
+      };
+    },
     async listDiaries(input: { query?: { q?: string } }) {
       return { diaries: [diary], metadata: { count: input.query?.q ? 1 : 1 } };
     },

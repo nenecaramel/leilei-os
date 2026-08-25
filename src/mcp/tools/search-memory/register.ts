@@ -109,9 +109,10 @@ export function registerSearchMemoryTool(
           ordering: "updated_desc",
           limit,
         } as ReadMemoryInput;
-        const data = dependencies.memoryService.searchMemoryDiscovery
+        const discovery = dependencies.memoryService.searchMemoryDiscovery
           ? await dependencies.memoryService.searchMemoryDiscovery(input)
           : compactFallback(await dependencies.memoryService.readMemory(input), query ?? "");
+        const data = withDetailPointers(discovery);
 
         return {
           content: [
@@ -146,6 +147,17 @@ function compactFallback(result: ReadMemoryResult, query: string): SearchMemoryD
       detail_arguments: { id, scope: "active" as const },
     })),
     metadata: result.metadata,
+  };
+}
+
+function withDetailPointers(result: SearchMemoryDiscoveryResult): SearchMemoryDiscoveryResult {
+  return {
+    ...result,
+    memories: result.memories.map((memory) => ({
+      ...memory,
+      detail_tool: "get_memory" as const,
+      detail_arguments: { id: memory.id, scope: "active" as const },
+    })),
   };
 }
 

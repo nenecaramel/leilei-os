@@ -89,9 +89,10 @@ export function registerSearchDiaryTool(
             dateTo: date_to,
           },
         } satisfies ListDiariesInput;
-        const data = dependencies.diaryService.searchDiaryDiscovery
+        const discovery = dependencies.diaryService.searchDiaryDiscovery
           ? await dependencies.diaryService.searchDiaryDiscovery(input)
           : compactFallback(await dependencies.diaryService.listDiaries(input), query ?? "");
+        const data = withDetailPointers(discovery);
 
         return {
           content: [
@@ -128,6 +129,17 @@ function compactFallback(result: ListDiariesResult, query: string): SearchDiaryD
       detail_arguments: { id, scope: "active" as const },
     })),
     metadata: result.metadata,
+  };
+}
+
+function withDetailPointers(result: SearchDiaryDiscoveryResult): SearchDiaryDiscoveryResult {
+  return {
+    ...result,
+    diaries: result.diaries.map((diary) => ({
+      ...diary,
+      detail_tool: "get_diary" as const,
+      detail_arguments: { id: diary.id, scope: "active" as const },
+    })),
   };
 }
 

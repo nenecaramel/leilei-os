@@ -10,6 +10,35 @@ const BODY = `${"前".repeat(180)} bodyneedle ${"后".repeat(180)}`;
 
 async function connect() {
   const service = {
+    async readMemoryDiscovery() {
+      return {
+        user: { display_name: "Leilei" },
+        memories: [{
+          id: MEMORY_ID,
+          category: "project" as const,
+          key: "keyneedle",
+          tags: ["MCP"],
+          author: "L" as const,
+          updated_at: "2026-08-25T00:00:00.000Z",
+          preview: BODY.slice(0, 20),
+        }],
+        metadata: { count: 1 },
+      };
+    },
+    async searchMemoryDiscovery(input: { query?: string }) {
+      return {
+        memories: [{
+          id: MEMORY_ID,
+          category: "project" as const,
+          key: "keyneedle",
+          tags: ["MCP"],
+          updated_at: "2026-08-25T00:00:00.000Z",
+          author: "L" as const,
+          snippet: input.query === "bodyneedle" ? "bodyneedle" : null,
+        }],
+        metadata: { count: 1 },
+      };
+    },
     async readMemory(input: { query?: string }) {
       return {
         user: { display_name: "Leilei" },

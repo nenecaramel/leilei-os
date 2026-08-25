@@ -93,9 +93,10 @@ export function registerReadMemoryTool(
           categories,
           keys,
         };
-        const data = dependencies.memoryService.readMemoryDiscovery
+        const discovery = dependencies.memoryService.readMemoryDiscovery
           ? await dependencies.memoryService.readMemoryDiscovery(input)
           : compactFallback(await dependencies.memoryService.readMemory(input));
+        const data = withDetailPointers(discovery);
         const result = {
           success: true as const,
           data,
@@ -132,6 +133,17 @@ function compactFallback(result: ReadMemoryResult): ReadMemoryDiscoveryResult {
       detail_arguments: { id, scope: "active" as const },
     })),
     metadata: result.metadata,
+  };
+}
+
+function withDetailPointers(result: ReadMemoryDiscoveryResult): ReadMemoryDiscoveryResult {
+  return {
+    ...result,
+    memories: result.memories.map((memory) => ({
+      ...memory,
+      detail_tool: "get_memory" as const,
+      detail_arguments: { id: memory.id, scope: "active" as const },
+    })),
   };
 }
 
