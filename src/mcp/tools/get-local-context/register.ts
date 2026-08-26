@@ -80,7 +80,7 @@ export function registerGetLocalContextTool(server: McpServer): void {
         content: [
           {
             type: "text",
-            text: JSON.stringify(result.data),
+            text: "Local context retrieved.",
           },
         ],
         structuredContent: result,
