@@ -62,7 +62,7 @@ export function registerGetMemoryTool(
     {
       title: "Get one Memory",
       description:
-        "Read one authenticated, authorized Memory by exact ID from read_memory, search_memory, or global_search. scope defaults to active. scope=active reads only active records and cannot read archived records; scope=archived reads only archived records and cannot read active records. Both scopes enforce exact-ID ownership and assistant visibility.",
+        "Read the full authoritative content of one authenticated Memory after an exact ID is known from read_memory, search_memory, global_search, or a write receipt. This is not the primary discovery tool. scope defaults to active; scope=active and scope=archived each enforce exact-ID ownership and assistant visibility.",
       inputSchema: getMemoryInputSchema,
       outputSchema: getMemoryOutputSchema,
       annotations: {

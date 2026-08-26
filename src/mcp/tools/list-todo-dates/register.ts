@@ -29,7 +29,7 @@ export function registerListTodoDatesTool(
     {
       title: "List Todo dates",
       description:
-        "List the authenticated user's business dates that contain at least one persisted Todo entry.",
+        "Browse the authenticated user's business dates that contain persisted Todo entries. Use read_todo_day with an exact returned date to read the complete L and G papers.",
       inputSchema: listTodoDatesInputSchema,
       outputSchema: listTodoDatesOutputSchema,
       annotations: {

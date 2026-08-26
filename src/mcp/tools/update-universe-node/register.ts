@@ -3,16 +3,9 @@ import { z } from "zod";
 import { UniverseServiceError, type UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
-import { universeMembershipSchema, universePositionSchema } from "../create-universe-node/schema.js";
 import { updateUniverseNodeInputSchema } from "./schema.js";
 
-const nodeOutputSchema = z.object({
-  id: z.string().min(1).max(256), title: z.string(), summary: z.string(), content: z.string(), type: z.string(),
-  tags: z.array(z.string()), galaxies: z.array(universeMembershipSchema), position: universePositionSchema,
-  createdAt: z.string().datetime(), updatedAt: z.string().datetime(), importance: z.string().optional(),
-  migration: z.object({ source: z.enum(["mind-universe-static", "mind-universe"]), migratedAt: z.string().datetime() }).strict().optional(),
-}).strict();
-const successDataSchema = z.object({ node: nodeOutputSchema, universe_version: z.number().int().nonnegative() }).strict();
+const successDataSchema = z.object({ node: z.object({ id: z.string().min(1).max(256), title: z.string(), type: z.string(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict(), universe_version: z.number().int().nonnegative(), detail_tool: z.literal("get_universe_node"), detail_arguments: z.object({ id: z.string().min(1).max(256) }).strict() }).strict();
 const outputSchema = z.object({
   success: z.boolean(),
   data: successDataSchema.optional(),
@@ -56,9 +49,24 @@ export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: 
         );
         const node = result.snapshot.nodes.find((candidate) => candidate.id === id);
         if (!node) throw new Error("Updated Universe node was not returned.");
+        const compactNode = {
+          id: node.id,
+          title: node.title,
+          type: node.type,
+          createdAt: node.createdAt,
+          updatedAt: node.updatedAt,
+        };
         return {
           content: [{ type: "text", text: "Universe node updated." }],
-          structuredContent: { success: true as const, data: { node, universe_version: result.version } },
+          structuredContent: {
+            success: true as const,
+            data: {
+              node: compactNode,
+              universe_version: result.version,
+              detail_tool: "get_universe_node" as const,
+              detail_arguments: { id: compactNode.id },
+            },
+          },
         };
       },
       mapError: (error) => safeUniverseWriteError(error, "Universe node was not updated."),

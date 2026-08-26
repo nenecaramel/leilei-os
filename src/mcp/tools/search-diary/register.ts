@@ -65,7 +65,7 @@ export function registerSearchDiaryTool(
     {
       title: "Search diary entries",
       description:
-        "List authorized diary entries using optional text, exact tag, mood, and inclusive calendar-date filters. This read-only discovery tool intentionally omits full diary content.",
+        "Discover or search authorized Diary entries using optional text, exact tag, mood, and inclusive calendar-date filters. Results are compact and omit full diary content; use get_diary for the complete selected entry.",
       inputSchema: searchDiaryInputSchema,
       outputSchema: searchDiaryOutputSchema,
       annotations: {

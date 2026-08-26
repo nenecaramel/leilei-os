@@ -168,7 +168,7 @@ export function registerToyCommandTools(
     {
       title: "Stop toy",
       description:
-        "Queue one short-lived stop command for the bound toy in Leilei OS. This tool accepts no parameters and never accepts BLE bytes, URLs, scripts, or arbitrary payloads.",
+        "Queue one short-lived stop command for the bound toy in Leilei OS. Requires a stable idempotency_key and never accepts BLE bytes, URLs, scripts, or arbitrary payloads.",
       inputSchema: toyStopInputSchema,
       outputSchema: toyStopOutputSchema,
       annotations: {

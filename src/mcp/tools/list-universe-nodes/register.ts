@@ -39,7 +39,7 @@ type Cursor = { updatedAt: string; id: string };
 export function registerListUniverseNodesTool(server: McpServer, dependencies: ListUniverseNodesToolDependencies): void {
   server.registerTool("list_universe_nodes", {
     title: "List Universe nodes",
-    description: "Discover authenticated Universe nodes with compact summaries and stable IDs. Call get_universe_node for the complete content of a selected node.",
+    description: "Browse the authenticated user's Universe nodes without a text query. Results are compact summaries with stable IDs; use search_universe for text discovery and get_universe_node for the complete content of a selected node.",
     inputSchema: z.object({ limit: z.number().int().min(1).max(50).optional(), cursor: cursorSchema.optional() }).strict(),
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

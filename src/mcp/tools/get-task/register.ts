@@ -76,7 +76,7 @@ export function registerGetTaskTool(
     {
       title: "Get one task",
       description:
-        "Read one authenticated, authorized Task by exact ID from list_tasks or global_search, including its full description. scope defaults to active. scope=active reads only active records and cannot read archived records; scope=archived reads only archived records and cannot read active records.",
+        "Read the full detail of one authenticated Task after its exact ID is known from list_tasks, global_search, or another trusted result. scope defaults to active; scope=active and scope=archived each enforce exact-ID ownership and lifecycle boundaries.",
       inputSchema: getTaskInputSchema,
       outputSchema: getTaskOutputSchema,
       annotations: {

@@ -89,7 +89,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search for previously recorded experiences, preferences, decisions, plans, tasks, diary entries, Universe nodes, project facts, or whenever model memory is uncertain. Use active for current state and all for 以前、曾经、历史、所有记录. No results means nothing was found: never invent an answer. Compare conflicting records by module, lifecycle, and time; archived records are historical, not automatically current. Before relying on private full content, call the returned detail_tool with detail_arguments when one is available. Preserve entity type, ID, and time when summarizing important results.",
+    description: "Use global_search as the cross-domain fallback when the target domain is unknown or uncertain across Memory, Diary, Task, and Universe. When the domain is known, prefer that domain's search or browse tool. Results are compact; follow a returned detail_tool with its detail_arguments only for selected records. Use active for current state and all for 以前、曾经、历史、所有记录. No results means nothing was found: never invent an answer. Compare conflicting records by module, lifecycle, and time; archived records are historical, not automatically current.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

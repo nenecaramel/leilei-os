@@ -38,7 +38,6 @@ const writeMemoryOutputSchema = z.object({
       id: z.string().uuid(),
       category: memoryCategorySchema,
       key: z.string(),
-      content: z.string(),
       tags: z.array(z.string()),
       source: z.literal("mcp"),
       lifecycle_status: z.enum(["active", "archived"]),
@@ -50,6 +49,11 @@ const writeMemoryOutputSchema = z.object({
       created: z.boolean(),
       idempotent_replay: z.boolean(),
     }),
+    detail_tool: z.literal("get_memory"),
+    detail_arguments: z.object({
+      id: z.string().uuid(),
+      scope: z.enum(["active", "archived"]),
+    }).strict(),
   }),
 });
 
@@ -75,7 +79,7 @@ export function registerWriteMemoryTool(
     {
       title: "Write a confirmed Memory record",
       description:
-        "Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. For a newly created active Memory or an active idempotent replay, call get_memory with the returned id and verify the authoritative stored record. For an archived idempotent replay, do not call the active-only get_memory tool.",
+        "Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. The success result is a compact receipt; call get_memory with its returned detail_arguments for authoritative readback. For an archived idempotent replay, use get_memory with scope=archived; do not assume the active scope.",
       inputSchema: writeMemoryInputSchema,
       outputSchema: writeMemoryOutputSchema,
       annotations: {
@@ -95,12 +99,34 @@ export function registerWriteMemoryTool(
             { category, key, content, tags, author },
             idempotency_key,
           );
+          const memory = {
+            id: data.memory.id,
+            category: data.memory.category,
+            key: data.memory.key,
+            tags: data.memory.tags,
+            source: data.memory.source,
+            lifecycle_status: data.memory.lifecycle_status,
+            created_at: data.memory.created_at,
+            updated_at: data.memory.updated_at,
+            author: data.memory.author,
+          };
           return {
             content: [{
               type: "text",
               text: responseText(data),
             }],
-            structuredContent: { success: true as const, data },
+            structuredContent: {
+              success: true as const,
+              data: {
+                memory,
+                metadata: data.metadata,
+                detail_tool: "get_memory" as const,
+                detail_arguments: {
+                  id: memory.id,
+                  scope: memory.lifecycle_status,
+                },
+              },
+            },
           };
         },
         mapError: toSafeToolError,

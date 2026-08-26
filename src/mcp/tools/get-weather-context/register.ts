@@ -45,7 +45,7 @@ export function registerGetWeatherContextTool(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result),
+              text: "Weather context retrieved.",
             },
           ],
           structuredContent: result,

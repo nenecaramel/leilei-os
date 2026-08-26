@@ -28,6 +28,8 @@ const pageSchema = z.object({
   title: z.string(),
   url: z.string(),
   last_edited_time: z.string().datetime(),
+  detail_tool: z.literal("read_notion_page"),
+  detail_arguments: z.object({ page_id: z.string() }).strict(),
 }).strict();
 
 const outputSchema = z.object({
@@ -54,7 +56,7 @@ export function registerSearchNotionTool(
 ): void {
   server.registerTool("search_notion", {
     title: "Search Notion pages",
-    description: "Search accessible Notion pages by title. This is title search, not full-text search across page bodies. Use read_notion_page with a returned page ID to read the page content.",
+    description: "Discover accessible Notion pages by title when an exact page reference is not known. This is title search, not full-text search across page bodies; use the returned read_notion_page pointer with its page ID for content.",
     inputSchema,
     outputSchema,
     annotations: {
@@ -73,6 +75,8 @@ export function registerSearchNotionTool(
           title: page.title,
           url: page.url,
           last_edited_time: page.last_edited_time,
+          detail_tool: "read_notion_page" as const,
+          detail_arguments: { page_id: page.id },
         })),
         metadata: {
           count: data.metadata.count,

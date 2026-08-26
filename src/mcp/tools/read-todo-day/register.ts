@@ -54,7 +54,7 @@ export function registerReadTodoDayTool(
     {
       title: "Read one Todo day",
       description:
-        "Read the authenticated user's complete L and G Todo papers for one exact business date. Empty author slots are returned as null.",
+        "Read the authenticated user's complete L and G Todo papers for one exact business date from list_todo_dates or another trusted date. Empty author slots are returned as null.",
       inputSchema: readTodoDayInputSchema,
       outputSchema: readTodoDayOutputSchema,
       annotations: {

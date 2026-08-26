@@ -26,12 +26,13 @@ const updateMemoryOutputSchema = z.object({
     id: z.string(),
     category: z.enum(["profile", "preference", "goal", "project"]),
     key: z.string(),
-    content: z.string(),
     tags: z.array(z.string()),
     source: z.string(),
     updated_at: z.string().datetime(),
     lifecycle_status: z.literal("active"),
     author: z.enum(["L", "G"]).nullable(),
+    detail_tool: z.literal("get_memory"),
+    detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
   }),
 });
 
@@ -59,7 +60,19 @@ export function registerUpdateMemoryTool(server: McpServer, dependencies: Update
         { userId },
         { id, ...(category === undefined ? {} : { category }), ...(key === undefined ? {} : { key }), ...(content === undefined ? {} : { content }), ...(tags === undefined ? {} : { tags }), ...(author === undefined ? {} : { author }) },
       );
-      return { content: [{ type: "text", text: "Memory updated." }], structuredContent: { success: true as const, data: { ...data, lifecycle_status: "active" as const } } };
+      const compact = {
+        id: data.id,
+        category: data.category,
+        key: data.key,
+        tags: data.tags,
+        source: data.source,
+        updated_at: data.updated_at,
+        lifecycle_status: "active" as const,
+        author: data.author,
+        detail_tool: "get_memory" as const,
+        detail_arguments: { id: data.id, scope: "active" as const },
+      };
+      return { content: [{ type: "text", text: "Memory updated." }], structuredContent: { success: true as const, data: compact } };
     },
     mapError: toSafeToolError,
   }));
