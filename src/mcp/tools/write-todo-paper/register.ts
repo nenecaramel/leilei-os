@@ -10,6 +10,7 @@ import {
   type ReplaceTodoPaperIdempotentlyServiceResult,
 } from "../../../domains/todo/todo-service.js";
 import { invokeMcpWrite } from "../write-context.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const todoEntrySchema = z.object({
   id: z.string(),
@@ -35,16 +36,19 @@ const writeTodoPaperInputSchema = z.object({
     .regex(MCP_IDEMPOTENCY_KEY_PATTERN),
 }).strict();
 
-const writeTodoPaperOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    paper: todoPaperSchema,
-    metadata: z.object({
-      committed: z.boolean(),
-      idempotent_replay: z.boolean(),
-    }),
+const writeTodoPaperDataSchema = z.object({
+  paper: todoPaperSchema,
+  metadata: z.object({
+    committed: z.boolean(),
+    idempotent_replay: z.boolean(),
   }),
 });
+
+const writeTodoPaperOutputSchema = z.object({
+  success: z.boolean(),
+  data: writeTodoPaperDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface WriteTodoPaperToolService {
   replacePaperIdempotently(input: {
@@ -111,13 +115,10 @@ export function registerWriteTodoPaperTool(
 
 function toSafeWriteTodoPaperError(error: unknown) {
   if (error instanceof WriteTodoPaperAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [{
-        type: "text" as const,
-        text: "Authentication is required to write Todo.",
-      }],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to write Todo.",
+    );
   }
   if (error instanceof TodoServiceError) {
     const text = error.code === "TODO_PAPER_CONFLICT"
@@ -125,22 +126,16 @@ function toSafeWriteTodoPaperError(error: unknown) {
       : error.code === "IDEMPOTENCY_CONFLICT"
         ? "This idempotency key was already used for different Todo content."
         : "The Todo request is invalid.";
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text }],
-    };
+    return createMcpToolError(error.code, text);
   }
   console.error(
     "write_todo_paper failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [{
-      type: "text" as const,
-      text: "Todo writing is temporarily unavailable.",
-    }],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Todo writing is temporarily unavailable.",
+  );
 }
 
 export class WriteTodoPaperAuthenticationError extends Error {
