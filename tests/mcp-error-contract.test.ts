@@ -35,6 +35,54 @@ import { registerReadNotionPageTool } from "../src/mcp/tools/read-notion-page/re
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 
+type ProductionMcpErrorAuditKind = "structured" | "no-handler-error";
+
+const EXPECTED_PRODUCTION_MCP_TOOL_NAMES = [
+  "add_universe_diary_source",
+  "create_task",
+  "create_universe_node",
+  "create_universe_relation",
+  "delete_universe_diary_source",
+  "delete_universe_relation",
+  "get_diary",
+  "get_local_context",
+  "get_memory",
+  "get_notion_connection",
+  "get_task",
+  "get_universe_diary_sources",
+  "get_universe_node",
+  "get_universe_relations",
+  "get_weather_context",
+  "global_search",
+  "hello",
+  "list_tasks",
+  "list_todo_dates",
+  "list_universe_nodes",
+  "query_notion_data_source",
+  "read_memory",
+  "read_notion_data_source",
+  "read_notion_database",
+  "read_notion_page",
+  "read_todo_day",
+  "search_diary",
+  "search_memory",
+  "search_notion",
+  "search_universe",
+  "toy_set",
+  "toy_stop",
+  "transition_task",
+  "update_diary",
+  "update_memory",
+  "update_task",
+  "update_universe_node",
+  "write_diary",
+  "write_memory",
+  "write_todo_paper",
+] as const;
+
+// Filled by the production-surface audit in the next task step.
+const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKind> = {};
+
 async function connectServer(server: McpServer, name: string) {
   const client = new Client({ name, version: "1.0.0" }, { capabilities: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -505,4 +553,14 @@ test("production registration keeps the six Notion reads and excludes dormant wr
     "create_notion_meeting_note",
     "upload_notion_file",
   ]) assert.equal(names.has(name), false, `${name} must remain dormant`);
+});
+
+test("production MCP error audit covers every registered tool", async (t) => {
+  const server = createMcpServer({} as never);
+  const pair = await connectServer(server, "production-mcp-error-audit-red");
+  t.after(async () => { await pair.client.close(); await pair.server.close(); });
+
+  const registered = (await pair.client.listTools()).tools.map((tool) => tool.name).sort();
+  assert.deepEqual(registered, [...EXPECTED_PRODUCTION_MCP_TOOL_NAMES].sort());
+  assert.deepEqual(Object.keys(PRODUCTION_MCP_TOOL_ERROR_AUDIT).sort(), registered);
 });
