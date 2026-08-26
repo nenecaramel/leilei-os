@@ -453,7 +453,7 @@ test("keeps unknown Universe write errors generic and non-sensitive", async (t) 
   assert.doesNotMatch(JSON.stringify(result), /driver secret should not leak/);
 });
 
-test("leaves Universe read error behavior unchanged", async (t) => {
+test("Universe read errors expose a machine-readable envelope", async (t) => {
   const fixture = await connect({
     universeTools: {
       universeService: {
@@ -467,6 +467,12 @@ test("leaves Universe read error behavior unchanged", async (t) => {
 
   const result = await fixture.client.callTool({ name: "get_universe_node", arguments: { id: "missing-node" } });
   assert.equal(result.isError, true);
-  assert.equal(result.structuredContent, undefined);
+  assert.deepEqual(result.structuredContent, {
+    success: false,
+    error: {
+      code: "NODE_NOT_FOUND",
+      message: "Universe node was not found.",
+    },
+  });
   assert.deepEqual(result.content, [{ type: "text", text: "Universe node was not found." }]);
 });
