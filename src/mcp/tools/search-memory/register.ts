@@ -8,6 +8,10 @@ import {
 } from "../../../domains/memory/memory-service.js";
 import { ReadMemoryAuthenticationError } from "../read-memory/register.js";
 import { createBodyMatchSnippet } from "../../../domains/compact-text.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -47,27 +51,30 @@ const searchMemoryInputSchema = z
   })
   .strict();
 
-const searchMemoryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    memories: z.array(
-      z.object({
-        id: z.string(),
-        category: memoryCategorySchema,
-        key: z.string(),
-        tags: z.array(z.string()),
-        updated_at: z.string().datetime(),
-        author: contentAuthorSchema.nullable(),
-        snippet: z.string().nullable(),
-        detail_tool: z.literal("get_memory"),
-        detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
-      }),
-    ),
-    metadata: z.object({
-      count: z.number().int().nonnegative(),
+const searchMemoryDataSchema = z.object({
+  memories: z.array(
+    z.object({
+      id: z.string(),
+      category: memoryCategorySchema,
+      key: z.string(),
+      tags: z.array(z.string()),
+      updated_at: z.string().datetime(),
+      author: contentAuthorSchema.nullable(),
+      snippet: z.string().nullable(),
+      detail_tool: z.literal("get_memory"),
+      detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
     }),
+  ),
+  metadata: z.object({
+    count: z.number().int().nonnegative(),
   }),
 });
+
+const searchMemoryOutputSchema = z.object({
+  success: z.boolean(),
+  data: searchMemoryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface SearchMemoryToolService {
   readMemory(input: ReadMemoryInput): Promise<ReadMemoryResult>;
@@ -163,15 +170,10 @@ function withDetailPointers(result: SearchMemoryDiscoveryResult): SearchMemoryDi
 
 function toSafeSearchMemoryError(error: unknown) {
   if (error instanceof ReadMemoryAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to search memory.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to search memory.",
+    );
   }
 
   if (error instanceof MemoryDomainError) {
@@ -180,23 +182,15 @@ function toSafeSearchMemoryError(error: unknown) {
         ? "Memory is unavailable for the authenticated user."
         : "The Memory search is invalid.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "search_memory failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Memory is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Memory is temporarily unavailable.",
+  );
 }
