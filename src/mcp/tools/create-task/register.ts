@@ -12,6 +12,10 @@ import {
   MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
   MCP_IDEMPOTENCY_KEY_PATTERN,
 } from "../../../domains/mcp-write/mcp-write-idempotency.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const taskStatusSchema = z.enum([
@@ -62,32 +66,35 @@ const createTaskInputSchema = z
   })
   .strict();
 
-const createTaskOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    task: z.object({
-      id: z.string().uuid(),
-      title: z.string(),
-      description: z.string(),
-      status: taskStatusSchema,
-      priority: taskPrioritySchema,
-      due_time: z.string().datetime().nullable(),
-      timezone: z.string(),
-      time_bucket: z.enum([
-        "no_due_date",
-        "overdue",
-        "today",
-        "next_7_days",
-        "later",
-      ]),
-      tags: z.array(z.string()),
-      created_at: z.string().datetime(),
-      updated_at: z.string().datetime(),
-      completed_at: z.string().datetime().nullable(),
-      author: contentAuthorSchema.nullable(),
-    }),
+const createTaskDataSchema = z.object({
+  task: z.object({
+    id: z.string().uuid(),
+    title: z.string(),
+    description: z.string(),
+    status: taskStatusSchema,
+    priority: taskPrioritySchema,
+    due_time: z.string().datetime().nullable(),
+    timezone: z.string(),
+    time_bucket: z.enum([
+      "no_due_date",
+      "overdue",
+      "today",
+      "next_7_days",
+      "later",
+    ]),
+    tags: z.array(z.string()),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+    completed_at: z.string().datetime().nullable(),
+    author: contentAuthorSchema.nullable(),
   }),
 });
+
+const createTaskOutputSchema = z.object({
+  success: z.boolean(),
+  data: createTaskDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface CreateTaskToolService {
   createTaskIdempotently(
@@ -158,15 +165,10 @@ export function registerCreateTaskTool(
 
 function toSafeToolError(error: unknown) {
   if (error instanceof CreateTaskAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to create a task.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to create a task.",
+    );
   }
 
   if (error instanceof TaskDomainError) {
@@ -175,27 +177,19 @@ function toSafeToolError(error: unknown) {
         ? "Task creation is unavailable for the authenticated user."
         : error.code === "IDEMPOTENCY_CONFLICT"
           ? "This idempotency key was already used for a different task."
-        : "The task request is invalid.";
+          : "The task request is invalid.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "create_task failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Task creation is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Task creation is temporarily unavailable.",
+  );
 }
 
 export class CreateTaskAuthenticationError extends Error {
