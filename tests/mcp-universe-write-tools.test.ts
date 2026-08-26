@@ -191,7 +191,13 @@ test("create Universe node forwards boundary positions and never accepts caller 
     content: [{ type: "text", text: "Universe node created." }],
     structuredContent: {
       success: true,
-      data: { node, universe_version: 1, metadata: { created: true, idempotent_replay: false } },
+      data: {
+        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        universe_version: 1,
+        metadata: { created: true, idempotent_replay: false },
+        detail_tool: "get_universe_node",
+        detail_arguments: { id: node.id },
+      },
     },
   });
   assert.equal(calls.length, 1);
@@ -232,7 +238,12 @@ test("update Universe node is a partial patch and rejects an empty or hidden pat
     content: [{ type: "text", text: "Universe node updated." }],
     structuredContent: {
       success: true,
-      data: { node, universe_version: 2 },
+      data: {
+        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        universe_version: 2,
+        detail_tool: "get_universe_node",
+        detail_arguments: { id: node.id },
+      },
     },
   });
   assert.deepEqual((calls[0] as unknown[]).slice(1), ["node-generated", { summary: "", tags: [], galaxies: [] }, 1]);
@@ -405,7 +416,13 @@ test("preserves idempotent replay metadata in a successful Universe write", asyn
     content: [{ type: "text", text: "Universe node replayed." }],
     structuredContent: {
       success: true,
-      data: { node, universe_version: 9, metadata: { created: false, idempotent_replay: true } },
+      data: {
+        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        universe_version: 9,
+        metadata: { created: false, idempotent_replay: true },
+        detail_tool: "get_universe_node",
+        detail_arguments: { id: node.id },
+      },
     },
   });
 });

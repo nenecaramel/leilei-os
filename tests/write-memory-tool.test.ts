@@ -41,7 +41,25 @@ test("write_memory exposes the confirmed idempotent server-owned contract", asyn
   const response = await client.callTool({ name: "write_memory", arguments: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L", idempotency_key: "memory-request-0001" } });
   assert.equal(response.isError, undefined);
   assert.deepEqual(calls, [{ context: { userId }, input: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L" }, key: "memory-request-0001" }]);
-  assert.deepEqual(response.structuredContent, { success: true, data: result });
+  assert.deepEqual(response.structuredContent, {
+    success: true,
+    data: {
+      memory: {
+        id: result.memory.id,
+        category: result.memory.category,
+        key: result.memory.key,
+        tags: result.memory.tags,
+        source: result.memory.source,
+        lifecycle_status: result.memory.lifecycle_status,
+        created_at: result.memory.created_at,
+        updated_at: result.memory.updated_at,
+        author: result.memory.author,
+      },
+      metadata: result.metadata,
+      detail_tool: "get_memory",
+      detail_arguments: { id: result.memory.id, scope: "active" },
+    },
+  });
 });
 
 test("write_memory rejects identity injection and invalid values before service", async (t) => {
