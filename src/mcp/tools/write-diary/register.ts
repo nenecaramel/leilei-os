@@ -8,63 +8,46 @@ import {
 } from "../../../domains/diary/diary-service.js";
 import { DIARY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G"]);
 
 const writeDiaryInputSchema = z
   .object({
-    title: z
-      .string()
-      .min(1)
-      .max(200)
-      .describe("A concise title for the diary entry."),
-    content: z
-      .string()
-      .min(1)
-      .max(DIARY_CONTENT_MAX_LENGTH)
-      .describe("The complete diary entry content."),
-    date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .describe("The diary date in YYYY-MM-DD format; never use relative dates."),
-    tags: z
-      .array(z.string().min(1).max(50))
-      .max(20)
-      .describe("Organizational labels for the diary entry; use an empty array when none apply."),
-    mood: z
-      .string()
-      .min(1)
-      .max(50)
-      .optional()
-      .describe("An optional concise mood label."),
+    title: z.string().min(1).max(200).describe("A concise title for the diary entry."),
+    content: z.string().min(1).max(DIARY_CONTENT_MAX_LENGTH).describe("The complete diary entry content."),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("The diary date in YYYY-MM-DD format; never use relative dates."),
+    tags: z.array(z.string().min(1).max(50)).max(20).describe("Organizational labels for the diary entry; use an empty array when none apply."),
+    mood: z.string().min(1).max(50).optional().describe("An optional concise mood label."),
     author: contentAuthorSchema.describe("The logical content author: L or G."),
-    idempotency_key: z
-      .string()
-      .min(16)
-      .max(128)
-      .regex(/^[A-Za-z0-9._:-]+$/)
-      .describe("A stable unique key used to prevent duplicate diary creation."),
+    idempotency_key: z.string().min(16).max(128).regex(/^[A-Za-z0-9._:-]+$/).describe("A stable unique key used to prevent duplicate diary creation."),
   })
   .strict();
 
-const writeDiaryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    diary: z.object({
-      id: z.string().uuid(),
-      title: z.string(),
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      tags: z.array(z.string()),
-      mood: z.string().nullable(),
-      created_at: z.string().datetime(),
-      author: contentAuthorSchema.nullable(),
-    }),
-    metadata: z.object({
-      created: z.boolean(),
-      idempotent_replay: z.boolean(),
-    }),
+const writeDiaryDataSchema = z.object({
+  diary: z.object({
+    id: z.string().uuid(),
+    title: z.string(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    tags: z.array(z.string()),
+    mood: z.string().nullable(),
+    created_at: z.string().datetime(),
+    author: contentAuthorSchema.nullable(),
+  }),
+  metadata: z.object({
+    created: z.boolean(),
+    idempotent_replay: z.boolean(),
   }),
 });
+
+const writeDiaryOutputSchema = z.object({
+  success: z.boolean(),
+  data: writeDiaryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface WriteDiaryToolService {
   createMcpDiary(
@@ -131,15 +114,10 @@ export function registerWriteDiaryTool(
 
 function toSafeToolError(error: unknown) {
   if (error instanceof WriteDiaryAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to write a diary entry.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to write a diary entry.",
+    );
   }
 
   if (error instanceof DiaryDomainError) {
@@ -150,25 +128,17 @@ function toSafeToolError(error: unknown) {
           ? "This idempotency key was already used for different diary content."
           : "The diary request is invalid.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "write_diary failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Diary writing is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Diary writing is temporarily unavailable.",
+  );
 }
 
 export class WriteDiaryAuthenticationError extends Error {
