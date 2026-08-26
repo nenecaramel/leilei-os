@@ -17,7 +17,9 @@ const updateDiaryInputSchema = z.object({
 const updateDiaryOutputSchema = z.object({
   success: z.literal(true),
   data: z.object({
-    id: z.string(), title: z.string(), content: z.string(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), tags: z.array(z.string()), mood: z.string().nullable(), created_at: z.string().datetime(), updated_at: z.string().datetime(), lifecycle_status: z.literal("active"), author: z.enum(["L", "G"]).nullable(),
+    id: z.string(), title: z.string(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), tags: z.array(z.string()), mood: z.string().nullable(), created_at: z.string().datetime(), updated_at: z.string().datetime(), lifecycle_status: z.literal("active"), author: z.enum(["L", "G"]).nullable(),
+    detail_tool: z.literal("get_diary"),
+    detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
   }),
 });
 
@@ -35,7 +37,20 @@ export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateD
     toolName: "update_diary", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
       const data = await dependencies.diaryService.updateMcpDiary({ userId }, { id, ...(title === undefined ? {} : { title }), ...(content === undefined ? {} : { content }), ...(date === undefined ? {} : { date }), ...(tags === undefined ? {} : { tags }), ...(mood === undefined ? {} : { mood }), ...(author === undefined ? {} : { author }) });
-      return { content: [{ type: "text", text: "Diary entry updated." }], structuredContent: { success: true as const, data: { ...data, lifecycle_status: "active" as const } } };
+      const compact = {
+        id: data.id,
+        title: data.title,
+        date: data.date,
+        tags: data.tags,
+        mood: data.mood,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+        lifecycle_status: "active" as const,
+        author: data.author,
+        detail_tool: "get_diary" as const,
+        detail_arguments: { id: data.id, scope: "active" as const },
+      };
+      return { content: [{ type: "text", text: "Diary entry updated." }], structuredContent: { success: true as const, data: compact } };
     }, mapError: toSafeToolError,
   }));
 }

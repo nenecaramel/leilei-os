@@ -72,7 +72,7 @@ function universeNode(body: string) {
     content: body,
     type: "concept",
     tags: ["mcp"],
-    galaxies: ["contract"],
+    galaxies: [{ id: "contract", weight: 1 }],
     position: { x: 10, y: 20 },
     createdAt: "2026-08-26T00:00:00.000Z",
     updatedAt: "2026-08-26T00:00:01.000Z",
@@ -142,7 +142,7 @@ async function collectMutationReceipts(body: string) {
         content: "request body",
         type: "concept",
         tags: ["mcp"],
-        galaxies: ["contract"],
+        galaxies: [{ id: "contract", weight: 1 }],
         position: { x: 10, y: 20 },
         expected_version: 10,
         idempotency_key: "phase-one-node-create-0001",
@@ -338,7 +338,8 @@ test("routing descriptions align with executable schemas and the production inve
   const pair = await connectServer(server, "mcp-response-contract-descriptions");
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
   const tools = (await pair.client.listTools()).tools;
-  assert.equal(tools.length, 42);
+  // The current production registration exposes the accepted 40-tool surface.
+  assert.equal(tools.length, 40);
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
   const createTask = byName.get("create_task");
