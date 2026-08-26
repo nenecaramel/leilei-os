@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -80,8 +82,97 @@ const EXPECTED_PRODUCTION_MCP_TOOL_NAMES = [
   "write_todo_paper",
 ] as const;
 
-// Filled by the production-surface audit in the next task step.
-const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKind> = {};
+const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKind> = {
+  add_universe_diary_source: "structured",
+  create_task: "structured",
+  create_universe_node: "structured",
+  create_universe_relation: "structured",
+  delete_universe_diary_source: "structured",
+  delete_universe_relation: "structured",
+  get_diary: "structured",
+  get_local_context: "no-handler-error",
+  get_memory: "structured",
+  get_notion_connection: "structured",
+  get_task: "structured",
+  get_universe_diary_sources: "structured",
+  get_universe_node: "structured",
+  get_universe_relations: "structured",
+  get_weather_context: "no-handler-error",
+  global_search: "structured",
+  hello: "no-handler-error",
+  list_tasks: "structured",
+  list_todo_dates: "structured",
+  list_universe_nodes: "structured",
+  query_notion_data_source: "structured",
+  read_memory: "structured",
+  read_notion_data_source: "structured",
+  read_notion_database: "structured",
+  read_notion_page: "structured",
+  read_todo_day: "structured",
+  search_diary: "structured",
+  search_memory: "structured",
+  search_notion: "structured",
+  search_universe: "structured",
+  toy_set: "structured",
+  toy_stop: "structured",
+  transition_task: "structured",
+  update_diary: "structured",
+  update_memory: "structured",
+  update_task: "structured",
+  update_universe_node: "structured",
+  write_diary: "structured",
+  write_memory: "structured",
+  write_todo_paper: "structured",
+};
+
+// Each structured entry must have a corresponding focused machine-readable
+// error assertion. Keep this explicit so adding a production tool cannot
+// silently bypass the focused contract suites.
+const STRUCTURED_ERROR_ASSERTION_TOOLS = new Set([
+  "add_universe_diary_source",
+  "create_task",
+  "create_universe_node",
+  "create_universe_relation",
+  "delete_universe_diary_source",
+  "delete_universe_relation",
+  "get_diary",
+  "get_memory",
+  "get_notion_connection",
+  "get_task",
+  "get_universe_diary_sources",
+  "get_universe_node",
+  "get_universe_relations",
+  "global_search",
+  "list_tasks",
+  "list_todo_dates",
+  "list_universe_nodes",
+  "query_notion_data_source",
+  "read_memory",
+  "read_notion_data_source",
+  "read_notion_database",
+  "read_notion_page",
+  "read_todo_day",
+  "search_diary",
+  "search_memory",
+  "search_notion",
+  "search_universe",
+  "toy_set",
+  "toy_stop",
+  "transition_task",
+  "update_diary",
+  "update_memory",
+  "update_task",
+  "update_universe_node",
+  "write_diary",
+  "write_memory",
+  "write_todo_paper",
+]);
+
+const NO_HANDLER_ERROR_SOURCE_FILES = {
+  hello: "src/mcp/tools/hello/register.ts",
+  get_local_context: "src/mcp/tools/get-local-context/register.ts",
+  get_weather_context: "src/mcp/tools/get-weather-context/register.ts",
+} as const;
 
 async function connectServer(server: McpServer, name: string) {
   const client = new Client({ name, version: "1.0.0" }, { capabilities: {} });
@@ -563,4 +654,16 @@ test("production MCP error audit covers every registered tool", async (t) => {
   const registered = (await pair.client.listTools()).tools.map((tool) => tool.name).sort();
   assert.deepEqual(registered, [...EXPECTED_PRODUCTION_MCP_TOOL_NAMES].sort());
   assert.deepEqual(Object.keys(PRODUCTION_MCP_TOOL_ERROR_AUDIT).sort(), registered);
+
+  const structured = Object.entries(PRODUCTION_MCP_TOOL_ERROR_AUDIT)
+    .filter(([, kind]) => kind === "structured")
+    .map(([name]) => name)
+    .sort();
+  assert.deepEqual(structured, [...STRUCTURED_ERROR_ASSERTION_TOOLS].sort());
+
+  for (const [name, relativePath] of Object.entries(NO_HANDLER_ERROR_SOURCE_FILES)) {
+    const source = readFileSync(resolve(process.cwd(), relativePath), "utf8");
+    assert.equal(source.includes("createMcpToolError"), false, `${name} must not return a mapped handler error`);
+    assert.equal(/\bcatch\s*\(/.test(source), false, `${name} must not add an uncatalogued catch branch`);
+  }
 });
