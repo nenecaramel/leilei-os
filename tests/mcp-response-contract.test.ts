@@ -345,11 +345,18 @@ test("routing descriptions align with executable schemas and the production inve
   const createTask = byName.get("create_task");
   assert.ok(createTask?.inputSchema.required?.includes("idempotency_key"));
   assert.equal(createTask?.annotations?.idempotentHint, true);
+  assert.match(createTask?.description ?? "", /idempotent|replay/i);
   assert.doesNotMatch(createTask?.description ?? "", /non[-_ ]?idempotent/i);
 
   const toyStop = byName.get("toy_stop");
   assert.ok(toyStop?.inputSchema.required?.includes("idempotency_key"));
+  assert.match(toyStop?.description ?? "", /idempotency_key/i);
   assert.doesNotMatch(toyStop?.description ?? "", /accepts? no (?:arguments|parameters)|no arguments|no parameters/i);
+
+  assert.match(byName.get("global_search")?.description ?? "", /domain.*(?:unknown|unsure)|unknown.*domain/i);
+  assert.match(byName.get("global_search")?.description ?? "", /prefer.*(?:domain|specific)|domain.*(?:search|tool)/i);
+  assert.match(byName.get("get_universe_relations")?.description ?? "", /known|exact/i);
+  assert.match(byName.get("write_memory")?.description ?? "", /archived.*get_memory|get_memory.*archived/i);
 
   const routingChecks: Array<[string, RegExp[]]> = [
     ["global_search", [/Memory|Diary|Task|Universe/i, /domain/i, /detail/i]],

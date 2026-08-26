@@ -52,7 +52,7 @@ export function registerReadNotionPageTool(
 ): void {
   server.registerTool("read_notion_page", {
     title: "Read a Notion page",
-    description: "Read one accessible Notion page and its nested structural blocks. Child pages and child databases are listed but are not recursively expanded; call read_notion_page again with a child page ID when its content is needed.",
+    description: "Read one selected accessible Notion page by exact page ID or URL after discovery. Returns page content and nested structural blocks; child pages and child databases are listed but not recursively expanded.",
     inputSchema,
     outputSchema,
     annotations: {

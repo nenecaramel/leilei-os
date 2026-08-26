@@ -75,7 +75,7 @@ export function registerReadMemoryTool(
     {
       title: "Read Leilei's core memory",
       description:
-        "Discover authorized core memories with compact previews and stable IDs. This tool is read-only; call get_memory for the complete content of a selected record.",
+        "Browse authorized Memory by category or exact key without a text query. Results are compact previews with stable IDs; use search_memory for text discovery and get_memory for the complete content of a selected record.",
       inputSchema: readMemoryInputSchema,
       outputSchema: readMemoryOutputSchema,
       annotations: {

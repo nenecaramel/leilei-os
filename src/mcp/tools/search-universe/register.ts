@@ -53,7 +53,7 @@ export type SearchUniverseToolDependencies = {
 export function registerSearchUniverseTool(server: McpServer, dependencies: SearchUniverseToolDependencies): void {
   server.registerTool("search_universe", {
     title: "Search Universe",
-    description: "Search the authenticated user's active Universe nodes. Results include stable node IDs and pagination evidence.",
+    description: "Search the authenticated user's active Universe nodes by text. Results are compact discovery records with stable IDs and pagination evidence; use list_universe_nodes for query-free browsing and get_universe_node for an exact selected node.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
