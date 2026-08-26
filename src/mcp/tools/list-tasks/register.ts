@@ -5,6 +5,7 @@ import {
   type ListTasksInput,
   type ListTasksResult,
 } from "../../../domains/task/task-service.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const taskStatusSchema = z.enum([
   "pending",
@@ -62,13 +63,16 @@ const taskListItemSchema = z.object({
   detail_arguments: z.object({ id: z.string() }).strict(),
 });
 
-const listTasksOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    tasks: z.array(taskListItemSchema),
-    metadata: z.object({ count: z.number().int().nonnegative() }),
-  }),
+const listTasksDataSchema = z.object({
+  tasks: z.array(taskListItemSchema),
+  metadata: z.object({ count: z.number().int().nonnegative() }),
 });
+
+const listTasksOutputSchema = z.object({
+  success: z.boolean(),
+  data: listTasksDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface ListTasksToolService {
   listTasks(input: ListTasksInput): Promise<ListTasksResult>;
@@ -166,15 +170,10 @@ export function registerListTasksTool(
 
 function toSafeListTasksError(error: unknown) {
   if (error instanceof TaskReadAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to read Task.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to read Task.",
+    );
   }
 
   if (error instanceof TaskDomainError) {
@@ -182,22 +181,17 @@ function toSafeListTasksError(error: unknown) {
       error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND"
         ? "Task is unavailable for the authenticated user."
         : "The Task list request is invalid.";
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "list_tasks failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      { type: "text" as const, text: "Task is temporarily unavailable." },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Task is temporarily unavailable.",
+  );
 }
 
 export class TaskReadAuthenticationError extends Error {
