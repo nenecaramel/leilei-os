@@ -1,9 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import {
-  TodoServiceError,
-} from "../../../domains/todo/todo-service.js";
+import { TodoServiceError } from "../../../domains/todo/todo-service.js";
 import type { TodoDayPapers } from "../../../domains/todo/todo-types.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const todoEntrySchema = z.object({
   id: z.string(),
@@ -22,16 +21,19 @@ const readTodoDayInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 }).strict();
 
-const readTodoDayOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    date: z.string(),
-    papers: z.object({
-      L: todoPaperSchema.nullable(),
-      G: todoPaperSchema.nullable(),
-    }),
+const readTodoDayDataSchema = z.object({
+  date: z.string(),
+  papers: z.object({
+    L: todoPaperSchema.nullable(),
+    G: todoPaperSchema.nullable(),
   }),
 });
+
+const readTodoDayOutputSchema = z.object({
+  success: z.boolean(),
+  data: readTodoDayDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface ReadTodoDayToolService {
   readDay(userId: string, date: string): Promise<{
@@ -84,28 +86,22 @@ export function toSafeTodoReadError(
   toolName: "read_todo_day" | "list_todo_dates",
 ) {
   if (error instanceof TodoReadAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [{
-        type: "text" as const,
-        text: "Authentication is required to read Todo.",
-      }],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to read Todo.",
+    );
   }
   if (error instanceof TodoServiceError) {
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: "The Todo request is invalid." }],
-    };
+    return createMcpToolError(error.code, "The Todo request is invalid.");
   }
   console.error(
     `${toolName} failed`,
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [{ type: "text" as const, text: "Todo is temporarily unavailable." }],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Todo is temporarily unavailable.",
+  );
 }
 
 export class TodoReadAuthenticationError extends Error {
