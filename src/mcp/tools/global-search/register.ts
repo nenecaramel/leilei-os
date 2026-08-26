@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { GlobalSearchError, type GlobalSearchInput, type GlobalSearchResult } from "../../../domains/global-search/global-search-service.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const MAX_CURSOR_ENCODED_LENGTH = 2800;
 
@@ -70,18 +71,21 @@ const globalSearchResultSchema = z.object({
   context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Memory, Diary, and Task detail_arguments require a UUID id and scope." });
 });
 
-const globalSearchOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    results: z.array(globalSearchResultSchema),
-    metadata: z.object({
-      count: z.number().int().min(0).max(25),
-      has_more: z.boolean(),
-      next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
-      searched_modules: z.array(z.enum(["memory", "diary", "task", "universe"])).min(1).max(4),
-      searched_scope: z.enum(["active", "archived", "all"]),
-    }).strict(),
+const globalSearchDataSchema = z.object({
+  results: z.array(globalSearchResultSchema),
+  metadata: z.object({
+    count: z.number().int().min(0).max(25),
+    has_more: z.boolean(),
+    next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
+    searched_modules: z.array(z.enum(["memory", "diary", "task", "universe"])).min(1).max(4),
+    searched_scope: z.enum(["active", "archived", "all"]),
   }).strict(),
+}).strict();
+
+const globalSearchOutputSchema = z.object({
+  success: z.boolean(),
+  data: globalSearchDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type GlobalSearchToolDependencies = { globalSearchService: { search(input: GlobalSearchInput): Promise<GlobalSearchResult> }; getAuthenticatedUserId: () => string };
@@ -100,10 +104,28 @@ export function registerGlobalSearchTool(server: McpServer, dependencies: Global
       return { content: [{ type: "text", text: `Found ${data.metadata.count} records.` }], structuredContent: { success: true as const, data } };
     } catch (error) {
       if (error instanceof GlobalSearchAuthenticationError) {
-        return { isError: true as const, content: [{ type: "text" as const, text: "Authentication is required to use global search." }] };
+        return createMcpToolError(
+          "AUTHENTICATION_REQUIRED",
+          "Authentication is required to use global search.",
+        );
       }
-      const unavailable = error instanceof GlobalSearchError && (error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND");
-      return { isError: true as const, content: [{ type: "text" as const, text: unavailable ? "Global search is unavailable for the authenticated user." : error instanceof GlobalSearchError ? "The global search request is invalid." : "Global search is temporarily unavailable." }] };
+      if (error instanceof GlobalSearchError) {
+        const unavailable = error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND";
+        return createMcpToolError(
+          error.code,
+          unavailable
+            ? "Global search is unavailable for the authenticated user."
+            : "The global search request is invalid.",
+        );
+      }
+      console.error(
+        "global_search failed",
+        error instanceof Error ? error.name : "UnknownError",
+      );
+      return createMcpToolError(
+        "INTERNAL_ERROR",
+        "Global search is temporarily unavailable.",
+      );
     }
   });
 }
