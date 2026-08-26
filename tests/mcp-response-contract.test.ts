@@ -333,7 +333,7 @@ test("Task and Notion discovery results expose deterministic exact-detail pointe
   assert.deepEqual(notionData.results[0]?.detail_arguments, { page_id: NOTION_PAGE_ID });
 });
 
-test("routing descriptions align with executable schemas and the production inventory remains 42", async (t) => {
+test("routing descriptions align with executable schemas and the production inventory remains 40", async (t) => {
   const server = createMcpServer({} as never);
   const pair = await connectServer(server, "mcp-response-contract-descriptions");
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
