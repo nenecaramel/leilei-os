@@ -68,9 +68,10 @@ There are also concrete description/schema contradictions:
 2. **Do not replace body echo with truncation.** A mutation receipt must not return a misleading shortened `content` or `summary`. Full authoritative content remains an exact-detail concern.
 3. **Pointers are deterministic, not advisory prose.** When the next exact-detail tool and arguments are mechanically known, expose them as data.
 4. **Descriptions are model routing contracts.** Routing-sensitive descriptions state use-case, exclusion/alternative, result granularity, and next step. Unrelated tools are not cosmetically rewritten.
-5. **Preserve business semantics.** Ownership, lifecycle, idempotency, CAS/version, state machines, provider behavior, and Web contracts do not change in this phase.
-6. **Test invariants, not English style.** Contract regression tests assert concrete schema/result/annotation properties. Do not build a brittle generic natural-language linter.
-7. **No hidden scope merge.** Machine-readable errors, pagination/count changes, Universe backend query optimization, and observability remain later phases.
+5. **Routing edits must preserve safety instructions.** Existing consent requirements, ownership boundaries, idempotency/CAS rules, destructive-operation warnings, no-blind-retry guidance, and provider/tool capability restrictions remain present unless this spec explicitly corrects a factual contradiction.
+6. **Preserve business semantics.** Ownership, lifecycle, idempotency, CAS/version, state machines, provider behavior, and Web contracts do not change in this phase.
+7. **Test invariants, not English style.** Contract regression tests assert concrete schema/result/annotation properties. Do not build a brittle generic natural-language linter.
+8. **No hidden scope merge.** Machine-readable errors, pagination/count changes, Universe backend query optimization, and observability remain later phases.
 
 ## 1. Compact Mutation Receipts
 
@@ -204,7 +205,7 @@ Each returned Task list item adds:
 - `detail_tool: "get_task"`
 - `detail_arguments: { id }`
 
-The list continues to omit `description`. Filters, ordering, limits, count behavior, Task lifecycle semantics, and `get_task` output are unchanged.
+The list continues to omit Task `description`. Filters, ordering, limits, count behavior, Task lifecycle semantics, and `get_task` output are unchanged.
 
 ### `search_notion`
 
@@ -221,7 +222,7 @@ Do not add a detail pointer where there is no exact deterministic detail tool. I
 
 ## 3. Routing Description Contract
 
-Phase 1 rewrites **routing-sensitive** descriptions, not all 42 descriptions for cosmetic consistency.
+Phase 1 rewrites **routing-sensitive** descriptions, not all 42 descriptions for cosmetic consistency. Every rewrite must preserve the existing safety and capability restrictions that are still true.
 
 The following decision paths must be explicit to the model.
 
@@ -255,6 +256,7 @@ The following decision paths must be explicit to the model.
 
 `write_memory` / `update_memory`:
 
+- preserve the existing explicit-confirmation / safe-write requirements and no-blind-retry guidance;
 - success result is a compact receipt;
 - use returned `detail_tool/detail_arguments` when authoritative readback is needed;
 - archived idempotent replay uses `get_memory` with `scope=archived`, not a stale “active-only” warning.
@@ -273,6 +275,7 @@ The following decision paths must be explicit to the model.
 
 `update_diary`:
 
+- preserve its existing no-blind-retry guidance;
 - success receipt is compact; use the returned detail pointer when full readback is needed.
 
 ### Task
@@ -280,7 +283,7 @@ The following decision paths must be explicit to the model.
 `list_tasks`:
 
 - use for browsing/searching/filtering Tasks;
-- descriptions are intentionally omitted;
+- Task descriptions are intentionally omitted;
 - use each item's `get_task` pointer for exact detail.
 
 `get_task`:
@@ -289,6 +292,7 @@ The following decision paths must be explicit to the model.
 
 `create_task`:
 
+- preserve due-time/timezone and server-owned-status guidance;
 - describe the write as idempotent with a required stable `idempotency_key`;
 - remove the false “non-idempotent” claim.
 
@@ -311,7 +315,7 @@ The following decision paths must be explicit to the model.
 - use only with an exact canonical node ID;
 - returns full selected node content.
 
-Create/update node descriptions must make clear that success is a compact receipt and the returned detail pointer is the exact read route when full state is needed.
+Create/update node descriptions must preserve expected-version, idempotency and no-blind-retry guidance while making clear that success is a compact receipt and the returned detail pointer is the exact read route when full state is needed.
 
 ### Notion
 
@@ -332,7 +336,7 @@ Create/update node descriptions must make clear that success is a compact receip
 
 ### Toy
 
-`toy_stop` must state that it requires an `idempotency_key`. Remove the false claim that it accepts no parameters. Toy command behavior is otherwise unchanged.
+`toy_stop` must preserve its existing device/payload safety restrictions and state that it requires an `idempotency_key`. Remove the false claim that it accepts no parameters. Toy command behavior is otherwise unchanged.
 
 ## 4. Small Duplicate Structured-Output Cleanup
 
@@ -358,14 +362,16 @@ For each of:
 - `create_universe_node`
 - `update_universe_node`
 
-use a service fixture containing a unique body sentinel and a 100,000-unit body where the domain supports it. Assert:
+use a service fixture containing a unique body sentinel. For Memory and Diary, use a 100,000-unit body. For Universe adapter tests, the stubbed service result may also contain a 100,000-unit `content`/large `summary` solely to prove that the MCP projection does not echo service-layer body size; this does **not** create a new canonical Universe content-limit requirement.
+
+Assert:
 
 1. the body sentinel/full body does not appear in MCP text content;
 2. the body field does not appear in the successful structured receipt;
 3. the expected detail pointer is present and points at the exact returned ID;
-4. serializing the large-body receipt stays effectively body-size-independent: compared with an otherwise identical tiny-body fixture, output growth must be bounded by a small fixed allowance rather than growing with body length.
+4. compared with an otherwise identical tiny-body fixture, UTF-8 byte size of the serialized successful receipt grows by **no more than 1,024 bytes**.
 
-The test should prefer this body-size-independence invariant over an arbitrary universal response byte cap, because metadata sizes differ by domain.
+The fixed 1,024-byte delta is a regression allowance, not a product response-size quota. It catches linear body echo while allowing harmless formatting/metadata differences.
 
 ### Pointer regression
 
@@ -379,7 +385,7 @@ Add targeted assertions for machine-checkable facts, including:
 
 - `create_task` requires `idempotency_key` and retains `idempotentHint: true`; its description must not call the operation non-idempotent.
 - `toy_stop` requires `idempotency_key`; its description must not claim it accepts no parameters.
-- `write_memory` archived replay can route to `get_memory` with archived scope.
+- `write_memory` archived replay returns `detail_tool=get_memory` with `scope=archived`.
 
 Do not implement a general English parser or generic “description quality score”.
 
@@ -413,7 +419,7 @@ Tool names, input schemas, canonical persistence, Web APIs, ownership/lifecycle 
 
 ### Error behavior
 
-Phase 1 does not redesign errors. Existing success/error behavior must remain compatible except where a stale success-path description is corrected.
+Phase 1 does not redesign errors. Existing success/error behavior must remain compatible except where stale descriptive text is corrected.
 
 Machine-readable error envelopes are Phase 2.
 
@@ -443,10 +449,10 @@ Phase 1 is accepted only when all of the following are true.
 
 1. The five targeted long-body/full-node mutation tools no longer return full semantic bodies in successful MCP receipts.
 2. Each compacted mutation receipt contains enough stable identity/version/replay evidence for the existing write semantics plus an exact detail pointer where an exact detail tool exists.
-3. A 100k Memory/Diary fixture cannot make the corresponding successful MCP receipt grow linearly with the body.
+3. A 100k Memory/Diary fixture cannot make the corresponding successful MCP receipt grow linearly with the body; the specified large-vs-small serialized receipt delta stays within 1,024 bytes.
 4. `list_tasks` returns deterministic `get_task` pointers for every item.
 5. `search_notion` returns deterministic `read_notion_page` pointers for every result.
-6. Routing-sensitive descriptions clearly distinguish browse/search/detail routes, including `global_search` versus known-domain search.
+6. Routing-sensitive descriptions clearly distinguish browse/search/detail routes, including `global_search` versus known-domain search, while preserving existing safety constraints.
 7. The `create_task`, `toy_stop`, and archived-`write_memory` description/schema drift is fixed.
 8. Local/weather context no longer duplicates the structured object as JSON text.
 9. The production tool inventory remains 42.
