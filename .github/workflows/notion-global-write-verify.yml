@@ -38,13 +38,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-      - name: Verify exact PR head
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact event head
         run: |
           actual="$(git rev-parse HEAD)"
-          expected="${{ github.event.pull_request.head.sha }}"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           test "$actual" = "$expected"
-          echo "Checked out exact PR head: $actual"
+          echo "Checked out exact event head: $actual"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.9.0
