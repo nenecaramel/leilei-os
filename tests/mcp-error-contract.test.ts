@@ -660,6 +660,14 @@ test("production MCP error audit covers every registered tool", async (t) => {
     .map(([name]) => name)
     .sort();
   assert.deepEqual(structured, [...STRUCTURED_ERROR_ASSERTION_TOOLS].sort());
+  assert.equal(structured.length, 37);
+  assert.deepEqual(
+    Object.entries(PRODUCTION_MCP_TOOL_ERROR_AUDIT)
+      .filter(([, kind]) => kind === "no-handler-error")
+      .map(([name]) => name)
+      .sort(),
+    ["get_local_context", "get_weather_context", "hello"],
+  );
 
   for (const [name, relativePath] of Object.entries(NO_HANDLER_ERROR_SOURCE_FILES)) {
     const source = readFileSync(resolve(process.cwd(), relativePath), "utf8");
