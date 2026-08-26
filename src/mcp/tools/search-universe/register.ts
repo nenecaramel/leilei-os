@@ -5,7 +5,8 @@ import {
   type GlobalSearchInput,
   type GlobalSearchResult,
 } from "../../../domains/global-search/global-search-service.js";
-import { safeUniverseError, UniverseAuthenticationError } from "../universe/shared.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { safeUniverseReadError, UniverseAuthenticationError } from "../universe/shared.js";
 
 const MAX_CURSOR_ENCODED_LENGTH = 2800;
 const inputSchema = z.object({
@@ -32,7 +33,7 @@ const itemSchema = z.object({
   detail_arguments: z.object({ id: z.string().min(1).max(256) }).strict(),
 }).strict();
 const outputSchema = z.object({
-  success: z.literal(true),
+  success: z.boolean(),
   data: z.object({
     results: z.array(itemSchema).max(25),
     metadata: z.object({
@@ -42,7 +43,8 @@ const outputSchema = z.object({
       searched_modules: z.tuple([z.literal("universe")]),
       searched_scope: z.literal("active"),
     }).strict(),
-  }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type SearchUniverseToolDependencies = {
@@ -94,14 +96,14 @@ export function registerSearchUniverseTool(server: McpServer, dependencies: Sear
       };
       return { content: [{ type: "text", text: `Found ${universeData.metadata.count} Universe nodes.` }], structuredContent: { success: true as const, data: universeData } };
     } catch (error) {
-      if (error instanceof UniverseAuthenticationError) return safeUniverseError(error, "A Universe node was not found.");
+      if (error instanceof UniverseAuthenticationError) return safeUniverseReadError(error, "A Universe node was not found.");
       if (error instanceof GlobalSearchError) {
         const text = error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND"
           ? "Universe is unavailable for the authenticated user."
           : "The Universe search request is invalid.";
-        return { isError: true as const, content: [{ type: "text" as const, text }] };
+        return createMcpToolError(error.code, text);
       }
-      return safeUniverseError(error, "A Universe node was not found.");
+      return safeUniverseReadError(error, "A Universe node was not found.");
     }
   });
 }

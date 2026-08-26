@@ -2,7 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
-import { safeUniverseError } from "../universe/shared.js";
+import { mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { safeUniverseReadError } from "../universe/shared.js";
 
 const relationSchema = z.object({
   id: z.string().min(1).max(256), source: z.string().min(1).max(256), target: z.string().min(1).max(256),
@@ -10,13 +11,14 @@ const relationSchema = z.object({
   strength: z.number().finite(), created_at: z.string().datetime(),
 }).strict();
 const outputSchema = z.object({
-  success: z.literal(true),
+  success: z.boolean(),
   data: z.object({
     node_id: z.string().min(1).max(256),
     relations: z.array(relationSchema),
     metadata: z.object({ count: z.number().int().min(0) }).strict(),
     universe_version: z.number().int().nonnegative(),
-  }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type GetUniverseRelationsToolDependencies = { universeService: Pick<UniverseService, "loadUniverse">; getAuthenticatedUserId: () => string };
@@ -39,7 +41,7 @@ export function registerGetUniverseRelationsTool(server: McpServer, dependencies
         structuredContent: { success: true as const, data: { node_id, relations, metadata: { count: relations.length }, universe_version: version } },
       };
     } catch (error) {
-      return safeUniverseError(error, "Universe node was not found.");
+      return safeUniverseReadError(error, "Universe node was not found.");
     }
   });
 }

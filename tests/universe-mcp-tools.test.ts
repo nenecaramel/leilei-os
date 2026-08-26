@@ -236,7 +236,9 @@ test("Universe MCP tools fail closed at authentication and ownership boundaries"
       ? { query: "x" }
       : name === "get_universe_node"
         ? { id: "node-1" }
-        : { node_id: "node-1" };
+        : name === "list_universe_nodes"
+          ? {}
+          : { node_id: "node-1" };
     const result = await fixture.client.callTool({ name, arguments: args });
     assert.equal(result.isError, true);
     assert.deepEqual(result.structuredContent, {
@@ -245,7 +247,7 @@ test("Universe MCP tools fail closed at authentication and ownership boundaries"
         code: "AUTHENTICATION_REQUIRED",
         message: "Authentication is required to access Universe.",
       },
-    });
+    }, name);
     assert.match(JSON.stringify(result.content), /authentication/i);
   }
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
+import { createMcpToolError } from "../error-contract.js";
 
 const universeWriteErrorCodes = [
   "USER_NOT_FOUND",
@@ -61,6 +62,24 @@ export function safeUniverseError(error: unknown, notFoundMessage: string) {
     isError: true as const,
     content: [{ type: "text" as const, text: "Universe is temporarily unavailable." }],
   };
+}
+
+export function safeUniverseReadError(error: unknown, notFoundMessage: string) {
+  if (error instanceof UniverseAuthenticationError) {
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to access Universe.",
+    );
+  }
+  if (error instanceof UniverseServiceError) {
+    const message = safeUniverseServiceMessage(error, notFoundMessage);
+    return createMcpToolError(error.code, message);
+  }
+  console.error("Universe MCP read failed", error instanceof Error ? error.name : "UnknownError");
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Universe is temporarily unavailable.",
+  );
 }
 
 export function safeUniverseWriteError(error: unknown, notFoundMessage: string) {

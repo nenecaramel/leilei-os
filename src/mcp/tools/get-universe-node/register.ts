@@ -2,7 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import type { UniverseNode } from "../../../domains/universe/universe-types.js";
-import { safeUniverseError } from "../universe/shared.js";
+import { mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { safeUniverseReadError } from "../universe/shared.js";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
 
 const nodeIdSchema = z.string().trim().min(1).max(256).describe("Exact canonical Universe node ID.");
@@ -14,8 +15,9 @@ const nodeSchema = z.object({
   migration: z.object({ source: z.enum(["mind-universe-static", "mind-universe"]), migratedAt: z.string().datetime() }).strict().optional(),
 }).strict();
 const outputSchema = z.object({
-  success: z.literal(true),
-  data: nodeSchema.extend({ universe_version: z.number().int().nonnegative() }),
+  success: z.boolean(),
+  data: nodeSchema.extend({ universe_version: z.number().int().nonnegative() }).optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type GetUniverseNodeToolDependencies = {
@@ -39,7 +41,7 @@ export function registerGetUniverseNodeTool(server: McpServer, dependencies: Get
         structuredContent: { success: true as const, data: { ...(result.node as UniverseNode), universe_version: result.version } },
       };
     } catch (error) {
-      return safeUniverseError(error, "Universe node was not found.");
+      return safeUniverseReadError(error, "Universe node was not found.");
     }
   });
 }

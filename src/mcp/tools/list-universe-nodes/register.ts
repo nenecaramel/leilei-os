@@ -2,7 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
-import { safeUniverseError } from "../universe/shared.js";
+import { mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { safeUniverseReadError } from "../universe/shared.js";
 
 const cursorSchema = z.string().min(1).max(2048);
 const outputNodeSchema = z.object({
@@ -19,14 +20,15 @@ const outputNodeSchema = z.object({
 }).strict();
 
 const outputSchema = z.object({
-  success: z.literal(true),
+  success: z.boolean(),
   data: z.object({
     count: z.number().int().nonnegative(),
     has_more: z.boolean(),
     next_cursor: z.string().nullable(),
     universe_version: z.number().int().nonnegative(),
     nodes: z.array(outputNodeSchema),
-  }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type ListUniverseNodesToolDependencies = {
@@ -75,7 +77,7 @@ export function registerListUniverseNodesTool(server: McpServer, dependencies: L
         },
       };
     } catch (error) {
-      return safeUniverseError(error, "Universe node was not found.");
+      return safeUniverseReadError(error, "Universe node was not found.");
     }
   });
 }
