@@ -7,6 +7,10 @@ import {
   type ReadMemoryResult,
 } from "../../../domains/memory/memory-service.js";
 import { createLeadingPreview } from "../../../domains/compact-text.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -31,30 +35,33 @@ const readMemoryInputSchema = z
   })
   .strict();
 
-const readMemoryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    user: z.object({
-      display_name: z.string(),
+const readMemoryDataSchema = z.object({
+  user: z.object({
+    display_name: z.string(),
+  }),
+  memories: z.array(
+    z.object({
+      id: z.string(),
+      category: memoryCategorySchema,
+      key: z.string(),
+      tags: z.array(z.string()),
+      author: contentAuthorSchema.nullable(),
+      updated_at: z.string().datetime(),
+      preview: z.string(),
+      detail_tool: z.literal("get_memory"),
+      detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
     }),
-    memories: z.array(
-      z.object({
-        id: z.string(),
-        category: memoryCategorySchema,
-        key: z.string(),
-        tags: z.array(z.string()),
-        author: contentAuthorSchema.nullable(),
-        updated_at: z.string().datetime(),
-        preview: z.string(),
-        detail_tool: z.literal("get_memory"),
-        detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
-      }),
-    ),
-    metadata: z.object({
-      count: z.number().int().nonnegative(),
-    }),
+  ),
+  metadata: z.object({
+    count: z.number().int().nonnegative(),
   }),
 });
+
+const readMemoryOutputSchema = z.object({
+  success: z.boolean(),
+  data: readMemoryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface ReadMemoryToolService {
   readMemory(input: ReadMemoryInput): Promise<ReadMemoryResult>;
@@ -149,15 +156,10 @@ function withDetailPointers(result: ReadMemoryDiscoveryResult): ReadMemoryDiscov
 
 function toSafeToolError(error: unknown) {
   if (error instanceof ReadMemoryAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to read memory.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to read memory.",
+    );
   }
 
   if (error instanceof MemoryDomainError) {
@@ -166,25 +168,17 @@ function toSafeToolError(error: unknown) {
         ? "Memory is unavailable for the authenticated user."
         : "The memory request is invalid.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "read_memory failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Memory is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Memory is temporarily unavailable.",
+  );
 }
 
 export class ReadMemoryAuthenticationError extends Error {

@@ -10,6 +10,7 @@ import {
   isActiveUserAuthorizationError,
   type NotionUserAuthorizationDependencies,
 } from "../../server/notion-authorization.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const inputSchema = z.object({
   query: z
@@ -33,7 +34,7 @@ const pageSchema = z.object({
 }).strict();
 
 const outputSchema = z.object({
-  success: z.literal(true),
+  success: z.boolean(),
   data: z.object({
     results: z.array(pageSchema).max(25),
     metadata: z.object({
@@ -41,7 +42,8 @@ const outputSchema = z.object({
       has_more: z.boolean(),
       next_cursor: z.string().max(2000).nullable(),
     }).strict(),
-  }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type SearchNotionToolDependencies = NotionUserAuthorizationDependencies & {
@@ -93,45 +95,37 @@ export function registerSearchNotionTool(
       };
     } catch (error) {
       if (error instanceof SearchNotionAuthenticationError || isActiveUserAuthorizationError(error)) {
-        return {
-          isError: true as const,
-          content: [{
-            type: "text" as const,
-            text: "Authentication is required to search Notion.",
-          }],
-        };
+        return createMcpToolError(
+          "AUTHENTICATION_REQUIRED",
+          "Authentication is required to search Notion.",
+        );
       }
 
-      return {
-        isError: true as const,
-        content: [{
-          type: "text" as const,
-          text: mapNotionSearchError(error),
-        }],
-      };
+      const mapped = mapNotionSearchError(error);
+      return createMcpToolError(mapped.code, mapped.message);
     }
   });
 }
 
-function mapNotionSearchError(error: unknown): string {
+function mapNotionSearchError(error: unknown): { code: string; message: string } {
   if (!(error instanceof NotionReadError)) {
-    return "Notion is temporarily unavailable.";
+    return { code: "INTERNAL_ERROR", message: "Notion is temporarily unavailable." };
   }
 
   switch (error.code) {
     case "NOT_CONFIGURED":
-      return "Notion is not configured.";
+      return { code: error.code, message: "Notion is not configured." };
     case "AUTHENTICATION_FAILED":
-      return "Notion authentication failed.";
+      return { code: error.code, message: "Notion authentication failed." };
     case "ACCESS_DENIED":
-      return "Notion access is unavailable.";
+      return { code: error.code, message: "Notion access is unavailable." };
     case "RATE_LIMITED":
-      return "Notion is temporarily rate limited.";
+      return { code: error.code, message: "Notion is temporarily rate limited." };
     case "MALFORMED_RESPONSE":
-      return "Notion returned an unsupported response.";
+      return { code: error.code, message: "Notion returned an unsupported response." };
     case "NOT_FOUND":
     case "UPSTREAM":
-      return "Notion is temporarily unavailable.";
+      return { code: error.code, message: "Notion is temporarily unavailable." };
   }
 }
 

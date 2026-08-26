@@ -348,6 +348,63 @@ test("Universe mutation errors remain safe and distinguish stale versions", asyn
   assert.match(JSON.stringify(self.content), /RELATION_INVALID/);
 });
 
+test("Universe relation and Diary-source mutations expose structured domain errors", async (t) => {
+  const fixture = await connect({
+    universeProvenanceTools: {
+      relationService: {
+        async deleteRelation() {
+          throw new UniverseServiceError("RELATION_NOT_FOUND", "PRIVATE_RELATION_DETAIL");
+        },
+      },
+      sourceService: {
+        async addUniverseDiarySource() {
+          throw new UniverseServiceError("DIARY_SOURCE_CONFLICT", "PRIVATE_SOURCE_DETAIL");
+        },
+        async deleteUniverseDiarySource() {
+          throw new UniverseServiceError("DIARY_SOURCE_NOT_FOUND", "PRIVATE_SOURCE_DETAIL");
+        },
+      },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const cases = [
+    {
+      name: "delete_universe_relation",
+      arguments: { relation_id: "edge-1", expected_version: 2 },
+      code: "RELATION_NOT_FOUND",
+    },
+    {
+      name: "add_universe_diary_source",
+      arguments: { node_id: "node-1", diary_id: "00000000-0000-4000-8000-000000000111", expected_version: 2 },
+      code: "DIARY_SOURCE_CONFLICT",
+    },
+    {
+      name: "delete_universe_diary_source",
+      arguments: { node_id: "node-1", diary_id: "00000000-0000-4000-8000-000000000111", expected_version: 2 },
+      code: "DIARY_SOURCE_NOT_FOUND",
+    },
+  ] as const;
+
+  for (const entry of cases) {
+    const result = await fixture.client.callTool({ name: entry.name, arguments: entry.arguments });
+    assert.equal(result.isError, true, entry.name);
+    assert.deepEqual(result.structuredContent, {
+      success: false,
+      error: {
+        code: entry.code,
+        message: entry.code === "RELATION_NOT_FOUND"
+          ? "Universe relation was not found."
+          : entry.code === "DIARY_SOURCE_CONFLICT"
+            ? "That Diary is already attached to this Universe node."
+            : "That Universe Diary source binding was not found.",
+      },
+    });
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_(?:RELATION|SOURCE)_DETAIL/);
+  }
+});
+
 test("surfaces duplicate Universe relation code in both MCP result channels", async (t) => {
   let calls = 0;
   const fixture = await connect({
@@ -453,7 +510,7 @@ test("keeps unknown Universe write errors generic and non-sensitive", async (t) 
   assert.doesNotMatch(JSON.stringify(result), /driver secret should not leak/);
 });
 
-test("leaves Universe read error behavior unchanged", async (t) => {
+test("Universe read errors expose a machine-readable envelope", async (t) => {
   const fixture = await connect({
     universeTools: {
       universeService: {
@@ -467,6 +524,12 @@ test("leaves Universe read error behavior unchanged", async (t) => {
 
   const result = await fixture.client.callTool({ name: "get_universe_node", arguments: { id: "missing-node" } });
   assert.equal(result.isError, true);
-  assert.equal(result.structuredContent, undefined);
+  assert.deepEqual(result.structuredContent, {
+    success: false,
+    error: {
+      code: "NODE_NOT_FOUND",
+      message: "Universe node was not found.",
+    },
+  });
   assert.deepEqual(result.content, [{ type: "text", text: "Universe node was not found." }]);
 });

@@ -6,6 +6,7 @@ import {
   type TaskEntryResult,
 } from "../../../domains/task/task-service.js";
 import { TaskReadAuthenticationError } from "../list-tasks/register.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const taskStatusSchema = z.enum([
   "pending",
@@ -36,26 +37,29 @@ const getTaskInputSchema = z
   })
   .strict();
 
-const getTaskOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    id: z.string(),
-    title: z.string(),
-    description: z.string(),
-    status: taskStatusSchema,
-    priority: taskPrioritySchema,
-    due_time: dateTimeSchema.nullable(),
-    timezone: z.string(),
-    time_bucket: taskTimeBucketSchema,
-    tags: z.array(z.string()),
-    created_at: dateTimeSchema,
-    updated_at: dateTimeSchema,
-    completed_at: dateTimeSchema.nullable(),
-    allowed_actions: z.array(taskActionSchema),
-    lifecycle_status: z.enum(["active", "archived"]),
-    author: contentAuthorSchema.nullable(),
-  }),
+const getTaskDataSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  status: taskStatusSchema,
+  priority: taskPrioritySchema,
+  due_time: dateTimeSchema.nullable(),
+  timezone: z.string(),
+  time_bucket: taskTimeBucketSchema,
+  tags: z.array(z.string()),
+  created_at: dateTimeSchema,
+  updated_at: dateTimeSchema,
+  completed_at: dateTimeSchema.nullable(),
+  allowed_actions: z.array(taskActionSchema),
+  lifecycle_status: z.enum(["active", "archived"]),
+  author: contentAuthorSchema.nullable(),
 });
+
+const getTaskOutputSchema = z.object({
+  success: z.boolean(),
+  data: getTaskDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface GetTaskToolService {
   readTask(input: ReadTaskInput): Promise<TaskEntryResult>;
@@ -106,15 +110,10 @@ export function registerGetTaskTool(
 
 function toSafeGetTaskError(error: unknown) {
   if (error instanceof TaskReadAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to read Task.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to read Task.",
+    );
   }
 
   if (error instanceof TaskDomainError) {
@@ -124,20 +123,15 @@ function toSafeGetTaskError(error: unknown) {
         : error.code === "TASK_NOT_FOUND"
           ? "Task was not found."
           : "The Task request is invalid.";
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "get_task failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      { type: "text" as const, text: "Task is temporarily unavailable." },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Task is temporarily unavailable.",
+  );
 }

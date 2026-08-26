@@ -13,6 +13,10 @@ import {
 } from "../../../domains/mcp-write/mcp-write-idempotency.js";
 import { MEMORY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const memoryCategorySchema = z.enum(["profile", "preference", "goal", "project"]);
 const rawMemoryKeySchema = z.string().max(1_000);
@@ -31,31 +35,34 @@ const writeMemoryInputSchema = z.object({
     .regex(MCP_IDEMPOTENCY_KEY_PATTERN),
 }).strict();
 
-const writeMemoryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    memory: z.object({
-      id: z.string().uuid(),
-      category: memoryCategorySchema,
-      key: z.string(),
-      tags: z.array(z.string()),
-      source: z.literal("mcp"),
-      lifecycle_status: z.enum(["active", "archived"]),
-      created_at: z.string().datetime(),
-      updated_at: z.string().datetime(),
-      author: contentAuthorSchema.nullable(),
-    }),
-    metadata: z.object({
-      created: z.boolean(),
-      idempotent_replay: z.boolean(),
-    }),
-    detail_tool: z.literal("get_memory"),
-    detail_arguments: z.object({
-      id: z.string().uuid(),
-      scope: z.enum(["active", "archived"]),
-    }).strict(),
+const writeMemoryDataSchema = z.object({
+  memory: z.object({
+    id: z.string().uuid(),
+    category: memoryCategorySchema,
+    key: z.string(),
+    tags: z.array(z.string()),
+    source: z.literal("mcp"),
+    lifecycle_status: z.enum(["active", "archived"]),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+    author: contentAuthorSchema.nullable(),
   }),
+  metadata: z.object({
+    created: z.boolean(),
+    idempotent_replay: z.boolean(),
+  }),
+  detail_tool: z.literal("get_memory"),
+  detail_arguments: z.object({
+    id: z.string().uuid(),
+    scope: z.enum(["active", "archived"]),
+  }).strict(),
 });
+
+const writeMemoryOutputSchema = z.object({
+  success: z.boolean(),
+  data: writeMemoryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface WriteMemoryToolService {
   createMcpMemory(
@@ -146,10 +153,10 @@ function responseText(data: CreateMcpMemoryResult): string {
 
 function toSafeToolError(error: unknown) {
   if (error instanceof WriteMemoryAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: "Authentication is required to write Memory." }],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to write Memory.",
+    );
   }
   if (error instanceof MemoryDomainError) {
     const text = error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND"
@@ -159,13 +166,13 @@ function toSafeToolError(error: unknown) {
         : error.code === "MEMORY_KEY_CONFLICT"
           ? "A Memory record already uses this key."
           : "The Memory request is invalid.";
-    return { isError: true as const, content: [{ type: "text" as const, text }] };
+    return createMcpToolError(error.code, text);
   }
   console.error("write_memory failed", error instanceof Error ? error.name : "UnknownError");
-  return {
-    isError: true as const,
-    content: [{ type: "text" as const, text: "Memory writing is temporarily unavailable." }],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Memory writing is temporarily unavailable.",
+  );
 }
 
 export class WriteMemoryAuthenticationError extends Error {

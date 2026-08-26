@@ -2,9 +2,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { NotionConnectionResult, NotionIntegration } from "../../../domains/notion/notion-read-integration.js";
 import { NotionAdvancedAuthenticationError, authorizeNotionUser, readOnlyNotionAnnotations, safeNotionAdvancedError, type NotionUserAuthorizationDependencies } from "../notion-advanced/shared.js";
+import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const outputSchema = z.object({
-  success: z.literal(true),
+  success: z.boolean(),
   data: z.object({
     provider: z.literal("notion"),
     connection: z.object({ id: z.string().min(1), name: z.string(), type: z.enum(["bot", "person", "unknown"]) }).strict(),
@@ -13,7 +14,8 @@ const outputSchema = z.object({
       operation: z.enum(["page.read", "database.read", "data_source.read", "data_source.query"]),
       status: z.literal("unverified"),
     }).strict()),
-  }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type GetNotionConnectionToolDependencies = NotionUserAuthorizationDependencies & {

@@ -4,12 +4,14 @@ import {
   toSafeTodoReadError,
   type ReadTodoDayToolDependencies,
 } from "../read-todo-day/register.js";
+import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const listTodoDatesInputSchema = z.object({}).strict();
 const listTodoDatesOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({ dates: z.array(z.string()) }),
-});
+  success: z.boolean(),
+  data: z.object({ dates: z.array(z.string()) }).optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface ListTodoDatesToolService {
   listDates(userId: string): Promise<string[]>;

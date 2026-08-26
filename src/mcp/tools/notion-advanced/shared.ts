@@ -4,6 +4,7 @@ import {
   isActiveUserAuthorizationError,
   type NotionUserAuthorizationDependencies,
 } from "../../server/notion-authorization.js";
+import { createMcpToolError } from "../error-contract.js";
 
 export class NotionAdvancedAuthenticationError extends Error {
   constructor() {
@@ -17,10 +18,10 @@ export type { NotionUserAuthorizationDependencies };
 
 export function safeNotionAdvancedError(error: unknown) {
   if (error instanceof NotionAdvancedAuthenticationError || isActiveUserAuthorizationError(error)) {
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: "Authentication is required to access Notion." }],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to access Notion.",
+    );
   }
   if (error instanceof NotionIntegrationError) {
     const text = error.code === "NOT_CONFIGURED"
@@ -38,12 +39,12 @@ export function safeNotionAdvancedError(error: unknown) {
               : error.code === "MALFORMED_RESPONSE"
                 ? "Notion returned an unsupported response."
                 : "Notion is temporarily unavailable.";
-    return { isError: true as const, content: [{ type: "text" as const, text }] };
+    return createMcpToolError(error.code, text);
   }
-  return {
-    isError: true as const,
-    content: [{ type: "text" as const, text: "Notion is temporarily unavailable." }],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Notion is temporarily unavailable.",
+  );
 }
 
 export const readOnlyNotionAnnotations = {

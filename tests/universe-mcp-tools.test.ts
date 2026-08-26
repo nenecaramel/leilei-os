@@ -102,6 +102,26 @@ test("Phase 8.5 registers dedicated Universe read tools", async (t) => {
     "update_universe_node",
   ]);
   assert.equal(names.length, 40);
+
+  const byName = new Map((await fixture.client.listTools()).tools.map((tool) => [tool.name, tool]));
+  for (const name of ["search_universe", "get_universe_node", "list_universe_nodes", "get_universe_relations", "get_universe_diary_sources"]) {
+    assert.deepEqual(byName.get(name)?.annotations, {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    const outputSchema = byName.get(name)?.outputSchema as {
+      properties?: {
+        success?: { type?: string; const?: unknown; enum?: unknown[] };
+        error?: unknown;
+      };
+    };
+    assert.equal(outputSchema.properties?.success?.type, "boolean");
+    assert.equal("const" in (outputSchema.properties?.success ?? {}), false);
+    assert.equal("enum" in (outputSchema.properties?.success ?? {}), false);
+    assert.ok(outputSchema.properties?.error);
+  }
 });
 
 test("search_universe validates input, forwards limit/cursor, and preserves pagination output", async (t) => {
@@ -211,10 +231,63 @@ test("Universe MCP tools fail closed at authentication and ownership boundaries"
     getAuthenticatedUserId: () => { throw new UniverseAuthenticationError(); },
   });
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
-  for (const name of ["search_universe", "get_universe_node", "get_universe_relations"]) {
-    const args = name === "search_universe" ? { query: "x" } : name === "get_universe_node" ? { id: "node-1" } : { node_id: "node-1" };
+  for (const name of ["search_universe", "get_universe_node", "list_universe_nodes", "get_universe_relations", "get_universe_diary_sources"]) {
+    const args = name === "search_universe"
+      ? { query: "x" }
+      : name === "get_universe_node"
+        ? { id: "node-1" }
+        : name === "list_universe_nodes"
+          ? {}
+          : { node_id: "node-1" };
     const result = await fixture.client.callTool({ name, arguments: args });
     assert.equal(result.isError, true);
-    assert.match(JSON.stringify(result), /authentication|unauthorized/i);
+    assert.deepEqual(result.structuredContent, {
+      success: false,
+      error: {
+        code: "AUTHENTICATION_REQUIRED",
+        message: "Authentication is required to access Universe.",
+      },
+    }, name);
+    assert.match(JSON.stringify(result.content), /authentication/i);
+  }
+});
+
+test("Universe read adapters expose safe INTERNAL_ERROR envelopes without raw details", async (t) => {
+  const sentinel = "UNIVERSE_READ_SECRET_SENTINEL";
+  const fixture = await connect({
+    universeTools: {
+      globalSearchService: { async search() { throw new Error(sentinel); } },
+      universeService: {
+        async loadUniverse() { throw new Error(sentinel); },
+        async listUniverseNodes() { throw new Error(sentinel); },
+      },
+      getAuthenticatedUserId: () => USER_ID,
+    },
+    universeProvenanceTools: {
+      sourceService: { async getUniverseDiarySources() { throw new Error(sentinel); } },
+      relationService: { async deleteRelation() { throw new Error("not used"); } },
+      getAuthenticatedUserId: () => USER_ID,
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const calls = [
+    ["search_universe", { query: "x" }],
+    ["get_universe_node", { id: "node-1" }],
+    ["list_universe_nodes", {}],
+    ["get_universe_relations", { node_id: "node-1" }],
+    ["get_universe_diary_sources", { node_id: "node-1" }],
+  ] as const;
+  for (const [name, args] of calls) {
+    const result = await fixture.client.callTool({ name, arguments: args });
+    assert.equal(result.isError, true);
+    assert.deepEqual(result.structuredContent, {
+      success: false,
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Universe is temporarily unavailable.",
+      },
+    });
+    assert.doesNotMatch(JSON.stringify(result), new RegExp(sentinel));
   }
 });

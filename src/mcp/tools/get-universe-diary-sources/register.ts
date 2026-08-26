@@ -1,7 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
-import { safeUniverseError } from "../universe/shared.js";
+import { mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { safeUniverseReadError } from "../universe/shared.js";
 
 const inputSchema = z.object({ node_id: z.string().trim().min(1).max(256) }).strict();
 const sourceSchema = z.object({
@@ -11,13 +12,14 @@ const sourceSchema = z.object({
   status: z.enum(["active", "archived"]),
 }).strict();
 const outputSchema = z.object({
-  success: z.literal(true),
+  success: z.boolean(),
   data: z.object({
     node_id: z.string().min(1).max(256),
     sources: z.array(sourceSchema),
     metadata: z.object({ count: z.number().int().min(0) }).strict(),
     universe_version: z.number().int().nonnegative(),
-  }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type GetUniverseDiarySourcesToolDependencies = {
@@ -47,7 +49,7 @@ export function registerGetUniverseDiarySourcesTool(server: McpServer, dependenc
         structuredContent: { success: true as const, data: { node_id, sources, metadata: { count: sources.length }, universe_version: result.version } },
       };
     } catch (error) {
-      return safeUniverseError(error, "Universe node was not found.");
+      return safeUniverseReadError(error, "Universe node was not found.");
     }
   });
 }

@@ -8,6 +8,10 @@ import {
 } from "../../../domains/memory/memory-service.js";
 import { MEMORY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const updateMemoryInputSchema = z.object({
   id: z.string().trim().min(1),
@@ -20,21 +24,24 @@ const updateMemoryInputSchema = z.object({
   message: "At least one Memory field must be supplied.",
 });
 
-const updateMemoryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    id: z.string(),
-    category: z.enum(["profile", "preference", "goal", "project"]),
-    key: z.string(),
-    tags: z.array(z.string()),
-    source: z.string(),
-    updated_at: z.string().datetime(),
-    lifecycle_status: z.literal("active"),
-    author: z.enum(["L", "G"]).nullable(),
-    detail_tool: z.literal("get_memory"),
-    detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
-  }),
+const updateMemoryDataSchema = z.object({
+  id: z.string(),
+  category: z.enum(["profile", "preference", "goal", "project"]),
+  key: z.string(),
+  tags: z.array(z.string()),
+  source: z.string(),
+  updated_at: z.string().datetime(),
+  lifecycle_status: z.literal("active"),
+  author: z.enum(["L", "G"]).nullable(),
+  detail_tool: z.literal("get_memory"),
+  detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
 });
+
+const updateMemoryOutputSchema = z.object({
+  success: z.boolean(),
+  data: updateMemoryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface UpdateMemoryToolService {
   updateMcpMemory(context: AuthenticatedMemoryContext, input: UpdateMcpMemoryInput): Promise<ReadMemoryDetailResult>;
@@ -79,15 +86,23 @@ export function registerUpdateMemoryTool(server: McpServer, dependencies: Update
 }
 
 function toSafeToolError(error: unknown) {
-  if (error instanceof UpdateMemoryAuthenticationError) return { isError: true as const, content: [{ type: "text" as const, text: "Authentication is required to update Memory." }] };
+  if (error instanceof UpdateMemoryAuthenticationError) {
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to update Memory.",
+    );
+  }
   if (error instanceof MemoryDomainError) {
     const text = error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND"
       ? "Memory updating is unavailable for the authenticated user."
       : error.code === "MEMORY_NOT_FOUND" ? "Memory was not found." : "The Memory update request is invalid.";
-    return { isError: true as const, content: [{ type: "text" as const, text }] };
+    return createMcpToolError(error.code, text);
   }
   console.error("update_memory failed", error instanceof Error ? error.name : "UnknownError");
-  return { isError: true as const, content: [{ type: "text" as const, text: "Memory updating is temporarily unavailable." }] };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Memory updating is temporarily unavailable.",
+  );
 }
 
 export class UpdateMemoryAuthenticationError extends Error {
