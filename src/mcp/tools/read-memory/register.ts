@@ -7,6 +7,10 @@ import {
   type ReadMemoryResult,
 } from "../../../domains/memory/memory-service.js";
 import { createLeadingPreview } from "../../../domains/compact-text.js";
+import {
+  createMcpToolError,
+  mcpToolErrorStructuredContentSchema,
+} from "../error-contract.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -31,7 +35,7 @@ const readMemoryInputSchema = z
   })
   .strict();
 
-const readMemoryOutputSchema = z.object({
+const readMemorySuccessOutputSchema = z.object({
   success: z.literal(true),
   data: z.object({
     user: z.object({
@@ -55,6 +59,11 @@ const readMemoryOutputSchema = z.object({
     }),
   }),
 });
+
+const readMemoryOutputSchema = z.union([
+  readMemorySuccessOutputSchema,
+  mcpToolErrorStructuredContentSchema,
+]);
 
 export interface ReadMemoryToolService {
   readMemory(input: ReadMemoryInput): Promise<ReadMemoryResult>;
@@ -149,15 +158,10 @@ function withDetailPointers(result: ReadMemoryDiscoveryResult): ReadMemoryDiscov
 
 function toSafeToolError(error: unknown) {
   if (error instanceof ReadMemoryAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to read memory.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to read memory.",
+    );
   }
 
   if (error instanceof MemoryDomainError) {
@@ -166,25 +170,17 @@ function toSafeToolError(error: unknown) {
         ? "Memory is unavailable for the authenticated user."
         : "The memory request is invalid.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "read_memory failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Memory is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Memory is temporarily unavailable.",
+  );
 }
 
 export class ReadMemoryAuthenticationError extends Error {
