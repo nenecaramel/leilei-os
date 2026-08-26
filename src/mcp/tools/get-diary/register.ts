@@ -6,6 +6,10 @@ import {
   type ReadDiaryInput,
 } from "../../../domains/diary/diary-service.js";
 import { DiaryReadAuthenticationError } from "../search-diary/register.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const contentAuthorSchema = z.enum(["L", "G"]);
@@ -21,21 +25,24 @@ const getDiaryInputSchema = z
   })
   .strict();
 
-const getDiaryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    id: z.string(),
-    title: z.string(),
-    content: z.string(),
-    date: dateSchema,
-    tags: z.array(z.string()),
-    mood: z.string().nullable(),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime(),
-    lifecycle_status: z.enum(["active", "archived"]),
-    author: contentAuthorSchema.nullable(),
-  }),
+const getDiaryDataSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  content: z.string(),
+  date: dateSchema,
+  tags: z.array(z.string()),
+  mood: z.string().nullable(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+  lifecycle_status: z.enum(["active", "archived"]),
+  author: contentAuthorSchema.nullable(),
 });
+
+const getDiaryOutputSchema = z.object({
+  success: z.boolean(),
+  data: getDiaryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface GetDiaryToolService {
   readDiary(input: ReadDiaryInput): Promise<DiaryEntryResult>;
@@ -90,15 +97,10 @@ export function registerGetDiaryTool(
 
 function toSafeGetDiaryError(error: unknown) {
   if (error instanceof DiaryReadAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to read Diary.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to read Diary.",
+    );
   }
 
   if (error instanceof DiaryDomainError) {
@@ -109,23 +111,15 @@ function toSafeGetDiaryError(error: unknown) {
           ? "Diary entry was not found."
           : "The Diary request is invalid.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "get_diary failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Diary is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Diary is temporarily unavailable.",
+  );
 }
