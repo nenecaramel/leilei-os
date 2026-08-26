@@ -28,6 +28,8 @@ const pageSchema = z.object({
   title: z.string(),
   url: z.string(),
   last_edited_time: z.string().datetime(),
+  detail_tool: z.literal("read_notion_page"),
+  detail_arguments: z.object({ page_id: z.string() }).strict(),
 }).strict();
 
 const outputSchema = z.object({
@@ -73,6 +75,8 @@ export function registerSearchNotionTool(
           title: page.title,
           url: page.url,
           last_edited_time: page.last_edited_time,
+          detail_tool: "read_notion_page" as const,
+          detail_arguments: { page_id: page.id },
         })),
         metadata: {
           count: data.metadata.count,

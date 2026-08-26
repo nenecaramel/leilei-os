@@ -58,6 +58,8 @@ const taskListItemSchema = z.object({
   completed_at: dateTimeSchema.nullable(),
   allowed_actions: z.array(taskActionSchema),
   author: contentAuthorSchema.nullable(),
+  detail_tool: z.literal("get_task"),
+  detail_arguments: z.object({ id: z.string() }).strict(),
 });
 
 const listTasksOutputSchema = z.object({
@@ -142,6 +144,8 @@ export function registerListTasksTool(
               completed_at,
               allowed_actions,
               author,
+              detail_tool: "get_task" as const,
+              detail_arguments: { id },
             }),
           ),
           metadata: result.metadata,
