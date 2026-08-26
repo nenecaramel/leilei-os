@@ -18,6 +18,7 @@ import {
   TOY_MAX_DURATION_SECONDS,
 } from "../../../domains/toy/toy-command-types.js";
 import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const toyCommandStatusSchema = z.enum([
   "pending",
@@ -62,34 +63,40 @@ const toyStopInputSchema = z
   })
   .strict();
 
+const toySetDataSchema = z.object({
+  command: z.object({
+    id: z.string().uuid(),
+    action: z.literal("set"),
+    percent: z.number().int().min(1).max(50),
+    duration_seconds: z.number().int().min(1).max(TOY_MAX_DURATION_SECONDS),
+    status: toyCommandStatusSchema,
+    created_at: z.string().datetime(),
+    expires_at: z.string().datetime(),
+  }),
+});
+
 const toySetOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    command: z.object({
-      id: z.string().uuid(),
-      action: z.literal("set"),
-      percent: z.number().int().min(1).max(50),
-      duration_seconds: z.number().int().min(1).max(TOY_MAX_DURATION_SECONDS),
-      status: toyCommandStatusSchema,
-      created_at: z.string().datetime(),
-      expires_at: z.string().datetime(),
-    }),
+  success: z.boolean(),
+  data: toySetDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
+
+const toyStopDataSchema = z.object({
+  command: z.object({
+    id: z.string().uuid(),
+    action: z.literal("stop"),
+    percent: z.null(),
+    status: toyCommandStatusSchema,
+    created_at: z.string().datetime(),
+    expires_at: z.string().datetime(),
   }),
 });
 
 const toyStopOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    command: z.object({
-      id: z.string().uuid(),
-      action: z.literal("stop"),
-      percent: z.null(),
-      status: toyCommandStatusSchema,
-      created_at: z.string().datetime(),
-      expires_at: z.string().datetime(),
-    }),
-  }),
-});
+  success: z.boolean(),
+  data: toyStopDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface ToyCommandToolService {
   createIdempotently(
@@ -220,22 +227,17 @@ export function registerToyCommandTools(
 
 function toSafeToolError(error: unknown, action: "set" | "stop") {
   if (error instanceof ToyCommandAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to control the toy.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to control the toy.",
+    );
   }
 
   if (error instanceof ActiveUserAuthorizationError) {
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: "Toy control is temporarily unavailable." }],
-    };
+    return createMcpToolError(
+      error.code,
+      "Toy control is temporarily unavailable.",
+    );
   }
 
   if (error instanceof ToyDomainError) {
@@ -250,10 +252,7 @@ function toSafeToolError(error: unknown, action: "set" | "stop") {
             ? "The toy command is invalid."
             : "The toy command could not be queued.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
@@ -261,15 +260,10 @@ function toSafeToolError(error: unknown, action: "set" | "stop") {
     error instanceof Error ? error.name : "UnknownError",
   );
 
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Toy control is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Toy control is temporarily unavailable.",
+  );
 }
 
 export class ToyCommandAuthenticationError extends Error {
