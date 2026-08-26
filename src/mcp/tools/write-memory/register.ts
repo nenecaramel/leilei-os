@@ -38,7 +38,6 @@ const writeMemoryOutputSchema = z.object({
       id: z.string().uuid(),
       category: memoryCategorySchema,
       key: z.string(),
-      content: z.string(),
       tags: z.array(z.string()),
       source: z.literal("mcp"),
       lifecycle_status: z.enum(["active", "archived"]),
@@ -50,6 +49,11 @@ const writeMemoryOutputSchema = z.object({
       created: z.boolean(),
       idempotent_replay: z.boolean(),
     }),
+    detail_tool: z.literal("get_memory"),
+    detail_arguments: z.object({
+      id: z.string().uuid(),
+      scope: z.enum(["active", "archived"]),
+    }).strict(),
   }),
 });
 
@@ -95,12 +99,34 @@ export function registerWriteMemoryTool(
             { category, key, content, tags, author },
             idempotency_key,
           );
+          const memory = {
+            id: data.memory.id,
+            category: data.memory.category,
+            key: data.memory.key,
+            tags: data.memory.tags,
+            source: data.memory.source,
+            lifecycle_status: data.memory.lifecycle_status,
+            created_at: data.memory.created_at,
+            updated_at: data.memory.updated_at,
+            author: data.memory.author,
+          };
           return {
             content: [{
               type: "text",
               text: responseText(data),
             }],
-            structuredContent: { success: true as const, data },
+            structuredContent: {
+              success: true as const,
+              data: {
+                memory,
+                metadata: data.metadata,
+                detail_tool: "get_memory" as const,
+                detail_arguments: {
+                  id: memory.id,
+                  scope: memory.lifecycle_status,
+                },
+              },
+            },
           };
         },
         mapError: toSafeToolError,
