@@ -7,10 +7,14 @@ on:
     paths:
       - src/mcp/tools/**/register.ts
       - src/mcp/tools/error-contract.ts
+      - src/mcp/tools/universe/shared.ts
+      - src/mcp/tools/notion-advanced/shared.ts
       - tests/mcp-response-contract.test.ts
       - tests/mcp-error-contract.test.ts
       - tests/mcp-diary-error-contract.test.ts
       - tests/mcp-core-error-contract.test.ts
+      - tests/universe-mcp-tools.test.ts
+      - tests/mcp-universe-write-tools.test.ts
       - .github/workflows/mcp-response-contract-verify.yml
 
 jobs:
@@ -37,7 +41,13 @@ jobs:
       - name: Install Web dependencies required by canonical root tests
         run: cd web && npm ci
       - name: Run focused MCP response and error contract regressions
-        run: pnpm exec tsx --test tests/mcp-response-contract.test.ts tests/mcp-error-contract.test.ts tests/mcp-diary-error-contract.test.ts tests/mcp-core-error-contract.test.ts
+        run: >-
+          pnpm exec tsx --test
+          tests/mcp-response-contract.test.ts
+          tests/mcp-error-contract.test.ts
+          tests/mcp-diary-error-contract.test.ts
+          tests/mcp-core-error-contract.test.ts
+          tests/mcp-universe-write-tools.test.ts
       - name: Run deterministic canonical test suite
         run: pnpm test
       - run: pnpm typecheck
