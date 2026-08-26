@@ -5,6 +5,10 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { MemoryDomainError } from "../src/domains/memory/memory-service.js";
 import {
+  createMcpToolError,
+  mcpToolErrorStructuredContentSchema,
+} from "../src/mcp/tools/error-contract.js";
+import {
   ReadMemoryAuthenticationError,
   registerReadMemoryTool,
 } from "../src/mcp/tools/read-memory/register.js";
@@ -52,6 +56,34 @@ async function callReadMemoryFailure(input: {
     await pair.server.close();
   }
 }
+
+test("shared MCP tool error helper emits the strict machine-readable envelope", () => {
+  const result = createMcpToolError(
+    "INTERNAL_ERROR",
+    "Memory is temporarily unavailable.",
+  );
+
+  assert.equal(result.isError, true);
+  assert.deepEqual(result.content, [
+    { type: "text", text: "Memory is temporarily unavailable." },
+  ]);
+  assert.deepEqual(
+    mcpToolErrorStructuredContentSchema.parse(result.structuredContent),
+    {
+      success: false,
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Memory is temporarily unavailable.",
+      },
+    },
+  );
+  assert.throws(() =>
+    mcpToolErrorStructuredContentSchema.parse({
+      ...result.structuredContent,
+      unexpected: true,
+    }),
+  );
+});
 
 test("read_memory preserves a stable domain error code in structuredContent", async () => {
   const result = await callReadMemoryFailure({
