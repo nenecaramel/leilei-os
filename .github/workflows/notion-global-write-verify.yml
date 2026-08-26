@@ -10,6 +10,7 @@ on:
       - src/mcp/tools/**
       - tests/notion-*.test.ts
       - tests/mcp-read-contract.test.ts
+      - tests/mcp-error-contract.test.ts
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -24,6 +25,7 @@ on:
       - src/mcp/tools/**
       - tests/notion-*.test.ts
       - tests/mcp-read-contract.test.ts
+      - tests/mcp-error-contract.test.ts
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
