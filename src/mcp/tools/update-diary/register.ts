@@ -3,6 +3,10 @@ import { z } from "zod";
 import { DiaryDomainError, type AuthenticatedDiaryContext, type DiaryEntryResult, type UpdateMcpDiaryInput } from "../../../domains/diary/diary-service.js";
 import { DIARY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const updateDiaryInputSchema = z.object({
   id: z.string().trim().min(1),
@@ -14,14 +18,25 @@ const updateDiaryInputSchema = z.object({
   author: z.enum(["L", "G"]).optional(),
 }).strict().refine((value) => Object.keys(value).some((key) => key !== "id"), { message: "At least one Diary field must be supplied." });
 
-const updateDiaryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    id: z.string(), title: z.string(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), tags: z.array(z.string()), mood: z.string().nullable(), created_at: z.string().datetime(), updated_at: z.string().datetime(), lifecycle_status: z.literal("active"), author: z.enum(["L", "G"]).nullable(),
-    detail_tool: z.literal("get_diary"),
-    detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
-  }),
+const updateDiaryDataSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  tags: z.array(z.string()),
+  mood: z.string().nullable(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+  lifecycle_status: z.literal("active"),
+  author: z.enum(["L", "G"]).nullable(),
+  detail_tool: z.literal("get_diary"),
+  detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
 });
+
+const updateDiaryOutputSchema = z.object({
+  success: z.boolean(),
+  data: updateDiaryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface UpdateDiaryToolService { updateMcpDiary(context: AuthenticatedDiaryContext, input: UpdateMcpDiaryInput): Promise<DiaryEntryResult>; }
 export type UpdateDiaryToolDependencies = { diaryService: UpdateDiaryToolService; getAuthenticatedUserId: () => string };
@@ -56,13 +71,21 @@ export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateD
 }
 
 function toSafeToolError(error: unknown) {
-  if (error instanceof UpdateDiaryAuthenticationError) return { isError: true as const, content: [{ type: "text" as const, text: "Authentication is required to update Diary." }] };
+  if (error instanceof UpdateDiaryAuthenticationError) {
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to update Diary.",
+    );
+  }
   if (error instanceof DiaryDomainError) {
     const text = error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND" ? "Diary updating is unavailable for the authenticated user." : error.code === "DIARY_NOT_FOUND" ? "Diary entry was not found." : "The Diary update request is invalid.";
-    return { isError: true as const, content: [{ type: "text" as const, text }] };
+    return createMcpToolError(error.code, text);
   }
   console.error("update_diary failed", error instanceof Error ? error.name : "UnknownError");
-  return { isError: true as const, content: [{ type: "text" as const, text: "Diary updating is temporarily unavailable." }] };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Diary updating is temporarily unavailable.",
+  );
 }
 
 export class UpdateDiaryAuthenticationError extends Error {
