@@ -9,7 +9,7 @@ import {
 import { createLeadingPreview } from "../../../domains/compact-text.js";
 import {
   createMcpToolError,
-  mcpToolErrorStructuredContentSchema,
+  mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 
 const memoryCategorySchema = z.enum([
@@ -35,35 +35,33 @@ const readMemoryInputSchema = z
   })
   .strict();
 
-const readMemorySuccessOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    user: z.object({
-      display_name: z.string(),
+const readMemoryDataSchema = z.object({
+  user: z.object({
+    display_name: z.string(),
+  }),
+  memories: z.array(
+    z.object({
+      id: z.string(),
+      category: memoryCategorySchema,
+      key: z.string(),
+      tags: z.array(z.string()),
+      author: contentAuthorSchema.nullable(),
+      updated_at: z.string().datetime(),
+      preview: z.string(),
+      detail_tool: z.literal("get_memory"),
+      detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
     }),
-    memories: z.array(
-      z.object({
-        id: z.string(),
-        category: memoryCategorySchema,
-        key: z.string(),
-        tags: z.array(z.string()),
-        author: contentAuthorSchema.nullable(),
-        updated_at: z.string().datetime(),
-        preview: z.string(),
-        detail_tool: z.literal("get_memory"),
-        detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
-      }),
-    ),
-    metadata: z.object({
-      count: z.number().int().nonnegative(),
-    }),
+  ),
+  metadata: z.object({
+    count: z.number().int().nonnegative(),
   }),
 });
 
-const readMemoryOutputSchema = z.union([
-  readMemorySuccessOutputSchema,
-  mcpToolErrorStructuredContentSchema,
-]);
+const readMemoryOutputSchema = z.object({
+  success: z.boolean(),
+  data: readMemoryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface ReadMemoryToolService {
   readMemory(input: ReadMemoryInput): Promise<ReadMemoryResult>;
