@@ -7,6 +7,10 @@ import {
   type ListDiariesResult,
 } from "../../../domains/diary/diary-service.js";
 import { createBodyMatchSnippet } from "../../../domains/compact-text.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const contentAuthorSchema = z.enum(["L", "G"]);
@@ -22,29 +26,32 @@ const searchDiaryInputSchema = z
   })
   .strict();
 
-const searchDiaryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    diaries: z.array(
-      z.object({
-        id: z.string(),
-        title: z.string(),
-        date: dateSchema,
-        tags: z.array(z.string()),
-        mood: z.string().nullable(),
-        created_at: z.string().datetime(),
-        updated_at: z.string().datetime(),
-        author: contentAuthorSchema.nullable(),
-        snippet: z.string().nullable(),
-        detail_tool: z.literal("get_diary"),
-        detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
-      }),
-    ),
-    metadata: z.object({
-      count: z.number().int().nonnegative(),
+const searchDiaryDataSchema = z.object({
+  diaries: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      date: dateSchema,
+      tags: z.array(z.string()),
+      mood: z.string().nullable(),
+      created_at: z.string().datetime(),
+      updated_at: z.string().datetime(),
+      author: contentAuthorSchema.nullable(),
+      snippet: z.string().nullable(),
+      detail_tool: z.literal("get_diary"),
+      detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }),
     }),
+  ),
+  metadata: z.object({
+    count: z.number().int().nonnegative(),
   }),
 });
+
+const searchDiaryOutputSchema = z.object({
+  success: z.boolean(),
+  data: searchDiaryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface SearchDiaryToolService {
   listDiaries(input: ListDiariesInput): Promise<ListDiariesResult>;
@@ -145,15 +152,10 @@ function withDetailPointers(result: SearchDiaryDiscoveryResult): SearchDiaryDisc
 
 function toSafeSearchDiaryError(error: unknown) {
   if (error instanceof DiaryReadAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to read Diary.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to read Diary.",
+    );
   }
 
   if (error instanceof DiaryDomainError) {
@@ -162,25 +164,17 @@ function toSafeSearchDiaryError(error: unknown) {
         ? "Diary is unavailable for the authenticated user."
         : "The Diary search is invalid.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "search_diary failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Diary is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Diary is temporarily unavailable.",
+  );
 }
 
 export class DiaryReadAuthenticationError extends Error {
