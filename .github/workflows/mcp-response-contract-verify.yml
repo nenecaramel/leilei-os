@@ -30,6 +30,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install Web dependencies required by canonical root tests
+        run: cd web && npm ci
       - name: Run focused MCP response contract regression
         run: pnpm exec tsx --test tests/mcp-response-contract.test.ts
       - name: Run deterministic canonical test suite
