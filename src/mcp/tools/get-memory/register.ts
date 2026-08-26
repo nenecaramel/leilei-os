@@ -5,6 +5,10 @@ import {
   type ReadMemoryDetailResult,
 } from "../../../domains/memory/memory-service.js";
 import { ReadMemoryAuthenticationError } from "../read-memory/register.js";
+import {
+  createMcpToolError,
+  mcpToolErrorDetailsSchema,
+} from "../error-contract.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -25,20 +29,23 @@ const getMemoryInputSchema = z
   })
   .strict();
 
-const getMemoryOutputSchema = z.object({
-  success: z.literal(true),
-  data: z.object({
-    id: z.string(),
-    category: memoryCategorySchema,
-    key: z.string(),
-    content: z.string(),
-    tags: z.array(z.string()),
-    source: z.string(),
-    updated_at: z.string().datetime(),
-    lifecycle_status: z.enum(["active", "archived"]),
-    author: contentAuthorSchema.nullable(),
-  }),
+const getMemoryDataSchema = z.object({
+  id: z.string(),
+  category: memoryCategorySchema,
+  key: z.string(),
+  content: z.string(),
+  tags: z.array(z.string()),
+  source: z.string(),
+  updated_at: z.string().datetime(),
+  lifecycle_status: z.enum(["active", "archived"]),
+  author: contentAuthorSchema.nullable(),
 });
+
+const getMemoryOutputSchema = z.object({
+  success: z.boolean(),
+  data: getMemoryDataSchema.optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export interface GetMemoryToolService {
   readMemoryDetail(input: {
@@ -101,15 +108,10 @@ export function registerGetMemoryTool(
 
 function toSafeGetMemoryError(error: unknown) {
   if (error instanceof ReadMemoryAuthenticationError) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Authentication is required to read memory.",
-        },
-      ],
-    };
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to read memory.",
+    );
   }
 
   if (error instanceof MemoryDomainError) {
@@ -120,23 +122,15 @@ function toSafeGetMemoryError(error: unknown) {
           ? "Memory was not found."
           : "The memory request is invalid.";
 
-    return {
-      isError: true as const,
-      content: [{ type: "text" as const, text: message }],
-    };
+    return createMcpToolError(error.code, message);
   }
 
   console.error(
     "get_memory failed",
     error instanceof Error ? error.name : "UnknownError",
   );
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: "text" as const,
-        text: "Memory is temporarily unavailable.",
-      },
-    ],
-  };
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Memory is temporarily unavailable.",
+  );
 }
