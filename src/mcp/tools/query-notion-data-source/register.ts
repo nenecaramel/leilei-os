@@ -2,11 +2,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { NotionDataSourceQueryResult, NotionIntegration } from "../../../domains/notion/notion-read-integration.js";
 import { authorizeNotionUser, readOnlyNotionAnnotations, safeNotionAdvancedError, type NotionUserAuthorizationDependencies } from "../notion-advanced/shared.js";
+import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const idSchema = z.string().trim().refine((value) => /^[0-9a-f]{32}$/i.test(value.replaceAll("-", "")), "Notion IDs must be UUIDs.");
 const jsonObjectSchema = z.record(z.any());
 const outputSchema = z.object({
-  success: z.literal(true),
+  success: z.boolean(),
   data: z.object({
     data_source_id: z.string(),
     results: z.array(z.object({
@@ -18,7 +19,8 @@ const outputSchema = z.object({
       properties: z.record(z.object({ id: z.string().nullable(), type: z.string(), value: z.any() }).strict()),
     }).strict()),
     metadata: z.object({ count: z.number().int().min(0), has_more: z.boolean(), next_cursor: z.string().nullable() }).strict(),
-  }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 export type QueryNotionDataSourceToolDependencies = NotionUserAuthorizationDependencies & {
