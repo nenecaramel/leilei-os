@@ -6,7 +6,12 @@ function fakeServer(events: string[], options: { stuck?: boolean; error?: Error 
   return {
     close(callback: (error?: Error) => void) {
       events.push("http_close_started");
-      if (!options.stuck) callback(options.error);
+      if (!options.stuck) {
+        queueMicrotask(() => {
+          events.push("http_drained");
+          callback(options.error);
+        });
+      }
     },
   };
 }
@@ -44,6 +49,7 @@ test("graceful shutdown drains HTTP, MCP, background work, then database", async
   assert.deepEqual(harness.events, [
     "http_close_started",
     "mcp_close",
+    "http_drained",
     "background_drain",
     "database_close",
     "deadline_clear",
@@ -67,6 +73,7 @@ test("MCP close failure still drains every resource and exits one", async () => 
   assert.deepEqual(harness.events, [
     "http_close_started",
     "mcp_close",
+    "http_drained",
     "background_drain",
     "database_close",
     "deadline_clear",
