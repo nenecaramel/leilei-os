@@ -20,7 +20,7 @@ export async function deleteExpiredMcpIdempotencyBatch(
     const victims = await transaction.execute<{ id: string }>(sql`
       SELECT id
       FROM mcp_write_idempotency
-      WHERE created_at < ${cutoff}
+      WHERE created_at < ${cutoff.toISOString()}
       ORDER BY created_at ASC, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED

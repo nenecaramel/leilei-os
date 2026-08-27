@@ -20,7 +20,7 @@ export async function deleteExpiredDataImportRunsBatch(
     const victims = await transaction.execute<{ id: string }>(sql`
       SELECT id
       FROM data_import_runs
-      WHERE created_at < ${cutoff}
+      WHERE created_at < ${cutoff.toISOString()}
       ORDER BY created_at ASC, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED

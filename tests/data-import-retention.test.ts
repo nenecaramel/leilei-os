@@ -39,6 +39,6 @@ test("data import retention uses the shared database and one bounded transaction
   assert.match(source, /database\.transaction\(/);
   assert.match(source, /FOR UPDATE SKIP LOCKED/);
   assert.match(source, /LIMIT \$\{limit\}/);
-  assert.match(source, /created_at < \$\{cutoff\}/);
+  assert.match(source, /created_at < \$\{cutoff\.toISOString\(\)\}/);
   assert.match(source, /ORDER BY created_at ASC, id ASC/);
 });

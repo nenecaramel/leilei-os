@@ -39,10 +39,10 @@ function connect(): { client: ReturnType<typeof postgres>; db: Database } {
 async function insertInChunks<T>(
   db: Database,
   values: readonly T[],
-  insert: (chunk: readonly T[]) => Promise<unknown>,
+  insert: (chunk: readonly T[], start: number) => Promise<unknown>,
 ): Promise<void> {
   for (let start = 0; start < values.length; start += RETENTION_BATCH_SIZE) {
-    await insert(values.slice(start, start + RETENTION_BATCH_SIZE));
+    await insert(values.slice(start, start + RETENTION_BATCH_SIZE), start);
   }
 }
 
@@ -162,7 +162,7 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
     assert.equal((await db.select({ value: count() }).from(schema.resourceLifecycleEvents).where(eq(schema.resourceLifecycleEvents.userId, userId)))[0]?.value, 1);
 
     const orderedKeys = Array.from({ length: RETENTION_BATCH_SIZE + 1 }, (_, index) => `retention-ordered-${String(index).padStart(5, "0")}`);
-    await insertInChunks(db, orderedKeys, async (keys) => {
+    await insertInChunks(db, orderedKeys, async (keys, start) => {
       await db.insert(schema.mcpWriteIdempotency).values(keys.map((idempotencyKey, index) => ({
         userId,
         toolName: "write_diary" as const,
@@ -170,7 +170,7 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
         requestHash: "e".repeat(64),
         resourceType: "diary_entry" as const,
         resourceId: diary!.id,
-        createdAt: new Date(Date.UTC(2026, 6, 1, 0, 0, index)),
+        createdAt: new Date(Date.UTC(2026, 6, 1, 0, 0, start + index)),
       })));
     });
     assert.equal(await deleteExpiredMcpIdempotencyBatch(db as never, cutoff, RETENTION_BATCH_SIZE), RETENTION_BATCH_SIZE);
@@ -181,7 +181,7 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
     await db.delete(schema.mcpWriteIdempotency).where(and(eq(schema.mcpWriteIdempotency.userId, userId), eq(schema.mcpWriteIdempotency.idempotencyKey, orderedKeys.at(-1)!)));
 
     const cappedKeys = Array.from({ length: RETENTION_BATCH_SIZE * RETENTION_MAX_BATCHES_PER_RUN + 1 }, (_, index) => `retention-capped-${String(index).padStart(5, "0")}`);
-    await insertInChunks(db, cappedKeys, async (keys) => {
+    await insertInChunks(db, cappedKeys, async (keys, start) => {
       await db.insert(schema.mcpWriteIdempotency).values(keys.map((idempotencyKey, index) => ({
         userId,
         toolName: "write_diary" as const,
@@ -189,7 +189,7 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
         requestHash: "f".repeat(64),
         resourceType: "diary_entry" as const,
         resourceId: diary!.id,
-        createdAt: new Date(Date.UTC(2026, 6, 2, 0, 0, index)),
+        createdAt: new Date(Date.UTC(2026, 6, 2, 0, 0, start + index)),
       })));
     });
     const cappedRun = await runBoundedRetention((limit) => deleteExpiredMcpIdempotencyBatch(db as never, cutoff, limit));
@@ -213,7 +213,7 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
     assert.equal((await db.select({ value: count() }).from(schema.tasks).where(eq(schema.tasks.id, task!.id)))[0]?.value, 1);
 
     const raceKeys = Array.from({ length: 750 }, (_, index) => `retention-race-${String(index).padStart(5, "0")}`);
-    await insertInChunks(db, raceKeys, async (keys) => {
+    await insertInChunks(db, raceKeys, async (keys, start) => {
       await db.insert(schema.mcpWriteIdempotency).values(keys.map((idempotencyKey, index) => ({
         userId,
         toolName: "write_diary" as const,
@@ -221,7 +221,7 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
         requestHash: "7".repeat(64),
         resourceType: "diary_entry" as const,
         resourceId: diary!.id,
-        createdAt: new Date(Date.UTC(2026, 6, 3, 0, 0, index)),
+        createdAt: new Date(Date.UTC(2026, 6, 3, 0, 0, start + index)),
       })));
     });
     const first = connect();
