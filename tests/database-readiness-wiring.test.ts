@@ -8,6 +8,7 @@ const migrateSource = readFileSync("src/database/migrate.ts", "utf8");
 
 test("database-backed HTTP surfaces wait for readiness before business handlers", () => {
   assert.match(createAppSource, /createDatabaseReadinessGate/);
+  assert.match(createAppSource, /dependencies\.databaseReadinessProbe/);
   assert.match(createAppSource, /databaseReadinessMiddleware/);
   assert.match(createAppSource, /\/api\/v1/);
   assert.match(createAppSource, /\/mcp/);
