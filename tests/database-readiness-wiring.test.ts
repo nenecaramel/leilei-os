@@ -18,6 +18,10 @@ test("runtime database pools release idle sockets for Railway serverless sleep",
   assert.match(clientSource, /idle_timeout\s*:\s*\d+/);
 });
 
+test("runtime database resource owns the shared readiness probe", () => {
+  assert.match(clientSource, /probe\s*:\s*\(\)\s*=>\s*client`select 1`/);
+});
+
 test("migration readiness uses bounded connection and idle timeouts", () => {
   assert.match(migrateSource, /connect_timeout\s*:\s*\d+/);
   assert.match(migrateSource, /idle_timeout\s*:\s*\d+/);

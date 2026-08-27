@@ -12,12 +12,33 @@ function createPostgresClient(databaseUrl: string, maxConnections: number) {
   });
 }
 
-export function createDatabase(databaseUrl: string) {
-  const client = createPostgresClient(databaseUrl, 10);
+type PostgresClient = ReturnType<typeof postgres>;
+type CreatePostgresClient = (
+  databaseUrl: string,
+  maxConnections: number,
+) => PostgresClient;
+type CreateDrizzle = (client: PostgresClient) => ReturnType<typeof drizzle>;
+
+export function createDatabase(
+  databaseUrl: string,
+  options: {
+    createClient?: CreatePostgresClient;
+    createDrizzle?: CreateDrizzle;
+  } = {},
+) {
+  const client = (options.createClient ?? createPostgresClient)(databaseUrl, 10);
+  const db = (options.createDrizzle ?? ((value) => drizzle(value, { schema })))(
+    client,
+  );
+  let closePromise: Promise<void> | null = null;
 
   return {
-    db: drizzle(client, { schema }),
-    close: () => client.end(),
+    db,
+    probe: () => client`select 1`,
+    close: () => {
+      closePromise ??= Promise.resolve(client.end()).then(() => undefined);
+      return closePromise;
+    },
   };
 }
 
