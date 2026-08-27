@@ -62,7 +62,9 @@ export function createRetentionCoordinator(
   const schedule =
     options.schedule ??
     ((callback, milliseconds) => setInterval(callback, milliseconds));
-  const clearSchedule = options.clearSchedule ?? clearInterval;
+  const clearSchedule =
+    options.clearSchedule ??
+    ((handle: unknown) => clearInterval(handle as ReturnType<typeof setInterval>));
   let intervalHandle: { unref?: () => void } | null = null;
   let inFlight: Promise<void> | null = null;
   let stopping = false;
