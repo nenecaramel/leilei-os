@@ -1,6 +1,10 @@
 import type { RequestHandler } from "express";
 import type { WebApiConfig } from "../config/env.js";
-import { AccessTokenError, type AccessTokenVerifier } from "../auth/jwt-verifier.js";
+import {
+  AccessTokenError,
+  type AccessTokenVerifier,
+  type AuthFailureReason,
+} from "../auth/jwt-verifier.js";
 import { mapWebPrincipalToUserId } from "./user-identity-mapper.js";
 
 function challenge(config: WebApiConfig, error?: AccessTokenError): string {
@@ -19,6 +23,7 @@ function challenge(config: WebApiConfig, error?: AccessTokenError): string {
 export function createWebApiAuthMiddleware(
   config: WebApiConfig,
   verifyAccessToken: AccessTokenVerifier,
+  options: { onAuthFailure?: (reason: AuthFailureReason) => void } = {},
 ): RequestHandler {
   return async (request, response, next) => {
 
@@ -60,7 +65,14 @@ export function createWebApiAuthMiddleware(
           : new AccessTokenError(
               "The access token is invalid.",
               "invalid_token",
+              "verification_unknown",
             );
+
+      try {
+        options.onAuthFailure?.(accessTokenError.diagnosticReason);
+      } catch {
+        // Authentication diagnostics must never alter the public auth contract.
+      }
 
       const status =
         accessTokenError.kind === "insufficient_scope"

@@ -261,6 +261,14 @@ export function createApp(
       createWebApiAuthMiddleware(
         webApiConfig,
         verifyWebAccessToken,
+        {
+          onAuthFailure: (authFailure) => {
+            logger.warn("auth_verification_failed", {
+              surface: "web_api",
+              authFailure,
+            });
+          },
+        },
       ),
       databaseReadinessMiddleware,
       createWebApiRouter({
@@ -288,7 +296,14 @@ export function createApp(
 
   app.use(
     "/mcp",
-    createOAuthMiddleware(config, verifyAccessToken),
+    createOAuthMiddleware(config, verifyAccessToken, {
+      onAuthFailure: (authFailure) => {
+        logger.warn("auth_verification_failed", {
+          surface: "mcp_public",
+          authFailure,
+        });
+      },
+    }),
     databaseReadinessMiddleware,
     createMcpRouter({
       namespace: "public",

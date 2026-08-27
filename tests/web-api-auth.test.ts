@@ -106,7 +106,11 @@ test("Web auth verification diagnostics are non-fatal and preserve the 401 contr
   await createWebApiAuthMiddleware(
     config,
     async () => {
-      throw Object.assign(new Error("private verifier detail"), { code: "ERR_JWKS_TIMEOUT" });
+      throw new AccessTokenError(
+        "The access token is invalid.",
+        "invalid_token",
+        "jwks_unavailable",
+      );
     },
     { onAuthFailure: (reason) => reasons.push(reason) },
   )(request, response.response, (() => {}) as NextFunction);

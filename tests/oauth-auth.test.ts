@@ -131,9 +131,11 @@ test("auth verification callbacks receive internal reasons and cannot alter publ
     createOAuthMiddleware(
       config,
       async () => {
-        throw Object.assign(new Error("private verifier detail"), {
-          code: "ERR_JWKS_TIMEOUT",
-        });
+        throw new AccessTokenError(
+          "The access token is invalid.",
+          "invalid_token",
+          "jwks_unavailable",
+        );
       },
       { onAuthFailure: (reason) => reasons.push(reason) },
     ),
