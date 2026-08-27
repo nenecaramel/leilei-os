@@ -18,6 +18,10 @@ export function runWithRequestContext<T>(
   return requestContext.run(context, callback);
 }
 
+export function runWithoutRequestContext<T>(callback: () => T): T {
+  return requestContext.exit(callback);
+}
+
 export function getCurrentRequestId(): string | undefined {
   return requestContext.getStore()?.requestId;
 }

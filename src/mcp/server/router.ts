@@ -8,6 +8,7 @@ import {
 } from "./create-server.js";
 import type { McpSessionServerFactory } from "./production-server-factory.js";
 import { safeErrorFingerprint, type SafeLogger } from "../../observability/logger.js";
+import { runWithoutRequestContext } from "../../observability/request-context.js";
 import {
   McpSessionRegistry,
   type McpSessionNamespace,
@@ -139,7 +140,9 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
           return;
         }
         // Retention cleanup is best-effort and must never delay initialize.
-        void options.onInitialize?.();
+        runWithoutRequestContext(() => {
+          void options.onInitialize?.();
+        });
         let initializedRecord: McpSessionRecord | null = null;
         let transport: StreamableHTTPServerTransport | null = null;
         try {
