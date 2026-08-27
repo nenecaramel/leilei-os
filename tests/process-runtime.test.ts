@@ -40,6 +40,44 @@ test("process runtime owns one injectable database resource", async () => {
   assert.equal(closeCalls, 1);
 });
 
+test("process runtime creates one shared safe logger for app and observers", async () => {
+  const { createProcessRuntime } = await import("../src/app/process-runtime.js");
+  let loggerCalls = 0;
+  const logger = {
+    debug: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  };
+  const resource = {
+    db: {} as never,
+    probe: async () => [],
+    close: async () => undefined,
+  };
+  const runtime = createProcessRuntime({
+    environment: {
+      DATABASE_URL: "postgres://runtime.test/leilei",
+      LOG_LEVEL: "warn",
+      MCP_SESSION_IDLE_TTL_SECONDS: 7_200,
+      MCP_SESSION_ABSOLUTE_TTL_SECONDS: 86_400,
+      MCP_SESSION_MAX_PER_USER: 8,
+      MCP_SESSION_MAX_TOTAL: 32,
+      MCP_IDEMPOTENCY_RETENTION_DAYS: 30,
+      MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: 24,
+    } as never,
+    createDatabaseResource: () => resource,
+    createLogger: (level) => {
+      loggerCalls += 1;
+      assert.equal(level, "warn");
+      return logger;
+    },
+  });
+
+  assert.equal(loggerCalls, 1);
+  assert.equal(runtime.logger, logger);
+  assert.equal(runtime.appDependencies.logger, logger);
+});
+
 test("createApp receives resources instead of constructing a database", () => {
   assert.doesNotMatch(createAppSource, /createDatabase\s*\(/);
   assert.doesNotMatch(createAppSource, /createDatabaseReadinessProbe/);
