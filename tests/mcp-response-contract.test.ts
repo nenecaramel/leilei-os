@@ -333,13 +333,13 @@ test("Task and Notion discovery results expose deterministic exact-detail pointe
   assert.deepEqual(notionData.results[0]?.detail_arguments, { page_id: NOTION_PAGE_ID });
 });
 
-test("routing descriptions align with executable schemas and the production inventory remains 40", async (t) => {
+test("routing descriptions align with executable schemas and the production inventory remains 39", async (t) => {
   const server = createMcpServer({} as never);
   const pair = await connectServer(server, "mcp-response-contract-descriptions");
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
   const tools = (await pair.client.listTools()).tools;
-  // The current production registration exposes the accepted 40-tool surface.
-  assert.equal(tools.length, 40);
+  // The current production registration exposes the accepted 39-tool surface.
+  assert.equal(tools.length, 39);
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
   const createTask = byName.get("create_task");
@@ -380,7 +380,7 @@ test("routing descriptions align with executable schemas and the production inve
   }
 });
 
-test("local and weather context keep machine data only in structuredContent and use one short text acknowledgement", async (t) => {
+test("weather context keeps machine data only in structuredContent and uses one short text acknowledgement", async (t) => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
     current: {
@@ -396,16 +396,14 @@ test("local and weather context keep machine data only in structuredContent and 
   const pair = await connectServer(server, "mcp-response-contract-context");
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
 
-  for (const name of ["get_local_context", "get_weather_context"] as const) {
-    const result = await pair.client.callTool({ name, arguments: {} });
-    assert.equal(result.isError, undefined);
-    assert.equal(result.content.length, 1);
-    const first = result.content[0];
-    assert.ok(first && "text" in first);
-    const text = String(first.text);
-    assert.match(text, /retrieved/i);
-    assert.ok(text.length < 80);
-    assert.equal(text.trimStart().startsWith("{"), false);
-    assert.equal(text.includes(JSON.stringify(result.structuredContent)), false);
-  }
+  const result = await pair.client.callTool({ name: "get_weather_context", arguments: {} });
+  assert.equal(result.isError, undefined);
+  assert.equal(result.content.length, 1);
+  const first = result.content[0];
+  assert.ok(first && "text" in first);
+  const text = String(first.text);
+  assert.match(text, /retrieved/i);
+  assert.ok(text.length < 80);
+  assert.equal(text.trimStart().startsWith("{"), false);
+  assert.equal(text.includes(JSON.stringify(result.structuredContent)), false);
 });

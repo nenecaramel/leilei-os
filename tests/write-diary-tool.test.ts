@@ -102,7 +102,6 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
       "delete_universe_diary_source",
       "delete_universe_relation",
       "get_diary",
-      "get_local_context",
       "get_memory",
       "get_notion_connection",
       "get_task",

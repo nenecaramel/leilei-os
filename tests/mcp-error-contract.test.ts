@@ -47,7 +47,6 @@ const EXPECTED_PRODUCTION_MCP_TOOL_NAMES = [
   "delete_universe_diary_source",
   "delete_universe_relation",
   "get_diary",
-  "get_local_context",
   "get_memory",
   "get_notion_connection",
   "get_task",
@@ -90,7 +89,6 @@ const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKin
   delete_universe_diary_source: "structured",
   delete_universe_relation: "structured",
   get_diary: "structured",
-  get_local_context: "no-handler-error",
   get_memory: "structured",
   get_notion_connection: "structured",
   get_task: "structured",
@@ -170,7 +168,6 @@ const STRUCTURED_ERROR_ASSERTION_TOOLS = new Set([
 
 const NO_HANDLER_ERROR_SOURCE_FILES = {
   hello: "src/mcp/tools/hello/register.ts",
-  get_local_context: "src/mcp/tools/get-local-context/register.ts",
   get_weather_context: "src/mcp/tools/get-weather-context/register.ts",
 } as const;
 
@@ -666,7 +663,7 @@ test("production MCP error audit covers every registered tool", async (t) => {
       .filter(([, kind]) => kind === "no-handler-error")
       .map(([name]) => name)
       .sort(),
-    ["get_local_context", "get_weather_context", "hello"],
+    ["get_weather_context", "hello"],
   );
 
   for (const [name, relativePath] of Object.entries(NO_HANDLER_ERROR_SOURCE_FILES)) {

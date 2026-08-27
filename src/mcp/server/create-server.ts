@@ -3,7 +3,6 @@ import { env } from "../../config/env.js";
 import { NotionReadClient } from "../../domains/notion/notion-read-client.js";
 import { NotionIntegration } from "../../domains/notion/notion-read-integration.js";
 import { registerHelloTool } from "../tools/hello/register.js";
-import { registerGetLocalContextTool } from "../tools/get-local-context/register.js";
 import { registerGetWeatherContextTool } from "../tools/get-weather-context/register.js";
 import {
   ReadMemoryAuthenticationError,
@@ -458,7 +457,6 @@ export function createMcpServer(
     createMissingActiveUserAuthorizer(authenticatedUserId);
 
   registerHelloTool(server);
-  registerGetLocalContextTool(server);
   registerGetWeatherContextTool(server)
   registerReadMemoryTool(
     server,
