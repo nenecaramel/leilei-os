@@ -41,8 +41,3 @@ export function createDatabase(
     },
   };
 }
-
-export function createDatabaseReadinessProbe(databaseUrl: string) {
-  const client = createPostgresClient(databaseUrl, 1);
-  return () => client`select 1`;
-}

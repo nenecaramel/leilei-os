@@ -233,23 +233,6 @@ export function createApp(
       throw new Error("Web API services are not configured.");
     }
 
-    if (
-      !webMemoryService ||
-      !webDiaryService ||
-      !webTaskService ||
-      !webSystemService ||
-      !toyService ||
-      !webGlobalSearchService ||
-      !webTodoService ||
-      !webExportService ||
-      !webImportService
-      || !webUniverseService
-    ) {
-      throw new Error(
-        "Web API services are not configured.",
-      );
-    }
-
     app.use(
       "/api/v1/toy/commands",
       createToyBridgeRouter(
