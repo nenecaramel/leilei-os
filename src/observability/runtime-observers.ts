@@ -1,11 +1,12 @@
-import type {
-  IdempotencyCleanupObserverEvent,
-} from "../mcp/server/idempotency-retention.js";
 import type { RetentionCoordinatorEvent } from "../domains/retention/retention-coordinator.js";
 import type { McpSessionObserverEvent } from "../mcp/server/session-registry.js";
 import type { SafeLogFields, SafeLogger } from "./logger.js";
 
-type McpLifecycleEvent = McpSessionObserverEvent | IdempotencyCleanupObserverEvent;
+type LegacyIdempotencyCleanupObserverEvent =
+  | { name: "mcp_idempotency_cleanup_completed"; deletedRows: number; durationMs: number }
+  | { name: "mcp_idempotency_cleanup_failed"; durationMs: number };
+
+type McpLifecycleEvent = McpSessionObserverEvent | LegacyIdempotencyCleanupObserverEvent;
 
 const MCP_OBSERVABLE_FIELDS = new Set([
   "namespace",

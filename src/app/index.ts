@@ -9,6 +9,7 @@ const runtime = createProcessRuntime();
 const app = createApp(runtime.appDependencies);
 
 const httpServer = app.listen(env.PORT, env.HOST, () => {
+  runtime.startBackgroundWork();
   runtime.logger.info("service_started");
   runtime.logger.info("mcp_public_endpoint_enabled");
   if (env.MCP_AUTH_TOKEN) {
@@ -19,6 +20,7 @@ const httpServer = app.listen(env.PORT, env.HOST, () => {
 const shutdown = createGracefulShutdownController({
   server: httpServer,
   closeMcpSessions: () => runtime.mcpSessionRegistry.shutdown(),
+  stopBackgroundWork: () => runtime.stopBackgroundWork(),
   drainBackgroundWork: () => runtime.drainBackgroundWork(),
   closeDatabase: () => runtime.closeDatabase(),
   exit: (code) => process.exit(code),

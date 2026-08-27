@@ -40,6 +40,77 @@ test("process runtime owns one injectable database resource", async () => {
   assert.equal(closeCalls, 1);
 });
 
+test("process runtime owns retention scheduling and drains it before the database is closed", async () => {
+  const { createProcessRuntime } = await import("../src/app/process-runtime.js");
+  const events: string[] = [];
+  let databaseFactoryCalls = 0;
+  let releaseRetention!: () => void;
+  const retentionBlocked = new Promise<void>((resolve) => {
+    releaseRetention = resolve;
+  });
+  let transactionCalls = 0;
+  const resource = {
+    db: {
+      transaction: async (operation: (transaction: {
+        execute: () => Promise<{ id: string }[]>;
+        delete: () => { where: () => { returning: () => Promise<{ id: string }[]> } };
+      }) => Promise<number>) => operation({
+        execute: async () => {
+          transactionCalls += 1;
+          events.push(`retention_batch:${transactionCalls}`);
+          if (transactionCalls === 1) await retentionBlocked;
+          return [];
+        },
+        delete: () => ({ where: () => ({ returning: async () => [] }) }),
+      }),
+    } as never,
+    probe: async () => [],
+    close: async () => {
+      events.push("database_closed");
+    },
+  };
+
+  const runtime = createProcessRuntime({
+    environment: {
+      DATABASE_URL: "postgres://runtime.test/leilei",
+      MCP_SESSION_IDLE_TTL_SECONDS: 7_200,
+      MCP_SESSION_ABSOLUTE_TTL_SECONDS: 86_400,
+      MCP_SESSION_MAX_PER_USER: 8,
+      MCP_SESSION_MAX_TOTAL: 32,
+      MCP_IDEMPOTENCY_RETENTION_DAYS: 30,
+      MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: 24,
+    } as never,
+    createDatabaseResource: () => {
+      databaseFactoryCalls += 1;
+      return resource;
+    },
+  });
+
+  runtime.startBackgroundWork();
+  runtime.startBackgroundWork();
+  await Promise.resolve();
+  assert.equal(databaseFactoryCalls, 1);
+  assert.equal(transactionCalls, 1);
+
+  runtime.stopBackgroundWork();
+  runtime.stopBackgroundWork();
+  const draining = runtime.drainBackgroundWork();
+  let drained = false;
+  void draining.then(() => { drained = true; });
+  await Promise.resolve();
+  assert.equal(drained, false);
+
+  releaseRetention();
+  await draining;
+  await runtime.closeDatabase();
+  assert.equal(transactionCalls, 2);
+  assert.deepEqual(events, [
+    "retention_batch:1",
+    "retention_batch:2",
+    "database_closed",
+  ]);
+});
+
 test("process runtime creates one shared safe logger for app and observers", async () => {
   const { createProcessRuntime } = await import("../src/app/process-runtime.js");
   let loggerCalls = 0;

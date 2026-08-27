@@ -12,6 +12,7 @@ type HttpServerLike = {
 export function createGracefulShutdownController(input: {
   server: HttpServerLike;
   closeMcpSessions: () => Promise<void>;
+  stopBackgroundWork?: () => void;
   drainBackgroundWork: () => Promise<void>;
   closeDatabase: () => Promise<void>;
   exit: (code: number) => void;
@@ -72,6 +73,7 @@ export function createGracefulShutdownController(input: {
           rejectHttp(error);
         }
       });
+      input.stopBackgroundWork?.();
 
       deadlineHandle = scheduleDeadline(() => {
         if (settled) return;
