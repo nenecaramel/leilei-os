@@ -17,7 +17,6 @@ import { createMcpRouter } from "../mcp/server/router.js";
 import {
   McpSessionRegistry,
 } from "../mcp/server/session-registry.js";
-import { McpIdempotencyCleanupCoordinator } from "../mcp/server/idempotency-retention.js";
 import type { McpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import { createProtectedResourceMetadataHandler } from "../oauth/protected-resource-metadata.js";
 import { createWebApiRouter } from "../web-api/router.js";
@@ -61,7 +60,6 @@ export type AppDependencies = {
   webUniverseService?: UniverseApiDependencies["universeService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
-  mcpIdempotencyCleanup?: McpIdempotencyCleanupCoordinator;
   createMcpSessionServer?: McpSessionServerFactory;
 };
 
@@ -132,8 +130,6 @@ export function createApp(
       respondDatabaseUnavailable(response);
     }
   };
-
-  const mcpIdempotencyCleanup = dependencies.mcpIdempotencyCleanup;
 
   const verifyAccessToken =
     dependencies.verifyAccessToken ??
@@ -308,7 +304,6 @@ export function createApp(
     createMcpRouter({
       namespace: "public",
       registry: mcpSessionRegistry,
-      onInitialize: () => mcpIdempotencyCleanup?.maybeCleanup() ?? Promise.resolve(),
       createSessionServer: dependencies.createMcpSessionServer,
       logger,
     }),
@@ -325,7 +320,6 @@ export function createApp(
       createMcpRouter({
         namespace: "internal",
         registry: mcpSessionRegistry,
-        onInitialize: () => mcpIdempotencyCleanup?.maybeCleanup() ?? Promise.resolve(),
         createSessionServer: dependencies.createMcpSessionServer,
         logger,
       }),

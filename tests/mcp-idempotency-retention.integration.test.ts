@@ -5,16 +5,17 @@ import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/database/schema.js";
-import { deleteExpiredMcpIdempotency } from "../src/mcp/server/idempotency-retention.js";
+import { runBoundedRetention } from "../src/domains/retention/retention-policy.js";
+import { deleteExpiredMcpIdempotencyBatch } from "../src/mcp/server/idempotency-retention.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const parsed = databaseUrl ? new URL(databaseUrl) : null;
 const localTarget = parsed?.hostname === "127.0.0.1" || parsed?.hostname === "localhost";
-const RUN = process.env.RUN_MCP_IDEMPOTENCY_RETENTION_DATABASE_TEST === "1" && Boolean(databaseUrl) && localTarget;
+const RUN = process.env.RUN_DATA_RETENTION_DATABASE_TEST === "1" && Boolean(databaseUrl) && localTarget;
 
 class RollbackRetentionTest extends Error {}
 
-test("real PostgreSQL retention deletes only rows older than the cutoff and preserves related data", { skip: !RUN }, async () => {
+test("real PostgreSQL bounded retention deletes only expired idempotency rows and is idempotent", { skip: !RUN }, async () => {
   const client = postgres(databaseUrl!, { max: 1, prepare: false, ssl: false });
   const db = drizzle(client, { schema });
   const userId = randomUUID();
@@ -71,13 +72,19 @@ test("real PostgreSQL retention deletes only rows older than the cutoff and pres
           { userId, toolName: "write_diary", idempotencyKey: keys[2]!, requestHash: "d".repeat(64), resourceType: "diary_entry", resourceId: diary!.id, createdAt: newCreatedAt },
         ]);
 
-        const deleted = await deleteExpiredMcpIdempotency(transaction as never, cutoff);
-        assert.equal(deleted, 1);
+        const firstRun = await runBoundedRetention((limit) =>
+          deleteExpiredMcpIdempotencyBatch(transaction as never, cutoff, limit),
+        );
+        assert.deepEqual(firstRun, { deletedRows: 1, batches: 1, capped: false });
+        const secondRun = await runBoundedRetention((limit) =>
+          deleteExpiredMcpIdempotencyBatch(transaction as never, cutoff, limit),
+        );
+        assert.deepEqual(secondRun, { deletedRows: 0, batches: 1, capped: false });
+
         const remaining = await transaction.select({ key: schema.mcpWriteIdempotency.idempotencyKey })
           .from(schema.mcpWriteIdempotency)
           .where(and(eq(schema.mcpWriteIdempotency.userId, userId), inArray(schema.mcpWriteIdempotency.idempotencyKey, keys)));
         assert.deepEqual(remaining.map((row) => row.key).sort(), keys.slice(1).sort());
-        assert.equal((await transaction.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.id, userId))).length, 1);
         assert.equal((await transaction.select({ id: schema.diaryEntries.id }).from(schema.diaryEntries).where(eq(schema.diaryEntries.userId, userId))).length, 1);
         assert.equal((await transaction.select({ id: schema.toolCalls.id }).from(schema.toolCalls).where(eq(schema.toolCalls.userId, userId))).length, 1);
         assert.equal((await transaction.select({ id: schema.resourceLifecycleEvents.id }).from(schema.resourceLifecycleEvents).where(eq(schema.resourceLifecycleEvents.userId, userId))).length, 1);

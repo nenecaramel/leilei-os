@@ -4,10 +4,8 @@ import test from "node:test";
 import express from "express";
 import type { AddressInfo } from "node:net";
 import { createHttpObservabilityMiddleware } from "../src/observability/http-observability.js";
-import { McpIdempotencyCleanupCoordinator } from "../src/mcp/server/idempotency-retention.js";
 import { createMcpRouter } from "../src/mcp/server/router.js";
 import { createSafeLogger } from "../src/observability/logger.js";
-import { createMcpLifecycleObserver } from "../src/observability/runtime-observers.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -87,25 +85,13 @@ test("MCP router keeps safe 500 response and fingerprints handler failures", asy
   }
 });
 
-test("initialize cleanup completion escapes the request context", async () => {
+test("MCP initialize does not invoke a retention cleanup callback", async () => {
   const lines: string[] = [];
   const logger = createSafeLogger({
     level: "debug",
     sink: (_level, line) => lines.push(line),
   });
-  let release!: () => void;
-  const blocker = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const coordinator = new McpIdempotencyCleanupCoordinator({
-    retentionMs: 1_000,
-    intervalMs: 10_000,
-    cleanup: async () => {
-      await blocker;
-      return 1;
-    },
-    observer: createMcpLifecycleObserver(logger),
-  });
+  let cleanupCalls = 0;
   const app = express();
   app.use(express.json());
   app.use(createHttpObservabilityMiddleware({
@@ -116,16 +102,17 @@ test("initialize cleanup completion escapes the request context", async () => {
     request.mcpUserId = USER_ID;
     next();
   });
-  app.use("/mcp", createMcpRouter({
+  const routerOptions = {
     logger,
-    onInitialize: () => coordinator.maybeCleanup(),
+    onInitialize: async () => { cleanupCalls += 1; },
     createSessionServer: () => {
       throw Object.assign(new Error("provider secret must not appear"), {
         name: "ProviderError",
         code: "E_PROVIDER",
       });
     },
-  }));
+  };
+  app.use("/mcp", createMcpRouter(routerOptions as never));
 
   const server = await new Promise<http.Server>((resolve) => {
     const instance = app.listen(0, "127.0.0.1", () => resolve(instance));
@@ -147,15 +134,8 @@ test("initialize cleanup completion escapes the request context", async () => {
       }),
     });
     assert.equal(response.status, 500);
-    release();
-    await coordinator.drain();
-
-    const parsed = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
-    const requestFailure = parsed.find((line) => line.event === "mcp_request_failed");
-    const completed = parsed.find((line) => line.event === "mcp_idempotency_cleanup_completed");
-    assert.equal(requestFailure?.requestId, "initialize-request-id");
-    assert.ok(completed);
-    assert.equal(completed.requestId, undefined);
+    await Promise.resolve();
+    assert.equal(cleanupCalls, 0);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

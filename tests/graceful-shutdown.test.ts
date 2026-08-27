@@ -29,6 +29,7 @@ function createHarness(options: { stuckHttp?: boolean; mcpError?: boolean } = {}
       events.push("mcp_close");
       if (options.mcpError) throw new Error("provider detail must stay private");
     },
+    stopBackgroundWork: () => events.push("background_stop"),
     drainBackgroundWork: async () => events.push("background_drain"),
     closeDatabase: async () => events.push("database_close"),
     exit: (code) => {
@@ -47,16 +48,83 @@ function createHarness(options: { stuckHttp?: boolean; mcpError?: boolean } = {}
   return { shutdown, events, observed, fireDeadline: () => deadlineCallback?.(), get deadlineMs() { return deadlineMs; }, get exitCalls() { return exitCalls; } };
 }
 
-test("graceful shutdown drains HTTP, MCP, background work, then database", async () => {
-  const harness = createHarness();
-  await harness.shutdown("SIGTERM");
-  assert.deepEqual(harness.events, [
-    "http_close_started",
-    "mcp_close",
-    "http_drained",
-    "background_drain",
-    "database_close",
-    "deadline_clear",
+test("graceful shutdown stops admission in the server-close turn and drains retention before the database", async () => {
+  const events: string[] = [];
+  let completeHttp!: () => void;
+  let releaseRetention!: () => void;
+  const retentionBlocked = new Promise<void>((resolve) => { releaseRetention = resolve; });
+  let retentionStarts = 1;
+  let stopping = false;
+  let stopCalls = 0;
+  const runRetentionFromInterval = () => {
+    if (!stopping) retentionStarts += 1;
+  };
+  const shutdown = createGracefulShutdownController({
+    server: {
+      close(callback) {
+        events.push("server_close_started");
+        completeHttp = () => {
+          events.push("http_drain_completed");
+          callback();
+        };
+      },
+    },
+    closeMcpSessions: async () => {
+      events.push("mcp_sessions_started");
+      events.push("mcp_sessions_completed");
+    },
+    stopBackgroundWork: () => {
+      stopCalls += 1;
+      stopping = true;
+      events.push("background_stop");
+    },
+    drainBackgroundWork: async () => {
+      events.push("background_work_started");
+      await retentionBlocked;
+      events.push("retention_run_completed");
+      events.push("background_work_completed");
+    },
+    closeDatabase: async () => {
+      events.push("database_closed");
+    },
+    exit: (code) => events.push(`exit:${code}`),
+    observer: (event) => {
+      if (event.name === "shutdown_started") events.push("shutdown_started");
+    },
+  });
+
+  const first = shutdown("SIGTERM");
+  const second = shutdown("SIGINT");
+  assert.strictEqual(first, second);
+  runRetentionFromInterval();
+  assert.equal(retentionStarts, 1);
+  assert.equal(stopCalls, 1);
+  assert.deepEqual(events.slice(0, 5), [
+    "shutdown_started",
+    "server_close_started",
+    "background_stop",
+    "mcp_sessions_started",
+    "mcp_sessions_completed",
+  ]);
+
+  completeHttp();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(events.includes("database_closed"), false);
+  assert.equal(events.includes("background_work_started"), true);
+  releaseRetention();
+  await first;
+
+  assert.deepEqual(events, [
+    "shutdown_started",
+    "server_close_started",
+    "background_stop",
+    "mcp_sessions_started",
+    "mcp_sessions_completed",
+    "http_drain_completed",
+    "background_work_started",
+    "retention_run_completed",
+    "background_work_completed",
+    "database_closed",
     "exit:0",
   ]);
 });
@@ -76,6 +144,7 @@ test("MCP close failure still drains every resource and exits one", async () => 
   await harness.shutdown("SIGTERM");
   assert.deepEqual(harness.events, [
     "http_close_started",
+    "background_stop",
     "mcp_close",
     "http_drained",
     "background_drain",
@@ -92,7 +161,7 @@ test("deadline exits once when HTTP close is stuck", async () => {
   harness.fireDeadline();
   await draining;
   assert.equal(harness.exitCalls, 1);
-  assert.deepEqual(harness.events, ["http_close_started", "mcp_close", "exit:1"]);
+  assert.deepEqual(harness.events, ["http_close_started", "background_stop", "mcp_close", "exit:1"]);
   assert.deepEqual(harness.observed.map((event) => event.name), [
     "shutdown_started",
     "shutdown_deadline_exceeded",

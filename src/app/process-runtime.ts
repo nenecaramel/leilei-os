@@ -22,13 +22,18 @@ import { ImportService } from "../domains/import/import-service.js";
 import { DrizzleUniverseRepository } from "../domains/universe/universe-repository-drizzle.js";
 import { UniverseService } from "../domains/universe/universe-service.js";
 import {
-  deleteExpiredMcpIdempotency,
-  McpIdempotencyCleanupCoordinator,
+  deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";
+import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
+import { createRetentionCoordinator } from "../domains/retention/retention-coordinator.js";
+import { DATA_IMPORT_RETENTION_DAYS } from "../domains/retention/retention-policy.js";
 import { McpSessionRegistry } from "../mcp/server/session-registry.js";
 import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
-import { createMcpLifecycleObserver } from "../observability/runtime-observers.js";
+import {
+  createMcpLifecycleObserver,
+  createRetentionObserver,
+} from "../observability/runtime-observers.js";
 
 type DatabaseResource = ReturnType<typeof createDatabase>;
 
@@ -36,6 +41,8 @@ export type ProcessRuntime = {
   appDependencies: AppDependencies;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
+  startBackgroundWork(): void;
+  stopBackgroundWork(): void;
   drainBackgroundWork(): Promise<void>;
   closeDatabase(): Promise<void>;
 };
@@ -84,11 +91,21 @@ export function createProcessRuntime(
     maxTotal: governance.maxTotal,
     observer: observeLifecycle,
   });
-  const mcpIdempotencyCleanup = new McpIdempotencyCleanupCoordinator({
-    retentionMs: governance.idempotencyRetentionDays * 24 * 60 * 60 * 1_000,
+  const retentionCoordinator = createRetentionCoordinator({
     intervalMs: governance.idempotencyCleanupIntervalHours * 60 * 60 * 1_000,
-    cleanup: (cutoff) => deleteExpiredMcpIdempotency(db, cutoff),
-    observer: observeLifecycle,
+    policies: [
+      {
+        policy: "mcp_write_idempotency",
+        retentionMs: governance.idempotencyRetentionDays * 24 * 60 * 60 * 1_000,
+        deleteBatch: (cutoff, limit) => deleteExpiredMcpIdempotencyBatch(db, cutoff, limit),
+      },
+      {
+        policy: "data_import_runs",
+        retentionMs: DATA_IMPORT_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
+        deleteBatch: (cutoff, limit) => deleteExpiredDataImportRunsBatch(db, cutoff, limit),
+      },
+    ],
+    observe: createRetentionObserver(logger),
   });
   const createMcpSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: memoryRepository,
@@ -118,10 +135,11 @@ export function createProcessRuntime(
       webUniverseService: universeService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
-      mcpIdempotencyCleanup,
       createMcpSessionServer,
     },
-    drainBackgroundWork: () => mcpIdempotencyCleanup.drain(),
+    startBackgroundWork: () => retentionCoordinator.start(),
+    stopBackgroundWork: () => retentionCoordinator.stopScheduling(),
+    drainBackgroundWork: () => retentionCoordinator.drain(),
     closeDatabase: database.close,
   };
 }

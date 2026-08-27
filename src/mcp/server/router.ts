@@ -8,7 +8,6 @@ import {
 } from "./create-server.js";
 import type { McpSessionServerFactory } from "./production-server-factory.js";
 import { safeErrorFingerprint, type SafeLogger } from "../../observability/logger.js";
-import { runWithoutRequestContext } from "../../observability/request-context.js";
 import {
   McpSessionRegistry,
   type McpSessionNamespace,
@@ -49,7 +48,6 @@ function readInitializeDiagnosticMetadata(body: unknown): {
 export type McpRouterOptions = {
   namespace?: McpSessionNamespace;
   registry?: McpSessionRegistry;
-  onInitialize?: () => Promise<void>;
   createSessionServer?: McpSessionServerFactory;
   logger?: SafeLogger;
 };
@@ -139,10 +137,6 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
           sendError(response, 429, -32029, "MCP session capacity exceeded.");
           return;
         }
-        // Retention cleanup is best-effort and must never delay initialize.
-        runWithoutRequestContext(() => {
-          void options.onInitialize?.();
-        });
         let initializedRecord: McpSessionRecord | null = null;
         let transport: StreamableHTTPServerTransport | null = null;
         try {

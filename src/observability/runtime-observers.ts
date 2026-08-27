@@ -1,10 +1,12 @@
-import type {
-  IdempotencyCleanupObserverEvent,
-} from "../mcp/server/idempotency-retention.js";
+import type { RetentionCoordinatorEvent } from "../domains/retention/retention-coordinator.js";
 import type { McpSessionObserverEvent } from "../mcp/server/session-registry.js";
 import type { SafeLogFields, SafeLogger } from "./logger.js";
 
-type McpLifecycleEvent = McpSessionObserverEvent | IdempotencyCleanupObserverEvent;
+type LegacyIdempotencyCleanupObserverEvent =
+  | { name: "mcp_idempotency_cleanup_completed"; deletedRows: number; durationMs: number }
+  | { name: "mcp_idempotency_cleanup_failed"; durationMs: number };
+
+type McpLifecycleEvent = McpSessionObserverEvent | LegacyIdempotencyCleanupObserverEvent;
 
 const MCP_OBSERVABLE_FIELDS = new Set([
   "namespace",
@@ -49,6 +51,44 @@ export function createMcpLifecycleObserver(
       return;
     }
     logger.info(event.name, fields);
+  };
+}
+
+const RETENTION_OBSERVABLE_FIELDS = new Set([
+  "policy",
+  "deletedRows",
+  "batches",
+  "capped",
+  "durationMs",
+]);
+
+export function projectRetentionEvent(event: RetentionCoordinatorEvent): SafeLogFields {
+  const projected: Record<string, string | number | boolean | null> = {};
+  for (const key of RETENTION_OBSERVABLE_FIELDS) {
+    const value = event[key as keyof RetentionCoordinatorEvent];
+    if (value === null || typeof value === "string" || typeof value === "boolean") {
+      projected[key] = value;
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+      projected[key] = value;
+    }
+  }
+  return projected;
+}
+
+export function createRetentionObserver(
+  logger: SafeLogger,
+): (event: RetentionCoordinatorEvent) => void {
+  return (event) => {
+    try {
+      const fields = projectRetentionEvent(event);
+      if (event.name.endsWith("_failed")) {
+        logger.warn(event.name, fields);
+      } else {
+        logger.info(event.name, fields);
+      }
+    } catch {
+      // Logging is observational and must never affect retention correctness.
+    }
   };
 }
 

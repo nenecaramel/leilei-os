@@ -457,6 +457,10 @@ export const mcpWriteIdempotency = pgTable(
       table.resourceType,
       table.resourceId,
     ),
+    index("mcp_write_idempotency_created_id_idx").on(
+      table.createdAt.asc(),
+      table.id.asc(),
+    ),
     check(
       "mcp_write_idempotency_tool_allowed",
       sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'create_universe_node', 'create_universe_relation')`,
@@ -555,6 +559,7 @@ export const dataImportRuns = pgTable(
   },
   (table) => [
     index("data_import_runs_user_created_idx").on(table.userId, table.createdAt.desc()),
+    index("data_import_runs_created_id_idx").on(table.createdAt.asc(), table.id.asc()),
     check("data_import_runs_package_sha256_format", sql`${table.packageSha256} ~ '^[0-9a-f]{64}$'`),
     check("data_import_runs_preview_fingerprint_format", sql`${table.previewFingerprint} ~ '^[0-9a-f]{64}$'`),
     check("data_import_runs_summary_object", sql`jsonb_typeof(${table.summary}) = 'object'`),

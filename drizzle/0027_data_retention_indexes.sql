@@ -1,0 +1,2 @@
+CREATE INDEX "data_import_runs_created_id_idx" ON "data_import_runs" USING btree ("created_at","id");--> statement-breakpoint
+CREATE INDEX "mcp_write_idempotency_created_id_idx" ON "mcp_write_idempotency" USING btree ("created_at","id");
