@@ -77,13 +77,19 @@ test("rejects missing, wrong-subject and insufficient-scope Web tokens", async (
     header: () => "Bearer web-token",
   } as unknown as Request;
   const wrongSubjectResponse = responseRecorder();
-  await createWebApiAuthMiddleware(config, async () => ({
-    subject: "auth0|someone-else",
-    issuer: config.AUTH0_ISSUER,
-    audience: [config.WEB_AUTH0_AUDIENCE],
-    scopes: [config.WEB_AUTH0_REQUIRED_SCOPE],
-  }))(wrongSubjectRequest, wrongSubjectResponse.response, (() => {}) as NextFunction);
+  let wrongSubjectReason: string | undefined;
+  await createWebApiAuthMiddleware(
+    config,
+    async () => ({
+      subject: "auth0|someone-else",
+      issuer: config.AUTH0_ISSUER,
+      audience: [config.WEB_AUTH0_AUDIENCE],
+      scopes: [config.WEB_AUTH0_REQUIRED_SCOPE],
+    }),
+    { onAuthFailure: (reason) => { wrongSubjectReason = reason; } },
+  )(wrongSubjectRequest, wrongSubjectResponse.response, (() => {}) as NextFunction);
   assert.equal(wrongSubjectResponse.result.status, 401);
+  assert.equal(wrongSubjectReason, "subject_not_allowed");
 
   const scopeRequest = { header: () => "Bearer web-token" } as unknown as Request;
   const scopeResponse = responseRecorder();
@@ -91,6 +97,29 @@ test("rejects missing, wrong-subject and insufficient-scope Web tokens", async (
     throw new AccessTokenError("Missing Web scope.", "insufficient_scope");
   })(scopeRequest, scopeResponse.response, (() => {}) as NextFunction);
   assert.equal(scopeResponse.result.status, 403);
+});
+
+test("Web auth verification diagnostics are non-fatal and preserve the 401 contract", async () => {
+  const request = { header: () => "Bearer web-token" } as unknown as Request;
+  const response = responseRecorder();
+  const reasons: string[] = [];
+  await createWebApiAuthMiddleware(
+    config,
+    async () => {
+      throw Object.assign(new Error("private verifier detail"), { code: "ERR_JWKS_TIMEOUT" });
+    },
+    { onAuthFailure: (reason) => reasons.push(reason) },
+  )(request, response.response, (() => {}) as NextFunction);
+  assert.deepEqual(reasons, ["jwks_unavailable"]);
+  assert.equal(response.result.status, 401);
+
+  const callbackThrowing = responseRecorder();
+  await createWebApiAuthMiddleware(
+    config,
+    async () => { throw new Error("private verifier detail"); },
+    { onAuthFailure: () => { throw new Error("observer failure"); } },
+  )(request, callbackThrowing.response, (() => {}) as NextFunction);
+  assert.equal(callbackThrowing.result.status, 401);
 });
 
 test("allows CORS only from the configured Web origin", () => {
