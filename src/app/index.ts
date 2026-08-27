@@ -1,8 +1,11 @@
 import "dotenv/config";
 import { createApp } from "./create-app.js";
+import { createProcessRuntime } from "./process-runtime.js";
+import { createGracefulShutdownController } from "./graceful-shutdown.js";
 import { env } from "../config/env.js";
 
-const app = createApp();
+const runtime = createProcessRuntime();
+const app = createApp(runtime.appDependencies);
 
 const httpServer = app.listen(env.PORT, env.HOST, () => {
   console.log(`Leilei OS listening on http://${env.HOST}:${env.PORT}`);
@@ -12,16 +15,15 @@ const httpServer = app.listen(env.PORT, env.HOST, () => {
   }
 });
 
-function shutdown(signal: string): void {
-  console.log(`${signal} received; shutting down.`);
-  httpServer.close((error) => {
-    if (error) {
-      console.error("Shutdown failed", error);
-      process.exit(1);
-    }
-    process.exit(0);
-  });
-}
+const shutdown = createGracefulShutdownController({
+  server: httpServer,
+  closeMcpSessions: () => runtime.mcpSessionRegistry.shutdown(),
+  drainBackgroundWork: () => runtime.drainBackgroundWork(),
+  closeDatabase: () => runtime.closeDatabase(),
+  exit: (code) => process.exit(code),
+  logInfo: (message) => console.info(message),
+  logError: (message) => console.error(message),
+});
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => { void shutdown("SIGINT"); });
+process.on("SIGTERM", () => { void shutdown("SIGTERM"); });
