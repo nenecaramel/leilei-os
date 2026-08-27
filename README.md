@@ -30,7 +30,7 @@ The current codebase contains the following working areas:
   source of truth for persisted application data.
 
 The current database migration head is
-`0025_wild_xavin` (see `drizzle/meta/_journal.json`). The migration chain
+`0026_universe_diary_provenance` (see `drizzle/meta/_journal.json`). The migration chain
 must be reviewed before any production database change.
 
 ## Web application
