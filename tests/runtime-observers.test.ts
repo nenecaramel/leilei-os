@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createMcpLifecycleObserver,
+  createShutdownObserver,
   projectMcpLifecycleEvent,
 } from "../src/observability/runtime-observers.js";
 
@@ -41,5 +42,25 @@ test("idempotency cleanup failures are warning logs and other lifecycle events a
   assert.deepEqual(captured, [
     { level: "warn", event: "mcp_idempotency_cleanup_failed", fields: { durationMs: 12 } },
     { level: "info", event: "mcp_idempotency_cleanup_completed", fields: { deletedRows: 2, durationMs: 4 } },
+  ]);
+});
+
+test("shutdown observer maps lifecycle severity without leaking unapproved fields", () => {
+  const captured: Array<{ level: string; event: string; fields?: unknown }> = [];
+  const observer = createShutdownObserver({
+    debug: () => undefined,
+    info: (event, fields) => captured.push({ level: "info", event, fields }),
+    warn: () => undefined,
+    error: (event, fields) => captured.push({ level: "error", event, fields }),
+  });
+
+  observer({ name: "shutdown_started", signal: "SIGTERM" });
+  observer({ name: "shutdown_stage_failed", stage: "database", durationMs: 4 });
+  observer({ name: "shutdown_completed", success: false, durationMs: 8 });
+
+  assert.deepEqual(captured, [
+    { level: "info", event: "shutdown_started", fields: { signal: "SIGTERM" } },
+    { level: "error", event: "shutdown_stage_failed", fields: { stage: "database", durationMs: 4 } },
+    { level: "info", event: "shutdown_completed", fields: { success: false, durationMs: 8 } },
   ]);
 });
