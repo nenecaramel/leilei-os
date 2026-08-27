@@ -1,6 +1,10 @@
 import type { RequestHandler } from "express";
 import type { AppConfig } from "../config/env.js";
-import { AccessTokenError, type AccessTokenVerifier } from "./jwt-verifier.js";
+import {
+  AccessTokenError,
+  type AccessTokenVerifier,
+  type AuthFailureReason,
+} from "./jwt-verifier.js";
 
 function createChallenge(
   config: AppConfig,
@@ -27,6 +31,7 @@ function createChallenge(
 export function createOAuthMiddleware(
   config: AppConfig,
   verifyAccessToken: AccessTokenVerifier,
+  options: { onAuthFailure?: (reason: AuthFailureReason) => void } = {},
 ): RequestHandler {
   return async (request, response, next) => {
     const authorization = request.header("authorization");
@@ -52,6 +57,7 @@ export function createOAuthMiddleware(
         throw new AccessTokenError(
           "The token subject is not authorized.",
           "invalid_token",
+          "subject_not_allowed",
         );
       }
 
@@ -62,7 +68,16 @@ export function createOAuthMiddleware(
       const accessTokenError =
         error instanceof AccessTokenError
           ? error
-          : new AccessTokenError("The access token is invalid.", "invalid_token");
+          : new AccessTokenError(
+              "The access token is invalid.",
+              "invalid_token",
+              "verification_unknown",
+            );
+      try {
+        options.onAuthFailure?.(accessTokenError.diagnosticReason);
+      } catch {
+        // Authentication diagnostics must never alter the public auth contract.
+      }
       const status = accessTokenError.kind === "insufficient_scope" ? 403 : 401;
 
       response.setHeader(
@@ -82,4 +97,3 @@ export function createOAuthMiddleware(
     }
   };
 }
-

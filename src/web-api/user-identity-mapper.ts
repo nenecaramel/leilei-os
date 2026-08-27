@@ -10,6 +10,7 @@ export function mapWebPrincipalToUserId(
     throw new AccessTokenError(
       "The token subject is not authorized.",
       "invalid_token",
+      "subject_not_allowed",
     );
   }
 

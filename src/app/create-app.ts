@@ -16,17 +16,20 @@ import {
 import { createMcpRouter } from "../mcp/server/router.js";
 import {
   McpSessionRegistry,
-  type McpSessionObserverEvent,
 } from "../mcp/server/session-registry.js";
-import {
-  McpIdempotencyCleanupCoordinator,
-  type IdempotencyCleanupObserverEvent,
-} from "../mcp/server/idempotency-retention.js";
+import { McpIdempotencyCleanupCoordinator } from "../mcp/server/idempotency-retention.js";
 import type { McpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import { createProtectedResourceMetadataHandler } from "../oauth/protected-resource-metadata.js";
 import { createWebApiRouter } from "../web-api/router.js";
 import { createWebApiAuthMiddleware } from "../web-api/web-api-auth.js";
 import { createWebApiCorsMiddleware } from "../web-api/web-api-cors.js";
+import { createHttpObservabilityMiddleware } from "../observability/http-observability.js";
+import {
+  createSafeLogger,
+  safeErrorFingerprint,
+  type SafeLogger,
+} from "../observability/logger.js";
+import { createMcpLifecycleObserver } from "../observability/runtime-observers.js";
 
 import type { MemoryApiDependencies } from "../web-api/memory-router.js";
 import type { DiaryApiDependencies } from "../web-api/diary-router.js";
@@ -43,6 +46,7 @@ import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 
 export type AppDependencies = {
+  logger?: SafeLogger;
   verifyAccessToken?: AccessTokenVerifier;
   verifyWebAccessToken?: AccessTokenVerifier;
   webMemoryService?: MemoryApiDependencies["memoryService"];
@@ -61,44 +65,12 @@ export type AppDependencies = {
   createMcpSessionServer?: McpSessionServerFactory;
 };
 
-function observeMcpLifecycle(
-  event: McpSessionObserverEvent | IdempotencyCleanupObserverEvent,
-): void {
-  const safeFields = Object.fromEntries(
-    Object.entries(event).filter(([key]) =>
-      [
-        "name",
-        "namespace",
-        "reason",
-        "activeSessionCount",
-        "activeNamespaceCount",
-        "deletedRows",
-        "durationMs",
-        "diagnosticSessionOrdinal",
-        "protocolVersion",
-        "clientName",
-        "clientVersion",
-        "hadUnknownSessionHeader",
-        "activeUserNamespaceCount",
-        "idleUserNamespaceCount",
-        "inFlightUserNamespaceCount",
-        "oldestIdleAgeMs",
-        "inFlightCountAtClose",
-        "idleAgeMsAtClose",
-      ].includes(key),
-    ),
-  );
-  if (event.name === "mcp_idempotency_cleanup_failed") {
-    console.warn("MCP lifecycle event", safeFields);
-    return;
-  }
-  console.info("MCP lifecycle event", safeFields);
-}
-
 export function createApp(
   dependencies: AppDependencies = {},
 ): express.Express {
   const app = express();
+  const logger = dependencies.logger ?? createSafeLogger({ level: env.LOG_LEVEL });
+  const observeMcpLifecycle = createMcpLifecycleObserver(logger);
   const config = requireOAuthConfig(env);
   const mcpGovernance = getMcpGovernanceConfig(env);
   const mcpSessionRegistry = dependencies.mcpSessionRegistry ?? new McpSessionRegistry({
@@ -117,13 +89,31 @@ export function createApp(
           backoffMs: MIGRATION_READINESS_BACKOFF_MS,
           maxBackoffMs: MIGRATION_READINESS_MAX_BACKOFF_MS,
           onRetry: ({ attempt, maxAttempts, name, code }) => {
-            console.warn(
-              `Database readiness retry. stage=request attempt=${attempt}/${maxAttempts} name=${name} code=${code}`,
-            );
+            logger.warn("database_readiness_retry", {
+              attempt,
+              maxAttempts,
+              name,
+              code,
+            });
           },
         },
       )
     : undefined;
+
+  const respondDatabaseUnavailable = (response: express.Response): void => {
+    response.status(503).json({
+      success: false,
+      error: {
+        code: "DATABASE_UNAVAILABLE",
+        message: "Database is temporarily unavailable.",
+      },
+    });
+  };
+
+  const logDatabaseReadinessFailure = (error: unknown): void => {
+    const { name, code } = safeErrorFingerprint(error);
+    logger.error("database_readiness_failed", { name, code });
+  };
 
   const databaseReadinessMiddleware: express.RequestHandler = async (
     _request,
@@ -137,15 +127,9 @@ export function createApp(
     try {
       await databaseReadiness();
       next();
-    } catch {
-      console.error("Database readiness failed after bounded retry. stage=request");
-      response.status(503).json({
-        success: false,
-        error: {
-          code: "DATABASE_UNAVAILABLE",
-          message: "Database is temporarily unavailable.",
-        },
-      });
+    } catch (error) {
+      logDatabaseReadinessFailure(error);
+      respondDatabaseUnavailable(response);
     }
   };
 
@@ -166,6 +150,7 @@ export function createApp(
   const webApiConfig = getWebApiConfig(env);
 
   app.disable("x-powered-by");
+  app.use(createHttpObservabilityMiddleware({ logger }));
   app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_request, response) => {
@@ -176,6 +161,33 @@ export function createApp(
         status: "ok",
       },
     });
+  });
+
+  app.get("/ready", async (_request, response) => {
+    if (!databaseReadiness) {
+      logDatabaseReadinessFailure(
+        Object.assign(new Error("Database readiness is not configured."), {
+          name: "UNAVAILABLE",
+          code: "UNCONFIGURED",
+        }),
+      );
+      respondDatabaseUnavailable(response);
+      return;
+    }
+
+    try {
+      await databaseReadiness();
+      response.json({
+        success: true,
+        data: {
+          service: "leilei-os",
+          status: "ready",
+        },
+      });
+    } catch (error) {
+      logDatabaseReadinessFailure(error);
+      respondDatabaseUnavailable(response);
+    }
   });
 
   app.get(
@@ -249,6 +261,14 @@ export function createApp(
       createWebApiAuthMiddleware(
         webApiConfig,
         verifyWebAccessToken,
+        {
+          onAuthFailure: (authFailure) => {
+            logger.warn("auth_verification_failed", {
+              surface: "web_api",
+              authFailure,
+            });
+          },
+        },
       ),
       databaseReadinessMiddleware,
       createWebApiRouter({
@@ -276,13 +296,21 @@ export function createApp(
 
   app.use(
     "/mcp",
-    createOAuthMiddleware(config, verifyAccessToken),
+    createOAuthMiddleware(config, verifyAccessToken, {
+      onAuthFailure: (authFailure) => {
+        logger.warn("auth_verification_failed", {
+          surface: "mcp_public",
+          authFailure,
+        });
+      },
+    }),
     databaseReadinessMiddleware,
     createMcpRouter({
       namespace: "public",
       registry: mcpSessionRegistry,
       onInitialize: () => mcpIdempotencyCleanup?.maybeCleanup() ?? Promise.resolve(),
       createSessionServer: dependencies.createMcpSessionServer,
+      logger,
     }),
   );
 
@@ -299,6 +327,7 @@ export function createApp(
         registry: mcpSessionRegistry,
         onInitialize: () => mcpIdempotencyCleanup?.maybeCleanup() ?? Promise.resolve(),
         createSessionServer: dependencies.createMcpSessionServer,
+        logger,
       }),
     );
   }

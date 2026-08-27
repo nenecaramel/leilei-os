@@ -10,6 +10,7 @@ import {
 import { createInternalAuthMiddleware } from "../src/auth/internal-auth.js";
 import {
   AccessTokenError,
+  classifyAuthFailure,
   createJwtVerifier,
 } from "../src/auth/jwt-verifier.js";
 import { createOAuthMiddleware } from "../src/auth/oauth-middleware.js";
@@ -102,8 +103,59 @@ test("verifies issuer, audience, signature and required scope", async () => {
   await assert.rejects(
     verifier(await issue("openid profile")),
     (error: unknown) =>
-      error instanceof AccessTokenError && error.kind === "insufficient_scope",
+      error instanceof AccessTokenError &&
+      error.kind === "insufficient_scope" &&
+      error.diagnosticReason === "scope_missing",
   );
+});
+
+test("classifies stable verifier failure codes without inspecting private messages", () => {
+  assert.equal(
+    classifyAuthFailure(Object.assign(new Error("secret"), { code: "ERR_JWT_EXPIRED" })),
+    "token_expired",
+  );
+  assert.equal(
+    classifyAuthFailure(Object.assign(new Error("secret"), { code: "ERR_JWKS_TIMEOUT" })),
+    "jwks_unavailable",
+  );
+  assert.equal(
+    classifyAuthFailure(Object.assign(new Error("secret"), { code: "ERR_JWS_INVALID" })),
+    "signature_or_claim_invalid",
+  );
+  assert.equal(classifyAuthFailure(new Error("secret")), "verification_unknown");
+});
+
+test("auth verification callbacks receive internal reasons and cannot alter public behavior", async () => {
+  const reasons: string[] = [];
+  const result = await invokeMiddleware(
+    createOAuthMiddleware(
+      config,
+      async () => {
+        throw new AccessTokenError(
+          "The access token is invalid.",
+          "invalid_token",
+          "jwks_unavailable",
+        );
+      },
+      { onAuthFailure: (reason) => reasons.push(reason) },
+    ),
+    "Bearer access-token",
+  );
+  assert.deepEqual(reasons, ["jwks_unavailable"]);
+  assert.equal(result.statusCode, 401);
+  assert.match(result.headers["www-authenticate"] ?? "", /error="invalid_token"/u);
+
+  const callbackThrowing = await invokeMiddleware(
+    createOAuthMiddleware(
+      config,
+      async () => {
+        throw new Error("private verifier detail");
+      },
+      { onAuthFailure: () => { throw new Error("observer failure"); } },
+    ),
+    "Bearer access-token",
+  );
+  assert.equal(callbackThrowing.statusCode, 401);
 });
 
 test("returns OAuth metadata challenge when the public endpoint has no token", async () => {
@@ -134,17 +186,23 @@ test("maps only the allowed Auth0 subject to MCP_USER_ID", async () => {
   assert.equal(allowed.nextCalled, true);
   assert.equal(allowed.request.mcpUserId, config.MCP_USER_ID);
 
+  let deniedReason: string | undefined;
   const denied = await invokeMiddleware(
-    createOAuthMiddleware(config, async () => ({
-      subject: "auth0|another-user",
-      issuer: config.AUTH0_ISSUER,
-      audience: [config.AUTH0_AUDIENCE],
-      scopes: [config.AUTH0_REQUIRED_SCOPE],
-    })),
+    createOAuthMiddleware(
+      config,
+      async () => ({
+        subject: "auth0|another-user",
+        issuer: config.AUTH0_ISSUER,
+        audience: [config.AUTH0_AUDIENCE],
+        scopes: [config.AUTH0_REQUIRED_SCOPE],
+      }),
+      { onAuthFailure: (reason) => { deniedReason = reason; } },
+    ),
     "Bearer access-token",
   );
   assert.equal(denied.nextCalled, false);
   assert.equal(denied.statusCode, 401);
+  assert.equal(deniedReason, "subject_not_allowed");
 });
 
 test("publishes protected resource metadata without internal credentials", () => {

@@ -6,6 +6,9 @@ import {
   McpSessionRegistry,
   type McpSessionNamespace,
 } from "../src/mcp/server/session-registry.js";
+import { createSafeLogger } from "../src/observability/logger.js";
+import { createMcpLifecycleObserver } from "../src/observability/runtime-observers.js";
+import { runWithRequestContext } from "../src/observability/request-context.js";
 
 type DummySession = {
   sessionId: string;
@@ -667,6 +670,50 @@ test("absolute deadline and another close racing still remove once and reclaim c
   assert.deepEqual(events, ["client_close"]);
   assert.equal(session.closeCalls, 1);
   assert.ok(registry.reserve("u2", "public"));
+});
+
+test("absolute deadline close does not retain the initialize request context", async () => {
+  const lines: string[] = [];
+  const logger = createSafeLogger({
+    level: "debug",
+    sink: (_level, line) => lines.push(line),
+  });
+  let originCallbackCompleted = false;
+  const registry = new McpSessionRegistry({
+    absoluteTtlMs: 86_400_000,
+    scheduleAbsoluteDeadline: (_delay, callback) => {
+      Promise.resolve().then(() => {
+        assert.equal(originCallbackCompleted, true);
+        callback();
+      });
+      return () => undefined;
+    },
+    observer: createMcpLifecycleObserver(logger),
+  });
+
+  runWithRequestContext({ requestId: "initialize-request-id" }, () => {
+    logger.info("request_scoped_diagnostic", { success: true });
+    registry.register({
+      sessionId: "request-context-deadline",
+      userId: "u1",
+      namespace: "public",
+      server: { close: async () => undefined },
+      transport: {},
+    });
+  });
+  originCallbackCompleted = true;
+  await Promise.resolve();
+
+  const requestScoped = lines
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .find((line) => line.event === "request_scoped_diagnostic");
+  const closed = lines
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .find((line) => line.event === "mcp_session_closed");
+  assert.equal(requestScoped?.requestId, "initialize-request-id");
+  assert.ok(closed);
+  assert.equal(closed.requestId, undefined);
+  assert.equal(closed.reason, "absolute_ttl");
 });
 
 test("process shutdown rejects admission and invalidates racing reservations", async () => {

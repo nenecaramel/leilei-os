@@ -1,0 +1,75 @@
+name: Runtime reliability verification
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - src/observability/**
+      - src/app/create-app.ts
+      - src/app/process-runtime.ts
+      - src/app/graceful-shutdown.ts
+      - src/app/index.ts
+      - src/mcp/server/router.ts
+      - src/auth/jwt-verifier.ts
+      - src/auth/oauth-middleware.ts
+      - src/web-api/web-api-auth.ts
+      - src/web-api/user-identity-mapper.ts
+      - tests/safe-logger.test.ts
+      - tests/http-observability.test.ts
+      - tests/runtime-observers.test.ts
+      - tests/database-readiness-wiring.test.ts
+      - tests/process-runtime.test.ts
+      - tests/graceful-shutdown.test.ts
+      - tests/mcp-session-preflight.test.ts
+      - tests/mcp-error-contract.test.ts
+      - tests/mcp-router-observability.test.ts
+      - tests/oauth-auth.test.ts
+      - tests/web-api-auth.test.ts
+      - .github/workflows/runtime-reliability-verify.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify exact PR head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event.pull_request.head.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact PR head: $actual"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Web dependencies required by canonical root tests
+        run: cd web && npm ci
+      - name: Run focused runtime reliability regressions
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/safe-logger.test.ts
+          tests/http-observability.test.ts
+          tests/runtime-observers.test.ts
+          tests/database-readiness-wiring.test.ts
+          tests/process-runtime.test.ts
+          tests/graceful-shutdown.test.ts
+          tests/mcp-idempotency-retention.test.ts
+          tests/mcp-session-registry.test.ts
+          tests/mcp-session-preflight.test.ts
+          tests/mcp-error-contract.test.ts
+          tests/mcp-router-observability.test.ts
+          tests/oauth-auth.test.ts
+          tests/web-api-auth.test.ts
+      - name: Run deterministic canonical test suite
+        run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: cd web && npm run typecheck && npm run build
+      - run: git diff --check

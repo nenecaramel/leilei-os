@@ -7,6 +7,8 @@ import {
   createMcpServer,
 } from "./create-server.js";
 import type { McpSessionServerFactory } from "./production-server-factory.js";
+import { safeErrorFingerprint, type SafeLogger } from "../../observability/logger.js";
+import { runWithoutRequestContext } from "../../observability/request-context.js";
 import {
   McpSessionRegistry,
   type McpSessionNamespace,
@@ -49,6 +51,7 @@ export type McpRouterOptions = {
   registry?: McpSessionRegistry;
   onInitialize?: () => Promise<void>;
   createSessionServer?: McpSessionServerFactory;
+  logger?: SafeLogger;
 };
 
 export function createMcpRouter(options: McpRouterOptions = {}): Router {
@@ -137,7 +140,9 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
           return;
         }
         // Retention cleanup is best-effort and must never delay initialize.
-        void options.onInitialize?.();
+        runWithoutRequestContext(() => {
+          void options.onInitialize?.();
+        });
         let initializedRecord: McpSessionRecord | null = null;
         let transport: StreamableHTTPServerTransport | null = null;
         try {
@@ -179,7 +184,8 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
 
       await runRequest(activeSession, request, response, request.body);
     } catch (error) {
-      console.error("MCP request failed", error);
+      const { name, code } = safeErrorFingerprint(error);
+      options.logger?.error("mcp_request_failed", { name, code });
       if (!response.headersSent) {
         response.status(500).json({
           jsonrpc: "2.0",

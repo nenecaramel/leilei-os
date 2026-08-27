@@ -1,3 +1,5 @@
+import { runWithoutRequestContext } from "../../observability/request-context.js";
+
 export type McpSessionNamespace = "public" | "internal";
 
 export type McpSessionCloseReason =
@@ -296,9 +298,11 @@ export class McpSessionRegistry {
       closed: false,
     };
     this.sessions.set(record.sessionId, record);
-    record.absoluteDeadlineCancel = this.scheduleAbsoluteDeadline(
-      this.absoluteTtlMs,
-      () => { void this.closeRecord(record, "absolute_ttl"); },
+    record.absoluteDeadlineCancel = runWithoutRequestContext(() =>
+      this.scheduleAbsoluteDeadline(
+        this.absoluteTtlMs,
+        () => { void this.closeRecord(record, "absolute_ttl"); },
+      ),
     );
     this.emit({
       name: "mcp_session_created",
