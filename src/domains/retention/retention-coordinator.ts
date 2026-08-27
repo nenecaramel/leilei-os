@@ -1,7 +1,4 @@
-import {
-  runBoundedRetention,
-  type RetentionPolicy,
-} from "./retention-policy.js";
+import { type RetentionPolicy, runBoundedRetention } from "./retention-policy.js";
 
 export type RetentionPolicyRunner = {
   policy: RetentionPolicy;
@@ -11,39 +8,42 @@ export type RetentionPolicyRunner = {
 
 export type RetentionCoordinatorEvent =
   | {
-    name: "mcp_idempotency_cleanup_completed";
-    policy: "mcp_write_idempotency";
-    deletedRows: number;
-    batches: number;
-    capped: boolean;
-    durationMs: number;
-  }
+      name: "mcp_idempotency_cleanup_completed";
+      policy: "mcp_write_idempotency";
+      deletedRows: number;
+      batches: number;
+      capped: boolean;
+      durationMs: number;
+    }
   | {
-    name: "mcp_idempotency_cleanup_failed";
-    policy: "mcp_write_idempotency";
-    batches: number;
-    durationMs: number;
-  }
+      name: "mcp_idempotency_cleanup_failed";
+      policy: "mcp_write_idempotency";
+      batches: number;
+      durationMs: number;
+    }
   | {
-    name: "data_import_runs_cleanup_completed";
-    policy: "data_import_runs";
-    deletedRows: number;
-    batches: number;
-    capped: boolean;
-    durationMs: number;
-  }
+      name: "data_import_runs_cleanup_completed";
+      policy: "data_import_runs";
+      deletedRows: number;
+      batches: number;
+      capped: boolean;
+      durationMs: number;
+    }
   | {
-    name: "data_import_runs_cleanup_failed";
-    policy: "data_import_runs";
-    batches: number;
-    durationMs: number;
-  };
+      name: "data_import_runs_cleanup_failed";
+      policy: "data_import_runs";
+      batches: number;
+      durationMs: number;
+    };
 
 export type RetentionCoordinatorOptions = {
   intervalMs: number;
   policies: readonly RetentionPolicyRunner[];
   now?: () => number;
-  schedule?: (callback: () => void, milliseconds: number) => { unref?: () => void };
+  schedule?: (
+    callback: () => void,
+    milliseconds: number,
+  ) => { unref?: () => void };
   clearSchedule?: (handle: unknown) => void;
   observe?: (event: RetentionCoordinatorEvent) => void;
 };
@@ -59,104 +59,91 @@ export function createRetentionCoordinator(
   options: RetentionCoordinatorOptions,
 ): RetentionCoordinator {
   const now = options.now ?? Date.now;
-  const schedule = options.schedule ?? ((callback, milliseconds) => setInterval(callback, milliseconds));
-  const clearSchedule = options.clearSchedule ?? ((handle) => clearInterval(handle as NodeJS.Timeout));
+  const schedule =
+    options.schedule ??
+    ((callback, milliseconds) => setInterval(callback, milliseconds));
+  const clearSchedule = options.clearSchedule ?? clearInterval;
+  let intervalHandle: { unref?: () => void } | null = null;
   let inFlight: Promise<void> | null = null;
-  let intervalHandle: unknown;
-  let started = false;
   let stopping = false;
 
-  function observe(event: RetentionCoordinatorEvent): void {
+  const emit = (event: RetentionCoordinatorEvent): void => {
     try {
       options.observe?.(event);
     } catch {
-      // Retention must not depend on observability availability.
+      // Observability must never affect retention correctness.
     }
-  }
+  };
 
-  async function runPolicy(policy: RetentionPolicyRunner): Promise<void> {
+  const runPolicy = async (policy: RetentionPolicyRunner): Promise<void> => {
     const startedAt = now();
-    const cutoff = new Date(startedAt - policy.retentionMs);
     let batches = 0;
-
     try {
-      const result = await runBoundedRetention((limit) => {
+      const result = await runBoundedRetention(async (limit) => {
         batches += 1;
-        return policy.deleteBatch(cutoff, limit);
+        return policy.deleteBatch(new Date(startedAt - policy.retentionMs), limit);
       });
-      const durationMs = now() - startedAt;
-      if (policy.policy === "mcp_write_idempotency") {
-        observe({
-          name: "mcp_idempotency_cleanup_completed",
-          policy: "mcp_write_idempotency",
-          ...result,
-          durationMs,
-        });
-      } else {
-        observe({
-          name: "data_import_runs_cleanup_completed",
-          policy: "data_import_runs",
-          ...result,
-          durationMs,
-        });
-      }
+      emit({
+        name:
+          policy.policy === "mcp_write_idempotency"
+            ? "mcp_idempotency_cleanup_completed"
+            : "data_import_runs_cleanup_completed",
+        policy: policy.policy,
+        deletedRows: result.deletedRows,
+        batches: result.batches,
+        capped: result.capped,
+        durationMs: Math.max(0, now() - startedAt),
+      } as RetentionCoordinatorEvent);
     } catch {
-      const durationMs = now() - startedAt;
-      if (policy.policy === "mcp_write_idempotency") {
-        observe({
-          name: "mcp_idempotency_cleanup_failed",
-          policy: "mcp_write_idempotency",
-          batches,
-          durationMs,
-        });
-      } else {
-        observe({
-          name: "data_import_runs_cleanup_failed",
-          policy: "data_import_runs",
-          batches,
-          durationMs,
-        });
-      }
+      emit({
+        name:
+          policy.policy === "mcp_write_idempotency"
+            ? "mcp_idempotency_cleanup_failed"
+            : "data_import_runs_cleanup_failed",
+        policy: policy.policy,
+        batches,
+        durationMs: Math.max(0, now() - startedAt),
+      } as RetentionCoordinatorEvent);
     }
-  }
+  };
 
-  async function runPolicies(): Promise<void> {
+  const runAllPolicies = async (): Promise<void> => {
     for (const policy of options.policies) {
       await runPolicy(policy);
     }
-  }
+  };
 
-  function runNow(): Promise<void> {
-    if (stopping) return Promise.resolve();
+  const runNow = (): Promise<void> => {
     if (inFlight) return inFlight;
-
-    const work = runPolicies();
-    inFlight = work;
-    void work.then(
-      () => { if (inFlight === work) inFlight = null; },
-      () => { if (inFlight === work) inFlight = null; },
-    );
-    return work;
-  }
+    if (stopping) return Promise.resolve();
+    const operation = runAllPolicies().finally(() => {
+      inFlight = null;
+    });
+    inFlight = operation;
+    return operation;
+  };
 
   return {
     start(): void {
-      if (started || stopping) return;
-      started = true;
-      intervalHandle = schedule(() => { void runNow(); }, options.intervalMs);
-      (intervalHandle as { unref?: () => void }).unref?.();
+      if (stopping || intervalHandle) return;
+      intervalHandle = schedule(() => {
+        void runNow();
+      }, options.intervalMs);
+      intervalHandle.unref?.();
       void runNow();
     },
     stopScheduling(): void {
       if (stopping) return;
       stopping = true;
-      if (intervalHandle === undefined) return;
-      clearSchedule(intervalHandle);
-      intervalHandle = undefined;
+      if (intervalHandle) {
+        clearSchedule(intervalHandle);
+        intervalHandle = null;
+      }
     },
     runNow,
-    drain(): Promise<void> {
-      return inFlight ?? Promise.resolve();
+    async drain(): Promise<void> {
+      const current = inFlight;
+      if (current) await current;
     },
   };
 }
