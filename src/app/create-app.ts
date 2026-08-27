@@ -28,7 +28,11 @@ import { createWebApiRouter } from "../web-api/router.js";
 import { createWebApiAuthMiddleware } from "../web-api/web-api-auth.js";
 import { createWebApiCorsMiddleware } from "../web-api/web-api-cors.js";
 import { createHttpObservabilityMiddleware } from "../observability/http-observability.js";
-import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
+import {
+  createSafeLogger,
+  safeErrorFingerprint,
+  type SafeLogger,
+} from "../observability/logger.js";
 
 import type { MemoryApiDependencies } from "../web-api/memory-router.js";
 import type { DiaryApiDependencies } from "../web-api/diary-router.js";
@@ -121,13 +125,31 @@ export function createApp(
           backoffMs: MIGRATION_READINESS_BACKOFF_MS,
           maxBackoffMs: MIGRATION_READINESS_MAX_BACKOFF_MS,
           onRetry: ({ attempt, maxAttempts, name, code }) => {
-            console.warn(
-              `Database readiness retry. stage=request attempt=${attempt}/${maxAttempts} name=${name} code=${code}`,
-            );
+            logger.warn("database_readiness_retry", {
+              attempt,
+              maxAttempts,
+              name,
+              code,
+            });
           },
         },
       )
     : undefined;
+
+  const respondDatabaseUnavailable = (response: express.Response): void => {
+    response.status(503).json({
+      success: false,
+      error: {
+        code: "DATABASE_UNAVAILABLE",
+        message: "Database is temporarily unavailable.",
+      },
+    });
+  };
+
+  const logDatabaseReadinessFailure = (error: unknown): void => {
+    const { name, code } = safeErrorFingerprint(error);
+    logger.error("database_readiness_failed", { name, code });
+  };
 
   const databaseReadinessMiddleware: express.RequestHandler = async (
     _request,
@@ -141,15 +163,9 @@ export function createApp(
     try {
       await databaseReadiness();
       next();
-    } catch {
-      console.error("Database readiness failed after bounded retry. stage=request");
-      response.status(503).json({
-        success: false,
-        error: {
-          code: "DATABASE_UNAVAILABLE",
-          message: "Database is temporarily unavailable.",
-        },
-      });
+    } catch (error) {
+      logDatabaseReadinessFailure(error);
+      respondDatabaseUnavailable(response);
     }
   };
 
@@ -181,6 +197,33 @@ export function createApp(
         status: "ok",
       },
     });
+  });
+
+  app.get("/ready", async (_request, response) => {
+    if (!databaseReadiness) {
+      logDatabaseReadinessFailure(
+        Object.assign(new Error("Database readiness is not configured."), {
+          name: "UNAVAILABLE",
+          code: "UNCONFIGURED",
+        }),
+      );
+      respondDatabaseUnavailable(response);
+      return;
+    }
+
+    try {
+      await databaseReadiness();
+      response.json({
+        success: true,
+        data: {
+          service: "leilei-os",
+          status: "ready",
+        },
+      });
+    } catch (error) {
+      logDatabaseReadinessFailure(error);
+      respondDatabaseUnavailable(response);
+    }
   });
 
   app.get(
