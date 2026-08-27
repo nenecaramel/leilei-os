@@ -1,13 +1,4 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { MemoryService } from "../../domains/memory/memory-service.js";
-import { DrizzleMemoryRepository } from "../../domains/memory/memory-repository.js";
-import { DiaryService } from "../../domains/diary/diary-service.js";
-import { DrizzleDiaryRepository } from "../../domains/diary/diary-repository.js";
-import { TaskService } from "../../domains/task/task-service.js";
-import { DrizzleTaskRepository } from "../../domains/task/task-repository.js";
-import { ToyCommandService } from "../../domains/toy/toy-command-service.js";
-import { DrizzleToyCommandRepository } from "../../domains/toy/toy-command-repository.js";
-import { createDatabase } from "../../database/client.js";
 import { env } from "../../config/env.js";
 import { NotionReadClient } from "../../domains/notion/notion-read-client.js";
 import { NotionIntegration } from "../../domains/notion/notion-read-integration.js";
@@ -85,8 +76,6 @@ import {
   ToyCommandAuthenticationError,
   type ToyCommandToolDependencies,
 } from "../tools/toy-command/register.js";
-import { GlobalSearchService } from "../../domains/global-search/global-search-service.js";
-import { DrizzleGlobalSearchRepository } from "../../domains/global-search/global-search-repository.js";
 import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
 import {
   registerSearchNotionTool,
@@ -115,10 +104,7 @@ import {
   registerQueryNotionDataSourceTool,
   type QueryNotionDataSourceToolDependencies,
 } from "../tools/query-notion-data-source/register.js";
-import { TodoService } from "../../domains/todo/todo-service.js";
-import { DrizzleTodoRepository } from "../../domains/todo/todo-repository.js";
-import { UniverseService, UniverseServiceError } from "../../domains/universe/universe-service.js";
-import { DrizzleUniverseRepository } from "../../domains/universe/universe-repository-drizzle.js";
+import { UniverseServiceError } from "../../domains/universe/universe-service.js";
 import {
   registerReadTodoDayTool,
   TodoReadAuthenticationError,
@@ -151,39 +137,33 @@ import {
   type ActiveUserRepository,
 } from "../../domains/require-active-user.js";
 
-let defaultMemoryService: MemoryService | undefined;
-let defaultDiaryService: DiaryService | undefined;
-let defaultTaskService: TaskService | undefined;
-let defaultToyCommandService: ToyCommandService | undefined;
-let defaultGlobalSearchService: GlobalSearchService | undefined;
-let defaultTodoService: TodoService | undefined;
 let defaultNotionReadClient: NotionReadClient | undefined;
 let defaultNotionIntegration: NotionIntegration | undefined;
-let defaultUniverseService: UniverseService | undefined;
-let defaultActiveUserRepository: ActiveUserRepository | undefined;
 
-function getDefaultActiveUserRepository(): ActiveUserRepository {
-  if (!defaultActiveUserRepository) {
-    if (!env.DATABASE_URL) {
-      throw new Error("Active user database is not configured.");
-    }
-    const { db } = createDatabase(env.DATABASE_URL);
-    defaultActiveUserRepository = new DrizzleMemoryRepository(db);
-  }
-  return defaultActiveUserRepository;
-}
-
-export function createProductionActiveUserAuthorizer(
+export function createActiveUserAuthorizer(
+  repository: ActiveUserRepository,
   authenticatedUserId: string | undefined,
 ): () => Promise<string> {
   return async () => {
     if (!authenticatedUserId) {
       throw new ActiveUserAuthorizationError("USER_NOT_FOUND");
     }
-    return requireActiveUser(
-      getDefaultActiveUserRepository(),
-      authenticatedUserId,
-    );
+    return requireActiveUser(repository, authenticatedUserId);
+  };
+}
+
+function missingDatabaseService(): never {
+  throw new Error("MCP_DATABASE_SERVICE_NOT_CONFIGURED");
+}
+
+function createMissingActiveUserAuthorizer(
+  authenticatedUserId: string | undefined,
+): () => Promise<string> {
+  return async () => {
+    if (!authenticatedUserId) {
+      throw new ActiveUserAuthorizationError("USER_NOT_FOUND");
+    }
+    return missingDatabaseService();
   };
 }
 
@@ -201,94 +181,11 @@ function getDefaultNotionIntegration(): NotionIntegration {
   return defaultNotionIntegration;
 }
 
-function getDefaultTodoService(): TodoService {
-  if (!defaultTodoService) {
-    if (!env.DATABASE_URL) {
-      throw new Error("Todo database is not configured.");
-    }
-    const { db } = createDatabase(env.DATABASE_URL);
-    defaultTodoService = new TodoService(new DrizzleTodoRepository(db));
-  }
-  return defaultTodoService;
-}
-
-function getDefaultGlobalSearchService(): GlobalSearchService {
-  if (!defaultGlobalSearchService) {
-    if (!env.DATABASE_URL) throw new Error("Global search database is not configured.");
-    const { db } = createDatabase(env.DATABASE_URL);
-    defaultGlobalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
-  }
-  return defaultGlobalSearchService;
-}
-
-function getDefaultUniverseService(): UniverseService {
-  if (!defaultUniverseService) {
-    if (!env.DATABASE_URL) throw new Error("Universe database is not configured.");
-    const { db } = createDatabase(env.DATABASE_URL);
-    defaultUniverseService = new UniverseService(new DrizzleUniverseRepository(db));
-  }
-  return defaultUniverseService;
-}
-
-function getDefaultMemoryService(): MemoryService {
-  if (!defaultMemoryService) {
-    if (!env.DATABASE_URL) {
-      throw new Error("Memory database is not configured.");
-    }
-
-    const { db } = createDatabase(env.DATABASE_URL);
-    defaultMemoryService = new MemoryService(new DrizzleMemoryRepository(db));
-  }
-
-  return defaultMemoryService;
-}
-
-function getDefaultDiaryService(): DiaryService {
-  if (!defaultDiaryService) {
-    if (!env.DATABASE_URL) {
-      throw new Error("Diary database is not configured.");
-    }
-
-    const { db } = createDatabase(env.DATABASE_URL);
-    defaultDiaryService = new DiaryService(new DrizzleDiaryRepository(db));
-  }
-
-  return defaultDiaryService;
-}
-
-function getDefaultTaskService(): TaskService {
-  if (!defaultTaskService) {
-    if (!env.DATABASE_URL) {
-      throw new Error("Task database is not configured.");
-    }
-
-    const { db } = createDatabase(env.DATABASE_URL);
-    defaultTaskService = new TaskService(new DrizzleTaskRepository(db));
-  }
-
-  return defaultTaskService;
-}
-
-function getDefaultToyCommandService(): ToyCommandService {
-  if (!defaultToyCommandService) {
-    if (!env.DATABASE_URL) {
-      throw new Error("Toy database is not configured.");
-    }
-
-    const { db } = createDatabase(env.DATABASE_URL);
-    defaultToyCommandService = new ToyCommandService(
-      new DrizzleToyCommandRepository(db),
-      env.LEILEI_TOY_BRIDGE_USER_ID,
-    );
-  }
-
-  return defaultToyCommandService;
-}
 
 const productionReadMemoryDependencies: ReadMemoryToolDependencies = {
   memoryService: {
-    readMemory: (input) => getDefaultMemoryService().readMemory(input),
-    readMemoryDiscovery: (input) => getDefaultMemoryService().readMemoryDiscovery(input),
+    readMemory: (input) => missingDatabaseService(),
+    readMemoryDiscovery: (input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new ReadMemoryAuthenticationError();
@@ -297,8 +194,8 @@ const productionReadMemoryDependencies: ReadMemoryToolDependencies = {
 
 const productionSearchMemoryDependencies: SearchMemoryToolDependencies = {
   memoryService: {
-    readMemory: (input) => getDefaultMemoryService().readMemory(input),
-    searchMemoryDiscovery: (input) => getDefaultMemoryService().searchMemoryDiscovery(input),
+    readMemory: (input) => missingDatabaseService(),
+    searchMemoryDiscovery: (input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new ReadMemoryAuthenticationError();
@@ -307,10 +204,8 @@ const productionSearchMemoryDependencies: SearchMemoryToolDependencies = {
 
 const productionGetMemoryDependencies: GetMemoryToolDependencies = {
   memoryService: {
-    readMemoryDetail: (input) =>
-      getDefaultMemoryService().readMemoryDetail(input),
-    readArchivedMemoryDetail: (input) =>
-      getDefaultMemoryService().readArchivedMemoryDetail(input),
+    readMemoryDetail: (input) => missingDatabaseService(),
+    readArchivedMemoryDetail: (input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new ReadMemoryAuthenticationError();
@@ -319,8 +214,7 @@ const productionGetMemoryDependencies: GetMemoryToolDependencies = {
 
 const productionWriteMemoryDependencies: WriteMemoryToolDependencies = {
   memoryService: {
-    createMcpMemory: (context, input, idempotencyKey) =>
-      getDefaultMemoryService().createMcpMemory(context, input, idempotencyKey),
+    createMcpMemory: (context, input, idempotencyKey) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new WriteMemoryAuthenticationError();
@@ -329,8 +223,7 @@ const productionWriteMemoryDependencies: WriteMemoryToolDependencies = {
 
 const productionUpdateMemoryDependencies: UpdateMemoryToolDependencies = {
   memoryService: {
-    updateMcpMemory: (context, input) =>
-      getDefaultMemoryService().updateMcpMemory(context, input),
+    updateMcpMemory: (context, input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new UpdateMemoryAuthenticationError();
@@ -339,8 +232,7 @@ const productionUpdateMemoryDependencies: UpdateMemoryToolDependencies = {
 
 const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   diaryService: {
-    createMcpDiary: (context, input) =>
-      getDefaultDiaryService().createMcpDiary(context, input),
+    createMcpDiary: (context, input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new WriteDiaryAuthenticationError();
@@ -349,8 +241,7 @@ const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
 
 const productionUpdateDiaryDependencies: UpdateDiaryToolDependencies = {
   diaryService: {
-    updateMcpDiary: (context, input) =>
-      getDefaultDiaryService().updateMcpDiary(context, input),
+    updateMcpDiary: (context, input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new UpdateDiaryAuthenticationError();
@@ -359,8 +250,8 @@ const productionUpdateDiaryDependencies: UpdateDiaryToolDependencies = {
 
 const productionSearchDiaryDependencies: SearchDiaryToolDependencies = {
   diaryService: {
-    listDiaries: (input) => getDefaultDiaryService().listDiaries(input),
-    searchDiaryDiscovery: (input) => getDefaultDiaryService().searchDiaryDiscovery(input),
+    listDiaries: (input) => missingDatabaseService(),
+    searchDiaryDiscovery: (input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new DiaryReadAuthenticationError();
@@ -369,8 +260,8 @@ const productionSearchDiaryDependencies: SearchDiaryToolDependencies = {
 
 const productionGetDiaryDependencies: GetDiaryToolDependencies = {
   diaryService: {
-    readDiary: (input) => getDefaultDiaryService().readDiary(input),
-    readArchivedDiary: (input) => getDefaultDiaryService().readArchivedDiary(input),
+    readDiary: (input) => missingDatabaseService(),
+    readArchivedDiary: (input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new DiaryReadAuthenticationError();
@@ -379,12 +270,7 @@ const productionGetDiaryDependencies: GetDiaryToolDependencies = {
 
 const productionCreateTaskDependencies: CreateTaskToolDependencies = {
   taskService: {
-    createTaskIdempotently: (context, input, idempotencyKey) =>
-      getDefaultTaskService().createTaskIdempotently(
-        context,
-        input,
-        idempotencyKey,
-      ),
+    createTaskIdempotently: (context, input, idempotencyKey) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new CreateTaskAuthenticationError();
@@ -393,8 +279,7 @@ const productionCreateTaskDependencies: CreateTaskToolDependencies = {
 
 const productionUpdateTaskDependencies: UpdateTaskToolDependencies = {
   taskService: {
-    updateMcpTask: (context, input) =>
-      getDefaultTaskService().updateMcpTask(context, input),
+    updateMcpTask: (context, input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new UpdateTaskAuthenticationError();
@@ -403,8 +288,7 @@ const productionUpdateTaskDependencies: UpdateTaskToolDependencies = {
 
 const productionTransitionTaskDependencies: TransitionTaskToolDependencies = {
   taskService: {
-    transitionMcpTask: (context, input) =>
-      getDefaultTaskService().transitionMcpTask(context, input),
+    transitionMcpTask: (context, input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new TransitionTaskAuthenticationError();
@@ -413,7 +297,7 @@ const productionTransitionTaskDependencies: TransitionTaskToolDependencies = {
 
 const productionListTasksDependencies: ListTasksToolDependencies = {
   taskService: {
-    listTasks: (input) => getDefaultTaskService().listTasks(input),
+    listTasks: (input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new TaskReadAuthenticationError();
@@ -422,8 +306,8 @@ const productionListTasksDependencies: ListTasksToolDependencies = {
 
 const productionGetTaskDependencies: GetTaskToolDependencies = {
   taskService: {
-    readTask: (input) => getDefaultTaskService().readTask(input),
-    readArchivedTask: (input) => getDefaultTaskService().readArchivedTask(input),
+    readTask: (input) => missingDatabaseService(),
+    readArchivedTask: (input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new TaskReadAuthenticationError();
@@ -432,12 +316,7 @@ const productionGetTaskDependencies: GetTaskToolDependencies = {
 
 const productionToyCommandDependencies: ToyCommandToolDependencies = {
   toyCommandService: {
-    createIdempotently: (userId, input, idempotencyKey) =>
-      getDefaultToyCommandService().createIdempotently(
-        userId,
-        input,
-        idempotencyKey,
-      ),
+    createIdempotently: (userId, input, idempotencyKey) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => {
     throw new ToyCommandAuthenticationError();
@@ -445,7 +324,7 @@ const productionToyCommandDependencies: ToyCommandToolDependencies = {
 };
 
 const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
-  globalSearchService: { search: (input) => getDefaultGlobalSearchService().search(input) },
+  globalSearchService: { search: (input) => missingDatabaseService() },
   getAuthenticatedUserId: () => { throw new GlobalSearchAuthenticationError(); },
 };
 
@@ -455,17 +334,17 @@ const productionUniverseService: SearchUniverseToolDependencies["globalSearchSer
   CreateUniverseRelationToolDependencies["universeService"] & DeleteUniverseRelationToolDependencies["relationService"] &
   GetUniverseDiarySourcesToolDependencies["sourceService"] & AddUniverseDiarySourceToolDependencies["sourceService"] &
   DeleteUniverseDiarySourceToolDependencies["sourceService"] = {
-  search: (input) => getDefaultGlobalSearchService().search(input),
-  loadUniverse: (userId) => getDefaultUniverseService().loadUniverse(userId),
-  readUniverseNode: (userId, nodeId) => getDefaultUniverseService().readUniverseNode(userId, nodeId),
-  listUniverseNodes: (userId, limit, after) => getDefaultUniverseService().listUniverseNodes(userId, limit, after),
-  createMcpNode: (userId, input, expectedVersion, idempotencyKey) => getDefaultUniverseService().createMcpNode(userId, input, expectedVersion, idempotencyKey),
-  updateMcpNode: (userId, nodeId, patch, expectedVersion) => getDefaultUniverseService().updateMcpNode(userId, nodeId, patch, expectedVersion),
-  createMcpRelation: (userId, input, expectedVersion, idempotencyKey) => getDefaultUniverseService().createMcpRelation(userId, input, expectedVersion, idempotencyKey),
-  deleteRelation: (userId, relationId, expectedVersion) => getDefaultUniverseService().deleteRelation(userId, relationId, expectedVersion),
-  getUniverseDiarySources: (userId, nodeId) => getDefaultUniverseService().getUniverseDiarySources(userId, nodeId),
-  addUniverseDiarySource: (userId, nodeId, diaryId, expectedVersion) => getDefaultUniverseService().addUniverseDiarySource(userId, nodeId, diaryId, expectedVersion),
-  deleteUniverseDiarySource: (userId, nodeId, diaryId, expectedVersion) => getDefaultUniverseService().deleteUniverseDiarySource(userId, nodeId, diaryId, expectedVersion),
+  search: (input) => missingDatabaseService(),
+  loadUniverse: (userId) => missingDatabaseService(),
+  readUniverseNode: (userId, nodeId) => missingDatabaseService(),
+  listUniverseNodes: (userId, limit, after) => missingDatabaseService(),
+  createMcpNode: (userId, input, expectedVersion, idempotencyKey) => missingDatabaseService(),
+  updateMcpNode: (userId, nodeId, patch, expectedVersion) => missingDatabaseService(),
+  createMcpRelation: (userId, input, expectedVersion, idempotencyKey) => missingDatabaseService(),
+  deleteRelation: (userId, relationId, expectedVersion) => missingDatabaseService(),
+  getUniverseDiarySources: (userId, nodeId) => missingDatabaseService(),
+  addUniverseDiarySource: (userId, nodeId, diaryId, expectedVersion) => missingDatabaseService(),
+  deleteUniverseDiarySource: (userId, nodeId, diaryId, expectedVersion) => missingDatabaseService(),
 };
 
 const productionNotionService: SearchNotionToolDependencies["notionService"] &
@@ -475,12 +354,11 @@ const productionNotionService: SearchNotionToolDependencies["notionService"] &
 };
 
 const productionTodoService = {
-  readDay: (userId: string, date: string) =>
-    getDefaultTodoService().readDay(userId, date),
-  listDates: (userId: string) => getDefaultTodoService().listDates(userId),
+  readDay: (userId: string, date: string) => missingDatabaseService(),
+  listDates: (userId: string) => missingDatabaseService(),
   replacePaperIdempotently: (
-    input: Parameters<TodoService["replacePaperIdempotently"]>[0],
-  ) => getDefaultTodoService().replacePaperIdempotently(input),
+    input: Parameters<WriteTodoPaperToolDependencies["todoService"]["replacePaperIdempotently"]>[0],
+  ) => missingDatabaseService(),
 };
 
 type TodoToolsDependencies = {
@@ -577,7 +455,7 @@ export function createMcpServer(
 
   const activeUserAuthorization =
     dependencies.activeUserAuthorization ??
-    createProductionActiveUserAuthorizer(authenticatedUserId);
+    createMissingActiveUserAuthorizer(authenticatedUserId);
 
   registerHelloTool(server);
   registerGetLocalContextTool(server);
