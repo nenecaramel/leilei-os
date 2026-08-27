@@ -84,4 +84,5 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: cd web && npm run typecheck && npm run build
+      - run: pnpm db:check
       - run: git diff --check

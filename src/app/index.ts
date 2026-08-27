@@ -9,8 +9,8 @@ const runtime = createProcessRuntime();
 const app = createApp(runtime.appDependencies);
 
 const httpServer = app.listen(env.PORT, env.HOST, () => {
-  runtime.startBackgroundWork();
   runtime.logger.info("service_started");
+  runtime.startBackgroundWork();
   runtime.logger.info("mcp_public_endpoint_enabled");
   if (env.MCP_AUTH_TOKEN) {
     runtime.logger.info("mcp_internal_endpoint_enabled");

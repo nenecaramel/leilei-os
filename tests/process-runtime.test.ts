@@ -161,3 +161,12 @@ test("process boundary owns runtime and graceful shutdown", () => {
   assert.match(indexSource, /createGracefulShutdownController/);
   assert.doesNotMatch(indexSource, /httpServer\.close\([\s\S]*process\.exit/);
 });
+
+test("successful listen emits service_started before starting retention work", () => {
+  const serviceStarted = indexSource.indexOf('runtime.logger.info("service_started")');
+  const startBackgroundWork = indexSource.indexOf("runtime.startBackgroundWork()");
+
+  assert.notEqual(serviceStarted, -1);
+  assert.notEqual(startBackgroundWork, -1);
+  assert.ok(serviceStarted < startBackgroundWork);
+});

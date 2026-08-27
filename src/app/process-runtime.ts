@@ -26,6 +26,7 @@ import {
 } from "../mcp/server/idempotency-retention.js";
 import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
 import { createRetentionCoordinator } from "../domains/retention/retention-coordinator.js";
+import { DATA_IMPORT_RETENTION_DAYS } from "../domains/retention/retention-policy.js";
 import { McpSessionRegistry } from "../mcp/server/session-registry.js";
 import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
@@ -100,7 +101,7 @@ export function createProcessRuntime(
       },
       {
         policy: "data_import_runs",
-        retentionMs: 90 * 24 * 60 * 60 * 1_000,
+        retentionMs: DATA_IMPORT_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
         deleteBatch: (cutoff, limit) => deleteExpiredDataImportRunsBatch(db, cutoff, limit),
       },
     ],
