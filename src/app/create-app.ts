@@ -27,6 +27,8 @@ import { createProtectedResourceMetadataHandler } from "../oauth/protected-resou
 import { createWebApiRouter } from "../web-api/router.js";
 import { createWebApiAuthMiddleware } from "../web-api/web-api-auth.js";
 import { createWebApiCorsMiddleware } from "../web-api/web-api-cors.js";
+import { createHttpObservabilityMiddleware } from "../observability/http-observability.js";
+import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
 
 import type { MemoryApiDependencies } from "../web-api/memory-router.js";
 import type { DiaryApiDependencies } from "../web-api/diary-router.js";
@@ -43,6 +45,7 @@ import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 
 export type AppDependencies = {
+  logger?: SafeLogger;
   verifyAccessToken?: AccessTokenVerifier;
   verifyWebAccessToken?: AccessTokenVerifier;
   webMemoryService?: MemoryApiDependencies["memoryService"];
@@ -99,6 +102,7 @@ export function createApp(
   dependencies: AppDependencies = {},
 ): express.Express {
   const app = express();
+  const logger = dependencies.logger ?? createSafeLogger({ level: env.LOG_LEVEL });
   const config = requireOAuthConfig(env);
   const mcpGovernance = getMcpGovernanceConfig(env);
   const mcpSessionRegistry = dependencies.mcpSessionRegistry ?? new McpSessionRegistry({
@@ -166,6 +170,7 @@ export function createApp(
   const webApiConfig = getWebApiConfig(env);
 
   app.disable("x-powered-by");
+  app.use(createHttpObservabilityMiddleware({ logger }));
   app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_request, response) => {
