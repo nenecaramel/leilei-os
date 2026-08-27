@@ -27,7 +27,7 @@ Confirmed:
 - The migration runner records the accepted migration head in
   `public.leilei_schema_migrations` and validates the legacy
   `drizzle.__drizzle_migrations` ledger during bootstrap.
-- The current production migration head on `main` is `0023_faulty_sphinx`.
+- The current verified production migration head on `main` is `0026_universe_diary_provenance`.
 
 Railway platform backups/PITR are not assumed to be available. Persistent
 volume storage is not itself a verified backup.
@@ -174,42 +174,17 @@ migration-runner discrepancy is a stop condition. Never use `CASCADE` or an
 ad-hoc production workaround to force a destructive migration through its
 gate.
 
-## Current Health Stage B gate
+## Historical Health Stage B gate
 
-Health product runtime removal Stage A is already complete. The obsolete
-`health_records` table remains intentionally present in the current production
-schema because destructive Stage B is still isolated in Draft PR #174.
+Health product runtime removal Stage A and destructive Stage B are complete.
+PR #174 (`0024_brainy_wildside`) was merged on 2026-08-20 after its destructive
+database gate passed. It is historical recovery/release evidence, not a current
+merge or deployment gate.
 
-PR #174 adds forward migration `0024_brainy_wildside` with the intended schema
-operation:
-
-```sql
-DROP TABLE "health_records";
-```
-
-The migration intentionally fails closed rather than using `IF EXISTS` or
-`CASCADE`. Historical migrations and migration-ledger history must remain
-unchanged.
-
-**PR #174 must remain unmerged and undeployed until a fresh production backup
-and disposable PostgreSQL 18 restore rehearsal have been completed for its
-exact head.** Prior backup/restore drills are historical recovery evidence; they
-do not authorize this destructive migration.
-
-The Stage B disposable rehearsal must additionally verify:
-
-- `health_records` exists before migration and has expected pre-change state;
-- no unexpected current dependency requires `health_records`;
-- the exact migration runner applies only the pending `0024` change;
-- `health_records` is absent afterward;
-- `public.leilei_schema_migrations` records the expected new head;
-- representative unrelated durable table counts remain unchanged;
-- a second migration-runner invocation is a no-op;
-- infrastructure `GET /health` remains available while retired product
-  `/api/v1/health` remains absent.
-
-Sending or possessing a production database credential never counts as merge
-or mutation authorization.
+The current verified production migration head is
+`0026_universe_diary_provenance`. Future destructive migrations must satisfy the
+general destructive migration gate above with fresh, exact-head recovery
+evidence.
 
 ## Production incident recovery
 
@@ -278,6 +253,40 @@ were completed on 2026-07-28 UTC.
 Later backups/restores, when performed, should be recorded separately with
 non-secret metadata. For a destructive migration, the active PR must still
 reference a fresh gate run rather than relying on this historical section.
+
+## Verified backup/restore record — 2026-08-27
+
+A fresh production recovery rehearsal was completed against source/rehearsal
+head `ff29504254275933dbdd552369bfbd55c36404ff`. Production access was read-only: `SHOW`, `SELECT`, catalog
+inspection, and `pg_dump` only.
+
+- Backup created at: `2026-08-27T11:05:09Z`
+- Production PostgreSQL major: 18 (`server_version_num=180006`)
+- Migration head: `0026_universe_diary_provenance`
+- Leilei migration ledger exact match: `1787308495658|fdeb9c6294cedd52e053aa93b3e6f179a21c23772b89d8ce377bde3c17d32ef5`
+- Encrypted artifact: `leilei-os_20260827T110509Z_0026_universe_diary_provenance.backup.enc`
+- SHA-256: `a1aa82e42ea8965c9484f1592c058265b6591ea6bfd75560807ff925c6790cfe`
+- Independent checksum verification: passed
+- Restore target: disposable localhost PostgreSQL 18 with TLS
+- Source/restored current durable counts matched exactly:
+  `users=1`, `core_memories=8`, `diary_entries=39`, `tasks=2`,
+  `user_settings=1`, `todo_papers=5`, `todo_entries=10`, `tool_calls=40`,
+  `mcp_write_idempotency=77`, `resource_lifecycle_events=74`,
+  `data_import_runs=0`, `universe_meta=1`, `universe_galaxies=8`,
+  `universe_nodes=13`, `universe_relations=9`, `universe_revisions=53`,
+  `universe_backups=0`, `universe_diary_sources=16`
+- `0026` provenance primary key, node foreign key, diary foreign key, and
+  `diary_entries_user_id_id_uidx` verification: passed
+- Compiled migration runner executed twice against the restored database:
+  passed/no pending migration
+- Memory, Diary, Task, Todo, and Universe representative repository readback:
+  passed without printing private contents
+- Source-manifest mapped-user verification: unavailable; repository readback
+  used the restored database's single active user without logging its UUID
+- Disposable PostgreSQL data directory, TLS plaintext material, and listener:
+  removed/closed
+- Retained recovery material: encrypted backup and SHA-256 checksum only,
+  outside Git and Railway
 
 ## Backup and restore record template
 
