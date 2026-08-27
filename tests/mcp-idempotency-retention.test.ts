@@ -4,6 +4,9 @@ import {
   McpIdempotencyCleanupCoordinator,
   type IdempotencyCleanupObserverEvent,
 } from "../src/mcp/server/idempotency-retention.js";
+import { createSafeLogger } from "../src/observability/logger.js";
+import { createMcpLifecycleObserver } from "../src/observability/runtime-observers.js";
+import { runWithRequestContext } from "../src/observability/request-context.js";
 
 test("idempotency cleanup runs once per interval with an exact cutoff", async () => {
   let now = Date.parse("2026-08-19T00:00:00.000Z");
@@ -116,4 +119,37 @@ test("drain waits for only the current cleanup and starts no new work", async ()
   assert.equal(calls, 1);
   await coordinator.drain();
   assert.equal(calls, 1);
+});
+
+test("background idempotency cleanup does not retain the initialize request context", async () => {
+  const lines: string[] = [];
+  const logger = createSafeLogger({
+    level: "debug",
+    sink: (_level, line) => lines.push(line),
+  });
+  let release!: () => void;
+  const blocker = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const coordinator = new McpIdempotencyCleanupCoordinator({
+    retentionMs: 1_000,
+    intervalMs: 10_000,
+    cleanup: async () => {
+      await blocker;
+      return 1;
+    },
+    observer: createMcpLifecycleObserver(logger),
+  });
+
+  runWithRequestContext({ requestId: "initialize-request-id" }, () => {
+    void coordinator.maybeCleanup();
+  });
+  release();
+  await coordinator.drain();
+
+  const completed = lines
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .find((line) => line.event === "mcp_idempotency_cleanup_completed");
+  assert.ok(completed);
+  assert.equal(completed.requestId, undefined);
 });
