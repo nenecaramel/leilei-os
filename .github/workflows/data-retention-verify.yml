@@ -1,0 +1,87 @@
+name: Data retention verification
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - src/domains/retention/**
+      - src/mcp/server/idempotency-retention.ts
+      - src/domains/import/import-retention.ts
+      - src/app/process-runtime.ts
+      - src/app/create-app.ts
+      - src/app/index.ts
+      - src/app/graceful-shutdown.ts
+      - src/observability/logger.ts
+      - src/observability/runtime-observers.ts
+      - src/database/schema.ts
+      - drizzle/0027_data_retention_indexes.sql
+      - drizzle/meta/_journal.json
+      - drizzle/meta/0027_snapshot.json
+      - tests/data-retention-policy.test.ts
+      - tests/data-retention-migration.test.ts
+      - tests/mcp-idempotency-retention.test.ts
+      - tests/mcp-idempotency-retention.integration.test.ts
+      - tests/data-import-retention.test.ts
+      - tests/data-retention-coordinator.test.ts
+      - tests/retention-observability.test.ts
+      - tests/process-runtime.test.ts
+      - tests/mcp-router-observability.test.ts
+      - tests/graceful-shutdown.test.ts
+      - tests/data-retention.integration.test.ts
+      - .github/workflows/data-retention-verify.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify exact PR head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event.pull_request.head.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact PR head: $actual"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: cd web && npm ci
+      - run: pnpm db:migrate
+      - name: Run disposable PostgreSQL retention acceptance test
+        run: RUN_DATA_RETENTION_DATABASE_TEST=1 pnpm exec tsx --test --test-concurrency=1 tests/data-retention.integration.test.ts
+      - name: Run retention focused suite
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/data-retention-policy.test.ts
+          tests/data-retention-migration.test.ts
+          tests/mcp-idempotency-retention.test.ts
+          tests/mcp-idempotency-retention.integration.test.ts
+          tests/data-import-retention.test.ts
+          tests/data-retention-coordinator.test.ts
+          tests/retention-observability.test.ts
+          tests/process-runtime.test.ts
+          tests/mcp-router-observability.test.ts
+          tests/graceful-shutdown.test.ts
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: cd web && npm run typecheck && npm run build
+      - run: git diff --check
