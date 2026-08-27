@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SHUTDOWN_DEADLINE_MS, createGracefulShutdownController } from "../src/app/graceful-shutdown.js";
+import type { ShutdownObserverEvent } from "../src/observability/runtime-observers.js";
 
 function fakeServer(events: string[], options: { stuck?: boolean; error?: Error } = {}) {
   return {
@@ -18,6 +19,7 @@ function fakeServer(events: string[], options: { stuck?: boolean; error?: Error 
 
 function createHarness(options: { stuckHttp?: boolean; mcpError?: boolean } = {}) {
   const events: string[] = [];
+  const observed: ShutdownObserverEvent[] = [];
   let deadlineCallback: (() => void) | undefined;
   let deadlineMs: number | undefined;
   let exitCalls = 0;
@@ -39,8 +41,10 @@ function createHarness(options: { stuckHttp?: boolean; mcpError?: boolean } = {}
       return { deadline: true };
     },
     clearDeadline: () => events.push("deadline_clear"),
+    observer: (event: ShutdownObserverEvent) => observed.push(event),
+    now: () => 100,
   });
-  return { shutdown, events, fireDeadline: () => deadlineCallback?.(), get deadlineMs() { return deadlineMs; }, get exitCalls() { return exitCalls; } };
+  return { shutdown, events, observed, fireDeadline: () => deadlineCallback?.(), get deadlineMs() { return deadlineMs; }, get exitCalls() { return exitCalls; } };
 }
 
 test("graceful shutdown drains HTTP, MCP, background work, then database", async () => {
@@ -89,4 +93,52 @@ test("deadline exits once when HTTP close is stuck", async () => {
   await draining;
   assert.equal(harness.exitCalls, 1);
   assert.deepEqual(harness.events, ["http_close_started", "mcp_close", "exit:1"]);
+  assert.deepEqual(harness.observed.map((event) => event.name), [
+    "shutdown_started",
+    "shutdown_deadline_exceeded",
+  ]);
+});
+
+test("shutdown observer reports completion and typed stage failures", async () => {
+  const success = createHarness();
+  await success.shutdown("SIGTERM");
+  assert.deepEqual(success.observed.map((event) => event.name), [
+    "shutdown_started",
+    "shutdown_completed",
+  ]);
+  assert.equal(success.observed.at(-1)?.name, "shutdown_completed");
+  assert.equal((success.observed.at(-1) as { success: boolean }).success, true);
+
+  const failure = createHarness({ mcpError: true });
+  await failure.shutdown("SIGTERM");
+  assert.deepEqual(failure.observed.map((event) => event.name), [
+    "shutdown_started",
+    "shutdown_stage_failed",
+    "shutdown_completed",
+  ]);
+  const stage = failure.observed.find((event) => event.name === "shutdown_stage_failed");
+  assert.equal(stage && "stage" in stage ? stage.stage : undefined, "mcp_sessions");
+  assert.equal(stage && "durationMs" in stage ? Number.isFinite(stage.durationMs) : false, true);
+  assert.equal((failure.observed.at(-1) as { success: boolean }).success, false);
+});
+
+test("observer failures are non-fatal and deadline-first shutdown has no late completion", async () => {
+  const observed: ShutdownObserverEvent[] = [];
+  const deadlineHarness = createGracefulShutdownController({
+    server: fakeServer([], { stuck: true }),
+    closeMcpSessions: async () => undefined,
+    drainBackgroundWork: async () => undefined,
+    closeDatabase: async () => undefined,
+    exit: () => undefined,
+    observer: (event: ShutdownObserverEvent) => {
+      observed.push(event);
+      throw new Error("observer must not affect shutdown");
+    },
+    setDeadline: (callback) => { callback(); return {}; },
+  });
+  await deadlineHarness("SIGTERM");
+  assert.deepEqual(observed.map((event) => event.name), [
+    "shutdown_started",
+    "shutdown_deadline_exceeded",
+  ]);
 });
