@@ -27,12 +27,15 @@ import {
 } from "../mcp/server/idempotency-retention.js";
 import { McpSessionRegistry } from "../mcp/server/session-registry.js";
 import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
+import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
+import { createMcpLifecycleObserver } from "../observability/runtime-observers.js";
 
 type DatabaseResource = ReturnType<typeof createDatabase>;
 
 export type ProcessRuntime = {
   appDependencies: AppDependencies;
   mcpSessionRegistry: McpSessionRegistry;
+  logger: SafeLogger;
   drainBackgroundWork(): Promise<void>;
   closeDatabase(): Promise<void>;
 };
@@ -40,24 +43,8 @@ export type ProcessRuntime = {
 export type ProcessRuntimeFactoryDependencies = {
   environment?: RuntimeEnv;
   createDatabaseResource?: (databaseUrl: string) => DatabaseResource;
+  createLogger?: (level: RuntimeEnv["LOG_LEVEL"]) => SafeLogger;
 };
-
-function observeLifecycle(event: { name: string; [key: string]: unknown }): void {
-  const safeFields = Object.fromEntries(
-    Object.entries(event).filter(([key]) => [
-      "name", "namespace", "reason", "activeSessionCount", "activeNamespaceCount",
-      "deletedRows", "durationMs", "diagnosticSessionOrdinal", "protocolVersion",
-      "clientName", "clientVersion", "hadUnknownSessionHeader", "activeUserNamespaceCount",
-      "idleUserNamespaceCount", "inFlightUserNamespaceCount", "oldestIdleAgeMs",
-      "inFlightCountAtClose", "idleAgeMsAtClose",
-    ].includes(key)),
-  );
-  if (event.name === "mcp_idempotency_cleanup_failed") {
-    console.warn("MCP lifecycle event", safeFields);
-  } else {
-    console.info("MCP lifecycle event", safeFields);
-  }
-}
 
 export function createProcessRuntime(
   options: ProcessRuntimeFactoryDependencies = {},
@@ -67,6 +54,9 @@ export function createProcessRuntime(
     throw new Error("Database is not configured.");
   }
 
+  const logger =
+    (options.createLogger ?? ((level) => createSafeLogger({ level })))(runtimeEnv.LOG_LEVEL);
+  const observeLifecycle = createMcpLifecycleObserver(logger);
   const database = (options.createDatabaseResource ?? createDatabase)(runtimeEnv.DATABASE_URL);
   const { db } = database;
   const memoryRepository = new DrizzleMemoryRepository(db);
@@ -113,7 +103,9 @@ export function createProcessRuntime(
 
   return {
     mcpSessionRegistry,
+    logger,
     appDependencies: {
+      logger,
       webMemoryService: memoryService,
       webDiaryService: diaryService,
       webTaskService: taskService,

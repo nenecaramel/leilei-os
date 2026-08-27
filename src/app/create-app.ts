@@ -16,12 +16,8 @@ import {
 import { createMcpRouter } from "../mcp/server/router.js";
 import {
   McpSessionRegistry,
-  type McpSessionObserverEvent,
 } from "../mcp/server/session-registry.js";
-import {
-  McpIdempotencyCleanupCoordinator,
-  type IdempotencyCleanupObserverEvent,
-} from "../mcp/server/idempotency-retention.js";
+import { McpIdempotencyCleanupCoordinator } from "../mcp/server/idempotency-retention.js";
 import type { McpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import { createProtectedResourceMetadataHandler } from "../oauth/protected-resource-metadata.js";
 import { createWebApiRouter } from "../web-api/router.js";
@@ -33,6 +29,7 @@ import {
   safeErrorFingerprint,
   type SafeLogger,
 } from "../observability/logger.js";
+import { createMcpLifecycleObserver } from "../observability/runtime-observers.js";
 
 import type { MemoryApiDependencies } from "../web-api/memory-router.js";
 import type { DiaryApiDependencies } from "../web-api/diary-router.js";
@@ -68,45 +65,12 @@ export type AppDependencies = {
   createMcpSessionServer?: McpSessionServerFactory;
 };
 
-function observeMcpLifecycle(
-  event: McpSessionObserverEvent | IdempotencyCleanupObserverEvent,
-): void {
-  const safeFields = Object.fromEntries(
-    Object.entries(event).filter(([key]) =>
-      [
-        "name",
-        "namespace",
-        "reason",
-        "activeSessionCount",
-        "activeNamespaceCount",
-        "deletedRows",
-        "durationMs",
-        "diagnosticSessionOrdinal",
-        "protocolVersion",
-        "clientName",
-        "clientVersion",
-        "hadUnknownSessionHeader",
-        "activeUserNamespaceCount",
-        "idleUserNamespaceCount",
-        "inFlightUserNamespaceCount",
-        "oldestIdleAgeMs",
-        "inFlightCountAtClose",
-        "idleAgeMsAtClose",
-      ].includes(key),
-    ),
-  );
-  if (event.name === "mcp_idempotency_cleanup_failed") {
-    console.warn("MCP lifecycle event", safeFields);
-    return;
-  }
-  console.info("MCP lifecycle event", safeFields);
-}
-
 export function createApp(
   dependencies: AppDependencies = {},
 ): express.Express {
   const app = express();
   const logger = dependencies.logger ?? createSafeLogger({ level: env.LOG_LEVEL });
+  const observeMcpLifecycle = createMcpLifecycleObserver(logger);
   const config = requireOAuthConfig(env);
   const mcpGovernance = getMcpGovernanceConfig(env);
   const mcpSessionRegistry = dependencies.mcpSessionRegistry ?? new McpSessionRegistry({
@@ -331,6 +295,7 @@ export function createApp(
       registry: mcpSessionRegistry,
       onInitialize: () => mcpIdempotencyCleanup?.maybeCleanup() ?? Promise.resolve(),
       createSessionServer: dependencies.createMcpSessionServer,
+      logger,
     }),
   );
 
@@ -347,6 +312,7 @@ export function createApp(
         registry: mcpSessionRegistry,
         onInitialize: () => mcpIdempotencyCleanup?.maybeCleanup() ?? Promise.resolve(),
         createSessionServer: dependencies.createMcpSessionServer,
+        logger,
       }),
     );
   }

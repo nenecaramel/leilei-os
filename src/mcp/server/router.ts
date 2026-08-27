@@ -7,6 +7,7 @@ import {
   createMcpServer,
 } from "./create-server.js";
 import type { McpSessionServerFactory } from "./production-server-factory.js";
+import { safeErrorFingerprint, type SafeLogger } from "../../observability/logger.js";
 import {
   McpSessionRegistry,
   type McpSessionNamespace,
@@ -49,6 +50,7 @@ export type McpRouterOptions = {
   registry?: McpSessionRegistry;
   onInitialize?: () => Promise<void>;
   createSessionServer?: McpSessionServerFactory;
+  logger?: SafeLogger;
 };
 
 export function createMcpRouter(options: McpRouterOptions = {}): Router {
@@ -179,7 +181,8 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
 
       await runRequest(activeSession, request, response, request.body);
     } catch (error) {
-      console.error("MCP request failed", error);
+      const { name, code } = safeErrorFingerprint(error);
+      options.logger?.error("mcp_request_failed", { name, code });
       if (!response.headersSent) {
         response.status(500).json({
           jsonrpc: "2.0",
