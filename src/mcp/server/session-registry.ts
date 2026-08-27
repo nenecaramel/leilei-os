@@ -5,7 +5,8 @@ export type McpSessionCloseReason =
   | "transport_close"
   | "idle_ttl"
   | "absolute_ttl"
-  | "capacity_reclaim";
+  | "capacity_reclaim"
+  | "process_shutdown";
 
 export type McpSessionObserverEvent =
   | {
@@ -163,6 +164,8 @@ export class McpSessionRegistry {
   private lastSweepAt = Number.NEGATIVE_INFINITY;
   private readonly reservations = new Set<McpSessionReservation>();
   private diagnosticSessionOrdinal = 0;
+  private shuttingDown = false;
+  private shutdownPromise: Promise<void> | null = null;
 
   constructor(options: McpSessionRegistryOptions = {}) {
     this.now = options.now ?? Date.now;
@@ -184,10 +187,15 @@ export class McpSessionRegistry {
     return this.sessions.size + this.reservations.size;
   }
 
+  get isShuttingDown(): boolean {
+    return this.shuttingDown;
+  }
+
   reserve(
     userId: string,
     namespace: McpSessionNamespace,
   ): McpSessionReservation | null {
+    if (this.shuttingDown) return null;
     if (this.capacitySize >= this.maxTotal) return null;
     if (this.countUserNamespace(userId, namespace) + this.countReservedUserNamespace(userId, namespace) >= this.maxPerUser) {
       return null;
@@ -206,6 +214,7 @@ export class McpSessionRegistry {
     userId: string,
     namespace: McpSessionNamespace,
   ): Promise<McpSessionReservation | null> {
+    if (this.shuttingDown) return null;
     await this.sweep();
     const reservation = this.reserve(userId, namespace);
     if (reservation) return reservation;
@@ -232,6 +241,9 @@ export class McpSessionRegistry {
       inFlightCount?: number;
     },
   ): McpSessionRecord {
+    if (this.shuttingDown) {
+      throw new Error("MCP_SESSION_REGISTRY_SHUTTING_DOWN");
+    }
     if (reservation.released || reservation.committed || !this.reservations.has(reservation)) {
       throw new Error("MCP_SESSION_RESERVATION_INVALID");
     }
@@ -250,6 +262,9 @@ export class McpSessionRegistry {
     server: Closable;
     transport: object;
   }): McpSessionRecord {
+    if (this.shuttingDown) {
+      throw new Error("MCP_SESSION_REGISTRY_SHUTTING_DOWN");
+    }
     const reservation = this.reserve(input.userId, input.namespace);
     if (!reservation) throw new Error("MCP_SESSION_CAPACITY_EXCEEDED");
     try {
@@ -396,6 +411,33 @@ export class McpSessionRegistry {
     return true;
   }
 
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    this.shuttingDown = true;
+    for (const reservation of this.reservations) {
+      reservation.released = true;
+    }
+    this.reservations.clear();
+    const records = [...this.sessions.values()];
+
+    this.shutdownPromise = (async () => {
+      const failures: unknown[] = [];
+      await Promise.all(
+        records.map(async (record) => {
+          try {
+            await this.closeRecord(record, "process_shutdown", false);
+          } catch (error) {
+            failures.push(error);
+          }
+        }),
+      );
+      if (failures.length > 0) {
+        throw new AggregateError(failures, "MCP session shutdown failed");
+      }
+    })();
+    return this.shutdownPromise;
+  }
+
   private async reclaimForCapacity(
     userId: string,
     namespace: McpSessionNamespace,
@@ -436,18 +478,23 @@ export class McpSessionRegistry {
   private async closeRecord(
     record: McpSessionRecord,
     reason: McpSessionCloseReason,
+    suppressProviderError = true,
   ): Promise<void> {
     if (record.closed) return;
     this.removeAndObserve(record, reason);
-    await this.closeProvider(record);
+    await this.closeProvider(record, suppressProviderError);
   }
 
-  private async closeProvider(record: McpSessionRecord): Promise<void> {
+  private async closeProvider(
+    record: McpSessionRecord,
+    suppressProviderError = true,
+  ): Promise<void> {
     try {
       await record.server.close();
-    } catch {
+    } catch (error) {
       // The session is removed even when provider cleanup fails. The caller
       // must never be able to resurrect an expired session.
+      if (!suppressProviderError) throw error;
     }
   }
 

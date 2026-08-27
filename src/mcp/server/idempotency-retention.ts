@@ -76,6 +76,11 @@ export class McpIdempotencyCleanupCoordinator {
     return operation;
   }
 
+  async drain(): Promise<void> {
+    const current = this.inFlight;
+    if (current) await current;
+  }
+
   private emit(event: IdempotencyCleanupObserverEvent): void {
     try {
       this.observer?.(event);

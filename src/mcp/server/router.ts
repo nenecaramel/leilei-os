@@ -5,9 +5,8 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import {
   createMcpServer,
-  createProductionActiveUserAuthorizer,
 } from "./create-server.js";
-import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
+import type { McpSessionServerFactory } from "./production-server-factory.js";
 import {
   McpSessionRegistry,
   type McpSessionNamespace,
@@ -49,12 +48,15 @@ export type McpRouterOptions = {
   namespace?: McpSessionNamespace;
   registry?: McpSessionRegistry;
   onInitialize?: () => Promise<void>;
+  createSessionServer?: McpSessionServerFactory;
 };
 
 export function createMcpRouter(options: McpRouterOptions = {}): Router {
   const router = Router();
   const namespace = options.namespace ?? "public";
   const registry = options.registry ?? new McpSessionRegistry();
+  const createSessionServer =
+    options.createSessionServer ?? ((userId) => createMcpServer({}, userId));
 
   const sendError = (
     response: Response,
@@ -139,14 +141,7 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
         let initializedRecord: McpSessionRecord | null = null;
         let transport: StreamableHTTPServerTransport | null = null;
         try {
-          const activeUserAuthorization =
-            createProductionActiveUserAuthorizer(userId);
-          const server = createMcpServer({ activeUserAuthorization }, userId);
-          registerProductionNotionExplicitWriteTools(
-            server,
-            userId,
-            activeUserAuthorization,
-          );
+          const server = createSessionServer(userId);
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (initializedSessionId) => {

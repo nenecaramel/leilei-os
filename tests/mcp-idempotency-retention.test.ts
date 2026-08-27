@@ -85,3 +85,35 @@ test("successful cleanup attempts are also limited to one per interval", async (
   await coordinator.maybeCleanup();
   assert.equal(calls, 2);
 });
+
+test("drain waits for only the current cleanup and starts no new work", async () => {
+  let calls = 0;
+  let release!: () => void;
+  const blocker = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const coordinator = new McpIdempotencyCleanupCoordinator({
+    retentionMs: 1_000,
+    intervalMs: 10_000,
+    cleanup: async () => {
+      calls += 1;
+      await blocker;
+      return 0;
+    },
+  });
+
+  void coordinator.maybeCleanup();
+  await Promise.resolve();
+  let drained = false;
+  const draining = coordinator.drain().then(() => {
+    drained = true;
+  });
+  await Promise.resolve();
+  assert.equal(drained, false);
+  assert.equal(calls, 1);
+  release();
+  await draining;
+  assert.equal(calls, 1);
+  await coordinator.drain();
+  assert.equal(calls, 1);
+});

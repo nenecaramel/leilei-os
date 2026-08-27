@@ -1,0 +1,135 @@
+import { env, getMcpGovernanceConfig, type RuntimeEnv } from "../config/env.js";
+import { createDatabase } from "../database/client.js";
+import type { AppDependencies } from "./create-app.js";
+import { DrizzleMemoryRepository } from "../domains/memory/memory-repository.js";
+import { MemoryService } from "../domains/memory/memory-service.js";
+import { DrizzleDiaryRepository } from "../domains/diary/diary-repository.js";
+import { DiaryService } from "../domains/diary/diary-service.js";
+import { DrizzleTaskRepository } from "../domains/task/task-repository.js";
+import { TaskService } from "../domains/task/task-service.js";
+import { DrizzleToyCommandRepository } from "../domains/toy/toy-command-repository.js";
+import { ToyCommandService } from "../domains/toy/toy-command-service.js";
+import { DrizzleGlobalSearchRepository } from "../domains/global-search/global-search-repository.js";
+import { GlobalSearchService } from "../domains/global-search/global-search-service.js";
+import { DrizzleSystemRepository } from "../domains/system/system-repository.js";
+import { SystemService } from "../domains/system/system-service.js";
+import { DrizzleTodoRepository } from "../domains/todo/todo-repository.js";
+import { TodoService } from "../domains/todo/todo-service.js";
+import { DrizzleExportRepository } from "../domains/export/export-repository.js";
+import { ExportService } from "../domains/export/export-service.js";
+import { DrizzleImportRepository } from "../domains/import/import-repository.js";
+import { ImportService } from "../domains/import/import-service.js";
+import { DrizzleUniverseRepository } from "../domains/universe/universe-repository-drizzle.js";
+import { UniverseService } from "../domains/universe/universe-service.js";
+import {
+  deleteExpiredMcpIdempotency,
+  McpIdempotencyCleanupCoordinator,
+} from "../mcp/server/idempotency-retention.js";
+import { McpSessionRegistry } from "../mcp/server/session-registry.js";
+import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
+
+type DatabaseResource = ReturnType<typeof createDatabase>;
+
+export type ProcessRuntime = {
+  appDependencies: AppDependencies;
+  mcpSessionRegistry: McpSessionRegistry;
+  drainBackgroundWork(): Promise<void>;
+  closeDatabase(): Promise<void>;
+};
+
+export type ProcessRuntimeFactoryDependencies = {
+  environment?: RuntimeEnv;
+  createDatabaseResource?: (databaseUrl: string) => DatabaseResource;
+};
+
+function observeLifecycle(event: { name: string; [key: string]: unknown }): void {
+  const safeFields = Object.fromEntries(
+    Object.entries(event).filter(([key]) => [
+      "name", "namespace", "reason", "activeSessionCount", "activeNamespaceCount",
+      "deletedRows", "durationMs", "diagnosticSessionOrdinal", "protocolVersion",
+      "clientName", "clientVersion", "hadUnknownSessionHeader", "activeUserNamespaceCount",
+      "idleUserNamespaceCount", "inFlightUserNamespaceCount", "oldestIdleAgeMs",
+      "inFlightCountAtClose", "idleAgeMsAtClose",
+    ].includes(key)),
+  );
+  if (event.name === "mcp_idempotency_cleanup_failed") {
+    console.warn("MCP lifecycle event", safeFields);
+  } else {
+    console.info("MCP lifecycle event", safeFields);
+  }
+}
+
+export function createProcessRuntime(
+  options: ProcessRuntimeFactoryDependencies = {},
+): ProcessRuntime {
+  const runtimeEnv = options.environment ?? env;
+  if (!runtimeEnv.DATABASE_URL) {
+    throw new Error("Database is not configured.");
+  }
+
+  const database = (options.createDatabaseResource ?? createDatabase)(runtimeEnv.DATABASE_URL);
+  const { db } = database;
+  const memoryRepository = new DrizzleMemoryRepository(db);
+  const memoryService = new MemoryService(memoryRepository);
+  const diaryService = new DiaryService(new DrizzleDiaryRepository(db));
+  const taskService = new TaskService(new DrizzleTaskRepository(db));
+  const toyCommandService = new ToyCommandService(
+    new DrizzleToyCommandRepository(db),
+    runtimeEnv.LEILEI_TOY_BRIDGE_USER_ID,
+  );
+  const globalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
+  const systemService = new SystemService(new DrizzleSystemRepository(db), {
+    internalMcpEnabled: Boolean(runtimeEnv.MCP_AUTH_TOKEN),
+  });
+  const todoService = new TodoService(new DrizzleTodoRepository(db));
+  const exportService = new ExportService(new DrizzleExportRepository(db));
+  const importService = new ImportService(new DrizzleImportRepository(db));
+  const universeService = new UniverseService(new DrizzleUniverseRepository(db));
+
+  const governance = getMcpGovernanceConfig(runtimeEnv);
+  const mcpSessionRegistry = new McpSessionRegistry({
+    idleTtlMs: governance.idleTtlSeconds * 1_000,
+    absoluteTtlMs: governance.absoluteTtlSeconds * 1_000,
+    maxPerUser: governance.maxPerUser,
+    maxTotal: governance.maxTotal,
+    observer: observeLifecycle,
+  });
+  const mcpIdempotencyCleanup = new McpIdempotencyCleanupCoordinator({
+    retentionMs: governance.idempotencyRetentionDays * 24 * 60 * 60 * 1_000,
+    intervalMs: governance.idempotencyCleanupIntervalHours * 60 * 60 * 1_000,
+    cleanup: (cutoff) => deleteExpiredMcpIdempotency(db, cutoff),
+    observer: observeLifecycle,
+  });
+  const createMcpSessionServer = createProductionMcpSessionServerFactory({
+    activeUserRepository: memoryRepository,
+    memoryService,
+    diaryService,
+    taskService,
+    toyCommandService,
+    globalSearchService,
+    todoService,
+    universeService,
+  });
+
+  return {
+    mcpSessionRegistry,
+    appDependencies: {
+      webMemoryService: memoryService,
+      webDiaryService: diaryService,
+      webTaskService: taskService,
+      webSystemService: systemService,
+      toyService: toyCommandService,
+      webGlobalSearchService: globalSearchService,
+      webTodoService: todoService,
+      webExportService: exportService,
+      webImportService: importService,
+      webUniverseService: universeService,
+      databaseReadinessProbe: database.probe,
+      mcpSessionRegistry,
+      mcpIdempotencyCleanup,
+      createMcpSessionServer,
+    },
+    drainBackgroundWork: () => mcpIdempotencyCleanup.drain(),
+    closeDatabase: database.close,
+  };
+}

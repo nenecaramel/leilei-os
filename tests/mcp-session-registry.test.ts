@@ -668,3 +668,93 @@ test("absolute deadline and another close racing still remove once and reclaim c
   assert.equal(session.closeCalls, 1);
   assert.ok(registry.reserve("u2", "public"));
 });
+
+test("process shutdown rejects admission and invalidates racing reservations", async () => {
+  const registry = new McpSessionRegistry();
+  const reservation = registry.reserve("u1", "public");
+  assert.ok(reservation);
+
+  const shutdown = registry.shutdown();
+  assert.equal(registry.isShuttingDown, true);
+  assert.equal(registry.reserve("u2", "public"), null);
+  assert.equal(await registry.admit("u2", "public"), null);
+  assert.throws(
+    () =>
+      registry.commit(reservation!, {
+        sessionId: "late",
+        userId: "u1",
+        namespace: "public",
+        server: { close: async () => undefined },
+        transport: {},
+      }),
+    /MCP_SESSION_REGISTRY_SHUTTING_DOWN/,
+  );
+  await shutdown;
+  assert.equal(registry.capacitySize, 0);
+});
+
+test("process shutdown closes every session once and cancels deadlines", async () => {
+  const cancelled: number[] = [];
+  const registry = new McpSessionRegistry({
+    scheduleAbsoluteDeadline: () => {
+      const ordinal = cancelled.push(0) - 1;
+      return () => {
+        cancelled[ordinal] = (cancelled[ordinal] ?? 0) + 1;
+      };
+    },
+  });
+  const first = createDummy(registry, {
+    sessionId: "shutdown-1",
+    userId: "u1",
+    namespace: "public",
+  });
+  const second = createDummy(registry, {
+    sessionId: "shutdown-2",
+    userId: "u1",
+    namespace: "internal",
+  });
+
+  await Promise.all([registry.shutdown(), registry.shutdown()]);
+  assert.equal(first.closeCalls, 1);
+  assert.equal(second.closeCalls, 1);
+  assert.equal(registry.size, 0);
+  assert.deepEqual(cancelled, [1, 1]);
+});
+
+test("process shutdown attempts every provider close before reporting failures", async () => {
+  const closed: string[] = [];
+  const registry = new McpSessionRegistry();
+  registry.register({
+    sessionId: "shutdown-failure",
+    userId: "u1",
+    namespace: "public",
+    server: {
+      close: async () => {
+        closed.push("failure");
+        throw new Error("provider close failed");
+      },
+    },
+    transport: {},
+  });
+  registry.register({
+    sessionId: "shutdown-success",
+    userId: "u1",
+    namespace: "internal",
+    server: {
+      close: async () => {
+        closed.push("success");
+      },
+    },
+    transport: {},
+  });
+
+  await assert.rejects(
+    registry.shutdown(),
+    (error: unknown) =>
+      error instanceof AggregateError &&
+      error.message === "MCP session shutdown failed" &&
+      error.errors.length === 1,
+  );
+  assert.deepEqual(closed.sort(), ["failure", "success"]);
+  assert.equal(registry.size, 0);
+});

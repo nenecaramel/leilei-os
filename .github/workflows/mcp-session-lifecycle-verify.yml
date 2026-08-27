@@ -5,8 +5,22 @@ on:
     branches:
       - main
     paths:
+      - src/app/index.ts
+      - src/app/create-app.ts
+      - src/app/process-runtime.ts
+      - src/app/graceful-shutdown.ts
+      - src/database/client.ts
+      - src/mcp/server/create-server.ts
+      - src/mcp/server/production-server-factory.ts
+      - src/mcp/server/idempotency-retention.ts
       - src/mcp/server/session-registry.ts
       - src/mcp/server/router.ts
+      - tests/database-resource-ownership.test.ts
+      - tests/database-readiness-wiring.test.ts
+      - tests/process-runtime.test.ts
+      - tests/graceful-shutdown.test.ts
+      - tests/mcp-idempotency-retention.test.ts
+      - tests/mcp-production-resource-wiring.test.ts
       - tests/mcp-session-registry.test.ts
       - tests/mcp-session-preflight.test.ts
       - .github/workflows/mcp-session-lifecycle-verify.yml
@@ -36,6 +50,12 @@ jobs:
       - name: Run focused MCP lifecycle tests
         run: >-
           pnpm exec tsx --test --test-concurrency=1
+          tests/database-resource-ownership.test.ts
+          tests/database-readiness-wiring.test.ts
+          tests/process-runtime.test.ts
+          tests/graceful-shutdown.test.ts
+          tests/mcp-idempotency-retention.test.ts
+          tests/mcp-production-resource-wiring.test.ts
           tests/mcp-session-registry.test.ts
           tests/mcp-session-preflight.test.ts
       - run: pnpm test
