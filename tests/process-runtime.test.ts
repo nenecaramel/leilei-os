@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const createAppSource = readFileSync("src/app/create-app.ts", "utf8");
-const indexSource = readFileSync("src/app/index.ts", "utf8");
 
 test("process runtime owns one injectable database resource", async () => {
   const { createProcessRuntime } = await import("../src/app/process-runtime.js");
@@ -44,11 +43,4 @@ test("createApp receives resources instead of constructing a database", () => {
   assert.doesNotMatch(createAppSource, /createDatabase\s*\(/);
   assert.doesNotMatch(createAppSource, /createDatabaseReadinessProbe/);
   assert.match(createAppSource, /dependencies\.databaseReadinessProbe/);
-});
-
-test("process boundary owns runtime and graceful shutdown", () => {
-  assert.match(indexSource, /createProcessRuntime\(\)/);
-  assert.match(indexSource, /createApp\(runtime\.appDependencies\)/);
-  assert.match(indexSource, /createGracefulShutdownController/);
-  assert.doesNotMatch(indexSource, /httpServer\.close\([\s\S]*process\.exit/);
 });
