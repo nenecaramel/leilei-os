@@ -566,6 +566,132 @@ export const dataImportRuns = pgTable(
   ],
 );
 
+export type BridgeEventStatus =
+  | "pending"
+  | "reserved"
+  | "host_sent"
+  | "delivery_unknown";
+
+export const bridgeEvents = pgTable(
+  "bridge_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    requestHash: varchar("request_hash", { length: 64 }).notNull(),
+    kind: varchar("kind", { length: 32 }).$type<"chat">().notNull(),
+    source: varchar("source", { length: 64 })
+      .$type<"leileios_pwa">()
+      .notNull(),
+    visibleText: text("visible_text").notNull(),
+    modelContext: text("model_context").notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<BridgeEventStatus>()
+      .default("pending")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    dispatchStartedAt: timestamp("dispatch_started_at", { withTimezone: true }),
+    hostSentAt: timestamp("host_sent_at", { withTimezone: true }),
+    deliveryUnknownAt: timestamp("delivery_unknown_at", {
+      withTimezone: true,
+    }),
+    retryCount: integer("retry_count").default(0).notNull(),
+    lastErrorCode: varchar("last_error_code", { length: 64 }),
+  },
+  (table) => [
+    uniqueIndex("bridge_events_user_idempotency_key_uidx").on(
+      table.userId,
+      table.idempotencyKey,
+    ),
+    index("bridge_events_user_status_created_id_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    index("bridge_events_status_host_sent_id_idx").on(
+      table.status,
+      table.hostSentAt,
+      table.id,
+    ),
+    check(
+      "bridge_events_kind_allowed",
+      sql`${table.kind} = 'chat'`,
+    ),
+    check(
+      "bridge_events_source_allowed",
+      sql`${table.source} = 'leileios_pwa'`,
+    ),
+    check(
+      "bridge_events_idempotency_key_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9._:-]{16,128}$'`,
+    ),
+    check(
+      "bridge_events_request_hash_format",
+      sql`${table.requestHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "bridge_events_visible_text_bounds",
+      sql`char_length(btrim(${table.visibleText})) > 0 AND char_length(${table.visibleText}) <= 4000`,
+    ),
+    check(
+      "bridge_events_status_allowed",
+      sql`${table.status} IN ('pending', 'reserved', 'host_sent', 'delivery_unknown')`,
+    ),
+    check(
+      "bridge_events_retry_count_nonnegative",
+      sql`${table.retryCount} >= 0`,
+    ),
+    check(
+      "bridge_events_reserved_fields_required",
+      sql`${table.status} <> 'reserved' OR (${table.reservedBy} IS NOT NULL AND ${table.reservationExpiresAt} IS NOT NULL)`,
+    ),
+    check(
+      "bridge_events_host_sent_at_required",
+      sql`${table.status} <> 'host_sent' OR ${table.hostSentAt} IS NOT NULL`,
+    ),
+    check(
+      "bridge_events_delivery_unknown_at_required",
+      sql`${table.status} <> 'delivery_unknown' OR ${table.deliveryUnknownAt} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const bridgeListenerLeases = pgTable(
+  "bridge_listener_leases",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    listenerInstanceId: uuid("listener_instance_id").notNull(),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      withTimezone: true,
+    }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId] }),
+    index("bridge_listener_leases_expires_idx").on(table.leaseExpiresAt),
+  ],
+);
+
 export const universeMeta = pgTable(
   "universe_meta",
   {
