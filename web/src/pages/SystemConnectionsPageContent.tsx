@@ -70,6 +70,11 @@ export function SystemConnectionsPageContent({
         setState({ status: "error" });
       });
 
+    return () => {
+      active = false;
+    };
+  }, [api, reloadKey]);
+
   const [bridgeText, setBridgeText] = useState("");
   const [bridgeReceipt, setBridgeReceipt] = useState<BridgeEventReceipt | null>(null);
   const [bridgeSending, setBridgeSending] = useState(false);
@@ -111,11 +116,6 @@ export function SystemConnectionsPageContent({
     void poll();
     return () => { active = false; window.clearInterval(handle); };
   }, [api, bridgeReceipt?.id, bridgeReceipt?.status]);
-
-    return () => {
-      active = false;
-    };
-  }, [api, reloadKey]);
 
   return (
     <div
