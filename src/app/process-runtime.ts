@@ -35,6 +35,7 @@ import { createProductionMcpSessionServerFactory } from "../mcp/server/productio
 import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
 import {
   createMcpLifecycleObserver,
+  createBridgeObserver,
   createRetentionObserver,
 } from "../observability/runtime-observers.js";
 
@@ -85,7 +86,7 @@ export function createProcessRuntime(
   const exportService = new ExportService(new DrizzleExportRepository(db));
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
-  const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db));
+  const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
 
   const governance = getMcpGovernanceConfig(runtimeEnv);
   const mcpSessionRegistry = new McpSessionRegistry({

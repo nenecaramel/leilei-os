@@ -37,11 +37,21 @@ export class BridgeDomainError extends Error {
 export type BridgeServiceOptions = {
   createId?: () => string;
   now?: () => Date;
+  observe?: (event: BridgeServiceObserverEvent) => void;
 };
+
+export type BridgeServiceObserverEvent =
+  | { name: "bridge_event_created"; eventId: string; status: BridgeEventRecord["status"] }
+  | { name: "bridge_listener_lease_acquired" | "bridge_listener_lease_renewed"; state: "acquired" | "renewed" }
+  | { name: "bridge_listener_busy" }
+  | { name: "bridge_listener_released"; released: boolean }
+  | { name: "bridge_event_reserved"; eventId: string | null; status: BridgeEventRecord["status"] | null }
+  | { name: "bridge_event_dispatch_started" | "bridge_event_host_sent" | "bridge_event_delivery_unknown" | "bridge_event_released"; eventId: string };
 
 export class BridgeService {
   private readonly createId: () => string;
   private readonly now: () => Date;
+  private readonly observe?: (event: BridgeServiceObserverEvent) => void;
 
   constructor(
     private readonly repository: BridgeEventRepository,
@@ -49,7 +59,10 @@ export class BridgeService {
   ) {
     this.createId = options.createId ?? randomUUID;
     this.now = options.now ?? (() => new Date());
+    this.observe = options.observe;
   }
+
+  private emit(event: BridgeServiceObserverEvent): void { try { this.observe?.(event); } catch { /* observational only */ } }
 
   async createPwaEvent(
     userId: string,
@@ -87,8 +100,10 @@ export class BridgeService {
       );
     }
 
+    const event = result.event;
+    if (result.outcome === "created") this.emit({ name: "bridge_event_created", eventId: event.id, status: event.status });
     return {
-      event: result.event,
+      event,
       created: result.outcome === "created",
     };
   }
@@ -107,20 +122,26 @@ export class BridgeService {
   ): Promise<BridgeListenerLeaseResult> {
     const result = await this.repository.acquireListenerLease(userId, listenerInstanceId);
     if (result.state === "busy") {
+      this.emit({ name: "bridge_listener_busy" });
       throw new BridgeDomainError("LISTENER_BUSY", "A Bridge listener is already active.");
     }
+    this.emit({ name: result.state === "acquired" ? "bridge_listener_lease_acquired" : "bridge_listener_lease_renewed", state: result.state });
     return result;
   }
 
   async stopListener(userId: string, listenerInstanceId: string): Promise<boolean> {
-    return this.repository.releaseListenerLease(userId, listenerInstanceId);
+    const released = await this.repository.releaseListenerLease(userId, listenerInstanceId);
+    this.emit({ name: "bridge_listener_released", released });
+    return released;
   }
 
   async reserveNext(
     userId: string,
     listenerInstanceId: string,
   ): Promise<BridgeEventRecord | null> {
-    return this.repository.reserveNext(userId, listenerInstanceId);
+    const event = await this.repository.reserveNext(userId, listenerInstanceId);
+    this.emit({ name: "bridge_event_reserved", eventId: event?.id ?? null, status: event?.status ?? null });
+    return event;
   }
 
   async markDispatchStarted(
@@ -128,9 +149,11 @@ export class BridgeService {
     listenerInstanceId: string,
     eventId: string,
   ): Promise<BridgeEventRecord> {
-    return this.requireEvent(
+    const event = await this.requireEvent(
       this.repository.markDispatchStarted(userId, listenerInstanceId, eventId),
     );
+    this.emit({ name: "bridge_event_dispatch_started", eventId: event.id });
+    return event;
   }
 
   async markHostSent(
@@ -138,9 +161,11 @@ export class BridgeService {
     listenerInstanceId: string,
     eventId: string,
   ): Promise<BridgeEventRecord> {
-    return this.requireEvent(
+    const event = await this.requireEvent(
       this.repository.markHostSent(userId, listenerInstanceId, eventId),
     );
+    this.emit({ name: "bridge_event_host_sent", eventId: event.id });
+    return event;
   }
 
   async markDeliveryUnknown(
@@ -149,9 +174,11 @@ export class BridgeService {
     eventId: string,
     safeErrorCode: string,
   ): Promise<BridgeEventRecord> {
-    return this.requireEvent(
+    const event = await this.requireEvent(
       this.repository.markDeliveryUnknown(userId, listenerInstanceId, eventId, safeErrorCode),
     );
+    this.emit({ name: "bridge_event_delivery_unknown", eventId: event.id });
+    return event;
   }
 
   async release(
@@ -160,9 +187,11 @@ export class BridgeService {
     eventId: string,
     safeErrorCode?: string,
   ): Promise<BridgeEventRecord> {
-    return this.requireEvent(
+    const event = await this.requireEvent(
       this.repository.release(userId, listenerInstanceId, eventId, safeErrorCode),
     );
+    this.emit({ name: "bridge_event_released", eventId: event.id });
+    return event;
   }
 
   private normalizeVisibleText(value: unknown): string {
