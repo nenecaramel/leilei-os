@@ -27,7 +27,15 @@ export function registerBridgeListenerTools(server: McpServer, deps: BridgeListe
   const appMeta = { ui: { resourceUri: BRIDGE_RESOURCE_URI, visibility: ["app"] as ["app"] } };
   registerAppTool(server, "bridge_listener_start", { description: "Start the message bridge listener.", _meta: appMeta, outputSchema }, invoke(deps, async (userId) => ({ state: await deps.bridgeService.startListener(userId, deps.listenerInstanceId) })));
   registerAppTool(server, "bridge_listener_stop", { description: "Stop the message bridge listener.", _meta: appMeta, outputSchema }, invoke(deps, async (userId) => ({ stopped: await deps.bridgeService.stopListener(userId, deps.listenerInstanceId) })));
-  registerAppTool(server, "bridge_listener_sync", { description: "Synchronize one queued bridge event.", _meta: appMeta, outputSchema }, invoke(deps, async (userId) => { const event = await deps.bridgeService.reserveNext(userId, deps.listenerInstanceId); return { event: event ? compactEvent(event) : null }; }));
+  registerAppTool(server, "bridge_listener_sync", { description: "Synchronize one queued bridge event.", _meta: appMeta, outputSchema }, async () => {
+    try {
+      const event = await deps.bridgeService.reserveNext(deps.getAuthenticatedUserId(), deps.listenerInstanceId);
+      const result = ok({ event: event ? compactEvent(event) : null });
+      return event ? { ...result, _meta: { bridgeEvent: event } } : result;
+    } catch (error) {
+      return fail(error);
+    }
+  });
   registerAppTool(server, "bridge_listener_dispatch_started", { inputSchema: eventIdSchema, description: "Mark a bridge event as dispatched.", _meta: appMeta, outputSchema }, async ({ eventId }) => invoke(deps, async (userId) => ({ event: compactEvent(await deps.bridgeService.markDispatchStarted(userId, deps.listenerInstanceId, eventId)) }))());
   registerAppTool(server, "bridge_listener_delivered", { inputSchema: eventIdSchema, description: "Acknowledge a delivered bridge event.", _meta: appMeta, outputSchema }, async ({ eventId }) => invoke(deps, async (userId) => ({ event: compactEvent(await deps.bridgeService.markHostSent(userId, deps.listenerInstanceId, eventId)) }))());
   registerAppTool(server, "bridge_listener_delivery_unknown", { inputSchema: errorSchema, description: "Quarantine an uncertain bridge delivery.", _meta: appMeta, outputSchema }, async ({ eventId, safeErrorCode }) => invoke(deps, async (userId) => ({ event: compactEvent(await deps.bridgeService.markDeliveryUnknown(userId, deps.listenerInstanceId, eventId, safeErrorCode)) }))());
