@@ -140,7 +140,7 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
         let initializedRecord: McpSessionRecord | null = null;
         let transport: StreamableHTTPServerTransport | null = null;
         try {
-          const server = createSessionServer(userId);
+          const server = createSessionServer(userId, namespace);
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (initializedSessionId) => {

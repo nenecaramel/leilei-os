@@ -7,6 +7,7 @@ import type { TaskService } from "../../domains/task/task-service.js";
 import type { TodoService } from "../../domains/todo/todo-service.js";
 import type { ToyCommandService } from "../../domains/toy/toy-command-service.js";
 import type { UniverseService } from "../../domains/universe/universe-service.js";
+import type { McpSessionNamespace } from "./session-registry.js";
 import {
   createActiveUserAuthorizer,
   createMcpServer,
@@ -16,6 +17,7 @@ import { registerProductionNotionExplicitWriteTools } from "./register-notion-ex
 
 export type McpSessionServerFactory = (
   authenticatedUserId: string,
+  namespace?: McpSessionNamespace,
 ) => McpServer;
 
 export function createProductionMcpSessionServerFactory(input: {
@@ -28,7 +30,7 @@ export function createProductionMcpSessionServerFactory(input: {
   todoService: TodoService;
   universeService: UniverseService;
 }): McpSessionServerFactory {
-  return (userId) => {
+  return (userId, _namespace = "public") => {
     const activeUserAuthorization = createActiveUserAuthorizer(
       input.activeUserRepository,
       userId,
