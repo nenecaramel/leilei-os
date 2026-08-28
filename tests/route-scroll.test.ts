@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
-import React, { useEffect, useRef, useState } from "../web/node_modules/react/index.js";
+import React, { act, useEffect, useRef, useState } from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import {
   BrowserRouter,
@@ -25,11 +25,11 @@ function installDom(url: string) {
     { url },
   );
   const previous = new Map<string, PropertyDescriptor | undefined>();
-  for (const key of ["window", "document", "navigator"]) {
+  for (const key of ["window", "document", "navigator", "IS_REACT_ACT_ENVIRONMENT"]) {
     previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, {
       configurable: true,
-      value: dom.window[key as keyof Window],
+      value: key === "IS_REACT_ACT_ENVIRONMENT" ? true : dom.window[key as keyof Window],
     });
   }
   const testWindow = dom.window as unknown as TestWindow;
@@ -48,7 +48,7 @@ function installDom(url: string) {
   return {
     dom,
     restore() {
-      for (const key of ["window", "document", "navigator"]) {
+      for (const key of ["window", "document", "navigator", "IS_REACT_ACT_ENVIRONMENT"]) {
         const descriptor = previous.get(key);
         if (descriptor) Object.defineProperty(globalThis, key, descriptor);
         else Reflect.deleteProperty(globalThis, key);
@@ -58,8 +58,29 @@ function installDom(url: string) {
   };
 }
 
-function waitForEffects() {
-  return new Promise((resolve) => setTimeout(resolve, 20));
+async function waitForCondition(
+  condition: () => boolean,
+  description: string,
+): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!condition()) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${description}.`);
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+async function renderAndWait(path: string) {
+  let root!: ReturnType<typeof createRoot>;
+  await act(async () => {
+    root = renderRoutes(path);
+  });
+  await waitForCondition(
+    () => document.getElementById("navigate") !== null,
+    "route content to mount",
+  );
+  return root;
 }
 
 function NavigationButton({ to }: { to: string }) {
@@ -108,90 +129,110 @@ test("top-level Dashboard to Memory PUSH resets the window scroll position", asy
   const env = installDom("https://leilei.test/");
   const scrolls: unknown[] = [];
   env.dom.window.scrollTo = ((options: unknown) => scrolls.push(options)) as typeof window.scrollTo;
-  const root = renderRoutes("/diary");
-  await waitForEffects();
-  assert.deepEqual(scrolls, []);
-  (document.getElementById("navigate") as HTMLButtonElement).click();
-  await waitForEffects();
-  assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
-  root.unmount();
-  env.restore();
+  let root: ReturnType<typeof createRoot> | undefined;
+  try {
+    root = await renderAndWait("/diary");
+    assert.deepEqual(scrolls, []);
+    await act(async () => (document.getElementById("navigate") as HTMLButtonElement).click());
+    await waitForCondition(() => scrolls.length === 1, "top-level scroll reset");
+    assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
+  } finally {
+    await act(async () => root?.unmount());
+    env.restore();
+  }
 });
 
 test("top-level Memory to Diary PUSH resets the window scroll position", async () => {
   const env = installDom("https://leilei.test/memory");
   const scrolls: unknown[] = [];
   env.dom.window.scrollTo = ((options: unknown) => scrolls.push(options)) as typeof window.scrollTo;
-  const root = renderRoutes("/diary");
-  await waitForEffects();
-  (document.getElementById("navigate") as HTMLButtonElement).click();
-  await waitForEffects();
-  assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
-  root.unmount();
-  env.restore();
+  let root: ReturnType<typeof createRoot> | undefined;
+  try {
+    root = await renderAndWait("/diary");
+    await act(async () => (document.getElementById("navigate") as HTMLButtonElement).click());
+    await waitForCondition(() => scrolls.length === 1, "top-level scroll reset");
+    assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
+  } finally {
+    await act(async () => root?.unmount());
+    env.restore();
+  }
 });
 
 test("top-level Memory to Day Space PUSH resets the window scroll position", async () => {
   const env = installDom("https://leilei.test/memory");
   const scrolls: unknown[] = [];
   env.dom.window.scrollTo = ((options: unknown) => scrolls.push(options)) as typeof window.scrollTo;
-  const root = renderRoutes("/day-space");
-  await waitForEffects();
-  (document.getElementById("navigate") as HTMLButtonElement).click();
-  await waitForEffects();
-  assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
-  root.unmount();
-  env.restore();
+  let root: ReturnType<typeof createRoot> | undefined;
+  try {
+    root = await renderAndWait("/day-space");
+    await act(async () => (document.getElementById("navigate") as HTMLButtonElement).click());
+    await waitForCondition(() => scrolls.length === 1, "top-level scroll reset");
+    assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
+  } finally {
+    await act(async () => root?.unmount());
+    env.restore();
+  }
 });
 
 test("navigateWithinApp preserves state, resets once, and consumes only its marker", async () => {
   const env = installDom("https://leilei.test/");
   const scrolls: unknown[] = [];
   env.dom.window.scrollTo = ((options: unknown) => scrolls.push(options)) as typeof window.scrollTo;
-  const root = renderRoutes("/task");
-  await waitForEffects();
-  navigateWithinApp("/task", {
-    globalSearch: { version: 1 },
-    quickCreate: "task",
-    preserved: true,
-  });
-  assert.equal((env.dom.window.history.state as Record<string, unknown>)[ROUTE_SCROLL_STATE_KEY] !== undefined, true);
-  assert.equal((env.dom.window.history.state as Record<string, unknown>).quickCreate, "task");
-  assert.deepEqual((env.dom.window.history.state as Record<string, unknown>).globalSearch, { version: 1 });
-  await waitForEffects();
-  assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
-  assert.equal((env.dom.window.history.state as Record<string, unknown>)[ROUTE_SCROLL_STATE_KEY], undefined);
-  assert.equal((env.dom.window.history.state as Record<string, unknown>).quickCreate, "task");
-  assert.equal((env.dom.window.history.state as Record<string, unknown>).preserved, true);
-  root.unmount();
-  env.restore();
+  let root: ReturnType<typeof createRoot> | undefined;
+  try {
+    root = await renderAndWait("/task");
+    await act(async () => {
+      navigateWithinApp("/task", {
+        globalSearch: { version: 1 },
+        quickCreate: "task",
+        preserved: true,
+      });
+      assert.equal((env.dom.window.history.state as Record<string, unknown>)[ROUTE_SCROLL_STATE_KEY] !== undefined, true);
+      assert.equal((env.dom.window.history.state as Record<string, unknown>).quickCreate, "task");
+      assert.deepEqual((env.dom.window.history.state as Record<string, unknown>).globalSearch, { version: 1 });
+    });
+    await waitForCondition(() => scrolls.length === 1, "marker-driven scroll reset");
+    assert.deepEqual(scrolls, [{ top: 0, left: 0, behavior: "auto" }]);
+    assert.equal((env.dom.window.history.state as Record<string, unknown>)[ROUTE_SCROLL_STATE_KEY], undefined);
+    assert.equal((env.dom.window.history.state as Record<string, unknown>).quickCreate, "task");
+    assert.equal((env.dom.window.history.state as Record<string, unknown>).preserved, true);
+  } finally {
+    await act(async () => root?.unmount());
+    env.restore();
+  }
 });
 
 test("POP and initial mount do not perform a global scroll reset", async () => {
   const env = installDom("https://leilei.test/memory");
   const scrolls: unknown[] = [];
   env.dom.window.scrollTo = ((options: unknown) => scrolls.push(options)) as typeof window.scrollTo;
-  const root = renderRoutes("/diary");
-  await waitForEffects();
-  env.dom.window.history.pushState(null, "", "/diary");
-  env.dom.window.dispatchEvent(new env.dom.window.PopStateEvent("popstate"));
-  await waitForEffects();
-  assert.deepEqual(scrolls, []);
-  root.unmount();
-  env.restore();
+  let root: ReturnType<typeof createRoot> | undefined;
+  try {
+    root = await renderAndWait("/diary");
+    await act(async () => {
+      env.dom.window.history.pushState(null, "", "/diary");
+      env.dom.window.dispatchEvent(new env.dom.window.PopStateEvent("popstate"));
+    });
+    assert.deepEqual(scrolls, []);
+  } finally {
+    await act(async () => root?.unmount());
+    env.restore();
+  }
 });
 
 test("same-path query navigation does not perform a global scroll reset", async () => {
   const env = installDom("https://leilei.test/memory");
   const scrolls: unknown[] = [];
   env.dom.window.scrollTo = ((options: unknown) => scrolls.push(options)) as typeof window.scrollTo;
-  const root = renderRoutes("/memory?q=goal");
-  await waitForEffects();
-  (document.getElementById("navigate") as HTMLButtonElement).click();
-  await waitForEffects();
-  assert.deepEqual(scrolls, []);
-  root.unmount();
-  env.restore();
+  let root: ReturnType<typeof createRoot> | undefined;
+  try {
+    root = await renderAndWait("/memory?q=goal");
+    await act(async () => (document.getElementById("navigate") as HTMLButtonElement).click());
+    assert.deepEqual(scrolls, []);
+  } finally {
+    await act(async () => root?.unmount());
+    env.restore();
+  }
 });
 
 test("quick-create focus runs after the route scroll reset", async () => {
@@ -215,18 +256,23 @@ test("quick-create focus runs after the route scroll reset", async () => {
   };
   const container = document.getElementById("root")!;
   const root = createRoot(container);
-  root.render(React.createElement(BrowserRouter, null,
-    React.createElement(RouteScrollManager),
-    React.createElement(Routes, null,
-      React.createElement(Route, { path: "/", element: React.createElement("button", { id: "quick", onClick: () => navigateWithinApp("/task", { quickCreate: "task" }) }, "quick") }),
-      React.createElement(Route, { path: "/task", element: React.createElement(FocusTarget) }),
-    ),
-  ));
-  await waitForEffects();
-  (document.getElementById("quick") as HTMLButtonElement).click();
-  await waitForEffects();
-  assert.deepEqual(events, ["scroll", "focus"]);
-  root.unmount();
-  await waitForEffects();
-  env.restore();
+  try {
+    await act(async () => root.render(React.createElement(BrowserRouter, null,
+      React.createElement(RouteScrollManager),
+      React.createElement(Routes, null,
+        React.createElement(Route, { path: "/", element: React.createElement("button", { id: "quick", onClick: () => navigateWithinApp("/task", { quickCreate: "task" }) }, "quick") }),
+        React.createElement(Route, { path: "/task", element: React.createElement(FocusTarget) }),
+      ),
+    )));
+    await waitForCondition(
+      () => document.getElementById("quick") !== null,
+      "quick-create trigger to mount",
+    );
+    await act(async () => (document.getElementById("quick") as HTMLButtonElement).click());
+    await waitForCondition(() => events.length === 2, "quick-create scroll and focus");
+    assert.deepEqual(events, ["scroll", "focus"]);
+  } finally {
+    await act(async () => root.unmount());
+    env.restore();
+  }
 });
