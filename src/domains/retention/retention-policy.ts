@@ -2,7 +2,7 @@ export const RETENTION_BATCH_SIZE = 500;
 export const RETENTION_MAX_BATCHES_PER_RUN = 20;
 export const DATA_IMPORT_RETENTION_DAYS = 90;
 
-export type RetentionPolicy = "mcp_write_idempotency" | "data_import_runs";
+export type RetentionPolicy = "mcp_write_idempotency" | "data_import_runs" | "bridge_events";
 
 export type RetentionRunResult = {
   deletedRows: number;

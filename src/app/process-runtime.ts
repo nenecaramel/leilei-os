@@ -21,6 +21,9 @@ import { DrizzleImportRepository } from "../domains/import/import-repository.js"
 import { ImportService } from "../domains/import/import-service.js";
 import { DrizzleUniverseRepository } from "../domains/universe/universe-repository-drizzle.js";
 import { UniverseService } from "../domains/universe/universe-service.js";
+import { DrizzleBridgeEventRepository } from "../domains/bridge/bridge-event-repository.js";
+import { BridgeService } from "../domains/bridge/bridge-service.js";
+import { BRIDGE_TERMINAL_RETENTION_DAYS, deleteExpiredBridgeEventsBatch } from "../domains/bridge/bridge-retention.js";
 import {
   deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";
@@ -82,6 +85,7 @@ export function createProcessRuntime(
   const exportService = new ExportService(new DrizzleExportRepository(db));
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
+  const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db));
 
   const governance = getMcpGovernanceConfig(runtimeEnv);
   const mcpSessionRegistry = new McpSessionRegistry({
@@ -103,6 +107,11 @@ export function createProcessRuntime(
         policy: "data_import_runs",
         retentionMs: DATA_IMPORT_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
         deleteBatch: (cutoff, limit) => deleteExpiredDataImportRunsBatch(db, cutoff, limit),
+      },
+      {
+        policy: "bridge_events",
+        retentionMs: BRIDGE_TERMINAL_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
+        deleteBatch: (cutoff, limit) => deleteExpiredBridgeEventsBatch(db, cutoff, limit),
       },
     ],
     observe: createRetentionObserver(logger),
@@ -133,6 +142,7 @@ export function createProcessRuntime(
       webExportService: exportService,
       webImportService: importService,
       webUniverseService: universeService,
+      webBridgeService: bridgeService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
       createMcpSessionServer,
