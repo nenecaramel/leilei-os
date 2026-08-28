@@ -4,6 +4,25 @@ on:
   push:
     branches:
       - feat/mcp-app-message-bridge
+    paths:
+      - src/**
+      - drizzle/**
+      - tests/**
+      - web/**
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/bridge-dev.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - src/**
+      - drizzle/**
+      - tests/**
+      - web/**
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/bridge-dev.yml
 
 jobs:
   root-checks:
@@ -26,16 +45,26 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/leileios_test
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact event head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact event head: $actual"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
       - uses: pnpm/action-setup@v4
         with:
           version: 11.9.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: cd web && npm ci
       - run: pnpm exec tsx --test tests/bridge-ext-apps-compatibility.test.ts
       - run: pnpm db:migrate
+      - run: pnpm db:check
       - name: Bridge database integration when present
         shell: bash
         run: |
