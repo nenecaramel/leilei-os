@@ -34,6 +34,20 @@ export type RetentionCoordinatorEvent =
       policy: "data_import_runs";
       batches: number;
       durationMs: number;
+    }
+  | {
+      name: "bridge_events_cleanup_completed";
+      policy: "bridge_events";
+      deletedRows: number;
+      batches: number;
+      capped: boolean;
+      durationMs: number;
+    }
+  | {
+      name: "bridge_events_cleanup_failed";
+      policy: "bridge_events";
+      batches: number;
+      durationMs: number;
     };
 
 export type RetentionCoordinatorOptions = {
@@ -85,11 +99,13 @@ export function createRetentionCoordinator(
         batches += 1;
         return policy.deleteBatch(new Date(startedAt - policy.retentionMs), limit);
       });
+      const completedName = policy.policy === "mcp_write_idempotency"
+        ? "mcp_idempotency_cleanup_completed"
+        : policy.policy === "data_import_runs"
+          ? "data_import_runs_cleanup_completed"
+          : "bridge_events_cleanup_completed";
       emit({
-        name:
-          policy.policy === "mcp_write_idempotency"
-            ? "mcp_idempotency_cleanup_completed"
-            : "data_import_runs_cleanup_completed",
+        name: completedName,
         policy: policy.policy,
         deletedRows: result.deletedRows,
         batches: result.batches,
@@ -98,10 +114,11 @@ export function createRetentionCoordinator(
       } as RetentionCoordinatorEvent);
     } catch {
       emit({
-        name:
-          policy.policy === "mcp_write_idempotency"
-            ? "mcp_idempotency_cleanup_failed"
-            : "data_import_runs_cleanup_failed",
+        name: policy.policy === "mcp_write_idempotency"
+          ? "mcp_idempotency_cleanup_failed"
+          : policy.policy === "data_import_runs"
+            ? "data_import_runs_cleanup_failed"
+            : "bridge_events_cleanup_failed",
         policy: policy.policy,
         batches,
         durationMs: Math.max(0, now() - startedAt),

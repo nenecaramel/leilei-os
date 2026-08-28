@@ -18,6 +18,7 @@
     "test:diary-search-integration": "RUN_DATABASE_INTEGRATION_TEST=1 tsx --test tests/diary-repository.integration.test.ts",
     "test:toy-integration": "RUN_TOY_DATABASE_INTEGRATION_TEST=1 tsx --test --test-reporter=spec tests/toy-command-repository.integration.test.ts",
     "test:mcp-write-idempotency-integration": "RUN_MCP_WRITE_IDEMPOTENCY_DATABASE_TEST=1 tsx --test --test-reporter=spec tests/mcp-write-idempotency.integration.test.ts",
+    "test:bridge-integration": "RUN_BRIDGE_DATABASE_TEST=1 tsx --test --test-concurrency=1 tests/bridge-repository.integration.test.ts",
     "test:layout": "RUN_SAFARI_LAYOUT_TEST=1 tsx --test tests/native-date-layout.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -26,6 +27,7 @@
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
+    "@modelcontextprotocol/ext-apps": "1.7.5",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

@@ -7,6 +7,11 @@ import type { TaskService } from "../../domains/task/task-service.js";
 import type { TodoService } from "../../domains/todo/todo-service.js";
 import type { ToyCommandService } from "../../domains/toy/toy-command-service.js";
 import type { UniverseService } from "../../domains/universe/universe-service.js";
+import type { McpSessionNamespace } from "./session-registry.js";
+import type { BridgeService } from "../../domains/bridge/bridge-service.js";
+import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
+import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
+import { randomUUID } from "node:crypto";
 import {
   createActiveUserAuthorizer,
   createMcpServer,
@@ -16,6 +21,7 @@ import { registerProductionNotionExplicitWriteTools } from "./register-notion-ex
 
 export type McpSessionServerFactory = (
   authenticatedUserId: string,
+  namespace?: McpSessionNamespace,
 ) => McpServer;
 
 export function createProductionMcpSessionServerFactory(input: {
@@ -27,8 +33,9 @@ export function createProductionMcpSessionServerFactory(input: {
   globalSearchService: GlobalSearchService;
   todoService: TodoService;
   universeService: UniverseService;
+  bridgeService?: BridgeService;
 }): McpSessionServerFactory {
-  return (userId) => {
+  return (userId, namespace = "public") => {
     const activeUserAuthorization = createActiveUserAuthorizer(
       input.activeUserRepository,
       userId,
@@ -102,6 +109,15 @@ export function createProductionMcpSessionServerFactory(input: {
       userId,
       activeUserAuthorization,
     );
+    if (namespace === "public" && input.bridgeService) {
+      const listenerInstanceId = randomUUID();
+      registerBridgeListenerResource(server);
+      registerBridgeListenerTools(server, {
+        bridgeService: input.bridgeService,
+        getAuthenticatedUserId,
+        listenerInstanceId,
+      });
+    }
     return server;
   };
 }

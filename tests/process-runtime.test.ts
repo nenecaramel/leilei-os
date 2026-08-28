@@ -103,10 +103,11 @@ test("process runtime owns retention scheduling and drains it before the databas
   releaseRetention();
   await draining;
   await runtime.closeDatabase();
-  assert.equal(transactionCalls, 2);
+  assert.equal(transactionCalls, 3);
   assert.deepEqual(events, [
     "retention_batch:1",
     "retention_batch:2",
+    "retention_batch:3",
     "database_closed",
   ]);
 });

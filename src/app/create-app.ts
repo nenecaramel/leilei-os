@@ -43,6 +43,7 @@ import type { TodoApiDependencies } from "../web-api/todo-router.js";
 import type { ExportApiDependencies } from "../web-api/export-router.js";
 import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
+import type { BridgeApiDependencies } from "../web-api/bridge-router.js";
 
 export type AppDependencies = {
   logger?: SafeLogger;
@@ -58,6 +59,7 @@ export type AppDependencies = {
   webExportService?: ExportApiDependencies["exportService"];
   webImportService?: ImportApiDependencies["importService"];
   webUniverseService?: UniverseApiDependencies["universeService"];
+  webBridgeService?: BridgeApiDependencies["bridgeService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
   createMcpSessionServer?: McpSessionServerFactory;
@@ -225,6 +227,7 @@ export function createApp(
     const webExportService = dependencies.webExportService;
     const webImportService = dependencies.webImportService;
     const webUniverseService = dependencies.webUniverseService;
+    const webBridgeService = dependencies.webBridgeService;
 
     if (
       !webMemoryService ||
@@ -286,6 +289,7 @@ export function createApp(
         export: { exportService: webExportService },
         import: { importService: webImportService },
         universe: { universeService: webUniverseService },
+        ...(webBridgeService ? { bridge: { bridgeService: webBridgeService } } : {}),
       }),
     );
   }
