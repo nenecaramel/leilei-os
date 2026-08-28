@@ -45,7 +45,7 @@ page-shell-only foundation.
 The public MCP endpoint uses Auth0 and Streamable HTTP. The registered tools
 cover:
 
-- local context, weather, Memory, Diary, Task, Todo, Toy, and Global Search;
+- weather, Memory, Diary, Task, Todo, Toy, and Global Search;
 - Universe search, node/relation reads, node create/update, and relation create;
 - Notion connection discovery, page/database/data-source reads, and safe
   parameterized data-source queries;

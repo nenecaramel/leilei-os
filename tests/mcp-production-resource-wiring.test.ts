@@ -37,14 +37,14 @@ test("production MCP server composition cannot create database pools", () => {
   assert.doesNotMatch(routerSource, /registerProductionNotionExplicitWriteTools/);
 });
 
-test("direct MCP server keeps the 40-tool core surface", async () => {
+test("direct MCP server keeps the 39-tool core surface", async () => {
   const names = await listTools(createMcpServer({} as never), "mcp-core-inventory");
-  assert.equal(names.length, 40);
+  assert.equal(names.length, 39);
   assert.equal(names.includes("write_notion_page"), false);
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 42 tools with each Notion write once", async () => {
+test("production MCP session factory assembles 41 tools with each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -60,7 +60,7 @@ test("production MCP session factory assembles 42 tools with each Notion write o
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 42);
+  assert.equal(names.length, 41);
   assert.equal(names.filter((name) => name === "write_notion_page").length, 1);
   assert.equal(names.filter((name) => name === "write_notion_comment").length, 1);
 });

@@ -49,7 +49,7 @@ the built SPA from `web/dist` with history fallback. Production source is
 
 Authenticated production MCP sessions include tools for:
 
-- local context and weather;
+- weather;
 - Memory, Diary, Task, and Todo reads/writes;
 - Toy command control when its bridge is configured;
 - Global Search and Universe search/node/relation reads;
