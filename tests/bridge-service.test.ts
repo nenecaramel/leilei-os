@@ -156,7 +156,7 @@ test("uses a deterministic versioned request hash and compact safe model context
   const input = repository.creates[0]?.input;
   const expectedHash = createHash("sha256")
     .update(
-      "leilei-os:bridge-event:v1\\n" +
+      "leilei-os:bridge-event:v1\n" +
         JSON.stringify({ kind: "chat", source: "leileios_pwa", text: "hello" }),
       "utf8",
     )
@@ -182,8 +182,8 @@ test("returns replayed events and maps idempotency conflicts to a stable safe co
 
   repository.createResult = { outcome: "conflict" };
   await assert.rejects(
-    service.createPwaEvent(USER_ID, "different", "bridge-create-key-0001"),
-    (error: unknown) => error instanceof BridgeDomainError && error.code === "IDEMPOTENCY_CONFLICT" && !error.message.includes("different"),
+    service.createPwaEvent(USER_ID, "private-payload-sentinel", "bridge-create-key-0001"),
+    (error: unknown) => error instanceof BridgeDomainError && error.code === "IDEMPOTENCY_CONFLICT" && !error.message.includes("private-payload-sentinel"),
   );
 });
 
