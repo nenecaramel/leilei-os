@@ -125,6 +125,7 @@ export function createProcessRuntime(
     globalSearchService,
     todoService,
     universeService,
+    bridgeService,
   });
 
   return {
