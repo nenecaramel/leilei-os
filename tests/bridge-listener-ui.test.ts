@@ -15,7 +15,11 @@ const eventRecord = {
   modelContext: "route hint",
 };
 
-function createDom(calls: BridgeCall[], pollCallbacks: Array<() => void> = []): JSDOM {
+function createDom(
+  calls: BridgeCall[],
+  pollCallbacks: Array<() => void> = [],
+  timeoutCallbacks: Array<() => void> = [],
+): JSDOM {
   return new JSDOM(createBridgeListenerHtml(), {
     runScripts: "dangerously",
     pretendToBeVisual: true,
@@ -31,6 +35,10 @@ function createDom(calls: BridgeCall[], pollCallbacks: Array<() => void> = []): 
         if (delay === 10_000 && typeof callback === "function") {
           pollCallbacks.push(callback as () => void);
           return 1 as unknown as number;
+        }
+        if (delay === 18_000 && typeof callback === "function") {
+          timeoutCallbacks.push(callback as () => void);
+          return 2 as unknown as number;
         }
         return setTimeout(callback, delay, ...args);
       }) as typeof window.setTimeout;
@@ -94,16 +102,18 @@ test("bridge listener mounts an idle control surface and starts only from its vi
   }
 });
 
-test("listener stays idle when start returns a busy/error CallToolResult", async () => {
+test("listener stays idle and shows occupied state when start returns a busy CallToolResult", async () => {
   const calls: BridgeCall[] = [];
   const dom = createDom(calls);
   try {
     const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
     const status = dom.window.document.querySelector<HTMLElement>("[data-bridge-status]")!;
+    const occupied = dom.window.document.querySelector<HTMLElement>("[data-bridge-occupied]")!;
     start.click();
-    response(dom, calls, 0, { isError: true, structuredContent: { success: false, error: { code: "BRIDGE_UNAVAILABLE" } } });
+    response(dom, calls, 0, { isError: true, structuredContent: { success: false, error: { code: "LISTENER_BUSY" } } });
     await tick();
-    assert.equal(status.textContent, "Idle");
+    assert.equal(status.textContent, "Occupied");
+    assert.equal(occupied.hidden, false);
     assert.equal(start.disabled, false);
     assert.equal(calls.some((call) => call.params?.name === "bridge_listener_sync"), false);
   } finally {
@@ -141,17 +151,20 @@ test("listener sends a user-role message and releases definite ui/message reject
     start.click();
     response(dom, calls, 0, toolResult({ state: "acquired" }));
     await tick();
-    response(dom, calls, 1, toolResult({ event: eventRecord }));
+    response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
     await tick();
     response(dom, calls, 2, toolResult({}));
+    await tick();
+    const dispatch = calls.find((call) => call.params?.name === "bridge_listener_dispatch_started");
+    assert.ok(dispatch);
+    response(dom, calls, calls.indexOf(dispatch), toolResult({}));
     await tick();
 
     const message = calls.find((call) => call.method === "ui/message");
     assert.ok(message);
-    assert.deepEqual((message.params as { content: Array<Record<string, unknown>> }).content[0], {
-      type: "text",
-      text: "@LeileiOS hello",
-    });
+    const content = (message.params as { content: Array<Record<string, unknown>> }).content[0]!;
+    assert.equal(content.type, "text");
+    assert.equal(content.text, "@LeileiOS hello");
     assert.equal((message.params as { role?: string }).role, "user");
 
     response(dom, calls, calls.indexOf(message), { isError: true });
@@ -171,15 +184,83 @@ test("dispatch-start failure schedules another poll instead of stalling", async 
     start.click();
     response(dom, calls, 0, toolResult({ state: "acquired" }));
     await tick();
-    response(dom, calls, 1, toolResult({ event: eventRecord }));
+    response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
     await tick();
-    response(dom, calls, 2, { isError: true, structuredContent: { success: false } });
+    response(dom, calls, 2, toolResult({}));
+    await tick();
+    const dispatch = calls.find((call) => call.params?.name === "bridge_listener_dispatch_started");
+    assert.ok(dispatch);
+    response(dom, calls, calls.indexOf(dispatch), { isError: true, structuredContent: { success: false } });
+    await tick();
+    const release = calls.find((call) => call.params?.name === "bridge_listener_release");
+    assert.ok(release);
+    response(dom, calls, calls.indexOf(release), toolResult({}));
     await tick();
     assert.equal(calls.some((call) => call.method === "ui/message"), false);
     assert.equal(polls.length > 0, true);
     polls.shift()!();
     await tick();
     assert.equal(calls.at(-1)?.params?.name, "bridge_listener_sync");
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("listener quarantines an ambiguous ui/message timeout instead of retrying it", async () => {
+  const calls: BridgeCall[] = [];
+  const timeouts: Array<() => void> = [];
+  const dom = createDom(calls, [], timeouts);
+  try {
+    const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
+    start.click();
+    response(dom, calls, 0, toolResult({ state: "acquired" }));
+    await tick();
+    response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
+    await tick();
+    response(dom, calls, 2, toolResult({}));
+    await tick();
+    const dispatch = calls.find((call) => call.params?.name === "bridge_listener_dispatch_started");
+    assert.ok(dispatch);
+    response(dom, calls, calls.indexOf(dispatch), toolResult({}));
+    await tick();
+    assert.ok(calls.some((call) => call.method === "ui/message"));
+    timeouts.at(-1)!();
+    await tick();
+    const unknown = calls.find((call) => call.params?.name === "bridge_listener_delivery_unknown");
+    assert.ok(unknown);
+    assert.equal(calls.some((call) => call.params?.name === "bridge_listener_release"), false);
+    response(dom, calls, calls.indexOf(unknown), toolResult({}));
+    await tick();
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("listener acknowledges only a successful ui/message outcome", async () => {
+  const calls: BridgeCall[] = [];
+  const dom = createDom(calls);
+  try {
+    const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
+    start.click();
+    response(dom, calls, 0, toolResult({ state: "acquired" }));
+    await tick();
+    response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
+    await tick();
+    response(dom, calls, 2, toolResult({}));
+    await tick();
+    const dispatch = calls.find((call) => call.params?.name === "bridge_listener_dispatch_started");
+    assert.ok(dispatch);
+    response(dom, calls, calls.indexOf(dispatch), toolResult({}));
+    await tick();
+    const message = calls.find((call) => call.method === "ui/message");
+    assert.ok(message);
+    response(dom, calls, calls.indexOf(message), { isError: false });
+    await tick();
+    const delivered = calls.find((call) => call.params?.name === "bridge_listener_delivered");
+    assert.ok(delivered);
+    assert.equal(calls.some((call) => call.params?.name === "bridge_listener_delivery_unknown"), false);
+    response(dom, calls, calls.indexOf(delivered), toolResult({}));
+    await tick();
   } finally {
     dom.window.close();
   }

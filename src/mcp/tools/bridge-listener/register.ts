@@ -17,7 +17,12 @@ const errorSchema = z.object({ eventId: z.string().uuid(), safeErrorCode: z.stri
 const outputSchema = { success: z.boolean(), data: z.record(z.unknown()).optional(), error: mcpToolErrorDetailsSchema.optional() };
 
 function ok(data: Record<string, unknown> = {}) { return { content: [{ type: "text" as const, text: "Bridge listener operation completed." }], structuredContent: { success: true as const, data } }; }
-function fail(error: unknown) { return createMcpToolError("BRIDGE_UNAVAILABLE", "Bridge listener is temporarily unavailable."); }
+function fail(error: unknown) {
+  if (error instanceof Error && "code" in error && error.code === "LISTENER_BUSY") {
+    return createMcpToolError("LISTENER_BUSY", "Bridge listener is already occupied.");
+  }
+  return createMcpToolError("BRIDGE_UNAVAILABLE", "Bridge listener is temporarily unavailable.");
+}
 function invoke(deps: BridgeListenerToolDependencies, operation: (userId: string) => Promise<Record<string, unknown>>) {
   return async () => { try { return ok(await operation(deps.getAuthenticatedUserId())); } catch (error) { return fail(error); } };
 }
