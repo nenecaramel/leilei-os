@@ -53,15 +53,17 @@ jobs:
           expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           test "$actual" = "$expected"
           echo "Checked out exact event head: $actual"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.9.0
       - run: pnpm install --frozen-lockfile
       - run: cd web && npm ci
+      - name: Web typecheck and build
+        run: cd web && npm run typecheck && npm run build
       - run: pnpm exec tsx --test tests/bridge-ext-apps-compatibility.test.ts
       - run: pnpm db:migrate
       - run: pnpm db:check
