@@ -95,6 +95,7 @@ export function SystemConnectionsPageContent({
       });
       setBridgeReceipt(response.data);
       setBridgeText("");
+      bridgeKeyRef.current = null;
     } catch {
       setBridgeError("Unable to send the message. Retry to continue the same attempt.");
     } finally {
