@@ -11,7 +11,6 @@ import type { McpSessionNamespace } from "./session-registry.js";
 import type { BridgeService } from "../../domains/bridge/bridge-service.js";
 import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
 import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
-import { randomUUID } from "node:crypto";
 import {
   createActiveUserAuthorizer,
   createMcpServer,
@@ -110,12 +109,10 @@ export function createProductionMcpSessionServerFactory(input: {
       activeUserAuthorization,
     );
     if (namespace === "public" && input.bridgeService) {
-      const listenerInstanceId = randomUUID();
       registerBridgeListenerResource(server);
       registerBridgeListenerTools(server, {
         bridgeService: input.bridgeService,
         getAuthenticatedUserId,
-        listenerInstanceId,
       });
     }
     return server;
