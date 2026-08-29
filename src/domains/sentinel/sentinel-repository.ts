@@ -489,6 +489,9 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         .for("update")
         .limit(1);
       if (!sentinel) return { outcome: "not_found" };
+      if (!sentinel.enabled && sentinel.nextWakeAt === null && sentinel.activeWakeRunId === null) {
+        return { outcome: "idempotent", sentinel };
+      }
 
       let previousWake: SentinelWakeRunRecord | undefined;
       if (sentinel.activeWakeRunId) {
@@ -562,6 +565,9 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         .for("update")
         .limit(1);
       if (!sentinel) return { outcome: "not_found" };
+      if (sentinel.enabled && sentinel.activeWakeRunId === null && sentinel.nextWakeAt?.getTime() === nextWakeAt.getTime()) {
+        return { outcome: "idempotent", sentinel };
+      }
       if (sentinel.enabled || sentinel.activeWakeRunId !== null) return { outcome: "conflict" };
       const now = await readSentinelDatabaseNow(transaction);
       validateNextWake(now, nextWakeAt);
