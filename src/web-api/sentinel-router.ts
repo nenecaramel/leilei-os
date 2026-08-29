@@ -43,7 +43,7 @@ export function createSentinelApiRouter(
       : undefined;
     const status = projectSentinelStatus({
       enabled: sentinel.enabled,
-      recoveryRequired: latest?.state === "recovery_required",
+      recoveryRequired: latest?.state === "recovery_required" || latest?.recoveryRequired === true,
       processing: latest?.state === "claimed",
       listenerAvailable: false,
       wakePending: latest?.state === "bridge_enqueued",

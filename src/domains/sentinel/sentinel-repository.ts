@@ -673,7 +673,25 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         .where(and(eq(sentinelWakeRuns.id, sentinel.activeWakeRunId), eq(sentinelWakeRuns.userId, userId)))
         .for("update")
         .limit(1);
-      if (!oldWake || oldWake.state !== "recovery_required") return { outcome: "conflict" };
+      const [oldBridge] = oldWake
+        ? await transaction
+          .select(bridgeEventSelection)
+          .from(bridgeEvents)
+          .where(and(eq(bridgeEvents.id, oldWake.bridgeEventId), eq(bridgeEvents.userId, userId)))
+          .for("update")
+          .limit(1)
+        : [];
+      const timeoutRecovery = oldWake?.state === "recovery_required";
+      const unclaimedDeliveryUnknown = oldBridge?.status === "delivery_unknown"
+        && oldBridge.processingState === "unclaimed"
+        && oldBridge.dispatchStartedAt !== null;
+      if (
+        !oldWake ||
+        !oldBridge ||
+        !sentinel.enabled ||
+        oldWake.controlRevision !== sentinel.controlRevision ||
+        (!timeoutRecovery && !unclaimedDeliveryUnknown)
+      ) return { outcome: "conflict" };
       await transaction
         .update(sentinelWakeRuns)
         .set({ state: "superseded", updatedAt: sql`now()` })
@@ -721,6 +739,17 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         nextWakeAt: sentinelWakeRuns.nextWakeAt,
         finalizedAt: sentinelWakeRuns.finalizedAt,
         createdAt: sentinelWakeRuns.createdAt,
+        recoveryRequired: sql<boolean>`(
+          ${sentinelWakeRuns.state} = 'recovery_required'
+          OR EXISTS (
+            SELECT 1
+            FROM ${bridgeEvents}
+            WHERE ${bridgeEvents.id} = ${sentinelWakeRuns.bridgeEventId}
+              AND ${bridgeEvents.status} = 'delivery_unknown'
+              AND ${bridgeEvents.processingState} = 'unclaimed'
+              AND ${bridgeEvents.dispatchStartedAt} IS NOT NULL
+          )
+        )`,
       })
       .from(sentinelWakeRuns)
       .where(eq(sentinelWakeRuns.userId, userId))

@@ -62,7 +62,10 @@ export type SentinelControlResult =
 export type SentinelWakeActivity = Pick<
   SentinelWakeRunRecord,
   "id" | "cause" | "state" | "decision" | "scheduledFor" | "nextWakeAt" | "finalizedAt" | "createdAt"
->;
+> & {
+  /** Product-level projection of a wake that needs explicit owner recovery. */
+  recoveryRequired: boolean;
+};
 
 export type SentinelWakeEnqueueInput = {
   userId: string;

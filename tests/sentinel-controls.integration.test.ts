@@ -86,6 +86,43 @@ test(
       const wakeRows = await db.select().from(schema.sentinelWakeRuns).where(eq(schema.sentinelWakeRuns.sentinelId, sentinelId));
       assert.equal(wakeRows.filter((wake) => wake.cause === "recovery").length, 1);
       assert.equal(wakeRows.find((wake) => wake.id === activeWakeId)?.state, "superseded");
+
+      const unknownWakeId = recovered.wake!.id;
+      const unknownBridgeId = recovered.wake!.bridgeEventId;
+      const dispatchStartedAt = new Date("2026-08-30T00:30:00.000Z");
+      await db.update(schema.bridgeEvents)
+        .set({
+          status: "delivery_unknown",
+          dispatchStartedAt,
+          deliveryUnknownAt: dispatchStartedAt,
+          processingState: "unclaimed",
+        })
+        .where(eq(schema.bridgeEvents.id, unknownBridgeId));
+      const [beforeUnknownBridge] = await db.select().from(schema.bridgeEvents).where(eq(schema.bridgeEvents.id, unknownBridgeId));
+      const unknownRecovery = await service.recover(ownerId);
+      assert.equal(unknownRecovery.outcome, "applied");
+      assert.equal(unknownRecovery.previousWake?.id, unknownWakeId);
+      assert.equal(unknownRecovery.previousWake?.state, "bridge_enqueued");
+      assert.equal(unknownRecovery.wake?.cause, "recovery");
+      const [afterUnknownBridge] = await db.select().from(schema.bridgeEvents).where(eq(schema.bridgeEvents.id, unknownBridgeId));
+      assert.deepEqual(
+        {
+          status: afterUnknownBridge?.status,
+          dispatchStartedAt: afterUnknownBridge?.dispatchStartedAt,
+          deliveryUnknownAt: afterUnknownBridge?.deliveryUnknownAt,
+          processingState: afterUnknownBridge?.processingState,
+          cancelledAt: afterUnknownBridge?.cancelledAt,
+        },
+        {
+          status: beforeUnknownBridge?.status,
+          dispatchStartedAt: beforeUnknownBridge?.dispatchStartedAt,
+          deliveryUnknownAt: beforeUnknownBridge?.deliveryUnknownAt,
+          processingState: beforeUnknownBridge?.processingState,
+          cancelledAt: beforeUnknownBridge?.cancelledAt,
+        },
+      );
+      const recoveryActivity = await service.listWakeActivity(ownerId, 10);
+      assert.equal(recoveryActivity.find((wake) => wake.id === unknownWakeId)?.recoveryRequired, true);
       assert.ok((await service.listWakeActivity(ownerId, 2)).length <= 2);
     } finally {
       if (sentinelId) await db.delete(schema.sentinelWakeRuns).where(eq(schema.sentinelWakeRuns.sentinelId, sentinelId));
