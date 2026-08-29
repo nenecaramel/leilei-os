@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/database/schema.js";
@@ -269,6 +269,134 @@ test(
       await admin.db.delete(schema.sentinels).where(eq(schema.sentinels.userId, owner));
       await admin.db.delete(schema.users).where(eq(schema.users.id, owner));
       await admin.client.end();
+    }
+  },
+);
+
+test(
+  "serializes human creation with Sentinel dispatch admission at the per-user boundary",
+  { skip: RUN ? false : "SKIP: set RUN_BRIDGE_DATABASE_TEST=1 with a local DATABASE_URL" },
+  async () => {
+    const admin = connection();
+    const dispatchConnection = connection();
+    const humanConnection = connection();
+    const probeConnection = connection();
+    const dispatchRepository = new DrizzleBridgeEventRepository(dispatchConnection.db as never);
+    const humanRepository = new DrizzleBridgeEventRepository(humanConnection.db as never);
+    const sentinelRepository = new DrizzleSentinelRepository(admin.db as never);
+    const owner = randomUUID();
+    const listener = randomUUID();
+    const wakeId = randomUUID();
+    const now = new Date("2026-08-29T05:00:00.000Z");
+    const advisoryKey = 922337203685477000;
+
+    const waitForDispatchPause = async (): Promise<void> => {
+      const deadline = Date.now() + 2_000;
+      while (Date.now() < deadline) {
+        const acquired = await probeConnection.db.transaction(async (transaction) => {
+          const rows = await transaction.execute<{ acquired: boolean }>(sql`
+            SELECT pg_try_advisory_xact_lock(${advisoryKey}::bigint) AS acquired
+          `);
+          return rows[0]?.acquired === true;
+        });
+        if (!acquired) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error("Sentinel dispatch pause trigger was not reached.");
+    };
+
+    try {
+      await admin.db.insert(schema.users).values({
+        id: owner,
+        email: `wake-user-race-${owner}@example.invalid`,
+        displayName: "Wake user race",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const sentinel = await sentinelRepository.createSentinel({
+        userId: owner,
+        timezone: "UTC",
+        policyPrompt: "",
+      });
+      const wake = await new SentinelService(sentinelRepository).enqueueWake(owner, {
+        cause: "wake_now",
+        scheduledFor: now,
+        wakeId,
+      });
+      assert.equal(wake.outcome, "created");
+      assert.equal((await dispatchRepository.acquireListenerLease(owner, listener)).state, "acquired");
+      assert.equal((await dispatchRepository.reserveNext(owner, listener))?.id, wake.bridge.id);
+
+      await admin.db.execute(sql`
+        CREATE OR REPLACE FUNCTION test_bridge_dispatch_pause()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $fn$
+        BEGIN
+          IF OLD.kind = 'wake'
+             AND OLD.source = 'leileios_sentinel'
+             AND OLD.dispatch_started_at IS NULL
+             AND NEW.dispatch_started_at IS NOT NULL THEN
+            PERFORM pg_advisory_xact_lock(922337203685477000::bigint);
+            PERFORM pg_sleep(0.5);
+          END IF;
+          RETURN NEW;
+        END;
+        $fn$
+      `);
+      await admin.db.execute(sql`
+        CREATE TRIGGER test_bridge_dispatch_pause_trigger
+        BEFORE UPDATE OF dispatch_started_at ON bridge_events
+        FOR EACH ROW EXECUTE FUNCTION test_bridge_dispatch_pause()
+      `);
+
+      let dispatchFinished: number | undefined;
+      const dispatchPromise = dispatchRepository
+        .markDispatchStarted(owner, listener, wake.bridge.id)
+        .then((result) => {
+          dispatchFinished = Date.now();
+          return result;
+        });
+      await waitForDispatchPause();
+
+      let humanFinished: number | undefined;
+      const humanPromise = new BridgeService(humanRepository, {
+        createId: randomUUID,
+        now: () => now,
+      })
+        .createPwaEvent(owner, "human created during dispatch admission", "human-race-key-0003")
+        .then((result) => {
+          humanFinished = Date.now();
+          return result;
+        });
+      const [dispatchResult, humanResult] = await Promise.all([dispatchPromise, humanPromise]);
+
+      assert.ok(dispatchResult, "dispatch-start should complete before a later human event crosses the boundary");
+      assert.equal(humanResult.created, true);
+      assert.ok(
+        dispatchFinished !== undefined && humanFinished !== undefined && dispatchFinished <= humanFinished,
+        `dispatch admission must finish before the later human creation (dispatch finished ${dispatchFinished}, human finished ${humanFinished})`,
+      );
+      const wakeAfter = await dispatchRepository.getEvent(owner, wake.bridge.id);
+      assert.ok(wakeAfter?.dispatchStartedAt instanceof Date);
+      const humanAfter = await humanRepository.getEvent(owner, humanResult.event.id);
+      assert.equal(humanAfter?.status, "pending");
+      assert.equal(humanAfter?.kind, "chat");
+    } finally {
+      await admin.db.execute(sql`DROP TRIGGER IF EXISTS test_bridge_dispatch_pause_trigger ON bridge_events`);
+      await admin.db.execute(sql`DROP FUNCTION IF EXISTS test_bridge_dispatch_pause()`);
+      await admin.db.delete(schema.bridgeListenerLeases).where(eq(schema.bridgeListenerLeases.userId, owner));
+      await admin.db.delete(schema.sentinelWakeRuns).where(eq(schema.sentinelWakeRuns.id, wakeId));
+      await admin.db.delete(schema.bridgeEvents).where(eq(schema.bridgeEvents.userId, owner));
+      await admin.db.delete(schema.sentinels).where(eq(schema.sentinels.userId, owner));
+      await admin.db.delete(schema.users).where(eq(schema.users.id, owner));
+      await Promise.all([
+        admin.client.end(),
+        dispatchConnection.client.end(),
+        humanConnection.client.end(),
+        probeConnection.client.end(),
+      ]);
     }
   },
 );
