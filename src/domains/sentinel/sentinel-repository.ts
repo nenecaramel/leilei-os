@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { createDatabase } from "../../database/client.js";
 import {
@@ -22,6 +22,8 @@ import type {
   SentinelWakeCompletionInput,
   SentinelWakeCompletionResult,
   SentinelWakeState,
+  SentinelControlResult,
+  SentinelWakeActivity,
 } from "./sentinel-types.js";
 import type { BridgeEventRecord } from "../bridge/bridge-event-types.js";
 
@@ -143,6 +145,12 @@ export interface SentinelRepository {
   markStaleWakeRuns?(now: Date | undefined, timeoutMs: number): Promise<number>;
   readWakeState?(userId: string, wakeId: string): Promise<SentinelWakeState | null>;
   completeWake?(input: SentinelWakeCompletionInput): Promise<SentinelWakeCompletionResult>;
+  pause?(userId: string): Promise<SentinelControlResult>;
+  resume?(userId: string, nextWakeAt: Date): Promise<SentinelControlResult>;
+  resumeNow?(userId: string, wakeId: string): Promise<SentinelControlResult>;
+  wakeNow?(userId: string, wakeId: string): Promise<SentinelControlResult>;
+  recover?(userId: string, wakeId: string): Promise<SentinelControlResult>;
+  listWakeActivity?(userId: string, limit: number): Promise<SentinelWakeActivity[]>;
 }
 
 export class DrizzleSentinelRepository implements SentinelRepository {
@@ -470,6 +478,249 @@ export class DrizzleSentinelRepository implements SentinelRepository {
       if (!cancelledBridge || !supersededWake) return { outcome: "conflict" };
       return { outcome: "cancelled", wake: supersededWake, bridge: cancelledBridge };
     });
+  }
+
+  async pause(userId: string): Promise<SentinelControlResult> {
+    return this.db.transaction(async (transaction) => {
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(eq(sentinels.userId, userId))
+        .for("update")
+        .limit(1);
+      if (!sentinel) return { outcome: "not_found" };
+
+      let previousWake: SentinelWakeRunRecord | undefined;
+      if (sentinel.activeWakeRunId) {
+        const [wake] = await transaction
+          .select(wakeRunSelection)
+          .from(sentinelWakeRuns)
+          .where(and(eq(sentinelWakeRuns.id, sentinel.activeWakeRunId), eq(sentinelWakeRuns.userId, userId)))
+          .for("update")
+          .limit(1);
+        if (wake) {
+          previousWake = wake;
+          const [bridge] = await transaction
+            .select(bridgeEventSelection)
+            .from(bridgeEvents)
+            .where(and(eq(bridgeEvents.id, wake.bridgeEventId), eq(bridgeEvents.userId, userId)))
+            .for("update")
+            .limit(1);
+          if (
+            bridge &&
+            bridge.kind === "wake" &&
+            bridge.source === "leileios_sentinel" &&
+            bridge.dispatchStartedAt === null &&
+            (bridge.status === "pending" || bridge.status === "reserved")
+          ) {
+            await transaction
+              .update(bridgeEvents)
+              .set({
+                cancelledAt: sql`COALESCE(${bridgeEvents.cancelledAt}, now())`,
+                status: "pending",
+                reservedBy: null,
+                reservedAt: null,
+                reservationExpiresAt: null,
+                lastErrorCode: "SENTINEL_WAKE_CANCELLED",
+              })
+              .where(eq(bridgeEvents.id, bridge.id));
+          }
+          await transaction
+            .update(sentinelWakeRuns)
+            .set({ state: "superseded", updatedAt: sql`now()` })
+            .where(
+              and(
+                eq(sentinelWakeRuns.id, wake.id),
+                sql`${sentinelWakeRuns.state} IN ('bridge_enqueued', 'claimed', 'recovery_required')`,
+              ),
+            );
+        }
+      }
+
+      const [updated] = await transaction
+        .update(sentinels)
+        .set({
+          enabled: false,
+          nextWakeAt: null,
+          activeWakeRunId: null,
+          controlRevision: sql`${sentinels.controlRevision} + 1`,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(sentinels.id, sentinel.id))
+        .returning(sentinelSelection);
+      if (!updated) return { outcome: "conflict" };
+      return { outcome: "applied", sentinel: updated, previousWake };
+    });
+  }
+
+  async resume(userId: string, nextWakeAt: Date): Promise<SentinelControlResult> {
+    return this.db.transaction(async (transaction) => {
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(eq(sentinels.userId, userId))
+        .for("update")
+        .limit(1);
+      if (!sentinel) return { outcome: "not_found" };
+      if (sentinel.enabled || sentinel.activeWakeRunId !== null) return { outcome: "conflict" };
+      const now = await readSentinelDatabaseNow(transaction);
+      validateNextWake(now, nextWakeAt);
+      const [updated] = await transaction
+        .update(sentinels)
+        .set({
+          enabled: true,
+          nextWakeAt,
+          controlRevision: sql`${sentinels.controlRevision} + 1`,
+          updatedAt: sql`now()`,
+        })
+        .where(and(eq(sentinels.id, sentinel.id), eq(sentinels.enabled, false), isNull(sentinels.activeWakeRunId)))
+        .returning(sentinelSelection);
+      return updated ? { outcome: "applied", sentinel: updated } : { outcome: "conflict" };
+    });
+  }
+
+  async resumeNow(userId: string, wakeId: string): Promise<SentinelControlResult> {
+    return this.db.transaction(async (transaction) => {
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(eq(sentinels.userId, userId))
+        .for("update")
+        .limit(1);
+      if (!sentinel) return { outcome: "not_found" };
+      if (sentinel.enabled || sentinel.activeWakeRunId !== null) return { outcome: "conflict" };
+      const now = await readSentinelDatabaseNow(transaction);
+      const [enabledSentinel] = await transaction
+        .update(sentinels)
+        .set({
+          enabled: true,
+          nextWakeAt: null,
+          controlRevision: sql`${sentinels.controlRevision} + 1`,
+          updatedAt: sql`now()`,
+        })
+        .where(and(eq(sentinels.id, sentinel.id), eq(sentinels.enabled, false), isNull(sentinels.activeWakeRunId)))
+        .returning(sentinelSelection);
+      if (!enabledSentinel) return { outcome: "conflict" };
+      const result = await this.createWakeWithBridgeInTransaction(transaction, {
+        userId,
+        sentinelId: sentinel.id,
+        controlRevision: enabledSentinel.controlRevision,
+        cause: "wake_now",
+        scheduledFor: now,
+        wakeId,
+        bridgeIdempotencyKey: `sentinel-wake-${wakeId}`,
+        clearNextWakeAt: true,
+      }, enabledSentinel);
+      if (result.outcome !== "created" && result.outcome !== "idempotent") return { outcome: result.outcome };
+      return { outcome: result.outcome === "idempotent" ? "idempotent" : "applied", sentinel: enabledSentinel, wake: result.wake };
+    });
+  }
+
+  async wakeNow(userId: string, wakeId: string): Promise<SentinelControlResult> {
+    return this.db.transaction(async (transaction) => {
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(eq(sentinels.userId, userId))
+        .for("update")
+        .limit(1);
+      if (!sentinel) return { outcome: "not_found" };
+      if (!sentinel.enabled || sentinel.activeWakeRunId !== null) return { outcome: "conflict" };
+      const now = await readSentinelDatabaseNow(transaction);
+      const [updatedSentinel] = await transaction
+        .update(sentinels)
+        .set({
+          nextWakeAt: null,
+          controlRevision: sql`${sentinels.controlRevision} + 1`,
+          updatedAt: sql`now()`,
+        })
+        .where(and(eq(sentinels.id, sentinel.id), eq(sentinels.enabled, true), isNull(sentinels.activeWakeRunId)))
+        .returning(sentinelSelection);
+      if (!updatedSentinel) return { outcome: "conflict" };
+      const result = await this.createWakeWithBridgeInTransaction(transaction, {
+        userId,
+        sentinelId: sentinel.id,
+        controlRevision: updatedSentinel.controlRevision,
+        cause: "wake_now",
+        scheduledFor: now,
+        wakeId,
+        bridgeIdempotencyKey: `sentinel-wake-${wakeId}`,
+        clearNextWakeAt: true,
+      }, updatedSentinel);
+      if (result.outcome !== "created" && result.outcome !== "idempotent") return { outcome: result.outcome };
+      return { outcome: result.outcome === "idempotent" ? "idempotent" : "applied", sentinel: updatedSentinel, wake: result.wake };
+    });
+  }
+
+  async recover(userId: string, wakeId: string): Promise<SentinelControlResult> {
+    return this.db.transaction(async (transaction) => {
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(eq(sentinels.userId, userId))
+        .for("update")
+        .limit(1);
+      if (!sentinel || !sentinel.activeWakeRunId) return sentinel ? { outcome: "conflict" } : { outcome: "not_found" };
+      const [oldWake] = await transaction
+        .select(wakeRunSelection)
+        .from(sentinelWakeRuns)
+        .where(and(eq(sentinelWakeRuns.id, sentinel.activeWakeRunId), eq(sentinelWakeRuns.userId, userId)))
+        .for("update")
+        .limit(1);
+      if (!oldWake || oldWake.state !== "recovery_required") return { outcome: "conflict" };
+      await transaction
+        .update(sentinelWakeRuns)
+        .set({ state: "superseded", updatedAt: sql`now()` })
+        .where(eq(sentinelWakeRuns.id, oldWake.id));
+      const now = await readSentinelDatabaseNow(transaction);
+      const [updatedSentinel] = await transaction
+        .update(sentinels)
+        .set({
+          activeWakeRunId: null,
+          nextWakeAt: null,
+          controlRevision: sql`${sentinels.controlRevision} + 1`,
+          updatedAt: sql`now()`,
+        })
+        .where(and(eq(sentinels.id, sentinel.id), eq(sentinels.activeWakeRunId, oldWake.id)))
+        .returning(sentinelSelection);
+      if (!updatedSentinel) return { outcome: "conflict" };
+      const result = await this.createWakeWithBridgeInTransaction(transaction, {
+        userId,
+        sentinelId: sentinel.id,
+        controlRevision: updatedSentinel.controlRevision,
+        cause: "recovery",
+        scheduledFor: now,
+        wakeId,
+        bridgeIdempotencyKey: `sentinel-wake-${wakeId}`,
+        clearNextWakeAt: true,
+      }, updatedSentinel);
+      if (result.outcome !== "created" && result.outcome !== "idempotent") return { outcome: result.outcome };
+      return {
+        outcome: result.outcome === "idempotent" ? "idempotent" : "applied",
+        sentinel: updatedSentinel,
+        wake: result.wake,
+        previousWake: oldWake,
+      };
+    });
+  }
+
+  async listWakeActivity(userId: string, limit: number): Promise<SentinelWakeActivity[]> {
+    const rows = await this.db
+      .select({
+        id: sentinelWakeRuns.id,
+        cause: sentinelWakeRuns.cause,
+        state: sentinelWakeRuns.state,
+        decision: sentinelWakeRuns.decision,
+        scheduledFor: sentinelWakeRuns.scheduledFor,
+        nextWakeAt: sentinelWakeRuns.nextWakeAt,
+        finalizedAt: sentinelWakeRuns.finalizedAt,
+        createdAt: sentinelWakeRuns.createdAt,
+      })
+      .from(sentinelWakeRuns)
+      .where(eq(sentinelWakeRuns.userId, userId))
+      .orderBy(desc(sentinelWakeRuns.createdAt), desc(sentinelWakeRuns.id))
+      .limit(limit);
+    return rows;
   }
 
   async readWakeState(userId: string, wakeId: string): Promise<SentinelWakeState | null> {

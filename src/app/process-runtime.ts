@@ -162,6 +162,7 @@ export function createProcessRuntime(
       webImportService: importService,
       webUniverseService: universeService,
       webBridgeService: bridgeService,
+      webSentinelService: sentinelService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
       createMcpSessionServer,

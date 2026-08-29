@@ -50,6 +50,20 @@ export type SentinelMutationResult =
   | { outcome: "idempotent"; sentinel: SentinelRecord }
   | { outcome: "conflict" | "not_found" };
 
+export type SentinelControlResult =
+  | {
+      outcome: "applied" | "idempotent";
+      sentinel: SentinelRecord;
+      wake?: SentinelWakeRunRecord;
+      previousWake?: SentinelWakeRunRecord;
+    }
+  | { outcome: "conflict" | "not_found" };
+
+export type SentinelWakeActivity = Pick<
+  SentinelWakeRunRecord,
+  "id" | "cause" | "state" | "decision" | "scheduledFor" | "nextWakeAt" | "finalizedAt" | "createdAt"
+>;
+
 export type SentinelWakeEnqueueInput = {
   userId: string;
   sentinelId: string;

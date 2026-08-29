@@ -6,6 +6,8 @@ import type {
   SentinelWakeEnqueueResult,
   SentinelWakeCompletionResult,
   SentinelWakeState,
+  SentinelControlResult,
+  SentinelWakeActivity,
 } from "./sentinel-types.js";
 import type { SentinelRepository } from "./sentinel-repository.js";
 
@@ -19,6 +21,8 @@ export type {
   SentinelWakeEnqueueResult,
   SentinelWakeCompletionResult,
   SentinelWakeState,
+  SentinelControlResult,
+  SentinelWakeActivity,
 } from "./sentinel-types.js";
 
 const MIN_NEXT_WAKE_MS = 5 * 60 * 1_000;
@@ -214,6 +218,83 @@ export class SentinelService {
       policyPrompt: input.policyPrompt ?? current.policyPrompt,
     });
     return this.repository.updatePolicy({ userId: normalizedUserId, ...normalized });
+  }
+
+  async upsertPolicy(
+    userId: string,
+    input: { timezone: string; policyPrompt: string },
+  ): Promise<SentinelRecord> {
+    const normalizedUserId = normalizeUserId(userId);
+    const existing = await this.repository.findByUserId(normalizedUserId);
+    if (!existing) return this.ensureSentinel(normalizedUserId, input);
+    const result = await this.updatePolicy(normalizedUserId, input);
+    if (result.outcome === "not_found") {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel was not found.");
+    }
+    if (result.outcome === "conflict") {
+      throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "Sentinel changed on another request.");
+    }
+    if (!("sentinel" in result)) {
+      throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "Sentinel changed on another request.");
+    }
+    return result.sentinel;
+  }
+
+  async pause(userId: string): Promise<SentinelControlResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!this.repository.pause) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel controls are unavailable.");
+    }
+    return this.repository.pause(normalizedUserId);
+  }
+
+  async resume(userId: string, nextWakeAt: Date): Promise<SentinelControlResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!(nextWakeAt instanceof Date) || !Number.isFinite(nextWakeAt.getTime())) {
+      throw new SentinelDomainError("INVALID_NEXT_WAKE", "Next wake time is invalid.");
+    }
+    if (!this.repository.resume) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel controls are unavailable.");
+    }
+    return this.repository.resume(normalizedUserId, nextWakeAt);
+  }
+
+  async resumeNow(userId: string): Promise<SentinelControlResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!this.repository.resumeNow) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel controls are unavailable.");
+    }
+    return this.repository.resumeNow(normalizedUserId, this.createId());
+  }
+
+  async wakeNow(userId: string): Promise<SentinelControlResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!this.repository.wakeNow) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel controls are unavailable.");
+    }
+    return this.repository.wakeNow(normalizedUserId, this.createId());
+  }
+
+  async recover(userId: string): Promise<SentinelControlResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!this.repository.recover) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel controls are unavailable.");
+    }
+    return this.repository.recover(normalizedUserId, this.createId());
+  }
+
+  async listWakeActivity(userId: string, limit = 20): Promise<SentinelWakeActivity[]> {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new SentinelDomainError("INVALID_CONTROL_REVISION", "Wake activity limit is invalid.");
+    }
+    if (!this.repository.listWakeActivity) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel activity is unavailable.");
+    }
+    if (!(await this.repository.findByUserId(normalizedUserId))) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel was not found.");
+    }
+    return this.repository.listWakeActivity(normalizedUserId, limit);
   }
 
   async advanceControlRevision(

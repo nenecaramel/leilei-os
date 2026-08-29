@@ -3,6 +3,7 @@ import express from "express";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
 import { createWebApiRouter } from "../src/web-api/router.js";
+import { SentinelDomainError } from "../src/domains/sentinel/sentinel-service.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 const sentinel = {
@@ -57,7 +58,7 @@ async function withServer(
 test("Sentinel API derives owner from the authenticated web session", async () => {
   const calls: unknown[][] = [];
   await withServer({
-    async ensureSentinel(...args: never[]) { calls.push(args); return sentinel; },
+    async findSentinel(...args: never[]) { calls.push(args); return sentinel; },
   }, async (baseUrl) => {
     const unauthenticated = await fetch(`${baseUrl}/api/v1/sentinel`);
     assert.equal(unauthenticated.status, 401);
@@ -65,7 +66,9 @@ test("Sentinel API derives owner from the authenticated web session", async () =
       headers: { "x-test-user": "yes" },
     });
     assert.equal(response.status, 200);
-    assert.deepEqual((await response.json()).data.sentinel, sentinel);
+    const body = await response.json();
+    assert.equal(body.data.sentinel.id, sentinel.id);
+    assert.equal(body.data.sentinel.enabled, false);
   });
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.[0], USER_ID);
@@ -74,7 +77,13 @@ test("Sentinel API derives owner from the authenticated web session", async () =
 test("Sentinel PUT is strict, validates IANA timezone, and creates disabled state", async () => {
   const calls: unknown[][] = [];
   await withServer({
-    async ensureSentinel(...args: never[]) { calls.push(args); return sentinel; },
+    async upsertPolicy(...args: never[]) {
+      if ((args[1] as { timezone: string }).timezone === "Asia/Beijing") {
+        throw new SentinelDomainError("INVALID_TIMEZONE", "private");
+      }
+      calls.push(args);
+      return sentinel;
+    },
   }, async (baseUrl) => {
     const headers = { "content-type": "application/json", "x-test-user": "yes" };
     const malformed = await fetch(`${baseUrl}/api/v1/sentinel`, {
