@@ -6,6 +6,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeEventRecord } from "../../../domains/bridge/bridge-event-types.js";
 
 export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v2";
+export const BRIDGE_AMBIGUITY_ACCEPTANCE_PREFIX = "PHASE2 AMBIGUOUS E2E ";
+
+export type BridgeListenerResourceOptions = {
+  ambiguityAcceptanceEnabled?: boolean;
+};
 
 export function composeBridgeDispatchContext(
   event: Pick<BridgeEventRecord, "id" | "modelContext">,
@@ -13,7 +18,10 @@ export function composeBridgeDispatchContext(
   return `${event.modelContext}\n\nEvent ID: ${event.id}. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.`;
 }
 
-export function createBridgeListenerHtml(): string {
+export function createBridgeListenerHtml(
+  options: BridgeListenerResourceOptions = {},
+): string {
+  const ambiguityAcceptanceEnabled = options.ambiguityAcceptanceEnabled === true;
   return `<!doctype html><meta charset="utf-8"><title>LeileiOS Message Bridge</title><style>
   :root { color-scheme: light; font: 14px system-ui, sans-serif; }
   body { margin: 0; padding: 16px; color: #333; background: #fff; }
@@ -41,7 +49,7 @@ export function createBridgeListenerHtml(): string {
   </details>
 </main><script>
 (() => {
-  const POLL_MS = 10000, RENEW_MS = 30000, TIMEOUT_MS = 18000, PROTOCOL_VERSION = '2026-01-26', DIAG_LIMIT = 24;
+  const POLL_MS = 10000, RENEW_MS = 30000, TIMEOUT_MS = 18000, PROTOCOL_VERSION = '2026-01-26', DIAG_LIMIT = 24, AMBIGUITY_ACCEPTANCE_ENABLED = ${ambiguityAcceptanceEnabled ? "true" : "false"}, AMBIGUITY_ACCEPTANCE_PREFIX = ${JSON.stringify(BRIDGE_AMBIGUITY_ACCEPTANCE_PREFIX)};
   const listenerInstanceId = crypto.randomUUID();
   const pending = new Map(); const diagLines = []; let nextId = 1, initialized = false, initializePromise = null, running = false, starting = false, syncing = false, eventInFlight = null, pollTimer = null, renewTimer = null;
   const startButton = document.querySelector('[data-bridge-start]');
@@ -72,8 +80,8 @@ export function createBridgeListenerHtml(): string {
     if (syncButton) syncButton.disabled = state !== 'running';
   };
   const callLabel = (method, params) => method === 'tools/call' && params && typeof params.name === 'string' ? params.name : method;
-  const call = (method, params, timeout = TIMEOUT_MS) => new Promise((resolve, reject) => {
-    const id = nextId++; const label = callLabel(method, params); pending.set(id, {resolve, reject, label});
+  const call = (method, params, timeout = TIMEOUT_MS, ignoreResponse = false) => new Promise((resolve, reject) => {
+    const id = nextId++; const label = callLabel(method, params); pending.set(id, {resolve, reject, label, ignoreResponse});
     recordDiag(label + ' sent id=' + id);
     window.parent.postMessage({jsonrpc:'2.0', id, method, params}, '*');
     setTimeout(() => {
@@ -92,7 +100,12 @@ export function createBridgeListenerHtml(): string {
     if (event.source !== window.parent) return;
     const msg = event.data;
     if (!msg || msg.jsonrpc !== '2.0' || !pending.has(msg.id)) return;
-    const p = pending.get(msg.id); pending.delete(msg.id);
+    const p = pending.get(msg.id);
+    if (p.ignoreResponse && !msg.error && !(msg.result && msg.result.isError === true)) {
+      recordDiag(p.label + ' response intentionally ignored id=' + msg.id);
+      return;
+    }
+    pending.delete(msg.id);
     if (msg.error) {
       recordDiag(p.label + ' error id=' + msg.id + ' ' + errorSummary(msg.error));
       p.reject(msg.error);
@@ -163,7 +176,9 @@ export function createBridgeListenerHtml(): string {
         eventInFlight = null; schedulePoll(); return;
       }
       try {
-        const messageResult = await call('ui/message', {role:'user', content:[{type:'text', text:'@LeileiOS ' + event.visibleText}]});
+        const ambiguityAcceptance = AMBIGUITY_ACCEPTANCE_ENABLED && typeof event.visibleText === 'string' && event.visibleText.startsWith(AMBIGUITY_ACCEPTANCE_PREFIX);
+        if (ambiguityAcceptance) recordDiag('ambiguity acceptance host ACK drop armed');
+        const messageResult = await call('ui/message', {role:'user', content:[{type:'text', text:'@LeileiOS ' + event.visibleText}]}, TIMEOUT_MS, ambiguityAcceptance);
         if (messageResult && messageResult.isError === true) throw Object.assign(new Error('Host rejected ui/message'), {ambiguous:false});
         if (messageResult == null) throw Object.assign(new Error('Host ui/message outcome was ambiguous'), {ambiguous:true});
       } catch (error) {
@@ -223,12 +238,15 @@ export function createBridgeListenerHtml(): string {
 })();</script>`;
 }
 
-export function registerBridgeListenerResource(server: McpServer): void {
+export function registerBridgeListenerResource(
+  server: McpServer,
+  options: BridgeListenerResourceOptions = {},
+): void {
   registerAppResource(
     server,
     "LeileiOS Message Bridge",
     BRIDGE_RESOURCE_URI,
     { mimeType: RESOURCE_MIME_TYPE, _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } } },
-    async () => ({ contents: [{ uri: BRIDGE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: createBridgeListenerHtml(), _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } } }] }),
+    async () => ({ contents: [{ uri: BRIDGE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: createBridgeListenerHtml(options), _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } } }] }),
   );
 }
