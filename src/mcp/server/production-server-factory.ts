@@ -35,6 +35,7 @@ export function createProductionMcpSessionServerFactory(input: {
   todoService: TodoService;
   universeService: UniverseService;
   bridgeService?: BridgeService;
+  bridgeAmbiguityAcceptanceEnabled?: boolean;
   logger?: SafeLogger;
 }): McpSessionServerFactory {
   return (userId, namespace = "public") => {
@@ -112,7 +113,9 @@ export function createProductionMcpSessionServerFactory(input: {
       activeUserAuthorization,
     );
     if (namespace === "public" && input.bridgeService) {
-      registerBridgeListenerResource(server);
+      registerBridgeListenerResource(server, {
+        ambiguityAcceptanceEnabled: input.bridgeAmbiguityAcceptanceEnabled === true,
+      });
       registerBridgeListenerTools(server, {
         bridgeService: input.bridgeService,
         getAuthenticatedUserId,
