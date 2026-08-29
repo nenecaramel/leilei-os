@@ -36,6 +36,10 @@ const bridgeEventSelection = {
   dispatchStartedAt: bridgeEvents.dispatchStartedAt,
   hostSentAt: bridgeEvents.hostSentAt,
   deliveryUnknownAt: bridgeEvents.deliveryUnknownAt,
+  processingState: bridgeEvents.processingState,
+  modelClaimedAt: bridgeEvents.modelClaimedAt,
+  modelCompletedAt: bridgeEvents.modelCompletedAt,
+  deliveryReconciledAt: bridgeEvents.deliveryReconciledAt,
   retryCount: bridgeEvents.retryCount,
   lastErrorCode: bridgeEvents.lastErrorCode,
 };

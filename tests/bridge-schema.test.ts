@@ -27,6 +27,10 @@ test("Bridge tables expose the lifecycle columns needed by the queue contract", 
     "deliveryUnknownAt",
     "retryCount",
     "lastErrorCode",
+    "processingState",
+    "modelClaimedAt",
+    "modelCompletedAt",
+    "deliveryReconciledAt",
   ]) {
     assert.ok(column in bridgeEvents, `bridgeEvents.${column} is missing`);
   }

@@ -607,6 +607,15 @@ export const bridgeEvents = pgTable(
     deliveryUnknownAt: timestamp("delivery_unknown_at", {
       withTimezone: true,
     }),
+    processingState: varchar("processing_state", { length: 32 })
+      .$type<"unclaimed" | "claimed" | "completed">()
+      .default("unclaimed")
+      .notNull(),
+    modelClaimedAt: timestamp("model_claimed_at", { withTimezone: true }),
+    modelCompletedAt: timestamp("model_completed_at", { withTimezone: true }),
+    deliveryReconciledAt: timestamp("delivery_reconciled_at", {
+      withTimezone: true,
+    }),
     retryCount: integer("retry_count").default(0).notNull(),
     lastErrorCode: varchar("last_error_code", { length: 64 }),
   },
@@ -665,6 +674,18 @@ export const bridgeEvents = pgTable(
     check(
       "bridge_events_delivery_unknown_at_required",
       sql`${table.status} <> 'delivery_unknown' OR ${table.deliveryUnknownAt} IS NOT NULL`,
+    ),
+    check(
+      "bridge_events_processing_state_allowed",
+      sql`${table.processingState} IN ('unclaimed', 'claimed', 'completed')`,
+    ),
+    check(
+      "bridge_events_processing_state_timestamps",
+      sql`(${table.processingState} = 'unclaimed' AND ${table.modelClaimedAt} IS NULL AND ${table.modelCompletedAt} IS NULL) OR (${table.processingState} = 'claimed' AND ${table.modelClaimedAt} IS NOT NULL AND ${table.modelCompletedAt} IS NULL) OR (${table.processingState} = 'completed' AND ${table.modelClaimedAt} IS NOT NULL AND ${table.modelCompletedAt} IS NOT NULL)`,
+    ),
+    check(
+      "bridge_events_delivery_reconciled_at_allowed",
+      sql`${table.deliveryReconciledAt} IS NULL OR (${table.status} = 'delivery_unknown' AND ${table.processingState} IN ('claimed', 'completed') AND ${table.modelClaimedAt} IS NOT NULL)`,
     ),
   ],
 );
