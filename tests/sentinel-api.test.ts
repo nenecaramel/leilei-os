@@ -172,3 +172,35 @@ test("Sentinel cross-user lookups are owner-safe not-found", async () => {
     assert.equal(wakes.status, 404);
   });
 });
+
+test("Sentinel status projects delivery-unknown unclaimed wake as recovery required", async () => {
+  const activeSentinel = {
+    ...sentinel,
+    enabled: true,
+    nextWakeAt: null,
+    activeWakeRunId: "wake-delivery-unknown",
+  };
+  await withServer({
+    async findSentinel() { return activeSentinel; },
+    async listWakeActivity() {
+      return [{
+        id: "wake-delivery-unknown",
+        cause: "wake_now",
+        state: "bridge_enqueued",
+        decision: null,
+        scheduledFor: new Date("2026-08-29T00:00:00.000Z"),
+        nextWakeAt: null,
+        finalizedAt: null,
+        createdAt: new Date("2026-08-29T00:00:00.000Z"),
+        recoveryRequired: true,
+      }];
+    },
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/v1/sentinel`, {
+      headers: { "x-test-user": "yes" },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data.status, "recovery_required");
+  });
+});
