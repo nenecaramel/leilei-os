@@ -30,6 +30,7 @@ test(
     const workerB = connection();
     const owner = randomUUID();
     const now = new Date("2026-08-30T00:00:00.000Z");
+    let sentinelId = "";
     try {
       await admin.db.insert(schema.users).values({
         id: owner,
@@ -45,6 +46,7 @@ test(
         timezone: "UTC",
         policyPrompt: "",
       });
+      sentinelId = created.id;
       await admin.db
         .update(schema.sentinels)
         .set({ enabled: true, nextWakeAt: new Date(now.getTime() - 1_000) })
@@ -111,7 +113,7 @@ test(
       // Listener absence is represented by the still-pending Bridge event, never by a duplicate wake.
       assert.equal(bridgeRows[0]?.status, "pending");
     } finally {
-      await admin.db.delete(schema.sentinelWakeRuns).where(eq(schema.sentinelWakeRuns.sentinelId, owner));
+      await admin.db.delete(schema.sentinelWakeRuns).where(eq(schema.sentinelWakeRuns.sentinelId, sentinelId));
       await admin.db.delete(schema.bridgeEvents).where(eq(schema.bridgeEvents.userId, owner));
       await admin.db.delete(schema.sentinels).where(eq(schema.sentinels.userId, owner));
       await admin.db.delete(schema.users).where(eq(schema.users.id, owner));
