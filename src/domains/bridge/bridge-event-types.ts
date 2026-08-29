@@ -46,6 +46,10 @@ export type BridgeEventCreateResult =
   | { outcome: "created" | "replayed"; event: BridgeEventRecord }
   | { outcome: "conflict" };
 
+export type BridgeProcessingMutationResult =
+  | { outcome: "applied" | "idempotent"; event: BridgeEventRecord }
+  | { outcome: "conflict" | "not_found" };
+
 export type BridgeListenerLeaseResult = {
   state: "acquired" | "renewed" | "busy";
 };

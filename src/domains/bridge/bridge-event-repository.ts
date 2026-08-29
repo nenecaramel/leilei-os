@@ -13,6 +13,7 @@ import type {
   BridgeEventCreateResult,
   BridgeEventRecord,
   BridgeEventStatus,
+  BridgeProcessingMutationResult,
   BridgeListenerLeaseResult,
 } from "./bridge-event-types.js";
 
@@ -98,6 +99,8 @@ export interface BridgeEventRepository {
     eventId: string,
     safeErrorCode?: string,
   ): Promise<BridgeEventRecord | null>;
+  claimProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult>;
+  completeProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult>;
   deleteTerminalBatch(cutoff: Date, limit: number): Promise<number>;
 }
 
@@ -223,6 +226,11 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
         UPDATE bridge_events
         SET status = 'delivery_unknown',
             delivery_unknown_at = now(),
+            delivery_reconciled_at = CASE
+              WHEN processing_state IN ('claimed', 'completed')
+                THEN COALESCE(delivery_reconciled_at, now())
+              ELSE delivery_reconciled_at
+            END,
             last_error_code = 'RESERVATION_EXPIRED_AFTER_DISPATCH'
         WHERE user_id = ${userId}::uuid
           AND status = 'reserved'
@@ -337,6 +345,11 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
       .set({
         status: "delivery_unknown",
         deliveryUnknownAt: sql`COALESCE(${bridgeEvents.deliveryUnknownAt}, now())`,
+        deliveryReconciledAt: sql`CASE
+          WHEN ${bridgeEvents.processingState} IN ('claimed', 'completed')
+            THEN COALESCE(${bridgeEvents.deliveryReconciledAt}, now())
+          ELSE ${bridgeEvents.deliveryReconciledAt}
+        END`,
         lastErrorCode: safeErrorCode,
       })
       .where(
@@ -379,6 +392,66 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
       )
       .returning(bridgeEventSelection);
     return updated[0] ? asBridgeEvent(updated[0]) : null;
+  }
+
+  async claimProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult> {
+    return this.db.transaction(async (transaction) => {
+      const [event] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(and(eq(bridgeEvents.userId, userId), eq(bridgeEvents.id, eventId)))
+        .for("update")
+        .limit(1);
+      if (!event) return { outcome: "not_found" };
+      const current = asBridgeEvent(event);
+      if (current.processingState === "claimed" || current.processingState === "completed") {
+        return { outcome: "idempotent", event: current };
+      }
+      const eligible = current.status === "host_sent"
+        || current.status === "delivery_unknown"
+        || (current.status === "reserved" && current.dispatchStartedAt !== null);
+      if (!eligible) return { outcome: "conflict" };
+      const [updated] = await transaction
+        .update(bridgeEvents)
+        .set({
+          processingState: "claimed",
+          modelClaimedAt: sql`COALESCE(${bridgeEvents.modelClaimedAt}, now())`,
+          deliveryReconciledAt: sql`CASE
+            WHEN ${bridgeEvents.status} = 'delivery_unknown'
+              THEN COALESCE(${bridgeEvents.deliveryReconciledAt}, now())
+            ELSE ${bridgeEvents.deliveryReconciledAt}
+          END`,
+        })
+        .where(and(eq(bridgeEvents.userId, userId), eq(bridgeEvents.id, eventId)))
+        .returning(bridgeEventSelection);
+      return updated ? { outcome: "applied", event: asBridgeEvent(updated) } : { outcome: "not_found" };
+    });
+  }
+
+  async completeProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult> {
+    return this.db.transaction(async (transaction) => {
+      const [event] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(and(eq(bridgeEvents.userId, userId), eq(bridgeEvents.id, eventId)))
+        .for("update")
+        .limit(1);
+      if (!event) return { outcome: "not_found" };
+      const current = asBridgeEvent(event);
+      if (current.processingState === "completed") {
+        return { outcome: "idempotent", event: current };
+      }
+      if (current.processingState !== "claimed") return { outcome: "conflict" };
+      const [updated] = await transaction
+        .update(bridgeEvents)
+        .set({
+          processingState: "completed",
+          modelCompletedAt: sql`COALESCE(${bridgeEvents.modelCompletedAt}, now())`,
+        })
+        .where(and(eq(bridgeEvents.userId, userId), eq(bridgeEvents.id, eventId)))
+        .returning(bridgeEventSelection);
+      return updated ? { outcome: "applied", event: asBridgeEvent(updated) } : { outcome: "not_found" };
+    });
   }
 
   async deleteTerminalBatch(cutoff: Date, limit: number): Promise<number> {
@@ -431,5 +504,6 @@ export type {
   BridgeEventCreateInput,
   BridgeEventCreateResult,
   BridgeEventRecord,
+  BridgeProcessingMutationResult,
   BridgeListenerLeaseResult,
 };
