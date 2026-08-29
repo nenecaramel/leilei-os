@@ -4,6 +4,8 @@ export type BridgeEventStatus =
   | "host_sent"
   | "delivery_unknown";
 
+export type BridgeProcessingState = "unclaimed" | "claimed" | "completed";
+
 export type BridgeEventRecord = {
   id: string;
   userId: string;
@@ -21,6 +23,10 @@ export type BridgeEventRecord = {
   dispatchStartedAt: Date | null;
   hostSentAt: Date | null;
   deliveryUnknownAt: Date | null;
+  processingState: BridgeProcessingState;
+  modelClaimedAt: Date | null;
+  modelCompletedAt: Date | null;
+  deliveryReconciledAt: Date | null;
   retryCount: number;
   lastErrorCode: string | null;
 };
@@ -39,6 +45,10 @@ export type BridgeEventCreateInput = {
 export type BridgeEventCreateResult =
   | { outcome: "created" | "replayed"; event: BridgeEventRecord }
   | { outcome: "conflict" };
+
+export type BridgeProcessingMutationResult =
+  | { outcome: "applied" | "idempotent"; event: BridgeEventRecord }
+  | { outcome: "conflict" | "not_found" };
 
 export type BridgeListenerLeaseResult = {
   state: "acquired" | "renewed" | "busy";

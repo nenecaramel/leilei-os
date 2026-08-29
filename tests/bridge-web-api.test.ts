@@ -29,6 +29,10 @@ function bridgeEvent(input: Partial<BridgeEventRecord> = {}): BridgeEventRecord 
     dispatchStartedAt: null,
     hostSentAt: null,
     deliveryUnknownAt: null,
+    processingState: "unclaimed",
+    modelClaimedAt: null,
+    modelCompletedAt: null,
+    deliveryReconciledAt: null,
     retryCount: 0,
     lastErrorCode: null,
     ...input,
@@ -127,7 +131,10 @@ test("Bridge ingress is authenticated, server-owned, strict, and returns compact
     assert.equal(created.headers.get("cache-control"), "private, no-store");
     assert.deepEqual(await created.json(), {
       success: true,
-      data: { id: "bridge-event-1", status: "pending", createdAt: "2026-08-28T00:00:00.000Z" },
+      data: {
+        id: "bridge-event-1", status: "pending", createdAt: "2026-08-28T00:00:00.000Z",
+        processingStatus: "unclaimed", modelClaimedAt: null, modelCompletedAt: null, deliveryReconciledAt: null,
+      },
     });
     assert.deepEqual(service.createCalls, [{ userId: USER_ID, text: "hello", idempotencyKey: "bridge-web-event-0001" }]);
 
@@ -140,6 +147,7 @@ test("Bridge ingress is authenticated, server-owned, strict, and returns compact
     assert.equal(replayed.status, 200);
     assert.deepEqual((await replayed.json()).data, {
       id: "bridge-event-1", status: "pending", createdAt: "2026-08-28T00:00:00.000Z",
+      processingStatus: "unclaimed", modelClaimedAt: null, modelCompletedAt: null, deliveryReconciledAt: null,
     });
   });
 });
@@ -175,7 +183,10 @@ test("Bridge event readback is compact and owner scoped", async () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       success: true,
-      data: { id: "bridge-event-1", status: "pending", createdAt: "2026-08-28T00:00:00.000Z" },
+      data: {
+        id: "bridge-event-1", status: "pending", createdAt: "2026-08-28T00:00:00.000Z",
+        processingStatus: "unclaimed", modelClaimedAt: null, modelCompletedAt: null, deliveryReconciledAt: null,
+      },
     });
     assert.deepEqual(service.readCalls, [{ userId: USER_ID, eventId: "bridge-event-1" }]);
 

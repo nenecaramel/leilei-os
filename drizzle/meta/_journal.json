@@ -204,6 +204,13 @@
       "when": 1787912691123,
       "tag": "0028_loose_monster_badoon",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1787994940369,
+      "tag": "0029_tiresome_corsair",
+      "breakpoints": true
     }
   ]
 }

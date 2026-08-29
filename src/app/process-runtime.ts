@@ -127,6 +127,7 @@ export function createProcessRuntime(
     todoService,
     universeService,
     bridgeService,
+    logger,
   });
 
   return {

@@ -22,7 +22,8 @@ export type BridgeDomainErrorCode =
   | "EVENT_NOT_FOUND"
   | "LISTENER_BUSY"
   | "LISTENER_NOT_ACTIVE"
-  | "EVENT_CONFLICT";
+  | "EVENT_CONFLICT"
+  | "PROCESSING_CONFLICT";
 
 export class BridgeDomainError extends Error {
   constructor(
@@ -40,13 +41,68 @@ export type BridgeServiceOptions = {
   observe?: (event: BridgeServiceObserverEvent) => void;
 };
 
+export type BridgeProcessingReconciliation = "prior_model_evidence" | "later_model_evidence";
+
+export type BridgeProcessingObserverEvent =
+  | {
+      name: "bridge_event_processing_claimed";
+      eventId: string;
+      outcome: "applied" | "idempotent";
+      processingState: BridgeEventRecord["processingState"];
+      reconciled: boolean;
+      transportStatus: BridgeEventRecord["status"];
+      awaitingHostCallback: boolean;
+      reconciliation: BridgeProcessingReconciliation | null;
+      claimLatencyMs: number | null;
+    }
+  | {
+      name: "bridge_event_processing_completed";
+      eventId: string;
+      outcome: "applied" | "idempotent";
+      processingState: BridgeEventRecord["processingState"];
+      reconciled: boolean;
+      transportStatus: BridgeEventRecord["status"];
+      reconciliation: BridgeProcessingReconciliation | null;
+      completionLatencyMs: number | null;
+    }
+  | {
+      name: "bridge_event_processing_conflict";
+      eventId: string;
+      operation: "claim" | "complete";
+      outcome: "conflict";
+    };
+
 export type BridgeServiceObserverEvent =
-  | { name: "bridge_event_created"; eventId: string; status: BridgeEventRecord["status"] }
-  | { name: "bridge_listener_lease_acquired" | "bridge_listener_lease_renewed"; state: "acquired" | "renewed" }
+  | {
+      name: "bridge_event_created";
+      eventId: string;
+      status: BridgeEventRecord["status"];
+    }
+  | {
+      name: "bridge_listener_lease_acquired" | "bridge_listener_lease_renewed";
+      state: "acquired" | "renewed";
+    }
   | { name: "bridge_listener_busy" }
   | { name: "bridge_listener_released"; released: boolean }
-  | { name: "bridge_event_reserved"; eventId: string | null; status: BridgeEventRecord["status"] | null }
-  | { name: "bridge_event_dispatch_started" | "bridge_event_host_sent" | "bridge_event_delivery_unknown" | "bridge_event_released"; eventId: string };
+  | {
+      name: "bridge_event_reserved";
+      eventId: string | null;
+      status: BridgeEventRecord["status"] | null;
+    }
+  | {
+      name:
+        | "bridge_event_dispatch_started"
+        | "bridge_event_host_sent"
+        | "bridge_event_released";
+      eventId: string;
+    }
+  | {
+      name: "bridge_event_delivery_unknown";
+      eventId: string;
+      transportStatus: "delivery_unknown";
+      reconciliation: BridgeProcessingReconciliation | null;
+    }
+  | BridgeProcessingObserverEvent;
 
 export class BridgeService {
   private readonly createId: () => string;
@@ -177,7 +233,12 @@ export class BridgeService {
     const event = await this.requireEvent(
       this.repository.markDeliveryUnknown(userId, listenerInstanceId, eventId, safeErrorCode),
     );
-    this.emit({ name: "bridge_event_delivery_unknown", eventId: event.id });
+    this.emit({
+      name: "bridge_event_delivery_unknown",
+      eventId: event.id,
+      transportStatus: "delivery_unknown",
+      reconciliation: reconciliationDirection(event),
+    });
     return event;
   }
 
@@ -191,6 +252,60 @@ export class BridgeService {
       this.repository.release(userId, listenerInstanceId, eventId, safeErrorCode),
     );
     this.emit({ name: "bridge_event_released", eventId: event.id });
+    return event;
+  }
+
+  async claimEvent(userId: string, eventId: string): Promise<BridgeEventRecord> {
+    const result = await this.repository.claimProcessing(userId, eventId);
+    if (result.outcome === "not_found") {
+      throw new BridgeDomainError("EVENT_NOT_FOUND", "Bridge event was not found.");
+    }
+    if (result.outcome === "conflict") {
+      this.emit({ name: "bridge_event_processing_conflict", eventId, operation: "claim", outcome: "conflict" });
+      throw new BridgeDomainError("PROCESSING_CONFLICT", "Bridge event processing is not eligible for claiming.");
+    }
+    if (result.outcome !== "applied" && result.outcome !== "idempotent") {
+      throw new BridgeDomainError("EVENT_CONFLICT", "Bridge event processing could not be completed.");
+    }
+    const event = result.event;
+    this.emit({
+      name: "bridge_event_processing_claimed",
+      eventId: event.id,
+      outcome: result.outcome,
+      processingState: event.processingState,
+      reconciled: event.deliveryReconciledAt !== null,
+      transportStatus: event.status,
+      awaitingHostCallback: event.status === "reserved" &&
+        event.dispatchStartedAt !== null && event.hostSentAt === null,
+      reconciliation: reconciliationDirection(event),
+      claimLatencyMs: elapsedMs(event.createdAt, event.modelClaimedAt),
+    });
+    return event;
+  }
+
+  async completeEvent(userId: string, eventId: string): Promise<BridgeEventRecord> {
+    const result = await this.repository.completeProcessing(userId, eventId);
+    if (result.outcome === "not_found") {
+      throw new BridgeDomainError("EVENT_NOT_FOUND", "Bridge event was not found.");
+    }
+    if (result.outcome === "conflict") {
+      this.emit({ name: "bridge_event_processing_conflict", eventId, operation: "complete", outcome: "conflict" });
+      throw new BridgeDomainError("PROCESSING_CONFLICT", "Bridge event processing has not been claimed.");
+    }
+    if (result.outcome !== "applied" && result.outcome !== "idempotent") {
+      throw new BridgeDomainError("EVENT_CONFLICT", "Bridge event processing could not be completed.");
+    }
+    const event = result.event;
+    this.emit({
+      name: "bridge_event_processing_completed",
+      eventId: event.id,
+      outcome: result.outcome,
+      processingState: event.processingState,
+      reconciled: event.deliveryReconciledAt !== null,
+      transportStatus: event.status,
+      reconciliation: reconciliationDirection(event),
+      completionLatencyMs: elapsedMs(event.modelClaimedAt, event.modelCompletedAt),
+    });
     return event;
   }
 
@@ -229,6 +344,28 @@ export class BridgeService {
     }
     return event;
   }
+}
+
+function elapsedMs(start: Date | null, end: Date | null): number | null {
+  if (!(start instanceof Date) || !(end instanceof Date)) return null;
+  const elapsed = end.getTime() - start.getTime();
+  return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
+}
+
+function reconciliationDirection(
+  event: Pick<BridgeEventRecord, "deliveryReconciledAt" | "modelClaimedAt" | "deliveryUnknownAt">,
+): BridgeProcessingReconciliation | null {
+  if (event.deliveryReconciledAt == null || event.modelClaimedAt == null || event.deliveryUnknownAt == null) {
+    return null;
+  }
+  const modelClaimedAt = event.modelClaimedAt.getTime();
+  const deliveryUnknownAt = event.deliveryUnknownAt.getTime();
+  if (!Number.isFinite(modelClaimedAt) || !Number.isFinite(deliveryUnknownAt) || modelClaimedAt === deliveryUnknownAt) {
+    return null;
+  }
+  return modelClaimedAt < deliveryUnknownAt
+    ? "prior_model_evidence"
+    : "later_model_evidence";
 }
 
 export function hashBridgeEventRequest(value: {

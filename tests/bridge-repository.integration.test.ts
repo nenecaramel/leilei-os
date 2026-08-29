@@ -239,3 +239,135 @@ test(
     }
   },
 );
+
+test(
+  "real PostgreSQL Bridge processing transitions are owner-scoped and reconciliation-aware",
+  { skip: !RUN },
+  async () => {
+    const admin = connection();
+    const owner = randomUUID();
+    const other = randomUUID();
+    const listener = randomUUID();
+    try {
+      await admin.db.insert(schema.users).values([
+        { id: owner, email: `bridge-processing-${owner}@example.invalid`, displayName: "Bridge owner", status: "active" },
+        { id: other, email: `bridge-processing-${other}@example.invalid`, displayName: "Bridge other", status: "active" },
+      ]);
+      const repository = new DrizzleBridgeEventRepository(admin.db as never);
+      const eventId = randomUUID();
+      const created = await repository.createEvent(owner, createInput(eventId, "processing"));
+      assert.equal(created.outcome, "created");
+      assert.equal(created.event.processingState, "unclaimed");
+      assert.equal(created.event.modelClaimedAt, null);
+      assert.equal(created.event.modelCompletedAt, null);
+      assert.equal(created.event.deliveryReconciledAt, null);
+
+      const pendingClaim = await repository.claimProcessing(owner, eventId);
+      assert.deepEqual(pendingClaim, { outcome: "conflict" });
+      assert.equal((await repository.getEvent(owner, eventId))?.processingState, "unclaimed");
+
+      assert.equal((await repository.acquireListenerLease(owner, listener)).state, "acquired");
+      const reserved = await repository.reserveNext(owner, listener);
+      assert.equal(reserved?.id, eventId);
+      const preDispatchClaim = await repository.claimProcessing(owner, eventId);
+      assert.deepEqual(preDispatchClaim, { outcome: "conflict" });
+
+      assert.equal((await repository.markDispatchStarted(owner, listener, eventId))?.id, eventId);
+      const claimed = await repository.claimProcessing(owner, eventId);
+      assert.equal(claimed.outcome, "applied");
+      assert.equal(claimed.event.processingState, "claimed");
+      assert.equal(claimed.event.modelClaimedAt instanceof Date, true);
+      assert.equal(claimed.event.modelCompletedAt, null);
+      assert.equal(claimed.event.status, "reserved");
+      const claimTime = claimed.event.modelClaimedAt;
+      const duplicateClaim = await repository.claimProcessing(owner, eventId);
+      assert.equal(duplicateClaim.outcome, "idempotent");
+      assert.equal(duplicateClaim.event.modelClaimedAt?.getTime(), claimTime?.getTime());
+
+      const completed = await repository.completeProcessing(owner, eventId);
+      assert.equal(completed.outcome, "applied");
+      assert.equal(completed.event.processingState, "completed");
+      assert.equal(completed.event.modelCompletedAt instanceof Date, true);
+      const completionTime = completed.event.modelCompletedAt;
+      const duplicateComplete = await repository.completeProcessing(owner, eventId);
+      assert.equal(duplicateComplete.outcome, "idempotent");
+      assert.equal(duplicateComplete.event.modelCompletedAt?.getTime(), completionTime?.getTime());
+
+      const hostSentId = randomUUID();
+      await repository.createEvent(owner, createInput(hostSentId, "processing-host-sent"));
+      assert.equal((await repository.reserveNext(owner, listener))?.id, hostSentId);
+      assert.equal((await repository.markHostSent(owner, listener, hostSentId))?.status, "host_sent");
+      const hostSentClaim = await repository.claimProcessing(owner, hostSentId);
+      assert.equal(hostSentClaim.outcome, "applied");
+      assert.equal(hostSentClaim.event.status, "host_sent");
+      assert.equal(hostSentClaim.event.deliveryReconciledAt, null);
+
+      const unknownId = randomUUID();
+      await repository.createEvent(owner, createInput(unknownId, "processing-unknown"));
+      assert.equal((await repository.reserveNext(owner, listener))?.id, unknownId);
+      assert.equal((await repository.markDeliveryUnknown(owner, listener, unknownId, "HOST_TIMEOUT"))?.status, "delivery_unknown");
+      const unknownClaim = await repository.claimProcessing(owner, unknownId);
+      assert.equal(unknownClaim.outcome, "applied");
+      assert.equal(unknownClaim.event.status, "delivery_unknown");
+      assert.equal(unknownClaim.event.deliveryReconciledAt instanceof Date, true);
+
+      const completeBeforeClaimId = randomUUID();
+      await repository.createEvent(owner, createInput(completeBeforeClaimId, "processing-complete-before-claim"));
+      assert.equal((await repository.reserveNext(owner, listener))?.id, completeBeforeClaimId);
+      const completeBeforeClaim = await repository.completeProcessing(owner, completeBeforeClaimId);
+      assert.deepEqual(completeBeforeClaim, { outcome: "conflict" });
+
+      const callbackId = randomUUID();
+      await repository.createEvent(owner, createInput(callbackId, "processing-callback"));
+      assert.equal((await repository.reserveNext(owner, listener))?.id, callbackId);
+      await repository.markDispatchStarted(owner, listener, callbackId);
+      assert.equal((await repository.claimProcessing(owner, callbackId)).outcome, "applied");
+      const callbackSent = await repository.markHostSent(owner, listener, callbackId);
+      assert.equal(callbackSent?.status, "host_sent");
+      assert.equal(callbackSent?.processingState, "claimed");
+      assert.equal(callbackSent?.deliveryReconciledAt, null);
+
+      const ambiguityId = randomUUID();
+      await repository.createEvent(owner, createInput(ambiguityId, "processing-ambiguity"));
+      assert.equal((await repository.reserveNext(owner, listener))?.id, ambiguityId);
+      await repository.markDispatchStarted(owner, listener, ambiguityId);
+      assert.equal((await repository.claimProcessing(owner, ambiguityId)).outcome, "applied");
+      const ambiguityUnknown = await repository.markDeliveryUnknown(owner, listener, ambiguityId, "HOST_TIMEOUT");
+      assert.equal(ambiguityUnknown?.status, "delivery_unknown");
+      assert.equal(ambiguityUnknown?.processingState, "claimed");
+      assert.equal(ambiguityUnknown?.deliveryReconciledAt instanceof Date, true);
+
+      const staleClaimedId = randomUUID();
+      await repository.createEvent(owner, createInput(staleClaimedId, "processing-stale-claimed"));
+      await setReservation(admin.db, staleClaimedId, listener, new Date(Date.now() - 1_000), new Date(Date.now() - 2_000));
+      assert.equal((await repository.claimProcessing(owner, staleClaimedId)).outcome, "applied");
+      assert.equal(await repository.reserveNext(owner, listener), null);
+      const staleClaimed = await repository.getEvent(owner, staleClaimedId);
+      assert.equal(staleClaimed?.status, "delivery_unknown");
+      assert.equal(staleClaimed?.deliveryReconciledAt instanceof Date, true);
+
+      const staleUnclaimedId = randomUUID();
+      await repository.createEvent(owner, createInput(staleUnclaimedId, "processing-stale-unclaimed"));
+      await setReservation(admin.db, staleUnclaimedId, listener, new Date(Date.now() - 1_000), new Date(Date.now() - 2_000));
+      assert.equal(await repository.reserveNext(owner, listener), null);
+      const staleUnclaimed = await repository.getEvent(owner, staleUnclaimedId);
+      assert.equal(staleUnclaimed?.status, "delivery_unknown");
+      assert.equal(staleUnclaimed?.processingState, "unclaimed");
+      assert.equal(staleUnclaimed?.deliveryReconciledAt, null);
+
+      const crossOwnerClaim = await repository.claimProcessing(other, eventId);
+      assert.deepEqual(crossOwnerClaim, { outcome: "not_found" });
+      const crossOwnerComplete = await repository.completeProcessing(other, eventId);
+      assert.deepEqual(crossOwnerComplete, { outcome: "not_found" });
+
+      const unknown = await repository.claimProcessing(owner, randomUUID());
+      assert.deepEqual(unknown, { outcome: "not_found" });
+    } finally {
+      await admin.db.delete(schema.bridgeListenerLeases).where(eq(schema.bridgeListenerLeases.userId, owner));
+      await admin.db.delete(schema.bridgeEvents).where(eq(schema.bridgeEvents.userId, owner));
+      await admin.db.delete(schema.users).where(eq(schema.users.id, owner));
+      await admin.db.delete(schema.users).where(eq(schema.users.id, other));
+      await admin.client.end();
+    }
+  },
+);

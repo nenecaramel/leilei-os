@@ -3,8 +3,15 @@ import {
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { BridgeEventRecord } from "../../../domains/bridge/bridge-event-types.js";
 
-export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v1";
+export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v2";
+
+export function composeBridgeDispatchContext(
+  event: Pick<BridgeEventRecord, "id" | "modelContext">,
+): string {
+  return `${event.modelContext}\n\nEvent ID: ${event.id}. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.`;
+}
 
 export function createBridgeListenerHtml(): string {
   return `<!doctype html><meta charset="utf-8"><title>LeileiOS Message Bridge</title><style>
@@ -146,7 +153,7 @@ export function createBridgeListenerHtml(): string {
       if (!event || eventInFlight) { schedulePoll(); return; }
       eventInFlight = event;
       try {
-        await call('ui/update-model-context', {content:[{type:'text', text:event.modelContext || ''}]});
+        await call('ui/update-model-context', {content:[{type:'text', text:(event.modelContext || '') + '\\n\\nEvent ID: ' + event.id + '. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.'}]});
       } catch (error) { recordDiag('context update failed ' + errorSummary(error)); await report('bridge_listener_release', {eventId:event.id, safeErrorCode:'CONTEXT_UPDATE_FAILED'}); eventInFlight = null; schedulePoll(); return; }
       try {
         await appCall('bridge_listener_dispatch_started', {eventId:event.id});

@@ -47,11 +47,11 @@ test("bridge listener completes MCP Apps initialization before its first server 
 
     assert.equal(calls[0]?.method, "ui/initialize");
     assert.equal(calls.some((call) => call.method === "tools/call"), false);
-    assert.deepEqual(calls[0]?.params, {
+    assert.equal(JSON.stringify(calls[0]?.params), JSON.stringify({
       appInfo: { name: "LeileiOS Message Bridge", version: "1.0.0" },
       appCapabilities: {},
       protocolVersion: "2026-01-26",
-    });
+    }));
 
     respond(dom, calls[0]!, {
       protocolVersion: "2026-01-26",

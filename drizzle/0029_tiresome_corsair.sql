@@ -1,0 +1,7 @@
+ALTER TABLE "bridge_events" ADD COLUMN "processing_state" varchar(32) DEFAULT 'unclaimed' NOT NULL;--> statement-breakpoint
+ALTER TABLE "bridge_events" ADD COLUMN "model_claimed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "bridge_events" ADD COLUMN "model_completed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "bridge_events" ADD COLUMN "delivery_reconciled_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "bridge_events" ADD CONSTRAINT "bridge_events_processing_state_allowed" CHECK ("bridge_events"."processing_state" IN ('unclaimed', 'claimed', 'completed'));--> statement-breakpoint
+ALTER TABLE "bridge_events" ADD CONSTRAINT "bridge_events_processing_state_timestamps" CHECK (("bridge_events"."processing_state" = 'unclaimed' AND "bridge_events"."model_claimed_at" IS NULL AND "bridge_events"."model_completed_at" IS NULL) OR ("bridge_events"."processing_state" = 'claimed' AND "bridge_events"."model_claimed_at" IS NOT NULL AND "bridge_events"."model_completed_at" IS NULL) OR ("bridge_events"."processing_state" = 'completed' AND "bridge_events"."model_claimed_at" IS NOT NULL AND "bridge_events"."model_completed_at" IS NOT NULL));--> statement-breakpoint
+ALTER TABLE "bridge_events" ADD CONSTRAINT "bridge_events_delivery_reconciled_at_allowed" CHECK ("bridge_events"."delivery_reconciled_at" IS NULL OR ("bridge_events"."status" = 'delivery_unknown' AND "bridge_events"."processing_state" IN ('claimed', 'completed') AND "bridge_events"."model_claimed_at" IS NOT NULL));
