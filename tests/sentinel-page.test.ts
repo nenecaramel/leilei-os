@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { MemoryRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
 import test from "node:test";
 import { NavigationGroups } from "../web/src/layout/NavigationGroups.js";
 import { SentinelPageContent } from "../web/src/pages/SentinelPage.js";
@@ -37,6 +36,14 @@ function installDom() {
 }
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+async function waitForCondition(condition: () => boolean, label: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (condition()) return;
+    await waitForPaint();
+  }
+  assert.fail(`Timed out waiting for ${label}`);
+}
 
 function response(overrides: Record<string, unknown> = {}) {
   return {
@@ -77,7 +84,7 @@ test("Sentinel page renders owner status, controls, policy, and bounded activity
     },
   };
 
-  root.render(React.createElement(MemoryRouter, null, React.createElement(SentinelPageContent, { api })));
+  root.render(React.createElement(SentinelPageContent, { api }));
   await waitForPaint();
 
   assert.match(container.textContent ?? "", /Autonomous Wake/);
@@ -103,10 +110,56 @@ test("Sentinel recovery control appears only for recovery-required projection", 
   const api: WebApiClient = {
     request: async () => response({ status: "recovery_required" }) as never,
   };
-  root.render(React.createElement(MemoryRouter, null, React.createElement(SentinelPageContent, { api })));
-  await waitForPaint();
+  root.render(React.createElement(SentinelPageContent, { api }));
+  await waitForCondition(() => container.textContent?.includes("Wake now") === true, "initial Sentinel readback");
   assert.ok([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("Recovery")));
   root.unmount();
+  env.restore();
+});
+
+test("Sentinel renders every projected state with user-facing labels", async () => {
+  const projections = [
+    ["paused", "Paused", false],
+    ["processing", "Processing", true],
+    ["waiting_for_chatgpt", "Waiting for ChatGPT", true],
+    ["sleeping", "Sleeping", true],
+    ["waking", "Waking", true],
+    ["recovery_required", "Recovery required", true],
+  ] as const;
+  for (const [status, label, enabled] of projections) {
+    const env = installDom();
+    const container = env.dom.window.document.getElementById("root")!;
+    const root = createRoot(container);
+    const api: WebApiClient = {
+      request: async (path) => path.includes("wakes")
+        ? { success: true, data: { wakes: [] } } as never
+        : response({ status, sentinel: { ...response().data.sentinel, enabled } }) as never,
+    };
+    root.render(React.createElement(SentinelPageContent, { api }));
+    await waitForCondition(() => container.textContent?.includes(label) === true, `${status} projection`);
+    assert.match(container.textContent ?? "", new RegExp(label));
+    if (status !== "recovery_required") {
+      assert.equal([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("Recovery")), false);
+    }
+    root.unmount();
+    await waitForPaint();
+    env.restore();
+  }
+});
+
+test("Sentinel API failures remain visible and do not fabricate an enabled state", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const api: WebApiClient = {
+    request: async () => { throw new Error("private provider failure"); },
+  };
+  root.render(React.createElement(SentinelPageContent, { api }));
+  await waitForCondition(() => container.querySelector('[role="alert"]') !== null, "Sentinel error state");
+  assert.match(container.textContent ?? "", /temporarily unavailable/);
+  assert.doesNotMatch(container.textContent ?? "", /\bON\b/);
+  root.unmount();
+  await waitForPaint();
   env.restore();
 });
 
@@ -127,16 +180,47 @@ test("Sentinel controls refresh authoritative state after mutation", async () =>
       }) as never;
     },
   };
-  root.render(React.createElement(MemoryRouter, null, React.createElement(SentinelPageContent, { api })));
+  root.render(React.createElement(SentinelPageContent, { api }));
   await waitForPaint();
   const pause = [...container.querySelectorAll("button")].find((button) => button.textContent === "Pause");
   assert.ok(pause);
-  pause?.dispatchEvent(new env.dom.window.MouseEvent("click", { bubbles: true }));
-  await waitForPaint();
+  pause?.click();
+  await waitForCondition(() => container.textContent?.includes("Paused") === true, "authoritative paused readback");
+  await waitForCondition(() => container.querySelector(".sentinel-page")?.getAttribute("aria-busy") === "false", "pause action completion");
   assert.match(container.textContent ?? "", /Paused/);
   assert.ok(paths.includes("POST /sentinel/pause"));
   assert.ok(paths.filter((path) => path === "GET /sentinel").length >= 2);
   root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
+test("Sentinel policy draft is sent through the authenticated API contract", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const api: WebApiClient = {
+    request: async (path, init) => {
+      requests.push({ path, init });
+      if (path === "/sentinel/wakes?limit=20") return { success: true, data: { wakes: [] } } as never;
+      return response() as never;
+    },
+  };
+  root.render(React.createElement(SentinelPageContent, { api }));
+  await waitForCondition(() => container.textContent?.includes("Wake now") === true, "initial Sentinel readback");
+  const policy = container.querySelector<HTMLTextAreaElement>("textarea");
+  assert.ok(policy);
+  assert.equal(policy.value, "Keep a gentle eye on my workspace.");
+  container.querySelector<HTMLButtonElement>("button")?.click();
+  await waitForCondition(() => requests.some(({ path, init }) => path === "/sentinel" && init?.method === "PUT"), "policy save request");
+  const save = requests.find(({ path, init }) => path === "/sentinel" && init?.method === "PUT");
+  assert.deepEqual(JSON.parse(String(save?.init?.body)), {
+    timezone: "Asia/Shanghai",
+    policyPrompt: "Keep a gentle eye on my workspace.",
+  });
+  root.unmount();
+  await waitForPaint();
   env.restore();
 });
 

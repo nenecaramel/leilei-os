@@ -17,6 +17,7 @@ import { SystemConnectionsPage } from "./pages/SystemConnectionsPage";
 import { SystemDataPage } from "./pages/SystemDataPage";
 import { TaskPage } from "./pages/TaskPageContainer";
 import { UniversePage } from "./pages/UniversePageContainer";
+import { SentinelPage } from "./pages/SentinelPageContainer";
 
 import { DaySpacePage } from "./pages/DaySpacePageContainer";
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="task" element={<TaskPage />} />
             <Route path="day-space" element={<DaySpacePage />} />
             <Route path="search" element={<GlobalSearchPage />} />
+            <Route path="sentinel" element={<SentinelPage />} />
 
             <Route
               path="system"
