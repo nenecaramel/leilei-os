@@ -88,3 +88,31 @@ test("bridge processing tools map conflicts, not-found, auth, and unknown failur
   const authResult = await pair.client.callTool({ name: "bridge_event_claim", arguments: { eventId: EVENT_ID } });
   assert.equal((authResult.structuredContent as { error: { code: string } }).error.code, "AUTHENTICATION_REQUIRED");
 });
+
+test("unexpected processing-tool failures log only a safe fingerprint", async (t) => {
+  const logs: Array<{ event: string; fields?: Record<string, unknown> }> = [];
+  const server = new McpServer({ name: "bridge-processing-logging", version: "1.0.0" });
+  registerBridgeProcessingTools(server, {
+    bridgeService: {
+      claimEvent: async () => { throw Object.assign(new Error("private payload sentinel"), { code: "db_internal" }); },
+      completeEvent: async () => EVENT,
+    },
+    getAuthenticatedUserId: () => USER_ID,
+    logger: {
+      debug() {},
+      info() {},
+      warn() {},
+      error(event, fields) { logs.push({ event, fields }); },
+    },
+  });
+  const pair = await connected(server);
+  t.after(async () => { await pair.client.close(); await pair.server.close(); });
+
+  const result = await pair.client.callTool({ name: "bridge_event_claim", arguments: { eventId: EVENT_ID } });
+  assert.equal(result.isError, true);
+  assert.equal((result.structuredContent as { error: { code: string } }).error.code, "INTERNAL_ERROR");
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0]?.event, "bridge_processing_tool_failed");
+  assert.deepEqual(logs[0]?.fields, { name: "Error", code: "DB_INTERNAL" });
+  assert.doesNotMatch(JSON.stringify(logs), /private payload sentinel|eventId|user|arguments/);
+});
