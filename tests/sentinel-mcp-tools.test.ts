@@ -106,3 +106,58 @@ test("Sentinel finalizer rejects malformed and conflicting states through safe e
   assert.equal(conflict.isError, true);
   assert.doesNotMatch(JSON.stringify(conflict), /private/);
 });
+
+test("complete_sentinel_wake validates capsule length by Unicode code point", async (t) => {
+  const capsules: string[] = [];
+  const fixture = await connected({
+    sentinelTools: {
+      sentinelService: {
+        getWakeState: async () => {
+          throw new Error("unused");
+        },
+        completeWake: async (_userId: string, input: { contextCapsule: string }) => {
+          capsules.push(input.contextCapsule);
+          return {
+            outcome: "applied",
+            wake: {
+              id: WAKE_ID,
+              decision: "quiet",
+              nextWakeAt: new Date("2026-08-30T00:10:00.000Z"),
+              finalizedAt: new Date("2026-08-30T00:01:00.000Z"),
+            },
+            sentinel: { controlRevision: 3 },
+            bridge: {},
+          };
+        },
+      },
+      getAuthenticatedUserId: () => USER_ID,
+      requireActiveUser: async () => USER_ID,
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const emojiCapsule = "🙂".repeat(1_024);
+  const accepted = await fixture.client.callTool({
+    name: "complete_sentinel_wake",
+    arguments: {
+      wakeId: WAKE_ID,
+      decision: "quiet",
+      nextWakeAt: "2026-08-30T00:10:00.000Z",
+      contextCapsule: emojiCapsule,
+    },
+  });
+  assert.equal(accepted.isError, undefined);
+  assert.equal(capsules[0], emojiCapsule);
+
+  const rejected = await fixture.client.callTool({
+    name: "complete_sentinel_wake",
+    arguments: {
+      wakeId: WAKE_ID,
+      decision: "quiet",
+      nextWakeAt: "2026-08-30T00:10:00.000Z",
+      contextCapsule: `${emojiCapsule}🙂`,
+    },
+  });
+  assert.equal(rejected.isError, true);
+  assert.equal(capsules.length, 1);
+});
