@@ -10,6 +10,7 @@ import type {
   BridgeEventCreateInput,
   BridgeEventCreateResult,
   BridgeEventRecord,
+  BridgeProcessingMutationResult,
   BridgeListenerLeaseResult,
 } from "../src/domains/bridge/bridge-event-types.js";
 
@@ -53,6 +54,7 @@ class FakeBridgeEventRepository implements BridgeEventRepository {
   leaseResult: BridgeListenerLeaseResult = { state: "acquired" };
   next: BridgeEventRecord | null = null;
   callbackResult: BridgeEventRecord | null = event();
+  processingResult: BridgeProcessingMutationResult = { outcome: "applied", event: event({ status: "host_sent" }) };
 
   async createEvent(userId: string, input: BridgeEventCreateInput): Promise<BridgeEventCreateResult> {
     this.creates.push({ userId, input });
@@ -97,6 +99,16 @@ class FakeBridgeEventRepository implements BridgeEventRepository {
   async release(userId: string, listenerInstanceId: string, eventId: string, code?: string): Promise<BridgeEventRecord | null> {
     this.lifecycleCalls.push({ name: "release", args: [userId, listenerInstanceId, eventId, code] });
     return this.callbackResult;
+  }
+
+  async claimProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult> {
+    this.lifecycleCalls.push({ name: "claimProcessing", args: [userId, eventId] });
+    return this.processingResult;
+  }
+
+  async completeProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult> {
+    this.lifecycleCalls.push({ name: "completeProcessing", args: [userId, eventId] });
+    return this.processingResult;
   }
 
   async deleteTerminalBatch(): Promise<number> {
@@ -238,4 +250,35 @@ test("maps unavailable reservations and non-owner lifecycle transitions to safe 
     service.markDeliveryUnknown(USER_ID, LISTENER_ID, EVENT_ID, "HOST_TIMEOUT"),
     (error: unknown) => error instanceof BridgeDomainError && error.code === "EVENT_CONFLICT",
   );
+});
+
+test("maps processing outcomes without leaking event payloads", async () => {
+  const observed: unknown[] = [];
+  const repository = new FakeBridgeEventRepository();
+  const processingService = new BridgeService(repository, { observe: (entry) => observed.push(entry) });
+
+  const claimed = await processingService.claimEvent(USER_ID, EVENT_ID);
+  assert.equal(claimed, repository.processingResult.event);
+  assert.deepEqual(repository.lifecycleCalls.at(-1), { name: "claimProcessing", args: [USER_ID, EVENT_ID] });
+
+  repository.processingResult = { outcome: "idempotent", event: event({ status: "host_sent", processingState: "claimed", modelClaimedAt: NOW }) };
+  const completed = await processingService.completeEvent(USER_ID, EVENT_ID);
+  assert.equal(completed, repository.processingResult.event);
+
+  for (const outcome of ["not_found", "conflict"] as const) {
+    repository.processingResult = { outcome };
+    await assert.rejects(
+      processingService.claimEvent(USER_ID, EVENT_ID),
+      (error: unknown) => error instanceof BridgeDomainError && error.code === (outcome === "not_found" ? "EVENT_NOT_FOUND" : "PROCESSING_CONFLICT"),
+    );
+  }
+
+  assert.deepEqual(repository.lifecycleCalls.slice(-3).map(({ name, args }) => ({ name, args })), [
+    { name: "completeProcessing", args: [USER_ID, EVENT_ID] },
+    { name: "claimProcessing", args: [USER_ID, EVENT_ID] },
+    { name: "claimProcessing", args: [USER_ID, EVENT_ID] },
+  ]);
+  assert.ok(observed.some((entry) => (entry as { name?: string }).name === "bridge_event_processing_claimed"));
+  assert.ok(observed.some((entry) => (entry as { name?: string }).name === "bridge_event_processing_completed"));
+  assert.doesNotMatch(JSON.stringify(observed), /private|secret|modelContext|visibleText/);
 });

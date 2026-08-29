@@ -93,7 +93,16 @@ export function createRetentionObserver(
   };
 }
 
-const BRIDGE_OBSERVABLE_FIELDS = new Set(["eventId", "status", "state", "released"]);
+const BRIDGE_OBSERVABLE_FIELDS = new Set([
+  "eventId",
+  "status",
+  "state",
+  "released",
+  "outcome",
+  "processingState",
+  "reconciled",
+  "operation",
+]);
 
 export function projectBridgeEvent(event: BridgeServiceObserverEvent): SafeLogFields {
   const projected: Record<string, string | number | boolean | null> = {};
