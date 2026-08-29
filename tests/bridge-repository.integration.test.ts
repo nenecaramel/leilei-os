@@ -126,7 +126,13 @@ test(
         repositoryB.reserveNext(queueOwner, queueListener),
       ]);
       assert.equal(concurrent.filter(Boolean).length, 1);
-      assert.equal(concurrent.find(Boolean)?.id, onlyId);
+      const reservedEvent = concurrent.find(Boolean);
+      assert.equal(reservedEvent?.id, onlyId);
+      assert.equal(reservedEvent?.status, "reserved");
+      assert.equal(reservedEvent?.reservedBy, queueListener);
+      assert.equal(reservedEvent?.createdAt instanceof Date, true);
+      assert.equal(reservedEvent?.reservedAt instanceof Date, true);
+      assert.equal(reservedEvent?.reservationExpiresAt instanceof Date, true);
       await repositoryA.markHostSent(queueOwner, queueListener, onlyId);
 
       // FIFO applies to the oldest currently eligible pending row.

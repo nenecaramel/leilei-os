@@ -238,7 +238,7 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
           AND dispatch_started_at IS NULL
       `);
 
-      const reserved = await transaction.execute<BridgeEventRow>(sql`
+      const reserved = await transaction.execute<{ id: string }>(sql`
         WITH candidate AS (
           SELECT id
           FROM bridge_events
@@ -259,27 +259,21 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
         WHERE event.id = candidate.id
           AND event.user_id = ${userId}::uuid
           AND event.status = 'pending'
-        RETURNING
-          event.id,
-          event.user_id AS "userId",
-          event.idempotency_key AS "idempotencyKey",
-          event.request_hash AS "requestHash",
-          event.kind,
-          event.source,
-          event.visible_text AS "visibleText",
-          event.model_context AS "modelContext",
-          event.status,
-          event.created_at AS "createdAt",
-          event.reserved_by AS "reservedBy",
-          event.reserved_at AS "reservedAt",
-          event.reservation_expires_at AS "reservationExpiresAt",
-          event.dispatch_started_at AS "dispatchStartedAt",
-          event.host_sent_at AS "hostSentAt",
-          event.delivery_unknown_at AS "deliveryUnknownAt",
-          event.retry_count AS "retryCount",
-          event.last_error_code AS "lastErrorCode"
+        RETURNING event.id
       `);
-      return reserved[0] ? asBridgeEvent(reserved[0]) : null;
+      if (!reserved[0]) return null;
+
+      const [event] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(
+          and(
+            eq(bridgeEvents.id, reserved[0].id),
+            eq(bridgeEvents.userId, userId),
+          ),
+        )
+        .limit(1);
+      return event ? asBridgeEvent(event) : null;
     });
   }
 
