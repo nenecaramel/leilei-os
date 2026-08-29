@@ -30,7 +30,7 @@ const completeInputSchema = z.object({
   wakeId: wakeIdSchema,
   decision: z.enum(["contact", "quiet"]),
   nextWakeAt: z.string().datetime(),
-  contextCapsule: z.string().max(1_024).nullable().optional(),
+  contextCapsule: z.string().max(1_024),
 }).strict();
 const completeOutputSchema = z.object({
   success: z.boolean(),
