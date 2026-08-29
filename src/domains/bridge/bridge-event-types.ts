@@ -11,8 +11,8 @@ export type BridgeEventRecord = {
   userId: string;
   idempotencyKey: string;
   requestHash: string;
-  kind: "chat";
-  source: "leileios_pwa";
+  kind: "chat" | "wake";
+  source: "leileios_pwa" | "leileios_sentinel";
   visibleText: string;
   modelContext: string;
   status: BridgeEventStatus;

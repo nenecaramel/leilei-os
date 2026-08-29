@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   date,
   doublePrecision,
@@ -584,9 +585,11 @@ export const bridgeEvents = pgTable(
       }),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
-    kind: varchar("kind", { length: 32 }).$type<"chat">().notNull(),
+    kind: varchar("kind", { length: 32 })
+      .$type<"chat" | "wake">()
+      .notNull(),
     source: varchar("source", { length: 64 })
-      .$type<"leileios_pwa">()
+      .$type<"leileios_pwa" | "leileios_sentinel">()
       .notNull(),
     visibleText: text("visible_text").notNull(),
     modelContext: text("model_context").notNull(),
@@ -607,6 +610,7 @@ export const bridgeEvents = pgTable(
     deliveryUnknownAt: timestamp("delivery_unknown_at", {
       withTimezone: true,
     }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     processingState: varchar("processing_state", { length: 32 })
       .$type<"unclaimed" | "claimed" | "completed">()
       .default("unclaimed")
@@ -637,11 +641,11 @@ export const bridgeEvents = pgTable(
     ),
     check(
       "bridge_events_kind_allowed",
-      sql`${table.kind} = 'chat'`,
+      sql`${table.kind} IN ('chat', 'wake')`,
     ),
     check(
       "bridge_events_source_allowed",
-      sql`${table.source} = 'leileios_pwa'`,
+      sql`${table.source} IN ('leileios_pwa', 'leileios_sentinel')`,
     ),
     check(
       "bridge_events_idempotency_key_format",
@@ -686,6 +690,158 @@ export const bridgeEvents = pgTable(
     check(
       "bridge_events_delivery_reconciled_at_allowed",
       sql`${table.deliveryReconciledAt} IS NULL OR (${table.status} = 'delivery_unknown' AND ${table.processingState} IN ('claimed', 'completed') AND ${table.modelClaimedAt} IS NOT NULL)`,
+    ),
+    check(
+      "bridge_events_cancelled_at_allowed",
+      sql`${table.cancelledAt} IS NULL OR (${table.kind} = 'wake' AND ${table.source} = 'leileios_sentinel' AND ${table.dispatchStartedAt} IS NULL AND ${table.status} IN ('pending', 'reserved'))`,
+    ),
+  ],
+);
+
+export type BridgeEventKind = "chat" | "wake";
+export type BridgeEventSource = "leileios_pwa" | "leileios_sentinel";
+
+export type SentinelWakeCause = "scheduled" | "wake_now" | "recovery";
+export type SentinelWakeRunState =
+  | "bridge_enqueued"
+  | "claimed"
+  | "finalized"
+  | "superseded"
+  | "recovery_required";
+export type SentinelWakeDecision = "contact" | "quiet";
+
+export const sentinels = pgTable(
+  "sentinels",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    enabled: boolean("enabled").default(false).notNull(),
+    timezone: varchar("timezone", { length: 64 }).notNull(),
+    policyPrompt: varchar("policy_prompt", { length: 4000 })
+      .default("")
+      .notNull(),
+    nextWakeAt: timestamp("next_wake_at", { withTimezone: true }),
+    lastValidWakeAt: timestamp("last_valid_wake_at", {
+      withTimezone: true,
+    }),
+    wakeContextCapsule: varchar("wake_context_capsule", { length: 1024 }),
+    wakeContextUpdatedAt: timestamp("wake_context_updated_at", {
+      withTimezone: true,
+    }),
+    controlRevision: integer("control_revision").default(0).notNull(),
+    activeWakeRunId: uuid("active_wake_run_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("sentinels_user_id_uidx").on(table.userId),
+    check(
+      "sentinels_timezone_not_blank",
+      sql`char_length(btrim(${table.timezone})) > 0`,
+    ),
+    check(
+      "sentinels_policy_prompt_bounds",
+      sql`char_length(${table.policyPrompt}) <= 4000`,
+    ),
+    check(
+      "sentinels_wake_context_capsule_bounds",
+      sql`${table.wakeContextCapsule} IS NULL OR char_length(${table.wakeContextCapsule}) <= 1024`,
+    ),
+    check(
+      "sentinels_control_revision_nonnegative",
+      sql`${table.controlRevision} >= 0`,
+    ),
+  ],
+);
+
+export const sentinelWakeRuns = pgTable(
+  "sentinel_wake_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sentinelId: uuid("sentinel_id")
+      .notNull()
+      .references(() => sentinels.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    controlRevision: integer("control_revision").notNull(),
+    cause: varchar("cause", { length: 32 })
+      .$type<SentinelWakeCause>()
+      .notNull(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    triggeredAt: timestamp("triggered_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    bridgeEventId: uuid("bridge_event_id")
+      .notNull()
+      .references(() => bridgeEvents.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    state: varchar("state", { length: 32 })
+      .$type<SentinelWakeRunState>()
+      .default("bridge_enqueued")
+      .notNull(),
+    decision: varchar("decision", { length: 16 }).$type<SentinelWakeDecision>(),
+    nextWakeAt: timestamp("next_wake_at", { withTimezone: true }),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+    failureCode: varchar("failure_code", { length: 64 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("sentinel_wake_runs_bridge_event_id_uidx").on(
+      table.bridgeEventId,
+    ),
+    uniqueIndex("sentinel_wake_runs_active_sentinel_uidx")
+      .on(table.sentinelId)
+      .where(
+        sql`${table.state} IN ('bridge_enqueued', 'claimed', 'recovery_required')`,
+      ),
+    index("sentinel_wake_runs_user_state_created_idx").on(
+      table.userId,
+      table.state,
+      table.createdAt,
+    ),
+    index("sentinel_wake_runs_sentinel_created_idx").on(
+      table.sentinelId,
+      table.createdAt.desc(),
+    ),
+    check(
+      "sentinel_wake_runs_control_revision_nonnegative",
+      sql`${table.controlRevision} >= 0`,
+    ),
+    check(
+      "sentinel_wake_runs_cause_allowed",
+      sql`${table.cause} IN ('scheduled', 'wake_now', 'recovery')`,
+    ),
+    check(
+      "sentinel_wake_runs_state_allowed",
+      sql`${table.state} IN ('bridge_enqueued', 'claimed', 'finalized', 'superseded', 'recovery_required')`,
+    ),
+    check(
+      "sentinel_wake_runs_decision_allowed",
+      sql`${table.decision} IS NULL OR ${table.decision} IN ('contact', 'quiet')`,
     ),
   ],
 );
