@@ -29,7 +29,7 @@ function invoke(deps: BridgeListenerToolDependencies, operation: (userId: string
 
 export function registerBridgeListenerTools(server: McpServer, deps: BridgeListenerToolDependencies): void {
   registerAppTool(server, "bridge_listener_open", { title: "Open LeileiOS Message Bridge", description: "Open the LeileiOS message bridge listener.", _meta: { ui: { resourceUri: BRIDGE_RESOURCE_URI, visibility: ["model"] } }, outputSchema }, async () => ok({ status: "idle", resource_uri: BRIDGE_RESOURCE_URI }));
-  const appMeta = { ui: { resourceUri: BRIDGE_RESOURCE_URI, visibility: ["app"] as ["app"] } };
+  const appMeta = { ui: { visibility: ["app"] as ["app"] } };
   registerAppTool(server, "bridge_listener_start", { description: "Start the message bridge listener.", _meta: appMeta, outputSchema }, invoke(deps, async (userId) => ({ state: await deps.bridgeService.startListener(userId, deps.listenerInstanceId) })));
   registerAppTool(server, "bridge_listener_stop", { description: "Stop the message bridge listener.", _meta: appMeta, outputSchema }, invoke(deps, async (userId) => ({ stopped: await deps.bridgeService.stopListener(userId, deps.listenerInstanceId) })));
   registerAppTool(server, "bridge_listener_sync", { description: "Synchronize one queued bridge event.", _meta: appMeta, outputSchema }, async () => {
