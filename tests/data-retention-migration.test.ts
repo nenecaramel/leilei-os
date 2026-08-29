@@ -110,6 +110,8 @@ test("0027 retention migration adds only the two age-order indexes", async () =>
   assert.equal(tiresomeCorsairEntry?.tag, "0029_tiresome_corsair");
   const autonomousSentinelEntry = journal.entries.find((entry) => entry.idx === 30);
   assert.equal(autonomousSentinelEntry?.tag, "0030_autonomous_sentinel");
-  assert.equal(journal.entries.at(-1)?.idx, 30);
-  assert.equal(journal.entries.at(-1)?.tag, "0030_autonomous_sentinel");
+  const sentinelHardeningEntry = journal.entries.find((entry) => entry.idx === 31);
+  assert.equal(sentinelHardeningEntry?.tag, "0031_sentinel_hardening");
+  assert.equal(journal.entries.at(-1)?.idx, 31);
+  assert.equal(journal.entries.at(-1)?.tag, "0031_sentinel_hardening");
 });

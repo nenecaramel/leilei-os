@@ -84,6 +84,12 @@ test("process runtime owns retention scheduling and drains it before the databas
       databaseFactoryCalls += 1;
       return resource;
     },
+    createSentinelScheduler: () => ({
+      start: () => undefined,
+      stopScheduling: () => undefined,
+      drain: async () => undefined,
+      runOnce: async () => 0,
+    }),
   });
 
   runtime.startBackgroundWork();
