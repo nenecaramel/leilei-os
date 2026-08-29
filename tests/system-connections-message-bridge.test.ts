@@ -210,6 +210,37 @@ test("mounted bridge polling continues after transport terminality until process
   env.restore();
 });
 
+test("mounted bridge polling continues when processing completes before transport terminality", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const { SystemConnectionsPageContent } = await import("../web/src/pages/SystemConnectionsPageContent.js");
+  let reads = 0;
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      if (path === "/system/connections") return connectionResponse() as T;
+      if (path === "/bridge/events") {
+        return { success: true, data: { id: "bridge-race", status: "reserved", createdAt: "2026-08-28T00:00:00.000Z", processingStatus: "completed", modelClaimedAt: "2026-08-28T00:01:00.000Z", modelCompletedAt: "2026-08-28T00:02:00.000Z", deliveryReconciledAt: null } } as T;
+      }
+      reads += 1;
+      return { success: true, data: { id: "bridge-race", status: "host_sent", createdAt: "2026-08-28T00:00:00.000Z", processingStatus: "completed", modelClaimedAt: "2026-08-28T00:01:00.000Z", modelCompletedAt: "2026-08-28T00:02:00.000Z", deliveryReconciledAt: null } } as T;
+    },
+  };
+
+  await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
+  await waitFor(() => container.querySelector("textarea") !== null, "bridge form");
+  const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
+  await React.act(async () => { textarea.focus(); setTextValue(textarea, "hello"); });
+  const send = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Send")!;
+  await waitFor(() => !send.disabled, "enabled send action");
+  await React.act(async () => send.click());
+  await waitFor(() => reads > 0 && container.textContent?.includes("Sent to ChatGPT") === true, "transport completion after model completion");
+
+  root.unmount();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  env.restore();
+});
+
 test("mounted bridge status keeps delivery uncertainty visible when later model evidence reconciles it", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;

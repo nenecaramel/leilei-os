@@ -85,3 +85,50 @@ test("bridge processing observability records safe outcomes, races, reconciliati
   assert.equal(logs[0]?.fields?.claimLatencyMs, 2_500);
   assert.doesNotMatch(JSON.stringify(logs), /visibleText|modelContext|private|secret/);
 });
+
+test("bridge reconciliation direction follows model and transport timestamps on duplicate calls", async () => {
+  const observed: unknown[] = [];
+  const unknownAt = new Date("2026-08-28T00:00:05.000Z");
+  const priorModelAt = new Date("2026-08-28T00:00:02.000Z");
+  const laterModelAt = new Date("2026-08-28T00:00:08.000Z");
+  const priorEvent = {
+    ...({
+      id: "33333333-3333-4333-8333-333333333333",
+      createdAt: new Date("2026-08-28T00:00:00.000Z"),
+      modelClaimedAt: priorModelAt,
+      modelCompletedAt: new Date("2026-08-28T00:00:09.000Z"),
+      deliveryUnknownAt: unknownAt,
+      deliveryReconciledAt: new Date("2026-08-28T00:00:10.000Z"),
+      processingState: "completed" as const,
+      status: "delivery_unknown" as const,
+      dispatchStartedAt: null,
+      hostSentAt: null,
+    } as BridgeEventRecord),
+  };
+  const laterEvent = { ...priorEvent, modelClaimedAt: laterModelAt };
+  const claimResults: BridgeProcessingMutationResult[] = [
+    { outcome: "idempotent", event: laterEvent },
+    { outcome: "idempotent", event: priorEvent },
+  ];
+  const completeResults: BridgeProcessingMutationResult[] = [
+    { outcome: "idempotent", event: laterEvent },
+    { outcome: "idempotent", event: priorEvent },
+  ];
+  const repository = {
+    claimProcessing: async () => claimResults.shift()!,
+    completeProcessing: async () => completeResults.shift()!,
+  } as unknown as BridgeEventRepository;
+  const service = new BridgeService(repository, { observe: (event) => observed.push(event) });
+
+  await service.claimEvent("user-1", priorEvent.id);
+  await service.claimEvent("user-1", priorEvent.id);
+  await service.completeEvent("user-1", priorEvent.id);
+  await service.completeEvent("user-1", priorEvent.id);
+
+  const claims = observed.filter((event) => (event as { name?: string }).name === "bridge_event_processing_claimed") as Array<Record<string, unknown>>;
+  const completions = observed.filter((event) => (event as { name?: string }).name === "bridge_event_processing_completed") as Array<Record<string, unknown>>;
+  assert.equal(claims[0]?.reconciliation, "later_model_evidence");
+  assert.equal(claims[1]?.reconciliation, "prior_model_evidence");
+  assert.equal(completions[0]?.reconciliation, "later_model_evidence");
+  assert.equal(completions[1]?.reconciliation, "prior_model_evidence");
+});
