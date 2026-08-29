@@ -139,6 +139,24 @@ test("Sentinel controls delegate owner-scoped mutations and bounded wake activit
   assert.equal(calls.find((call) => call[0] === "resume")?.[2] instanceof Date, true);
 });
 
+test("Sentinel control bodies are strict and reject explicit null or identity selectors", async () => {
+  let calls = 0;
+  await withServer({
+    async pause() { calls += 1; return { outcome: "applied", sentinel }; },
+  }, async (baseUrl) => {
+    const headers = { "content-type": "application/json", "x-test-user": "yes" };
+    const explicitNull = await fetch(`${baseUrl}/api/v1/sentinel/pause`, {
+      method: "POST", headers, body: "null",
+    });
+    assert.equal(explicitNull.status, 400);
+    const identity = await fetch(`${baseUrl}/api/v1/sentinel/pause`, {
+      method: "POST", headers, body: JSON.stringify({ userId: "attacker" }),
+    });
+    assert.equal(identity.status, 400);
+  });
+  assert.equal(calls, 0);
+});
+
 test("Sentinel cross-user lookups are owner-safe not-found", async () => {
   await withServer({
     async findSentinel() { return null; },

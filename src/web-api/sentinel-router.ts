@@ -108,7 +108,7 @@ function controlHandler(
   method: ControlMethod,
 ): RequestHandler {
   return authenticated(async (request, response) => {
-    const parsed = emptyBody.safeParse(request.body ?? {});
+    const parsed = emptyBody.safeParse(request.body === undefined ? {} : request.body);
     if (!parsed.success) {
       sendError(response, 400, "INVALID_SENTINEL", "Sentinel request is invalid.");
       return;
