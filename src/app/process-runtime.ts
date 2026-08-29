@@ -127,6 +127,7 @@ export function createProcessRuntime(
     todoService,
     universeService,
     bridgeService,
+    bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,
     logger,
   });
 
