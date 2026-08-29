@@ -23,14 +23,14 @@ export function createBridgeListenerHtml(): string {
   <button type="button" data-bridge-stop disabled>Stop</button>
 </main><script>
 (() => {
-  const POLL_MS = 10000, RENEW_MS = 30000, TIMEOUT_MS = 18000;
-  const pending = new Map(); let nextId = 1, running = false, starting = false, syncing = false, eventInFlight = null, pollTimer = null, renewTimer = null;
+  const POLL_MS = 10000, RENEW_MS = 30000, TIMEOUT_MS = 18000, PROTOCOL_VERSION = '2026-01-26';
+  const pending = new Map(); let nextId = 1, initialized = false, initializePromise = null, running = false, starting = false, syncing = false, eventInFlight = null, pollTimer = null, renewTimer = null;
   const startButton = document.querySelector('[data-bridge-start]');
   const stopButton = document.querySelector('[data-bridge-stop]');
   const statusNode = document.querySelector('[data-bridge-status]');
   const occupiedNode = document.querySelector('[data-bridge-occupied]');
   const setUiState = (state) => {
-    const labels = { idle: 'Idle', starting: 'Starting', running: 'Running', occupied: 'Occupied' };
+    const labels = { idle: 'Idle', starting: 'Starting', running: 'Running', occupied: 'Occupied', unavailable: 'Host init failed' };
     if (statusNode) statusNode.textContent = labels[state] || labels.idle;
     if (occupiedNode) occupiedNode.hidden = state !== 'occupied';
     if (startButton) startButton.disabled = state === 'starting' || state === 'running';
@@ -41,12 +41,38 @@ export function createBridgeListenerHtml(): string {
     window.parent.postMessage({jsonrpc:'2.0', id, method, params}, '*');
     setTimeout(() => { if (pending.delete(id)) reject(Object.assign(new Error('timeout'), {ambiguous: method === 'ui/message'})); }, timeout);
   });
+  const notify = (method, params) => {
+    const message = {jsonrpc:'2.0', method};
+    if (params !== undefined) message.params = params;
+    window.parent.postMessage(message, '*');
+  };
   window.addEventListener('message', event => {
     if (event.source !== window.parent) return;
     const msg = event.data;
     if (!msg || msg.jsonrpc !== '2.0' || !pending.has(msg.id)) return;
     const p = pending.get(msg.id); pending.delete(msg.id); msg.error ? p.reject(msg.error) : p.resolve(msg.result);
   });
+  const initializeHost = async () => {
+    if (initialized) return;
+    if (initializePromise) return initializePromise;
+    initializePromise = (async () => {
+      try {
+        const result = await call('ui/initialize', {
+          appInfo: {name:'LeileiOS Message Bridge', version:'1.0.0'},
+          appCapabilities: {},
+          protocolVersion: PROTOCOL_VERSION,
+        });
+        if (!result || typeof result.protocolVersion !== 'string') throw new Error('Invalid ui/initialize result');
+        notify('ui/notifications/initialized');
+        initialized = true;
+      } catch (error) {
+        throw Object.assign(new Error('MCP Apps initialization failed'), {code:'HOST_INIT_FAILED', cause:error});
+      } finally {
+        initializePromise = null;
+      }
+    })();
+    return initializePromise;
+  };
   const appCall = async (name, args) => {
     const result = await call('tools/call', {name, arguments: args || {}});
     const structured = result && result.structuredContent;
@@ -91,12 +117,13 @@ export function createBridgeListenerHtml(): string {
     if (running || starting) return;
     starting = true; setUiState('starting');
     try {
+      await initializeHost();
       await appCall('bridge_listener_start');
       running = true; starting = false; setUiState('running');
       renewTimer = setInterval(() => { void appCall('bridge_listener_start').catch(() => undefined); }, RENEW_MS); if (renewTimer.unref) renewTimer.unref();
       await sync();
     } catch (error) {
-      running = false; starting = false; setUiState(error && error.code === 'LISTENER_BUSY' ? 'occupied' : 'idle');
+      running = false; starting = false; setUiState(error && error.code === 'LISTENER_BUSY' ? 'occupied' : error && error.code === 'HOST_INIT_FAILED' ? 'unavailable' : 'idle');
       throw error;
     }
   };
@@ -111,7 +138,7 @@ export function createBridgeListenerHtml(): string {
   if (stopButton) stopButton.addEventListener('click', () => { void stop(); });
   window.addEventListener('focus', () => { if (running) { void appCall('bridge_listener_start').then(sync).catch(() => undefined); } });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && running) { void appCall('bridge_listener_start').then(sync).catch(() => undefined); } });
-  window.bridgeListener = {call, start, stop, sync};
+  window.bridgeListener = {call, initializeHost, start, stop, sync};
 })();</script>`;
 }
 
