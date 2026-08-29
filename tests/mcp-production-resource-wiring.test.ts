@@ -44,7 +44,7 @@ test("direct MCP server keeps the 39-tool core surface", async () => {
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 49 public tools with Bridge and each Notion write once", async () => {
+test("production MCP session factory assembles 51 public tools with Bridge processing and each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -61,9 +61,11 @@ test("production MCP session factory assembles 49 public tools with Bridge and e
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 49);
+  assert.equal(names.length, 51);
   assert.equal(names.filter((name) => name === "write_notion_page").length, 1);
   assert.equal(names.filter((name) => name === "write_notion_comment").length, 1);
+  assert.equal(names.filter((name) => name === "bridge_event_claim").length, 1);
+  assert.equal(names.filter((name) => name === "bridge_event_complete").length, 1);
 });
 
 test("internal MCP session factory remains free of Bridge App tools", async () => {

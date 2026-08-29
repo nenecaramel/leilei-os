@@ -11,6 +11,7 @@ import type { McpSessionNamespace } from "./session-registry.js";
 import type { BridgeService } from "../../domains/bridge/bridge-service.js";
 import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
 import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
+import { registerBridgeProcessingTools } from "../tools/bridge-processing/register.js";
 import {
   createActiveUserAuthorizer,
   createMcpServer,
@@ -113,6 +114,11 @@ export function createProductionMcpSessionServerFactory(input: {
       registerBridgeListenerTools(server, {
         bridgeService: input.bridgeService,
         getAuthenticatedUserId,
+      });
+      registerBridgeProcessingTools(server, {
+        bridgeService: input.bridgeService,
+        getAuthenticatedUserId,
+        requireActiveUser: activeUserAuthorization,
       });
     }
     return server;
