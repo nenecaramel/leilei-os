@@ -169,7 +169,7 @@ function sendSentinelError(response: Response, error: unknown): void {
     return;
   }
   if (error.code === "SENTINEL_WAKE_CONFLICT") {
-    sendError(response, 409, "SENTINEL_CONFLICT", "Sentinel control conflicts with current state.");
+    sendError(response, 409, "SENTINEL_WAKE_CONFLICT", "Sentinel control conflicts with current state.");
     return;
   }
   sendError(response, 503, "SENTINEL_UNAVAILABLE", "Sentinel is temporarily unavailable.");
