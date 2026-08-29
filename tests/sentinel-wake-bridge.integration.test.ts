@@ -94,10 +94,13 @@ test(
           const secondService = new SentinelService(sentinelRepository, { createId: () => secondWakeId });
           const secondWake = await secondService.enqueueWake(secondOwner, { cause: "wake_now", scheduledFor: now, wakeId: secondWakeId });
           assert.equal(secondWake.outcome, "created");
+          assert.equal((await bridgeRepository.acquireListenerLease(secondOwner, secondListener)).state, "acquired");
+          const reservedBeforeCancel = await bridgeRepository.reserveNext(secondOwner, secondListener);
+          assert.equal(reservedBeforeCancel?.id, secondWake.bridge.id);
+          assert.equal(reservedBeforeCancel?.dispatchStartedAt, null);
           const cancelled = await sentinelService.cancelWakeBeforeDispatch(secondOwner, secondWakeId);
           assert.equal(cancelled.outcome, "cancelled");
           assert.equal(cancelled.bridge.cancelledAt instanceof Date, true);
-          assert.equal(await bridgeRepository.acquireListenerLease(secondOwner, secondListener).then((r) => r.state), "acquired");
           assert.equal(await bridgeRepository.reserveNext(secondOwner, secondListener), null);
 
           const thirdOwner = randomUUID();
@@ -121,6 +124,93 @@ test(
       );
     } finally {
       await admin.client.end();
+    }
+  },
+);
+
+test(
+  "concurrent independent claims apply once and synchronize Wake Run timestamps",
+  { skip: RUN ? false : "SKIP: set RUN_BRIDGE_DATABASE_TEST=1 with a local DATABASE_URL" },
+  async () => {
+    const admin = connection();
+    const clientA = connection();
+    const clientB = connection();
+    const owner = randomUUID();
+    const listener = randomUUID();
+    const wakeId = randomUUID();
+    const now = new Date("2026-08-29T02:00:00.000Z");
+    try {
+      const sentinelRepository = new DrizzleSentinelRepository(admin.db as never);
+      const repositoryA = new DrizzleBridgeEventRepository(clientA.db as never);
+      const repositoryB = new DrizzleBridgeEventRepository(clientB.db as never);
+      await admin.db.insert(schema.users).values({
+        id: owner,
+        email: `wake-concurrency-${owner}@example.invalid`,
+        displayName: "Wake concurrency",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const sentinel = await sentinelRepository.createSentinel({
+        userId: owner,
+        timezone: "UTC",
+        policyPrompt: "",
+      });
+      await admin.db
+        .update(schema.sentinels)
+        .set({ enabled: true, nextWakeAt: new Date(now.getTime() - 1_000) })
+        .where(eq(schema.sentinels.id, sentinel.id));
+
+      const service = new SentinelService(sentinelRepository);
+      const enqueued = await service.enqueueWake(owner, {
+        cause: "scheduled",
+        scheduledFor: new Date(now.getTime() - 1_000),
+        wakeId,
+      });
+      assert.equal(enqueued.outcome, "created");
+      assert.equal((await repositoryA.acquireListenerLease(owner, listener)).state, "acquired");
+      assert.equal((await repositoryA.reserveNext(owner, listener))?.id, enqueued.bridge.id);
+      await repositoryA.markDispatchStarted(owner, listener, enqueued.bridge.id);
+
+      const results = await Promise.all([
+        repositoryA.claimProcessing(owner, enqueued.bridge.id),
+        repositoryB.claimProcessing(owner, enqueued.bridge.id),
+      ]);
+      assert.deepEqual(
+        results.map((result) => result.outcome).sort(),
+        ["applied", "idempotent"],
+      );
+      const applied = results.find((result) => result.outcome === "applied");
+      const claimedAt = applied?.event.modelClaimedAt;
+      assert.equal(claimedAt instanceof Date, true);
+      assert.equal(results.every((result) => result.event.modelClaimedAt?.getTime() === claimedAt?.getTime()), true);
+
+      const bridge = await repositoryB.getEvent(owner, enqueued.bridge.id);
+      const [wake] = await admin.db
+        .select()
+        .from(schema.sentinelWakeRuns)
+        .where(eq(schema.sentinelWakeRuns.id, wakeId));
+      assert.equal(bridge?.processingState, "claimed");
+      assert.equal(bridge?.modelClaimedAt instanceof Date, true);
+      assert.equal(wake?.state, "claimed");
+      assert.equal(wake?.claimedAt instanceof Date, true);
+      assert.equal(wake?.claimedAt?.getTime(), bridge?.modelClaimedAt?.getTime());
+
+      const duplicate = await repositoryA.claimProcessing(owner, enqueued.bridge.id);
+      assert.equal(duplicate.outcome, "idempotent");
+      assert.equal(duplicate.event.modelClaimedAt?.getTime(), claimedAt?.getTime());
+      const [wakeAfterDuplicate] = await admin.db
+        .select()
+        .from(schema.sentinelWakeRuns)
+        .where(eq(schema.sentinelWakeRuns.id, wakeId));
+      assert.equal(wakeAfterDuplicate?.claimedAt?.getTime(), wake?.claimedAt?.getTime());
+    } finally {
+      await admin.db.delete(schema.bridgeListenerLeases).where(eq(schema.bridgeListenerLeases.userId, owner));
+      await admin.db.delete(schema.sentinelWakeRuns).where(eq(schema.sentinelWakeRuns.id, wakeId));
+      await admin.db.delete(schema.bridgeEvents).where(eq(schema.bridgeEvents.userId, owner));
+      await admin.db.delete(schema.sentinels).where(eq(schema.sentinels.userId, owner));
+      await admin.db.delete(schema.users).where(eq(schema.users.id, owner));
+      await Promise.all([admin.client.end(), clientA.client.end(), clientB.client.end()]);
     }
   },
 );
