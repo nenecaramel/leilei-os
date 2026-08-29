@@ -218,6 +218,13 @@
       "when": 1788015963360,
       "tag": "0030_autonomous_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788022715760,
+      "tag": "0031_sentinel_hardening",
+      "breakpoints": true
     }
   ]
 }

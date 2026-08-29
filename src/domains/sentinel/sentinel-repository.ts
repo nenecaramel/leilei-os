@@ -23,6 +23,16 @@ import type {
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
+export async function readSentinelDatabaseNow(transaction: Transaction): Promise<Date> {
+  const rows = await transaction.execute<{ now: Date }>(sql`SELECT CURRENT_TIMESTAMP AS now`);
+  const value = rows[0]?.now;
+  const date = value instanceof Date ? value : new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error("Database clock returned an invalid timestamp.");
+  }
+  return date;
+}
+
 const sentinelSelection = {
   id: sentinels.id,
   userId: sentinels.userId,
@@ -51,6 +61,7 @@ const wakeRunSelection = {
   state: sentinelWakeRuns.state,
   decision: sentinelWakeRuns.decision,
   nextWakeAt: sentinelWakeRuns.nextWakeAt,
+  completionPayloadHash: sentinelWakeRuns.completionPayloadHash,
   claimedAt: sentinelWakeRuns.claimedAt,
   finalizedAt: sentinelWakeRuns.finalizedAt,
   failureCode: sentinelWakeRuns.failureCode,
@@ -123,8 +134,8 @@ export interface SentinelRepository {
     userId: string,
     wakeId: string,
   ): Promise<SentinelWakeCancellationResult>;
-  createDueWake?(now: Date, wakeId: string): Promise<SentinelWakeEnqueueResult>;
-  markStaleWakeRuns?(now: Date, timeoutMs: number): Promise<number>;
+  createDueWake?(now: Date | undefined, wakeId: string): Promise<SentinelWakeEnqueueResult>;
+  markStaleWakeRuns?(now: Date | undefined, timeoutMs: number): Promise<number>;
 }
 
 export class DrizzleSentinelRepository implements SentinelRepository {
@@ -328,10 +339,14 @@ export class DrizzleSentinelRepository implements SentinelRepository {
   }
 
   async createDueWake(
-    now: Date,
+    now: Date | undefined,
     wakeId: string,
   ): Promise<SentinelWakeEnqueueResult> {
     return this.db.transaction(async (transaction) => {
+      await readSentinelDatabaseNow(transaction);
+      const dueNow = now
+        ? sql`${now.toISOString()}::timestamptz`
+        : sql`CURRENT_TIMESTAMP`;
       // Lock only one eligible row. The conditional predicate is repeated in
       // this transaction so concurrent schedulers cannot enqueue a successor.
       const dueIds = await transaction.execute<{ id: string }>(sql`
@@ -339,7 +354,7 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         FROM ${sentinels}
         WHERE ${sentinels.enabled} = true
           AND ${sentinels.nextWakeAt} IS NOT NULL
-          AND ${sentinels.nextWakeAt} <= ${now.toISOString()}::timestamptz
+          AND ${sentinels.nextWakeAt} <= ${dueNow}
           AND ${sentinels.activeWakeRunId} IS NULL
         ORDER BY ${sentinels.nextWakeAt}, ${sentinels.id}
         FOR UPDATE SKIP LOCKED
@@ -370,25 +385,31 @@ export class DrizzleSentinelRepository implements SentinelRepository {
     });
   }
 
-  async markStaleWakeRuns(now: Date, timeoutMs: number): Promise<number> {
-    const cutoff = new Date(now.getTime() - timeoutMs);
-    if (!Number.isFinite(cutoff.getTime())) return 0;
-    const rows = await this.db
-      .update(sentinelWakeRuns)
-      .set({
-        state: "recovery_required",
-        failureCode: "WAKE_FINALIZATION_TIMEOUT",
-        updatedAt: sql`now()`,
-      })
-      .where(
-        and(
-          eq(sentinelWakeRuns.state, "claimed"),
-          sql`${sentinelWakeRuns.claimedAt} IS NOT NULL`,
-          sql`${sentinelWakeRuns.claimedAt} <= ${cutoff.toISOString()}::timestamptz`,
-        ),
-      )
-      .returning({ id: sentinelWakeRuns.id });
-    return rows.length;
+  async markStaleWakeRuns(now: Date | undefined, timeoutMs: number): Promise<number> {
+    const cutoff = now ? new Date(now.getTime() - timeoutMs) : null;
+    if (cutoff && !Number.isFinite(cutoff.getTime())) return 0;
+    return this.db.transaction(async (transaction) => {
+      await readSentinelDatabaseNow(transaction);
+      const staleBefore = cutoff
+        ? sql`${cutoff.toISOString()}::timestamptz`
+        : sql`CURRENT_TIMESTAMP - ${timeoutMs} * interval '1 millisecond'`;
+      const rows = await transaction
+        .update(sentinelWakeRuns)
+        .set({
+          state: "recovery_required",
+          failureCode: "WAKE_FINALIZATION_TIMEOUT",
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(sentinelWakeRuns.state, "claimed"),
+            sql`${sentinelWakeRuns.claimedAt} IS NOT NULL`,
+            sql`${sentinelWakeRuns.claimedAt} <= ${staleBefore}`,
+          ),
+        )
+        .returning({ id: sentinelWakeRuns.id });
+      return rows.length;
+    });
   }
 
   async cancelWakeBeforeDispatch(

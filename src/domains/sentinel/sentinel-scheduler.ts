@@ -7,8 +7,8 @@ export const SENTINEL_SCHEDULER_INTERVAL_MS = 30_000;
 export const SENTINEL_WAKE_RECOVERY_TIMEOUT_MS = 15 * 60 * 1_000;
 
 export interface SentinelSchedulerRepository {
-  createDueWake(now: Date, wakeId: string): Promise<SentinelWakeEnqueueResult>;
-  markStaleWakeRuns(now: Date, timeoutMs: number): Promise<number>;
+  createDueWake(now: Date | undefined, wakeId: string): Promise<SentinelWakeEnqueueResult>;
+  markStaleWakeRuns(now: Date | undefined, timeoutMs: number): Promise<number>;
 }
 
 export interface SentinelScheduler {
@@ -25,7 +25,6 @@ type TimerHandle = {
 type SchedulerOptions = {
   repository: SentinelSchedulerRepository;
   intervalMs?: number;
-  now?: () => Date;
   createWakeId?: () => string;
   schedule?: (callback: () => void, milliseconds: number) => TimerHandle;
   clearSchedule?: (handle: TimerHandle) => void;
@@ -35,7 +34,6 @@ export function createSentinelScheduler(
   options: SchedulerOptions,
 ): SentinelScheduler {
   const intervalMs = options.intervalMs ?? SENTINEL_SCHEDULER_INTERVAL_MS;
-  const now = options.now ?? (() => new Date());
   const createWakeId = options.createWakeId ?? randomUUID;
   const schedule = options.schedule ?? ((callback, milliseconds) =>
     setInterval(callback, milliseconds));
@@ -46,7 +44,7 @@ export function createSentinelScheduler(
   let inFlight: Promise<number> | null = null;
   let stopping = false;
 
-  const runOnce = (at = now()): Promise<number> => {
+  const runOnce = (at?: Date): Promise<number> => {
     if (stopping) return Promise.resolve(0);
     if (inFlight) return inFlight;
     const run = (async () => {

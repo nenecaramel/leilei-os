@@ -744,6 +744,11 @@ export const sentinels = pgTable(
   },
   (table) => [
     uniqueIndex("sentinels_user_id_uidx").on(table.userId),
+    index("sentinels_due_enabled_idle_idx")
+      .on(table.nextWakeAt)
+      .where(
+        sql`${table.enabled} = true AND ${table.activeWakeRunId} IS NULL AND ${table.nextWakeAt} IS NOT NULL`,
+      ),
     check(
       "sentinels_timezone_not_blank",
       sql`char_length(btrim(${table.timezone})) > 0`,
@@ -759,6 +764,10 @@ export const sentinels = pgTable(
     check(
       "sentinels_control_revision_nonnegative",
       sql`${table.controlRevision} >= 0`,
+    ),
+    check(
+      "sentinels_active_wake_requires_null_next_wake",
+      sql`${table.activeWakeRunId} IS NULL OR ${table.nextWakeAt} IS NULL`,
     ),
   ],
 );
@@ -799,6 +808,7 @@ export const sentinelWakeRuns = pgTable(
       .notNull(),
     decision: varchar("decision", { length: 16 }).$type<SentinelWakeDecision>(),
     nextWakeAt: timestamp("next_wake_at", { withTimezone: true }),
+    completionPayloadHash: varchar("completion_payload_hash", { length: 64 }),
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
     finalizedAt: timestamp("finalized_at", { withTimezone: true }),
     failureCode: varchar("failure_code", { length: 64 }),
@@ -842,6 +852,18 @@ export const sentinelWakeRuns = pgTable(
     check(
       "sentinel_wake_runs_decision_allowed",
       sql`${table.decision} IS NULL OR ${table.decision} IN ('contact', 'quiet')`,
+    ),
+    check(
+      "sentinel_wake_runs_completion_payload_hash_format",
+      sql`${table.completionPayloadHash} IS NULL OR ${table.completionPayloadHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "sentinel_wake_runs_finalized_fields_required",
+      sql`(${table.state} <> 'finalized') OR (${table.decision} IS NOT NULL AND ${table.nextWakeAt} IS NOT NULL AND ${table.finalizedAt} IS NOT NULL AND ${table.completionPayloadHash} IS NOT NULL)`,
+    ),
+    check(
+      "sentinel_wake_runs_non_finalized_fields_null",
+      sql`(${table.state} = 'finalized') OR (${table.decision} IS NULL AND ${table.nextWakeAt} IS NULL AND ${table.finalizedAt} IS NULL AND ${table.completionPayloadHash} IS NULL)`,
     ),
   ],
 );

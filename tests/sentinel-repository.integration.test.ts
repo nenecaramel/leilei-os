@@ -144,3 +144,98 @@ test(
     }
   },
 );
+
+test(
+  "real PostgreSQL enforces Sentinel completion and scheduling consistency checks",
+  { skip: skipReason },
+  async () => {
+    const client = postgres(databaseUrl!, { max: 2, prepare: false, ssl: false });
+    const db = drizzle(client, { schema });
+    const ownerId = randomUUID();
+    const timestamp = new Date("2026-08-29T00:00:00.000Z");
+    try {
+      await assert.rejects(
+        db.transaction(async (transaction) => {
+          await transaction.insert(schema.users).values({
+            id: ownerId,
+            email: `sentinel-hardening-${ownerId}@example.invalid`,
+            displayName: "Sentinel hardening",
+            status: "active",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          });
+          const [sentinel] = await transaction
+            .insert(schema.sentinels)
+            .values({ userId: ownerId, timezone: "Asia/Shanghai", policyPrompt: "" })
+            .returning();
+          const [bridge] = await transaction
+            .insert(schema.bridgeEvents)
+            .values({
+              id: randomUUID(),
+              userId: ownerId,
+              idempotencyKey: `sentinel-hardening-${ownerId}`,
+              requestHash: "a".repeat(64),
+              kind: "wake",
+              source: "leileios_sentinel",
+              visibleText: "[LeileiOS Sentinel wake]",
+              modelContext: "bounded",
+              status: "pending",
+              createdAt: timestamp,
+            })
+            .returning();
+          assert.ok(sentinel && bridge);
+
+          const expectConstraintReject = (operation: (nested: typeof transaction) => Promise<unknown>) =>
+            assert.rejects(transaction.transaction(operation));
+
+          await expectConstraintReject(
+            (nested) => nested
+              .update(schema.sentinels)
+              .set({ activeWakeRunId: randomUUID(), nextWakeAt: timestamp })
+              .where(eq(schema.sentinels.id, sentinel.id)),
+          );
+          await expectConstraintReject(
+            (nested) => nested.insert(schema.sentinelWakeRuns).values({
+              sentinelId: sentinel.id,
+              userId: ownerId,
+              controlRevision: 0,
+              cause: "scheduled",
+              scheduledFor: timestamp,
+              bridgeEventId: bridge.id,
+              state: "finalized",
+            }),
+          );
+          await expectConstraintReject(
+            (nested) => nested.insert(schema.sentinelWakeRuns).values({
+              sentinelId: sentinel.id,
+              userId: ownerId,
+              controlRevision: 0,
+              cause: "scheduled",
+              scheduledFor: timestamp,
+              bridgeEventId: bridge.id,
+              state: "bridge_enqueued",
+              decision: "quiet",
+            }),
+          );
+          await expectConstraintReject(
+            (nested) => nested.insert(schema.sentinelWakeRuns).values({
+              sentinelId: sentinel.id,
+              userId: ownerId,
+              controlRevision: 0,
+              cause: "scheduled",
+              scheduledFor: timestamp,
+              bridgeEventId: bridge.id,
+              state: "bridge_enqueued",
+              completionPayloadHash: "not-a-sha",
+            }),
+          );
+
+          throw new RollbackSentinelTest();
+        }),
+        (error: unknown) => error instanceof RollbackSentinelTest,
+      );
+    } finally {
+      await client.end();
+    }
+  },
+);

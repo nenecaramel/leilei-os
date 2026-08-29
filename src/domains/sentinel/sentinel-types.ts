@@ -37,6 +37,7 @@ export type SentinelWakeRunRecord = {
   state: SentinelWakeRunState;
   decision: SentinelWakeDecision | null;
   nextWakeAt: Date | null;
+  completionPayloadHash: string | null;
   claimedAt: Date | null;
   finalizedAt: Date | null;
   failureCode: string | null;

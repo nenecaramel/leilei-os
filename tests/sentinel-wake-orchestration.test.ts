@@ -65,6 +65,7 @@ function wake(id = "wake-1"): SentinelWakeRunRecord {
     state: "bridge_enqueued",
     decision: null,
     nextWakeAt: null,
+    completionPayloadHash: null,
     claimedAt: null,
     finalizedAt: null,
     failureCode: null,

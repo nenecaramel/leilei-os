@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/database/schema.js";
@@ -124,6 +124,59 @@ test(
       await admin.db.delete(schema.sentinels).where(eq(schema.sentinels.userId, owner));
       await admin.db.delete(schema.users).where(eq(schema.users.id, owner));
       await Promise.all([admin.client.end(), workerA.client.end(), workerB.client.end()]);
+    }
+  },
+);
+
+test(
+  "production scheduler uses PostgreSQL transaction time for due and recovery decisions",
+  { skip: RUN ? false : "SKIP: set RUN_SENTINEL_DATABASE_TEST=1 with a local DATABASE_URL" },
+  async () => {
+    const admin = connection();
+    const owner = randomUUID();
+    const wakeId = randomUUID();
+    let sentinelId = "";
+    try {
+      await admin.db.insert(schema.users).values({
+        id: owner,
+        email: `sentinel-db-clock-${owner}@example.invalid`,
+        displayName: "Scheduler DB clock",
+        status: "active",
+      });
+      const repository = new DrizzleSentinelRepository(admin.db as never);
+      const sentinel = await repository.createSentinel({
+        userId: owner,
+        timezone: "Asia/Shanghai",
+        policyPrompt: "",
+      });
+      sentinelId = sentinel.id;
+      await admin.db
+        .update(schema.sentinels)
+        .set({ enabled: true, nextWakeAt: sql`CURRENT_TIMESTAMP - interval '1 second'` })
+        .where(eq(schema.sentinels.id, sentinel.id));
+      const scheduler = createSentinelScheduler({ repository, createWakeId: () => wakeId });
+      assert.equal(await scheduler.runOnce(), 1);
+      const [wake] = await admin.db
+        .select()
+        .from(schema.sentinelWakeRuns)
+        .where(eq(schema.sentinelWakeRuns.id, wakeId));
+      assert.ok(wake);
+      await admin.db
+        .update(schema.sentinelWakeRuns)
+        .set({ state: "claimed", claimedAt: sql`CURRENT_TIMESTAMP - interval '16 minutes'` })
+        .where(eq(schema.sentinelWakeRuns.id, wakeId));
+      assert.equal(await scheduler.runOnce(), 0);
+      const [recovered] = await admin.db
+        .select()
+        .from(schema.sentinelWakeRuns)
+        .where(eq(schema.sentinelWakeRuns.id, wakeId));
+      assert.equal(recovered?.state, "recovery_required");
+    } finally {
+      if (sentinelId) await admin.db.delete(schema.sentinelWakeRuns).where(eq(schema.sentinelWakeRuns.sentinelId, sentinelId));
+      await admin.db.delete(schema.bridgeEvents).where(eq(schema.bridgeEvents.userId, owner));
+      await admin.db.delete(schema.sentinels).where(eq(schema.sentinels.userId, owner));
+      await admin.db.delete(schema.users).where(eq(schema.users.id, owner));
+      await admin.client.end();
     }
   },
 );

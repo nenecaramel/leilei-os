@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   bridgeEvents,
@@ -301,19 +301,75 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
     listenerInstanceId: string,
     eventId: string,
   ): Promise<BridgeEventRecord | null> {
-    const updated = await this.db
-      .update(bridgeEvents)
-      .set({ dispatchStartedAt: sql`COALESCE(${bridgeEvents.dispatchStartedAt}, now())` })
-      .where(
-        and(
-          eq(bridgeEvents.userId, userId),
-          eq(bridgeEvents.id, eventId),
-          eq(bridgeEvents.reservedBy, listenerInstanceId),
-          eq(bridgeEvents.status, "reserved"),
-        ),
-      )
-      .returning(bridgeEventSelection);
-    return updated[0] ? asBridgeEvent(updated[0]) : null;
+    return this.db.transaction(async (transaction) => {
+      const [event] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(
+          and(
+            eq(bridgeEvents.userId, userId),
+            eq(bridgeEvents.id, eventId),
+            eq(bridgeEvents.reservedBy, listenerInstanceId),
+            eq(bridgeEvents.status, "reserved"),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!event) return null;
+
+      if (
+        event.kind === "wake" &&
+        event.source === "leileios_sentinel" &&
+        event.dispatchStartedAt === null
+      ) {
+        const [human] = await transaction
+          .select({ id: bridgeEvents.id })
+          .from(bridgeEvents)
+          .where(
+            and(
+              eq(bridgeEvents.userId, userId),
+              eq(bridgeEvents.kind, "chat"),
+              eq(bridgeEvents.source, "leileios_pwa"),
+              eq(bridgeEvents.status, "pending"),
+              isNull(bridgeEvents.cancelledAt),
+            ),
+          )
+          .orderBy(bridgeEvents.createdAt, bridgeEvents.id)
+          .for("update")
+          .limit(1);
+        if (human) {
+          await transaction
+            .update(bridgeEvents)
+            .set({
+              status: "pending",
+              reservedBy: null,
+              reservedAt: null,
+              reservationExpiresAt: null,
+              lastErrorCode: "SENTINEL_WAKE_YIELDED_TO_HUMAN",
+            })
+            .where(eq(bridgeEvents.id, event.id));
+          return null;
+        }
+      }
+
+      await transaction
+        .update(bridgeEvents)
+        .set({ dispatchStartedAt: sql`COALESCE(${bridgeEvents.dispatchStartedAt}, now())` })
+        .where(
+          and(
+            eq(bridgeEvents.userId, userId),
+            eq(bridgeEvents.id, eventId),
+            eq(bridgeEvents.reservedBy, listenerInstanceId),
+            eq(bridgeEvents.status, "reserved"),
+          ),
+        );
+      const [updated] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(eq(bridgeEvents.id, eventId))
+        .limit(1);
+      return updated ? asBridgeEvent(updated) : null;
+    });
   }
 
   async markHostSent(

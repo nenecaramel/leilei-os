@@ -23,16 +23,19 @@ async function readOptionalFile(url: URL): Promise<string> {
   }
 }
 
-test("autonomous Sentinel migration is the ordered 0030 journal head", async () => {
+test("Sentinel migrations preserve the ordered 0030 predecessor and 0031 head", async () => {
   const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
     entries: Array<{ idx: number; when: number; tag: string }>;
   };
   const entries = journal.entries;
+  const previous = entries.at(-2);
   const head = entries.at(-1);
 
   assert.ok(head, "migration journal must have a head entry");
-  assert.equal(head.idx, 30);
-  assert.equal(head.tag, "0030_autonomous_sentinel");
+  assert.equal(previous?.idx, 30);
+  assert.equal(previous?.tag, "0030_autonomous_sentinel");
+  assert.equal(head.idx, 31);
+  assert.equal(head.tag, "0031_sentinel_hardening");
 
   for (let index = 0; index < entries.length; index += 1) {
     assert.equal(entries[index]?.idx, index, "journal indexes must remain contiguous");
@@ -85,10 +88,11 @@ test("Sentinel hardening migration adds completion hash and consistency guards",
     entries: Array<{ idx: number; tag: string }>;
   };
   const tail = journal.entries.at(-1);
-  assert.deepEqual(tail, { idx: 31, tag: "0031_sentinel_hardening" });
+  assert.equal(tail?.idx, 31);
+  assert.equal(tail?.tag, "0031_sentinel_hardening");
 
   const migration = await readOptionalFile(hardeningMigrationPath);
-  assert.match(migration, /completion_payload_hash varchar\(64\)/i);
+  assert.match(migration, /"completion_payload_hash" varchar\(64\)/i);
   assert.match(migration, /sentinel_wake_runs_completion_payload_hash_format/i);
   assert.match(migration, /sentinels_active_wake_requires_null_next_wake/i);
   assert.match(migration, /sentinel_wake_runs_finalized_fields_required/i);

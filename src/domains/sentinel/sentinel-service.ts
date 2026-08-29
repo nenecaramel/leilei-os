@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   SentinelMutationResult,
   SentinelRecord,
@@ -21,6 +21,23 @@ const MIN_NEXT_WAKE_MS = 5 * 60 * 1_000;
 const MAX_NEXT_WAKE_MS = 7 * 24 * 60 * 60 * 1_000;
 const MAX_POLICY_CODE_POINTS = 4_000;
 const MAX_CAPSULE_CODE_POINTS = 1_024;
+
+export function hashSentinelCompletionPayload(input: {
+  decision: "contact" | "quiet";
+  nextWakeAt: Date;
+  contextCapsule: string | null | undefined;
+}): string {
+  if (!(input.nextWakeAt instanceof Date) || !Number.isFinite(input.nextWakeAt.getTime())) {
+    throw new SentinelDomainError("INVALID_NEXT_WAKE", "Next wake time is invalid.");
+  }
+  const contextCapsule = normalizeWakeContextCapsule(input.contextCapsule);
+  const canonical = JSON.stringify({
+    decision: input.decision,
+    nextWakeAt: input.nextWakeAt.toISOString(),
+    contextCapsule,
+  });
+  return createHash("sha256").update(canonical, "utf8").digest("hex");
+}
 
 export type SentinelDomainErrorCode =
   | "INVALID_USER_ID"
@@ -121,7 +138,16 @@ function validatePolicyInput(input: { timezone: string; policyPrompt: string }):
   policyPrompt: string;
 } {
   const timezone = input.timezone.trim();
-  if (!timezone || [...timezone].length > 64) {
+  let validTimezone = false;
+  if (timezone && [...timezone].length <= 64) {
+    try {
+      validTimezone = new Intl.DateTimeFormat("en-US", { timeZone: timezone })
+        .resolvedOptions().timeZone === timezone;
+    } catch {
+      validTimezone = false;
+    }
+  }
+  if (!validTimezone) {
     throw new SentinelDomainError("INVALID_TIMEZONE", "Timezone is invalid.");
   }
   const policyPrompt = input.policyPrompt.trim();
