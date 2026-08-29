@@ -5,6 +5,7 @@ import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
 import { NavigationGroups } from "../web/src/layout/NavigationGroups.js";
+import { WebApiError } from "../web/src/api/web-api-error.js";
 import { SentinelPageContent } from "../web/src/pages/SentinelPage.js";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
 
@@ -158,6 +159,51 @@ test("Sentinel API failures remain visible and do not fabricate an enabled state
   await waitForCondition(() => container.querySelector('[role="alert"]') !== null, "Sentinel error state");
   assert.match(container.textContent ?? "", /temporarily unavailable/);
   assert.doesNotMatch(container.textContent ?? "", /\bON\b/);
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
+test("an uninitialized Sentinel requires policy setup before wake controls become available", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  let saved = false;
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const api: WebApiClient = {
+    request: async (path, init) => {
+      requests.push({ path, init });
+      if (path === "/sentinel/wakes?limit=20") return { success: true, data: { wakes: [] } } as never;
+      if (path === "/sentinel" && init?.method === "PUT") {
+        saved = true;
+        return { success: true, data: { sentinel: { ...response().data.sentinel, enabled: false } } } as never;
+      }
+      if (path === "/sentinel" && !saved) {
+        throw new WebApiError(404, "SENTINEL_NOT_FOUND", "Sentinel was not found.");
+      }
+      return response({
+        sentinel: { ...response().data.sentinel, enabled: false },
+        status: "paused",
+      }) as never;
+    },
+  };
+
+  root.render(React.createElement(SentinelPageContent, { api }));
+  await waitForCondition(() => container.textContent?.includes("Set up Sentinel") === true, "uninitialized Sentinel setup state");
+  assert.match(container.textContent ?? "", /Save a policy to set up your private wake controls/);
+  assert.equal(container.querySelector<HTMLInputElement>("input")?.disabled, false);
+  assert.equal(container.querySelector<HTMLTextAreaElement>("textarea")?.disabled, false);
+  assert.equal([...container.querySelectorAll("button")].some((button) => /^(Resume|Resume now|Wake now|Pause|Recovery)$/.test(button.textContent ?? "")), false);
+  assert.doesNotMatch(container.textContent ?? "", /\bON\b/);
+
+  const save = [...container.querySelectorAll("button")].find((button) => button.textContent === "Save policy");
+  assert.ok(save);
+  save.click();
+  await waitForCondition(() => container.textContent?.includes("Paused") === true, "persisted paused readback");
+  assert.ok([...container.querySelectorAll("button")].some((button) => button.textContent === "Resume"));
+  assert.ok([...container.querySelectorAll("button")].some((button) => button.textContent === "Resume now"));
+  assert.ok(requests.some(({ path, init }) => path === "/sentinel" && init?.method === "PUT"));
+  assert.ok(requests.filter(({ path }) => path === "/sentinel").length >= 3);
   root.unmount();
   await waitForPaint();
   env.restore();
