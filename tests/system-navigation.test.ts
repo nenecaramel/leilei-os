@@ -61,7 +61,8 @@ test("System navigation exposes exactly the five approved modules", () => {
     EXPECTED_SYSTEM_ENTRIES,
   );
 
-  assert.equal(NAV_ITEMS.length, 12);
+  assert.equal(NAV_ITEMS.length, 13);
+  assert.ok(NAV_ITEMS.some((entry) => entry.to === "/sentinel"));
   assert.doesNotMatch(
     navigationSource,
     /includeSecondarySystemItems|General|Appearance|Data & Backup/,
