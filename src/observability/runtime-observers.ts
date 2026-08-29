@@ -102,13 +102,19 @@ const BRIDGE_OBSERVABLE_FIELDS = new Set([
   "processingState",
   "reconciled",
   "operation",
+  "transportStatus",
+  "awaitingHostCallback",
+  "reconciliation",
+  "claimLatencyMs",
+  "completionLatencyMs",
 ]);
 
 export function projectBridgeEvent(event: BridgeServiceObserverEvent): SafeLogFields {
   const projected: Record<string, string | number | boolean | null> = {};
   for (const [key, value] of Object.entries(event)) {
     if (!BRIDGE_OBSERVABLE_FIELDS.has(key)) continue;
-    if (typeof value === "string" || typeof value === "boolean") projected[key] = value;
+    if (value === null || typeof value === "string" || typeof value === "boolean") projected[key] = value;
+    else if (typeof value === "number" && Number.isFinite(value)) projected[key] = value;
   }
   return projected;
 }

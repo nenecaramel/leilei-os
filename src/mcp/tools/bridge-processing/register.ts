@@ -3,6 +3,7 @@ import { z } from "zod";
 import { BridgeDomainError, type BridgeService } from "../../../domains/bridge/bridge-service.js";
 import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { safeErrorFingerprint, type SafeLogger } from "../../../observability/logger.js";
 
 const inputSchema = z.object({ eventId: z.string().uuid() }).strict();
 const processingDataSchema = z.object({
@@ -24,6 +25,7 @@ export type BridgeProcessingToolDependencies = {
   bridgeService: Pick<BridgeService, "claimEvent" | "completeEvent">;
   getAuthenticatedUserId: () => string;
   requireActiveUser?: () => Promise<string>;
+  logger?: SafeLogger;
 };
 
 function compact(event: Awaited<ReturnType<BridgeService["claimEvent"]>>) {
@@ -38,7 +40,7 @@ function compact(event: Awaited<ReturnType<BridgeService["claimEvent"]>>) {
   };
 }
 
-function safeError(error: unknown, action: "claim" | "complete") {
+function safeError(error: unknown, action: "claim" | "complete", logger?: SafeLogger) {
   if (error instanceof ActiveUserAuthorizationError) {
     return createMcpToolError("AUTHENTICATION_REQUIRED", "Authentication is required for Bridge processing.");
   }
@@ -50,6 +52,8 @@ function safeError(error: unknown, action: "claim" | "complete") {
       return createMcpToolError("PROCESSING_CONFLICT", `Bridge event cannot be ${action}ed in its current state.`);
     }
   }
+  const { name, code } = safeErrorFingerprint(error);
+  logger?.error("bridge_processing_tool_failed", { name, code });
   return createMcpToolError("INTERNAL_ERROR", "Bridge processing is temporarily unavailable.");
 }
 
@@ -81,7 +85,7 @@ export function registerBridgeProcessingTools(
           structuredContent: { success: true as const, data: compact(event) },
         };
       } catch (error) {
-        return safeError(error, action);
+        return safeError(error, action, dependencies.logger);
       }
     });
   };

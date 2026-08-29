@@ -217,8 +217,10 @@ function bridgeStatusLabel(receipt: BridgeEventReceipt): string {
       case "delivery_unknown": return "Delivery uncertain — do not resend";
     }
   })();
-  if (receipt.processingStatus === "completed") return `${transportLabel} · Processing completed`;
-  if (receipt.processingStatus === "claimed") return `${transportLabel} · Received by model`;
-  if (receipt.deliveryReconciledAt) return `${transportLabel} · Later confirmed`;
-  return transportLabel;
+  const reconciliationLabel = receipt.deliveryReconciledAt
+    ? `${transportLabel} · Later confirmed`
+    : transportLabel;
+  if (receipt.processingStatus === "completed") return `${reconciliationLabel} · Processing completed`;
+  if (receipt.processingStatus === "claimed") return `${reconciliationLabel} · Received by model`;
+  return reconciliationLabel;
 }

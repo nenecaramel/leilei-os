@@ -9,6 +9,7 @@ import type { ToyCommandService } from "../../domains/toy/toy-command-service.js
 import type { UniverseService } from "../../domains/universe/universe-service.js";
 import type { McpSessionNamespace } from "./session-registry.js";
 import type { BridgeService } from "../../domains/bridge/bridge-service.js";
+import type { SafeLogger } from "../../observability/logger.js";
 import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
 import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
 import { registerBridgeProcessingTools } from "../tools/bridge-processing/register.js";
@@ -34,6 +35,7 @@ export function createProductionMcpSessionServerFactory(input: {
   todoService: TodoService;
   universeService: UniverseService;
   bridgeService?: BridgeService;
+  logger?: SafeLogger;
 }): McpSessionServerFactory {
   return (userId, namespace = "public") => {
     const activeUserAuthorization = createActiveUserAuthorizer(
@@ -119,6 +121,7 @@ export function createProductionMcpSessionServerFactory(input: {
         bridgeService: input.bridgeService,
         getAuthenticatedUserId,
         requireActiveUser: activeUserAuthorization,
+        logger: input.logger,
       });
     }
     return server;

@@ -51,6 +51,18 @@ const SAFE_FIELD_NAMES = new Set([
   "surface",
   "authFailure",
   "success",
+  "eventId",
+  "state",
+  "released",
+  "outcome",
+  "processingState",
+  "reconciled",
+  "operation",
+  "transportStatus",
+  "awaitingHostCallback",
+  "reconciliation",
+  "claimLatencyMs",
+  "completionLatencyMs",
 ]);
 
 const defaultSink = (level: LogLevel, line: string): void => {
