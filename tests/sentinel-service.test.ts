@@ -192,6 +192,10 @@ test("status projection follows paused, recovery, processing, waiting, sleeping,
   assert.equal(projectSentinelStatus({ ...base, enabled: false }), "paused");
   assert.equal(projectSentinelStatus({ ...base, recoveryRequired: true }), "recovery_required");
   assert.equal(projectSentinelStatus({ ...base, processing: true }), "processing");
+  assert.equal(
+    projectSentinelStatus({ ...base, wakePending: true }),
+    "waiting_for_chatgpt",
+  );
   assert.equal(projectSentinelStatus({ ...base, listenerAvailable: false, nextWakeAt: now }), "waiting_for_chatgpt");
   assert.equal(projectSentinelStatus(base), "sleeping");
   assert.equal(projectSentinelStatus({ ...base, nextWakeAt: now }), "waking");

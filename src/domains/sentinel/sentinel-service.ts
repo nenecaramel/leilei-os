@@ -61,9 +61,10 @@ export function projectSentinelStatus(
   if (input.recoveryRequired) return "recovery_required";
   if (input.processing) return "processing";
   if (
-    !input.listenerAvailable &&
-    (input.wakePending === true ||
-      (input.nextWakeAt !== null && input.nextWakeAt <= input.now))
+    input.wakePending === true ||
+    (!input.listenerAvailable &&
+      input.nextWakeAt !== null &&
+      input.nextWakeAt <= input.now)
   ) {
     return "waiting_for_chatgpt";
   }
