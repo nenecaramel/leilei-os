@@ -7,13 +7,16 @@ const repositorySource = readFileSync(
   "utf8",
 );
 
-test("reserveNext aliases raw SQL bridge event columns to BridgeEventRecord fields", () => {
-  assert.doesNotMatch(repositorySource, /RETURNING\s+event\.\*/);
-  assert.match(repositorySource, /event\.user_id\s+AS\s+"userId"/);
-  assert.match(repositorySource, /event\.created_at\s+AS\s+"createdAt"/);
-  assert.match(repositorySource, /event\.visible_text\s+AS\s+"visibleText"/);
-  assert.match(repositorySource, /event\.model_context\s+AS\s+"modelContext"/);
-  assert.match(repositorySource, /event\.reserved_by\s+AS\s+"reservedBy"/);
-  assert.match(repositorySource, /event\.reservation_expires_at\s+AS\s+"reservationExpiresAt"/);
-  assert.match(repositorySource, /event\.last_error_code\s+AS\s+"lastErrorCode"/);
+test("reserveNext returns only the id and reads the event through the Drizzle schema", () => {
+  const reserveNextSource = repositorySource.slice(
+    repositorySource.indexOf("async reserveNext"),
+    repositorySource.indexOf("async markDispatchStarted"),
+  );
+
+  assert.doesNotMatch(reserveNextSource, /RETURNING\s+event\.\*/);
+  assert.match(reserveNextSource, /RETURNING\s+event\.id/);
+  assert.doesNotMatch(reserveNextSource, /event\.created_at\s+AS\s+"createdAt"/);
+  assert.match(reserveNextSource, /\.select\(bridgeEventSelection\)/);
+  assert.match(reserveNextSource, /eq\(bridgeEvents\.id, reserved\[0\]\.id\)/);
+  assert.match(reserveNextSource, /return event \? asBridgeEvent\(event\) : null/);
 });
