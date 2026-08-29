@@ -259,7 +259,25 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
         WHERE event.id = candidate.id
           AND event.user_id = ${userId}::uuid
           AND event.status = 'pending'
-        RETURNING event.*
+        RETURNING
+          event.id,
+          event.user_id AS "userId",
+          event.idempotency_key AS "idempotencyKey",
+          event.request_hash AS "requestHash",
+          event.kind,
+          event.source,
+          event.visible_text AS "visibleText",
+          event.model_context AS "modelContext",
+          event.status,
+          event.created_at AS "createdAt",
+          event.reserved_by AS "reservedBy",
+          event.reserved_at AS "reservedAt",
+          event.reservation_expires_at AS "reservationExpiresAt",
+          event.dispatch_started_at AS "dispatchStartedAt",
+          event.host_sent_at AS "hostSentAt",
+          event.delivery_unknown_at AS "deliveryUnknownAt",
+          event.retry_count AS "retryCount",
+          event.last_error_code AS "lastErrorCode"
       `);
       return reserved[0] ? asBridgeEvent(reserved[0]) : null;
     });
