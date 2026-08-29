@@ -20,12 +20,32 @@ function createDom(
   pollCallbacks: Array<() => void> = [],
   timeoutCallbacks: Array<() => void> = [],
 ): JSDOM {
-  return new JSDOM(createBridgeListenerHtml(), {
+  let dom: JSDOM;
+  dom = new JSDOM(createBridgeListenerHtml(), {
     runScripts: "dangerously",
     pretendToBeVisual: true,
     beforeParse(window) {
       const parent = {
         postMessage(message: BridgeCall) {
+          if (message.method === "ui/initialize") {
+            queueMicrotask(() => {
+              dom.window.dispatchEvent(new dom.window.MessageEvent("message", {
+                data: {
+                  jsonrpc: "2.0",
+                  id: message.id,
+                  result: {
+                    protocolVersion: "2026-01-26",
+                    hostCapabilities: { serverTools: {} },
+                    hostInfo: { name: "Test Host", version: "1.0.0" },
+                    hostContext: {},
+                  },
+                },
+                source: parent,
+              }));
+            });
+            return;
+          }
+          if (message.method === "ui/notifications/initialized") return;
           calls.push(message);
         },
       };
@@ -44,6 +64,7 @@ function createDom(
       }) as typeof window.setTimeout;
     },
   });
+  return dom;
 }
 
 function response(
@@ -83,6 +104,7 @@ test("bridge listener mounts an idle control surface and starts only from its vi
     assert.equal(calls.length, 0);
 
     start.click();
+    await tick();
     assert.equal(calls[0]?.params?.name, "bridge_listener_start");
     response(dom, calls, 0, toolResult({ state: "acquired" }));
     await tick();
@@ -110,6 +132,7 @@ test("listener stays idle and shows occupied state when start returns a busy Cal
     const status = dom.window.document.querySelector<HTMLElement>("[data-bridge-status]")!;
     const occupied = dom.window.document.querySelector<HTMLElement>("[data-bridge-occupied]")!;
     start.click();
+    await tick();
     response(dom, calls, 0, { isError: true, structuredContent: { success: false, error: { code: "LISTENER_BUSY" } } });
     await tick();
     assert.equal(status.textContent, "Occupied");
@@ -127,6 +150,7 @@ test("listener accepts responses only from its parent JSON-RPC 2.0 peer", async 
   try {
     const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
     start.click();
+    await tick();
     response(dom, calls, 0, toolResult({ state: "acquired" }), { source: {} });
     await tick();
     assert.equal(calls.length, 1);
@@ -149,6 +173,7 @@ test("listener sends a user-role message and releases definite ui/message reject
   try {
     const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
     start.click();
+    await tick();
     response(dom, calls, 0, toolResult({ state: "acquired" }));
     await tick();
     response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
@@ -182,6 +207,7 @@ test("dispatch-start failure schedules another poll instead of stalling", async 
   try {
     const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
     start.click();
+    await tick();
     response(dom, calls, 0, toolResult({ state: "acquired" }));
     await tick();
     response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
@@ -213,6 +239,7 @@ test("listener quarantines an ambiguous ui/message timeout instead of retrying i
   try {
     const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
     start.click();
+    await tick();
     response(dom, calls, 0, toolResult({ state: "acquired" }));
     await tick();
     response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
@@ -242,6 +269,7 @@ test("listener acknowledges only a successful ui/message outcome", async () => {
   try {
     const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
     start.click();
+    await tick();
     response(dom, calls, 0, toolResult({ state: "acquired" }));
     await tick();
     response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
