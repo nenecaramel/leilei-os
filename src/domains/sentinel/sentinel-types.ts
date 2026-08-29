@@ -76,3 +76,35 @@ export type SentinelWakeCancellationResult =
       bridge: import("../bridge/bridge-event-types.js").BridgeEventRecord;
     }
   | { outcome: "conflict" | "not_found" };
+
+export type SentinelWakeState = {
+  wakeId: string;
+  sentinelId: string;
+  controlRevision: number;
+  scheduledFor: Date;
+  policyPrompt: string;
+  contextCapsule: string | null;
+  nextWakeAt: Date | null;
+  lastValidWakeAt: Date | null;
+  currentTime: Date;
+  timezone: string;
+  limits: { minNextWakeSeconds: number; maxNextWakeSeconds: number };
+};
+
+export type SentinelWakeCompletionInput = {
+  userId: string;
+  wakeId: string;
+  decision: SentinelWakeDecision;
+  nextWakeAt: Date;
+  contextCapsule: string | null;
+  completionPayloadHash: string;
+};
+
+export type SentinelWakeCompletionResult =
+  | {
+      outcome: "applied" | "idempotent";
+      wake: SentinelWakeRunRecord;
+      sentinel: SentinelRecord;
+      bridge: import("../bridge/bridge-event-types.js").BridgeEventRecord;
+    }
+  | { outcome: "conflict" | "not_found" };

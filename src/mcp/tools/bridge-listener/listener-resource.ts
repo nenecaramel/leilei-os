@@ -5,16 +5,57 @@ import {
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeEventRecord } from "../../../domains/bridge/bridge-event-types.js";
 
-export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v2";
+export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v3";
 export const BRIDGE_AMBIGUITY_ACCEPTANCE_PREFIX = "PHASE2 AMBIGUOUS E2E ";
 
 export type BridgeListenerResourceOptions = {
   ambiguityAcceptanceEnabled?: boolean;
 };
 
+export type SentinelWakeRoutingMetadata = {
+  eventId: string;
+  wakeId: string;
+  sentinelId: string;
+  controlRevision: number;
+  scheduledFor: string;
+  reservedAt: string | null;
+  dispatchStartedAt: string | null;
+};
+
+export function getSentinelWakeRoutingMetadata(
+  event: Pick<BridgeEventRecord, "id" | "kind" | "source" | "modelContext" | "reservedAt" | "dispatchStartedAt">,
+): SentinelWakeRoutingMetadata | null {
+  if (event.kind !== "wake" || event.source !== "leileios_sentinel") return null;
+  const match = event.modelContext.match(
+    /wakeId=([^;]+); sentinelId=([^;]+); controlRevision=(\d+); scheduledFor=([^ ]+)\./,
+  );
+  if (!match) return null;
+  return {
+    eventId: event.id,
+    wakeId: match[1]!,
+    sentinelId: match[2]!,
+    controlRevision: Number(match[3]),
+    scheduledFor: match[4]!,
+    reservedAt: event.reservedAt?.toISOString() ?? null,
+    dispatchStartedAt: event.dispatchStartedAt?.toISOString() ?? null,
+  };
+}
+
 export function composeBridgeDispatchContext(
-  event: Pick<BridgeEventRecord, "id" | "modelContext">,
+  event: Pick<BridgeEventRecord, "id" | "modelContext"> & {
+    kind?: BridgeEventRecord["kind"];
+    source?: BridgeEventRecord["source"];
+    wakeMetadata?: {
+      wakeId: string;
+      sentinelId: string;
+      controlRevision: number;
+      scheduledFor: string;
+    };
+  },
 ): string {
+  if (event.kind === "wake" && event.source === "leileios_sentinel" && event.wakeMetadata) {
+    return `${event.modelContext}\n\nEvent ID: ${event.id}. Claim this Sentinel wake first with bridge_event_claim(eventId), then read fresh state with sentinel_get_state(wakeId). After deciding contact or quiet, finalize exactly once with complete_sentinel_wake using the wake id, decision, next wake, and normalized capsule; a successful quiet decision emits only 醒了一下，没事。`;
+  }
   return `${event.modelContext}\n\nEvent ID: ${event.id}. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.`;
 }
 
@@ -154,6 +195,16 @@ export function createBridgeListenerHtml(
   const schedulePoll = () => {
     if (running && !pollTimer) pollTimer = setTimeout(() => { pollTimer = null; void sync('poll'); }, POLL_MS);
   };
+  const sentinelWakeMetadata = (event) => {
+    if (!event || event.kind !== 'wake' || event.source !== 'leileios_sentinel') return null;
+    const match = typeof event.modelContext === 'string' && event.modelContext.match(/wakeId=([^;]+); sentinelId=([^;]+); controlRevision=(\\d+); scheduledFor=([^ ]+)\\./);
+    if (!match) return null;
+    return {eventId:event.id, wakeId:match[1], sentinelId:match[2], controlRevision:Number(match[3]), scheduledFor:match[4], reservedAt:event.reservedAt || null, dispatchStartedAt:event.dispatchStartedAt || null};
+  };
+  const modelContextFor = (event) => {
+    const wake = sentinelWakeMetadata(event);
+    return wake ? (event.modelContext || '') + '\\n\\nEvent ID: ' + event.id + '. Claim this Sentinel wake first with bridge_event_claim(eventId), then read fresh state with sentinel_get_state(wakeId). After deciding contact or quiet, finalize with complete_sentinel_wake using the normalized capsule.' : (event.modelContext || '') + '\\n\\nEvent ID: ' + event.id + '. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.';
+  };
   const sync = async (source = 'auto') => {
     recordDiag('sync enter source=' + source + ' running=' + running + ' syncing=' + syncing);
     if (!running) { recordDiag('sync skipped not-running'); return; }
@@ -166,7 +217,8 @@ export function createBridgeListenerHtml(
       if (!event || eventInFlight) { schedulePoll(); return; }
       eventInFlight = event;
       try {
-        await call('ui/update-model-context', {content:[{type:'text', text:(event.modelContext || '') + '\\n\\nEvent ID: ' + event.id + '. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.'}]});
+        const wakeMetadata = sentinelWakeMetadata(event);
+        await call('ui/update-model-context', {content:[{type:'text', text:modelContextFor(event)}], ...(wakeMetadata ? {_meta:{leileios:{bridgeEvent:wakeMetadata}}} : {})});
       } catch (error) { recordDiag('context update failed ' + errorSummary(error)); await report('bridge_listener_release', {eventId:event.id, safeErrorCode:'CONTEXT_UPDATE_FAILED'}); eventInFlight = null; schedulePoll(); return; }
       try {
         await appCall('bridge_listener_dispatch_started', {eventId:event.id});

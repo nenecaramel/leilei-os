@@ -31,6 +31,7 @@ import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-reten
 import { createRetentionCoordinator } from "../domains/retention/retention-coordinator.js";
 import { DATA_IMPORT_RETENTION_DAYS } from "../domains/retention/retention-policy.js";
 import { DrizzleSentinelRepository } from "../domains/sentinel/sentinel-repository.js";
+import { SentinelService } from "../domains/sentinel/sentinel-service.js";
 import {
   createSentinelScheduler as buildSentinelScheduler,
   type SentinelScheduler,
@@ -97,6 +98,7 @@ export function createProcessRuntime(
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
   const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
   const sentinelRepository = new DrizzleSentinelRepository(db);
+  const sentinelService = new SentinelService(sentinelRepository);
   const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
     buildSentinelScheduler({ repository })))(sentinelRepository);
 
@@ -138,6 +140,7 @@ export function createProcessRuntime(
     globalSearchService,
     todoService,
     universeService,
+    sentinelService,
     bridgeService,
     bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,
     logger,

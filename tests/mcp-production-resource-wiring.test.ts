@@ -57,6 +57,7 @@ test("production MCP session factory assembles 53 public tools with Bridge proce
     todoService: {} as never,
     universeService: {} as never,
     bridgeService: {} as never,
+    sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); } } as never,
   });
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
@@ -76,9 +77,12 @@ test("internal MCP session factory remains free of Bridge App tools", async () =
     memoryService: {} as never, diaryService: {} as never, taskService: {} as never,
     toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
     universeService: {} as never, bridgeService: {} as never,
+    sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); } } as never,
   });
   const names = await listTools(createSessionServer("user-1", "internal"), "mcp-internal-inventory");
   assert.equal(names.filter((name) => name.startsWith("bridge_listener_")).length, 0);
   assert.equal(names.includes("bridge_event_claim"), false);
   assert.equal(names.includes("bridge_event_complete"), false);
+  assert.equal(names.includes("sentinel_get_state"), false);
+  assert.equal(names.includes("complete_sentinel_wake"), false);
 });

@@ -10,6 +10,7 @@ import {
   createSentinelWakeModelContext,
   hashSentinelWakeRequest,
 } from "../bridge/bridge-service.js";
+import { validateNextWake } from "./sentinel-service.js";
 import type {
   SentinelMutationResult,
   SentinelRecord,
@@ -18,7 +19,11 @@ import type {
   SentinelWakeEnqueueInput,
   SentinelWakeEnqueueResult,
   SentinelWakeRunRecord,
+  SentinelWakeCompletionInput,
+  SentinelWakeCompletionResult,
+  SentinelWakeState,
 } from "./sentinel-types.js";
+import type { BridgeEventRecord } from "../bridge/bridge-event-types.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -136,6 +141,8 @@ export interface SentinelRepository {
   ): Promise<SentinelWakeCancellationResult>;
   createDueWake?(now: Date | undefined, wakeId: string): Promise<SentinelWakeEnqueueResult>;
   markStaleWakeRuns?(now: Date | undefined, timeoutMs: number): Promise<number>;
+  readWakeState?(userId: string, wakeId: string): Promise<SentinelWakeState | null>;
+  completeWake?(input: SentinelWakeCompletionInput): Promise<SentinelWakeCompletionResult>;
 }
 
 export class DrizzleSentinelRepository implements SentinelRepository {
@@ -464,4 +471,175 @@ export class DrizzleSentinelRepository implements SentinelRepository {
       return { outcome: "cancelled", wake: supersededWake, bridge: cancelledBridge };
     });
   }
+
+  async readWakeState(userId: string, wakeId: string): Promise<SentinelWakeState | null> {
+    return this.db.transaction(async (transaction) => {
+      const [wake] = await transaction
+        .select(wakeRunSelection)
+        .from(sentinelWakeRuns)
+        .where(and(eq(sentinelWakeRuns.id, wakeId), eq(sentinelWakeRuns.userId, userId)))
+        .limit(1);
+      if (!wake) return null;
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(and(eq(sentinels.id, wake.sentinelId), eq(sentinels.userId, userId)))
+        .limit(1);
+      const [bridge] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(and(eq(bridgeEvents.id, wake.bridgeEventId), eq(bridgeEvents.userId, userId)))
+        .limit(1);
+      if (!sentinel || !bridge) return null;
+      const currentTime = await readSentinelDatabaseNow(transaction);
+      if (
+        !sentinel.enabled ||
+        sentinel.activeWakeRunId !== wake.id ||
+        sentinel.controlRevision !== wake.controlRevision ||
+        wake.state !== "claimed" ||
+        bridge.kind !== "wake" ||
+        bridge.source !== "leileios_sentinel" ||
+        bridge.processingState !== "claimed" ||
+        bridge.modelClaimedAt === null
+      ) {
+        return null;
+      }
+      return {
+        wakeId: wake.id,
+        sentinelId: sentinel.id,
+        controlRevision: sentinel.controlRevision,
+        scheduledFor: wake.scheduledFor,
+        policyPrompt: sentinel.policyPrompt,
+        contextCapsule: sentinel.wakeContextCapsule,
+        nextWakeAt: sentinel.nextWakeAt,
+        lastValidWakeAt: sentinel.lastValidWakeAt,
+        currentTime,
+        timezone: sentinel.timezone,
+        limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
+      } satisfies SentinelWakeState;
+    });
+  }
+
+  async completeWake(input: SentinelWakeCompletionInput): Promise<SentinelWakeCompletionResult> {
+    return this.db.transaction(async (transaction) => {
+      const [wake] = await transaction
+        .select(wakeRunSelection)
+        .from(sentinelWakeRuns)
+        .where(and(eq(sentinelWakeRuns.id, input.wakeId), eq(sentinelWakeRuns.userId, input.userId)))
+        .for("update")
+        .limit(1);
+      if (!wake) return { outcome: "not_found" };
+
+      if (wake.state === "finalized") {
+        return wake.completionPayloadHash === input.completionPayloadHash
+          ? await this.readFinalizedWakeInTransaction(transaction, wake.id, input.userId, "idempotent")
+          : { outcome: "conflict" };
+      }
+
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(and(eq(sentinels.id, wake.sentinelId), eq(sentinels.userId, input.userId)))
+        .for("update")
+        .limit(1);
+      const [bridge] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(and(eq(bridgeEvents.id, wake.bridgeEventId), eq(bridgeEvents.userId, input.userId)))
+        .for("update")
+        .limit(1);
+      if (
+        !sentinel || !bridge ||
+        !sentinel.enabled ||
+        sentinel.activeWakeRunId !== wake.id ||
+        sentinel.controlRevision !== wake.controlRevision ||
+        wake.state !== "claimed" ||
+        bridge.kind !== "wake" ||
+        bridge.source !== "leileios_sentinel" ||
+        bridge.processingState !== "claimed" ||
+        bridge.modelClaimedAt === null
+      ) {
+        return { outcome: "conflict" };
+      }
+
+      const now = await readSentinelDatabaseNow(transaction);
+      validateNextWake(now, input.nextWakeAt);
+      const nowSql = sql`${now.toISOString()}::timestamptz`;
+      const [finalizedWake] = await transaction
+        .update(sentinelWakeRuns)
+        .set({
+          state: "finalized",
+          decision: input.decision,
+          nextWakeAt: input.nextWakeAt,
+          finalizedAt: nowSql,
+          completionPayloadHash: input.completionPayloadHash,
+          updatedAt: nowSql,
+        })
+        .where(and(eq(sentinelWakeRuns.id, wake.id), eq(sentinelWakeRuns.state, "claimed")))
+        .returning(wakeRunSelection);
+      if (!finalizedWake) throw new Error("Sentinel Wake finalization lost its claim.");
+
+      const [updatedSentinel] = await transaction
+        .update(sentinels)
+        .set({
+          lastValidWakeAt: nowSql,
+          wakeContextCapsule: input.contextCapsule,
+          wakeContextUpdatedAt: nowSql,
+          nextWakeAt: input.nextWakeAt,
+          activeWakeRunId: null,
+          controlRevision: sql`${sentinels.controlRevision} + 1`,
+          updatedAt: nowSql,
+        })
+        .where(and(eq(sentinels.id, sentinel.id), eq(sentinels.activeWakeRunId, wake.id), eq(sentinels.controlRevision, wake.controlRevision)))
+        .returning(sentinelSelection);
+      if (!updatedSentinel) throw new Error("Sentinel finalization lost its active control revision.");
+
+      const [completedBridge] = await transaction
+        .update(bridgeEvents)
+        .set({
+          processingState: "completed",
+          modelCompletedAt: sql`COALESCE(${bridgeEvents.modelCompletedAt}, ${nowSql})`,
+        })
+        .where(and(eq(bridgeEvents.id, bridge.id), eq(bridgeEvents.processingState, "claimed")))
+        .returning(bridgeEventSelection);
+      if (!completedBridge) throw new Error("Sentinel Bridge completion lost its claim.");
+
+      return {
+        outcome: "applied",
+        wake: finalizedWake,
+        sentinel: updatedSentinel,
+        bridge: asBridgeEvent(completedBridge),
+      };
+    });
+  }
+
+  private async readFinalizedWakeInTransaction(
+    transaction: Transaction,
+    wakeId: string,
+    userId: string,
+    outcome: "idempotent",
+  ): Promise<SentinelWakeCompletionResult> {
+    const [wake] = await transaction
+      .select(wakeRunSelection)
+      .from(sentinelWakeRuns)
+      .where(and(eq(sentinelWakeRuns.id, wakeId), eq(sentinelWakeRuns.userId, userId)))
+      .limit(1);
+    if (!wake) return { outcome: "not_found" };
+    const [sentinel] = await transaction
+      .select(sentinelSelection)
+      .from(sentinels)
+      .where(and(eq(sentinels.id, wake.sentinelId), eq(sentinels.userId, userId)))
+      .limit(1);
+    const [bridge] = await transaction
+      .select(bridgeEventSelection)
+      .from(bridgeEvents)
+      .where(and(eq(bridgeEvents.id, wake.bridgeEventId), eq(bridgeEvents.userId, userId)))
+      .limit(1);
+    if (!sentinel || !bridge) return { outcome: "not_found" };
+    return { outcome, wake, sentinel, bridge: asBridgeEvent(bridge) };
+  }
+}
+
+function asBridgeEvent(row: BridgeEventRecord): BridgeEventRecord {
+  return row;
 }

@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createMcpServer } from "../src/mcp/server/create-server.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerSentinelTools } from "../src/mcp/tools/sentinel/register.js";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const WAKE_ID = "22222222-2222-4222-8222-222222222222";
 
 async function connected(dependencies: Record<string, unknown>) {
-  const server = createMcpServer(dependencies as never);
+  const server = new McpServer({ name: "sentinel-mcp", version: "1" });
+  registerSentinelTools(server, dependencies.sentinelTools as never);
   const client = new Client({ name: "sentinel-mcp-test", version: "1" }, { capabilities: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -37,7 +39,17 @@ test("Sentinel tools expose strict read/finalize contracts and derive owner from
             limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
           };
         },
-        completeWake: async () => ({ outcome: "applied", wakeId: WAKE_ID, decision: "quiet" }),
+        completeWake: async () => ({
+          outcome: "applied",
+          wake: {
+            id: WAKE_ID,
+            decision: "quiet",
+            nextWakeAt: new Date("2026-08-30T00:10:00.000Z"),
+            finalizedAt: new Date("2026-08-30T00:01:00.000Z"),
+          },
+          sentinel: { controlRevision: 3 },
+          bridge: {},
+        }),
       },
       getAuthenticatedUserId: () => USER_ID,
       requireActiveUser: async () => USER_ID,

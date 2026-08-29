@@ -4,6 +4,8 @@ import type {
   SentinelRecord,
   SentinelWakeCancellationResult,
   SentinelWakeEnqueueResult,
+  SentinelWakeCompletionResult,
+  SentinelWakeState,
 } from "./sentinel-types.js";
 import type { SentinelRepository } from "./sentinel-repository.js";
 
@@ -15,6 +17,8 @@ export type {
 export type {
   SentinelWakeCancellationResult,
   SentinelWakeEnqueueResult,
+  SentinelWakeCompletionResult,
+  SentinelWakeState,
 } from "./sentinel-types.js";
 
 const MIN_NEXT_WAKE_MS = 5 * 60 * 1_000;
@@ -50,7 +54,9 @@ export type SentinelDomainErrorCode =
   | "CAPSULE_TOO_LONG"
   | "INVALID_CONTROL_REVISION"
   | "INVALID_WAKE_ID"
-  | "SENTINEL_NOT_FOUND";
+  | "SENTINEL_NOT_FOUND"
+  | "SENTINEL_WAKE_NOT_FOUND"
+  | "SENTINEL_WAKE_CONFLICT";
 
 export class SentinelDomainError extends Error {
   constructor(
@@ -273,5 +279,63 @@ export class SentinelService {
       throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel wake cancellation is unavailable.");
     }
     return cancelWake.call(this.repository, normalizedUserId, normalizedWakeId);
+  }
+
+  async getWakeState(userId: string, wakeId: string): Promise<SentinelWakeState> {
+    const normalizedUserId = normalizeUserId(userId);
+    const normalizedWakeId = wakeId.trim();
+    if (!normalizedWakeId) {
+      throw new SentinelDomainError("INVALID_WAKE_ID", "Wake id is invalid.");
+    }
+    const readWakeState = this.repository.readWakeState;
+    if (!readWakeState) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel wake state is unavailable.");
+    }
+    const state = await readWakeState.call(this.repository, normalizedUserId, normalizedWakeId);
+    if (!state) {
+      throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "Sentinel wake is no longer active.");
+    }
+    return state;
+  }
+
+  async completeWake(userId: string, input: {
+    wakeId: string;
+    decision: "contact" | "quiet";
+    nextWakeAt: Date;
+    contextCapsule: string | null | undefined;
+  }): Promise<SentinelWakeCompletionResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    const normalizedWakeId = input.wakeId.trim();
+    if (!normalizedWakeId) {
+      throw new SentinelDomainError("INVALID_WAKE_ID", "Wake id is invalid.");
+    }
+    if (input.decision !== "contact" && input.decision !== "quiet") {
+      throw new SentinelDomainError("INVALID_NEXT_WAKE", "Sentinel decision is invalid.");
+    }
+    const contextCapsule = normalizeWakeContextCapsule(input.contextCapsule);
+    const completionPayloadHash = hashSentinelCompletionPayload({
+      decision: input.decision,
+      nextWakeAt: input.nextWakeAt,
+      contextCapsule,
+    });
+    const completeWake = this.repository.completeWake;
+    if (!completeWake) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel wake finalizer is unavailable.");
+    }
+    const result = await completeWake.call(this.repository, {
+      userId: normalizedUserId,
+      wakeId: normalizedWakeId,
+      decision: input.decision,
+      nextWakeAt: input.nextWakeAt,
+      contextCapsule,
+      completionPayloadHash,
+    });
+    if (result.outcome === "not_found") {
+      throw new SentinelDomainError("SENTINEL_WAKE_NOT_FOUND", "Sentinel wake was not found.");
+    }
+    if (result.outcome === "conflict") {
+      throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "Sentinel wake is no longer active.");
+    }
+    return result;
   }
 }

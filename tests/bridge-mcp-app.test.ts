@@ -11,6 +11,7 @@ test("bridge listener tool surface is model/app split", async () => {
     toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
     universeService: {} as never,
     bridgeService: {} as never,
+    sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); } } as never,
   })("user-1", "public");
   const client = new Client({ name: "bridge-test", version: "1" }, { capabilities: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
