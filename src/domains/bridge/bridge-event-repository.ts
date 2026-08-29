@@ -116,6 +116,7 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
     input: BridgeEventCreateInput,
   ): Promise<BridgeEventCreateResult> {
     return this.db.transaction(async (transaction) => {
+      await lockUser(transaction, userId);
       const [inserted] = await transaction
         .insert(bridgeEvents)
         .values({ userId, ...input, status: "pending" })
@@ -322,6 +323,7 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
         event.source === "leileios_sentinel" &&
         event.dispatchStartedAt === null
       ) {
+        await lockUser(transaction, userId);
         const [human] = await transaction
           .select({ id: bridgeEvents.id })
           .from(bridgeEvents)
