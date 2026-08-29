@@ -214,3 +214,61 @@ test(
     }
   },
 );
+
+test(
+  "a reserved Sentinel wake yields to a newly pending human event before dispatch",
+  { skip: RUN ? false : "SKIP: set RUN_BRIDGE_DATABASE_TEST=1 with a local DATABASE_URL" },
+  async () => {
+    const admin = connection();
+    const listenerRepository = new DrizzleBridgeEventRepository(admin.db as never);
+    const sentinelRepository = new DrizzleSentinelRepository(admin.db as never);
+    const owner = randomUUID();
+    const listener = randomUUID();
+    const wakeId = randomUUID();
+    const now = new Date("2026-08-29T04:00:00.000Z");
+    let sentinelId: string | null = null;
+    try {
+      await admin.db.insert(schema.users).values({
+        id: owner,
+        email: `wake-race-${owner}@example.invalid`,
+        displayName: "Wake race",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const sentinel = await sentinelRepository.createSentinel({
+        userId: owner,
+        timezone: "UTC",
+        policyPrompt: "",
+      });
+      sentinelId = sentinel.id;
+      const wake = await new SentinelService(sentinelRepository).enqueueWake(owner, {
+        cause: "wake_now",
+        scheduledFor: now,
+        wakeId,
+      });
+      assert.equal(wake.outcome, "created");
+      assert.equal((await listenerRepository.acquireListenerLease(owner, listener)).state, "acquired");
+      assert.equal((await listenerRepository.reserveNext(owner, listener))?.id, wake.bridge.id);
+
+      const bridgeService = new BridgeService(listenerRepository, { now: () => now });
+      await bridgeService.createPwaEvent(owner, "human message", "human-race-event-0001");
+
+      assert.equal(await listenerRepository.markDispatchStarted(owner, listener, wake.bridge.id), null);
+      const yielded = await listenerRepository.getEvent(owner, wake.bridge.id);
+      assert.equal(yielded?.status, "pending");
+      assert.equal(yielded?.reservedBy, null);
+      assert.equal(yielded?.dispatchStartedAt, null);
+      assert.equal((await listenerRepository.reserveNext(owner, listener))?.kind, "chat");
+    } finally {
+      await admin.db.delete(schema.bridgeListenerLeases).where(eq(schema.bridgeListenerLeases.userId, owner));
+      if (sentinelId) {
+        await admin.db.delete(schema.sentinelWakeRuns).where(eq(schema.sentinelWakeRuns.sentinelId, sentinelId));
+      }
+      await admin.db.delete(schema.bridgeEvents).where(eq(schema.bridgeEvents.userId, owner));
+      await admin.db.delete(schema.sentinels).where(eq(schema.sentinels.userId, owner));
+      await admin.db.delete(schema.users).where(eq(schema.users.id, owner));
+      await admin.client.end();
+    }
+  },
+);
