@@ -192,8 +192,27 @@ export function SentinelPageContent({
     return <div className="page sentinel-page"><PageHeader eyebrow="Control" title="Autonomous Wake" description="A private, owner-controlled wake schedule." /><div className="sentinel-state-message" role="alert"><p>Sentinel is temporarily unavailable.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div></div>;
   }
 
-  const sentinel = state.status === "ready" ? state.sentinel : null;
-  const projectedStatus = state.status === "ready" ? state.projectedStatus : "paused";
+  if (state.status === "uninitialized") {
+    return (
+      <div className="page sentinel-page">
+        <PageHeader eyebrow="Control" title="Autonomous Wake" description="A private, owner-controlled wake schedule." />
+        <section className="sentinel-card" aria-labelledby="sentinel-setup-title">
+          <p className="sentinel-kicker">Autonomous Wake</p>
+          <h2 id="sentinel-setup-title">Set up Sentinel</h2>
+          <p className="sentinel-state-copy">Save a policy to set up your private wake controls.</p>
+        </section>
+        <section className="sentinel-card sentinel-policy-card" aria-labelledby="sentinel-policy-title">
+          <div className="sentinel-card-heading"><div><p className="sentinel-kicker">Wake policy</p><h2 id="sentinel-policy-title">Your guidance</h2></div></div>
+          <label className="sentinel-field"><span>Timezone</span><input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="Asia/Shanghai" /></label>
+          <label className="sentinel-field"><span>Policy</span><textarea value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" /></label>
+          <button className="secondary-button" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>Save policy</button>
+        </section>
+      </div>
+    );
+  }
+
+  const sentinel = state.sentinel;
+  const projectedStatus = state.projectedStatus;
   const isRecovery = projectedStatus === "recovery_required";
   const isPaused = sentinel ? !sentinel.enabled : true;
 
@@ -223,7 +242,7 @@ export function SentinelPageContent({
         <div className="sentinel-card-heading"><div><p className="sentinel-kicker">Wake policy</p><h2 id="sentinel-policy-title">Your guidance</h2></div></div>
         <label className="sentinel-field"><span>Timezone</span><input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="Asia/Shanghai" /></label>
         <label className="sentinel-field"><span>Policy</span><textarea value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" /></label>
-        <button className="secondary-button" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>{state.status === "uninitialized" ? "Save policy" : "Save policy"}</button>
+        <button className="secondary-button" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>Save policy</button>
       </section>
 
       <section className="sentinel-controls" aria-label="Sentinel controls">
