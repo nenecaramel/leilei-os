@@ -91,6 +91,7 @@ const oauthEnvSchema = baseEnvSchema
     AUTH0_JWKS_URI: httpsUrl,
     AUTH0_REQUIRED_SCOPE: z.string().trim().min(1),
     AUTH0_ALLOWED_SUBJECT: z.string().trim().min(1),
+    BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED: z.boolean().optional(),
   })
   .superRefine((config, context) => {
     const resourceUrl = new URL("/mcp", config.MCP_SERVER_URL).toString();
