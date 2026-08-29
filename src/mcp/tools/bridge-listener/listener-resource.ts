@@ -35,6 +35,7 @@ export function createBridgeListenerHtml(): string {
 </main><script>
 (() => {
   const POLL_MS = 10000, RENEW_MS = 30000, TIMEOUT_MS = 18000, PROTOCOL_VERSION = '2026-01-26', DIAG_LIMIT = 24;
+  const listenerInstanceId = crypto.randomUUID();
   const pending = new Map(); const diagLines = []; let nextId = 1, initialized = false, initializePromise = null, running = false, starting = false, syncing = false, eventInFlight = null, pollTimer = null, renewTimer = null;
   const startButton = document.querySelector('[data-bridge-start]');
   const stopButton = document.querySelector('[data-bridge-stop]');
@@ -118,7 +119,8 @@ export function createBridgeListenerHtml(): string {
     return initializePromise;
   };
   const appCall = async (name, args) => {
-    const result = await call('tools/call', {name, arguments: args || {}});
+    const bridgeArgs = {listenerInstanceId, ...(args || {})};
+    const result = await call('tools/call', {name, arguments: bridgeArgs});
     const structured = result && result.structuredContent;
     if (!result || result.isError === true || !structured || structured.success !== true) {
       const code = structured && structured.error && structured.error.code;
