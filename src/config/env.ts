@@ -5,6 +5,10 @@ const httpsUrl = z.string().url().refine((value) => value.startsWith("https://")
   message: "OAuth URLs must use HTTPS.",
 });
 
+const booleanEnv = z
+  .enum(["0", "1", "false", "true"])
+  .transform((value) => value === "1" || value === "true");
+
 const baseEnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   HOST: z.string().min(1).default("0.0.0.0"),
@@ -24,6 +28,7 @@ const baseEnvSchema = z.object({
   LEILEI_TOY_BRIDGE_KEY: z.string().min(32).optional(),
   LEILEI_TOY_BRIDGE_USER_ID: z.string().uuid().optional(),
   NOTION_PAT: z.string().trim().min(16).optional(),
+  BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED: booleanEnv.optional(),
   MCP_SESSION_IDLE_TTL_SECONDS: z.coerce.number().int().positive().default(7_200),
   MCP_SESSION_ABSOLUTE_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
   MCP_SESSION_MAX_PER_USER: z.coerce.number().int().positive().default(8),
