@@ -6,7 +6,7 @@ export const BRIDGE_POLL_INTERVAL_MS = 10_000;
 export const BRIDGE_HOST_RPC_TIMEOUT_MS = 18_000;
 export const BRIDGE_TERMINAL_RETENTION_DAYS = 7;
 
-export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v1";
+export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v2";
 export const BRIDGE_EVENT_KIND = "chat";
 export const BRIDGE_EVENT_SOURCE = "leileios_pwa";
 export const BRIDGE_VISIBLE_ROUTE_HINT = "@LeileiOS";

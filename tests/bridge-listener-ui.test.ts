@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
-import { createBridgeListenerHtml } from "../src/mcp/tools/bridge-listener/listener-resource.js";
+import { composeBridgeDispatchContext, createBridgeListenerHtml } from "../src/mcp/tools/bridge-listener/listener-resource.js";
 
 type BridgeCall = {
   id: number;
@@ -289,6 +289,34 @@ test("listener acknowledges only a successful ui/message outcome", async () => {
     assert.equal(calls.some((call) => call.params?.name === "bridge_listener_delivery_unknown"), false);
     response(dom, calls, calls.indexOf(delivered), toolResult({}));
     await tick();
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("listener composes v2 claim and completion instructions without rewriting persisted context", async () => {
+  const calls: BridgeCall[] = [];
+  const dom = createDom(calls);
+  try {
+    const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
+    start.click();
+    await tick();
+    response(dom, calls, 0, toolResult({ state: "acquired" }));
+    await tick();
+    response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
+    await tick();
+    const contextCall = calls.find((call) => call.method === "ui/update-model-context");
+    assert.ok(contextCall);
+    const text = ((contextCall.params as { content: Array<{ text: string }> }).content[0]?.text) ?? "";
+    assert.match(text, /route hint/);
+    assert.match(text, /Event ID: 00000000-0000-4000-8000-000000000001/);
+    assert.match(text, /bridge_event_claim\(eventId\)/);
+    assert.match(text, /bridge_event_complete\(eventId\)/);
+    assert.doesNotMatch(text, /hello/);
+    const persisted = eventRecord.modelContext;
+    const composed = composeBridgeDispatchContext(eventRecord);
+    assert.match(composed, /bridge_event_claim\(eventId\)/);
+    assert.equal(eventRecord.modelContext, persisted);
   } finally {
     dom.window.close();
   }

@@ -22,7 +22,9 @@ test("bridge listener tool surface is model/app split", async () => {
     assert.ok(names.includes("bridge_listener_open"));
     assert.ok(names.includes("bridge_listener_sync"));
     const sync = tools.tools.find((tool) => tool.name === "bridge_listener_sync");
-    assert.deepEqual(sync?._meta?.ui, { resourceUri: "ui://leileios/message-bridge/v1", visibility: ["app"] });
+    assert.deepEqual(sync?._meta?.ui, { visibility: ["app"] });
+    const opener = tools.tools.find((tool) => tool.name === "bridge_listener_open");
+    assert.equal(opener?._meta?.ui?.resourceUri, "ui://leileios/message-bridge/v2");
   } finally {
     await client.close();
     await server.close();
