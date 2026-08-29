@@ -47,11 +47,6 @@ test(
         policyPrompt: "",
       });
       sentinelId = created.id;
-      await admin.db
-        .update(schema.sentinels)
-        .set({ enabled: true, nextWakeAt: new Date(now.getTime() - 1_000) })
-        .where(eq(schema.sentinels.id, created.id));
-
       const schedulerA = createSentinelScheduler({
         repository: new DrizzleSentinelRepository(workerA.db as never),
         createWakeId: randomUUID,
@@ -60,6 +55,17 @@ test(
         repository: new DrizzleSentinelRepository(workerB.db as never),
         createWakeId: randomUUID,
       });
+      // Disabled or not-yet-due Sentinels are not eligible for a wake.
+      assert.equal(await schedulerA.runOnce(now), 0);
+      await admin.db
+        .update(schema.sentinels)
+        .set({ enabled: true, nextWakeAt: new Date(now.getTime() + 60_000) })
+        .where(eq(schema.sentinels.id, created.id));
+      assert.equal(await schedulerA.runOnce(now), 0);
+      await admin.db
+        .update(schema.sentinels)
+        .set({ enabled: true, nextWakeAt: new Date(now.getTime() - 1_000) })
+        .where(eq(schema.sentinels.id, created.id));
       const race = await Promise.all([schedulerA.runOnce(now), schedulerB.runOnce(now)]);
       assert.deepEqual(race.sort(), [0, 1]);
 
