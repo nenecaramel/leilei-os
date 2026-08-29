@@ -140,10 +140,17 @@ test("Sentinel controls delegate owner-scoped mutations and bounded wake activit
 });
 
 test("Sentinel cross-user lookups are owner-safe not-found", async () => {
-  await withServer({ async findSentinel() { return null; } }, async (baseUrl) => {
+  await withServer({
+    async findSentinel() { return null; },
+    async listWakeActivity() { throw new SentinelDomainError("SENTINEL_NOT_FOUND", "private"); },
+  }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/v1/sentinel`, {
       headers: { "x-test-user": "yes" },
     });
     assert.equal(response.status, 404);
+    const wakes = await fetch(`${baseUrl}/api/v1/sentinel/wakes`, {
+      headers: { "x-test-user": "yes" },
+    });
+    assert.equal(wakes.status, 404);
   });
 });
