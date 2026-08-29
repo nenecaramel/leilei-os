@@ -1,0 +1,96 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { createMcpServer } from "../src/mcp/server/create-server.js";
+
+const USER_ID = "11111111-1111-4111-8111-111111111111";
+const WAKE_ID = "22222222-2222-4222-8222-222222222222";
+
+async function connected(dependencies: Record<string, unknown>) {
+  const server = createMcpServer(dependencies as never);
+  const client = new Client({ name: "sentinel-mcp-test", version: "1" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  return { client, server };
+}
+
+test("Sentinel tools expose strict read/finalize contracts and derive owner from session", async (t) => {
+  const calls: string[] = [];
+  const fixture = await connected({
+    sentinelTools: {
+      sentinelService: {
+        getWakeState: async (userId: string, wakeId: string) => {
+          calls.push(`${userId}:${wakeId}`);
+          return {
+            wakeId,
+            sentinelId: "33333333-3333-4333-8333-333333333333",
+            controlRevision: 2,
+            scheduledFor: new Date("2026-08-30T00:00:00.000Z"),
+            policyPrompt: "",
+            contextCapsule: null,
+            nextWakeAt: null,
+            lastValidWakeAt: null,
+            currentTime: new Date("2026-08-30T00:00:00.000Z"),
+            timezone: "Asia/Shanghai",
+            limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
+          };
+        },
+        completeWake: async () => ({ outcome: "applied", wakeId: WAKE_ID, decision: "quiet" }),
+      },
+      getAuthenticatedUserId: () => USER_ID,
+      requireActiveUser: async () => USER_ID,
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const tools = await fixture.client.listTools();
+  const names = tools.tools.map((tool) => tool.name);
+  assert.ok(names.includes("sentinel_get_state"));
+  assert.ok(names.includes("complete_sentinel_wake"));
+  assert.equal((tools.tools.find((tool) => tool.name === "sentinel_get_state")?.inputSchema.properties ?? {}).user_id, undefined);
+  assert.equal((tools.tools.find((tool) => tool.name === "complete_sentinel_wake")?.inputSchema.properties ?? {}).user_id, undefined);
+
+  const state = await fixture.client.callTool({ name: "sentinel_get_state", arguments: { wakeId: WAKE_ID } });
+  assert.equal(state.isError, undefined);
+  assert.equal((state.structuredContent as { data: { wakeId: string } }).data.wakeId, WAKE_ID);
+  assert.equal(calls[0], `${USER_ID}:${WAKE_ID}`);
+
+  const completion = await fixture.client.callTool({
+    name: "complete_sentinel_wake",
+    arguments: {
+      wakeId: WAKE_ID,
+      decision: "quiet",
+      nextWakeAt: "2026-08-30T00:10:00.000Z",
+      contextCapsule: "",
+    },
+  });
+  assert.equal(completion.isError, undefined);
+  assert.equal((completion.structuredContent as { data: { outcome: string } }).data.outcome, "applied");
+});
+
+test("Sentinel finalizer rejects malformed and conflicting states through safe errors", async (t) => {
+  const fixture = await connected({
+    sentinelTools: {
+      sentinelService: {
+        getWakeState: async () => { throw Object.assign(new Error("private"), { code: "SENTINEL_WAKE_CONFLICT" }); },
+        completeWake: async () => { throw Object.assign(new Error("private"), { code: "SENTINEL_WAKE_CONFLICT" }); },
+      },
+      getAuthenticatedUserId: () => USER_ID,
+      requireActiveUser: async () => USER_ID,
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const invalid = await fixture.client.callTool({ name: "complete_sentinel_wake", arguments: {
+    wakeId: WAKE_ID,
+    decision: "contact",
+    nextWakeAt: "not-a-date",
+    contextCapsule: "x",
+  } });
+  assert.equal(invalid.isError, true);
+  const conflict = await fixture.client.callTool({ name: "sentinel_get_state", arguments: { wakeId: WAKE_ID } });
+  assert.equal(conflict.isError, true);
+  assert.doesNotMatch(JSON.stringify(conflict), /private/);
+});
