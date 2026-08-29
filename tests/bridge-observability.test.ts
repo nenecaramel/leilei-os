@@ -63,11 +63,11 @@ test("bridge processing observability records safe outcomes, races, reconciliati
   await service.claimEvent("user-1", baseEvent.id);
   const priorEvidence = observed.at(-1) as Record<string, unknown>;
   assert.equal(priorEvidence.outcome, "idempotent");
-  assert.equal(priorEvidence.reconciliation, "prior_model_evidence");
+  assert.equal(priorEvidence.reconciliation, "later_model_evidence");
 
   await service.markDeliveryUnknown("user-1", "listener-1", baseEvent.id, "HOST_TIMEOUT");
   const laterEvidence = observed.at(-1) as Record<string, unknown>;
-  assert.equal(laterEvidence.reconciliation, "later_model_evidence");
+  assert.equal(laterEvidence.reconciliation, "prior_model_evidence");
 
   await service.completeEvent("user-1", baseEvent.id);
   const completion = observed.at(-1) as Record<string, unknown>;

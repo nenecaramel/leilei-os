@@ -239,7 +239,7 @@ export class BridgeService {
       transportStatus: "delivery_unknown",
       reconciliation: event.deliveryReconciledAt !== null &&
         (event.processingState === "claimed" || event.processingState === "completed")
-        ? "later_model_evidence"
+        ? "prior_model_evidence"
         : null,
     });
     return event;
@@ -281,7 +281,7 @@ export class BridgeService {
       awaitingHostCallback: event.status === "reserved" &&
         event.dispatchStartedAt !== null && event.hostSentAt === null,
       reconciliation: event.status === "delivery_unknown" && event.deliveryReconciledAt !== null
-        ? "prior_model_evidence"
+        ? "later_model_evidence"
         : null,
       claimLatencyMs: elapsedMs(event.createdAt, event.modelClaimedAt),
     });
