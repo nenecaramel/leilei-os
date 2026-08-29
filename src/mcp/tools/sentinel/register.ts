@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
 import {
   SentinelDomainError,
+  normalizeWakeContextCapsule,
   type SentinelService,
 } from "../../../domains/sentinel/sentinel-service.js";
 import type { SentinelWakeState } from "../../../domains/sentinel/sentinel-types.js";
@@ -26,11 +27,19 @@ const stateOutputSchema = z.object({
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
+const contextCapsuleSchema = z.string().refine((value) => {
+  try {
+    normalizeWakeContextCapsule(value);
+    return true;
+  } catch {
+    return false;
+  }
+}, { message: "Wake context capsule must be at most 1,024 Unicode code points." });
 const completeInputSchema = z.object({
   wakeId: wakeIdSchema,
   decision: z.enum(["contact", "quiet"]),
   nextWakeAt: z.string().datetime(),
-  contextCapsule: z.string().max(1_024),
+  contextCapsule: contextCapsuleSchema,
 }).strict();
 const completeOutputSchema = z.object({
   success: z.boolean(),
@@ -117,7 +126,7 @@ export function registerSentinelTools(
 
   server.registerTool("complete_sentinel_wake", {
     title: "Complete Sentinel wake",
-    description: "Finalize one claimed Sentinel wake atomically. Choose contact or quiet, provide exactly one valid next wake, and optionally replace the bounded context capsule. A successful quiet decision emits only 醒了一下，没事。; do not blindly retry uncertain outcomes.",
+    description: "Finalize one claimed Sentinel wake atomically. Choose contact or quiet, provide exactly one valid next wake, and replace the bounded context capsule (use an empty string to clear it). A successful quiet decision emits only 醒了一下，没事。; do not blindly retry uncertain outcomes.",
     inputSchema: completeInputSchema,
     outputSchema: completeOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
