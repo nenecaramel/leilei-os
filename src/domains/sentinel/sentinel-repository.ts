@@ -1,13 +1,22 @@
 import { and, eq, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { createDatabase } from "../../database/client.js";
 import {
+  bridgeEvents,
   sentinelWakeRuns,
   sentinels,
 } from "../../database/schema.js";
+import {
+  createSentinelWakeModelContext,
+  hashSentinelWakeRequest,
+} from "../bridge/bridge-service.js";
 import type {
   SentinelMutationResult,
   SentinelRecord,
   SentinelWakeCause,
+  SentinelWakeCancellationResult,
+  SentinelWakeEnqueueInput,
+  SentinelWakeEnqueueResult,
   SentinelWakeRunRecord,
 } from "./sentinel-types.js";
 
@@ -48,6 +57,32 @@ const wakeRunSelection = {
   updatedAt: sentinelWakeRuns.updatedAt,
 };
 
+const bridgeEventSelection = {
+  id: bridgeEvents.id,
+  userId: bridgeEvents.userId,
+  idempotencyKey: bridgeEvents.idempotencyKey,
+  requestHash: bridgeEvents.requestHash,
+  kind: bridgeEvents.kind,
+  source: bridgeEvents.source,
+  visibleText: bridgeEvents.visibleText,
+  modelContext: bridgeEvents.modelContext,
+  status: bridgeEvents.status,
+  createdAt: bridgeEvents.createdAt,
+  reservedBy: bridgeEvents.reservedBy,
+  reservedAt: bridgeEvents.reservedAt,
+  reservationExpiresAt: bridgeEvents.reservationExpiresAt,
+  dispatchStartedAt: bridgeEvents.dispatchStartedAt,
+  hostSentAt: bridgeEvents.hostSentAt,
+  deliveryUnknownAt: bridgeEvents.deliveryUnknownAt,
+  cancelledAt: bridgeEvents.cancelledAt,
+  processingState: bridgeEvents.processingState,
+  modelClaimedAt: bridgeEvents.modelClaimedAt,
+  modelCompletedAt: bridgeEvents.modelCompletedAt,
+  deliveryReconciledAt: bridgeEvents.deliveryReconciledAt,
+  retryCount: bridgeEvents.retryCount,
+  lastErrorCode: bridgeEvents.lastErrorCode,
+};
+
 export type SentinelCreateInput = {
   userId: string;
   timezone: string;
@@ -82,6 +117,11 @@ export interface SentinelRepository {
     expectedRevision: number;
   }): Promise<SentinelMutationResult>;
   createWakeRun(input: SentinelWakeRunCreateInput): Promise<SentinelWakeRunRecord>;
+  createWakeWithBridge?(input: SentinelWakeEnqueueInput): Promise<SentinelWakeEnqueueResult>;
+  cancelWakeBeforeDispatch?(
+    userId: string,
+    wakeId: string,
+  ): Promise<SentinelWakeCancellationResult>;
 }
 
 export class DrizzleSentinelRepository implements SentinelRepository {
@@ -181,5 +221,151 @@ export class DrizzleSentinelRepository implements SentinelRepository {
       .returning(wakeRunSelection);
     if (!row) throw new Error("Wake Run insert did not return a row.");
     return row;
+  }
+
+  async createWakeWithBridge(
+    input: SentinelWakeEnqueueInput,
+  ): Promise<SentinelWakeEnqueueResult> {
+    return this.db.transaction(async (transaction) => {
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(and(eq(sentinels.id, input.sentinelId), eq(sentinels.userId, input.userId)))
+        .for("update")
+        .limit(1);
+      if (!sentinel) return { outcome: "not_found" };
+
+      const [existingWake] = await transaction
+        .select(wakeRunSelection)
+        .from(sentinelWakeRuns)
+        .where(
+          and(
+            eq(sentinelWakeRuns.id, input.wakeId),
+            eq(sentinelWakeRuns.userId, input.userId),
+          ),
+        )
+        .limit(1);
+      if (existingWake) {
+        const [existingBridge] = await transaction
+          .select(bridgeEventSelection)
+          .from(bridgeEvents)
+          .where(eq(bridgeEvents.id, existingWake.bridgeEventId))
+          .limit(1);
+        if (!existingBridge) return { outcome: "conflict" };
+        return {
+          outcome: "idempotent",
+          wake: existingWake,
+          bridge: existingBridge,
+        };
+      }
+      if (sentinel.activeWakeRunId !== null) return { outcome: "conflict" };
+
+      const bridgeEventId = randomUUID();
+      const idempotencyKey = input.bridgeIdempotencyKey ?? `sentinel-wake-${input.wakeId}`;
+      if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) {
+        return { outcome: "conflict" };
+      }
+      const [bridge] = await transaction
+        .insert(bridgeEvents)
+        .values({
+          id: bridgeEventId,
+          userId: input.userId,
+          idempotencyKey,
+          requestHash: hashSentinelWakeRequest(input.wakeId),
+          kind: "wake",
+          source: "leileios_sentinel",
+          visibleText: "[LeileiOS Sentinel wake]",
+          modelContext: createSentinelWakeModelContext({
+            eventId: bridgeEventId,
+            wakeId: input.wakeId,
+            sentinelId: input.sentinelId,
+            controlRevision: input.controlRevision,
+            scheduledFor: input.scheduledFor,
+          }),
+          status: "pending",
+          createdAt: input.scheduledFor,
+        })
+        .returning(bridgeEventSelection);
+      if (!bridge) throw new Error("Sentinel Bridge event insert did not return a row.");
+
+      const [wake] = await transaction
+        .insert(sentinelWakeRuns)
+        .values({
+          id: input.wakeId,
+          sentinelId: input.sentinelId,
+          userId: input.userId,
+          controlRevision: input.controlRevision,
+          cause: input.cause,
+          scheduledFor: input.scheduledFor,
+          bridgeEventId,
+          state: "bridge_enqueued",
+        })
+        .returning(wakeRunSelection);
+      if (!wake) throw new Error("Sentinel Wake Run insert did not return a row.");
+
+      await transaction
+        .update(sentinels)
+        .set({
+          activeWakeRunId: wake.id,
+          nextWakeAt: input.clearNextWakeAt === false ? sentinel.nextWakeAt : null,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(sentinels.id, input.sentinelId));
+
+      return { outcome: "created", wake, bridge };
+    });
+  }
+
+  async cancelWakeBeforeDispatch(
+    userId: string,
+    wakeId: string,
+  ): Promise<SentinelWakeCancellationResult> {
+    return this.db.transaction(async (transaction) => {
+      const [wake] = await transaction
+        .select(wakeRunSelection)
+        .from(sentinelWakeRuns)
+        .where(and(eq(sentinelWakeRuns.id, wakeId), eq(sentinelWakeRuns.userId, userId)))
+        .for("update")
+        .limit(1);
+      if (!wake) return { outcome: "not_found" };
+      const [bridge] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(and(eq(bridgeEvents.id, wake.bridgeEventId), eq(bridgeEvents.userId, userId)))
+        .for("update")
+        .limit(1);
+      if (
+        !bridge ||
+        bridge.kind !== "wake" ||
+        bridge.source !== "leileios_sentinel" ||
+        bridge.dispatchStartedAt !== null ||
+        (bridge.status !== "pending" && bridge.status !== "reserved")
+      ) {
+        return { outcome: "conflict" };
+      }
+      const [cancelledBridge] = await transaction
+        .update(bridgeEvents)
+        .set({
+          cancelledAt: sql`COALESCE(${bridgeEvents.cancelledAt}, now())`,
+          status: "pending",
+          reservedBy: null,
+          reservedAt: null,
+          reservationExpiresAt: null,
+          lastErrorCode: "SENTINEL_WAKE_CANCELLED",
+        })
+        .where(eq(bridgeEvents.id, bridge.id))
+        .returning(bridgeEventSelection);
+      const [supersededWake] = await transaction
+        .update(sentinelWakeRuns)
+        .set({ state: "superseded", updatedAt: sql`now()` })
+        .where(eq(sentinelWakeRuns.id, wake.id))
+        .returning(wakeRunSelection);
+      await transaction
+        .update(sentinels)
+        .set({ activeWakeRunId: null, updatedAt: sql`now()` })
+        .where(and(eq(sentinels.id, wake.sentinelId), eq(sentinels.activeWakeRunId, wake.id)));
+      if (!cancelledBridge || !supersededWake) return { outcome: "conflict" };
+      return { outcome: "cancelled", wake: supersededWake, bridge: cancelledBridge };
+    });
   }
 }

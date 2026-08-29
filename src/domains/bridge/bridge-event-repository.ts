@@ -3,6 +3,7 @@ import type { createDatabase } from "../../database/client.js";
 import {
   bridgeEvents,
   bridgeListenerLeases,
+  sentinelWakeRuns,
 } from "../../database/schema.js";
 import {
   BRIDGE_LISTENER_LEASE_MS,
@@ -37,6 +38,7 @@ const bridgeEventSelection = {
   dispatchStartedAt: bridgeEvents.dispatchStartedAt,
   hostSentAt: bridgeEvents.hostSentAt,
   deliveryUnknownAt: bridgeEvents.deliveryUnknownAt,
+  cancelledAt: bridgeEvents.cancelledAt,
   processingState: bridgeEvents.processingState,
   modelClaimedAt: bridgeEvents.modelClaimedAt,
   modelCompletedAt: bridgeEvents.modelCompletedAt,
@@ -99,6 +101,8 @@ export interface BridgeEventRepository {
     eventId: string,
     safeErrorCode?: string,
   ): Promise<BridgeEventRecord | null>;
+  /** Cancels only a server-owned Sentinel wake before host dispatch starts. */
+  cancelSentinelEvent?(userId: string, eventId: string): Promise<BridgeEventRecord | null>;
   claimProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult>;
   completeProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult>;
   deleteTerminalBatch(cutoff: Date, limit: number): Promise<number>;
@@ -256,7 +260,10 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
           FROM bridge_events
           WHERE user_id = ${userId}::uuid
             AND status = 'pending'
-          ORDER BY created_at ASC, id ASC
+            AND cancelled_at IS NULL
+          ORDER BY CASE WHEN kind = 'chat' THEN 0 ELSE 1 END,
+                   created_at ASC,
+                   id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
         )
@@ -424,8 +431,61 @@ export class DrizzleBridgeEventRepository implements BridgeEventRepository {
         })
         .where(and(eq(bridgeEvents.userId, userId), eq(bridgeEvents.id, eventId)))
         .returning(bridgeEventSelection);
+      if (
+        updated &&
+        current.kind === "wake" &&
+        current.source === "leileios_sentinel"
+      ) {
+        await transaction
+          .update(sentinelWakeRuns)
+          .set({
+            state: "claimed",
+            // Keep the bridge and wake timestamps sourced from the same SQL value.
+            claimedAt: sql`(
+              SELECT model_claimed_at
+              FROM bridge_events
+              WHERE id = ${eventId}::uuid
+            )`,
+            updatedAt: sql`now()`,
+          })
+          .where(
+            and(
+              eq(sentinelWakeRuns.bridgeEventId, eventId),
+              eq(sentinelWakeRuns.state, "bridge_enqueued"),
+            ),
+          );
+      }
       return updated ? { outcome: "applied", event: asBridgeEvent(updated) } : { outcome: "not_found" };
     });
+  }
+
+  async cancelSentinelEvent(
+    userId: string,
+    eventId: string,
+  ): Promise<BridgeEventRecord | null> {
+    const updated = await this.db
+      .update(bridgeEvents)
+      .set({
+        cancelledAt: sql`COALESCE(${bridgeEvents.cancelledAt}, now())`,
+        status: "pending",
+        reservedBy: null,
+        reservedAt: null,
+        reservationExpiresAt: null,
+        lastErrorCode: "SENTINEL_WAKE_CANCELLED",
+      })
+      .where(
+        and(
+          eq(bridgeEvents.userId, userId),
+          eq(bridgeEvents.id, eventId),
+          eq(bridgeEvents.kind, "wake"),
+          eq(bridgeEvents.source, "leileios_sentinel"),
+          sql`${bridgeEvents.cancelledAt} IS NULL`,
+          sql`${bridgeEvents.dispatchStartedAt} IS NULL`,
+          sql`${bridgeEvents.status} IN ('pending', 'reserved')`,
+        ),
+      )
+      .returning(bridgeEventSelection);
+    return updated[0] ? asBridgeEvent(updated[0]) : null;
   }
 
   async completeProcessing(userId: string, eventId: string): Promise<BridgeProcessingMutationResult> {

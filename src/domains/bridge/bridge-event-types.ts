@@ -23,6 +23,8 @@ export type BridgeEventRecord = {
   dispatchStartedAt: Date | null;
   hostSentAt: Date | null;
   deliveryUnknownAt: Date | null;
+  /** Set only for a server-owned Sentinel wake cancelled before dispatch. */
+  cancelledAt?: Date | null;
   processingState: BridgeProcessingState;
   modelClaimedAt: Date | null;
   modelCompletedAt: Date | null;

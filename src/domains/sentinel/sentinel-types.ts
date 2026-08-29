@@ -48,3 +48,30 @@ export type SentinelMutationResult =
   | { outcome: "applied"; sentinel: SentinelRecord }
   | { outcome: "idempotent"; sentinel: SentinelRecord }
   | { outcome: "conflict" | "not_found" };
+
+export type SentinelWakeEnqueueInput = {
+  userId: string;
+  sentinelId: string;
+  controlRevision: number;
+  cause: SentinelWakeCause;
+  scheduledFor: Date;
+  wakeId: string;
+  bridgeIdempotencyKey?: string;
+  clearNextWakeAt?: boolean;
+};
+
+export type SentinelWakeEnqueueResult =
+  | {
+      outcome: "created" | "idempotent";
+      wake: SentinelWakeRunRecord;
+      bridge: import("../bridge/bridge-event-types.js").BridgeEventRecord;
+    }
+  | { outcome: "conflict" | "not_found" };
+
+export type SentinelWakeCancellationResult =
+  | {
+      outcome: "cancelled";
+      wake: SentinelWakeRunRecord;
+      bridge: import("../bridge/bridge-event-types.js").BridgeEventRecord;
+    }
+  | { outcome: "conflict" | "not_found" };

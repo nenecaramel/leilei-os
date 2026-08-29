@@ -1,12 +1,20 @@
+import { randomUUID } from "node:crypto";
 import type {
   SentinelMutationResult,
   SentinelRecord,
+  SentinelWakeCancellationResult,
+  SentinelWakeEnqueueResult,
 } from "./sentinel-types.js";
 import type { SentinelRepository } from "./sentinel-repository.js";
 
 export type {
   SentinelMutationResult,
   SentinelRecord,
+} from "./sentinel-types.js";
+
+export type {
+  SentinelWakeCancellationResult,
+  SentinelWakeEnqueueResult,
 } from "./sentinel-types.js";
 
 const MIN_NEXT_WAKE_MS = 5 * 60 * 1_000;
@@ -24,6 +32,7 @@ export type SentinelDomainErrorCode =
   | "INVALID_CAPSULE"
   | "CAPSULE_TOO_LONG"
   | "INVALID_CONTROL_REVISION"
+  | "INVALID_WAKE_ID"
   | "SENTINEL_NOT_FOUND";
 
 export class SentinelDomainError extends Error {
@@ -123,7 +132,16 @@ function validatePolicyInput(input: { timezone: string; policyPrompt: string }):
 }
 
 export class SentinelService {
-  constructor(private readonly repository: SentinelRepository) {}
+  private readonly createId: () => string;
+  private readonly now: () => Date;
+
+  constructor(
+    private readonly repository: SentinelRepository,
+    options: { createId?: () => string; now?: () => Date } = {},
+  ) {
+    this.createId = options.createId ?? randomUUID;
+    this.now = options.now ?? (() => new Date());
+  }
 
   async findSentinel(userId: string): Promise<SentinelRecord | null> {
     const normalizedUserId = normalizeUserId(userId);
@@ -178,5 +196,56 @@ export class SentinelService {
       userId: normalizedUserId,
       expectedRevision,
     });
+  }
+
+  async enqueueWake(
+    userId: string,
+    input: {
+      cause: "scheduled" | "wake_now" | "recovery";
+      scheduledFor?: Date;
+      wakeId?: string;
+    },
+  ): Promise<SentinelWakeEnqueueResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    const sentinel = await this.repository.findByUserId(normalizedUserId);
+    if (!sentinel) return { outcome: "not_found" };
+    const wakeId = (input.wakeId ?? this.createId()).trim();
+    if (!wakeId || wakeId.length > 100 || !/^[A-Za-z0-9._:-]+$/.test(wakeId)) {
+      throw new SentinelDomainError("INVALID_WAKE_ID", "Wake id is invalid.");
+    }
+    const scheduledFor = input.scheduledFor ?? this.now();
+    if (!(scheduledFor instanceof Date) || !Number.isFinite(scheduledFor.getTime())) {
+      throw new SentinelDomainError("INVALID_NEXT_WAKE", "Wake time is invalid.");
+    }
+    const createWake = this.repository.createWakeWithBridge;
+    if (!createWake) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel wake producer is unavailable.");
+    }
+    return createWake.call(this.repository, {
+      userId: normalizedUserId,
+      sentinelId: sentinel.id,
+      controlRevision: sentinel.controlRevision,
+      cause: input.cause,
+      scheduledFor,
+      wakeId,
+      bridgeIdempotencyKey: `sentinel-wake-${wakeId}`,
+      clearNextWakeAt: true,
+    });
+  }
+
+  async cancelWakeBeforeDispatch(
+    userId: string,
+    wakeId: string,
+  ): Promise<SentinelWakeCancellationResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    const normalizedWakeId = wakeId.trim();
+    if (!normalizedWakeId) {
+      throw new SentinelDomainError("INVALID_WAKE_ID", "Wake id is invalid.");
+    }
+    const cancelWake = this.repository.cancelWakeBeforeDispatch;
+    if (!cancelWake) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel wake cancellation is unavailable.");
+    }
+    return cancelWake.call(this.repository, normalizedUserId, normalizedWakeId);
   }
 }
