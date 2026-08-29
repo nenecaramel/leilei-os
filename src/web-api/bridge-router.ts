@@ -82,11 +82,19 @@ function compactEvent(event: BridgeEventRecord): {
   id: string;
   status: BridgeEventRecord["status"];
   createdAt: string;
+  processingStatus: BridgeEventRecord["processingState"];
+  modelClaimedAt: string | null;
+  modelCompletedAt: string | null;
+  deliveryReconciledAt: string | null;
 } {
   return {
     id: event.id,
     status: event.status,
     createdAt: event.createdAt.toISOString(),
+    processingStatus: event.processingState,
+    modelClaimedAt: event.modelClaimedAt?.toISOString() ?? null,
+    modelCompletedAt: event.modelCompletedAt?.toISOString() ?? null,
+    deliveryReconciledAt: event.deliveryReconciledAt?.toISOString() ?? null,
   };
 }
 

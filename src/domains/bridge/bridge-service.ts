@@ -227,6 +227,9 @@ export class BridgeService {
       this.emit({ name: "bridge_event_processing_conflict", eventId, operation: "claim" });
       throw new BridgeDomainError("PROCESSING_CONFLICT", "Bridge event processing is not eligible for claiming.");
     }
+    if (result.outcome !== "applied" && result.outcome !== "idempotent") {
+      throw new BridgeDomainError("EVENT_CONFLICT", "Bridge event processing could not be completed.");
+    }
     const event = result.event;
     this.emit({
       name: "bridge_event_processing_claimed",
@@ -246,6 +249,9 @@ export class BridgeService {
     if (result.outcome === "conflict") {
       this.emit({ name: "bridge_event_processing_conflict", eventId, operation: "complete" });
       throw new BridgeDomainError("PROCESSING_CONFLICT", "Bridge event processing has not been claimed.");
+    }
+    if (result.outcome !== "applied" && result.outcome !== "idempotent") {
+      throw new BridgeDomainError("EVENT_CONFLICT", "Bridge event processing could not be completed.");
     }
     const event = result.event;
     this.emit({
