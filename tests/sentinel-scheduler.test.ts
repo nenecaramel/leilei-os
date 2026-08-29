@@ -34,7 +34,6 @@ test("scheduler admits only one due enabled idle wake across duplicate scans", a
   assert.equal(await scheduler.runOnce(new Date("2026-08-30T00:00:01.000Z")), 0);
   assert.equal(createCalls, 1);
 });
-
 test("scheduler leaves a pending active wake alone when no listener is online", async () => {
   let createCalls = 0;
   const repository: SentinelSchedulerRepository = {
@@ -107,4 +106,3 @@ test("scheduler start/stop/drain uses one bounded polling handle and admits an i
   scheduler.stopScheduling();
   assert.equal(clears, 1);
 });
-
