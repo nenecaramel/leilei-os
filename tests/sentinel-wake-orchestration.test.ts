@@ -24,7 +24,7 @@ function sentinel(): SentinelRecord {
   };
 }
 
-function bridge(id = "bridge-1"): BridgeEventRecord {
+function bridge(id = "bridge-1", overrides: Partial<BridgeEventRecord> = {}): BridgeEventRecord {
   return {
     id,
     userId: "user-1",
@@ -48,6 +48,7 @@ function bridge(id = "bridge-1"): BridgeEventRecord {
     deliveryReconciledAt: null,
     retryCount: 0,
     lastErrorCode: null,
+    ...overrides,
   };
 }
 
@@ -108,7 +109,7 @@ test("same wake id replays the deterministic Bridge identity and cancellation is
       calls.push(input);
       return { outcome: "idempotent", wake: wake(), bridge: bridge() };
     },
-    cancelWakeBeforeDispatch: async () => ({ outcome: "cancelled", wake: wake(), bridge: bridge() }),
+    cancelWakeBeforeDispatch: async () => ({ outcome: "cancelled", wake: wake(), bridge: bridge("bridge-cancelled", { cancelledAt: NOW }) }),
   } as never;
   const service = new SentinelService(repository);
 
@@ -124,4 +125,3 @@ test("same wake id replays the deterministic Bridge identity and cancellation is
   assert.equal(cancelled.outcome, "cancelled");
   assert.equal(cancelled.bridge.cancelledAt instanceof Date, true);
 });
-

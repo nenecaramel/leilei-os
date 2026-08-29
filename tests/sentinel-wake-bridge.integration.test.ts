@@ -41,7 +41,8 @@ test(
           ]);
           const sentinelRepository = new DrizzleSentinelRepository(transaction as never);
           const bridgeRepository = new DrizzleBridgeEventRepository(transaction as never);
-          const sentinelService = new SentinelService(sentinelRepository, { createId: () => "wake-1" });
+          const wakeId = randomUUID();
+          const sentinelService = new SentinelService(sentinelRepository, { createId: () => wakeId });
           const bridgeService = new BridgeService(bridgeRepository, { createId: () => randomUUID(), now: () => now });
           const sentinel = await sentinelRepository.createSentinel({ userId: owner, timezone: "UTC", policyPrompt: "" });
           await transaction.update(schema.sentinels).set({ enabled: true, nextWakeAt: new Date(now.getTime() - 1_000) }).where(eq(schema.sentinels.id, sentinel.id));
@@ -49,7 +50,7 @@ test(
           const created = await sentinelService.enqueueWake(owner, {
             cause: "scheduled",
             scheduledFor: new Date(now.getTime() - 1_000),
-            wakeId: "wake-1",
+            wakeId,
           });
           assert.equal(created.outcome, "created");
           assert.equal(created.wake.state, "bridge_enqueued");
@@ -63,7 +64,7 @@ test(
           const replay = await sentinelService.enqueueWake(owner, {
             cause: "scheduled",
             scheduledFor: new Date(now.getTime() - 1_000),
-            wakeId: "wake-1",
+            wakeId,
           });
           assert.equal(replay.outcome, "idempotent");
           assert.equal(replay.bridge.idempotencyKey, created.bridge.idempotencyKey);
@@ -89,10 +90,11 @@ test(
 
           // A second owner exercises pre-dispatch cancellation and post-dispatch refusal.
           const secondSentinel = await sentinelRepository.createSentinel({ userId: secondOwner, timezone: "UTC", policyPrompt: "" });
-          const secondService = new SentinelService(sentinelRepository, { createId: () => "wake-2" });
-          const secondWake = await secondService.enqueueWake(secondOwner, { cause: "wake_now", scheduledFor: now, wakeId: "wake-2" });
+          const secondWakeId = randomUUID();
+          const secondService = new SentinelService(sentinelRepository, { createId: () => secondWakeId });
+          const secondWake = await secondService.enqueueWake(secondOwner, { cause: "wake_now", scheduledFor: now, wakeId: secondWakeId });
           assert.equal(secondWake.outcome, "created");
-          const cancelled = await sentinelService.cancelWakeBeforeDispatch(secondOwner, "wake-2");
+          const cancelled = await sentinelService.cancelWakeBeforeDispatch(secondOwner, secondWakeId);
           assert.equal(cancelled.outcome, "cancelled");
           assert.equal(cancelled.bridge.cancelledAt instanceof Date, true);
           assert.equal(await bridgeRepository.acquireListenerLease(secondOwner, secondListener).then((r) => r.state), "acquired");
@@ -101,13 +103,14 @@ test(
           const thirdOwner = randomUUID();
           await transaction.insert(schema.users).values({ id: thirdOwner, email: `wake-owner-${thirdOwner}@example.invalid`, displayName: "Wake third", status: "active", createdAt: now, updatedAt: now });
           const thirdSentinel = await sentinelRepository.createSentinel({ userId: thirdOwner, timezone: "UTC", policyPrompt: "" });
-          const thirdService = new SentinelService(sentinelRepository, { createId: () => "wake-3" });
-          const thirdWake = await thirdService.enqueueWake(thirdOwner, { cause: "wake_now", scheduledFor: now, wakeId: "wake-3" });
+          const thirdWakeId = randomUUID();
+          const thirdService = new SentinelService(sentinelRepository, { createId: () => thirdWakeId });
+          const thirdWake = await thirdService.enqueueWake(thirdOwner, { cause: "wake_now", scheduledFor: now, wakeId: thirdWakeId });
           assert.equal(thirdWake.outcome, "created");
           assert.equal((await bridgeRepository.acquireListenerLease(thirdOwner, secondListener)).state, "acquired");
           assert.equal((await bridgeRepository.reserveNext(thirdOwner, secondListener))?.id, thirdWake.bridge.id);
           await bridgeRepository.markDispatchStarted(thirdOwner, secondListener, thirdWake.bridge.id);
-          const lateCancel = await sentinelService.cancelWakeBeforeDispatch(thirdOwner, "wake-3");
+          const lateCancel = await sentinelService.cancelWakeBeforeDispatch(thirdOwner, thirdWakeId);
           assert.equal(lateCancel.outcome, "conflict");
           const preserved = await bridgeRepository.getEvent(thirdOwner, thirdWake.bridge.id);
           assert.equal(preserved?.cancelledAt, null);
@@ -121,4 +124,3 @@ test(
     }
   },
 );
-
