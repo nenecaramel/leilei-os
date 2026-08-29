@@ -104,7 +104,9 @@ export function SystemConnectionsPageContent({
   };
 
   useEffect(() => {
-    if (!bridgeReceipt || bridgeReceipt.processingStatus === "completed") return;
+    const transportTerminal = bridgeReceipt?.status === "host_sent"
+      || bridgeReceipt?.status === "delivery_unknown";
+    if (!bridgeReceipt || (bridgeReceipt.processingStatus === "completed" && transportTerminal)) return;
     const bridgeEventId = bridgeReceipt.id;
     let active = true;
     const poll = async () => {

@@ -237,10 +237,7 @@ export class BridgeService {
       name: "bridge_event_delivery_unknown",
       eventId: event.id,
       transportStatus: "delivery_unknown",
-      reconciliation: event.deliveryReconciledAt !== null &&
-        (event.processingState === "claimed" || event.processingState === "completed")
-        ? "prior_model_evidence"
-        : null,
+      reconciliation: reconciliationDirection(event),
     });
     return event;
   }
@@ -280,9 +277,7 @@ export class BridgeService {
       transportStatus: event.status,
       awaitingHostCallback: event.status === "reserved" &&
         event.dispatchStartedAt !== null && event.hostSentAt === null,
-      reconciliation: event.status === "delivery_unknown" && event.deliveryReconciledAt !== null
-        ? "later_model_evidence"
-        : null,
+      reconciliation: reconciliationDirection(event),
       claimLatencyMs: elapsedMs(event.createdAt, event.modelClaimedAt),
     });
     return event;
@@ -308,7 +303,7 @@ export class BridgeService {
       processingState: event.processingState,
       reconciled: event.deliveryReconciledAt !== null,
       transportStatus: event.status,
-      reconciliation: event.deliveryReconciledAt !== null ? "prior_model_evidence" : null,
+      reconciliation: reconciliationDirection(event),
       completionLatencyMs: elapsedMs(event.modelClaimedAt, event.modelCompletedAt),
     });
     return event;
@@ -355,6 +350,22 @@ function elapsedMs(start: Date | null, end: Date | null): number | null {
   if (!(start instanceof Date) || !(end instanceof Date)) return null;
   const elapsed = end.getTime() - start.getTime();
   return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
+}
+
+function reconciliationDirection(
+  event: Pick<BridgeEventRecord, "deliveryReconciledAt" | "modelClaimedAt" | "deliveryUnknownAt">,
+): BridgeProcessingReconciliation | null {
+  if (event.deliveryReconciledAt == null || event.modelClaimedAt == null || event.deliveryUnknownAt == null) {
+    return null;
+  }
+  const modelClaimedAt = event.modelClaimedAt.getTime();
+  const deliveryUnknownAt = event.deliveryUnknownAt.getTime();
+  if (!Number.isFinite(modelClaimedAt) || !Number.isFinite(deliveryUnknownAt) || modelClaimedAt === deliveryUnknownAt) {
+    return null;
+  }
+  return modelClaimedAt < deliveryUnknownAt
+    ? "prior_model_evidence"
+    : "later_model_evidence";
 }
 
 export function hashBridgeEventRequest(value: {
