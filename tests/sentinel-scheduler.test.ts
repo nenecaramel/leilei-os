@@ -51,6 +51,24 @@ test("scheduler leaves a pending active wake alone when no listener is online", 
   assert.equal(createCalls, 1);
 });
 
+test("production scheduler delegates clock authority to the repository", async () => {
+  const calls: Array<{ now: Date | undefined; timeoutMs: number }> = [];
+  const repository: SentinelSchedulerRepository = {
+    async createDueWake(now) {
+      assert.equal(now, undefined);
+      return { outcome: "not_found" };
+    },
+    async markStaleWakeRuns(now, timeoutMs) {
+      calls.push({ now, timeoutMs });
+      assert.equal(now, undefined);
+      return 0;
+    },
+  };
+  const scheduler = createSentinelScheduler({ repository });
+  await scheduler.runOnce();
+  assert.equal(calls.length, 1);
+});
+
 test("claimed wakes older than the recovery timeout are projected without a successor", async () => {
   let staleCalls = 0;
   let createCalls = 0;

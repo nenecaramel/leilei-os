@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  hashSentinelCompletionPayload,
   normalizeWakeContextCapsule,
   projectSentinelStatus,
   SentinelDomainError,
@@ -148,6 +149,48 @@ test("wake context capsule is normalized by Unicode code point and bounded", () 
     () => normalizeWakeContextCapsule("😀".repeat(1_025)),
     (error: unknown) =>
       error instanceof SentinelDomainError && error.code === "CAPSULE_TOO_LONG",
+  );
+});
+
+test("completion payload hash canonicalizes UTC next wake and NFC capsule", () => {
+  const first = hashSentinelCompletionPayload({
+    decision: "contact",
+    nextWakeAt: new Date("2026-08-30T00:00:00.000Z"),
+    contextCapsule: "e\u0301",
+  });
+  const second = hashSentinelCompletionPayload({
+    decision: "contact",
+    nextWakeAt: new Date("2026-08-30T08:00:00+08:00"),
+    contextCapsule: "é",
+  });
+  assert.match(first, /^[0-9a-f]{64}$/);
+  assert.equal(first, second);
+  assert.notEqual(
+    first,
+    hashSentinelCompletionPayload({
+      decision: "quiet",
+      nextWakeAt: new Date("2026-08-30T00:00:00.000Z"),
+      contextCapsule: "é",
+    }),
+  );
+});
+
+test("Sentinel policy rejects misspelled IANA timezones", async () => {
+  const repository = new FakeSentinelRepository();
+  const service = new SentinelService(repository);
+  await assert.rejects(
+    service.ensureSentinel("user-1", {
+      timezone: "Asia/Beijing",
+      policyPrompt: "",
+    }),
+    (error: unknown) =>
+      error instanceof SentinelDomainError && error.code === "INVALID_TIMEZONE",
+  );
+  await assert.doesNotReject(
+    service.ensureSentinel("user-2", {
+      timezone: "Asia/Shanghai",
+      policyPrompt: "",
+    }),
   );
 });
 

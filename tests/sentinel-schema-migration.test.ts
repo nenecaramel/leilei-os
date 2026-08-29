@@ -6,6 +6,10 @@ const migrationPath = new URL(
   "../drizzle/0030_autonomous_sentinel.sql",
   import.meta.url,
 );
+const hardeningMigrationPath = new URL(
+  "../drizzle/0031_sentinel_hardening.sql",
+  import.meta.url,
+);
 const journalPath = new URL("../drizzle/meta/_journal.json", import.meta.url);
 
 async function readOptionalFile(url: URL): Promise<string> {
@@ -74,4 +78,20 @@ test("autonomous Sentinel migration adds durable wake state without rewriting me
   assert.doesNotMatch(migration, /UPDATE\s+"?bridge_events"?/i);
   assert.doesNotMatch(migration, /DELETE\s+FROM\s+"?bridge_events"?/i);
   assert.doesNotMatch(migration, /ALTER\s+COLUMN\s+"(?:visible_text|model_context)"/i);
+});
+
+test("Sentinel hardening migration adds completion hash and consistency guards", async () => {
+  const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+    entries: Array<{ idx: number; tag: string }>;
+  };
+  const tail = journal.entries.at(-1);
+  assert.deepEqual(tail, { idx: 31, tag: "0031_sentinel_hardening" });
+
+  const migration = await readOptionalFile(hardeningMigrationPath);
+  assert.match(migration, /completion_payload_hash varchar\(64\)/i);
+  assert.match(migration, /sentinel_wake_runs_completion_payload_hash_format/i);
+  assert.match(migration, /sentinels_active_wake_requires_null_next_wake/i);
+  assert.match(migration, /sentinel_wake_runs_finalized_fields_required/i);
+  assert.match(migration, /sentinel_wake_runs_non_finalized_fields_null/i);
+  assert.match(migration, /sentinels_due_enabled_idle_idx/i);
 });
