@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { WebApiError } from "../api/web-api-error";
+import { ChatGPTMessageBridgeCard } from "../components/ChatGPTMessageBridgeCard";
 import { PageHeader } from "./PageHeader";
 
 type SentinelStatus =
@@ -185,24 +186,24 @@ export function SentinelPageContent({
   };
 
   if (state.status === "loading") {
-    return <div className="page sentinel-page"><PageHeader eyebrow="Control" title="Autonomous Wake" description="A private, owner-controlled wake schedule." /><p className="sentinel-state-copy" role="status">Reading Sentinel…</p></div>;
+    return <div className="page system-page sentinel-page"><PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." /><p className="system-state-copy" role="status">Reading Sentinel…</p></div>;
   }
 
   if (state.status === "error") {
-    return <div className="page sentinel-page"><PageHeader eyebrow="Control" title="Autonomous Wake" description="A private, owner-controlled wake schedule." /><div className="sentinel-state-message" role="alert"><p>Sentinel is temporarily unavailable.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div></div>;
+    return <div className="page system-page sentinel-page"><PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." /><div className="system-state-message" role="alert"><p>Sentinel is temporarily unavailable.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div></div>;
   }
 
   if (state.status === "uninitialized") {
     return (
-      <div className="page sentinel-page">
-        <PageHeader eyebrow="Control" title="Autonomous Wake" description="A private, owner-controlled wake schedule." />
-        <section className="sentinel-card" aria-labelledby="sentinel-setup-title">
-          <p className="sentinel-kicker">Autonomous Wake</p>
-          <h2 id="sentinel-setup-title">Set up Sentinel</h2>
-          <p className="sentinel-state-copy">Save a policy to set up your private wake controls.</p>
+      <div className="page system-page sentinel-page">
+        <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." />
+        <section className="system-section sentinel-setup-card" aria-labelledby="sentinel-setup-title">
+          <h2 className="system-product-name" id="sentinel-setup-title">Set up Sentinel</h2>
+          <p className="system-state-copy">Save a policy to set up your private wake controls.</p>
         </section>
-        <section className="sentinel-card sentinel-policy-card" aria-labelledby="sentinel-policy-title">
-          <div className="sentinel-card-heading"><div><p className="sentinel-kicker">Wake policy</p><h2 id="sentinel-policy-title">Your guidance</h2></div></div>
+        <ChatGPTMessageBridgeCard api={api} />
+        <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
+          <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
           <label className="sentinel-field"><span>Timezone</span><input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="Asia/Shanghai" /></label>
           <label className="sentinel-field"><span>Policy</span><textarea value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" /></label>
           <button className="secondary-button" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>Save policy</button>
@@ -217,35 +218,32 @@ export function SentinelPageContent({
   const isPaused = sentinel ? !sentinel.enabled : true;
 
   return (
-    <div className="page sentinel-page" aria-busy={Boolean(busyAction)}>
-      <PageHeader eyebrow="Control" title="Autonomous Wake" description="A private control surface for your scheduled wake." />
+    <div className="page system-page sentinel-page" aria-busy={Boolean(busyAction)}>
+      <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." />
 
-      {error ? <p className="sentinel-feedback sentinel-feedback-error" role="alert">{error}</p> : null}
-      {notice ? <p className="sentinel-feedback" role="status">{notice}</p> : null}
+      {error ? <div className="system-state-message" role="alert"><p>{error}</p></div> : null}
+      {notice ? <p className="system-state-copy" role="status">{notice}</p> : null}
 
-      <section className="sentinel-card" aria-labelledby="sentinel-status-title">
-        <div className="sentinel-card-heading">
-          <div>
-            <p className="sentinel-kicker">Autonomous Wake</p>
-            <h2 id="sentinel-status-title">{isPaused ? "Paused" : "ON"}</h2>
-          </div>
-          <span className={`sentinel-status-pill sentinel-status-${projectedStatus}`}>{STATUS_LABELS[projectedStatus]}</span>
+      <section className="system-section sentinel-status-card" aria-labelledby="sentinel-status-title">
+        <h2 className="system-product-name" id="sentinel-status-title">{isPaused ? "Paused" : "ON"}</h2>
+        <div className="system-status-list">
+          <div className="system-status-row"><span>Next wake</span><strong>{formatMoment(sentinel.nextWakeAt)}</strong></div>
+          <div className="system-status-row"><span>Last valid wake</span><strong>{formatMoment(sentinel.lastValidWakeAt ?? latestFinalized?.finalizedAt ?? null)}{latestFinalized ? ` · ${latestFinalized.decision === "contact" ? "Contact" : "Quiet"}` : ""}</strong></div>
+          <div className="system-status-row"><span>Current state</span><strong>{STATUS_LABELS[projectedStatus]}</strong></div>
         </div>
-        <dl className="sentinel-facts">
-          <div><dt>Next wake</dt><dd>{formatMoment(sentinel?.nextWakeAt ?? null)}</dd></div>
-          <div><dt>Last valid wake</dt><dd>{formatMoment(sentinel?.lastValidWakeAt ?? latestFinalized?.finalizedAt ?? null)}{latestFinalized ? ` · ${latestFinalized.decision === "contact" ? "Contact" : "Quiet"}` : ""}</dd></div>
-          <div><dt>Current state</dt><dd>{STATUS_LABELS[projectedStatus]}</dd></div>
-        </dl>
       </section>
 
-      <section className="sentinel-card sentinel-policy-card" aria-labelledby="sentinel-policy-title">
-        <div className="sentinel-card-heading"><div><p className="sentinel-kicker">Wake policy</p><h2 id="sentinel-policy-title">Your guidance</h2></div></div>
+      <ChatGPTMessageBridgeCard api={api} />
+
+      <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
+        <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
         <label className="sentinel-field"><span>Timezone</span><input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="Asia/Shanghai" /></label>
         <label className="sentinel-field"><span>Policy</span><textarea value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" /></label>
         <button className="secondary-button" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>Save policy</button>
       </section>
 
-      <section className="sentinel-controls" aria-label="Sentinel controls">
+      <section className="system-section sentinel-controls-card" aria-label="Sentinel controls">
+        <h2 className="system-product-name">First Wake / Controls</h2>
         {isPaused ? (
           <>
             <label className="sentinel-field sentinel-resume-field"><span>First wake after resume</span><input type="datetime-local" value={resumeAt} onChange={(event) => setResumeAt(event.target.value)} /></label>
@@ -257,9 +255,9 @@ export function SentinelPageContent({
         {isRecovery ? <button className="secondary-button sentinel-recovery-button" type="button" disabled={Boolean(busyAction)} onClick={() => void runAction("Recovery", "/sentinel/recover", { method: "POST", body: "{}" })}>Recovery</button> : null}
       </section>
 
-      <section className="sentinel-card sentinel-activity-card" aria-labelledby="sentinel-activity-title">
-        <div className="sentinel-card-heading"><div><p className="sentinel-kicker">Recent</p><h2 id="sentinel-activity-title">Wake Activity</h2></div></div>
-        {wakes.length === 0 ? <p className="sentinel-empty">No wake activity yet.</p> : <ol className="sentinel-activity-list">{wakes.slice(0, 20).map((wake, index) => <li key={`${wake.createdAt}-${index}`}><time dateTime={wake.createdAt}>{formatMoment(wake.createdAt)}</time><span>{activityLabel(wake)}</span>{wake.nextWakeAt ? <small>next {formatMoment(wake.nextWakeAt)}</small> : null}</li>)}</ol>}
+      <section className="system-section sentinel-activity-card" aria-labelledby="sentinel-activity-title">
+        <h2 className="system-product-name" id="sentinel-activity-title">Wake Activity</h2>
+        {wakes.length === 0 ? <p className="system-empty-state">No wake activity yet.</p> : <ol className="sentinel-activity-list">{wakes.slice(0, 20).map((wake, index) => <li className="system-activity-row" key={`${wake.createdAt}-${index}`}><time dateTime={wake.createdAt}>{formatMoment(wake.createdAt)}</time><div className="system-activity-main"><strong className="system-activity-label">{activityLabel(wake)}</strong>{wake.nextWakeAt ? <span>next {formatMoment(wake.nextWakeAt)}</span> : null}</div></li>)}</ol>}
       </section>
     </div>
   );

@@ -6,13 +6,39 @@ import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
 
-test("System Connections bridge entry is bounded and sends only text", () => {
-  const source = readFileSync("web/src/pages/SystemConnectionsPageContent.tsx", "utf8");
+test("Message Bridge card is bounded and sends only text", () => {
+  const source = readFileSync("web/src/components/ChatGPTMessageBridgeCard.tsx", "utf8");
   assert.match(source, /maxLength=\{4000\}/);
   assert.match(source, /JSON\.stringify\(\{ text \}\)/);
   assert.match(source, /Idempotency-Key/);
   assert.match(source, /\/bridge\/events/);
   assert.doesNotMatch(source, /localStorage/);
+});
+
+test("System Connections keeps availability status without the Message Bridge composer", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const { SystemConnectionsPageContent } = await import("../web/src/pages/SystemConnectionsPageContent.js");
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      assert.equal(path, "/system/connections");
+      return connectionResponse() as T;
+    },
+  };
+
+  try {
+    await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
+    await waitFor(() => container.textContent?.includes("Web API") === true, "connection availability");
+    assert.match(container.textContent ?? "", /ChatGPT \/ MCP/);
+    assert.match(container.textContent ?? "", /Internal MCP/);
+    assert.equal(container.querySelector("textarea"), null);
+    assert.equal([...container.querySelectorAll("button")].some((button) => button.textContent === "Send"), false);
+  } finally {
+    root.unmount();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    env.restore();
+  }
 });
 
 function installDom() {
@@ -105,7 +131,7 @@ test("mounted bridge sender posts only text, shows status, and polls owner-scope
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-  const { SystemConnectionsPageContent } = await import("../web/src/pages/SystemConnectionsPageContent.js");
+  const { ChatGPTMessageBridgeCard } = await import("../web/src/components/ChatGPTMessageBridgeCard.js");
   const calls: Array<{ path: string; init?: RequestInit }> = [];
   const api: WebApiClient = {
     async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -118,7 +144,7 @@ test("mounted bridge sender posts only text, shows status, and polls owner-scope
     },
   };
 
-  await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
+  await React.act(async () => root.render(React.createElement(ChatGPTMessageBridgeCard, { api })));
   await waitFor(() => container.querySelector("textarea") !== null, "bridge form");
   const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
   const send = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Send")!;
@@ -147,7 +173,7 @@ test("mounted bridge retry preserves the same idempotency key after an ambiguous
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-  const { SystemConnectionsPageContent } = await import("../web/src/pages/SystemConnectionsPageContent.js");
+  const { ChatGPTMessageBridgeCard } = await import("../web/src/components/ChatGPTMessageBridgeCard.js");
   const keys: string[] = [];
   let posts = 0;
   const api: WebApiClient = {
@@ -163,7 +189,7 @@ test("mounted bridge retry preserves the same idempotency key after an ambiguous
     },
   };
 
-  await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
+  await React.act(async () => root.render(React.createElement(ChatGPTMessageBridgeCard, { api })));
   await waitFor(() => container.querySelector("textarea") !== null, "bridge form");
   const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
   await React.act(async () => {
@@ -187,7 +213,7 @@ test("mounted bridge polling continues after transport terminality until process
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-  const { SystemConnectionsPageContent } = await import("../web/src/pages/SystemConnectionsPageContent.js");
+  const { ChatGPTMessageBridgeCard } = await import("../web/src/components/ChatGPTMessageBridgeCard.js");
   let reads = 0;
   const api: WebApiClient = {
     async request<T>(path: string): Promise<T> {
@@ -197,7 +223,7 @@ test("mounted bridge polling continues after transport terminality until process
       return { success: true, data: { id: "bridge-3", status: "host_sent", createdAt: "2026-08-28T00:00:00.000Z", processingStatus: "completed", modelClaimedAt: "2026-08-28T00:01:00.000Z", modelCompletedAt: "2026-08-28T00:02:00.000Z", deliveryReconciledAt: null } } as T;
     },
   };
-  await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
+  await React.act(async () => root.render(React.createElement(ChatGPTMessageBridgeCard, { api })));
   await waitFor(() => container.querySelector("textarea") !== null, "bridge form");
   const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
   await React.act(async () => { textarea.focus(); setTextValue(textarea, "hello"); });
@@ -214,7 +240,7 @@ test("mounted bridge polling continues when processing completes before transpor
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-  const { SystemConnectionsPageContent } = await import("../web/src/pages/SystemConnectionsPageContent.js");
+  const { ChatGPTMessageBridgeCard } = await import("../web/src/components/ChatGPTMessageBridgeCard.js");
   let reads = 0;
   const api: WebApiClient = {
     async request<T>(path: string): Promise<T> {
@@ -227,7 +253,7 @@ test("mounted bridge polling continues when processing completes before transpor
     },
   };
 
-  await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
+  await React.act(async () => root.render(React.createElement(ChatGPTMessageBridgeCard, { api })));
   await waitFor(() => container.querySelector("textarea") !== null, "bridge form");
   const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
   await React.act(async () => { textarea.focus(); setTextValue(textarea, "hello"); });
@@ -245,7 +271,7 @@ test("mounted bridge status keeps delivery uncertainty visible when later model 
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-  const { SystemConnectionsPageContent } = await import("../web/src/pages/SystemConnectionsPageContent.js");
+  const { ChatGPTMessageBridgeCard } = await import("../web/src/components/ChatGPTMessageBridgeCard.js");
   const api: WebApiClient = {
     async request<T>(path: string): Promise<T> {
       if (path === "/system/connections") return connectionResponse() as T;
@@ -264,7 +290,7 @@ test("mounted bridge status keeps delivery uncertainty visible when later model 
     },
   };
 
-  await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
+  await React.act(async () => root.render(React.createElement(ChatGPTMessageBridgeCard, { api })));
   await waitFor(() => container.querySelector("textarea") !== null, "bridge form");
   const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
   await React.act(async () => { textarea.focus(); setTextValue(textarea, "hello"); });

@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
-import { NavigationGroups } from "../web/src/layout/NavigationGroups.js";
+import { NAV_GROUPS } from "../web/src/layout/NavigationGroups.js";
 import { WebApiError } from "../web/src/api/web-api-error.js";
 import { SentinelPageContent } from "../web/src/pages/SentinelPage.js";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
@@ -65,7 +65,7 @@ function response(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test("Sentinel page renders owner status, controls, policy, and bounded activity without chat internals", async () => {
+test("Sentinel page renders the Message Bridge between status and wake policy", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
@@ -88,7 +88,8 @@ test("Sentinel page renders owner status, controls, policy, and bounded activity
   root.render(React.createElement(SentinelPageContent, { api }));
   await waitForPaint();
 
-  assert.match(container.textContent ?? "", /Autonomous Wake/);
+  assert.match(container.textContent ?? "", /Sentinel/);
+  assert.doesNotMatch(container.textContent ?? "", /Autonomous Wake|\bControl\b/);
   assert.match(container.textContent ?? "", /ON/);
   assert.match(container.textContent ?? "", /Next wake/);
   assert.match(container.textContent ?? "", /Last valid wake/);
@@ -97,8 +98,18 @@ test("Sentinel page renders owner status, controls, policy, and bounded activity
   assert.match(container.textContent ?? "", /Pause/);
   assert.match(container.textContent ?? "", /Keep a gentle eye/);
   assert.match(container.textContent ?? "", /Wake Activity/);
+  assert.match(container.textContent ?? "", /Message Bridge/);
   assert.doesNotMatch(container.textContent ?? "", /processing_state|delivery_unknown|bridge_event_id|chat composer|transcript/i);
-  assert.equal(container.querySelector("textarea")?.value, "Keep a gentle eye on my workspace.");
+  const sections = [...container.querySelectorAll("section")];
+  const status = container.querySelector('[aria-labelledby="sentinel-status-title"]');
+  const bridge = container.querySelector('[aria-label="ChatGPT Message Bridge"]');
+  const policy = container.querySelector('[aria-labelledby="sentinel-policy-title"]');
+  assert.ok(status);
+  assert.ok(bridge);
+  assert.ok(policy);
+  assert.ok(sections.indexOf(status) < sections.indexOf(bridge));
+  assert.ok(sections.indexOf(bridge) < sections.indexOf(policy));
+  assert.equal(container.querySelectorAll("textarea")[1]?.value, "Keep a gentle eye on my workspace.");
 
   root.unmount();
   env.restore();
@@ -159,6 +170,7 @@ test("Sentinel API failures remain visible and do not fabricate an enabled state
   await waitForCondition(() => container.querySelector('[role="alert"]') !== null, "Sentinel error state");
   assert.match(container.textContent ?? "", /temporarily unavailable/);
   assert.doesNotMatch(container.textContent ?? "", /\bON\b/);
+  assert.ok(container.querySelector(".system-state-message"));
   root.unmount();
   await waitForPaint();
   env.restore();
@@ -195,6 +207,15 @@ test("an uninitialized Sentinel requires policy setup before wake controls becom
   assert.equal(container.querySelector<HTMLTextAreaElement>("textarea")?.disabled, false);
   assert.equal([...container.querySelectorAll("button")].some((button) => /^(Resume|Resume now|Wake now|Pause|Recovery)$/.test(button.textContent ?? "")), false);
   assert.doesNotMatch(container.textContent ?? "", /\bON\b/);
+  const setup = container.querySelector('[aria-labelledby="sentinel-setup-title"]');
+  const bridge = container.querySelector('[aria-label="ChatGPT Message Bridge"]');
+  const policyCard = container.querySelector('[aria-labelledby="sentinel-policy-title"]');
+  assert.ok(setup);
+  assert.ok(bridge);
+  assert.ok(policyCard);
+  const sections = [...container.querySelectorAll("section")];
+  assert.ok(sections.indexOf(setup) < sections.indexOf(bridge));
+  assert.ok(sections.indexOf(bridge) < sections.indexOf(policyCard));
 
   const save = [...container.querySelectorAll("button")].find((button) => button.textContent === "Save policy");
   assert.ok(save);
@@ -255,10 +276,13 @@ test("Sentinel policy draft is sent through the authenticated API contract", asy
   };
   root.render(React.createElement(SentinelPageContent, { api }));
   await waitForCondition(() => container.textContent?.includes("Wake now") === true, "initial Sentinel readback");
-  const policy = container.querySelector<HTMLTextAreaElement>("textarea");
+  const policy = [...container.querySelectorAll<HTMLTextAreaElement>("textarea")]
+    .find((textarea) => textarea.value === "Keep a gentle eye on my workspace.");
   assert.ok(policy);
   assert.equal(policy.value, "Keep a gentle eye on my workspace.");
-  container.querySelector<HTMLButtonElement>("button")?.click();
+  [...container.querySelectorAll<HTMLButtonElement>("button")]
+    .find((button) => button.textContent === "Save policy")
+    ?.click();
   await waitForCondition(() => requests.some(({ path, init }) => path === "/sentinel" && init?.method === "PUT"), "policy save request");
   const save = requests.find(({ path, init }) => path === "/sentinel" && init?.method === "PUT");
   assert.deepEqual(JSON.parse(String(save?.init?.body)), {
@@ -275,4 +299,47 @@ test("Sentinel route and navigation entry are wired", () => {
   const navSource = readFileSync(new URL("../web/src/layout/NavigationGroups.tsx", import.meta.url), "utf8");
   assert.match(appSource, /path="sentinel"/);
   assert.match(navSource, /to:\s*["']\/sentinel["']/);
+  const coreEntries = NAV_GROUPS.find((group) => group.label === "Core")?.entries ?? [];
+  const systemEntries = NAV_GROUPS.find((group) => group.label === "System")?.entries ?? [];
+  assert.ok(coreEntries.some((entry) => entry.label === "Sentinel" && entry.to === "/sentinel"));
+  assert.equal(coreEntries.some((entry) => entry.label === "Autonomous Wake"), false);
+  assert.ok(systemEntries.some((entry) => entry.label === "Connections" && entry.to === "/system/connections"));
+});
+
+test("Sentinel uses the shared system card order with paused controls contained in one card", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const api: WebApiClient = {
+    request: async (path) => path.includes("wakes")
+      ? { success: true, data: { wakes: [] } } as never
+      : response({
+        status: "paused",
+        sentinel: { ...response().data.sentinel, enabled: false },
+      }) as never,
+  };
+
+  try {
+    root.render(React.createElement(SentinelPageContent, { api }));
+    await waitForCondition(() => container.textContent?.includes("First wake after resume") === true, "paused Sentinel controls");
+    assert.ok(container.querySelector(".system-page.sentinel-page"));
+    const status = container.querySelector('[aria-labelledby="sentinel-status-title"]');
+    const bridge = container.querySelector('[aria-label="ChatGPT Message Bridge"]');
+    const policy = container.querySelector('[aria-labelledby="sentinel-policy-title"]');
+    const controls = container.querySelector('[aria-label="Sentinel controls"]');
+    const activity = container.querySelector('[aria-labelledby="sentinel-activity-title"]');
+    for (const section of [status, bridge, policy, controls, activity]) {
+      assert.ok(section?.classList.contains("system-section"));
+    }
+    const sections = [...container.querySelectorAll("section")];
+    assert.ok(sections.indexOf(status!) < sections.indexOf(bridge!));
+    assert.ok(sections.indexOf(bridge!) < sections.indexOf(policy!));
+    assert.ok(sections.indexOf(policy!) < sections.indexOf(controls!));
+    assert.ok(sections.indexOf(controls!) < sections.indexOf(activity!));
+    assert.match(controls?.textContent ?? "", /First wake after resume/);
+  } finally {
+    root.unmount();
+    await waitForPaint();
+    env.restore();
+  }
 });
