@@ -15,6 +15,32 @@ test("Message Bridge card is bounded and sends only text", () => {
   assert.doesNotMatch(source, /localStorage/);
 });
 
+test("System Connections keeps availability status without the Message Bridge composer", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const { SystemConnectionsPageContent } = await import("../web/src/pages/SystemConnectionsPageContent.js");
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      assert.equal(path, "/system/connections");
+      return connectionResponse() as T;
+    },
+  };
+
+  try {
+    await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
+    await waitFor(() => container.textContent?.includes("Web API") === true, "connection availability");
+    assert.match(container.textContent ?? "", /ChatGPT \/ MCP/);
+    assert.match(container.textContent ?? "", /Internal MCP/);
+    assert.equal(container.querySelector("textarea"), null);
+    assert.equal([...container.querySelectorAll("button")].some((button) => button.textContent === "Send"), false);
+  } finally {
+    root.unmount();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    env.restore();
+  }
+});
+
 function installDom() {
   const dom = new JSDOM(
     "<!doctype html><html><body><div id='root'></div></body></html>",

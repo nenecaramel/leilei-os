@@ -7,7 +7,6 @@ import type {
   SystemConnectionsResponse,
 } from "../system/types";
 import { PageHeader } from "./PageHeader";
-import { ChatGPTMessageBridgeCard } from "../components/ChatGPTMessageBridgeCard";
 
 type LoadState =
   | { status: "loading" }
@@ -142,8 +141,6 @@ export function SystemConnectionsPageContent({
           </div>
         ) : null}
       </section>
-
-      <ChatGPTMessageBridgeCard api={api} />
     </div>
   );
 }

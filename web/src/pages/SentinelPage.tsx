@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { WebApiError } from "../api/web-api-error";
+import { ChatGPTMessageBridgeCard } from "../components/ChatGPTMessageBridgeCard";
 import { PageHeader } from "./PageHeader";
 
 type SentinelStatus =
@@ -201,6 +202,7 @@ export function SentinelPageContent({
           <h2 id="sentinel-setup-title">Set up Sentinel</h2>
           <p className="sentinel-state-copy">Save a policy to set up your private wake controls.</p>
         </section>
+        <ChatGPTMessageBridgeCard api={api} />
         <section className="sentinel-card sentinel-policy-card" aria-labelledby="sentinel-policy-title">
           <div className="sentinel-card-heading"><div><p className="sentinel-kicker">Wake policy</p><h2 id="sentinel-policy-title">Your guidance</h2></div></div>
           <label className="sentinel-field"><span>Timezone</span><input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="Asia/Shanghai" /></label>
@@ -237,6 +239,8 @@ export function SentinelPageContent({
           <div><dt>Current state</dt><dd>{STATUS_LABELS[projectedStatus]}</dd></div>
         </dl>
       </section>
+
+      <ChatGPTMessageBridgeCard api={api} />
 
       <section className="sentinel-card sentinel-policy-card" aria-labelledby="sentinel-policy-title">
         <div className="sentinel-card-heading"><div><p className="sentinel-kicker">Wake policy</p><h2 id="sentinel-policy-title">Your guidance</h2></div></div>
