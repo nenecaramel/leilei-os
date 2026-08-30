@@ -207,7 +207,7 @@ export function createBridgeListenerHtml(
   };
   const messageTextFor = (event) => {
     const wake = sentinelWakeMetadata(event);
-    if (!wake) return '@LeileiOS ' + event.visibleText;
+    if (!wake) return '@LeileiOS ' + event.visibleText + '\\n\\nBridge routing for this turn only: eventId=' + event.id + '. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final response.';
     return '@LeileiOS ' + event.visibleText + '\\n\\nSentinel routing for this turn only: eventId=' + wake.eventId + '; wakeId=' + wake.wakeId + '. Claim this wake first, then read its fresh state.';
   };
   const sync = async (source = 'auto') => {
