@@ -255,6 +255,18 @@ export class BridgeService {
     return event;
   }
 
+  async cancelSentinelEvent(userId: string, eventId: string): Promise<BridgeEventRecord> {
+    const cancel = this.repository.cancelSentinelEvent;
+    if (!cancel) {
+      throw new BridgeDomainError("EVENT_CONFLICT", "Sentinel wake cancellation is unavailable.");
+    }
+    const event = await cancel.call(this.repository, userId, eventId);
+    if (!event) {
+      throw new BridgeDomainError("EVENT_CONFLICT", "The Sentinel wake is no longer cancellable.");
+    }
+    return event;
+  }
+
   async claimEvent(userId: string, eventId: string): Promise<BridgeEventRecord> {
     const result = await this.repository.claimProcessing(userId, eventId);
     if (result.outcome === "not_found") {
@@ -376,6 +388,31 @@ export function hashBridgeEventRequest(value: {
   return createHash("sha256")
     .update(`${BRIDGE_REQUEST_FINGERPRINT_VERSION}\n${JSON.stringify(value)}`, "utf8")
     .digest("hex");
+}
+
+export function hashSentinelWakeRequest(wakeId: string): string {
+  return createHash("sha256")
+    .update(
+      `${BRIDGE_REQUEST_FINGERPRINT_VERSION}\n` +
+        JSON.stringify({ kind: "wake", source: "leileios_sentinel", wakeId }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
+export function createSentinelWakeModelContext(input: {
+  eventId: string;
+  wakeId: string;
+  sentinelId: string;
+  controlRevision: number;
+  scheduledFor: Date;
+}): string {
+  return [
+    `LeileiOS Sentinel wake event ${input.eventId}.`,
+    `wakeId=${input.wakeId}; sentinelId=${input.sentinelId}; controlRevision=${input.controlRevision}; scheduledFor=${input.scheduledFor.toISOString()}.`,
+    "Claim this wake first, then read fresh Sentinel state.",
+    "A quiet decision is valid; a successful completion must choose the next wake.",
+  ].join(" ");
 }
 
 export function createBridgeModelContext(input: {

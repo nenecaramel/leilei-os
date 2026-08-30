@@ -9,6 +9,7 @@ import type { ToyCommandService } from "../../domains/toy/toy-command-service.js
 import type { UniverseService } from "../../domains/universe/universe-service.js";
 import type { McpSessionNamespace } from "./session-registry.js";
 import type { BridgeService } from "../../domains/bridge/bridge-service.js";
+import type { SentinelService } from "../../domains/sentinel/sentinel-service.js";
 import type { SafeLogger } from "../../observability/logger.js";
 import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
 import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
@@ -19,6 +20,7 @@ import {
   type McpServerDependencies,
 } from "./create-server.js";
 import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
+import { registerSentinelTools } from "../tools/sentinel/register.js";
 
 export type McpSessionServerFactory = (
   authenticatedUserId: string,
@@ -37,6 +39,7 @@ export function createProductionMcpSessionServerFactory(input: {
   bridgeService?: BridgeService;
   bridgeAmbiguityAcceptanceEnabled?: boolean;
   logger?: SafeLogger;
+  sentinelService?: SentinelService;
 }): McpSessionServerFactory {
   return (userId, namespace = "public") => {
     const activeUserAuthorization = createActiveUserAuthorizer(
@@ -112,6 +115,13 @@ export function createProductionMcpSessionServerFactory(input: {
       userId,
       activeUserAuthorization,
     );
+    if (namespace === "public" && input.sentinelService) {
+      registerSentinelTools(server, {
+        sentinelService: input.sentinelService,
+        getAuthenticatedUserId,
+        requireActiveUser: activeUserAuthorization,
+      });
+    }
     if (namespace === "public" && input.bridgeService) {
       registerBridgeListenerResource(server, {
         ambiguityAcceptanceEnabled: input.bridgeAmbiguityAcceptanceEnabled === true,

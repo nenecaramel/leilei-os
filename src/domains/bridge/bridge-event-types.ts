@@ -11,8 +11,8 @@ export type BridgeEventRecord = {
   userId: string;
   idempotencyKey: string;
   requestHash: string;
-  kind: "chat";
-  source: "leileios_pwa";
+  kind: "chat" | "wake";
+  source: "leileios_pwa" | "leileios_sentinel";
   visibleText: string;
   modelContext: string;
   status: BridgeEventStatus;
@@ -23,6 +23,8 @@ export type BridgeEventRecord = {
   dispatchStartedAt: Date | null;
   hostSentAt: Date | null;
   deliveryUnknownAt: Date | null;
+  /** Set only for a server-owned Sentinel wake cancelled before dispatch. */
+  cancelledAt?: Date | null;
   processingState: BridgeProcessingState;
   modelClaimedAt: Date | null;
   modelCompletedAt: Date | null;

@@ -30,6 +30,13 @@ import {
 import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
 import { createRetentionCoordinator } from "../domains/retention/retention-coordinator.js";
 import { DATA_IMPORT_RETENTION_DAYS } from "../domains/retention/retention-policy.js";
+import { DrizzleSentinelRepository } from "../domains/sentinel/sentinel-repository.js";
+import { SentinelService } from "../domains/sentinel/sentinel-service.js";
+import {
+  createSentinelScheduler as buildSentinelScheduler,
+  type SentinelScheduler,
+  type SentinelSchedulerRepository,
+} from "../domains/sentinel/sentinel-scheduler.js";
 import { McpSessionRegistry } from "../mcp/server/session-registry.js";
 import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
@@ -55,6 +62,9 @@ export type ProcessRuntimeFactoryDependencies = {
   environment?: RuntimeEnv;
   createDatabaseResource?: (databaseUrl: string) => DatabaseResource;
   createLogger?: (level: RuntimeEnv["LOG_LEVEL"]) => SafeLogger;
+  createSentinelScheduler?: (
+    repository: SentinelSchedulerRepository,
+  ) => SentinelScheduler;
 };
 
 export function createProcessRuntime(
@@ -87,6 +97,10 @@ export function createProcessRuntime(
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
   const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
+  const sentinelRepository = new DrizzleSentinelRepository(db);
+  const sentinelService = new SentinelService(sentinelRepository);
+  const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
+    buildSentinelScheduler({ repository })))(sentinelRepository);
 
   const governance = getMcpGovernanceConfig(runtimeEnv);
   const mcpSessionRegistry = new McpSessionRegistry({
@@ -126,6 +140,7 @@ export function createProcessRuntime(
     globalSearchService,
     todoService,
     universeService,
+    sentinelService,
     bridgeService,
     bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,
     logger,
@@ -147,13 +162,25 @@ export function createProcessRuntime(
       webImportService: importService,
       webUniverseService: universeService,
       webBridgeService: bridgeService,
+      webSentinelService: sentinelService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
       createMcpSessionServer,
     },
-    startBackgroundWork: () => retentionCoordinator.start(),
-    stopBackgroundWork: () => retentionCoordinator.stopScheduling(),
-    drainBackgroundWork: () => retentionCoordinator.drain(),
+    startBackgroundWork: () => {
+      retentionCoordinator.start();
+      sentinelScheduler.start();
+    },
+    stopBackgroundWork: () => {
+      retentionCoordinator.stopScheduling();
+      sentinelScheduler.stopScheduling();
+    },
+    drainBackgroundWork: async () => {
+      await Promise.all([
+        retentionCoordinator.drain(),
+        sentinelScheduler.drain(),
+      ]);
+    },
     closeDatabase: database.close,
   };
 }

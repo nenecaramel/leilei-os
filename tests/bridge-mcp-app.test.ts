@@ -11,6 +11,7 @@ test("bridge listener tool surface is model/app split", async () => {
     toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
     universeService: {} as never,
     bridgeService: {} as never,
+    sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); } } as never,
   })("user-1", "public");
   const client = new Client({ name: "bridge-test", version: "1" }, { capabilities: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -24,7 +25,7 @@ test("bridge listener tool surface is model/app split", async () => {
     const sync = tools.tools.find((tool) => tool.name === "bridge_listener_sync");
     assert.deepEqual(sync?._meta?.ui, { visibility: ["app"] });
     const opener = tools.tools.find((tool) => tool.name === "bridge_listener_open");
-    assert.equal(opener?._meta?.ui?.resourceUri, "ui://leileios/message-bridge/v2");
+    assert.equal(opener?._meta?.ui?.resourceUri, "ui://leileios/message-bridge/v3");
   } finally {
     await client.close();
     await server.close();
