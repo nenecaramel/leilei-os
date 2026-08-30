@@ -5493,6 +5493,10 @@ body:has(.system-page) {
   display: grid;
 }
 
+.sentinel-status-card .system-status-list {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
 .system-status-row {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
@@ -5506,18 +5510,23 @@ body:has(.system-page) {
   white-space: nowrap;
 }
 
-.message-bridge-card,
-.sentinel-policy-card,
-.sentinel-controls-card,
-.sentinel-activity-card,
+.sentinel-page > .system-section + .system-section {
+  margin-top: 12px;
+}
+
 .sentinel-setup-card {
   display: grid;
   gap: 10px;
 }
 
+.message-bridge-card .system-note {
+  margin-top: 12px;
+}
+
 .message-bridge-card textarea {
   width: 100%;
   min-height: 84px;
+  margin-top: 10px;
   resize: vertical;
   padding: 10px;
   border: 1px solid rgba(0, 0, 0, 0.11);
@@ -5534,8 +5543,8 @@ body:has(.system-page) {
   justify-self: start;
 }
 
-.system-bridge-error { margin: 0; color: var(--theme-danger, #a53b35); font-size: 12px; }
-.system-bridge-status { margin: 0; color: #8a8a8a; font-size: 12px; }
+.system-bridge-error { margin: 10px 0 0; color: var(--theme-danger, #a53b35); font-size: 12px; }
+.system-bridge-status { margin: 10px 0 0; color: #8a8a8a; font-size: 12px; }
 
 .sentinel-page-loading {
   position: relative;
@@ -5569,20 +5578,51 @@ body:has(.system-page) {
   min-height: 116px;
 }
 
+.sentinel-policy-card > .sentinel-field,
+.sentinel-controls-card > .sentinel-resume-field,
+.sentinel-controls-card > .sentinel-control-row {
+  margin-top: 12px;
+}
+
 .sentinel-control-row {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
+.sentinel-control-row .system-sign-out {
+  margin-top: 0;
+}
+
 .sentinel-resume-field {
-  max-width: 320px;
+  max-width: 100%;
+}
+
+.sentinel-resume-datetime {
+  text-align: center;
+}
+
+.sentinel-resume-datetime::-webkit-date-and-time-value,
+.sentinel-resume-datetime::-webkit-datetime-edit {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  min-height: 46px;
+  margin: 0;
+  padding: 0;
+  line-height: 46px;
+  text-align: center;
 }
 
 .sentinel-activity-list {
-  margin: 0;
+  margin: 12px 0 0;
   padding: 0;
   list-style: none;
+}
+
+.sentinel-activity-card .system-empty-state {
+  margin: 12px 0 0;
+  padding-top: 0;
 }
 
 .system-data-row {
