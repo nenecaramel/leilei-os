@@ -129,7 +129,14 @@ test("Web auth verification diagnostics are non-fatal and preserve the 401 contr
 test("allows CORS only from the configured Web origin", () => {
   const allowedRequest = {
     method: "OPTIONS",
-    header: () => config.WEB_APP_ORIGIN,
+    header: (name: string) => {
+      if (name === "Origin") return config.WEB_APP_ORIGIN;
+      if (name === "Access-Control-Request-Method") return "POST";
+      if (name === "Access-Control-Request-Headers") {
+        return "authorization, content-type, idempotency-key";
+      }
+      return undefined;
+    },
   } as unknown as Request;
   const allowedResponse = responseRecorder();
   createWebApiCorsMiddleware(config.WEB_APP_ORIGIN)(
@@ -145,6 +152,10 @@ test("allows CORS only from the configured Web origin", () => {
   assert.match(
     allowedResponse.result.headers["access-control-allow-methods"] ?? "",
     /(?:^|,)PUT(?:,|$)/,
+  );
+  assert.match(
+    allowedResponse.result.headers["access-control-allow-headers"] ?? "",
+    /(?:^|,)Idempotency-Key(?:,|$)/,
   );
 
   const deniedRequest = {
