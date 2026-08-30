@@ -205,6 +205,11 @@ export function createBridgeListenerHtml(
     const wake = sentinelWakeMetadata(event);
     return wake ? (event.modelContext || '') + '\\n\\nEvent ID: ' + event.id + '. Claim this Sentinel wake first with bridge_event_claim(eventId), then read fresh state with sentinel_get_state(wakeId). After deciding contact or quiet, finalize with complete_sentinel_wake using the normalized capsule.' : (event.modelContext || '') + '\\n\\nEvent ID: ' + event.id + '. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.';
   };
+  const messageTextFor = (event) => {
+    const wake = sentinelWakeMetadata(event);
+    if (!wake) return '@LeileiOS ' + event.visibleText;
+    return '@LeileiOS ' + event.visibleText + '\\n\\nSentinel routing for this turn only: eventId=' + wake.eventId + '; wakeId=' + wake.wakeId + '. Claim this wake first, then read its fresh state.';
+  };
   const sync = async (source = 'auto') => {
     recordDiag('sync enter source=' + source + ' running=' + running + ' syncing=' + syncing);
     if (!running) { recordDiag('sync skipped not-running'); return; }
@@ -230,7 +235,7 @@ export function createBridgeListenerHtml(
       try {
         const ambiguityAcceptance = AMBIGUITY_ACCEPTANCE_ENABLED && typeof event.visibleText === 'string' && event.visibleText.startsWith(AMBIGUITY_ACCEPTANCE_PREFIX);
         if (ambiguityAcceptance) recordDiag('ambiguity acceptance host ACK drop armed');
-        const messageResult = await call('ui/message', {role:'user', content:[{type:'text', text:'@LeileiOS ' + event.visibleText}]}, TIMEOUT_MS, ambiguityAcceptance);
+        const messageResult = await call('ui/message', {role:'user', content:[{type:'text', text:messageTextFor(event)}]}, TIMEOUT_MS, ambiguityAcceptance);
         if (messageResult && messageResult.isError === true) throw Object.assign(new Error('Host rejected ui/message'), {ambiguous:false});
         if (messageResult == null) throw Object.assign(new Error('Host ui/message outcome was ambiguous'), {ambiguous:true});
       } catch (error) {
