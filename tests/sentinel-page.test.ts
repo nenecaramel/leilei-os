@@ -147,6 +147,10 @@ test("Sentinel reuses System card, title, button, timezone, and native datetime 
       /\.message-bridge-card,[\s\S]*?\.sentinel-setup-card\s*\{([^}]*)\}/,
     )?.[1] ?? "";
     assert.doesNotMatch(sentinelCardRule, /padding:\s*18px 13px/);
+    const actionCardSpacingRule = stylesSource.match(
+      /\.system-account-page \.system-section,[\s\S]*?\.sentinel-controls-card\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+    assert.match(actionCardSpacingRule, /padding-bottom:\s*13px/);
     assert.doesNotMatch(bridgeSource, /<h2>Message Bridge<\/h2>/);
 
     const save = [...container.querySelectorAll<HTMLButtonElement>("button")]

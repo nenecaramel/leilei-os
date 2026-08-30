@@ -5436,6 +5436,12 @@ body:has(.system-page) {
 
 .system-account-page .system-section {
   overflow: visible;
+}
+
+.system-account-page .system-section,
+.message-bridge-card,
+.sentinel-policy-card,
+.sentinel-controls-card {
   padding-bottom: 13px;
 }
 
