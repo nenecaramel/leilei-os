@@ -88,7 +88,8 @@ test("Sentinel page renders the Message Bridge between status and wake policy", 
   root.render(React.createElement(SentinelPageContent, { api }));
   await waitForPaint();
 
-  assert.match(container.textContent ?? "", /Autonomous Wake/);
+  assert.match(container.textContent ?? "", /Sentinel/);
+  assert.doesNotMatch(container.textContent ?? "", /Autonomous Wake|\bControl\b/);
   assert.match(container.textContent ?? "", /ON/);
   assert.match(container.textContent ?? "", /Next wake/);
   assert.match(container.textContent ?? "", /Last valid wake/);
@@ -169,6 +170,7 @@ test("Sentinel API failures remain visible and do not fabricate an enabled state
   await waitForCondition(() => container.querySelector('[role="alert"]') !== null, "Sentinel error state");
   assert.match(container.textContent ?? "", /temporarily unavailable/);
   assert.doesNotMatch(container.textContent ?? "", /\bON\b/);
+  assert.ok(container.querySelector(".system-state-message"));
   root.unmount();
   await waitForPaint();
   env.restore();
@@ -302,4 +304,42 @@ test("Sentinel route and navigation entry are wired", () => {
   assert.ok(coreEntries.some((entry) => entry.label === "Sentinel" && entry.to === "/sentinel"));
   assert.equal(coreEntries.some((entry) => entry.label === "Autonomous Wake"), false);
   assert.ok(systemEntries.some((entry) => entry.label === "Connections" && entry.to === "/system/connections"));
+});
+
+test("Sentinel uses the shared system card order with paused controls contained in one card", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const api: WebApiClient = {
+    request: async (path) => path.includes("wakes")
+      ? { success: true, data: { wakes: [] } } as never
+      : response({
+        status: "paused",
+        sentinel: { ...response().data.sentinel, enabled: false },
+      }) as never,
+  };
+
+  try {
+    root.render(React.createElement(SentinelPageContent, { api }));
+    await waitForCondition(() => container.textContent?.includes("First wake after resume") === true, "paused Sentinel controls");
+    assert.ok(container.querySelector(".system-page.sentinel-page"));
+    const status = container.querySelector('[aria-labelledby="sentinel-status-title"]');
+    const bridge = container.querySelector('[aria-label="ChatGPT Message Bridge"]');
+    const policy = container.querySelector('[aria-labelledby="sentinel-policy-title"]');
+    const controls = container.querySelector('[aria-label="Sentinel controls"]');
+    const activity = container.querySelector('[aria-labelledby="sentinel-activity-title"]');
+    for (const section of [status, bridge, policy, controls, activity]) {
+      assert.ok(section?.classList.contains("system-section"));
+    }
+    const sections = [...container.querySelectorAll("section")];
+    assert.ok(sections.indexOf(status!) < sections.indexOf(bridge!));
+    assert.ok(sections.indexOf(bridge!) < sections.indexOf(policy!));
+    assert.ok(sections.indexOf(policy!) < sections.indexOf(controls!));
+    assert.ok(sections.indexOf(controls!) < sections.indexOf(activity!));
+    assert.match(controls?.textContent ?? "", /First wake after resume/);
+  } finally {
+    root.unmount();
+    await waitForPaint();
+    env.restore();
+  }
 });
