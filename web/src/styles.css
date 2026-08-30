@@ -5507,14 +5507,6 @@ body:has(.system-page) {
 .sentinel-setup-card {
   display: grid;
   gap: 10px;
-  padding: 18px 13px;
-}
-
-.message-bridge-card h2 {
-  margin: 0;
-  color: #171717;
-  font-size: 14px;
-  font-weight: 500;
 }
 
 .message-bridge-card textarea {
@@ -5530,24 +5522,24 @@ body:has(.system-page) {
   font-size: 16px;
 }
 
-.message-bridge-card .secondary-button,
-.sentinel-policy-card .secondary-button,
-.sentinel-controls-card .secondary-button,
-.sentinel-controls-card .primary-button {
+.message-bridge-card .system-sign-out,
+.sentinel-policy-card .system-sign-out,
+.sentinel-controls-card .system-sign-out {
   justify-self: start;
-  margin-top: 0;
 }
 
 .system-bridge-error { margin: 0; color: var(--theme-danger, #a53b35); font-size: 12px; }
 .system-bridge-status { margin: 0; color: #8a8a8a; font-size: 12px; }
 
-.sentinel-page {
-  display: grid;
-  gap: 16px;
+.sentinel-page-loading {
+  position: relative;
 }
 
-.sentinel-page .page-header {
-  margin-bottom: 0;
+.sentinel-loading-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
 }
 
 .sentinel-field {

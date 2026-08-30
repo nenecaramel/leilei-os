@@ -54,7 +54,7 @@ export function ChatGPTMessageBridgeCard({
 
   return (
     <section className="system-section message-bridge-card" aria-label="ChatGPT Message Bridge">
-      <h2>Message Bridge</h2>
+      <h2 className="system-product-name">Message Bridge</h2>
       <p className="system-note">Send one message to the connected ChatGPT conversation.</p>
       <textarea
         value={bridgeText}
@@ -64,7 +64,7 @@ export function ChatGPTMessageBridgeCard({
         rows={3}
         disabled={bridgeSending}
       />
-      <button className="secondary-button" type="button" disabled={!bridgeText.trim() || bridgeSending} onClick={() => void submitBridge()}>
+      <button className="secondary-button system-sign-out" type="button" disabled={!bridgeText.trim() || bridgeSending} onClick={() => void submitBridge()}>
         {bridgeSending ? "Sending…" : "Send"}
       </button>
       {bridgeError ? <p className="system-bridge-error" role="alert">{bridgeError}</p> : null}
