@@ -1,7 +1,13 @@
 .navigation-panel {
   --navigation-panel-item-padding: 16px;
-  background: #FFFFFE;
-  color: #171717;
+  --navigation-panel-bg: #FFFFFE;
+  --navigation-panel-ink: #171717;
+  --navigation-panel-muted: #8e8e93;
+  --navigation-panel-hover: #f2f2f2;
+  --navigation-panel-active: #eeeeee;
+  --navigation-panel-disabled: #8e8e93;
+  background: var(--navigation-panel-bg);
+  color: var(--navigation-panel-ink);
 }
 
 .navigation-panel-header {
@@ -14,7 +20,7 @@
 }
 
 .navigation-panel-header strong {
-  color: #171717;
+  color: var(--navigation-panel-ink);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   font-size: 20px;
   font-weight: 500;
@@ -34,7 +40,7 @@
 
 .navigation-panel-nav .navigation-group h2 {
   margin: 0 var(--navigation-panel-item-padding) 0;
-  color: #8e8e93;
+  color: var(--navigation-panel-muted);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: normal;
@@ -47,13 +53,15 @@
 }
 
 .navigation-panel-nav .nav-item {
+  position: relative;
   display: flex;
   min-height: 40px;
   height: 40px;
   align-items: center;
   padding: 0 var(--navigation-panel-item-padding);
-  border-radius: 10px;
-  color: #171717;
+  border-radius: 0;
+  color: var(--navigation-panel-ink);
+  background: transparent;
   font-size: 15px;
   font-weight: 500;
   line-height: 20px;
@@ -62,16 +70,34 @@
   transform: none;
 }
 
+.navigation-panel-nav .nav-item::before {
+  position: absolute;
+  z-index: 0;
+  inset: 4px 0;
+  border-radius: 9px;
+  background: transparent;
+  content: "";
+  pointer-events: none;
+}
+
 .navigation-panel-nav .nav-item:hover {
-  color: #171717;
-  background: #f2f2f2;
+  color: var(--navigation-panel-ink);
+  background: transparent;
   transform: none;
 }
 
+.navigation-panel-nav .nav-item:hover::before {
+  background: var(--navigation-panel-hover);
+}
+
 .navigation-panel-nav .nav-item.active {
-  color: #171717;
-  background: #eeeeee;
+  color: var(--navigation-panel-ink);
+  background: transparent;
   font-weight: 500;
+}
+
+.navigation-panel-nav .nav-item.active::before {
+  background: var(--navigation-panel-active);
 }
 
 .navigation-panel-nav .nav-item svg,
@@ -80,11 +106,17 @@
 }
 
 .navigation-panel-nav .nav-item > span {
+  position: relative;
+  z-index: 1;
   display: block;
 }
 
 .navigation-panel-nav .nav-item-disabled:disabled {
-  color: #8e8e93;
+  color: var(--navigation-panel-disabled);
   background: transparent;
   opacity: 1;
+}
+
+.navigation-panel-nav .nav-item-disabled:disabled::before {
+  background: transparent;
 }
