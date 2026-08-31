@@ -1,0 +1,38 @@
+@media (min-width: 761px) {
+  :root {
+    --desktop-bg: #f7f7f5;
+    --desktop-sidebar: #f4f4f1;
+    --desktop-surface: #ffffff;
+    --desktop-ink: #191919;
+    --desktop-muted: #747474;
+    --desktop-line: #e6e6e2;
+    --desktop-line-strong: #d8d8d3;
+    --desktop-hover: #efefec;
+    --desktop-active: #e8e8e5;
+    --desktop-focus-ring: 0 0 0 3px rgba(25, 25, 25, 0.08);
+    --desktop-content-max: 1240px;
+  }
+
+  html,
+  body,
+  #root,
+  .app-shell {
+    background: var(--desktop-bg);
+  }
+
+  .app-shell {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .main-content {
+    min-width: 0;
+    background: var(--desktop-bg);
+  }
+
+  .main-content > .page {
+    width: min(var(--desktop-content-max), calc(100% - 64px));
+    margin-inline: auto;
+    padding-top: 40px;
+    padding-bottom: 72px;
+  }
+}
