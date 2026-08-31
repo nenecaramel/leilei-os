@@ -35,4 +35,132 @@
     padding-top: 40px;
     padding-bottom: 72px;
   }
+
+  .sidebar {
+    height: calc(100dvh - env(safe-area-inset-top, 0px));
+    padding: 24px 16px 18px;
+    border-right: 1px solid var(--desktop-line);
+    background: var(--desktop-sidebar);
+    backdrop-filter: none;
+  }
+
+  .sidebar-brand {
+    gap: 10px;
+    padding: 0 8px 22px;
+  }
+
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--desktop-line-strong);
+    border-radius: 9px;
+    color: var(--desktop-ink);
+    background: var(--desktop-surface);
+    box-shadow: none;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .sidebar-brand strong {
+    color: var(--desktop-ink);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  .navigation-groups {
+    display: grid;
+    gap: 18px;
+  }
+
+  .navigation-group {
+    display: grid;
+    gap: 5px;
+  }
+
+  .navigation-group h2 {
+    margin: 0;
+    padding: 0 10px 4px;
+    color: #969696;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .navigation-group-items {
+    display: grid;
+    gap: 2px;
+  }
+
+  .nav-item {
+    min-height: 36px;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    gap: 9px;
+    padding: 0 10px;
+    border-radius: 8px;
+    color: #686868;
+    transition: color 120ms ease, background 120ms ease;
+  }
+
+  .nav-item:hover {
+    color: var(--desktop-ink);
+    background: var(--desktop-hover);
+    transform: none;
+  }
+
+  .nav-item.active {
+    color: var(--desktop-ink);
+    background: var(--desktop-active);
+    font-weight: 600;
+  }
+
+  .nav-item svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .nav-item small {
+    border-color: var(--desktop-line-strong);
+    color: #929292;
+    background: transparent;
+  }
+
+  .sidebar-footer {
+    gap: 9px;
+    padding: 14px 6px 0;
+    border-top: 1px solid var(--desktop-line);
+  }
+
+  .user-avatar {
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--desktop-line-strong);
+    color: #5f5f5f;
+    background: #ebebe8;
+    font-size: 10px;
+  }
+
+  .user-copy strong {
+    color: var(--desktop-ink);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .user-copy span {
+    color: var(--desktop-muted);
+    font-size: 10px;
+  }
+
+  .sidebar-footer .text-button {
+    color: #8a8a8a;
+    font-size: 10px;
+  }
+
+  .sidebar-footer .text-button:hover {
+    color: var(--desktop-ink);
+  }
 }
