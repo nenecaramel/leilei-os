@@ -31,7 +31,7 @@ function readDesktopCss() {
 test("desktop foundation is imported directly after legacy global styles", () => {
   assert.match(
     mainTsx,
-    /import "\.\/styles\.css";\s*import "\.\/desktop-foundation\.css";/s,
+    /import "\.\/styles\.css";\s*import "\.\/desktop-foundation\.css";\s*import "\.\/layout\/navigation-panel\.css";/s,
   );
 });
 
@@ -55,25 +55,22 @@ test("desktop foundation defines neutral semantic tokens inside the desktop brea
   }
   assert.match(
     css,
-    /\.app-shell\s*\{[^}]*grid-template-columns:\s*232px minmax\(0, 1fr\)/s,
+    /\.app-shell\s*\{[^}]*grid-template-columns:\s*280px minmax\(0, 1fr\)/s,
   );
   assert.match(css, /\.main-content\s*\{[^}]*background:\s*var\(--desktop-bg\)/s);
 });
 
-test("desktop brand is text-first and drops the obsolete Personal space subtitle", () => {
-  assert.match(appShellTsx, /<strong>Leilei OS<\/strong>/);
+test("desktop sidebar uses the shared text-only panel without account chrome", () => {
+  assert.match(appShellTsx, /<NavigationPanel navClassName="primary-nav" \/>/);
   assert.doesNotMatch(appShellTsx, />Personal space</);
-  assert.match(appShellTsx, /className="brand-mark"\s+aria-hidden="true"/s);
+  assert.doesNotMatch(appShellTsx, /className="brand-mark"|className="sidebar-footer"/);
 });
 
 test("desktop sidebar uses flat neutral navigation without translation motion", () => {
   const css = readDesktopCss();
-  assert.match(css, /\.sidebar\s*\{[^}]*background:\s*var\(--desktop-sidebar\)/s);
-  assert.match(css, /\.brand-mark\s*\{[^}]*box-shadow:\s*none/s);
-  assert.match(css, /\.nav-item:hover\s*\{[^}]*background:\s*var\(--desktop-hover\)/s);
-  assert.match(css, /\.nav-item\.active\s*\{[^}]*background:\s*var\(--desktop-active\)/s);
+  assert.match(css, /\.sidebar\s*\{[^}]*background:\s*#FFFFFE/s);
   assert.doesNotMatch(css, /translateX\(/);
-  assert.match(css, /\.sidebar-footer\s*\{[^}]*border-top:\s*1px solid var\(--desktop-line\)/s);
+  assert.doesNotMatch(css, /\.brand-mark|\.sidebar-footer/);
 });
 
 test("global text selection is neutral instead of theme green", () => {

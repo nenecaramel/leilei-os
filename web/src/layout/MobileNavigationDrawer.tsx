@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { NavigationGroups } from "./NavigationGroups";
+import { NavigationPanel } from "./NavigationPanel";
 
 export function MobileNavigationDrawer({
   open,
@@ -36,12 +36,12 @@ export function MobileNavigationDrawer({
     <div className="mobile-drawer" id="mobile-navigation-drawer">
       <button className="mobile-drawer-backdrop" type="button" aria-label="关闭菜单" onClick={onClose} />
       <aside ref={drawerPanelRef} className="mobile-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="mobile-drawer-title" tabIndex={-1}>
-        <div className="mobile-drawer-header">
-          <strong id="mobile-drawer-title">Leilei OS</strong>
-        </div>
-        <nav aria-label="Mobile navigation">
-          <NavigationGroups onNavigate={onClose} />
-        </nav>
+        <NavigationPanel
+          titleId="mobile-drawer-title"
+          navigationLabel="Mobile navigation"
+          headerClassName="mobile-drawer-header"
+          onNavigate={onClose}
+        />
       </aside>
     </div>
   );

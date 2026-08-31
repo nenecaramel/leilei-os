@@ -1,0 +1,90 @@
+.navigation-panel {
+  --navigation-panel-item-padding: 16px;
+  background: #FFFFFE;
+  color: #171717;
+}
+
+.navigation-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 30px;
+  padding-inline: var(--navigation-panel-item-padding);
+}
+
+.navigation-panel-header strong {
+  color: #171717;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 28px;
+}
+
+.navigation-panel-nav .navigation-groups {
+  display: grid;
+  gap: 26px;
+}
+
+.navigation-panel-nav .navigation-group {
+  display: grid;
+  gap: 2px;
+}
+
+.navigation-panel-nav .navigation-group h2 {
+  margin: 0 var(--navigation-panel-item-padding) 0;
+  color: #8e8e93;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.navigation-panel-nav .navigation-group-items {
+  display: grid;
+  gap: 0;
+}
+
+.navigation-panel-nav .nav-item {
+  display: flex;
+  min-height: 40px;
+  height: 40px;
+  align-items: center;
+  padding: 0 var(--navigation-panel-item-padding);
+  border-radius: 10px;
+  color: #171717;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+  gap: 0;
+  grid-template-columns: 1fr;
+  transform: none;
+}
+
+.navigation-panel-nav .nav-item:hover {
+  color: #171717;
+  background: #f2f2f2;
+  transform: none;
+}
+
+.navigation-panel-nav .nav-item.active {
+  color: #171717;
+  background: #eeeeee;
+  font-weight: 500;
+}
+
+.navigation-panel-nav .nav-item svg,
+.navigation-panel-nav .nav-item small {
+  display: none;
+}
+
+.navigation-panel-nav .nav-item > span {
+  display: block;
+}
+
+.navigation-panel-nav .nav-item-disabled:disabled {
+  color: #8e8e93;
+  background: transparent;
+  opacity: 1;
+}
