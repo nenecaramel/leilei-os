@@ -10,10 +10,10 @@ function readCss() {
   return readFileSync(cssUrl, "utf8");
 }
 
-test("desktop mobile-parity stylesheet loads after the old desktop page layer", () => {
+test("desktop mobile-parity stylesheet is the final page-geometry cascade layer", () => {
   assert.match(
     mainTsx,
-    /import "\.\/desktop-page-unification\.css";\s*import "\.\/desktop-mobile-parity\.css";/s,
+    /import "\.\/pages\/universe-home-dark-production-fixes\.css";\s*import "\.\/desktop-mobile-parity\.css";/s,
   );
 });
 
