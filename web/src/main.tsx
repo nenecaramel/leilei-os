@@ -8,6 +8,7 @@ import "./styles.css";
 import "./desktop-foundation.css";
 import "./layout/navigation-panel.css";
 import "./desktop-page-unification.css";
+import "./desktop-mobile-parity.css";
 import "./pwa/pwa-status.css";
 import "./pages/lg-author-editor-layout-fix.css";
 import "./pages/home-calendar-real-data.css";
