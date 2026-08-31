@@ -265,7 +265,7 @@ test("Sentinel scopes explicit System spacing without a blanket card gap", () =>
   assert.match(stylesSource, /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\)\s*\{[\s\S]*?margin-top:\s*0/);
   assert.match(
     stylesSource,
-    /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\) \.system-sign-out\s*\{[\s\S]*?margin-top:\s*12px/,
+    /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\) \.system-sign-out\s*\{[^}]*margin-top:\s*16px/,
   );
   assert.match(
     stylesSource,
