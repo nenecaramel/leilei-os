@@ -1070,6 +1070,12 @@ export function DiaryPageContent({
             />
           ) : null}
 
+          {!isMobile && showActiveBackground ? (
+            <p className="desktop-page-description">
+              按时间记录、查看和整理属于蕾蕾的日常。
+            </p>
+          ) : null}
+
           {actionError && !isDetail && !showCreate ? (
             <section className="memory-action-notice" role="status">{actionError}</section>
           ) : null}

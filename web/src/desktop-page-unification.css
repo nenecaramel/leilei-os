@@ -50,6 +50,14 @@
     color: rgb(107 107 104);
   }
 
+  .diary-page .desktop-page-description {
+    max-width: 620px;
+    margin: 14px 0 0;
+    color: var(--desktop-page-muted);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
   .memory-page .memory-page-search,
   .global-search-page .memory-page-search,
   .memory-page .memory-page-popover,

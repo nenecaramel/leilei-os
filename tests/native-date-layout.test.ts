@@ -34,6 +34,10 @@ const diaryPageSource = readFileSync(
   new URL("../web/src/pages/DiaryPage.tsx", import.meta.url),
   "utf8",
 );
+const diaryPageHeaderSource = readFileSync(
+  new URL("../web/src/pages/DiaryPageHeader.tsx", import.meta.url),
+  "utf8",
+);
 const globalSearchPageSource = readFileSync(
   new URL("../web/src/pages/GlobalSearchPage.tsx", import.meta.url),
   "utf8",
@@ -271,8 +275,8 @@ async function measureLayout(
 test("Task and Diary route date fields share NativeDateInput", () => {
   assert.match(taskPageSource, /import \{ NativeDateInput \}/);
   assert.match(taskPageSource, /<NativeDateInput[\s\S]*?type="datetime-local"/);
-  assert.match(diaryPageSource, /import \{ NativeDateInput \}/);
-  assert.match(diaryPageSource, /<NativeDateInput[\s\S]*?type="date"/);
+  assert.match(diaryPageHeaderSource, /import \{ NativeDateInput \}/);
+  assert.match(diaryPageHeaderSource, /<NativeDateInput[\s\S]*?type="date"/);
 });
 
 test("Global Search date fields share NativeDateInput and its constrained class", () => {

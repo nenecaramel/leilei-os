@@ -984,6 +984,7 @@ import {
 
     const usePaperPresentation = typeof window !== "undefined";
     if (usePaperPresentation) {
+      const desktopPage = !window.matchMedia || !window.matchMedia("(max-width: 760px)").matches;
       const busy = creating || updating || updatingStatus || archiving || restoring;
       const hasFilters = Boolean(filters.q || filters.status || filters.priority || filters.tag || filters.due);
       const backgroundAvailable = !isDetailMode || state.status === "ready";
@@ -1009,6 +1010,7 @@ import {
               onStatusChange={(status) => commitFilters({ ...filters, q: searchDraft, tag: tagDraft, status })}
               onTagChange={updateTagDraft} onSearchChange={updateSearchDraft} onOpenArchive={openArchive}
               onCreate={(trigger) => { paperTriggerRef.current = trigger; if (showCreate) { if (!confirmAndDiscardDraft()) return; invalidateMutationContext(); setShowCreate(false); } else { focusCreateRef.current = true; setShowCreate(true); } setActionError(""); }} />
+            {desktopPage ? <p className="desktop-page-description">管理待办事项、截止时间与完成状态。</p> : null}
             {actionError && !isDetailMode && !showCreate ? <section className="memory-action-notice" role="status">{actionError}</section> : null}
             {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task 列表" onOpen={(id, trigger) => { paperTriggerRef.current = trigger; void handleReadTask(id); }} onReopen={(task) => void handleReopenTask(task)} /> : <section className="memory-empty-state"><p>{hasFilters ? "没有符合条件的任务" : "还没有任务"}</p>{hasFilters ? <button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button> : null}</section> : null}
             {state.status === "loading" ? <MobileTaskLoading label="Task 加载中" /> : null}
