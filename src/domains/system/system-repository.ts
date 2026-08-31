@@ -75,7 +75,12 @@ export class DrizzleSystemRepository implements SystemRepository {
       this.db
         .select({ status: coreMemories.status, count: count() })
         .from(coreMemories)
-        .where(eq(coreMemories.userId, userId))
+        .where(
+          and(
+            eq(coreMemories.userId, userId),
+            eq(coreMemories.visibility, "assistant"),
+          ),
+        )
         .groupBy(coreMemories.status),
       this.db
         .select({ status: diaryEntries.status, count: count() })
