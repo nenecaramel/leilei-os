@@ -14,6 +14,10 @@ const diaryPageTsx = readFileSync(
   new URL("../web/src/pages/DiaryPage.tsx", import.meta.url),
   "utf8",
 );
+const taskPageTsx = readFileSync(
+  new URL("../web/src/pages/TaskPage.tsx", import.meta.url),
+  "utf8",
+);
 
 function readDesktopPageCss() {
   assert.equal(
@@ -130,5 +134,15 @@ test("Diary uses its paper header and rows as the common presentation", () => {
   assert.doesNotMatch(
     diaryPageTsx,
     /<section className="memory-message diary-filters">/,
+  );
+});
+
+test("Task uses its paper header and rows as the common presentation", () => {
+  assert.match(taskPageTsx, /<TaskPageHeader\b/);
+  assert.match(taskPageTsx, /<MobileTaskRows\b/);
+  assert.doesNotMatch(taskPageTsx, /<PageHeader\b/);
+  assert.doesNotMatch(
+    taskPageTsx,
+    /<PageHeader[\s\S]*?eyebrow="Execution queue"/,
   );
 });

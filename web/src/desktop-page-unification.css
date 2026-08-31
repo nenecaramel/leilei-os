@@ -136,4 +136,33 @@
   .global-search-page .global-search-result-button + .global-search-result-button {
     border-top: 1px solid #eeeeea;
   }
+
+  .task-page {
+    width: min(100%, 860px);
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 22px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: rgb(25 25 25);
+  }
+
+  .task-page .memory-page-header {
+    min-height: auto;
+    padding: 18px 0 14px;
+    border-bottom: 1px solid #e7e7e1;
+    background: transparent;
+  }
+
+  .task-page .memory-month-card {
+    border: 1px solid #e2e2dc;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: none;
+    overflow: clip;
+  }
+
+  .task-page .memory-row {
+    min-height: 60px;
+    background: #ffffff;
+  }
 }

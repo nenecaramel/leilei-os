@@ -8,7 +8,7 @@ import {
   import type { WebApiClient } from "../api/useWebApiClient";
   import { TaskIcon } from "../components/icons";
   import { NativeDateInput } from "../components/NativeDateInput";
-  import { PageHeader } from "./PageHeader";
+  import { PageHeader as LegacyPageHeader } from "./PageHeader";
   import {
     PaperAuthorSignature,
     type PaperAuthorValue,
@@ -206,9 +206,6 @@ import {
   }: {
     api: WebApiClient;
   }) {
-    const isMobile =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(max-width: 760px)").matches;
     const listScrollPosition = useRef(0);
     const listRequestTracker = useRef(
       createLatestTaskRequestTracker(),
@@ -980,7 +977,8 @@ import {
     }
 
 
-    if (isMobile) {
+    const usePaperPresentation = typeof window !== "undefined";
+    if (usePaperPresentation) {
       const busy = creating || updating || updatingStatus || archiving || restoring;
       const hasFilters = Boolean(filters.q || filters.status || filters.priority || filters.tag || filters.due);
       const backgroundAvailable = !isDetailMode || state.status === "ready";
@@ -1031,7 +1029,7 @@ import {
 
     return (
       <div className="page memory-page">
-        <PageHeader
+        <LegacyPageHeader
           eyebrow="Focus & execution"
           title="Task"
           description="管理待办事项、截止时间与完成状态。"
