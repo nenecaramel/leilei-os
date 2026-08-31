@@ -1,0 +1,139 @@
+/* Responsive UI regression corrections after the desktop parity rollout. */
+
+.navigation-panel-nav .nav-item {
+  background: transparent !important;
+}
+
+.navigation-panel-nav .nav-item::before {
+  inset: 4px 0 !important;
+  background: transparent !important;
+}
+
+.navigation-panel-nav .nav-item:hover,
+.navigation-panel-nav .nav-item.active {
+  background: transparent !important;
+}
+
+.navigation-panel-nav .nav-item:hover::before {
+  background: var(--navigation-panel-hover) !important;
+}
+
+.navigation-panel-nav .nav-item.active::before {
+  background: var(--navigation-panel-active) !important;
+}
+
+.app-shell:has(.universe-page) .navigation-panel {
+  --navigation-panel-bg: #0b0c12;
+  --navigation-panel-ink: #e8e7ec;
+  --navigation-panel-muted: #70727d;
+  --navigation-panel-hover: #171820;
+  --navigation-panel-active: #22232b;
+  --navigation-panel-disabled: #70727d;
+  color: var(--navigation-panel-ink) !important;
+  background: var(--navigation-panel-bg) !important;
+}
+
+.app-shell:has(.universe-page) > .sidebar,
+body:has(.universe-page) .mobile-drawer-panel {
+  border-right-color: #24262f !important;
+  color: #e8e7ec !important;
+  background: #0b0c12 !important;
+}
+
+.app-shell:has(.universe-page) .navigation-panel-header strong,
+.app-shell:has(.universe-page) .navigation-panel-nav .nav-item,
+body:has(.universe-page) .mobile-drawer .navigation-panel-header strong,
+body:has(.universe-page) .mobile-drawer .navigation-panel-nav .nav-item {
+  color: var(--navigation-panel-ink) !important;
+}
+
+.app-shell:has(.universe-page) .navigation-panel-nav .navigation-group h2,
+body:has(.universe-page) .mobile-drawer .navigation-panel-nav .navigation-group h2 {
+  color: var(--navigation-panel-muted) !important;
+}
+
+.app-shell:has(.universe-page) .navigation-panel-nav .nav-item:hover::before,
+body:has(.universe-page) .mobile-drawer .navigation-panel-nav .nav-item:hover::before {
+  background: var(--navigation-panel-hover) !important;
+}
+
+.app-shell:has(.universe-page) .navigation-panel-nav .nav-item.active::before,
+body:has(.universe-page) .mobile-drawer .navigation-panel-nav .nav-item.active::before {
+  background: var(--navigation-panel-active) !important;
+}
+
+.app-shell:has(.universe-page) .navigation-panel-nav .nav-item-disabled:disabled,
+body:has(.universe-page) .mobile-drawer .navigation-panel-nav .nav-item-disabled:disabled {
+  color: var(--navigation-panel-disabled) !important;
+}
+
+.task-page .task-row-reopen {
+  display: none !important;
+}
+
+@media (min-width: 761px) {
+  .day-space-page {
+    display: block !important;
+    width: min(1120px, calc(100% - 64px));
+    max-width: 1120px;
+    min-width: 0;
+    margin: 0 auto;
+    padding: 18px 0 48px;
+    color: #171717;
+    background: #ffffff;
+    font-family:
+      -apple-system,
+      BlinkMacSystemFont,
+      "SF Pro Text",
+      "PingFang SC",
+      "Helvetica Neue",
+      sans-serif;
+  }
+
+  .universe-page:has(.universe-mobile-map) {
+    --universe-control-row-top: 88px;
+    position: relative;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    min-height: 100dvh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-mobile-map {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-page-header {
+    position: absolute !important;
+    z-index: 12;
+    top: 40px !important;
+    right: 32px !important;
+    left: 32px !important;
+    margin: 0 !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-galaxy-picker {
+    position: absolute !important;
+    z-index: 13;
+    top: var(--universe-control-row-top) !important;
+    left: 32px !important;
+    margin: 0 !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-mobile-map-toolbar {
+    position: absolute !important;
+    z-index: 13;
+    top: var(--universe-control-row-top) !important;
+    right: 32px !important;
+    margin: 0 !important;
+  }
+}
