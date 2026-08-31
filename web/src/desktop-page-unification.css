@@ -1,0 +1,11 @@
+@media (min-width: 761px) {
+  .memory-page,
+  .diary-page,
+  .task-page,
+  .day-space-page,
+  .global-search-page {
+    --desktop-page-surface: var(--desktop-surface, #fffffe);
+    --desktop-page-ink: var(--desktop-ink, #191919);
+    --desktop-page-muted: var(--desktop-muted, #6b6b68);
+  }
+}
