@@ -110,13 +110,13 @@ test("Task mobile active detail exposes only the Paper retry action", () => {
 
 test("Diary desktop detail error keeps a centered retryable state", () => {
   const source = page("DiaryPage.tsx");
-  const start = source.indexOf("function DiaryDetail");
-  const end = source.indexOf("  const diary = props.diary;", start);
+  const start = source.indexOf("function MobileDiaryDetail");
+  const end = source.indexOf("function MobileArchivedDiaryList", start);
   assert.ok(start >= 0 && end > start);
   const detail = source.slice(start, end);
   assert.match(detail, /role="alert"/);
   assert.match(detail, /重试/);
-  assert.match(detail, /<DiaryMessage/);
+  assert.match(detail, /<PaperDetailDialog/);
 });
 
 test("Global Search desktop blocking states use the vertical frozen hierarchy", () => {

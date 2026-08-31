@@ -2,6 +2,7 @@ import {
     useEffect,
     useRef,
     useState,
+    Fragment,
     type ReactNode,
     type RefObject,
   } from "react";
@@ -1009,7 +1010,7 @@ import {
               onTagChange={updateTagDraft} onSearchChange={updateSearchDraft} onOpenArchive={openArchive}
               onCreate={(trigger) => { paperTriggerRef.current = trigger; if (showCreate) { if (!confirmAndDiscardDraft()) return; invalidateMutationContext(); setShowCreate(false); } else { focusCreateRef.current = true; setShowCreate(true); } setActionError(""); }} />
             {actionError && !isDetailMode && !showCreate ? <section className="memory-action-notice" role="status">{actionError}</section> : null}
-            {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task 列表" onOpen={(id, trigger) => { paperTriggerRef.current = trigger; void handleReadTask(id); }} /> : <section className="memory-empty-state"><p>{hasFilters ? "没有符合条件的任务" : "还没有任务"}</p>{hasFilters ? <button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button> : null}</section> : null}
+            {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task 列表" onOpen={(id, trigger) => { paperTriggerRef.current = trigger; void handleReadTask(id); }} onReopen={(task) => void handleReopenTask(task)} /> : <section className="memory-empty-state"><p>{hasFilters ? "没有符合条件的任务" : "还没有任务"}</p>{hasFilters ? <button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button> : null}</section> : null}
             {state.status === "loading" ? <MobileTaskLoading label="Task 加载中" /> : null}
             {state.status === "error" ? <TaskMessage title="暂时无法读取任务" description="请稍后重试。" role="alert" action={<button className="secondary-button" onClick={() => setReloadKey((v) => v + 1)}>重新加载</button>} /> : null}
           </> : null}
@@ -1508,8 +1509,9 @@ import {
 function MobileTaskLoading({ label }: { label: string }) {
   return <section className="memory-months" aria-label={label} aria-busy="true"><span className="visually-hidden" role="status" aria-live="polite">正在读取任务…</span>{[0,1].map((i) => <div className="memory-month-skeleton" aria-hidden="true" key={i}><span className="memory-month-skeleton-label" /><div className="memory-month-skeleton-card"><span /><span /></div></div>)}</section>;
 }
-function MobileTaskRows({ tasks, busy, label, onOpen }: { tasks: TaskEntry[]; busy: boolean; label: string; onOpen(id: string, trigger: HTMLElement): void }) {
-  return <section className="memory-months task-groups" aria-label={label}>{groupTasksForMobile(tasks).map((group) => <section className={`memory-month-section task-group task-group-${group.key}`} key={group.key}><h2 className="memory-month-label">{group.label}</h2><div className="memory-month-card">{group.tasks.map((task) => <button key={task.id} type="button" className="memory-row task-row" data-task-id={task.id} disabled={busy} onClick={(e) => onOpen(task.id, e.currentTarget)}><span className="memory-row-title">{task.title}</span><span className="memory-row-meta"><span>{formatTaskRowDeadline(task)}</span><span>{formatTaskRowMeta(task)}</span></span></button>)}</div></section>)}</section>;
+function MobileTaskRows({ tasks, busy, label, onOpen, onReopen }: { tasks: TaskEntry[]; busy: boolean; label: string; onOpen(id: string, trigger: HTMLElement): void; onReopen?: (task: TaskEntry) => void }) {
+  const desktopListActions = typeof window !== "undefined" && (!window.matchMedia || !window.matchMedia("(max-width: 760px)").matches);
+  return <section className="memory-months task-groups" aria-label={label}>{groupTasksForMobile(tasks).map((group) => <section className={`memory-month-section task-group task-group-${group.key}`} key={group.key}><h2 className="memory-month-label">{group.label}</h2><div className="memory-month-card">{group.tasks.map((task) => <Fragment key={task.id}><button type="button" className="memory-row task-row" data-task-id={task.id} disabled={busy} onClick={(e) => onOpen(task.id, e.currentTarget)}><span className="memory-row-title">{task.title}</span><span className="memory-row-meta"><span>{formatTaskRowDeadline(task)}</span><span>{formatTaskRowMeta(task)}</span></span></button>{desktopListActions && onReopen && task.allowed_actions.includes("reopen") ? <button type="button" className="secondary-button task-row-reopen" disabled={busy} onClick={() => onReopen(task)}>恢复任务</button> : null}</Fragment>)}</div></section>)}</section>;
 }
 function MobileTaskDetail(props: { state: DetailLoadState; task: TaskEntry | null; triggerRef: RefObject<HTMLElement | null>; errorMessage: string | null; editing: boolean; updating: boolean; updatingStatus: boolean; archiving: boolean; author: PaperAuthorValue; onAuthorChange(value: "L" | "G"): void; onRetry(): void; values: { title: string; description: string; dueTime: string; withoutDueTime: boolean; tags: string }; setValues: { title(v: string): void; description(v: string): void; dueTime(v: string): void; withoutDueTime(v: boolean): void; tags(v: string): void }; invalid: boolean; onEdit(task: TaskEntry): void; onCancel(): void; onSave(): void; onArchive(): void; onStatusAction(a: TaskPaperAction): void; onRequestClose(): boolean }) {
   if (props.state === "loading") return <PaperDetailDialog id="task-detail-paper" open label="正在读取 Task" dateLabel="" signature="—" triggerRef={props.triggerRef} onRequestClose={props.onRequestClose}><div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取任务…</p></div></PaperDetailDialog>;
