@@ -262,7 +262,15 @@ test("Sentinel scopes explicit System spacing without a blanket card gap", () =>
   assert.match(stylesSource, /\.sentinel-first-row\s*\{[\s\S]*?min-height:\s*60px[\s\S]*?align-items:\s*center/);
   assert.match(stylesSource, /\.sentinel-policy-textarea\s*\{[\s\S]*?margin-top:\s*12px/);
   assert.match(stylesSource, /\.sentinel-resume-field\s*\{[\s\S]*?margin-top:\s*12px/);
-  assert.match(stylesSource, /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\)\s*\{[\s\S]*?margin-top:\s*12px/);
+  assert.match(stylesSource, /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\)\s*\{[\s\S]*?margin-top:\s*0/);
+  assert.match(
+    stylesSource,
+    /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\) \.system-sign-out\s*\{[\s\S]*?margin-top:\s*12px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.sentinel-first-row\.sentinel-control-row \.system-sign-out\s*\{[\s\S]*?margin-top:\s*0/,
+  );
   assert.match(stylesSource, /\.sentinel-control-row\s*\{[\s\S]*?gap:\s*10px/);
   assert.match(
     stylesSource,
