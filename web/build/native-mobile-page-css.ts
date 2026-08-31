@@ -1,6 +1,7 @@
 import type { Plugin } from "vite";
 
 const MOBILE_MEDIA = /@media\s*\(\s*max-width\s*:\s*760px\s*\)\s*\{/g;
+const DESKTOP_QUERY = "native-mobile-desktop";
 
 const ROUTE_MARKERS = [
   ".memory-",
@@ -48,13 +49,9 @@ function findMatchingBrace(source: string, openBrace: number): number {
     }
 
     if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === quote) {
-        quote = null;
-      }
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = null;
       continue;
     }
 
@@ -76,7 +73,7 @@ function findMatchingBrace(source: string, openBrace: number): number {
     }
   }
 
-  throw new Error("Unbalanced CSS block while mirroring mobile page presentation");
+  throw new Error("Unbalanced CSS block while deriving desktop presentation");
 }
 
 function splitSelectorList(prelude: string): string[] {
@@ -217,9 +214,7 @@ function filterCssItems(source: string): string {
       const selectors = splitSelectorList(prelude)
         .map(mirrorSelector)
         .filter((selector): selector is string => Boolean(selector));
-      if (selectors.length > 0) {
-        mirrored.push(`${selectors.join(",\n")} {${body}}`);
-      }
+      if (selectors.length > 0) mirrored.push(`${selectors.join(",\n")} {${body}}`);
     }
 
     cursor = closeBrace + 1;
@@ -228,10 +223,10 @@ function filterCssItems(source: string): string {
   return mirrored.join("\n\n");
 }
 
-export function mirrorNativeMobilePageCss(source: string): string {
-  let output = "";
-  let cursor = 0;
+export function extractNativeMobileDesktopCss(source: string): string {
+  const blocks: string[] = [];
   const mediaPattern = new RegExp(MOBILE_MEDIA.source, "g");
+  let cursor = 0;
 
   for (;;) {
     mediaPattern.lastIndex = cursor;
@@ -243,17 +238,17 @@ export function mirrorNativeMobilePageCss(source: string): string {
     const closeBrace = findMatchingBrace(source, openBrace);
     const mobileBlock = source.slice(openBrace + 1, closeBrace);
     const desktopBlock = filterCssItems(mobileBlock);
-
-    output += source.slice(cursor, closeBrace + 1);
-    if (desktopBlock.trim()) {
-      output += `\n\n/* desktop uses the exact accepted mobile presentation */\n@media (min-width: 761px) {\n${desktopBlock}\n}`;
-    }
+    if (desktopBlock.trim()) blocks.push(desktopBlock);
     cursor = closeBrace + 1;
   }
 
-  if (cursor === 0) return source;
-  output += source.slice(cursor);
-  return output;
+  if (blocks.length === 0) return "";
+  return `/* generated from accepted mobile presentation; do not hand-style */\n@media (min-width: 761px) {\n${blocks.join("\n\n")}\n}\n`;
+}
+
+export function mirrorNativeMobilePageCss(source: string): string {
+  const desktop = extractNativeMobileDesktopCss(source);
+  return desktop ? `${source}\n\n${desktop}` : source;
 }
 
 export function nativeMobilePageCssPlugin(): Plugin {
@@ -261,11 +256,12 @@ export function nativeMobilePageCssPlugin(): Plugin {
     name: "leilei-native-mobile-page-css",
     enforce: "pre",
     transform(code, id) {
+      if (!id.includes(`?${DESKTOP_QUERY}`) && !id.includes(`&${DESKTOP_QUERY}`)) {
+        return null;
+      }
       const cleanId = id.split("?", 1)[0];
       if (!cleanId.endsWith(".css") || !cleanId.includes("/web/src/")) return null;
-      const transformed = mirrorNativeMobilePageCss(code);
-      if (transformed === code) return null;
-      return { code: transformed, map: null };
+      return { code: extractNativeMobileDesktopCss(code), map: null };
     },
   };
 }
