@@ -296,6 +296,51 @@ test("Sentinel scopes explicit System spacing without a blanket card gap", () =>
   );
 });
 
+test("Sentinel cards use the standard System title divider and first-row rhythm", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const api: WebApiClient = {
+    request: async (path) => path.includes("wakes")
+      ? { success: true, data: { wakes: [] } } as never
+      : response({ status: "paused", sentinel: { ...response().data.sentinel, enabled: false } }) as never,
+  };
+
+  try {
+    root.render(React.createElement(SentinelPageContent, { api }));
+    await waitForCondition(
+      () => container.textContent?.includes("First wake after resume") === true,
+      "paused Sentinel rows",
+    );
+
+    for (const selector of [
+      '[aria-label="ChatGPT Message Bridge"]',
+      '[aria-labelledby="sentinel-policy-title"]',
+      '[aria-label="Sentinel controls"]',
+      '[aria-labelledby="sentinel-activity-title"]',
+    ]) {
+      const card = container.querySelector(selector);
+      assert.ok(card, `${selector} is rendered`);
+      assert.ok(card?.querySelector(".sentinel-first-row"), `${selector} has a first row`);
+    }
+
+    assert.match(
+      stylesSource,
+      /\.sentinel-first-row\s*\{[\s\S]*?min-height:\s*60px[\s\S]*?align-items:\s*center[\s\S]*?border-top:\s*1px solid rgba\(0, 0, 0, 0\.08\)/,
+    );
+    assert.doesNotMatch(stylesSource, /\.message-bridge-card \.system-note\s*\{[\s\S]*?margin-top:\s*12px/);
+    assert.match(stylesSource, /\.message-bridge-card textarea\s*\{[\s\S]*?margin-top:\s*12px/);
+    assert.match(stylesSource, /\.sentinel-policy-textarea\s*\{[\s\S]*?margin-top:\s*12px/);
+    assert.match(stylesSource, /\.sentinel-resume-field\s*\{[\s\S]*?margin-top:\s*12px/);
+    assert.match(stylesSource, /\.sentinel-activity-list\s*\{[\s\S]*?margin:\s*0/);
+    assert.doesNotMatch(stylesSource, /\.sentinel-activity-card \.system-empty-state\s*\{[\s\S]*?margin:\s*12px 0 0/);
+  } finally {
+    root.unmount();
+    await waitForPaint();
+    env.restore();
+  }
+});
+
 test("Sentinel page renders the Message Bridge between status and wake policy", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
