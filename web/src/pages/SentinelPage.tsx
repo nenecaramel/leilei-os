@@ -205,7 +205,10 @@ export function SentinelPageContent({
         <ChatGPTMessageBridgeCard api={api} />
         <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
           <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
-          <label className="sentinel-field"><span>Policy</span><textarea value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" /></label>
+          <div className="sentinel-first-row">
+            <label className="sentinel-first-label" htmlFor="sentinel-policy-prompt">Policy</label>
+          </div>
+          <textarea className="sentinel-policy-textarea" id="sentinel-policy-prompt" value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" />
           <button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>Save policy</button>
         </section>
       </div>
@@ -237,7 +240,10 @@ export function SentinelPageContent({
 
       <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
         <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
-        <label className="sentinel-field"><span>Policy</span><textarea value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" /></label>
+        <div className="sentinel-first-row">
+          <label className="sentinel-first-label" htmlFor="sentinel-policy-prompt">Policy</label>
+        </div>
+        <textarea className="sentinel-policy-textarea" id="sentinel-policy-prompt" value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" />
         <button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>Save policy</button>
       </section>
 
@@ -245,18 +251,21 @@ export function SentinelPageContent({
         <h2 className="system-product-name">First Wake / Controls</h2>
         {isPaused ? (
           <>
-            <label className="sentinel-field sentinel-resume-field"><span>First wake after resume</span><NativeDateInput className="sentinel-resume-datetime" type="datetime-local" value={resumeAt} onChange={(event) => setResumeAt(event.target.value)} /></label>
+            <div className="sentinel-first-row">
+              <label className="sentinel-first-label" htmlFor="sentinel-resume-at">First wake after resume</label>
+            </div>
+            <div className="sentinel-resume-field"><NativeDateInput id="sentinel-resume-at" className="sentinel-resume-datetime" type="datetime-local" value={resumeAt} onChange={(event) => setResumeAt(event.target.value)} /></div>
             <div className="sentinel-control-row"><button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void resume()}>Resume</button><button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void runAction("Resume now", "/sentinel/resume-now", { method: "POST", body: "{}" })}>Resume now</button></div>
           </>
         ) : (
-          <div className="sentinel-control-row"><button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void runAction("Wake now", "/sentinel/wake-now", { method: "POST", body: "{}" })}>Wake now</button><button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void runAction("Pause", "/sentinel/pause", { method: "POST", body: "{}" })}>Pause</button></div>
+          <div className="sentinel-first-row sentinel-control-row"><button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void runAction("Wake now", "/sentinel/wake-now", { method: "POST", body: "{}" })}>Wake now</button><button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void runAction("Pause", "/sentinel/pause", { method: "POST", body: "{}" })}>Pause</button></div>
         )}
         {isRecovery ? <button className="secondary-button system-sign-out sentinel-recovery-button" type="button" disabled={Boolean(busyAction)} onClick={() => void runAction("Recovery", "/sentinel/recover", { method: "POST", body: "{}" })}>Recovery</button> : null}
       </section>
 
       <section className="system-section sentinel-activity-card" aria-labelledby="sentinel-activity-title">
         <h2 className="system-product-name" id="sentinel-activity-title">Wake Activity</h2>
-        {wakes.length === 0 ? <p className="system-empty-state">No wake activity yet.</p> : <ol className="sentinel-activity-list">{wakes.slice(0, 20).map((wake, index) => <li className="system-activity-row" key={`${wake.createdAt}-${index}`}><time dateTime={wake.createdAt}>{formatMoment(wake.createdAt)}</time><div className="system-activity-main"><strong className="system-activity-label">{activityLabel(wake)}</strong>{wake.nextWakeAt ? <span>next {formatMoment(wake.nextWakeAt)}</span> : null}</div></li>)}</ol>}
+        {wakes.length === 0 ? <p className="system-empty-state sentinel-activity-empty">No wake activity yet.</p> : <ol className="sentinel-activity-list">{wakes.slice(0, 20).map((wake, index) => <li className="system-activity-row" key={`${wake.createdAt}-${index}`}><time dateTime={wake.createdAt}>{formatMoment(wake.createdAt)}</time><div className="system-activity-main"><strong className="system-activity-label">{activityLabel(wake)}</strong>{wake.nextWakeAt ? <span>next {formatMoment(wake.nextWakeAt)}</span> : null}</div></li>)}</ol>}
       </section>
     </div>
   );
