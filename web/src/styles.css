@@ -5560,6 +5560,12 @@ body:has(.system-page) {
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
+.message-bridge-card > .sentinel-first-row,
+.sentinel-policy-card > .sentinel-first-row,
+.sentinel-controls-card > .sentinel-first-row:not(.sentinel-control-row) {
+  align-items: flex-end;
+}
+
 .sentinel-first-row > .system-note {
   margin: 0;
 }
