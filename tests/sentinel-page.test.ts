@@ -99,7 +99,7 @@ test("Sentinel loading stays viewport centered without moving the System header"
   }
 });
 
-test("Sentinel reuses System card, title, button, timezone, and native datetime contracts", async () => {
+test("Sentinel reuses System card, title, button, and native datetime contracts", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
@@ -122,8 +122,7 @@ test("Sentinel reuses System card, title, button, timezone, and native datetime 
       "paused Sentinel controls",
     );
 
-    const timezone = container.querySelector<HTMLInputElement>('input[placeholder="Asia/Shanghai"]');
-    assert.equal(timezone?.value, "Beijing");
+    assert.equal(container.querySelector('input[placeholder="Asia/Shanghai"]'), null);
     const datetime = container.querySelector<HTMLInputElement>('input[type="datetime-local"]');
     assert.ok(datetime?.closest(".native-date-field"));
 
@@ -169,7 +168,7 @@ test("Sentinel reuses System card, title, button, timezone, and native datetime 
 
     assert.match(
       sentinelSource,
-      /<NativeDateInput\s+type="datetime-local"\s+value=\{resumeAt\}\s+onChange=\{\(event\) => setResumeAt\(event\.target\.value\)\}/,
+      /<NativeDateInput\s+className="sentinel-resume-datetime"\s+type="datetime-local"\s+value=\{resumeAt\}\s+onChange=\{\(event\) => setResumeAt\(event\.target\.value\)\}/,
     );
     const expectedResumeAt = new Date(datetime!.value).toISOString();
     const resume = [...container.querySelectorAll<HTMLButtonElement>("button")]
@@ -191,31 +190,110 @@ test("Sentinel reuses System card, title, button, timezone, and native datetime 
   }
 });
 
-test("Sentinel aliases only the canonical Shanghai timezone", async () => {
+test("Sentinel hides timezone UI while preserving the canonical timezone from readback", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
   const api: WebApiClient = {
-    request: async (path) => path === "/sentinel/wakes?limit=20"
-      ? { success: true, data: { wakes: [] } } as never
-      : response({ sentinel: { ...response().data.sentinel, timezone: "America/New_York" } }) as never,
+    request: async (path, init) => {
+      requests.push({ path, init });
+      return path === "/sentinel/wakes?limit=20"
+        ? { success: true, data: { wakes: [] } } as never
+        : response({ sentinel: { ...response().data.sentinel, timezone: "America/New_York" } }) as never;
+    },
   };
 
   try {
     root.render(React.createElement(SentinelPageContent, { api }));
     await waitForCondition(
-      () => container.querySelector<HTMLInputElement>('input[placeholder="Asia/Shanghai"]')?.value === "America/New_York",
-      "unmapped timezone readback",
+      () => container.textContent?.includes("Wake Policy") === true,
+      "Sentinel policy readback",
     );
-    assert.equal(
-      container.querySelector<HTMLInputElement>('input[placeholder="Asia/Shanghai"]')?.value,
-      "America/New_York",
+    assert.equal(container.querySelector('input[placeholder="Asia/Shanghai"]'), null);
+    assert.equal(container.textContent?.includes("Timezone"), false);
+    const save = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Save policy");
+    assert.ok(save);
+    save.click();
+    await waitForCondition(
+      () => requests.some(({ path, init }) => path === "/sentinel" && init?.method === "PUT"),
+      "canonical timezone policy save",
     );
+    const saveRequest = requests.find(({ path, init }) => path === "/sentinel" && init?.method === "PUT");
+    assert.equal(JSON.parse(String(saveRequest?.init?.body)).timezone, "America/New_York");
   } finally {
     root.unmount();
     await waitForPaint();
     env.restore();
   }
+});
+
+test("Sentinel scopes explicit System spacing without a blanket card gap", () => {
+  assert.match(
+    stylesSource,
+    /\.sentinel-page > \.system-section \+ \.system-section\s*\{[\s\S]*?margin-top:\s*12px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.system-page \.page-header\s*\{[\s\S]*?padding:\s*0 0 10px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.sentinel-status-card \.system-status-list\s*\{[\s\S]*?border-top:\s*1px solid rgba\(0, 0, 0, 0\.08\)/,
+  );
+  const blanketCardRule = stylesSource.match(
+    /\.message-bridge-card,\n\.sentinel-policy-card,\n\.sentinel-controls-card,\n\.sentinel-activity-card,\n\.sentinel-setup-card\s*\{([^}]*)\}/,
+  )?.[1] ?? "";
+  assert.doesNotMatch(blanketCardRule, /gap:\s*10px/);
+  assert.match(
+    stylesSource,
+    /\.message-bridge-card \.system-note\s*\{[\s\S]*?margin-top:\s*12px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.message-bridge-card textarea\s*\{[\s\S]*?margin-top:\s*10px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.system-account-page \.system-section,[\s\S]*?\.sentinel-controls-card\s*\{[\s\S]*?padding-bottom:\s*13px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.system-sign-out,[\s\S]*?margin-top:\s*12px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.sentinel-policy-card > \.sentinel-field,[\s\S]*?\.sentinel-controls-card > \.sentinel-control-row\s*\{[\s\S]*?margin-top:\s*12px/,
+  );
+  assert.match(stylesSource, /\.sentinel-field\s*\{[\s\S]*?gap:\s*7px/);
+  assert.match(stylesSource, /\.sentinel-control-row\s*\{[\s\S]*?gap:\s*10px/);
+  assert.match(
+    stylesSource,
+    /\.sentinel-activity-card \.system-empty-state\s*\{[\s\S]*?margin:\s*12px 0 0[\s\S]*?padding-top:\s*0/,
+  );
+  assert.match(
+    stylesSource,
+    /\.sentinel-activity-list\s*\{[\s\S]*?margin:\s*12px 0 0/,
+  );
+  assert.match(stylesSource, /\.system-activity-row\s*\{[\s\S]*?min-height:\s*60px/);
+  assert.match(
+    stylesSource,
+    /\.sentinel-resume-field > \.native-date-field\s*\{[\s\S]*?width:\s*100%[\s\S]*?max-width:\s*100%/,
+  );
+  assert.match(
+    stylesSource,
+    /\.sentinel-resume-datetime::-webkit-date-and-time-value,[\s\S]*?\.sentinel-resume-datetime::-webkit-datetime-edit\s*\{[\s\S]*?height:\s*46px[\s\S]*?line-height:\s*46px[\s\S]*?text-align:\s*center/,
+  );
+  assert.match(stylesSource, /input,\nselect\s*\{[\s\S]*?min-height:\s*46px[\s\S]*?padding:\s*0 14px/);
+  assert.doesNotMatch(
+    stylesSource.match(/\.sentinel-resume-datetime\s*\{([^}]*)\}/)?.[1] ?? "",
+    /(?:min-height|padding|border|background)/,
+  );
+  assert.match(
+    sentinelSource,
+    /<NativeDateInput\s+className="sentinel-resume-datetime"\s+type="datetime-local"\s+value=\{resumeAt\}/,
+  );
 });
 
 test("Sentinel page renders the Message Bridge between status and wake policy", async () => {
@@ -356,7 +434,7 @@ test("an uninitialized Sentinel requires policy setup before wake controls becom
   root.render(React.createElement(SentinelPageContent, { api }));
   await waitForCondition(() => container.textContent?.includes("Set up Sentinel") === true, "uninitialized Sentinel setup state");
   assert.match(container.textContent ?? "", /Save a policy to set up your private wake controls/);
-  assert.equal(container.querySelector<HTMLInputElement>("input")?.disabled, false);
+  assert.equal(container.querySelector('input[placeholder="Asia/Shanghai"]'), null);
   assert.equal(container.querySelector<HTMLTextAreaElement>("textarea")?.disabled, false);
   assert.equal([...container.querySelectorAll("button")].some((button) => /^(Resume|Resume now|Wake now|Pause|Recovery)$/.test(button.textContent ?? "")), false);
   assert.doesNotMatch(container.textContent ?? "", /\bON\b/);

@@ -79,14 +79,6 @@ function localDateTimeValue(date: Date): string {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
-function displayTimezone(timezone: string): string {
-  return timezone === "Asia/Shanghai" ? "Beijing" : timezone;
-}
-
-function canonicalTimezoneInput(value: string): string {
-  return value === "Beijing" ? "Asia/Shanghai" : value;
-}
-
 function activityLabel(wake: SentinelWake): string {
   if (wake.state === "finalized") {
     return wake.decision === "contact" ? "Contact" : "Quiet";
@@ -213,7 +205,6 @@ export function SentinelPageContent({
         <ChatGPTMessageBridgeCard api={api} />
         <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
           <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
-          <label className="sentinel-field"><span>Timezone</span><input value={displayTimezone(timezone)} onChange={(event) => setTimezone(canonicalTimezoneInput(event.target.value))} placeholder="Asia/Shanghai" /></label>
           <label className="sentinel-field"><span>Policy</span><textarea value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" /></label>
           <button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>Save policy</button>
         </section>
@@ -246,7 +237,6 @@ export function SentinelPageContent({
 
       <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
         <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
-        <label className="sentinel-field"><span>Timezone</span><input value={displayTimezone(timezone)} onChange={(event) => setTimezone(canonicalTimezoneInput(event.target.value))} placeholder="Asia/Shanghai" /></label>
         <label className="sentinel-field"><span>Policy</span><textarea value={policyPrompt} onChange={(event) => setPolicyPrompt(event.target.value)} placeholder="When should the wake be useful?" /></label>
         <button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void savePolicy()}>Save policy</button>
       </section>
@@ -255,7 +245,7 @@ export function SentinelPageContent({
         <h2 className="system-product-name">First Wake / Controls</h2>
         {isPaused ? (
           <>
-            <label className="sentinel-field sentinel-resume-field"><span>First wake after resume</span><NativeDateInput type="datetime-local" value={resumeAt} onChange={(event) => setResumeAt(event.target.value)} /></label>
+            <label className="sentinel-field sentinel-resume-field"><span>First wake after resume</span><NativeDateInput className="sentinel-resume-datetime" type="datetime-local" value={resumeAt} onChange={(event) => setResumeAt(event.target.value)} /></label>
             <div className="sentinel-control-row"><button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void resume()}>Resume</button><button className="secondary-button system-sign-out" type="button" disabled={Boolean(busyAction)} onClick={() => void runAction("Resume now", "/sentinel/resume-now", { method: "POST", body: "{}" })}>Resume now</button></div>
           </>
         ) : (
