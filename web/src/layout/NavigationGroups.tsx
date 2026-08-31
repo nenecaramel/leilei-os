@@ -110,7 +110,6 @@ export function NavigationGroups({
               ({
                 disabled,
                 end,
-                icon: Icon,
                 label,
                 to,
               }) => {
@@ -123,9 +122,7 @@ export function NavigationGroups({
                       aria-disabled="true"
                       key={label}
                     >
-                      <Icon />
                       <span>{label}</span>
-                      <small>soon</small>
                     </button>
                   );
                 }
@@ -140,11 +137,7 @@ export function NavigationGroups({
                     }
                     onClick={onNavigate}
                   >
-                    <Icon />
                     <span>{label}</span>
-                    {label === "Universe" && (
-                      <small>soon</small>
-                    )}
                   </NavLink>
                 );
               },
