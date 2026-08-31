@@ -4,8 +4,126 @@
   .task-page,
   .day-space-page,
   .global-search-page {
-    --desktop-page-surface: var(--desktop-surface, #fffffe);
-    --desktop-page-ink: var(--desktop-ink, #191919);
-    --desktop-page-muted: var(--desktop-muted, #6b6b68);
+    width: min(100%, 860px);
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 22px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #191919;
+    --desktop-page-surface: #ffffff;
+    --desktop-page-ink: #191919;
+    --desktop-page-muted: #6b6b68;
+  }
+
+  .memory-page .memory-page-header,
+  .global-search-page .memory-page-header {
+    min-height: auto;
+    padding: 18px 0 14px;
+    border-bottom: 1px solid #e7e7e1;
+    background: transparent;
+  }
+
+  .memory-page .memory-page-heading,
+  .global-search-page .memory-page-heading {
+    gap: 4px;
+  }
+
+  .memory-page .memory-page-title,
+  .global-search-page .memory-page-title {
+    font-family: inherit;
+    font-size: 17px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #191919;
+  }
+
+  .memory-page .memory-page-count,
+  .global-search-page .memory-page-count {
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #6b6b68;
+  }
+
+  .memory-page .memory-page-search,
+  .global-search-page .memory-page-search,
+  .memory-page .memory-page-popover,
+  .global-search-page .memory-page-popover,
+  .memory-page .global-search-compact-form,
+  .global-search-page .global-search-compact-form,
+  .memory-page .global-search-domain-list,
+  .global-search-page .global-search-domain-list {
+    border: 1px solid #e2e2dc;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: none;
+  }
+
+  .memory-page .memory-page-search,
+  .global-search-page .memory-page-search {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+
+  .memory-page .memory-page-search input,
+  .global-search-page .memory-page-search input {
+    font-family: inherit;
+    font-size: 14px;
+    color: #191919;
+  }
+
+  .memory-page .memory-month-card,
+  .global-search-page .global-search-result-group {
+    border: 1px solid #e2e2dc;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: none;
+    overflow: clip;
+  }
+
+  .memory-page .memory-row,
+  .global-search-page .global-search-result-button {
+    display: grid;
+    min-height: 60px;
+    background: #ffffff;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    gap: 4px;
+    padding: 12px 14px;
+  }
+
+  .memory-page .memory-row-title,
+  .global-search-page .global-search-result-title {
+    font-size: 14px;
+    line-height: 1.35;
+    font-weight: 500;
+    color: #191919;
+  }
+
+  .memory-page .memory-row-meta,
+  .global-search-page .global-search-result-meta {
+    font-size: 12px;
+    line-height: 1.35;
+    color: #6b6b68;
+  }
+
+  .memory-page .global-search-compact-form,
+  .global-search-page .global-search-compact-form,
+  .memory-page .global-search-domain-list,
+  .global-search-page .global-search-domain-list {
+    padding: 10px 12px;
+  }
+
+  .memory-page .global-search-compact-form input,
+  .global-search-page .global-search-compact-form input,
+  .memory-page .global-search-domain-list button,
+  .global-search-page .global-search-domain-list button {
+    font-family: inherit;
+  }
+
+  .memory-page .memory-row + .memory-row,
+  .global-search-page .global-search-result-button + .global-search-result-button {
+    border-top: 1px solid #eeeeea;
   }
 }
