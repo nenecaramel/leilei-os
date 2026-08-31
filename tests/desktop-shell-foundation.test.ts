@@ -102,3 +102,18 @@ test("desktop foundation cannot reach mobile navigation or Universe internals", 
   assert.doesNotMatch(css, /\.universe-/);
   assert.doesNotMatch(css, /@media\s*\(max-width/);
 });
+
+test("desktop keeps one full-text sidebar mode instead of a compact icon rail", () => {
+  assert.doesNotMatch(
+    legacyStyles,
+    /@media\s*\(max-width:\s*980px\)[\s\S]*?grid-template-columns:\s*82px\s+minmax\(0,\s*1fr\)/,
+  );
+  assert.doesNotMatch(
+    legacyStyles,
+    /@media\s*\(max-width:\s*980px\)[\s\S]*?\.nav-item\s+span[\s\S]*?display:\s*none/s,
+  );
+  assert.doesNotMatch(
+    legacyStyles,
+    /@media\s*\(max-width:\s*980px\)[\s\S]*?\.sidebar-brand\s*>\s*div:last-child[\s\S]*?display:\s*none/s,
+  );
+});

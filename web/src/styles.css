@@ -1280,37 +1280,6 @@ textarea:disabled {
 /* Tablet */
 
 @media (max-width: 980px) {
-  .app-shell {
-    grid-template-columns: 82px minmax(0, 1fr);
-  }
-
-  .sidebar {
-    padding-inline: 12px;
-  }
-
-  .sidebar-brand {
-    justify-content: center;
-    padding-inline: 0;
-  }
-
-  .sidebar-brand > div:last-child,
-  .nav-item span,
-  .nav-item small,
-  .user-copy,
-  .text-button {
-    display: none;
-  }
-
-  .nav-item {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-
-  .sidebar-footer {
-    justify-content: center;
-    padding-inline: 0;
-  }
-
   .page {
     width: min(100% - 48px, 1180px);
   }
