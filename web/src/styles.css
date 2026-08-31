@@ -5598,6 +5598,11 @@ body:has(.system-page) {
   max-width: 100%;
 }
 
+.sentinel-resume-field > .native-date-field {
+  width: 100%;
+  max-width: 100%;
+}
+
 .sentinel-resume-datetime {
   text-align: center;
 }

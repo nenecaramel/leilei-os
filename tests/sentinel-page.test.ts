@@ -279,6 +279,10 @@ test("Sentinel scopes explicit System spacing without a blanket card gap", () =>
   assert.match(stylesSource, /\.system-activity-row\s*\{[\s\S]*?min-height:\s*60px/);
   assert.match(
     stylesSource,
+    /\.sentinel-resume-field > \.native-date-field\s*\{[\s\S]*?width:\s*100%[\s\S]*?max-width:\s*100%/,
+  );
+  assert.match(
+    stylesSource,
     /\.sentinel-resume-datetime::-webkit-date-and-time-value,[\s\S]*?\.sentinel-resume-datetime::-webkit-datetime-edit\s*\{[\s\S]*?height:\s*46px[\s\S]*?line-height:\s*46px[\s\S]*?text-align:\s*center/,
   );
   assert.match(stylesSource, /input,\nselect\s*\{[\s\S]*?min-height:\s*46px[\s\S]*?padding:\s*0 14px/);
