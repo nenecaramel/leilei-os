@@ -342,6 +342,21 @@ test("Sentinel cards use the standard System title divider and first-row rhythm"
   }
 });
 
+test("Sentinel text rows align their content to the input edge without moving enabled controls", () => {
+  assert.match(
+    stylesSource,
+    /\.message-bridge-card > \.sentinel-first-row,\s*\.sentinel-policy-card > \.sentinel-first-row,\s*\.sentinel-controls-card > \.sentinel-first-row:not\(\.sentinel-control-row\)\s*\{[\s\S]*?align-items:\s*flex-end/,
+  );
+  assert.match(
+    stylesSource,
+    /\.sentinel-first-row\s*\{[\s\S]*?min-height:\s*60px[\s\S]*?align-items:\s*center/,
+  );
+  assert.match(
+    sentinelSource,
+    /<div className="sentinel-first-row sentinel-control-row">[\s\S]*Wake now[\s\S]*Pause/,
+  );
+});
+
 test("Sentinel page renders the Message Bridge between status and wake policy", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
