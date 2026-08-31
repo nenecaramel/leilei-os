@@ -5603,7 +5603,7 @@ body:has(.system-page) {
 }
 
 .sentinel-controls-card > .sentinel-control-row:not(.sentinel-first-row) .system-sign-out {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .sentinel-first-row.sentinel-control-row .system-sign-out {
