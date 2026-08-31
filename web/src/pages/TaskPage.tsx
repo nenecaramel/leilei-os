@@ -863,7 +863,7 @@ import {
       }
     }
 
-    async function handleReopenTask(taskOverride?: TaskEntry) {
+    async function handleReopenTask(taskOverride?: Pick<TaskEntry, "id">) {
       const target = taskOverride ?? selectedTask;
       if (!target || !mutationGate.current.enter()) return;
       const listSnapshot = {
@@ -1509,7 +1509,7 @@ import {
 function MobileTaskLoading({ label }: { label: string }) {
   return <section className="memory-months" aria-label={label} aria-busy="true"><span className="visually-hidden" role="status" aria-live="polite">正在读取任务…</span>{[0,1].map((i) => <div className="memory-month-skeleton" aria-hidden="true" key={i}><span className="memory-month-skeleton-label" /><div className="memory-month-skeleton-card"><span /><span /></div></div>)}</section>;
 }
-function MobileTaskRows({ tasks, busy, label, onOpen, onReopen }: { tasks: TaskEntry[]; busy: boolean; label: string; onOpen(id: string, trigger: HTMLElement): void; onReopen?: (task: TaskEntry) => void }) {
+function MobileTaskRows({ tasks, busy, label, onOpen, onReopen }: { tasks: TaskEntry[]; busy: boolean; label: string; onOpen(id: string, trigger: HTMLElement): void; onReopen?: (task: Pick<TaskEntry, "id">) => void }) {
   const desktopListActions = typeof window !== "undefined" && (!window.matchMedia || !window.matchMedia("(max-width: 760px)").matches);
   return <section className="memory-months task-groups" aria-label={label}>{groupTasksForMobile(tasks).map((group) => <section className={`memory-month-section task-group task-group-${group.key}`} key={group.key}><h2 className="memory-month-label">{group.label}</h2><div className="memory-month-card">{group.tasks.map((task) => <Fragment key={task.id}><button type="button" className="memory-row task-row" data-task-id={task.id} disabled={busy} onClick={(e) => onOpen(task.id, e.currentTarget)}><span className="memory-row-title">{task.title}</span><span className="memory-row-meta"><span>{formatTaskRowDeadline(task)}</span><span>{formatTaskRowMeta(task)}</span></span></button>{desktopListActions && onReopen && task.allowed_actions.includes("reopen") ? <button type="button" className="secondary-button task-row-reopen" disabled={busy} onClick={() => onReopen(task)}>恢复任务</button> : null}</Fragment>)}</div></section>)}</section>;
 }
