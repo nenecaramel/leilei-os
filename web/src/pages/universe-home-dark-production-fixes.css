@@ -50,6 +50,47 @@ body:has(.universe-cosmos-loading),
   color: #8f909b !important;
 }
 
+/* Read failures stay on the same dark Universe surface without changing the error DOM. */
+html:has(.universe-cosmos-state),
+body:has(.universe-cosmos-state),
+#root:has(.universe-cosmos-state),
+.app-shell:has(.universe-cosmos-state),
+.main-content:has(.universe-cosmos-state),
+.universe-page:has(.universe-cosmos-state) {
+  background: #0b0c12 !important;
+  background-image: none !important;
+}
+
+.universe-page:has(.universe-cosmos-state) .universe-cosmos-state {
+  background: #0b0c12 !important;
+}
+
+.universe-page:has(.universe-cosmos-state) .memory-page-title {
+  color: #e8e7ec;
+}
+
+.universe-page:has(.universe-cosmos-state) .universe-state-inline {
+  color: #8f909b !important;
+}
+
+.universe-page:has(.universe-cosmos-state) .universe-state-inline p {
+  color: #8f909b !important;
+}
+
+.universe-page:has(.universe-cosmos-state) .universe-state-inline .secondary-button {
+  color: #b0aeb7 !important;
+}
+
+.universe-page:has(.universe-cosmos-state) .universe-state-inline .secondary-button:hover,
+.universe-page:has(.universe-cosmos-state) .universe-state-inline .secondary-button:active {
+  color: #e8e7ec !important;
+}
+
+.universe-page:has(.universe-cosmos-state) .universe-cosmos-state::before,
+.universe-page:has(.universe-cosmos-state) .universe-cosmos-state::after {
+  content: none;
+}
+
 /* Legacy accepted placement geometry stays intact; only its surface wins over the old white !important. */
 .universe-page:has(.universe-mobile-map) .universe-placement-popover,
 .universe-page:has(.universe-mobile-map) .universe-overflow-menu,
@@ -106,6 +147,14 @@ body:has(.universe-cosmos-loading),
   /* Loading and inner-paper states keep the dark route bar in normal document flow. */
   body:has(.universe-page) .mobile-top-bar,
   body:has(.universe-cosmos-loading) .mobile-top-bar {
+    color: #e8e7ec;
+    background: #0b0c12 !important;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  body:has(.universe-cosmos-state) .mobile-top-bar {
     color: #e8e7ec;
     background: #0b0c12 !important;
     box-shadow: none;

@@ -59,6 +59,16 @@ test("Universe loading state is dark and keeps its existing white top bar", () =
   assert.doesNotMatch(productionFixCss, /body:has\(\.universe-cosmos-loading\) \.mobile-top-bar\s*\{[^}]*position:\s*fixed !important;/s);
 });
 
+test("Universe error state is dark, uses the existing muted palette, and removes legacy orbital rings", () => {
+  assert.match(productionFixCss, /html:has\(\.universe-cosmos-state\),[\s\S]*?\.universe-page:has\(\.universe-cosmos-state\)\s*\{[^}]*background:\s*#0b0c12 !important;[^}]*background-image:\s*none !important;/s);
+  assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-state\) \.universe-cosmos-state\s*\{[^}]*background:\s*#0b0c12 !important;/s);
+  assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-state\) \.memory-page-title\s*\{[^}]*color:\s*#e8e7ec;/s);
+  assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-state\) \.universe-state-inline\s*\{[^}]*color:\s*#8f909b !important;/s);
+  assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-state\) \.universe-state-inline \.secondary-button\s*\{[^}]*color:\s*#b0aeb7 !important;/s);
+  assert.match(productionFixCss, /\.universe-page:has\(\.universe-cosmos-state\) \.universe-cosmos-state::before,[\s\S]*?\.universe-page:has\(\.universe-cosmos-state\) \.universe-cosmos-state::after\s*\{[^}]*content:\s*none;/s);
+  assert.match(productionFixCss, /body:has\(\.universe-cosmos-state\) \.mobile-top-bar\s*\{[^}]*color:\s*#e8e7ec;[^}]*background:\s*#0b0c12 !important;/s);
+});
+
 test("Universe home popovers keep accepted geometry while placement wins over the legacy white important rule", () => {
   assert.doesNotMatch(productionFixCss, /\.universe-(?:placement-popover|overflow-menu)[^{]*\{[^}]*(?:width|height|min-height|padding)\s*:/s);
   assert.match(geometryCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-placement-popover > span,[\s\S]*?\.universe-page:has\(\.universe-mobile-map\) \.universe-overflow-menu button\s*\{[^}]*height:\s*auto !important;[^}]*min-height:\s*0 !important;[^}]*padding:\s*6px 8px !important;/s);
