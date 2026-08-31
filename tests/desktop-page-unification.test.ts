@@ -146,3 +146,18 @@ test("Task uses its paper header and rows as the common presentation", () => {
     /<PageHeader[\s\S]*?eyebrow="Execution queue"/,
   );
 });
+
+test("shared Task paper keeps quick-create focus and completion metadata", () => {
+  assert.match(
+    taskPageTsx,
+    /createPaperEditorRef\.current\?\.focusTitle\(\)/,
+  );
+  assert.match(
+    taskPageTsx,
+    /<TaskPaperEditor\s+ref=\{createPaperEditorRef\}/,
+  );
+  assert.match(
+    taskPageTsx,
+    /完成时间：\{formatTaskPaperDeadline\(task\.completed_at, task\.timezone\)\}/,
+  );
+});
