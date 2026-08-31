@@ -7,11 +7,11 @@
  * horizontal space beside the fixed navigation panel.
  */
 @media (min-width: 761px) {
-  .memory-page,
-  .diary-page,
-  .task-page,
-  .day-space-page,
-  .global-search-page {
+  .main-content > .page.memory-page,
+  .main-content > .page.diary-page,
+  .main-content > .page.task-page,
+  .main-content > .page.day-space-page,
+  .main-content > .page.global-search-page {
     width: min(1120px, calc(100% - 64px));
     max-width: 1120px;
     margin-inline: auto;
