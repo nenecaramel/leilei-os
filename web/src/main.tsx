@@ -7,7 +7,6 @@ import { installUniverseSourcePickerAutoReveal } from "./pages/universe/source-p
 import "./styles.css";
 import "./desktop-foundation.css";
 import "./layout/navigation-panel.css";
-import "./desktop-page-unification.css";
 import "./pwa/pwa-status.css";
 import "./pages/lg-author-editor-layout-fix.css";
 import "./pages/home-calendar-real-data.css";
@@ -18,8 +17,7 @@ import "./pages/universe-detail-dayspace-header-polish.css";
 import "./pages/universe-mobile-final-geometry.css";
 import "./pages/universe-home-dark.css";
 import "./pages/universe-home-dark-production-fixes.css";
-import "./desktop-mobile-parity.css";
-import "./responsive-ui-regressions.css";
+import "./native-mobile-desktop-geometry.css";
 
 installUniverseSourcePickerAutoReveal();
 
