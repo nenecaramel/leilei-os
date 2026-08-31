@@ -53,10 +53,10 @@ test("Memory, Diary, and Task no longer consume Settings runtime", () => {
 test("Diary and Task keep their accepted static descriptions", () => {
   assert.match(
     files.diaryPage,
-    /description="按时间记录、查看和整理属于蕾蕾的日常。"/,
+    /按时间记录、查看和整理属于蕾蕾的日常。/,
   );
   assert.match(
     files.taskPage,
-    /description="管理待办事项、截止时间与完成状态。"/,
+    /管理待办事项、截止时间与完成状态。/,
   );
 });

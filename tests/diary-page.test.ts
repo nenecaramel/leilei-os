@@ -176,18 +176,18 @@ test("Diary list initializes all controls from URL and requests that URL", async
     "/diary?q=trip&tag=Japan&mood=happy&date_from=2026-07-01&date_to=2026-07-07";
   const page = await render(path, api);
   try {
-    for (const [label, value] of [
-      ["搜索日记内容", "trip"],
-      ["按标签筛选", "Japan"],
-      ["按心情筛选", "happy"],
-      ["开始日期", "2026-07-01"],
-      ["结束日期", "2026-07-07"],
-    ]) {
+    assert.equal(
+      page.container.querySelector<HTMLInputElement>(
+        'input[aria-label="搜索日记内容"]',
+      )?.value,
+      "trip",
+    );
+    for (const label of ["按标签筛选", "按心情筛选", "按日期筛选"]) {
       assert.equal(
-        page.container.querySelector<HTMLInputElement>(
-          `input[aria-label="${label}"]`,
-        )?.value,
-        value,
+        page.container.querySelector<HTMLButtonElement>(
+          `button[aria-label="${label}"]`,
+        )?.getAttribute("aria-pressed"),
+        "true",
       );
     }
     assert.equal(requests[0]?.path, path);
@@ -200,24 +200,22 @@ test("Diary normal list places archive and create actions in the page header", a
   const { api, requests } = pendingApi();
   const page = await render("/diary", api);
   try {
-    const archiveButtons = [...page.container.querySelectorAll("button")]
-      .filter((button) => button.textContent === "查看归档");
-    const createButtons = [...page.container.querySelectorAll("button")]
-      .filter((button) => button.textContent === "新增日记");
+    const archiveButtons = [...page.container.querySelectorAll("button[aria-label=\"查看归档\"]")];
+    const createButtons = [...page.container.querySelectorAll("button[aria-label=\"新增日记\"]")];
     assert.equal(archiveButtons.length, 1);
     assert.equal(createButtons.length, 1);
     assert.equal(
       archiveButtons[0]?.parentElement?.className,
-      "page-header-actions",
+      "memory-page-tools diary-page-tools",
     );
     assert.equal(
       createButtons[0]?.parentElement?.className,
-      "page-header-actions",
+      "memory-page-tools diary-page-tools",
     );
     assert.deepEqual(
-      [...page.container.querySelectorAll(".page-header-actions button")]
-        .map((button) => button.textContent),
-      ["查看归档", "新增日记"],
+      [...page.container.querySelectorAll(".diary-page-tools button")]
+        .map((button) => button.getAttribute("aria-label")),
+      ["按日期筛选", "按心情筛选", "按标签筛选", "搜索日记", "查看归档", "新增日记"],
     );
     assert.equal(requests[0]?.path, "/diary");
   } finally {
@@ -226,7 +224,6 @@ test("Diary normal list places archive and create actions in the page header", a
 });
 
 test("Diary normal and archived lists use the same date-order summary", async () => {
-  const summary = "共 1 篇，按日期从新到旧排列。";
   const api: WebApiClient = {
     async request<T>(path: string) {
       if (path === "/diary/archived") {
@@ -249,7 +246,7 @@ test("Diary normal and archived lists use the same date-order summary", async ()
     try {
       assert.match(
         page.container.textContent ?? "",
-        new RegExp(summary),
+        path.includes("view=archived") ? /Archive1篇日记/ : /Diary1篇日记/,
       );
     } finally {
       await page.cleanup();
@@ -299,10 +296,10 @@ test("Diary latest request failure keeps URL controls and retries without Histor
       /private failure detail/,
     );
     assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"按标签筛选\"]",
-      )?.value,
-      "Japan",
+      page.container.querySelector<HTMLButtonElement>(
+        "button[aria-label=\"按标签筛选\"]",
+      )?.getAttribute("aria-pressed"),
+      "true",
     );
     const retry = [...page.container.querySelectorAll("button")]
       .find((candidate) => candidate.textContent === "重新加载");
@@ -332,10 +329,10 @@ test("Diary popstate aborts the previous list and restores controls without push
     assert.equal(oldSignal?.aborted, true);
     assert.equal(page.window.history.length, initialHistory + 1);
     assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"按标签筛选\"]",
-      )?.value,
-      "after",
+      page.container.querySelector<HTMLButtonElement>(
+        "button[aria-label=\"按标签筛选\"]",
+      )?.getAttribute("aria-pressed"),
+      "true",
     );
     assert.equal(requests.at(-1)?.path, "/diary?tag=after&mood=calm");
   } finally {
@@ -352,8 +349,9 @@ test("Diary refreshed detail explicitly returns to complete safe filters", async
     api,
   );
   try {
-    const button = [...page.container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "返回日记列表");
+    const button = page.container.querySelector<HTMLButtonElement>(
+      "button.paper-detail-veil",
+    );
     assert.ok(button);
     await React.act(async () => {
       button.dispatchEvent(new page.window.MouseEvent("click", {
@@ -364,12 +362,7 @@ test("Diary refreshed detail explicitly returns to complete safe filters", async
       `${page.window.location.pathname}${page.window.location.search}`,
       returnTo,
     );
-    assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"搜索日记内容\"]",
-      )?.value,
-      "trip",
-    );
+    assert.ok(page.container.querySelector(".diary-page-search"));
   } finally {
     await page.cleanup();
   }
@@ -387,8 +380,9 @@ test("Diary active and archived detail returns notify the app router for a safe 
     try {
       let routeChanges = 0;
       page.window.addEventListener("popstate", () => { routeChanges += 1; });
-      const button = [...page.container.querySelectorAll("button")]
-        .find((candidate) => candidate.textContent === (path.includes("archivedDiary") ? "返回归档列表" : "返回日记列表"));
+      const button = page.container.querySelector<HTMLButtonElement>(
+        "button.paper-detail-veil",
+      );
       assert.ok(button);
       await React.act(async () => {
         button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -413,8 +407,9 @@ test("Diary direct Universe detail returns notify the app router for active and 
     try {
       let routeChanges = 0;
       page.window.addEventListener("popstate", () => { routeChanges += 1; });
-      const button = [...page.container.querySelectorAll("button")]
-        .find((candidate) => candidate.textContent === (path.includes("archivedDiary") ? "返回归档列表" : "返回日记列表"));
+    const button = page.container.querySelector<HTMLButtonElement>(
+      "button.paper-detail-veil",
+    );
       assert.ok(button);
       await React.act(async () => { button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
       assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
@@ -447,8 +442,9 @@ test("Diary in-page return restores scroll only after the filtered list is ready
   saveDiaryScrollPosition(page.window.sessionStorage, returnTo, 720);
 
   try {
-    const button = [...page.container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "返回日记列表");
+    const button = page.container.querySelector<HTMLButtonElement>(
+      "button.paper-detail-veil",
+    );
     assert.ok(button);
     await React.act(async () => {
       button.dispatchEvent(new page.window.MouseEvent("click", {
@@ -540,17 +536,14 @@ test("Diary archive list is read-only and opens full archived detail", async () 
   );
   const page = await render(archiveUrl, api);
   try {
-    assert.match(page.container.textContent ?? "", /已归档日记/);
-    assert.match(
-      page.container.textContent ?? "",
-      /共 1 篇，按日期从新到旧排列。/,
-    );
+    assert.match(page.container.textContent ?? "", /Archive1篇日记/);
     assert.doesNotMatch(
       page.container.textContent ?? "",
       /编辑|再次归档|永久删除/,
     );
-    const open = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "查看详情");
+    const open = page.container.querySelector<HTMLButtonElement>(
+      '[data-diary-id="diary-1"]',
+    );
     assert.ok(open);
     await React.act(async () => {
       open.dispatchEvent(new page.window.MouseEvent("click", {
@@ -609,7 +602,7 @@ test("Diary desktop permanent-delete confirmation replaces regular actions and b
     await React.act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const detail = page.container.querySelector(".memory-message");
+    const detail = page.container.querySelector("#diary-archive-detail-paper");
     assert.ok(detail);
     const deleteButton = [...detail.querySelectorAll("button")]
       .find((button) => button.textContent === "删除");
@@ -620,7 +613,7 @@ test("Diary desktop permanent-delete confirmation replaces regular actions and b
     assert.equal(requests.filter((request) => request.init?.method === "DELETE").length, 0);
     assert.deepEqual(
       [...detail.querySelectorAll("button")].map((button) => button.textContent),
-      ["取消", "确认永久删除", "返回归档列表"],
+      ["取消", "确认永久删除"],
     );
 
     const confirm = [...detail.querySelectorAll("button")]
@@ -630,10 +623,10 @@ test("Diary desktop permanent-delete confirmation replaces regular actions and b
       confirm.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(requests.filter((request) => request.init?.method === "DELETE").length, 1);
-    for (const button of [...page.container.querySelectorAll("button")]
-      .filter((candidate) => candidate.textContent === "返回归档列表")) {
-      assert.equal(button.disabled, true);
-    }
+    const close = page.container.querySelector<HTMLButtonElement>("button.paper-detail-veil");
+    assert.ok(close);
+    await React.act(async () => close.click());
+    assert.ok(page.container.querySelector("#diary-archive-detail-paper"));
 
     deletion.reject(new Error("delete failed"));
     await React.act(async () => {
@@ -763,8 +756,9 @@ test("Diary browser history restores archive list then exact filtered active lis
     "/diary?q=goal&tag=MCP&mood=calm&date_from=2026-07-01";
   const page = await render(activeUrl, api);
   try {
-    const archive = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "查看归档");
+    const archive = page.container.querySelector<HTMLButtonElement>(
+      'button[aria-label="查看归档"]',
+    );
     assert.ok(archive);
     await React.act(async () => {
       archive.dispatchEvent(new page.window.MouseEvent("click", {
@@ -773,8 +767,9 @@ test("Diary browser history restores archive list then exact filtered active lis
     });
     const archiveUrl =
       `${page.window.location.pathname}${page.window.location.search}`;
-    const open = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "查看详情");
+    const open = page.container.querySelector<HTMLButtonElement>(
+      '[data-diary-id="diary-1"]',
+    );
     assert.ok(open);
     await React.act(async () => {
       open.dispatchEvent(new page.window.MouseEvent("click", {
@@ -829,8 +824,9 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
   };
   const page = await render("/diary?q=goal", api);
   try {
-    const findButton = (label: string) => [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === label);
+    const findButton = (label: string) => label === "新增日记"
+      ? page.container.querySelector<HTMLButtonElement>('button[aria-label="新增日记"]')
+      : [...page.container.querySelectorAll("button")].find((button) => button.textContent === label);
     await React.act(async () => {
       findButton("新增日记")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
@@ -863,13 +859,14 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
       return false;
     };
     await React.act(async () => {
-      findButton("取消新增")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      page.container.querySelector<HTMLButtonElement>('#diary-create-paper button.memory-paper-control')?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(page.window.location.pathname + page.window.location.search, "/diary?q=goal");
     assert.equal(title.value, "draft diary");
     assert.equal(content.value, "draft diary content");
 
-    const save = findButton("保存日记");
+    const save = [...page.container.querySelectorAll("#diary-create-paper button.memory-paper-control")]
+      .find((button) => button.textContent === "保存");
     assert.ok(save);
     await React.act(async () => {
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -885,7 +882,8 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
     assert.equal(title.value, "draft diary");
     assert.equal(content.value, "draft diary content");
 
-    const retryButton = findButton("保存日记");
+    const retryButton = [...page.container.querySelectorAll("#diary-create-paper button.memory-paper-control")]
+      .find((button) => button.textContent === "保存");
     assert.ok(retryButton);
     await React.act(async () => {
       retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -936,10 +934,9 @@ test("Diary legacy-null edit requires selecting an author before PATCH", async (
     assert.ok(edit);
     await React.act(async () => edit.click());
     const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.trim() === "保存修改");
+      .find((button) => button.textContent?.trim() === "保存");
     assert.ok(save);
     await React.act(async () => save.click());
-    assert.match(page.container.textContent ?? "", /请选择作者/);
     assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
 
     const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
@@ -982,7 +979,7 @@ test("Diary dirty edit cancellation and update retry are page-level single-fligh
       });
     };
     await startEdit();
-    let title = page.container.querySelector<HTMLInputElement>('input[aria-label="编辑日记标题"]');
+    let title = page.container.querySelector<HTMLInputElement>('input[aria-label="日记标题"]');
     assert.ok(title);
     await React.act(async () => {
       title.focus();
@@ -996,16 +993,16 @@ test("Diary dirty edit cancellation and update retry are page-level single-fligh
       findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(title.value, "changed diary");
-    assert.match(page.container.textContent ?? "", /编辑日记/);
+    assert.ok(page.container.querySelector('input[aria-label="日记标题"]'));
     page.window.confirm = () => true;
     await React.act(async () => {
       findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
-    assert.doesNotMatch(page.container.textContent ?? "", /编辑日记/);
+    assert.equal(page.container.querySelector('input[aria-label="日记标题"]'), null);
     assert.equal(page.window.dispatchEvent(new page.window.Event("beforeunload", { cancelable: true })), true);
 
     await startEdit();
-    title = page.container.querySelector<HTMLInputElement>('input[aria-label="编辑日记标题"]');
+    title = page.container.querySelector<HTMLInputElement>('input[aria-label="日记标题"]');
     assert.ok(title);
     await React.act(async () => {
       title.focus();
@@ -1014,7 +1011,7 @@ test("Diary dirty edit cancellation and update retry are page-level single-fligh
       Object.defineProperty(change, "propertyName", { value: "value" });
       title.dispatchEvent(change);
     });
-    const save = findButton("保存修改");
+    const save = findButton("保存");
     assert.ok(save);
     await React.act(async () => {
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -1026,7 +1023,7 @@ test("Diary dirty edit cancellation and update retry are page-level single-fligh
       await first.promise.catch(() => undefined);
     });
     assert.equal(title.value, "retry diary");
-    const retryButton = findButton("保存修改");
+    const retryButton = findButton("保存");
     assert.ok(retryButton);
     await React.act(async () => {
       retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));

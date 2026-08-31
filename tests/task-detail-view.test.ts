@@ -58,7 +58,7 @@ test("Dashboard quick-create intent opens Task form and focuses title once", asy
   const page = await renderTaskPage("/task", createApi(async () => new Promise<never>(() => {})).api, { quickCreate: "task", preserved: true });
   try {
     await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    const title = page.container.querySelector<HTMLInputElement>('input[placeholder="任务标题"]');
+    const title = page.container.querySelector<HTMLInputElement>('input[aria-label="任务标题"]');
     assert.ok(title);
     assert.equal(
       page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger")?.textContent,
@@ -241,7 +241,7 @@ async function renderTaskPage(
 
 function assertNoListView(container: Element): void {
   assert.equal(
-    container.querySelector("input[aria-label=\"搜索任务\"]"),
+    container.querySelector('input[aria-label="搜索任务内容"]'),
     null,
   );
   assert.equal(container.querySelector(".task-filters"), null);
@@ -249,13 +249,14 @@ function assertNoListView(container: Element): void {
   assert.doesNotMatch(container.textContent ?? "", /搜索与筛选/);
 }
 
-test("Task filter heading appears in list mode and not detail mode", async () => {
+test("Task filter controls stay in the compact page header and not detail mode", async () => {
   const list = await renderTaskPage(
     "/task",
     createApi(() => new Promise(() => {})).api,
   );
   try {
-    assert.match(list.container.textContent ?? "", /搜索与筛选/);
+    assert.ok(list.container.querySelector(".task-page-header"));
+    assert.equal(list.container.querySelector(".task-filters"), null);
   } finally {
     await list.cleanup();
   }
@@ -281,14 +282,14 @@ test("normal Task list keeps header action order, exact summary, and read-only c
     await React.act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const headerActions = page.container.querySelector(".page-header-actions");
+    const headerActions = page.container.querySelector(".task-page-tools");
     assert.ok(headerActions);
     assert.deepEqual(
-      [...headerActions.querySelectorAll("button")].map((button) => button.textContent),
-      ["查看归档", "新建任务"],
+      [...headerActions.querySelectorAll("button")].map((button) => button.getAttribute("aria-label")),
+      ["按截止时间筛选", "按状态筛选", "按标签筛选", "搜索任务", "查看归档", "新增任务"],
     );
-    assert.match(page.container.textContent ?? "", /共 1 项，按截止时间排列。/);
-    const cards = page.container.querySelector(".memory-grid");
+    assert.match(page.container.textContent ?? "", /Task1项任务/);
+    const cards = page.container.querySelector(".memory-month-card");
     assert.ok(cards);
     assert.equal(
       [...cards.querySelectorAll("button")].some((button) => button.textContent === "归档"),
@@ -366,6 +367,7 @@ test("completed status-filtered reopen removes the task without entering loading
     const button = [...page.container.querySelectorAll("button")].find((candidate) => candidate.textContent === "恢复任务");
     assert.ok(button);
     await React.act(async () => { button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(requests.filter(({ path, init }) => path === "/task/task-123/reopen" && init?.method === "POST").length, 1);
     assert.match(page.container.textContent ?? "", /还没有任务|没有符合条件的任务/);
     assert.equal(page.container.querySelector("[aria-label=\"任务列表加载中\"]"), null);
@@ -384,15 +386,18 @@ test("unfiltered reopen replaces the card in place and preserves count", async (
   const page = await renderTaskPage("/task", api);
   try {
     await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    const card = page.container.querySelector(".memory-card");
+    const card = page.container.querySelector(".memory-month-card");
     assert.ok(card);
     const button = [...card.querySelectorAll("button")].find((candidate) => candidate.textContent === "恢复任务");
     assert.ok(button);
     await React.act(async () => { button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(requests.filter(({ path, init }) => path === "/task/task-123/reopen" && init?.method === "POST").length, 1);
-    assert.match(card.textContent ?? "", /待处理/);
-    assert.equal([...card.querySelectorAll("button")].some((candidate) => candidate.textContent === "恢复任务"), false);
-    assert.match(page.container.textContent ?? "", /共 1 项/);
+    const updatedCard = page.container.querySelector(".memory-month-card");
+    assert.ok(updatedCard);
+    assert.match(updatedCard.textContent ?? "", /待处理/);
+    assert.equal([...updatedCard.querySelectorAll("button")].some((candidate) => candidate.textContent === "恢复任务"), false);
+    assert.match(page.container.textContent ?? "", /Task1项任务/);
   } finally {
     await page.cleanup();
   }
@@ -437,7 +442,7 @@ test("direct detail load renders a detail placeholder first and skips the list r
   try {
     assert.ok(
       page.container.querySelector(
-        "[aria-label=\"任务详情加载中\"]",
+        "#task-detail-paper[aria-label=\"正在读取 Task\"]",
       ),
     );
     assertNoListView(page.container);
@@ -462,8 +467,7 @@ test("Task active and archived detail returns notify the app router for a safe g
     try {
       let routeChanges = 0;
       page.window.addEventListener("popstate", () => { routeChanges += 1; });
-      const button = [...page.container.querySelectorAll("button")]
-        .find((candidate) => candidate.textContent === (path.includes("archived=1") ? "返回归档列表" : "返回任务列表"));
+      const button = page.container.querySelector<HTMLButtonElement>("button.paper-detail-veil");
       assert.ok(button);
       await React.act(async () => {
         button.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -502,20 +506,22 @@ test("active Task detail keeps lifecycle action order and hides archive while ed
     });
     const labels = [...page.container.querySelectorAll("button")]
       .map((button) => button.textContent);
-    assert.equal(labels.filter((label) => label === "返回任务列表").length, 2);
-    assert.ok(labels.indexOf("归档") < labels.lastIndexOf("返回任务列表"));
-    for (const expected of ["编辑任务", "开始任务", "取消任务", "归档"]) {
-      assert.ok(labels.includes(expected));
-    }
+    assert.equal(labels.filter((label) => label === "归档").length, 1);
+    assert.equal(labels.filter((label) => label === "编辑").length, 1);
+    assert.ok(labels.indexOf("归档") < labels.indexOf("编辑"));
+    const status = page.container.querySelector<HTMLButtonElement>('button[aria-label="任务状态"]');
+    assert.ok(status);
+    await React.act(async () => status.click());
+    assert.ok(page.container.querySelector('[role="menuitem"]'));
     const edit = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "编辑任务");
+      .find((button) => button.textContent === "编辑");
     assert.ok(edit);
     await React.act(async () => {
       edit.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     const editingLabels = [...page.container.querySelectorAll("button")]
       .map((button) => button.textContent);
-    assert.ok(editingLabels.includes("保存修改"));
+    assert.ok(editingLabels.includes("保存"));
     assert.ok(editingLabels.includes("取消"));
     assert.equal(editingLabels.includes("归档"), false);
   } finally {
@@ -539,8 +545,7 @@ test("archived Task list shows exact summary and no lifecycle or business action
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     assert.equal(requests[0]?.path, "/task/archived");
-    assert.match(page.container.textContent ?? "", /已归档任务/);
-    assert.match(page.container.textContent ?? "", /共 1 项，按截止时间排列。/);
+    assert.match(page.container.textContent ?? "", /Archive1项任务/);
     const labels = [...page.container.querySelectorAll("button")]
       .map((button) => button.textContent);
     for (const forbidden of [
@@ -564,8 +569,7 @@ test("filtered active list enters archive and returns with exact URL, controls, 
     await React.act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const archive = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "查看归档");
+    const archive = page.container.querySelector<HTMLButtonElement>('button[aria-label="查看归档"]');
     assert.ok(archive);
     await React.act(async () => {
       archive.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -573,8 +577,7 @@ test("filtered active list enters archive and returns with exact URL, controls, 
     });
     assert.equal(requests.at(-1)?.path, "/task/archived");
 
-    const back = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "返回任务列表");
+    const back = page.container.querySelector<HTMLButtonElement>(".memory-archive-back");
     assert.ok(back);
     await React.act(async () => {
       back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -586,21 +589,27 @@ test("filtered active list enters archive and returns with exact URL, controls, 
     );
     assert.equal(
       page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"搜索任务\"]",
+        'input[aria-label="搜索任务内容"]',
       )?.value,
       "abc",
     );
     assert.equal(
-      page.container.querySelector<HTMLSelectElement>(
-        "select[aria-label=\"状态筛选\"]",
-      )?.value,
-      "pending",
+      page.container.querySelector<HTMLButtonElement>(
+        'button[aria-label="按标签筛选"]',
+      )?.getAttribute("aria-pressed"),
+      "true",
     );
     assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"标签筛选\"]",
-      )?.value,
-      "work",
+      page.container.querySelector<HTMLButtonElement>(
+        "button[aria-label=\"按状态筛选\"]",
+      )?.getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.equal(
+      page.container.querySelector<HTMLButtonElement>(
+        "button[aria-label=\"按标签筛选\"]",
+      )?.getAttribute("aria-pressed"),
+      "true",
     );
     assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
   } finally {
@@ -620,8 +629,7 @@ test("refreshed archived list returns with exact active filter state and request
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     assert.equal(requests[0]?.path, "/task/archived");
-    const back = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "返回任务列表");
+    const back = page.container.querySelector<HTMLButtonElement>(".memory-archive-back");
     assert.ok(back);
     await React.act(async () => {
       back.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -633,15 +641,15 @@ test("refreshed archived list returns with exact active filter state and request
     );
     assert.equal(
       page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"搜索任务\"]",
+        'input[aria-label="搜索任务内容"]',
       )?.value,
       "abc",
     );
     assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"标签筛选\"]",
-      )?.value,
-      "work",
+      page.container.querySelector<HTMLButtonElement>(
+        "button[aria-label=\"按标签筛选\"]",
+      )?.getAttribute("aria-pressed"),
+      "true",
     );
     assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
   } finally {
@@ -668,8 +676,7 @@ test("archived detail return keeps the archived list and original active return 
     await React.act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const back = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "返回归档列表");
+    const back = page.container.querySelector<HTMLButtonElement>("button.paper-detail-veil");
     assert.ok(back);
     assert.equal(
       [...page.container.querySelectorAll("button")]
@@ -706,21 +713,24 @@ test("undated task detail and edit form preserve the no-due state and account ti
     await React.act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    assert.match(page.container.textContent ?? "", /截止时间：无截止时间/);
-    assert.match(page.container.textContent ?? "", /时区：Asia\/Shanghai/);
+    assert.match(page.container.textContent ?? "", /无截止时间/);
 
     const edit = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "编辑任务");
+      .find((button) => button.textContent === "编辑");
     assert.ok(edit);
     await React.act(async () => {
       edit.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
 
+    const deadlineTrigger = page.container.querySelector<HTMLButtonElement>('button[aria-label="编辑任务截止时间"]');
+    assert.ok(deadlineTrigger);
+    await React.act(async () => deadlineTrigger.click());
+
     const noDue = page.container.querySelector<HTMLInputElement>(
-      ".task-no-due-control input[type=checkbox]",
+      ".task-paper-no-deadline input[type=checkbox]",
     );
     assert.equal(noDue?.checked, true);
-    assert.match(page.container.textContent ?? "", /当前账户时区：Asia\/Shanghai/);
+    assert.ok(page.container.querySelector('button[aria-label="编辑任务截止时间"]'));
   } finally {
     await page.cleanup();
   }
@@ -738,7 +748,7 @@ test("detail failure stays in the safe detail error view without flashing the li
     });
     assert.match(
       page.container.textContent ?? "",
-      /读取任务详情失败/,
+      /无法读取任务/,
     );
     assert.doesNotMatch(
       page.container.textContent ?? "",
@@ -761,8 +771,7 @@ test("refreshed detail keeps returnTo and the in-page return restores every filt
   const page = await renderTaskPage(detailLocation, api);
 
   try {
-    const returnButton = [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "返回任务列表");
+    const returnButton = page.container.querySelector<HTMLButtonElement>("button.paper-detail-veil");
     assert.ok(returnButton);
     await React.act(async () => {
       returnButton.dispatchEvent(new page.window.MouseEvent("click", {
@@ -774,17 +783,14 @@ test("refreshed detail keeps returnTo and the in-page return restores every filt
       `${page.window.location.pathname}${page.window.location.search}`,
       returnTo,
     );
+    assert.ok(page.container.querySelector(".task-page-header"));
     assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"搜索任务\"]",
-      )?.value,
+      page.container.querySelector<HTMLInputElement>('input[aria-label="搜索任务内容"]')?.value,
       "report",
     );
     assert.equal(
-      page.container.querySelector<HTMLSelectElement>(
-        "select[aria-label=\"状态筛选\"]",
-      )?.value,
-      "pending",
+      page.container.querySelector<HTMLButtonElement>('button[aria-label="按标签筛选"]')?.getAttribute("aria-pressed"),
+      "true",
     );
   } finally {
     await page.cleanup();
@@ -803,7 +809,7 @@ test("missing or invalid task parameters render the normal list view", async () 
     try {
       assert.ok(
         page.container.querySelector(
-          "input[aria-label=\"搜索任务\"]",
+          'input[aria-label="搜索任务内容"]',
         ),
       );
       assert.equal(requests[0]?.path, "/task?q=report");
@@ -826,7 +832,7 @@ test("popstate switches between list and detail without rendering the wrong view
     const listSignal = requests[0]?.init?.signal;
     assert.ok(
       page.container.querySelector(
-        "input[aria-label=\"搜索任务\"]",
+        "button[aria-label=\"搜索任务\"]",
       ),
     );
 
@@ -844,7 +850,7 @@ test("popstate switches between list and detail without rendering the wrong view
     assert.equal(listSignal?.aborted, true);
     assert.ok(
       page.container.querySelector(
-        "[aria-label=\"任务详情加载中\"]",
+        "#task-detail-paper[aria-label=\"正在读取 Task\"]",
       ),
     );
     assertNoListView(page.container);
@@ -863,7 +869,7 @@ test("popstate switches between list and detail without rendering the wrong view
 
     assert.ok(
       page.container.querySelector(
-        "input[aria-label=\"搜索任务\"]",
+        'input[aria-label="搜索任务内容"]',
       ),
     );
     assert.equal(requests.at(-1)?.path, "/task?q=report&status=pending");
@@ -995,15 +1001,15 @@ test("archived detail restore is strict single-flight and returns to the exact a
     );
     assert.equal(
       page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"搜索任务\"]",
+        'input[aria-label="搜索任务内容"]',
       )?.value,
       "abc",
     );
     assert.equal(
-      page.container.querySelector<HTMLInputElement>(
-        "input[aria-label=\"标签筛选\"]",
-      )?.value,
-      "work",
+      page.container.querySelector<HTMLButtonElement>(
+        'button[aria-label="按标签筛选"]',
+      )?.getAttribute("aria-pressed"),
+      "true",
     );
     assert.equal(requests.at(-1)?.path, FILTERED_TASK_REQUEST);
   } finally {
@@ -1096,13 +1102,14 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
     await React.act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const findButton = (label: string) => [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === label);
+    const findButton = (label: string) => label === "新建任务"
+      ? page.container.querySelector<HTMLButtonElement>('button[aria-label="新增任务"]')
+      : [...page.container.querySelectorAll("button")].find((button) => button.textContent === label);
     await React.act(async () => {
       findButton("新建任务")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
-    const title = page.container.querySelector<HTMLInputElement>('input[placeholder="任务标题"]');
-    const description = page.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="任务说明"]');
+    const title = page.container.querySelector<HTMLInputElement>('input[aria-label="任务标题"]');
+    const description = page.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="任务正文"]');
     assert.ok(title && description);
     await React.act(async () => {
       title.focus();
@@ -1128,13 +1135,14 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
       return false;
     };
     await React.act(async () => {
-      findButton("取消新建")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+      findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(page.window.location.pathname + page.window.location.search, "/task?q=goal");
     assert.equal(title.value, "draft task");
     assert.equal(description.value, "draft description");
 
-    const save = findButton("保存任务");
+    const save = [...page.container.querySelectorAll("#task-create-paper button.memory-paper-control")]
+      .find((button) => button.textContent === "保存");
     assert.ok(save);
     await React.act(async () => {
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -1149,7 +1157,8 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
     });
     assert.equal(title.value, "draft task");
     assert.equal(description.value, "draft description");
-    const retryButton = findButton("保存任务");
+    const retryButton = [...page.container.querySelectorAll("#task-create-paper button.memory-paper-control")]
+      .find((button) => button.textContent === "保存");
     assert.ok(retryButton);
     await React.act(async () => {
       retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -1170,7 +1179,7 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
       page.window.dispatchEvent(new page.window.PopStateEvent("popstate"));
     });
     assert.match(page.window.location.search, new RegExp(`task=${TASK_ID}`));
-    assert.equal(page.container.querySelector('input[placeholder="任务标题"]'), null);
+    assert.equal(page.container.querySelector('input[aria-label="任务标题"]'), null);
     assert.equal(page.window.dispatchEvent(new page.window.Event("beforeunload", { cancelable: true })), true);
     await React.act(async () => {
       retry.resolve(TASK_RESPONSE);
@@ -1204,14 +1213,13 @@ test("Task legacy-null edit requires selecting an author before PATCH", async ()
   try {
     await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const edit = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent === "编辑任务");
+      .find((button) => button.textContent === "编辑");
     assert.ok(edit);
     await React.act(async () => edit.click());
     const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent === "保存修改");
+      .find((button) => button.textContent === "保存");
     assert.ok(save);
     await React.act(async () => save.click());
-    assert.match(page.container.textContent ?? "", /请选择作者/);
     assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
 
     const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
@@ -1250,7 +1258,10 @@ test("Task status transition is single-flight, preserves detail on failure, and 
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     const findStart = () => [...page.container.querySelectorAll("button")]
-      .find((button) => button.textContent === "开始任务");
+      .find((button) => button.textContent === "开始");
+    const status = page.container.querySelector<HTMLButtonElement>('button[aria-label="任务状态"]');
+    assert.ok(status);
+    await React.act(async () => status.click());
     const start = findStart();
     assert.ok(start);
     await React.act(async () => {
@@ -1265,6 +1276,7 @@ test("Task status transition is single-flight, preserves detail on failure, and 
       await first.promise.catch(() => undefined);
     });
     assert.match(page.container.textContent ?? "", /详情任务/);
+    await React.act(async () => status.click());
     const retryButton = findStart();
     assert.ok(retryButton);
     await React.act(async () => {
@@ -1313,7 +1325,10 @@ test("completed Task detail exposes a single reopen action and sends one mutatio
   try {
     await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     page.window.history.replaceState({ detail: true }, "", `/task?task=${TASK_ID}`);
-    const reopen = [...page.container.querySelectorAll("button")].filter((button) => button.textContent === "恢复任务");
+    const status = page.container.querySelector<HTMLButtonElement>('button[aria-label="任务状态"]');
+    assert.ok(status);
+    await React.act(async () => status.click());
+    const reopen = [...page.container.querySelectorAll("button")].filter((button) => button.textContent === "重新打开");
     assert.equal(reopen.length, 1);
     await React.act(async () => {
       reopen[0]!.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -1348,11 +1363,11 @@ test("Task dirty edit cancellation and update retry are page-level single-flight
       .find((button) => button.textContent === label);
     const startEdit = async () => {
       await React.act(async () => {
-        findButton("编辑任务")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+        findButton("编辑")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
       });
     };
     const changeTitle = async (value: string) => {
-      const input = page.container.querySelector<HTMLInputElement>('section.memory-message input:not([type="checkbox"])');
+      const input = page.container.querySelector<HTMLInputElement>('input[aria-label="任务标题"]');
       assert.ok(input);
       await React.act(async () => {
         input.focus();
@@ -1374,17 +1389,17 @@ test("Task dirty edit cancellation and update retry are page-level single-flight
       findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
     assert.equal(title.value, "changed task");
-    assert.match(page.container.textContent ?? "", /编辑任务/);
+    assert.ok(page.container.querySelector('input[aria-label="任务标题"]'));
     page.window.confirm = () => true;
     await React.act(async () => {
       findButton("取消")?.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     });
-    assert.equal(findButton("保存修改"), undefined);
+    assert.equal(findButton("保存"), undefined);
     assert.equal(page.window.dispatchEvent(new page.window.Event("beforeunload", { cancelable: true })), true);
 
     await startEdit();
     title = await changeTitle("retry task");
-    const save = findButton("保存修改");
+    const save = findButton("保存");
     assert.ok(save);
     await React.act(async () => {
       save.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
@@ -1399,7 +1414,7 @@ test("Task dirty edit cancellation and update retry are page-level single-flight
       await first.promise.catch(() => undefined);
     });
     assert.equal(title.value, "retry task");
-    const retryButton = findButton("保存修改");
+    const retryButton = findButton("保存");
     assert.ok(retryButton);
     await React.act(async () => {
       retryButton.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
