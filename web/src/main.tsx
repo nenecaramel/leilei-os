@@ -5,6 +5,7 @@ import { AppAuthProvider } from "./auth/AuthProvider";
 import { startPwaRegistration } from "./pwa/register-pwa";
 import { installUniverseSourcePickerAutoReveal } from "./pages/universe/source-picker-auto-reveal";
 import "./styles.css";
+import "./desktop-foundation.css";
 import "./pwa/pwa-status.css";
 import "./pages/lg-author-editor-layout-fix.css";
 import "./pages/home-calendar-real-data.css";

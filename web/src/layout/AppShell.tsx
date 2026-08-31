@@ -84,13 +84,12 @@ export function AppShell() {
 
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark">
+          <div className="brand-mark" aria-hidden="true">
             L
           </div>
 
-          <div>
+          <div className="sidebar-brand-copy">
             <strong>Leilei OS</strong>
-            <span>Personal space</span>
           </div>
         </div>
 
