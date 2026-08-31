@@ -30,6 +30,8 @@ test("real System repository scopes counts and activity to one user", { skip: !r
       await transaction.insert(schema.coreMemories).values([
         { id: randomUUID(), userId: owner, category: "project", key: "active memory", content: "owner", tags: [], visibility: "assistant", source: "web", status: "active", createdAt: now, updatedAt: now },
         { id: randomUUID(), userId: owner, category: "project", key: "archived memory", content: "owner", tags: [], visibility: "assistant", source: "web", status: "archived", createdAt: now, updatedAt: now },
+        { id: randomUUID(), userId: owner, category: "project", key: "private active memory", content: "owner", tags: [], visibility: "private", source: "web", status: "active", createdAt: now, updatedAt: now },
+        { id: randomUUID(), userId: owner, category: "project", key: "restricted archived memory", content: "owner", tags: [], visibility: "restricted", source: "web", status: "archived", createdAt: now, updatedAt: now },
         { id: randomUUID(), userId: other, category: "project", key: "other memory", content: "other", tags: [], visibility: "assistant", source: "web", status: "active", createdAt: now, updatedAt: now },
       ]);
       const ownerDiaryId = randomUUID();
