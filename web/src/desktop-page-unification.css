@@ -5,8 +5,8 @@
   .day-space-page,
   .global-search-page {
     --desktop-page-surface: #ffffff;
-    --desktop-page-ink: #191919;
-    --desktop-page-muted: #6b6b68;
+    --desktop-page-ink: rgb(25 25 25);
+    --desktop-page-muted: rgb(107 107 104);
   }
 
   .memory-page,
@@ -16,7 +16,7 @@
     margin: 0 auto;
     padding: 0 22px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: #191919;
+    color: rgb(25 25 25);
   }
 
   .memory-page .memory-page-header,
@@ -39,7 +39,7 @@
     line-height: 1.2;
     font-weight: 600;
     letter-spacing: -0.01em;
-    color: #191919;
+    color: rgb(25 25 25);
   }
 
   .memory-page .memory-page-count,
@@ -47,13 +47,19 @@
     font-family: inherit;
     font-size: 12px;
     line-height: 1.4;
-    color: #6b6b68;
+    color: rgb(107 107 104);
   }
 
   .memory-page .memory-page-search,
   .global-search-page .memory-page-search,
   .memory-page .memory-page-popover,
-  .global-search-page .memory-page-popover,
+  .global-search-page .memory-page-popover {
+    border: 1px solid #e2e2dc;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: none;
+  }
+
   .memory-page .global-search-compact-form,
   .global-search-page .global-search-compact-form,
   .memory-page .global-search-domain-list,
@@ -74,7 +80,7 @@
   .global-search-page .memory-page-search input {
     font-family: inherit;
     font-size: 14px;
-    color: #191919;
+    color: rgb(25 25 25);
   }
 
   .memory-page .memory-month-card,
@@ -102,14 +108,14 @@
     font-size: 14px;
     line-height: 1.35;
     font-weight: 500;
-    color: #191919;
+    color: rgb(25 25 25);
   }
 
   .memory-page .memory-row-meta,
   .global-search-page .global-search-result-meta {
     font-size: 12px;
     line-height: 1.35;
-    color: #6b6b68;
+    color: rgb(107 107 104);
   }
 
   .memory-page .global-search-compact-form,

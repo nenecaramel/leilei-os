@@ -10,6 +10,10 @@ const mainTsx = readFileSync(
   new URL("../web/src/main.tsx", import.meta.url),
   "utf8",
 );
+const diaryPageTsx = readFileSync(
+  new URL("../web/src/pages/DiaryPage.tsx", import.meta.url),
+  "utf8",
+);
 
 function readDesktopPageCss() {
   assert.equal(
@@ -113,5 +117,18 @@ test("desktop Memory and Global Search retain bounded paper rows instead of lega
   assert.match(
     css,
     /\.global-search-page \.global-search-result-group\s*\{[^}]*box-shadow:\s*none;[^}]*overflow:\s*clip;/s,
+  );
+});
+
+test("Diary uses its paper header and rows as the common presentation", () => {
+  assert.match(diaryPageTsx, /<DiaryPageHeader\b/);
+  assert.match(diaryPageTsx, /<MobileDiaryRows\b/);
+  assert.doesNotMatch(
+    diaryPageTsx,
+    /<PageHeader[\s\S]*?eyebrow="Personal journal"/,
+  );
+  assert.doesNotMatch(
+    diaryPageTsx,
+    /<section className="memory-message diary-filters">/,
   );
 });
