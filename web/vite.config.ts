@@ -4,6 +4,7 @@ import {
 } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { nativeMobilePageCssPlugin } from "./build/native-mobile-page-css";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
@@ -28,6 +29,7 @@ export default defineConfig(({ mode }) => {
         JSON.stringify(mode),
     },
     plugins: [
+      nativeMobilePageCssPlugin(),
       react(),
       VitePWA({
         registerType: "prompt",
