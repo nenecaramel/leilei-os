@@ -4,15 +4,19 @@
   .task-page,
   .day-space-page,
   .global-search-page {
+    --desktop-page-surface: #ffffff;
+    --desktop-page-ink: #191919;
+    --desktop-page-muted: #6b6b68;
+  }
+
+  .memory-page,
+  .global-search-page {
     width: min(100%, 860px);
     max-width: 860px;
     margin: 0 auto;
     padding: 0 22px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     color: #191919;
-    --desktop-page-surface: #ffffff;
-    --desktop-page-ink: #191919;
-    --desktop-page-muted: #6b6b68;
   }
 
   .memory-page .memory-page-header,
