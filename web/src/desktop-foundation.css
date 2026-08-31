@@ -163,4 +163,83 @@
   .sidebar-footer .text-button:hover {
     color: var(--desktop-ink);
   }
+
+  .page-header {
+    gap: 24px;
+    margin-bottom: 30px;
+  }
+
+  .page-header h1 {
+    color: var(--desktop-ink);
+    font-family: inherit;
+    font-size: 32px;
+    font-weight: 650;
+    letter-spacing: -0.025em;
+    line-height: 1.08;
+  }
+
+  .eyebrow {
+    color: var(--desktop-muted);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+  }
+
+  .page-header > div > p:last-child {
+    color: var(--desktop-muted);
+  }
+
+  .primary-button,
+  .secondary-button {
+    min-height: 38px;
+    border-radius: 9px;
+    box-shadow: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition:
+      color 120ms ease,
+      border-color 120ms ease,
+      background 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  .primary-button {
+    color: #ffffff;
+    background: var(--desktop-ink);
+  }
+
+  .primary-button:not(:disabled):hover {
+    background: #2d2d2d;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .secondary-button {
+    border: 1px solid var(--desktop-line-strong);
+    color: var(--desktop-ink);
+    background: var(--desktop-surface);
+  }
+
+  .secondary-button:not(:disabled):hover {
+    border-color: #c7c7c2;
+    background: var(--desktop-hover);
+    box-shadow: none;
+    transform: none;
+  }
+
+  input,
+  select,
+  textarea {
+    border-color: var(--desktop-line-strong);
+    border-radius: 9px;
+    color: var(--desktop-ink);
+    background: var(--desktop-surface);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: #aaaaa5;
+    background: var(--desktop-surface);
+    box-shadow: var(--desktop-focus-ring);
+  }
 }

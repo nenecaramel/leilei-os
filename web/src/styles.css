@@ -118,8 +118,8 @@ a {
 }
 
 ::selection {
-  color: #f8f5ec;
-  background: var(--theme-strong);
+  color: #191919;
+  background: #d9d9d6;
 }
 
 /* App shell */
