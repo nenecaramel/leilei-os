@@ -33,6 +33,14 @@ test("desktop keeps the accepted mobile visual language for all six target pages
   assert.doesNotMatch(css, /\.sidebar|\.navigation-panel|\.mobile-top-bar|\.mobile-drawer/);
 });
 
+test("target light pages explicitly own their fluid frame over the shared desktop page rule", () => {
+  const css = readCss();
+  assert.match(
+    css,
+    /\.main-content\s*>\s*\.page\.memory-page,[\s\S]*\.main-content\s*>\s*\.page\.global-search-page\s*\{[^}]*width:\s*min\(1120px,\s*calc\(100%\s*-\s*64px\)\);[^}]*padding:\s*18px\s+0\s+48px;/s,
+  );
+});
+
 test("Memory Diary and Task desktop paper lists cannot fall back to native shrink-wrapped buttons", () => {
   const css = readCss();
   assert.match(css, /\.memory-page-tools[^}]*display:\s*flex/s);
