@@ -168,7 +168,7 @@ test("Sentinel reuses System card, title, button, and native datetime contracts"
 
     assert.match(
       sentinelSource,
-      /<NativeDateInput\s+className="sentinel-resume-datetime"\s+type="datetime-local"\s+value=\{resumeAt\}\s+onChange=\{\(event\) => setResumeAt\(event\.target\.value\)\}/,
+      /<NativeDateInput\s+id="sentinel-resume-at"\s+className="sentinel-resume-datetime"\s+type="datetime-local"\s+value=\{resumeAt\}\s+onChange=\{\(event\) => setResumeAt\(event\.target\.value\)\}/,
     );
     const expectedResumeAt = new Date(datetime!.value).toISOString();
     const resume = [...container.querySelectorAll<HTMLButtonElement>("button")]
@@ -246,13 +246,10 @@ test("Sentinel scopes explicit System spacing without a blanket card gap", () =>
     /\.message-bridge-card,\n\.sentinel-policy-card,\n\.sentinel-controls-card,\n\.sentinel-activity-card,\n\.sentinel-setup-card\s*\{([^}]*)\}/,
   )?.[1] ?? "";
   assert.doesNotMatch(blanketCardRule, /gap:\s*10px/);
+  assert.doesNotMatch(stylesSource, /\.message-bridge-card \.system-note\s*\{[\s\S]*?margin-top:\s*12px/);
   assert.match(
     stylesSource,
-    /\.message-bridge-card \.system-note\s*\{[\s\S]*?margin-top:\s*12px/,
-  );
-  assert.match(
-    stylesSource,
-    /\.message-bridge-card textarea\s*\{[\s\S]*?margin-top:\s*10px/,
+    /\.message-bridge-card textarea\s*\{[\s\S]*?margin-top:\s*12px/,
   );
   assert.match(
     stylesSource,
@@ -262,19 +259,18 @@ test("Sentinel scopes explicit System spacing without a blanket card gap", () =>
     stylesSource,
     /\.system-sign-out,[\s\S]*?margin-top:\s*12px/,
   );
-  assert.match(
-    stylesSource,
-    /\.sentinel-policy-card > \.sentinel-field,[\s\S]*?\.sentinel-controls-card > \.sentinel-control-row\s*\{[\s\S]*?margin-top:\s*12px/,
-  );
-  assert.match(stylesSource, /\.sentinel-field\s*\{[\s\S]*?gap:\s*7px/);
+  assert.match(stylesSource, /\.sentinel-first-row\s*\{[\s\S]*?min-height:\s*60px[\s\S]*?align-items:\s*center/);
+  assert.match(stylesSource, /\.sentinel-policy-textarea\s*\{[\s\S]*?margin-top:\s*12px/);
+  assert.match(stylesSource, /\.sentinel-resume-field\s*\{[\s\S]*?margin-top:\s*12px/);
+  assert.match(stylesSource, /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\)\s*\{[\s\S]*?margin-top:\s*12px/);
   assert.match(stylesSource, /\.sentinel-control-row\s*\{[\s\S]*?gap:\s*10px/);
   assert.match(
     stylesSource,
-    /\.sentinel-activity-card \.system-empty-state\s*\{[\s\S]*?margin:\s*12px 0 0[\s\S]*?padding-top:\s*0/,
+    /\.sentinel-activity-empty\s*\{[\s\S]*?min-height:\s*60px[\s\S]*?align-items:\s*center[\s\S]*?margin:\s*0[\s\S]*?padding:\s*0/,
   );
   assert.match(
     stylesSource,
-    /\.sentinel-activity-list\s*\{[\s\S]*?margin:\s*12px 0 0/,
+    /\.sentinel-activity-list\s*\{[\s\S]*?margin:\s*0/,
   );
   assert.match(stylesSource, /\.system-activity-row\s*\{[\s\S]*?min-height:\s*60px/);
   assert.match(
@@ -292,8 +288,58 @@ test("Sentinel scopes explicit System spacing without a blanket card gap", () =>
   );
   assert.match(
     sentinelSource,
-    /<NativeDateInput\s+className="sentinel-resume-datetime"\s+type="datetime-local"\s+value=\{resumeAt\}/,
+    /<NativeDateInput\s+id="sentinel-resume-at"\s+className="sentinel-resume-datetime"\s+type="datetime-local"\s+value=\{resumeAt\}/,
   );
+});
+
+test("Sentinel cards use the standard System title divider and first-row rhythm", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const api: WebApiClient = {
+    request: async (path) => path.includes("wakes")
+      ? { success: true, data: { wakes: [] } } as never
+      : response({ status: "paused", sentinel: { ...response().data.sentinel, enabled: false } }) as never,
+  };
+
+  try {
+    root.render(React.createElement(SentinelPageContent, { api }));
+    await waitForCondition(
+      () => container.textContent?.includes("First wake after resume") === true,
+      "paused Sentinel rows",
+    );
+
+    for (const selector of [
+      '[aria-label="ChatGPT Message Bridge"]',
+      '[aria-labelledby="sentinel-policy-title"]',
+      '[aria-label="Sentinel controls"]',
+      '[aria-labelledby="sentinel-activity-title"]',
+    ]) {
+      const card = container.querySelector(selector);
+      assert.ok(card, `${selector} is rendered`);
+      assert.ok(
+        card?.querySelector(selector === '[aria-labelledby="sentinel-activity-title"]'
+          ? ".sentinel-activity-empty"
+          : ".sentinel-first-row"),
+        `${selector} has a first row`,
+      );
+    }
+
+    assert.match(
+      stylesSource,
+      /\.sentinel-first-row\s*\{[\s\S]*?min-height:\s*60px[\s\S]*?align-items:\s*center[\s\S]*?border-top:\s*1px solid rgba\(0, 0, 0, 0\.08\)/,
+    );
+    assert.doesNotMatch(stylesSource, /\.message-bridge-card \.system-note\s*\{[\s\S]*?margin-top:\s*12px/);
+    assert.match(stylesSource, /\.message-bridge-card textarea\s*\{[\s\S]*?margin-top:\s*12px/);
+    assert.match(stylesSource, /\.sentinel-policy-textarea\s*\{[\s\S]*?margin-top:\s*12px/);
+    assert.match(stylesSource, /\.sentinel-resume-field\s*\{[\s\S]*?margin-top:\s*12px/);
+    assert.match(stylesSource, /\.sentinel-activity-list\s*\{[\s\S]*?margin:\s*0/);
+    assert.doesNotMatch(stylesSource, /\.sentinel-activity-card \.system-empty-state\s*\{[\s\S]*?margin:\s*12px 0 0/);
+  } finally {
+    root.unmount();
+    await waitForPaint();
+    env.restore();
+  }
 });
 
 test("Sentinel page renders the Message Bridge between status and wake policy", async () => {
