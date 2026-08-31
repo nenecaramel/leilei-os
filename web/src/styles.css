@@ -5560,10 +5560,15 @@ body:has(.system-page) {
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.message-bridge-card > .sentinel-first-row,
+.message-bridge-card > .sentinel-first-row {
+  min-height: 0;
+  padding-top: 22px;
+}
+
 .sentinel-policy-card > .sentinel-first-row,
 .sentinel-controls-card > .sentinel-first-row:not(.sentinel-control-row) {
-  align-items: flex-end;
+  min-height: 0;
+  padding-top: 21px;
 }
 
 .sentinel-first-row > .system-note {
