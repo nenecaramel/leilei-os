@@ -52,4 +52,3 @@ test("desktop sidebar adopts the mobile drawer panel geometry without desktop-on
   assert.doesNotMatch(desktopFoundationSource, /\.sidebar-footer/);
   assert.doesNotMatch(desktopFoundationSource, /\.brand-mark/);
 });
-
