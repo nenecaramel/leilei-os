@@ -262,7 +262,15 @@ test("Sentinel scopes explicit System spacing without a blanket card gap", () =>
   assert.match(stylesSource, /\.sentinel-first-row\s*\{[\s\S]*?min-height:\s*60px[\s\S]*?align-items:\s*center/);
   assert.match(stylesSource, /\.sentinel-policy-textarea\s*\{[\s\S]*?margin-top:\s*12px/);
   assert.match(stylesSource, /\.sentinel-resume-field\s*\{[\s\S]*?margin-top:\s*12px/);
-  assert.match(stylesSource, /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\)\s*\{[\s\S]*?margin-top:\s*12px/);
+  assert.match(stylesSource, /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\)\s*\{[\s\S]*?margin-top:\s*0/);
+  assert.match(
+    stylesSource,
+    /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\) \.system-sign-out\s*\{[\s\S]*?margin-top:\s*12px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.sentinel-first-row\.sentinel-control-row \.system-sign-out\s*\{[\s\S]*?margin-top:\s*0/,
+  );
   assert.match(stylesSource, /\.sentinel-control-row\s*\{[\s\S]*?gap:\s*10px/);
   assert.match(
     stylesSource,
@@ -342,15 +350,24 @@ test("Sentinel cards use the standard System title divider and first-row rhythm"
   }
 });
 
-test("Sentinel text rows align their content to the input edge without moving enabled controls", () => {
+test("Sentinel field flow uses calculated divider spacing without moving enabled controls", () => {
   assert.match(
     stylesSource,
-    /\.message-bridge-card > \.sentinel-first-row,\s*\.sentinel-policy-card > \.sentinel-first-row,\s*\.sentinel-controls-card > \.sentinel-first-row:not\(\.sentinel-control-row\)\s*\{[\s\S]*?align-items:\s*flex-end/,
+    /\.message-bridge-card > \.sentinel-first-row\s*\{[\s\S]*?min-height:\s*0[\s\S]*?padding-top:\s*22px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.sentinel-policy-card > \.sentinel-first-row,\s*\.sentinel-controls-card > \.sentinel-first-row:not\(\.sentinel-control-row\)\s*\{[\s\S]*?min-height:\s*0[\s\S]*?padding-top:\s*21px/,
   );
   assert.match(
     stylesSource,
     /\.sentinel-first-row\s*\{[\s\S]*?min-height:\s*60px[\s\S]*?align-items:\s*center/,
   );
+  assert.doesNotMatch(stylesSource, /\.sentinel-first-row[^}]*align-items:\s*flex-end/);
+  assert.match(stylesSource, /\.message-bridge-card textarea\s*\{[\s\S]*?margin-top:\s*12px/);
+  assert.match(stylesSource, /\.sentinel-policy-textarea\s*\{[\s\S]*?margin-top:\s*12px/);
+  assert.match(stylesSource, /\.sentinel-resume-field\s*\{[\s\S]*?margin-top:\s*12px/);
+  assert.match(stylesSource, /\.sentinel-controls-card > \.sentinel-control-row:not\(\.sentinel-first-row\)\s*\{[\s\S]*?margin-top:\s*12px/);
   assert.match(
     sentinelSource,
     /<div className="sentinel-first-row sentinel-control-row">[\s\S]*Wake now[\s\S]*Pause/,
