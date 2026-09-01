@@ -69,7 +69,7 @@ function response(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test("Sentinel loading stays viewport centered without moving the System header", async () => {
+test("Sentinel loading reuses the standard System state card without moving the header", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
@@ -81,17 +81,13 @@ test("Sentinel loading stays viewport centered without moving the System header"
       () => container.textContent?.includes("Reading Sentinel…") === true,
       "Sentinel loading state",
     );
-    assert.ok(container.querySelector(".sentinel-page-loading"));
-    assert.ok(container.querySelector(".sentinel-loading-state"));
-    assert.match(
-      stylesSource,
-      /\.system-page\s*\{[\s\S]*?min-height:\s*calc\([\s\S]*?100dvh[\s\S]*?\)/,
-    );
-    assert.match(stylesSource, /\.sentinel-page-loading\s*\{[\s\S]*?position:\s*relative/);
-    assert.match(
-      stylesSource,
-      /\.sentinel-loading-state\s*\{[\s\S]*?position:\s*absolute[\s\S]*?inset:\s*0[\s\S]*?place-items:\s*center/,
-    );
+    assert.ok(container.querySelector(".system-page.sentinel-page"));
+    assert.equal(container.querySelector(".sentinel-page-loading"), null);
+    assert.equal(container.querySelector(".sentinel-loading-state"), null);
+    assert.equal(container.querySelector(".page-header h1")?.textContent, "Sentinel");
+    const loadingCard = container.querySelector("section.system-section");
+    assert.ok(loadingCard);
+    assert.equal(loadingCard.querySelector('.system-state-copy[role="status"]')?.textContent, "Reading Sentinel…");
   } finally {
     root.unmount();
     await waitForPaint();
