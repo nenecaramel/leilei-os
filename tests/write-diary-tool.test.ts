@@ -131,6 +131,7 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
       "update_memory",
       "update_task",
       "update_universe_node",
+      "update_universe_relation",
       "write_diary",
       "write_memory",
       "write_todo_paper",

@@ -20,9 +20,7 @@ const updateMemoryInputSchema = z.object({
   content: z.string().max(MEMORY_CONTENT_MAX_LENGTH).optional(),
   tags: z.array(z.string().max(500)).max(20).optional(),
   author: z.enum(["L", "G"]).optional(),
-}).strict().refine((value) => Object.keys(value).some((key) => key !== "id"), {
-  message: "At least one Memory field must be supplied.",
-});
+}).strict();
 
 const updateMemoryDataSchema = z.object({
   id: z.string(),
@@ -63,6 +61,9 @@ export function registerUpdateMemoryTool(server: McpServer, dependencies: Update
     toolName: "update_memory",
     getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
+      if (category === undefined && key === undefined && content === undefined && tags === undefined && author === undefined) {
+        throw new MemoryDomainError("INVALID_MEMORY_PATCH", "At least one Memory field must be supplied.");
+      }
       const data = await dependencies.memoryService.updateMcpMemory(
         { userId },
         { id, ...(category === undefined ? {} : { category }), ...(key === undefined ? {} : { key }), ...(content === undefined ? {} : { content }), ...(tags === undefined ? {} : { tags }), ...(author === undefined ? {} : { author }) },

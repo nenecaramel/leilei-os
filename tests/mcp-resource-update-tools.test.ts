@@ -196,7 +196,7 @@ test("resource update schemas reject empty patches and forbidden fields before s
   assert.equal(calls.diary.length, 0);
   assert.equal(calls.task.length, 0);
   assert.equal(calls.transition.length, 0);
-  assert.deepEqual(auth, { memory: 0, diary: 0, task: 0 });
+  assert.deepEqual(auth, { memory: 1, diary: 1, task: 1 });
 });
 
 test("resource update tools safely map auth and domain failures without leaking details", async () => {

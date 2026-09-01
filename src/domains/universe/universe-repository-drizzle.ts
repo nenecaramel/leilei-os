@@ -36,6 +36,7 @@ import type {
   UniverseNodeListResult,
   UniverseNodeDirectoryRecord,
   UniverseRepository,
+  UniverseRelationPatch,
   UniverseWebReadResult,
 } from "./universe-repository.js";
 
@@ -414,6 +415,26 @@ export class DrizzleUniverseRepository implements UniverseRepository {
       if (deleted.length === 0) throw new UniverseServiceError("RELATION_NOT_FOUND");
       await repository.bumpVersion(userId, expectedVersion, new Date().toISOString());
       return repository.requireUniverse(userId);
+    });
+  }
+
+  async updateRelation(userId: string, relationId: string, patch: UniverseRelationPatch, expectedVersion: number): Promise<{ relation: UniverseRelation; version: number }> {
+    return this.inTransaction(userId, async (repository) => {
+      await repository.assertVersion(userId, expectedVersion);
+      const [existing] = await repository.db.select().from(universeRelations).where(
+        and(eq(universeRelations.userId, userId), eq(universeRelations.id, relationId)),
+      ).limit(1);
+      if (!existing) throw new UniverseServiceError("RELATION_NOT_FOUND");
+      const [updated] = await repository.db.update(universeRelations).set({
+        relationType: patch.relationType ?? existing.relationType,
+        strength: patch.strength ?? existing.strength,
+      }).where(and(
+        eq(universeRelations.userId, userId),
+        eq(universeRelations.id, relationId),
+      )).returning();
+      if (!updated) throw new UniverseServiceError("RELATION_NOT_FOUND");
+      await repository.bumpVersion(userId, expectedVersion, new Date().toISOString());
+      return { relation: fromRelationRow(updated), version: expectedVersion + 1 };
     });
   }
 

@@ -16,7 +16,7 @@ const updateDiaryInputSchema = z.object({
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   mood: z.string().min(1).max(50).nullable().optional(),
   author: z.enum(["L", "G"]).optional(),
-}).strict().refine((value) => Object.keys(value).some((key) => key !== "id"), { message: "At least one Diary field must be supplied." });
+}).strict();
 
 const updateDiaryDataSchema = z.object({
   id: z.string(),
@@ -51,6 +51,9 @@ export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateD
   }, async ({ id, title, content, date, tags, mood, author }) => invokeMcpWrite({
     toolName: "update_diary", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
+      if (title === undefined && content === undefined && date === undefined && tags === undefined && mood === undefined && author === undefined) {
+        throw new DiaryDomainError("INVALID_DIARY_PATCH", "At least one Diary field must be supplied.");
+      }
       const data = await dependencies.diaryService.updateMcpDiary({ userId }, { id, ...(title === undefined ? {} : { title }), ...(content === undefined ? {} : { content }), ...(date === undefined ? {} : { date }), ...(tags === undefined ? {} : { tags }), ...(mood === undefined ? {} : { mood }), ...(author === undefined ? {} : { author }) });
       const compact = {
         id: data.id,

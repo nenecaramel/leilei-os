@@ -75,6 +75,24 @@ test("MCP Universe writes are atomic, idempotent, CAS-safe, and concurrent-safe 
       (error: unknown) => error instanceof UniverseServiceError && error.code === "RELATION_INVALID",
     );
 
+    const relationBeforeUpdate = relation.relation;
+    const strengthUpdate = await service.updateMcpRelation(userId, relationBeforeUpdate.id, { strength: 0.25 }, version);
+    assert.equal(strengthUpdate.universe_version, version + 1);
+    assert.deepEqual(strengthUpdate.relation, { ...relationBeforeUpdate, strength: 0.25 });
+    version = strengthUpdate.universe_version;
+    const typeUpdate = await service.updateMcpRelation(userId, relationBeforeUpdate.id, { relationType: "extends" }, version);
+    assert.equal(typeUpdate.universe_version, version + 1);
+    assert.deepEqual(typeUpdate.relation, { ...relationBeforeUpdate, strength: 0.25, relationType: "extends" });
+    version = typeUpdate.universe_version;
+    await assert.rejects(
+      service.updateMcpRelation(userId, relationBeforeUpdate.id, { strength: 0.5 }, version - 1),
+      (error: unknown) => error instanceof UniverseServiceError && error.code === "VERSION_CONFLICT",
+    );
+    await assert.rejects(
+      service.updateMcpRelation(userId, "missing-relation", { strength: 0.5 }, version),
+      (error: unknown) => error instanceof UniverseServiceError && error.code === "RELATION_NOT_FOUND",
+    );
+
     const concurrentKey = "universe-node-concurrent-0001";
     const concurrentInput = { ...nodeInput, title: "Concurrent" };
     const [first, second] = await Promise.all([
