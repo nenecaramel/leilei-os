@@ -24,7 +24,6 @@ export type UniverseMobileMapProps = {
 
 type PointerPoint = UniversePoint & { pointerId: number };
 
-const DEFAULT_MAP_SIZE = { width: 390, height: 520 };
 const LONG_PRESS_MS = 450;
 const MOVEMENT_TOLERANCE_PX = 8;
 
@@ -60,7 +59,7 @@ export function UniverseMobileMap({
   const mapGestureRef = useRef<{ pointerId: number; start: UniversePoint; moved: boolean } | null>(null);
   const planetGestureRef = useRef<{ pointerId: number; nodeId: string; start: UniversePoint; moved: boolean } | null>(null);
   const suppressNextClickRef = useRef(false);
-  const [mapSize, setMapSize] = useState(DEFAULT_MAP_SIZE);
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const [viewport, setViewport] = useState<UniverseViewport>(initialViewport ?? { x: 0, y: 0, scale: 1 });
   const [dragPositions, setDragPositions] = useState<Record<string, UniversePoint>>({});
   const [interaction, setInteraction] = useState<UniverseMapInteractionState>(() => ({ ...initialUniverseMapInteraction(), mode, selectedNodeId }));
@@ -106,8 +105,12 @@ export function UniverseMobileMap({
 
   useEffect(() => {
     if (didFit.current) return;
+    if (mapSize.width <= 0 || mapSize.height <= 0) return;
     let stored: UniverseViewport | null = null;
-    try { stored = parseUniverseViewport(window.localStorage.getItem("leileios.universe.viewport.v1")); } catch { /* ignored */ }
+    const useStoredMobileViewport = window.matchMedia("(max-width: 760px)").matches;
+    if (useStoredMobileViewport) {
+      try { stored = parseUniverseViewport(window.localStorage.getItem("leileios.universe.viewport.v1")); } catch { /* ignored */ }
+    }
     const next = stored ?? fitViewportToPositions(nodes.map((node) => node.position), mapSize);
     didFit.current = true;
     updateViewport(next);
