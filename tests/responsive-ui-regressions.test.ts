@@ -86,9 +86,11 @@ test("desktop Universe removes the mobile top-bar offset but keeps the same nati
   );
 });
 
-test("Universe waits for the real measured map before desktop fit", () => {
-  assert.match(universeMobileMapTsx, /useState\(\{\s*width:\s*0,\s*height:\s*0\s*\}\)/);
-  assert.match(universeMobileMapTsx, /if \(mapSize\.width <= 0 \|\| mapSize\.height <= 0\) return;/);
+test("Universe waits for the real measured map on desktop while retaining the mobile fallback size", () => {
+  assert.match(universeMobileMapTsx, /DEFAULT_MAP_SIZE\s*=\s*\{\s*width:\s*390,\s*height:\s*520\s*\}/);
+  assert.match(universeMobileMapTsx, /hasMeasuredMapSize/);
+  assert.match(universeMobileMapTsx, /isDesktopViewport\(\)\s*&&\s*!hasMeasuredMapSize/);
+  assert.match(universeMobileMapTsx, /window\.matchMedia\("\(min-width: 761px\)"\)\.matches/);
   assert.match(universeMobileMapTsx, /window\.matchMedia\("\(max-width: 760px\)"\)\.matches/);
 });
 
