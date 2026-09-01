@@ -36,6 +36,10 @@
     background: #0b0c12;
   }
 
+  .main-content > .page.universe-page {
+    --universe-desktop-inline: max(32px, calc((100% - 1120px) / 2));
+  }
+
   .main-content > .page.universe-page,
   .universe-page:has(.universe-mobile-map) {
     width: 100%;
@@ -45,8 +49,8 @@
     margin: 0;
   }
 
-  /* Ready Universe keeps the accepted mobile-owned layout, but desktop has no
-   * 44px mobile top bar. Use the original pre-overlay positions directly. */
+  /* Ready Universe keeps the full canvas, while its two control rows align to
+   * the same desktop frame used by the accepted paper pages. */
   .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) {
     height: 100dvh !important;
     min-height: 100dvh !important;
@@ -55,14 +59,33 @@
   }
 
   .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-page-header {
-    top: 18px !important;
-    right: 24px !important;
-    left: 24px !important;
+    position: absolute;
+    z-index: 12;
+    top: 40px !important;
+    right: var(--universe-desktop-inline) !important;
+    left: var(--universe-desktop-inline) !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start !important;
+    gap: 10px;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-picker,
   .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-mobile-map-toolbar {
-    top: 48px !important;
+    position: absolute;
+    z-index: 11;
+    top: 96px !important;
+    margin: 0;
+  }
+
+  .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-picker {
+    left: var(--universe-desktop-inline) !important;
+  }
+
+  .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-mobile-map-toolbar {
+    right: var(--universe-desktop-inline) !important;
   }
 
   .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-mobile-map {
@@ -84,14 +107,18 @@
     min-width: 0;
   }
 
-  /* Loading/error/import are the same native Universe state, but on desktop
-   * they need the missing mobile page gutters and the full available height. */
+  /* Loading/error/import keep the dark route but use the same desktop page
+   * frame as Memory / Diary / Task / Search so the title never jumps. */
   .main-content > .page.universe-page:has(.universe-cosmos-loading),
   .main-content > .page.universe-page:has(.universe-cosmos-state),
   .main-content > .page.universe-page:has(.universe-import-flow) {
     box-sizing: border-box;
+    width: min(1120px, calc(100% - 64px));
+    max-width: 1120px;
+    min-width: 0;
     min-height: 100dvh !important;
-    padding: 18px 24px 0 !important;
+    margin-inline: auto;
+    padding: 40px 0 72px !important;
   }
 
   .universe-page:has(.universe-cosmos-loading) .universe-cosmos-loading::before,

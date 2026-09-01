@@ -6,6 +6,7 @@ import { extractNativeMobileDesktopCss } from "../web/build/native-mobile-page-c
 const mainTsx = readFileSync(new URL("../web/src/main.tsx", import.meta.url), "utf8");
 const navigationCss = readFileSync(new URL("../web/src/layout/navigation-panel.css", import.meta.url), "utf8");
 const universeMobileMapTsx = readFileSync(new URL("../web/src/pages/universe/UniverseMobileMap.tsx", import.meta.url), "utf8");
+const universeDarkCss = readFileSync(new URL("../web/src/pages/universe-home-dark-production-fixes.css", import.meta.url), "utf8");
 const viteConfig = readFileSync(new URL("../web/vite.config.ts", import.meta.url), "utf8");
 const geometryUrl = new URL("../web/src/native-mobile-desktop-geometry.css", import.meta.url);
 
@@ -64,26 +65,40 @@ test("desktop geometry changes only available width and positioning, not compone
   assert.doesNotMatch(css, /font-size:/);
   assert.doesNotMatch(css, /border-radius:/);
   assert.doesNotMatch(css, /box-shadow:/);
+  assert.doesNotMatch(css, /color:/);
 });
 
-test("desktop Universe removes the mobile top-bar offset but keeps the same native control geometry", () => {
+test("desktop Universe uses the shared desktop header frame above the full canvas", () => {
+  const css = readGeometryCss();
+  assert.match(css, /--universe-desktop-inline:\s*max\(32px,\s*calc\(\(100%\s*-\s*1120px\)\s*\/\s*2\)\)/);
+  assert.match(
+    css,
+    /\.universe-page:has\(\.universe-mobile-map\)[\s\S]*\.universe-page-header\s*\{[^}]*position:\s*absolute[^}]*z-index:\s*12[^}]*top:\s*40px\s*!important[^}]*right:\s*var\(--universe-desktop-inline\)\s*!important[^}]*left:\s*var\(--universe-desktop-inline\)\s*!important/s,
+  );
+  assert.match(
+    css,
+    /\.universe-galaxy-picker,[\s\S]*\.universe-mobile-map-toolbar\s*\{[^}]*position:\s*absolute[^}]*z-index:\s*11[^}]*top:\s*96px\s*!important/s,
+  );
+  assert.match(css, /\.universe-galaxy-picker\s*\{[^}]*left:\s*var\(--universe-desktop-inline\)\s*!important/s);
+  assert.match(css, /\.universe-mobile-map-toolbar\s*\{[^}]*right:\s*var\(--universe-desktop-inline\)\s*!important/s);
+});
+
+test("desktop Universe loading error and import headers align with the accepted page frame", () => {
   const css = readGeometryCss();
   assert.match(
     css,
-    /\.universe-page:has\(\.universe-mobile-map\)[\s\S]*\.universe-page-header\s*\{[^}]*top:\s*18px\s*!important/s,
-  );
-  assert.match(
-    css,
-    /\.universe-galaxy-picker,[\s\S]*\.universe-mobile-map-toolbar\s*\{[^}]*top:\s*48px\s*!important/s,
-  );
-  assert.match(
-    css,
-    /\.universe-page:has\(\.universe-cosmos-loading\)[\s\S]*padding:\s*18px\s+24px\s+0\s*!important/s,
+    /\.main-content > \.page\.universe-page:has\(\.universe-cosmos-loading\),[\s\S]*\.universe-import-flow\)\s*\{[^}]*width:\s*min\(1120px,\s*calc\(100%\s*-\s*64px\)\)[^}]*margin-inline:\s*auto[^}]*padding:\s*40px\s+0\s+72px\s*!important/s,
   );
   assert.match(
     css,
     /\.universe-cosmos-loading::before,[\s\S]*\.universe-cosmos-loading::after\s*\{[^}]*display:\s*none\s*!important/s,
   );
+});
+
+test("ready Universe title and controls remain readable on the dark surface", () => {
+  assert.match(universeDarkCss, /\.universe-page:has\(\.universe-mobile-map\) \.memory-page-title\s*\{[^}]*color:\s*#e8e7ec/s);
+  assert.match(universeDarkCss, /\.universe-page:has\(\.universe-mobile-map\) \.universe-header-action\s*\{[^}]*color:\s*var\(--universe-home-control\)/s);
+  assert.match(universeDarkCss, /\.universe-galaxy-entry,[\s\S]*\.universe-map-fit\s*\{[^}]*color:\s*var\(--universe-home-control\)/s);
 });
 
 test("Universe waits for the real measured map on desktop while retaining the mobile fallback size", () => {

@@ -27,6 +27,38 @@ body:has(.universe-mobile-map),
   background: var(--universe-home-bg) !important;
 }
 
+/* Ready-state route chrome belongs to the same dark presentation contract. */
+.universe-page:has(.universe-mobile-map) .memory-page-title {
+  color: #e8e7ec;
+}
+
+.universe-page:has(.universe-mobile-map) .universe-header-action {
+  color: var(--universe-home-control);
+}
+
+.universe-page:has(.universe-mobile-map) .universe-header-action:hover,
+.universe-page:has(.universe-mobile-map) .universe-header-action:active,
+.universe-page:has(.universe-mobile-map) .universe-header-action[aria-expanded="true"] {
+  color: var(--universe-home-strong);
+  background: transparent !important;
+}
+
+.universe-page:has(.universe-mobile-map) .universe-galaxy-entry,
+.universe-page:has(.universe-mobile-map) .universe-map-fit {
+  color: var(--universe-home-control);
+}
+
+.universe-page:has(.universe-mobile-map) .universe-galaxy-entry-label {
+  color: inherit;
+}
+
+.universe-page:has(.universe-mobile-map) .universe-galaxy-entry:hover,
+.universe-page:has(.universe-mobile-map) .universe-galaxy-entry:active,
+.universe-page:has(.universe-mobile-map) .universe-map-fit:hover,
+.universe-page:has(.universe-mobile-map) .universe-map-fit:active {
+  color: var(--universe-home-strong);
+}
+
 /* Loading belongs to the same dark Universe route instead of flashing white. */
 html:has(.universe-cosmos-loading),
 body:has(.universe-cosmos-loading),
