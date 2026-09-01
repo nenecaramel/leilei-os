@@ -1,4 +1,11 @@
-/* Keep System/Sentinel page titles on the same accepted app-title typeface. */
+/* Match System/Sentinel titles to the accepted native app title rendering. */
 .system-page .page-header h1 {
-  font-family: "DM Sans", system-ui, sans-serif !important;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "PingFang SC",
+    "Helvetica Neue",
+    sans-serif !important;
+  -webkit-font-smoothing: auto;
 }
