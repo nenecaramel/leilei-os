@@ -1,0 +1,48 @@
+/*
+ * Desktop does not define a second presentation for the personal pages.
+ * Their component styling is mirrored directly from the accepted mobile CSS by
+ * the Vite nativeMobilePageCssPlugin. This file only gives that same UI more
+ * room beside the fixed desktop navigation.
+ */
+
+.desktop-page-description,
+.task-row-reopen {
+  display: none !important;
+}
+
+@media (min-width: 761px) {
+  .main-content > .page.memory-page:not(.universe-page),
+  .main-content > .page.day-space-page,
+  .main-content > .page.global-search-page {
+    width: min(1120px, calc(100% - 64px));
+    max-width: 1120px;
+    min-width: 0;
+    margin-inline: auto;
+  }
+
+  .day-space-page {
+    display: block !important;
+  }
+
+  .main-content:has(.universe-page) {
+    background: #0b0c12;
+  }
+
+  .main-content > .page.universe-page,
+  .universe-page:has(.universe-mobile-map) {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    min-height: 100dvh;
+    margin: 0;
+  }
+
+  .universe-mobile-map,
+  .universe-map-stage,
+  .universe-map-canvas,
+  .universe-map-viewport {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+}
