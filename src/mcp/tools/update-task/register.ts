@@ -12,7 +12,7 @@ const updateTaskInputSchema = z.object({
   due_time: z.string().trim().min(1).max(64).nullable().optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   author: z.enum(["L", "G"]).optional(),
-}).strict().refine((value) => Object.keys(value).some((key) => key !== "id"), { message: "At least one Task field must be supplied." });
+}).strict();
 
 const taskStatusSchema = z.enum(["pending", "in_progress", "completed", "cancelled"]);
 const taskActionSchema = z.enum(["start", "complete", "cancel", "reopen"]);
@@ -28,6 +28,9 @@ export function registerUpdateTaskTool(server: McpServer, dependencies: UpdateTa
   server.registerTool("update_task", { title: "Update one Task", description: "Update only explicitly supplied ordinary fields on one active Task. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly retry.", inputSchema: updateTaskInputSchema, outputSchema: updateTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, title, description, priority, due_time, tags, author }) => invokeMcpWrite({
     toolName: "update_task", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
+      if (title === undefined && description === undefined && priority === undefined && due_time === undefined && tags === undefined && author === undefined) {
+        throw new TaskDomainError("INVALID_TASK_PATCH", "At least one Task field must be supplied.");
+      }
       const data = await dependencies.taskService.updateMcpTask({ userId }, { id, ...(title === undefined ? {} : { title }), ...(description === undefined ? {} : { description }), ...(priority === undefined ? {} : { priority }), ...(due_time === undefined ? {} : { dueTime: due_time }), ...(tags === undefined ? {} : { tags }), ...(author === undefined ? {} : { author }) });
       return { content: [{ type: "text", text: "Task updated." }], structuredContent: { success: true as const, data: { ...data, lifecycle_status: "active" as const } } };
     }, mapError: toSafeToolError,

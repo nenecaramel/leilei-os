@@ -44,6 +44,7 @@ const EXPECTED_PRODUCTION_MCP_TOOL_NAMES = [
   "create_task",
   "create_universe_node",
   "create_universe_relation",
+  "update_universe_relation",
   "delete_universe_diary_source",
   "delete_universe_relation",
   "get_diary",
@@ -86,6 +87,7 @@ const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKin
   create_task: "structured",
   create_universe_node: "structured",
   create_universe_relation: "structured",
+  update_universe_relation: "structured",
   delete_universe_diary_source: "structured",
   delete_universe_relation: "structured",
   get_diary: "structured",
@@ -131,6 +133,7 @@ const STRUCTURED_ERROR_ASSERTION_TOOLS = new Set([
   "create_task",
   "create_universe_node",
   "create_universe_relation",
+  "update_universe_relation",
   "delete_universe_diary_source",
   "delete_universe_relation",
   "get_diary",
@@ -657,7 +660,7 @@ test("production MCP error audit covers every registered tool", async (t) => {
     .map(([name]) => name)
     .sort();
   assert.deepEqual(structured, [...STRUCTURED_ERROR_ASSERTION_TOOLS].sort());
-  assert.equal(structured.length, 37);
+  assert.equal(structured.length, 38);
   assert.deepEqual(
     Object.entries(PRODUCTION_MCP_TOOL_ERROR_AUDIT)
       .filter(([, kind]) => kind === "no-handler-error")

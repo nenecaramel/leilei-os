@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
 import { UniverseServiceError } from "../src/domains/universe/universe-service.js";
+import { UniverseAuthenticationError } from "../src/mcp/tools/universe/shared.js";
 
 async function connect(dependencies: Record<string, unknown> = {}) {
   const server = createMcpServer(dependencies as never);
@@ -35,7 +36,7 @@ const relation = {
   createdAt: "2026-08-21T00:00:00.000Z",
 };
 
-test("registers the three MCP Universe write tools with frozen annotations", async (t) => {
+test("registers the four MCP Universe write tools with frozen annotations", async (t) => {
   const fixture = await connect();
   t.after(async () => {
     await fixture.client.close();
@@ -45,9 +46,9 @@ test("registers the three MCP Universe write tools with frozen annotations", asy
   const tools = (await fixture.client.listTools()).tools;
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   assert.deepEqual(
-    ["create_universe_node", "update_universe_node", "create_universe_relation"]
+    ["create_universe_node", "update_universe_node", "create_universe_relation", "update_universe_relation"]
       .map((name) => byName.has(name)),
-    [true, true, true],
+    [true, true, true, true],
   );
   assert.deepEqual(byName.get("create_universe_node")?.annotations, {
     readOnlyHint: false,
@@ -67,7 +68,13 @@ test("registers the three MCP Universe write tools with frozen annotations", asy
     idempotentHint: true,
     openWorldHint: false,
   });
-  for (const name of ["create_universe_node", "update_universe_node", "create_universe_relation"]) {
+  assert.deepEqual(byName.get("update_universe_relation")?.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  });
+  for (const name of ["create_universe_node", "update_universe_node", "create_universe_relation", "update_universe_relation"]) {
     const outputSchema = JSON.stringify(byName.get(name)?.outputSchema);
     assert.match(outputSchema, /success/);
     assert.match(outputSchema, /data/);
@@ -160,6 +167,144 @@ test("exposes the strict create Universe relation request fields", async (t) => 
     "target",
   ]);
   assert.equal(tool.inputSchema.additionalProperties, false);
+});
+
+test("exposes the strict partial update Universe relation request fields", async (t) => {
+  const fixture = await connect();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const tool = (await fixture.client.listTools()).tools.find((candidate) => candidate.name === "update_universe_relation");
+  assert.ok(tool);
+  assert.deepEqual(tool.inputSchema.required, ["relation_id", "expected_version"]);
+  assert.deepEqual(Object.keys(tool.inputSchema.properties ?? {}).sort(), [
+    "expected_version",
+    "relation_id",
+    "relation_type",
+    "strength",
+  ]);
+  assert.equal(tool.inputSchema.additionalProperties, false);
+  assert.deepEqual(tool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  });
+});
+
+test("update Universe relation forwards an explicit partial patch and returns the compact relation", async (t) => {
+  const calls: unknown[] = [];
+  const updatedRelation = { ...relation, relationType: "extends" as const, strength: 0.25 };
+  const fixture = await connect({
+    universeWriteTools: {
+      nodeService: {
+        async createMcpNode() { throw new Error("not used"); },
+        async updateMcpNode() { throw new Error("not used"); },
+      },
+      relationService: {
+        async createMcpRelation() { throw new Error("not used"); },
+        async updateMcpRelation(...args: unknown[]) {
+          calls.push(args);
+          return { relation: updatedRelation, universe_version: 5 };
+        },
+      },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const result = await fixture.client.callTool({
+    name: "update_universe_relation",
+    arguments: { relation_id: relation.id, expected_version: 4, relation_type: "extends", strength: 0.25 },
+  });
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(result, {
+    content: [{ type: "text", text: "Universe relation updated." }],
+    structuredContent: { success: true, data: { relation: updatedRelation, universe_version: 5 } },
+  });
+  assert.deepEqual(calls, [["user-1", relation.id, { relationType: "extends", strength: 0.25 }, 4]]);
+});
+
+test("update Universe relation supports each patch shape and preserves safe failure contracts", async (t) => {
+  const calls: unknown[] = [];
+  const fixture = await connect({
+    universeWriteTools: {
+      nodeService: {
+        async createMcpNode() { throw new Error("not used"); },
+        async updateMcpNode() { throw new Error("not used"); },
+      },
+      relationService: {
+        async createMcpRelation() { throw new Error("not used"); },
+        async updateMcpRelation(...args: unknown[]) {
+          calls.push(args);
+          const patch = args[2] as Record<string, unknown>;
+          return { relation: { ...relation, ...(patch.relationType === undefined ? {} : { relationType: patch.relationType }), ...(patch.strength === undefined ? {} : { strength: patch.strength }) }, universe_version: calls.length + 1 };
+        },
+      },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  for (const [arguments_, expectedPatch] of [
+    [{ relation_id: relation.id, expected_version: 1, strength: 0 }, { strength: 0 }],
+    [{ relation_id: relation.id, expected_version: 2, relation_type: "raises" }, { relationType: "raises" }],
+    [{ relation_id: relation.id, expected_version: 3, relation_type: "part_of", strength: 0.75 }, { relationType: "part_of", strength: 0.75 }],
+  ] as const) {
+    const response = await fixture.client.callTool({ name: "update_universe_relation", arguments: arguments_ });
+    assert.equal(response.isError, undefined);
+    assert.deepEqual((calls.at(-1) as unknown[]).slice(1), [relation.id, expectedPatch, arguments_.expected_version]);
+  }
+
+  for (const arguments_ of [
+    { relation_id: relation.id, expected_version: 4 },
+    { relation_id: relation.id, expected_version: 4, strength: 1.1 },
+    { relation_id: relation.id, expected_version: 4, strength: Number.NaN },
+    { relation_id: relation.id, expected_version: 4, relation_type: "unknown" },
+  ]) {
+    const response = await fixture.client.callTool({ name: "update_universe_relation", arguments: arguments_ });
+    assert.equal(response.isError, true);
+  }
+  assert.equal(calls.length, 3);
+
+  const authFixture = await connect({
+    universeWriteTools: {
+      nodeService: { async createMcpNode() { throw new Error("not used"); }, async updateMcpNode() { throw new Error("not used"); } },
+      relationService: { async createMcpRelation() { throw new Error("not used"); }, async updateMcpRelation() { throw new Error("must not call"); } },
+      getAuthenticatedUserId: () => { throw new UniverseAuthenticationError(); },
+    },
+  });
+  t.after(async () => { await authFixture.client.close(); await authFixture.server.close(); });
+  const authResponse = await authFixture.client.callTool({ name: "update_universe_relation", arguments: { relation_id: relation.id, expected_version: 4, strength: 0.5 } });
+  assert.equal(authResponse.isError, true);
+  assert.match(JSON.stringify(authResponse), /AUTHENTICATION_REQUIRED|Authentication is required/);
+});
+
+test("update Universe relation exposes stale and missing relation errors without mutation", async (t) => {
+  const calls: string[] = [];
+  const fixture = await connect({
+    universeWriteTools: {
+      nodeService: { async createMcpNode() { throw new Error("not used"); }, async updateMcpNode() { throw new Error("not used"); } },
+      relationService: {
+        async createMcpRelation() { throw new Error("not used"); },
+        async updateMcpRelation(_userId: string, relationId: string) {
+          calls.push(relationId);
+          throw new UniverseServiceError(relationId === "missing" ? "RELATION_NOT_FOUND" : "VERSION_CONFLICT", "private detail");
+        },
+      },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+  for (const [relationId, code] of [["missing", "RELATION_NOT_FOUND"], [relation.id, "VERSION_CONFLICT"]] as const) {
+    const response = await fixture.client.callTool({ name: "update_universe_relation", arguments: { relation_id: relationId, expected_version: 5, strength: 0.5 } });
+    assert.equal(response.isError, true);
+    assert.match(JSON.stringify(response.structuredContent), new RegExp(code));
+    assert.doesNotMatch(JSON.stringify(response), /private detail/);
+  }
+  assert.deepEqual(calls, ["missing", relation.id]);
 });
 
 test("create Universe node forwards boundary positions and never accepts caller identity fields", async (t) => {

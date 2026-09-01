@@ -333,13 +333,13 @@ test("Task and Notion discovery results expose deterministic exact-detail pointe
   assert.deepEqual(notionData.results[0]?.detail_arguments, { page_id: NOTION_PAGE_ID });
 });
 
-test("routing descriptions align with executable schemas and the production inventory remains 39", async (t) => {
+test("routing descriptions align with executable schemas and the production inventory remains 40", async (t) => {
   const server = createMcpServer({} as never);
   const pair = await connectServer(server, "mcp-response-contract-descriptions");
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
   const tools = (await pair.client.listTools()).tools;
-  // The current production registration exposes the accepted 39-tool surface.
-  assert.equal(tools.length, 39);
+  // The current production registration exposes the accepted 40-tool surface.
+  assert.equal(tools.length, 40);
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
   const createTask = byName.get("create_task");

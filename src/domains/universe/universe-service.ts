@@ -22,6 +22,7 @@ import type {
   UniverseRepository,
   UniverseWebReadResult,
   UniverseNodeListResult,
+  UniverseRelationPatch,
 } from "./universe-repository.js";
 import {
   hashMcpWriteRequest,
@@ -337,6 +338,20 @@ export class UniverseService {
     return this.repository.deleteRelation(userId, relationId, expectedVersion);
   }
 
+  async updateMcpRelation(
+    userId: string,
+    relationId: string,
+    patch: unknown,
+    expectedVersion: number,
+  ): Promise<{ relation: UniverseRelation; universe_version: number }> {
+    await this.requireActiveUser(userId);
+    validateExpectedVersion(expectedVersion);
+    validateUniverseNodeId(relationId);
+    const normalizedPatch = invalidAsServiceError(() => normalizeMcpRelationPatch(patch));
+    const result = await this.repository.updateRelation(userId, relationId, normalizedPatch, expectedVersion);
+    return { relation: result.relation, universe_version: result.version };
+  }
+
   async getUniverseDiarySources(userId: string, nodeId: string) {
     await this.requireActiveUser(userId);
     validateUniverseNodeId(nodeId);
@@ -469,6 +484,28 @@ function normalizeMcpRelationCreate(value: unknown): UniverseRelation {
   });
 }
 
+function normalizeMcpRelationPatch(value: unknown): UniverseRelationPatch {
+  const record = asRecord(value);
+  assertAllowedKeys(record, ["relationType", "strength"]);
+  if (Object.keys(record).length === 0) {
+    throw new UniverseValidationError("At least one Universe relation field must be supplied.");
+  }
+  if (record.relationType !== undefined && !isRelationType(record.relationType)) {
+    throw new UniverseServiceError("RELATION_INVALID");
+  }
+  if (record.strength !== undefined) {
+    assertMcpStrength(record.strength);
+  }
+  return {
+    ...(record.relationType === undefined ? {} : { relationType: record.relationType }),
+    ...(record.strength === undefined ? {} : { strength: record.strength as number }),
+  };
+}
+
+function isRelationType(value: unknown): value is UniverseRelation["relationType"] {
+  return value === "related_to" || value === "supports" || value === "contradicts" || value === "extends" || value === "part_of" || value === "raises";
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new UniverseValidationError("MCP Universe input must be an object.");
@@ -489,8 +526,8 @@ function assertMcpPosition(position: { x: number; y: number }): void {
   }
 }
 
-function assertMcpStrength(strength: number): void {
-  if (!Number.isFinite(strength) || strength < 0 || strength > 1) {
+function assertMcpStrength(strength: unknown): asserts strength is number {
+  if (typeof strength !== "number" || !Number.isFinite(strength) || strength < 0 || strength > 1) {
     throw new UniverseServiceError("RELATION_INVALID");
   }
 }

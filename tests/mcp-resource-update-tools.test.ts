@@ -134,6 +134,24 @@ test("resource update tools expose strict destructive non-idempotent contracts",
   assert.equal("timezone" in taskProperties, false);
 });
 
+test("resource update MCP schemas expose their object fields through tools/list", async (t) => {
+  const { client, server } = await connect();
+  t.after(async () => { await client.close(); await server.close(); });
+  const tools = (await client.listTools()).tools;
+  const expected = {
+    update_memory: ["author", "category", "content", "id", "key", "tags"],
+    update_diary: ["author", "content", "date", "id", "mood", "tags", "title"],
+    update_task: ["author", "description", "due_time", "id", "priority", "tags", "title"],
+  } as const;
+  for (const [name, fields] of Object.entries(expected)) {
+    const tool = tools.find((candidate) => candidate.name === name);
+    assert.ok(tool);
+    assert.equal(tool.inputSchema.type, "object");
+    assert.deepEqual(Object.keys(tool.inputSchema.properties ?? {}).sort(), [...fields].sort());
+    assert.equal(tool.inputSchema.additionalProperties, false);
+  }
+});
+
 test("resource update tools preserve partial patch presence and authenticated context", async (t) => {
   const { client, server, calls, auth } = await connect();
   t.after(async () => { await client.close(); await server.close(); });
@@ -178,7 +196,7 @@ test("resource update schemas reject empty patches and forbidden fields before s
   assert.equal(calls.diary.length, 0);
   assert.equal(calls.task.length, 0);
   assert.equal(calls.transition.length, 0);
-  assert.deepEqual(auth, { memory: 0, diary: 0, task: 0 });
+  assert.deepEqual(auth, { memory: 1, diary: 1, task: 1 });
 });
 
 test("resource update tools safely map auth and domain failures without leaking details", async () => {

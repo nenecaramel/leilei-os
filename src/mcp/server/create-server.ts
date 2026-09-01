@@ -125,6 +125,7 @@ import { registerGetUniverseRelationsTool, type GetUniverseRelationsToolDependen
 import { registerCreateUniverseNodeTool, type CreateUniverseNodeToolDependencies } from "../tools/create-universe-node/register.js";
 import { registerUpdateUniverseNodeTool, type UpdateUniverseNodeToolDependencies } from "../tools/update-universe-node/register.js";
 import { registerCreateUniverseRelationTool, type CreateUniverseRelationToolDependencies } from "../tools/create-universe-relation/register.js";
+import { registerUpdateUniverseRelationTool, type UpdateUniverseRelationToolDependencies } from "../tools/update-universe-relation/register.js";
 import { registerDeleteUniverseRelationTool, type DeleteUniverseRelationToolDependencies } from "../tools/delete-universe-relation/register.js";
 import { registerGetUniverseDiarySourcesTool, type GetUniverseDiarySourcesToolDependencies } from "../tools/get-universe-diary-sources/register.js";
 import { registerAddUniverseDiarySourceTool, type AddUniverseDiarySourceToolDependencies } from "../tools/add-universe-diary-source/register.js";
@@ -331,6 +332,7 @@ const productionUniverseService: SearchUniverseToolDependencies["globalSearchSer
   GetUniverseNodeToolDependencies["universeService"] & ListUniverseNodesToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
   CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] &
   CreateUniverseRelationToolDependencies["universeService"] & DeleteUniverseRelationToolDependencies["relationService"] &
+  UpdateUniverseRelationToolDependencies["universeService"] &
   GetUniverseDiarySourcesToolDependencies["sourceService"] & AddUniverseDiarySourceToolDependencies["sourceService"] &
   DeleteUniverseDiarySourceToolDependencies["sourceService"] = {
   search: (input) => missingDatabaseService(),
@@ -340,6 +342,7 @@ const productionUniverseService: SearchUniverseToolDependencies["globalSearchSer
   createMcpNode: (userId, input, expectedVersion, idempotencyKey) => missingDatabaseService(),
   updateMcpNode: (userId, nodeId, patch, expectedVersion) => missingDatabaseService(),
   createMcpRelation: (userId, input, expectedVersion, idempotencyKey) => missingDatabaseService(),
+  updateMcpRelation: (userId, relationId, patch, expectedVersion) => missingDatabaseService(),
   deleteRelation: (userId, relationId, expectedVersion) => missingDatabaseService(),
   getUniverseDiarySources: (userId, nodeId) => missingDatabaseService(),
   addUniverseDiarySource: (userId, nodeId, diaryId, expectedVersion) => missingDatabaseService(),
@@ -387,7 +390,7 @@ type UniverseToolsDependencies = {
 
 type UniverseWriteToolsDependencies = {
   nodeService: CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"];
-  relationService: CreateUniverseRelationToolDependencies["universeService"];
+  relationService: CreateUniverseRelationToolDependencies["universeService"] & UpdateUniverseRelationToolDependencies["universeService"];
   getAuthenticatedUserId: () => string;
 };
 
@@ -634,7 +637,7 @@ export function createMcpServer(
   registerGetUniverseRelationsTool(server, universeTools);
   const sharedUniverseService = universeTools.universeService;
   const universeWriteTools = dependencies.universeWriteTools ?? (
-    sharedUniverseService && "createMcpNode" in sharedUniverseService && "updateMcpNode" in sharedUniverseService && "createMcpRelation" in sharedUniverseService
+    sharedUniverseService && "createMcpNode" in sharedUniverseService && "updateMcpNode" in sharedUniverseService && "createMcpRelation" in sharedUniverseService && "updateMcpRelation" in sharedUniverseService
       ? {
           nodeService: sharedUniverseService as UniverseWriteToolsDependencies["nodeService"],
           relationService: sharedUniverseService as UniverseWriteToolsDependencies["relationService"],
@@ -652,6 +655,7 @@ export function createMcpServer(
   registerCreateUniverseNodeTool(server, { universeService: universeWriteTools.nodeService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
   registerUpdateUniverseNodeTool(server, { universeService: universeWriteTools.nodeService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
   registerCreateUniverseRelationTool(server, { universeService: universeWriteTools.relationService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
+  registerUpdateUniverseRelationTool(server, { universeService: universeWriteTools.relationService, getAuthenticatedUserId: universeWriteTools.getAuthenticatedUserId });
   const universeProvenanceTools = dependencies.universeProvenanceTools ?? {
     relationService: productionUniverseService,
     sourceService: productionUniverseService,

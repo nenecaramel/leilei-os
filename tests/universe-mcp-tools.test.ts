@@ -100,8 +100,9 @@ test("Phase 8.5 registers dedicated Universe read tools", async (t) => {
     "list_universe_nodes",
     "search_universe",
     "update_universe_node",
+    "update_universe_relation",
   ]);
-  assert.equal(names.length, 39);
+  assert.equal(names.length, 40);
 
   const byName = new Map((await fixture.client.listTools()).tools.map((tool) => [tool.name, tool]));
   for (const name of ["search_universe", "get_universe_node", "list_universe_nodes", "get_universe_relations", "get_universe_diary_sources"]) {

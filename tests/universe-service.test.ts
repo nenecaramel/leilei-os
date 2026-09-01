@@ -31,6 +31,8 @@ class FakeRepository implements UniverseRepository {
   backupCalls = 0;
   mcpNodeCalls = 0;
   mcpRelationCalls = 0;
+  relationUpdateCalls = 0;
+  lastUpdatedRelation: UniverseSnapshot["relations"][number] | undefined;
 
   async findUserById(): Promise<{ status: "active" | "disabled" } | null> {
     return { status: this.userStatus };
@@ -75,6 +77,16 @@ class FakeRepository implements UniverseRepository {
     this.mcpRelationCalls += 1;
     this.lastExpectedVersion = expectedVersion;
     return { outcome: "created", value: relation, version: expectedVersion + 1 };
+  }
+  async updateRelation(_userId: string, relationId: string, patch: { relationType?: UniverseSnapshot["relations"][number]["relationType"]; strength?: number }, expectedVersion: number) {
+    this.relationUpdateCalls += 1;
+    if (expectedVersion !== this.version) throw new UniverseServiceError("VERSION_CONFLICT");
+    const existing = this.snapshot?.relations.find((item) => item.id === relationId);
+    if (!existing) throw new UniverseServiceError("RELATION_NOT_FOUND");
+    this.lastUpdatedRelation = { ...existing, ...patch };
+    this.snapshot = { ...this.snapshot!, relations: this.snapshot!.relations.map((item) => item.id === relationId ? this.lastUpdatedRelation! : item) };
+    this.version += 1;
+    return { relation: this.lastUpdatedRelation, version: this.version };
   }
   async deleteRelation(): Promise<UniverseReadResult> { throw new Error("not used"); }
   async latestRevision(): Promise<UniverseSnapshot["revisions"][number] | null> { throw new Error("not used"); }
@@ -298,4 +310,35 @@ test("MCP Universe update keeps partial patch semantics and fixed revision reaso
   assert.equal(repository.lastUpdateReason, "mcp_update");
   await assert.rejects(service.updateMcpNode("user-1", existing.id, {}, 2), (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE");
   await assert.rejects(service.updateMcpNode("user-1", existing.id, { importance: "anchor" } as never, 2), (error: unknown) => error instanceof UniverseServiceError && error.code === "INVALID_UNIVERSE");
+});
+
+test("MCP Universe relation update validates patches and preserves immutable fields", async () => {
+  const repository = new FakeRepository();
+  const existing = { id: "edge-existing", source: "node-a", target: "node-b", relationType: "supports" as const, strength: 0.4, createdAt: timestamp };
+  repository.snapshot = { ...emptySnapshot, relations: [existing] };
+  repository.version = 7;
+  const service = new UniverseService(repository);
+
+  const result = await service.updateMcpRelation("user-1", existing.id, { relationType: "raises", strength: 0.9 }, 7);
+  assert.equal(result.universe_version, 8);
+  assert.deepEqual(result.relation, { ...existing, relationType: "raises", strength: 0.9 });
+  assert.equal(repository.relationUpdateCalls, 1);
+  assert.equal(result.relation.id, existing.id);
+  assert.equal(result.relation.source, existing.source);
+  assert.equal(result.relation.target, existing.target);
+  assert.equal(result.relation.createdAt, existing.createdAt);
+
+  for (const [patch, code] of [
+    [{}, "INVALID_UNIVERSE"],
+    [{ strength: -0.1 }, "RELATION_INVALID"],
+    [{ strength: 1.1 }, "RELATION_INVALID"],
+    [{ relationType: "not-a-relation" }, "RELATION_INVALID"],
+    [{ source: "forbidden" }, "INVALID_UNIVERSE"],
+  ] as const) {
+    await assert.rejects(
+      service.updateMcpRelation("user-1", existing.id, patch, 8),
+      (error: unknown) => error instanceof UniverseServiceError && error.code === code,
+    );
+  }
+  assert.equal(repository.relationUpdateCalls, 1);
 });

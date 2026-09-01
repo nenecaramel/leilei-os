@@ -58,6 +58,13 @@ export type UniverseMcpCreateResult<T> = {
   version: number;
 };
 
+export type UniverseRelationPatch = Partial<Pick<UniverseRelation, "relationType" | "strength">>;
+
+export type UniverseRelationUpdateResult = {
+  relation: UniverseRelation;
+  version: number;
+};
+
 export interface UniverseRepository {
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   loadUniverse(userId: string): Promise<UniverseReadResult | null>;
@@ -98,6 +105,7 @@ export interface UniverseRepository {
     idempotencyKey: string,
     requestHash: string,
   ): Promise<UniverseMcpCreateResult<UniverseRelation>>;
+  updateRelation(userId: string, relationId: string, patch: UniverseRelationPatch, expectedVersion: number): Promise<UniverseRelationUpdateResult>;
   deleteRelation(userId: string, relationId: string, expectedVersion: number): Promise<UniverseReadResult>;
   addUniverseDiarySource(userId: string, nodeId: string, diaryId: string, expectedVersion: number): Promise<UniverseReadResult>;
   deleteUniverseDiarySource(userId: string, nodeId: string, diaryId: string, expectedVersion: number): Promise<UniverseReadResult>;
