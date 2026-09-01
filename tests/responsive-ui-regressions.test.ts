@@ -125,13 +125,15 @@ test("shared navigation keeps one inset tile and Universe changes palette only",
   assert.doesNotMatch(navigationCss, /\.app-shell:has\(\.universe-page\)[\s\S]*\.nav-item\s*\{[^}]*height:/s);
 });
 
-test("System and Sentinel titles use the accepted app title family", () => {
+test("System and Sentinel titles match the accepted native app title rendering", () => {
   assert.match(pageHeaderTsx, /import\s+"\.\/page-header\.css";/);
   const css = readPageHeaderCss();
   assert.match(
     css,
-    /\.system-page \.page-header h1\s*\{[^}]*font-family:\s*"DM Sans",\s*system-ui,\s*sans-serif/s,
+    /\.system-page \.page-header h1\s*\{[^}]*font-family:\s*-apple-system,\s*BlinkMacSystemFont,\s*"SF Pro Text",\s*"PingFang SC",\s*"Helvetica Neue",\s*sans-serif\s*!important/s,
   );
+  assert.match(css, /\.system-page \.page-header h1\s*\{[^}]*-webkit-font-smoothing:\s*auto/s);
+  assert.doesNotMatch(css, /"DM Sans"/);
 });
 
 test("Sentinel loading reuses the standard System state card", () => {
