@@ -187,7 +187,14 @@ export function SentinelPageContent({
   };
 
   if (state.status === "loading") {
-    return <div className="page system-page sentinel-page sentinel-page-loading"><PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." /><p className="system-state-copy sentinel-loading-state" role="status">Reading Sentinel…</p></div>;
+    return (
+      <div className="page system-page sentinel-page">
+        <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." />
+        <section className="system-section" aria-label="Sentinel status">
+          <p className="system-state-copy" role="status" aria-live="polite">Reading Sentinel…</p>
+        </section>
+      </div>
+    );
   }
 
   if (state.status === "error") {
