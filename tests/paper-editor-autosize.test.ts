@@ -6,6 +6,7 @@ import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { MemoryPaperEditor } from "../web/src/pages/MemoryPaperEditor.js";
 import { DiaryPaperEditor } from "../web/src/pages/DiaryPaperEditor.js";
 import { TaskPaperEditor } from "../web/src/pages/TaskPaperEditor.js";
+import { resizePaperTextarea } from "../web/src/pages/paper-editor-autosize.js";
 
 type EditorCase = {
   name: string;
@@ -108,6 +109,7 @@ async function withEditorDom(
   assert.ok(node);
   const root = createRoot(node);
   const initial = "short";
+  let scrollHeightReads = 0;
 
   function Harness() {
     const [value, setValue] = React.useState(initial);
@@ -120,9 +122,13 @@ async function withEditorDom(
     assert.ok(body);
     Object.defineProperty(body, "scrollHeight", {
       configurable: true,
-      get: () => body.value.length > initial.length ? 620 : 260,
+      get: () => {
+        scrollHeightReads += 1;
+        return body.value.length > initial.length ? 620 : 260;
+      },
     });
     pageY = 640;
+    scrollHeightReads = 0;
     body.focus();
     body.setSelectionRange(1, 3);
 
@@ -136,6 +142,7 @@ async function withEditorDom(
       body.dispatchEvent(change);
     });
 
+    assert.equal(scrollHeightReads, 1, `${editor.name} resized more than once for one edit`);
     await check(body, dom, root);
   } finally {
     await React.act(async () => root.unmount());
@@ -152,8 +159,44 @@ test("long paper edits preserve page scroll while all three editors autosize", a
     await withEditorDom(editor, async (body, dom) => {
       assert.equal(dom.window.scrollY, 640, `${editor.name} edit clamped page scroll`);
       assert.equal(body.style.height, "620px", `${editor.name} did not grow to measured content height`);
-      assert.equal(body.selectionStart, 1, `${editor.name} edit moved selection start`);
-      assert.equal(body.selectionEnd, 3, `${editor.name} edit moved selection end`);
     });
   }
+});
+
+test("paper autosize leaves the active text selection untouched", () => {
+  const dom = new JSDOM("<textarea></textarea>");
+  const body = dom.window.document.querySelector<HTMLTextAreaElement>("textarea");
+  assert.ok(body);
+  Object.defineProperty(body, "scrollHeight", { configurable: true, value: 620 });
+  body.value = "keep this selection while measuring";
+  body.setSelectionRange(5, 12);
+
+  resizePaperTextarea(body);
+
+  assert.equal(body.selectionStart, 5);
+  assert.equal(body.selectionEnd, 12);
+  dom.window.close();
+});
+
+test("paper autosize follows content growth and shrink without dropping below 240px", () => {
+  const dom = new JSDOM("<textarea></textarea>");
+  const body = dom.window.document.querySelector<HTMLTextAreaElement>("textarea");
+  assert.ok(body);
+  let measuredHeight = 620;
+  Object.defineProperty(body, "scrollHeight", {
+    configurable: true,
+    get: () => measuredHeight,
+  });
+
+  resizePaperTextarea(body);
+  assert.equal(body.style.height, "620px");
+
+  measuredHeight = 180;
+  resizePaperTextarea(body);
+  assert.equal(body.style.height, "240px");
+
+  measuredHeight = 360;
+  resizePaperTextarea(body);
+  assert.equal(body.style.height, "360px");
+  dom.window.close();
 });

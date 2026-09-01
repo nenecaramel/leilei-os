@@ -2,9 +2,11 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import { resizePaperTextarea } from "./paper-editor-autosize";
 
 export type MemoryCategory = "profile" | "preference" | "goal" | "project";
 
@@ -34,11 +36,6 @@ export type MemoryPaperEditorProps = {
   onContentChange(value: string): void;
 };
 
-function resizeContent(node: HTMLTextAreaElement) {
-  node.style.height = "auto";
-  node.style.height = `${Math.max(240, node.scrollHeight)}px`;
-}
-
 export const MemoryPaperEditor = forwardRef<
   MemoryPaperEditorHandle,
   MemoryPaperEditorProps
@@ -55,8 +52,8 @@ export const MemoryPaperEditor = forwardRef<
     },
   }), []);
 
-  useEffect(() => {
-    if (contentRef.current) resizeContent(contentRef.current);
+  useLayoutEffect(() => {
+    if (contentRef.current) resizePaperTextarea(contentRef.current);
   }, [content]);
 
   return (
@@ -81,10 +78,7 @@ export const MemoryPaperEditor = forwardRef<
         value={content}
         disabled={disabled}
         rows={8}
-        onChange={(event) => {
-          resizeContent(event.currentTarget);
-          onContentChange(event.target.value);
-        }}
+        onChange={(event) => onContentChange(event.target.value)}
       />
     </div>
   );
