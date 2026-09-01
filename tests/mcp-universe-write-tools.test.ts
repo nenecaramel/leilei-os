@@ -162,6 +162,64 @@ test("exposes the strict create Universe relation request fields", async (t) => 
   assert.equal(tool.inputSchema.additionalProperties, false);
 });
 
+test("exposes the strict partial update Universe relation request fields", async (t) => {
+  const fixture = await connect();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const tool = (await fixture.client.listTools()).tools.find((candidate) => candidate.name === "update_universe_relation");
+  assert.ok(tool);
+  assert.deepEqual(tool.inputSchema.required, ["relation_id", "expected_version"]);
+  assert.deepEqual(Object.keys(tool.inputSchema.properties ?? {}).sort(), [
+    "expected_version",
+    "relation_id",
+    "relation_type",
+    "strength",
+  ]);
+  assert.equal(tool.inputSchema.additionalProperties, false);
+  assert.deepEqual(tool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  });
+});
+
+test("update Universe relation forwards an explicit partial patch and returns the compact relation", async (t) => {
+  const calls: unknown[] = [];
+  const updatedRelation = { ...relation, relationType: "extends" as const, strength: 0.25 };
+  const fixture = await connect({
+    universeWriteTools: {
+      nodeService: {
+        async createMcpNode() { throw new Error("not used"); },
+        async updateMcpNode() { throw new Error("not used"); },
+      },
+      relationService: {
+        async createMcpRelation() { throw new Error("not used"); },
+        async updateMcpRelation(...args: unknown[]) {
+          calls.push(args);
+          return { relation: updatedRelation, universe_version: 5 };
+        },
+      },
+      getAuthenticatedUserId: () => "user-1",
+    },
+  });
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const result = await fixture.client.callTool({
+    name: "update_universe_relation",
+    arguments: { relation_id: relation.id, expected_version: 4, relation_type: "extends", strength: 0.25 },
+  });
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(result, {
+    content: [{ type: "text", text: "Universe relation updated." }],
+    structuredContent: { success: true, data: { relation: updatedRelation, universe_version: 5 } },
+  });
+  assert.deepEqual(calls, [["user-1", relation.id, { relationType: "extends", strength: 0.25 }, 4]]);
+});
+
 test("create Universe node forwards boundary positions and never accepts caller identity fields", async (t) => {
   const calls: unknown[] = [];
   const fixture = await connect({
