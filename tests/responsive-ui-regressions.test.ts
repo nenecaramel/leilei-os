@@ -5,6 +5,7 @@ import { extractNativeMobileDesktopCss } from "../web/build/native-mobile-page-c
 
 const mainTsx = readFileSync(new URL("../web/src/main.tsx", import.meta.url), "utf8");
 const navigationCss = readFileSync(new URL("../web/src/layout/navigation-panel.css", import.meta.url), "utf8");
+const universeMobileMapTsx = readFileSync(new URL("../web/src/pages/universe/UniverseMobileMap.tsx", import.meta.url), "utf8");
 const viteConfig = readFileSync(new URL("../web/vite.config.ts", import.meta.url), "utf8");
 const geometryUrl = new URL("../web/src/native-mobile-desktop-geometry.css", import.meta.url);
 
@@ -51,16 +52,46 @@ test("native desktop mirror is loaded after feature CSS and before width-only ge
   assert.ok(geometryIndex > mirrorIndex);
 });
 
-test("desktop geometry changes only available width and visibility, not component presentation", () => {
+test("desktop geometry changes only available width and positioning, not component presentation", () => {
   const css = readGeometryCss();
   assert.match(css, /\.main-content > \.page\.memory-page:not\(\.universe-page\)/);
   assert.match(css, /width:\s*min\(1120px,\s*calc\(100%\s*-\s*64px\)\)/);
+  assert.match(css, /\.main-content > \.day-space-page\s*\{/);
+  assert.match(css, /\.main-content > \.day-space-page\s*\{[^}]*padding-top:\s*40px/s);
   assert.match(css, /\.day-space-page\s*\{[^}]*display:\s*block\s*!important/s);
   assert.match(css, /\.desktop-page-description[^}]*\.task-row-reopen|\.desktop-page-description,\s*\.task-row-reopen/s);
   assert.match(css, /display:\s*none\s*!important/);
   assert.doesNotMatch(css, /font-size:/);
   assert.doesNotMatch(css, /border-radius:/);
   assert.doesNotMatch(css, /box-shadow:/);
+});
+
+test("desktop Universe removes the mobile top-bar offset but keeps the same native control geometry", () => {
+  const css = readGeometryCss();
+  assert.match(
+    css,
+    /\.universe-page:has\(\.universe-mobile-map\)[\s\S]*\.universe-page-header\s*\{[^}]*top:\s*18px\s*!important/s,
+  );
+  assert.match(
+    css,
+    /\.universe-galaxy-picker,[\s\S]*\.universe-mobile-map-toolbar\s*\{[^}]*top:\s*48px\s*!important/s,
+  );
+  assert.match(
+    css,
+    /\.universe-page:has\(\.universe-cosmos-loading\)[\s\S]*padding:\s*18px\s+24px\s+0\s*!important/s,
+  );
+  assert.match(
+    css,
+    /\.universe-cosmos-loading::before,[\s\S]*\.universe-cosmos-loading::after\s*\{[^}]*display:\s*none\s*!important/s,
+  );
+});
+
+test("Universe waits for the real measured map on desktop while retaining the mobile fallback size", () => {
+  assert.match(universeMobileMapTsx, /DEFAULT_MAP_SIZE\s*=\s*\{\s*width:\s*390,\s*height:\s*520\s*\}/);
+  assert.match(universeMobileMapTsx, /hasMeasuredMapSize/);
+  assert.match(universeMobileMapTsx, /isDesktopViewport\(\)\s*&&\s*!hasMeasuredMapSize/);
+  assert.match(universeMobileMapTsx, /window\.matchMedia\("\(min-width: 761px\)"\)\.matches/);
+  assert.match(universeMobileMapTsx, /window\.matchMedia\("\(max-width: 760px\)"\)\.matches/);
 });
 
 test("shared navigation keeps one inset tile and Universe changes palette only", () => {

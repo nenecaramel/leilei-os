@@ -2,7 +2,7 @@
  * Desktop does not define a second presentation for the personal pages.
  * Their component styling is mirrored directly from the accepted mobile CSS by
  * the Vite nativeMobilePageCssPlugin. This file only gives that same UI more
- * room beside the fixed desktop navigation.
+ * room beside the fixed desktop navigation and removes mobile-shell offsets.
  */
 
 .desktop-page-description,
@@ -12,12 +12,20 @@
 
 @media (min-width: 761px) {
   .main-content > .page.memory-page:not(.universe-page),
-  .main-content > .page.day-space-page,
+  .main-content > .day-space-page,
   .main-content > .page.global-search-page {
     width: min(1120px, calc(100% - 64px));
     max-width: 1120px;
     min-width: 0;
     margin-inline: auto;
+  }
+
+  /* Day Space does not carry the shared .page class, so give it the same
+   * desktop frame explicitly instead of leaving it on the 18px mobile inset. */
+  .main-content > .day-space-page {
+    box-sizing: border-box;
+    padding-top: 40px;
+    padding-bottom: 72px;
   }
 
   .day-space-page {
@@ -37,12 +45,58 @@
     margin: 0;
   }
 
-  .universe-mobile-map,
+  /* Ready Universe keeps the accepted mobile-owned layout, but desktop has no
+   * 44px mobile top bar. Use the original pre-overlay positions directly. */
+  .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) {
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    padding: 0 !important;
+    overflow: hidden;
+  }
+
+  .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-page-header {
+    top: 18px !important;
+    right: 24px !important;
+    left: 24px !important;
+  }
+
+  .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-galaxy-picker,
+  .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-mobile-map-toolbar {
+    top: 48px !important;
+  }
+
+  .universe-page:has(.universe-mobile-map):not(:has(.universe-standalone-detail, .universe-standalone-editor, .universe-standalone-connection)) .universe-mobile-map {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+  }
+
   .universe-map-stage,
   .universe-map-canvas,
   .universe-map-viewport {
     width: 100%;
     max-width: none;
     min-width: 0;
+  }
+
+  /* Loading/error/import are the same native Universe state, but on desktop
+   * they need the missing mobile page gutters and the full available height. */
+  .main-content > .page.universe-page:has(.universe-cosmos-loading),
+  .main-content > .page.universe-page:has(.universe-cosmos-state),
+  .main-content > .page.universe-page:has(.universe-import-flow) {
+    box-sizing: border-box;
+    min-height: 100dvh !important;
+    padding: 18px 24px 0 !important;
+  }
+
+  .universe-page:has(.universe-cosmos-loading) .universe-cosmos-loading::before,
+  .universe-page:has(.universe-cosmos-loading) .universe-cosmos-loading::after {
+    display: none !important;
+    content: none !important;
   }
 }
