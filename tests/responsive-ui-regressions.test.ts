@@ -7,12 +7,20 @@ const mainTsx = readFileSync(new URL("../web/src/main.tsx", import.meta.url), "u
 const navigationCss = readFileSync(new URL("../web/src/layout/navigation-panel.css", import.meta.url), "utf8");
 const universeMobileMapTsx = readFileSync(new URL("../web/src/pages/universe/UniverseMobileMap.tsx", import.meta.url), "utf8");
 const universeDarkCss = readFileSync(new URL("../web/src/pages/universe-home-dark-production-fixes.css", import.meta.url), "utf8");
+const sentinelPageTsx = readFileSync(new URL("../web/src/pages/SentinelPage.tsx", import.meta.url), "utf8");
+const pageHeaderTsx = readFileSync(new URL("../web/src/pages/PageHeader.tsx", import.meta.url), "utf8");
 const viteConfig = readFileSync(new URL("../web/vite.config.ts", import.meta.url), "utf8");
 const geometryUrl = new URL("../web/src/native-mobile-desktop-geometry.css", import.meta.url);
+const pageHeaderCssUrl = new URL("../web/src/pages/page-header.css", import.meta.url);
 
 function readGeometryCss() {
   assert.equal(existsSync(geometryUrl), true, "native-mobile-desktop-geometry.css must exist");
   return readFileSync(geometryUrl, "utf8");
+}
+
+function readPageHeaderCss() {
+  assert.equal(existsSync(pageHeaderCssUrl), true, "page-header.css must exist");
+  return readFileSync(pageHeaderCssUrl, "utf8");
 }
 
 test("desktop no longer loads hand-authored page imitation layers", () => {
@@ -115,4 +123,21 @@ test("shared navigation keeps one inset tile and Universe changes palette only",
   assert.match(navigationCss, /\.navigation-panel-nav \.nav-item\.active::before\s*\{[^}]*background:\s*var\(--navigation-panel-active\)/s);
   assert.match(navigationCss, /\.app-shell:has\(\.universe-page\) \.navigation-panel\s*\{[^}]*--navigation-panel-bg:\s*#0b0c12/s);
   assert.doesNotMatch(navigationCss, /\.app-shell:has\(\.universe-page\)[\s\S]*\.nav-item\s*\{[^}]*height:/s);
+});
+
+test("System and Sentinel titles use the accepted app title family", () => {
+  assert.match(pageHeaderTsx, /import\s+"\.\/page-header\.css";/);
+  const css = readPageHeaderCss();
+  assert.match(
+    css,
+    /\.system-page \.page-header h1\s*\{[^}]*font-family:\s*"DM Sans",\s*system-ui,\s*sans-serif/s,
+  );
+});
+
+test("Sentinel loading reuses the standard System state card", () => {
+  assert.doesNotMatch(sentinelPageTsx, /sentinel-page-loading|sentinel-loading-state/);
+  assert.match(
+    sentinelPageTsx,
+    /if\s*\(state\.status === "loading"\)\s*\{[\s\S]*?<section\s+className="system-section sentinel-status-card"[^>]*>[\s\S]*?<p\s+className="system-state-copy"\s+role="status"/s,
+  );
 });

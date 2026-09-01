@@ -187,7 +187,32 @@ export function SentinelPageContent({
   };
 
   if (state.status === "loading") {
-    return <div className="page system-page sentinel-page sentinel-page-loading"><PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." /><p className="system-state-copy sentinel-loading-state" role="status">Reading Sentinel…</p></div>;
+    return (
+      <div className="page system-page sentinel-page">
+        <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." />
+
+        <section className="system-section sentinel-status-card" aria-label="Sentinel status">
+          <p className="system-state-copy" role="status" aria-live="polite">Reading Sentinel…</p>
+        </section>
+
+        <ChatGPTMessageBridgeCard api={api} />
+
+        <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
+          <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
+          <p className="system-state-copy">Reading wake policy…</p>
+        </section>
+
+        <section className="system-section sentinel-controls-card" aria-label="Sentinel controls">
+          <h2 className="system-product-name">First Wake / Controls</h2>
+          <p className="system-state-copy">Reading Sentinel controls…</p>
+        </section>
+
+        <section className="system-section sentinel-activity-card" aria-labelledby="sentinel-activity-title">
+          <h2 className="system-product-name" id="sentinel-activity-title">Wake Activity</h2>
+          <p className="system-state-copy">Reading wake activity…</p>
+        </section>
+      </div>
+    );
   }
 
   if (state.status === "error") {
