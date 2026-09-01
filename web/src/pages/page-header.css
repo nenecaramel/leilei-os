@@ -1,4 +1,4 @@
 /* Keep System/Sentinel page titles on the same accepted app-title typeface. */
 .system-page .page-header h1 {
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: "DM Sans", system-ui, sans-serif !important;
 }
