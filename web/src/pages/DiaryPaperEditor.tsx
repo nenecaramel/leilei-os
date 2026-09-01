@@ -1,10 +1,11 @@
 import {
   forwardRef,
-  useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
 } from "react";
 import { formatDiaryPaperDate } from "./diary-presentation";
+import { resizePaperTextarea } from "./paper-editor-autosize";
 
 export type DiaryPaperEditorHandle = {
   focusTitle(): void;
@@ -17,11 +18,6 @@ type DiaryPaperEditorProps = {
   onTitleChange(value: string): void;
   onContentChange(value: string): void;
 };
-
-function resizeContent(node: HTMLTextAreaElement) {
-  node.style.height = "auto";
-  node.style.height = `${Math.max(240, node.scrollHeight)}px`;
-}
 
 export const DiaryPaperEditor = forwardRef<
   DiaryPaperEditorHandle,
@@ -45,8 +41,8 @@ export const DiaryPaperEditor = forwardRef<
     },
   }), []);
 
-  useEffect(() => {
-    if (contentRef.current) resizeContent(contentRef.current);
+  useLayoutEffect(() => {
+    if (contentRef.current) resizePaperTextarea(contentRef.current);
   }, [content]);
 
   return (
@@ -71,10 +67,7 @@ export const DiaryPaperEditor = forwardRef<
         value={content}
         disabled={disabled}
         rows={8}
-        onChange={(event) => {
-          resizeContent(event.currentTarget);
-          onContentChange(event.target.value);
-        }}
+        onChange={(event) => onContentChange(event.target.value)}
       />
     </div>
   );

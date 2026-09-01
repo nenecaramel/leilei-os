@@ -1,17 +1,17 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { NativeDateInput } from "../components/NativeDateInput";
 import { TASK_STATUS_LABELS, type TaskMobileStatus } from "./task-mobile-presentation";
+import { resizePaperTextarea } from "./paper-editor-autosize";
 export type TaskPaperAction = "start" | "complete" | "cancel" | "reopen";
 const ACTION_LABELS: Record<TaskPaperAction, string> = { start: "开始", complete: "完成", cancel: "取消", reopen: "重新打开" };
 export type TaskPaperEditorHandle = { focusTitle(): void };
-const resize = (node: HTMLTextAreaElement) => { node.style.height = "auto"; node.style.height = `${Math.max(240, node.scrollHeight)}px`; };
 export const TaskPaperEditor = forwardRef<TaskPaperEditorHandle, { title: string; description: string; disabled: boolean; onTitleChange(v: string): void; onDescriptionChange(v: string): void }>(function TaskPaperEditor(props, ref) {
   const titleRef = useRef<HTMLInputElement | null>(null); const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   useImperativeHandle(ref, () => ({ focusTitle: () => titleRef.current?.focus() }), []);
-  useEffect(() => { if (bodyRef.current) resize(bodyRef.current); }, [props.description]);
+  useLayoutEffect(() => { if (bodyRef.current) resizePaperTextarea(bodyRef.current); }, [props.description]);
   return <div className="memory-paper-editor task-paper-editor">
     <input ref={titleRef} className="memory-paper-key task-paper-title-editor" type="text" aria-label="任务标题" placeholder="Title" autoComplete="off" spellCheck={false} value={props.title} disabled={props.disabled} maxLength={200} onChange={(e) => props.onTitleChange(e.target.value)} />
-    <textarea ref={bodyRef} className="memory-paper-content-editor task-paper-description-editor" aria-label="任务正文" placeholder="Description" value={props.description} disabled={props.disabled} maxLength={5000} rows={8} onChange={(e) => { resize(e.currentTarget); props.onDescriptionChange(e.target.value); }} />
+    <textarea ref={bodyRef} className="memory-paper-content-editor task-paper-description-editor" aria-label="任务正文" placeholder="Description" value={props.description} disabled={props.disabled} maxLength={5000} rows={8} onChange={(e) => props.onDescriptionChange(e.target.value)} />
   </div>;
 });
 export function TaskDeadlineEditor(props: { value: string; withoutDueTime: boolean; disabled: boolean; onValueChange(v: string): void; onWithoutDueTimeChange(v: boolean): void }) {
