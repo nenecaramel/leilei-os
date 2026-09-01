@@ -86,12 +86,13 @@ async function withEditorDom(
   ) as object;
   const heightDescriptor = Object.getOwnPropertyDescriptor(stylePrototype, "height");
   assert.ok(heightDescriptor?.get && heightDescriptor.set);
+  const liveStyles = new WeakSet<object>();
   Object.defineProperty(stylePrototype, "height", {
     configurable: true,
     enumerable: heightDescriptor.enumerable,
     get: heightDescriptor.get,
     set(value: string) {
-      if (value === "auto") {
+      if (value === "auto" && liveStyles.has(this)) {
         dom.window.scrollTo(0, 0);
       }
       heightDescriptor.set!.call(this, value);
@@ -120,7 +121,10 @@ async function withEditorDom(
     await React.act(async () => root.render(React.createElement(Harness)));
     const body = node.querySelector<HTMLTextAreaElement>(editor.bodySelector);
     assert.ok(body);
-    Object.defineProperty(body, "scrollHeight", {
+    liveStyles.add(body.style);
+    const textareaPrototype = dom.window.HTMLTextAreaElement.prototype;
+    const previousScrollHeight = Object.getOwnPropertyDescriptor(textareaPrototype, "scrollHeight");
+    Object.defineProperty(textareaPrototype, "scrollHeight", {
       configurable: true,
       get: () => {
         scrollHeightReads += 1;
@@ -144,6 +148,8 @@ async function withEditorDom(
 
     assert.equal(scrollHeightReads, 1, `${editor.name} resized more than once for one edit`);
     await check(body, dom, root);
+    if (previousScrollHeight) Object.defineProperty(textareaPrototype, "scrollHeight", previousScrollHeight);
+    else Reflect.deleteProperty(textareaPrototype, "scrollHeight");
   } finally {
     await React.act(async () => root.unmount());
     dom.window.close();
@@ -183,20 +189,27 @@ test("paper autosize follows content growth and shrink without dropping below 24
   const body = dom.window.document.querySelector<HTMLTextAreaElement>("textarea");
   assert.ok(body);
   let measuredHeight = 620;
-  Object.defineProperty(body, "scrollHeight", {
+  const textareaPrototype = dom.window.HTMLTextAreaElement.prototype;
+  const previousScrollHeight = Object.getOwnPropertyDescriptor(textareaPrototype, "scrollHeight");
+  Object.defineProperty(textareaPrototype, "scrollHeight", {
     configurable: true,
     get: () => measuredHeight,
   });
 
-  resizePaperTextarea(body);
-  assert.equal(body.style.height, "620px");
+  try {
+    resizePaperTextarea(body);
+    assert.equal(body.style.height, "620px");
 
-  measuredHeight = 180;
-  resizePaperTextarea(body);
-  assert.equal(body.style.height, "240px");
+    measuredHeight = 180;
+    resizePaperTextarea(body);
+    assert.equal(body.style.height, "240px");
 
-  measuredHeight = 360;
-  resizePaperTextarea(body);
-  assert.equal(body.style.height, "360px");
+    measuredHeight = 360;
+    resizePaperTextarea(body);
+    assert.equal(body.style.height, "360px");
+  } finally {
+    if (previousScrollHeight) Object.defineProperty(textareaPrototype, "scrollHeight", previousScrollHeight);
+    else Reflect.deleteProperty(textareaPrototype, "scrollHeight");
+  }
   dom.window.close();
 });
