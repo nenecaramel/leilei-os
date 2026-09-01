@@ -59,7 +59,7 @@ test("Sentinel loading keeps the final card stack visible and loads each data ca
       .map((node) => node.textContent?.trim())
       .filter(Boolean);
     assert.deepEqual(loadingCopies, [
-      "Reading Sentinel status…",
+      "Reading Sentinel…",
       "Reading wake policy…",
       "Reading Sentinel controls…",
       "Reading wake activity…",
