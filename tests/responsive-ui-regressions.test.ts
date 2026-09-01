@@ -138,6 +138,6 @@ test("Sentinel loading reuses the standard System state card", () => {
   assert.doesNotMatch(sentinelPageTsx, /sentinel-page-loading|sentinel-loading-state/);
   assert.match(
     sentinelPageTsx,
-    /if\s*\(state\.status === "loading"\)\s*\{[\s\S]*?<section\s+className="system-section"[^>]*>[\s\S]*?<p\s+className="system-state-copy"\s+role="status"/s,
+    /if\s*\(state\.status === "loading"\)\s*\{[\s\S]*?<section\s+className="system-section sentinel-status-card"[^>]*>[\s\S]*?<p\s+className="system-state-copy"\s+role="status"/s,
   );
 });
