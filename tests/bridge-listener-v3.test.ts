@@ -6,6 +6,7 @@ import {
   createBridgeListenerHtml,
   getSentinelWakeRoutingMetadata,
 } from "../src/mcp/tools/bridge-listener/listener-resource.js";
+import { createSentinelWakeModelContext } from "../src/domains/bridge/bridge-service.js";
 
 const event = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -26,15 +27,16 @@ const event = {
   },
 };
 
-test("Bridge resource v3 carries bounded Sentinel routing metadata and model order", () => {
+test("Bridge resource v3 carries neutral Sentinel routing metadata", () => {
   assert.equal(BRIDGE_RESOURCE_URI, "ui://leileios/message-bridge/v3");
   const context = composeBridgeDispatchContext(event);
-  assert.match(context, /bridge_event_claim/);
-  assert.match(context, /sentinel_get_state/);
-  assert.match(context, /complete_sentinel_wake/);
-  assert.match(context, /quiet/);
-  assert.ok(context.indexOf("bridge_event_claim") < context.indexOf("sentinel_get_state"));
-  assert.ok(context.indexOf("sentinel_get_state") < context.indexOf("complete_sentinel_wake"));
+  assert.match(context, /eventId=11111111-1111-4111-8111-111111111111/);
+  assert.match(context, /wakeId=22222222-2222-4222-8222-222222222222/);
+  assert.match(context, /sentinelId=33333333-3333-4333-8333-333333333333/);
+  assert.match(context, /controlRevision=4/);
+  assert.match(context, /scheduledFor=2026-08-30T00:00:00\.000Z/);
+  assert.doesNotMatch(context, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake/i);
+  assert.doesNotMatch(context, /claim this|call\s+\w+|finalize with/i);
   assert.doesNotMatch(context, /policyPrompt|contextCapsule|wakeContextCapsule/);
   assert.deepEqual(getSentinelWakeRoutingMetadata({
     id: event.id,
@@ -63,12 +65,27 @@ test("Bridge resource v3 carries bounded Sentinel routing metadata and model ord
   assert.match(html, /complete_sentinel_wake/);
 });
 
-test("Bridge v3 keeps ordinary chat completion instructions separate", () => {
+test("Bridge v3 keeps ordinary routing metadata factual", () => {
   const ordinary = composeBridgeDispatchContext({
     id: event.id,
     modelContext: "chat",
   });
-  assert.match(ordinary, /bridge_event_claim/);
-  assert.match(ordinary, /bridge_event_complete/);
+  assert.match(ordinary, /LeileiOS Bridge event metadata: eventId=11111111-1111-4111-8111-111111111111/);
+  assert.doesNotMatch(ordinary, /bridge_event_claim|bridge_event_complete/i);
   assert.doesNotMatch(ordinary, /sentinel_get_state/);
+});
+
+test("Sentinel wake model context is factual and non-imperative", () => {
+  const context = createSentinelWakeModelContext({
+    eventId: event.id,
+    wakeId: event.wakeId,
+    sentinelId: event.sentinelId,
+    controlRevision: event.controlRevision,
+    scheduledFor: event.scheduledFor,
+  });
+  assert.match(context, /wakeId=22222222-2222-4222-8222-222222222222/);
+  assert.match(context, /sentinelId=33333333-3333-4333-8333-333333333333/);
+  assert.match(context, /scheduledFor=2026-08-30T00:00:00\.000Z/);
+  assert.doesNotMatch(context, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake/i);
+  assert.doesNotMatch(context, /claim this wake first|call\s+\w+|finalize with/i);
 });
