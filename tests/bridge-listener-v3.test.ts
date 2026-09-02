@@ -60,9 +60,7 @@ test("Bridge resource v3 carries neutral Sentinel routing metadata", () => {
     assert.match(html, new RegExp(field));
   }
   assert.doesNotMatch(html, /policyPrompt|wakeContextCapsule/);
-  assert.match(html, /bridge_event_claim/);
-  assert.match(html, /sentinel_get_state/);
-  assert.match(html, /complete_sentinel_wake/);
+  assert.doesNotMatch(html, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake/i);
 });
 
 test("Bridge v3 keeps ordinary routing metadata factual", () => {

@@ -54,9 +54,9 @@ export function composeBridgeDispatchContext(
   },
 ): string {
   if (event.kind === "wake" && event.source === "leileios_sentinel" && event.wakeMetadata) {
-    return `${event.modelContext}\n\nEvent ID: ${event.id}. Claim this Sentinel wake first with bridge_event_claim(eventId), then read fresh state with sentinel_get_state(wakeId). After deciding contact or quiet, finalize exactly once with complete_sentinel_wake using the wake id, decision, next wake, and normalized capsule; a successful quiet decision emits only 醒了一下，没事。`;
+    return `LeileiOS Sentinel event metadata: eventId=${event.id}; wakeId=${event.wakeMetadata.wakeId}; sentinelId=${event.wakeMetadata.sentinelId}; controlRevision=${event.wakeMetadata.controlRevision}; scheduledFor=${event.wakeMetadata.scheduledFor}.`;
   }
-  return `${event.modelContext}\n\nEvent ID: ${event.id}. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.`;
+  return `${event.modelContext}\n\nLeileiOS Bridge event metadata: eventId=${event.id}.`;
 }
 
 export function createBridgeListenerHtml(
@@ -203,12 +203,10 @@ export function createBridgeListenerHtml(
   };
   const modelContextFor = (event) => {
     const wake = sentinelWakeMetadata(event);
-    return wake ? (event.modelContext || '') + '\\n\\nEvent ID: ' + event.id + '. Claim this Sentinel wake first with bridge_event_claim(eventId), then read fresh state with sentinel_get_state(wakeId). After deciding contact or quiet, finalize with complete_sentinel_wake using the normalized capsule.' : (event.modelContext || '') + '\\n\\nEvent ID: ' + event.id + '. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final assistant response.';
+    return wake ? 'LeileiOS Sentinel event metadata: eventId=' + event.id + '; wakeId=' + wake.wakeId + '; sentinelId=' + wake.sentinelId + '; controlRevision=' + wake.controlRevision + '; scheduledFor=' + wake.scheduledFor + '.' : (event.modelContext || '') + '\\n\\nLeileiOS Bridge event metadata: eventId=' + event.id + '.';
   };
   const messageTextFor = (event) => {
-    const wake = sentinelWakeMetadata(event);
-    if (!wake) return '@LeileiOS ' + event.visibleText + '\\n\\nBridge routing for this turn only: eventId=' + event.id + '. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final response.';
-    return '@LeileiOS ' + event.visibleText + '\\n\\nSentinel routing for this turn only: eventId=' + wake.eventId + '; wakeId=' + wake.wakeId + '. Claim this wake first, then read its fresh state.';
+    return '@LeileiOS ' + event.visibleText;
   };
   const sync = async (source = 'auto') => {
     recordDiag('sync enter source=' + source + ' running=' + running + ' syncing=' + syncing);
