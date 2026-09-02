@@ -423,6 +423,6 @@ export function createBridgeModelContext(input: {
   return [
     `LeileiOS Bridge event ${input.eventId}.`,
     `Source: ${input.source}; kind: ${input.kind}; created at ${input.createdAt.toISOString()}.`,
-    `Route the visible user message through ${BRIDGE_VISIBLE_ROUTE_HINT}.`,
+    `Visible route hint: ${BRIDGE_VISIBLE_ROUTE_HINT}.`,
   ].join(" ");
 }
