@@ -53,6 +53,27 @@ cover:
   using fresh-read and readback verification. Destructive Notion delete/archive
   operations are not exposed.
 
+### GPT Thinking Block
+
+The public MCP surface also provides `render_thinking_block`, which renders
+model-written external working text in a LeileiOS MCP Apps card before the
+model continues its normal answer. The card is not native hidden chain of
+thought (CoT): it only displays the text explicitly supplied in the tool's
+`thinking` argument. Thinking blocks are not persisted by default and do not
+become long-term memory or authoritative facts.
+
+Use it selectively for a difficult question, choosing `style`, `effort`, and
+`skin` for the current turn; it is not an every-turn requirement:
+
+> 遇到不简单的问题时，在正式回答前先调用 render_thinking_block；根据本轮内容选择合适的 style、effort 和 skin，工具返回后再继续回答。
+
+After deployment, refresh or reconnect the existing LeileiOS connector so it
+can discover the new tool. This integration is based on and includes adapted
+MCP Apps card behavior from
+[`sibylsea-hub/gpt-thinking-block-mcp`](https://github.com/sibylsea-hub/gpt-thinking-block-mcp),
+used with MIT attribution. It continues to use LeileiOS's existing endpoint,
+authentication, transport, and deployment service.
+
 MCP and Web clients never select a database user ID. Authenticated ownership is
 resolved server-side, and Notion credentials remain in server environment
 configuration only.
