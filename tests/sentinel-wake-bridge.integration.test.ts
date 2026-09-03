@@ -265,12 +265,21 @@ test(
           assert.equal(claimed.wake.claimedAt instanceof Date, true);
           assert.equal(claimed.bridge.modelClaimedAt instanceof Date, true);
           assert.equal(claimed.wake.claimedAt?.getTime(), claimed.bridge.modelClaimedAt?.getTime());
+          assert.equal(claimed.state.wakeId, wakeId);
+          assert.equal(claimed.state.sentinelId, sentinel.id);
+          assert.equal(claimed.state.policyPrompt, "");
+          assert.equal(claimed.state.contextCapsule, null);
+          assert.equal(claimed.state.scheduledFor instanceof Date, true);
+          assert.equal(claimed.state.currentTime instanceof Date, true);
+          assert.deepEqual(claimed.state.limits, { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 });
 
           const repeated = await sentinelRepository.claimCurrentWake(owner);
           assert.equal(repeated.outcome, "idempotent");
           if (repeated.outcome !== "idempotent") throw new Error("Expected repeated current wake claim to be idempotent.");
           assert.equal(repeated.wake.id, wakeId);
           assert.equal(repeated.wake.claimedAt?.getTime(), claimed.wake.claimedAt?.getTime());
+          assert.equal(repeated.state.wakeId, wakeId);
+          assert.equal(repeated.state.currentTime instanceof Date, true);
 
           throw new RollbackWakeTest();
         }),

@@ -103,6 +103,26 @@ const bridgeEventSelection = {
   lastErrorCode: bridgeEvents.lastErrorCode,
 };
 
+function wakeStateFromRecords(
+  sentinel: SentinelRecord,
+  wake: SentinelWakeRunRecord,
+  currentTime: Date,
+): SentinelWakeState {
+  return {
+    wakeId: wake.id,
+    sentinelId: sentinel.id,
+    controlRevision: sentinel.controlRevision,
+    scheduledFor: wake.scheduledFor,
+    policyPrompt: sentinel.policyPrompt,
+    contextCapsule: sentinel.wakeContextCapsule,
+    nextWakeAt: sentinel.nextWakeAt,
+    lastValidWakeAt: sentinel.lastValidWakeAt,
+    currentTime,
+    timezone: sentinel.timezone,
+    limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
+  };
+}
+
 export type SentinelCreateInput = {
   userId: string;
   timezone: string;
@@ -792,19 +812,7 @@ export class DrizzleSentinelRepository implements SentinelRepository {
       ) {
         return null;
       }
-      return {
-        wakeId: wake.id,
-        sentinelId: sentinel.id,
-        controlRevision: sentinel.controlRevision,
-        scheduledFor: wake.scheduledFor,
-        policyPrompt: sentinel.policyPrompt,
-        contextCapsule: sentinel.wakeContextCapsule,
-        nextWakeAt: sentinel.nextWakeAt,
-        lastValidWakeAt: sentinel.lastValidWakeAt,
-        currentTime,
-        timezone: sentinel.timezone,
-        limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
-      } satisfies SentinelWakeState;
+      return wakeStateFromRecords(sentinel, wake, currentTime);
     });
   }
 
@@ -878,7 +886,14 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         bridge.processingState === "claimed" &&
         bridge.modelClaimedAt !== null
       ) {
-        return { outcome: "idempotent", wake, sentinel, bridge: asBridgeEvent(bridge) };
+        const currentTime = await readSentinelDatabaseNow(transaction);
+        return {
+          outcome: "idempotent",
+          wake,
+          sentinel,
+          bridge: asBridgeEvent(bridge),
+          state: wakeStateFromRecords(sentinel, wake, currentTime),
+        };
       }
 
       const eligible =
@@ -942,11 +957,13 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         .where(eq(sentinels.id, sentinel.id))
         .limit(1);
       if (!updatedSentinel) throw new Error("Sentinel claim lost its owner.");
+      const currentTime = await readSentinelDatabaseNow(transaction);
       return {
         outcome: "applied",
         wake: claimedWake,
         sentinel: updatedSentinel,
         bridge: asBridgeEvent(claimedBridge),
+        state: wakeStateFromRecords(updatedSentinel, claimedWake, currentTime),
       };
     });
   }

@@ -83,6 +83,9 @@ test("Sentinel tools expose strict read/finalize contracts and derive owner from
   const claimTool = tools.tools.find((tool) => tool.name === "sentinel_claim_current_wake");
   assert.equal(claimTool?.inputSchema.type, "object");
   assert.deepEqual(claimTool?.inputSchema.properties, {});
+  const claimOutputProperties = (claimTool?.outputSchema.properties ?? {}) as Record<string, unknown>;
+  const claimDataProperties = ((claimOutputProperties.data as { properties?: Record<string, unknown> } | undefined)?.properties ?? {});
+  assert.ok(claimDataProperties.state, "claim output must expose fresh wake state");
 
   const state = await fixture.client.callTool({ name: "sentinel_get_state", arguments: { wakeId: WAKE_ID } });
   assert.equal(state.isError, undefined);

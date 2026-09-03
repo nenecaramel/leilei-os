@@ -132,5 +132,7 @@ export type SentinelCurrentWakeClaimResult =
       wake: SentinelWakeRunRecord;
       sentinel: SentinelRecord;
       bridge: import("../bridge/bridge-event-types.js").BridgeEventRecord;
+      /** Fresh judgment state read from the same transaction as the claim. */
+      state: SentinelWakeState;
     }
   | { outcome: "conflict" | "no_active_wake" };

@@ -10,21 +10,22 @@ import type { SentinelWakeState } from "../../../domains/sentinel/sentinel-types
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 
 const wakeIdSchema = z.string().uuid();
+const wakeStateDataSchema = z.object({
+  wakeId: z.string().uuid(),
+  sentinelId: z.string().uuid(),
+  controlRevision: z.number().int().nonnegative(),
+  scheduledFor: z.string().datetime(),
+  policyPrompt: z.string(),
+  contextCapsule: z.string().nullable(),
+  nextWakeAt: z.string().datetime().nullable(),
+  lastValidWakeAt: z.string().datetime().nullable(),
+  currentTime: z.string().datetime(),
+  timezone: z.string(),
+  limits: z.object({ minNextWakeSeconds: z.number().int(), maxNextWakeSeconds: z.number().int() }).strict(),
+}).strict();
 const stateOutputSchema = z.object({
   success: z.boolean(),
-  data: z.object({
-    wakeId: z.string().uuid(),
-    sentinelId: z.string().uuid(),
-    controlRevision: z.number().int().nonnegative(),
-    scheduledFor: z.string().datetime(),
-    policyPrompt: z.string(),
-    contextCapsule: z.string().nullable(),
-    nextWakeAt: z.string().datetime().nullable(),
-    lastValidWakeAt: z.string().datetime().nullable(),
-    currentTime: z.string().datetime(),
-    timezone: z.string(),
-    limits: z.object({ minNextWakeSeconds: z.number().int(), maxNextWakeSeconds: z.number().int() }).strict(),
-  }).strict().optional(),
+  data: wakeStateDataSchema.optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 const contextCapsuleSchema = z.string().refine((value) => {
@@ -63,6 +64,7 @@ const claimOutputSchema = z.object({
     sentinelId: z.string().uuid(),
     controlRevision: z.number().int().nonnegative(),
     claimedAt: z.string().datetime(),
+    state: wakeStateDataSchema,
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -140,7 +142,7 @@ export function registerSentinelTools(
 
   server.registerTool("sentinel_claim_current_wake", {
     title: "Claim the current Sentinel wake",
-    description: "Claim the authenticated owner's current active Sentinel wake using its server-owned active wake pointer. No wake identity is accepted or inferred from historical wakes; illegal or absent active state fails closed.",
+    description: "Claim the authenticated owner's current active Sentinel wake using its server-owned active wake pointer and return a fresh policy/wake state from the same transaction. No wake identity is accepted or inferred from historical wakes; illegal or absent active state fails closed.",
     inputSchema: z.object({}).strict(),
     outputSchema: claimOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -169,6 +171,7 @@ export function registerSentinelTools(
             sentinelId: result.sentinel.id,
             controlRevision: result.sentinel.controlRevision,
             claimedAt: claimedAt.toISOString(),
+            state: stateData(result.state),
           },
         },
       };
