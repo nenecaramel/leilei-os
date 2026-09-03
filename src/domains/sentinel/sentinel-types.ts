@@ -123,5 +123,16 @@ export type SentinelWakeCompletionResult =
       wake: SentinelWakeRunRecord;
       sentinel: SentinelRecord;
       bridge: import("../bridge/bridge-event-types.js").BridgeEventRecord;
-    }
+  }
   | { outcome: "conflict" | "not_found" };
+
+export type SentinelCurrentWakeClaimResult =
+  | {
+      outcome: "applied" | "idempotent";
+      wake: SentinelWakeRunRecord;
+      sentinel: SentinelRecord;
+      bridge: import("../bridge/bridge-event-types.js").BridgeEventRecord;
+      /** Fresh judgment state read from the same transaction as the claim. */
+      state: SentinelWakeState;
+    }
+  | { outcome: "conflict" | "no_active_wake" };
