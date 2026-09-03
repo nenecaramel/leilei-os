@@ -221,6 +221,41 @@ test("owner-safe reads do not reveal another owner's Sentinel", async () => {
   assert.equal(await service.findSentinel("user-2"), null);
 });
 
+test("claimCurrentWake delegates only the authenticated owner and fails closed", async () => {
+  const calls: string[] = [];
+  const repository = {
+    claimCurrentWake: async (userId: string) => {
+      calls.push(userId);
+      return {
+        outcome: "applied",
+        wake: { id: "wake-1", claimedAt: new Date("2026-08-29T01:00:00.000Z") },
+        sentinel: { id: "sentinel-1", controlRevision: 4 },
+        bridge: { id: "event-1" },
+      } as never;
+    },
+  } as SentinelRepository;
+  const service = new SentinelService(repository);
+  const claimed = await service.claimCurrentWake(" user-1 ");
+  assert.equal(claimed.outcome, "applied");
+  assert.deepEqual(calls, ["user-1"]);
+
+  const noActiveRepository = {
+    claimCurrentWake: async () => ({ outcome: "no_active_wake" }),
+  } as SentinelRepository;
+  await assert.rejects(
+    new SentinelService(noActiveRepository).claimCurrentWake("user-1"),
+    (error: unknown) => error instanceof SentinelDomainError && error.code === "NO_ACTIVE_WAKE",
+  );
+
+  const conflictRepository = {
+    claimCurrentWake: async () => ({ outcome: "conflict" }),
+  } as SentinelRepository;
+  await assert.rejects(
+    new SentinelService(conflictRepository).claimCurrentWake("user-1"),
+    (error: unknown) => error instanceof SentinelDomainError && error.code === "SENTINEL_WAKE_CONFLICT",
+  );
+});
+
 test("status projection follows paused, recovery, processing, waiting, sleeping, waking priority", () => {
   const now = new Date("2026-08-29T00:00:00.000Z");
   const base = {

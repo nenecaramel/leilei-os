@@ -54,9 +54,21 @@ const completeOutputSchema = z.object({
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
+const claimOutputSchema = z.object({
+  success: z.boolean(),
+  data: z.object({
+    outcome: z.enum(["applied", "idempotent"]),
+    wakeId: z.string().uuid(),
+    eventId: z.string().uuid(),
+    sentinelId: z.string().uuid(),
+    controlRevision: z.number().int().nonnegative(),
+    claimedAt: z.string().datetime(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
 
 export type SentinelMcpToolDependencies = {
-  sentinelService: Pick<SentinelService, "getWakeState" | "completeWake">;
+  sentinelService: Pick<SentinelService, "getWakeState" | "completeWake" | "claimCurrentWake">;
   getAuthenticatedUserId: () => string;
   requireActiveUser?: () => Promise<string>;
 };
@@ -77,6 +89,8 @@ function safeSentinelError(error: unknown) {
   if (error instanceof SentinelDomainError) {
     const message = error.code === "SENTINEL_WAKE_NOT_FOUND"
       ? "Sentinel wake was not found."
+      : error.code === "NO_ACTIVE_WAKE"
+        ? "No active Sentinel wake is available."
       : error.code === "SENTINEL_WAKE_CONFLICT"
         ? "Sentinel wake is no longer eligible."
         : error.message;
@@ -118,6 +132,45 @@ export function registerSentinelTools(
       return {
         content: [{ type: "text" as const, text: "Sentinel wake state retrieved." }],
         structuredContent: { success: true as const, data: stateData(state) },
+      };
+    } catch (error) {
+      return safeSentinelError(error);
+    }
+  });
+
+  server.registerTool("sentinel_claim_current_wake", {
+    title: "Claim the current Sentinel wake",
+    description: "Claim the authenticated owner's current active Sentinel wake using its server-owned active wake pointer. No wake identity is accepted or inferred from historical wakes; illegal or absent active state fails closed.",
+    inputSchema: z.object({}).strict(),
+    outputSchema: claimOutputSchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async () => {
+    try {
+      const userId = await authenticatedOwner(dependencies);
+      const result = await dependencies.sentinelService.claimCurrentWake(userId);
+      if (!("wake" in result)) {
+        throw new SentinelDomainError(
+          result.outcome === "no_active_wake" ? "NO_ACTIVE_WAKE" : "SENTINEL_WAKE_CONFLICT",
+          result.outcome === "no_active_wake" ? "No active Sentinel wake is available." : "Sentinel wake is no longer eligible.",
+        );
+      }
+      const claimedAt = result.wake.claimedAt;
+      if (!(claimedAt instanceof Date) || !Number.isFinite(claimedAt.getTime())) {
+        throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "Sentinel wake claim did not return a valid timestamp.");
+      }
+      return {
+        content: [{ type: "text" as const, text: result.outcome === "idempotent" ? "Sentinel wake was already claimed." : "Sentinel wake claimed." }],
+        structuredContent: {
+          success: true as const,
+          data: {
+            outcome: result.outcome,
+            wakeId: result.wake.id,
+            eventId: result.bridge.id,
+            sentinelId: result.sentinel.id,
+            controlRevision: result.sentinel.controlRevision,
+            claimedAt: claimedAt.toISOString(),
+          },
+        },
       };
     } catch (error) {
       return safeSentinelError(error);

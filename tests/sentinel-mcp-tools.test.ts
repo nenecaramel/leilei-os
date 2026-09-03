@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerSentinelTools } from "../src/mcp/tools/sentinel/register.js";
+import { SentinelDomainError } from "../src/domains/sentinel/sentinel-service.js";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const WAKE_ID = "22222222-2222-4222-8222-222222222222";
@@ -117,7 +118,7 @@ test("Sentinel finalizer rejects malformed and conflicting states through safe e
       sentinelService: {
         getWakeState: async () => { throw Object.assign(new Error("private"), { code: "SENTINEL_WAKE_CONFLICT" }); },
         completeWake: async () => { throw Object.assign(new Error("private"), { code: "SENTINEL_WAKE_CONFLICT" }); },
-        claimCurrentWake: async () => { throw Object.assign(new Error("private"), { code: "NO_ACTIVE_WAKE" }); },
+        claimCurrentWake: async () => { throw new SentinelDomainError("NO_ACTIVE_WAKE", "private"); },
       },
       getAuthenticatedUserId: () => USER_ID,
       requireActiveUser: async () => USER_ID,
@@ -151,7 +152,7 @@ test("sentinel_claim_current_wake rejects explicit identity and illegal wake sta
         completeWake: async () => { throw new Error("unused"); },
         claimCurrentWake: async () => {
           calls += 1;
-          throw Object.assign(new Error("private"), { code: "SENTINEL_WAKE_CONFLICT" });
+          throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "private");
         },
       },
       getAuthenticatedUserId: () => USER_ID,

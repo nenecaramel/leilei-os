@@ -8,6 +8,7 @@ import type {
   SentinelWakeState,
   SentinelControlResult,
   SentinelWakeActivity,
+  SentinelCurrentWakeClaimResult,
 } from "./sentinel-types.js";
 import type { SentinelRepository } from "./sentinel-repository.js";
 
@@ -23,6 +24,7 @@ export type {
   SentinelWakeState,
   SentinelControlResult,
   SentinelWakeActivity,
+  SentinelCurrentWakeClaimResult,
 } from "./sentinel-types.js";
 
 const MIN_NEXT_WAKE_MS = 5 * 60 * 1_000;
@@ -59,6 +61,7 @@ export type SentinelDomainErrorCode =
   | "INVALID_CONTROL_REVISION"
   | "INVALID_WAKE_ID"
   | "SENTINEL_NOT_FOUND"
+  | "NO_ACTIVE_WAKE"
   | "SENTINEL_WAKE_NOT_FOUND"
   | "SENTINEL_WAKE_CONFLICT";
 
@@ -377,6 +380,22 @@ export class SentinelService {
       throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "Sentinel wake is no longer active.");
     }
     return state;
+  }
+
+  async claimCurrentWake(userId: string): Promise<SentinelCurrentWakeClaimResult> {
+    const normalizedUserId = normalizeUserId(userId);
+    const claimCurrentWake = this.repository.claimCurrentWake;
+    if (!claimCurrentWake) {
+      throw new SentinelDomainError("SENTINEL_NOT_FOUND", "Sentinel wake claim is unavailable.");
+    }
+    const result = await claimCurrentWake.call(this.repository, normalizedUserId);
+    if (result.outcome === "no_active_wake") {
+      throw new SentinelDomainError("NO_ACTIVE_WAKE", "No active Sentinel wake is available.");
+    }
+    if (result.outcome === "conflict") {
+      throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "Sentinel wake is no longer eligible.");
+    }
+    return result;
   }
 
   async completeWake(userId: string, input: {

@@ -24,6 +24,7 @@ import type {
   SentinelWakeState,
   SentinelControlResult,
   SentinelWakeActivity,
+  SentinelCurrentWakeClaimResult,
 } from "./sentinel-types.js";
 import type { BridgeEventRecord } from "../bridge/bridge-event-types.js";
 
@@ -144,6 +145,7 @@ export interface SentinelRepository {
   createDueWake?(now: Date | undefined, wakeId: string): Promise<SentinelWakeEnqueueResult>;
   markStaleWakeRuns?(now: Date | undefined, timeoutMs: number): Promise<number>;
   readWakeState?(userId: string, wakeId: string): Promise<SentinelWakeState | null>;
+  claimCurrentWake?(userId: string): Promise<SentinelCurrentWakeClaimResult>;
   completeWake?(input: SentinelWakeCompletionInput): Promise<SentinelWakeCompletionResult>;
   pause?(userId: string): Promise<SentinelControlResult>;
   resume?(userId: string, nextWakeAt: Date): Promise<SentinelControlResult>;
@@ -803,6 +805,130 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         timezone: sentinel.timezone,
         limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
       } satisfies SentinelWakeState;
+    });
+  }
+
+  async claimCurrentWake(userId: string): Promise<SentinelCurrentWakeClaimResult> {
+    return this.db.transaction(async (transaction) => {
+      // The Sentinel row is the authoritative owner-scoped pointer. Never
+      // infer a wake by ordering over historical Wake Runs.
+      const [sentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(eq(sentinels.userId, userId))
+        .for("update")
+        .limit(1);
+      if (!sentinel || sentinel.activeWakeRunId === null) {
+        return { outcome: "no_active_wake" };
+      }
+      if (!sentinel.enabled) return { outcome: "conflict" };
+
+      const [wake] = await transaction
+        .select(wakeRunSelection)
+        .from(sentinelWakeRuns)
+        .where(and(
+          eq(sentinelWakeRuns.id, sentinel.activeWakeRunId),
+          eq(sentinelWakeRuns.sentinelId, sentinel.id),
+          eq(sentinelWakeRuns.userId, userId),
+        ))
+        .for("update")
+        .limit(1);
+      if (!wake || wake.controlRevision !== sentinel.controlRevision) {
+        return { outcome: "conflict" };
+      }
+
+      const [bridge] = await transaction
+        .select(bridgeEventSelection)
+        .from(bridgeEvents)
+        .where(and(
+          eq(bridgeEvents.id, wake.bridgeEventId),
+          eq(bridgeEvents.userId, userId),
+        ))
+        .for("update")
+        .limit(1);
+      if (
+        !bridge ||
+        bridge.kind !== "wake" ||
+        bridge.source !== "leileios_sentinel"
+      ) {
+        return { outcome: "conflict" };
+      }
+
+      if (
+        wake.state === "claimed" &&
+        bridge.processingState === "claimed" &&
+        bridge.modelClaimedAt !== null
+      ) {
+        return { outcome: "idempotent", wake, sentinel, bridge: asBridgeEvent(bridge) };
+      }
+
+      const eligible =
+        wake.state === "bridge_enqueued" &&
+        bridge.processingState === "unclaimed" &&
+        (
+          bridge.status === "host_sent" ||
+          bridge.status === "delivery_unknown" ||
+          (bridge.status === "reserved" && bridge.dispatchStartedAt !== null)
+        );
+      if (!eligible) return { outcome: "conflict" };
+
+      const [claimedBridge] = await transaction
+        .update(bridgeEvents)
+        .set({
+          processingState: "claimed",
+          modelClaimedAt: sql`COALESCE(${bridgeEvents.modelClaimedAt}, now())`,
+          deliveryReconciledAt: sql`CASE
+            WHEN ${bridgeEvents.status} = 'delivery_unknown'
+              THEN COALESCE(${bridgeEvents.deliveryReconciledAt}, now())
+            ELSE ${bridgeEvents.deliveryReconciledAt}
+          END`,
+        })
+        .where(and(
+          eq(bridgeEvents.id, bridge.id),
+          eq(bridgeEvents.userId, userId),
+          eq(bridgeEvents.processingState, "unclaimed"),
+        ))
+        .returning(bridgeEventSelection);
+      if (!claimedBridge || claimedBridge.modelClaimedAt === null) {
+        return { outcome: "conflict" };
+      }
+
+      const [claimedWake] = await transaction
+        .update(sentinelWakeRuns)
+        .set({
+          state: "claimed",
+          // Bridge and Wake claim timestamps come from the same SQL value.
+          claimedAt: sql`(
+            SELECT model_claimed_at
+            FROM bridge_events
+            WHERE id = ${bridge.id}
+          )`,
+          updatedAt: sql`now()`,
+        })
+        .where(and(
+          eq(sentinelWakeRuns.id, wake.id),
+          eq(sentinelWakeRuns.sentinelId, sentinel.id),
+          eq(sentinelWakeRuns.userId, userId),
+          eq(sentinelWakeRuns.state, "bridge_enqueued"),
+          eq(sentinelWakeRuns.controlRevision, sentinel.controlRevision),
+        ))
+        .returning(wakeRunSelection);
+      if (!claimedWake) {
+        throw new Error("Sentinel Wake claim lost its active state.");
+      }
+
+      const [updatedSentinel] = await transaction
+        .select(sentinelSelection)
+        .from(sentinels)
+        .where(eq(sentinels.id, sentinel.id))
+        .limit(1);
+      if (!updatedSentinel) throw new Error("Sentinel claim lost its owner.");
+      return {
+        outcome: "applied",
+        wake: claimedWake,
+        sentinel: updatedSentinel,
+        bridge: asBridgeEvent(claimedBridge),
+      };
     });
   }
 

@@ -216,6 +216,73 @@ test(
 );
 
 test(
+  "current Sentinel wake claim uses the owner pointer and is idempotent",
+  { skip: RUN ? false : "SKIP: set RUN_BRIDGE_DATABASE_TEST=1 with a local DATABASE_URL" },
+  async () => {
+    const admin = connection();
+    const owner = randomUUID();
+    const wakeId = randomUUID();
+    const now = new Date("2026-08-29T03:00:00.000Z");
+    try {
+      await assert.rejects(
+        admin.db.transaction(async (transaction) => {
+          await transaction.insert(schema.users).values({
+            id: owner,
+            email: `current-wake-${owner}@example.invalid`,
+            displayName: "Current wake claim",
+            status: "active",
+            createdAt: now,
+            updatedAt: now,
+          });
+          const sentinelRepository = new DrizzleSentinelRepository(transaction as never);
+          const sentinel = await sentinelRepository.createSentinel({
+            userId: owner,
+            timezone: "UTC",
+            policyPrompt: "",
+          });
+          await transaction
+            .update(schema.sentinels)
+            .set({ enabled: true })
+            .where(eq(schema.sentinels.id, sentinel.id));
+
+          const queued = await new SentinelService(sentinelRepository).enqueueWake(owner, {
+            cause: "wake_now",
+            scheduledFor: now,
+            wakeId,
+          });
+          assert.equal(queued.outcome, "created");
+          await transaction
+            .update(schema.bridgeEvents)
+            .set({ status: "host_sent", hostSentAt: now })
+            .where(eq(schema.bridgeEvents.id, queued.bridge.id));
+
+          const claimed = await sentinelRepository.claimCurrentWake(owner);
+          assert.equal(claimed.outcome, "applied");
+          if (claimed.outcome !== "applied") throw new Error("Expected current wake to be claimed.");
+          assert.equal(claimed.wake.id, wakeId);
+          assert.equal(claimed.bridge.id, queued.bridge.id);
+          assert.equal(claimed.sentinel.activeWakeRunId, wakeId);
+          assert.equal(claimed.wake.claimedAt instanceof Date, true);
+          assert.equal(claimed.bridge.modelClaimedAt instanceof Date, true);
+          assert.equal(claimed.wake.claimedAt?.getTime(), claimed.bridge.modelClaimedAt?.getTime());
+
+          const repeated = await sentinelRepository.claimCurrentWake(owner);
+          assert.equal(repeated.outcome, "idempotent");
+          if (repeated.outcome !== "idempotent") throw new Error("Expected repeated current wake claim to be idempotent.");
+          assert.equal(repeated.wake.id, wakeId);
+          assert.equal(repeated.wake.claimedAt?.getTime(), claimed.wake.claimedAt?.getTime());
+
+          throw new RollbackWakeTest();
+        }),
+        (error: unknown) => error instanceof RollbackWakeTest,
+      );
+    } finally {
+      await admin.client.end();
+    }
+  },
+);
+
+test(
   "a reserved Sentinel wake yields to a newly pending human event before dispatch",
   { skip: RUN ? false : "SKIP: set RUN_BRIDGE_DATABASE_TEST=1 with a local DATABASE_URL" },
   async () => {
