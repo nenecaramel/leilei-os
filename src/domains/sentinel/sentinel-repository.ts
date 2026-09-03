@@ -823,25 +823,26 @@ export class DrizzleSentinelRepository implements SentinelRepository {
       }
       if (!sentinel.enabled) return { outcome: "conflict" };
 
-      const [wake] = await transaction
-        .select(wakeRunSelection)
+      // Read the pointer target without holding its row lock so the lock order
+      // remains Sentinel -> Bridge -> Wake. Existing bridge_event_claim locks
+      // Bridge before updating the correlated Wake; this order avoids a lock
+      // cycle while still serializing all owner controls on the Sentinel row.
+      const [wakePointer] = await transaction
+        .select({ id: sentinelWakeRuns.id, bridgeEventId: sentinelWakeRuns.bridgeEventId })
         .from(sentinelWakeRuns)
         .where(and(
           eq(sentinelWakeRuns.id, sentinel.activeWakeRunId),
           eq(sentinelWakeRuns.sentinelId, sentinel.id),
           eq(sentinelWakeRuns.userId, userId),
         ))
-        .for("update")
         .limit(1);
-      if (!wake || wake.controlRevision !== sentinel.controlRevision) {
-        return { outcome: "conflict" };
-      }
+      if (!wakePointer) return { outcome: "conflict" };
 
       const [bridge] = await transaction
         .select(bridgeEventSelection)
         .from(bridgeEvents)
         .where(and(
-          eq(bridgeEvents.id, wake.bridgeEventId),
+          eq(bridgeEvents.id, wakePointer.bridgeEventId),
           eq(bridgeEvents.userId, userId),
         ))
         .for("update")
@@ -850,6 +851,24 @@ export class DrizzleSentinelRepository implements SentinelRepository {
         !bridge ||
         bridge.kind !== "wake" ||
         bridge.source !== "leileios_sentinel"
+      ) {
+        return { outcome: "conflict" };
+      }
+
+      const [wake] = await transaction
+        .select(wakeRunSelection)
+        .from(sentinelWakeRuns)
+        .where(and(
+          eq(sentinelWakeRuns.id, wakePointer.id),
+          eq(sentinelWakeRuns.sentinelId, sentinel.id),
+          eq(sentinelWakeRuns.userId, userId),
+        ))
+        .for("update")
+        .limit(1);
+      if (
+        !wake ||
+        wake.bridgeEventId !== bridge.id ||
+        wake.controlRevision !== sentinel.controlRevision
       ) {
         return { outcome: "conflict" };
       }
