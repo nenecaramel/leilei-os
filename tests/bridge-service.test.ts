@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   BridgeDomainError,
   BridgeService,
+  createBridgeModelContext,
 } from "../src/domains/bridge/bridge-service.js";
+import { composeBridgeDispatchContext } from "../src/mcp/tools/bridge-listener/listener-resource.js";
 import type { BridgeEventRepository } from "../src/domains/bridge/bridge-event-repository.js";
 import type {
   BridgeEventCreateInput,
@@ -185,6 +187,21 @@ test("uses a deterministic versioned request hash and compact safe model context
   assert.match(input?.modelContext ?? "", /2026-08-28T12:34:56.000Z/);
   assert.match(input?.modelContext ?? "", /@LeileiOS/);
   assert.doesNotMatch(input?.modelContext ?? "", /Memory|Diary|Todo|secret|hello/i);
+});
+
+test("Bridge model context uses factual route metadata", () => {
+  const modelContext = createBridgeModelContext({
+    eventId: EVENT_ID,
+    createdAt: NOW,
+    kind: "chat",
+    source: "leileios_pwa",
+  });
+
+  assert.match(modelContext, /Visible route hint:/);
+  assert.doesNotMatch(modelContext, /Route the visible user message through/i);
+
+  const composed = composeBridgeDispatchContext({ id: EVENT_ID, modelContext });
+  assert.doesNotMatch(composed, /Route the visible user message through/i);
 });
 
 test("returns replayed events and maps idempotency conflicts to a stable safe code", async () => {

@@ -207,7 +207,8 @@ test("listener sends a user-role message and releases definite ui/message reject
     assert.ok(message);
     const content = (message.params as { content: Array<Record<string, unknown>> }).content[0]!;
     assert.equal(content.type, "text");
-    assert.equal(content.text, "@LeileiOS hello\n\nBridge routing for this turn only: eventId=00000000-0000-4000-8000-000000000001. Call bridge_event_claim(eventId) before handling this event; call bridge_event_complete(eventId) after requested processing/tool work and before the final response.");
+    assert.equal(content.text, "@LeileiOS hello");
+    assert.doesNotMatch(String(content.text), /eventId|wakeId|bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake/i);
     assert.equal((message.params as { role?: string }).role, "user");
 
     response(dom, calls, calls.indexOf(message), { isError: true });
@@ -245,8 +246,13 @@ test("each consecutive Sentinel synthetic message carries its own routing identi
 
     const message = calls.findLast((call) => call.method === "ui/message")!;
     const text = ((message.params as { content: Array<{ text: string }> }).content[0]?.text) ?? "";
-    assert.match(text, new RegExp(event.id));
-    assert.match(text, new RegExp(event.modelContext.match(/wakeId=([^;]+)/)?.[1] ?? ""));
+    assert.equal(text, `@LeileiOS ${event.visibleText}`);
+    assert.doesNotMatch(text, /eventId|wakeId|bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake/i);
+
+    const contextText = ((context.params as { content: Array<{ text: string }> }).content[0]?.text) ?? "";
+    assert.match(contextText, new RegExp(`eventId=${event.id}`));
+    assert.match(contextText, /wakeId=[^;]+/);
+    assert.doesNotMatch(contextText, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake|claim this wake first|call\s+\w+/i);
 
     response(dom, calls, calls.indexOf(message), { isError: false });
     await tick();
@@ -293,11 +299,13 @@ test("each consecutive ordinary synthetic message carries only its own routing i
 
     const message = calls.findLast((call) => call.method === "ui/message")!;
     const text = ((message.params as { content: Array<{ text: string }> }).content[0]?.text) ?? "";
-    assert.match(text, new RegExp(event.id));
-    assert.doesNotMatch(text, new RegExp(otherEventId));
-    assert.match(text, /bridge_event_claim\(eventId\).*before handling/i);
-    assert.match(text, /bridge_event_complete\(eventId\).*before the final response/i);
-    assert.match(text, new RegExp(`^@LeileiOS ${event.visibleText}`));
+    assert.equal(text, `@LeileiOS ${event.visibleText}`);
+    assert.doesNotMatch(text, /eventId|wakeId|bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake/i);
+
+    const contextText = ((context.params as { content: Array<{ text: string }> }).content[0]?.text) ?? "";
+    assert.match(contextText, new RegExp(`eventId=${event.id}`));
+    assert.doesNotMatch(contextText, new RegExp(otherEventId));
+    assert.doesNotMatch(contextText, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake|call\s+\w+/i);
 
     response(dom, calls, calls.indexOf(message), { isError: false });
     await tick();
@@ -417,7 +425,7 @@ test("listener acknowledges only a successful ui/message outcome", async () => {
   }
 });
 
-test("listener composes v2 claim and completion instructions without rewriting persisted context", async () => {
+test("listener composes neutral routing metadata without rewriting persisted context", async () => {
   const calls: BridgeCall[] = [];
   const dom = createDom(calls);
   try {
@@ -432,13 +440,13 @@ test("listener composes v2 claim and completion instructions without rewriting p
     assert.ok(contextCall);
     const text = ((contextCall.params as { content: Array<{ text: string }> }).content[0]?.text) ?? "";
     assert.match(text, /route hint/);
-    assert.match(text, /Event ID: 00000000-0000-4000-8000-000000000001/);
-    assert.match(text, /bridge_event_claim\(eventId\)/);
-    assert.match(text, /bridge_event_complete\(eventId\)/);
+    assert.match(text, /LeileiOS Bridge event metadata: eventId=00000000-0000-4000-8000-000000000001/);
+    assert.doesNotMatch(text, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake|call\s+\w+/i);
     assert.doesNotMatch(text, /hello/);
     const persisted = eventRecord.modelContext;
     const composed = composeBridgeDispatchContext(eventRecord);
-    assert.match(composed, /bridge_event_claim\(eventId\)/);
+    assert.match(composed, /LeileiOS Bridge event metadata: eventId=00000000-0000-4000-8000-000000000001/);
+    assert.doesNotMatch(composed, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake|call\s+\w+/i);
     assert.equal(eventRecord.modelContext, persisted);
   } finally {
     dom.window.close();

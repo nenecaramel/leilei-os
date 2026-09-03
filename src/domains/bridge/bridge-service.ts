@@ -410,8 +410,7 @@ export function createSentinelWakeModelContext(input: {
   return [
     `LeileiOS Sentinel wake event ${input.eventId}.`,
     `wakeId=${input.wakeId}; sentinelId=${input.sentinelId}; controlRevision=${input.controlRevision}; scheduledFor=${input.scheduledFor.toISOString()}.`,
-    "Claim this wake first, then read fresh Sentinel state.",
-    "A quiet decision is valid; a successful completion must choose the next wake.",
+    "Sentinel wake metadata is provided for correlation.",
   ].join(" ");
 }
 
@@ -424,6 +423,6 @@ export function createBridgeModelContext(input: {
   return [
     `LeileiOS Bridge event ${input.eventId}.`,
     `Source: ${input.source}; kind: ${input.kind}; created at ${input.createdAt.toISOString()}.`,
-    `Route the visible user message through ${BRIDGE_VISIBLE_ROUTE_HINT}.`,
+    `Visible route hint: ${BRIDGE_VISIBLE_ROUTE_HINT}.`,
   ].join(" ");
 }
