@@ -22,24 +22,25 @@ async function connected(dependencies: Record<string, unknown>) {
 test("Sentinel tools expose strict read/finalize contracts and derive owner from session", async (t) => {
   const calls: string[] = [];
   const eventId = "44444444-4444-4444-8444-444444444444";
+  const wakeState = {
+    wakeId: WAKE_ID,
+    sentinelId: "33333333-3333-4333-8333-333333333333",
+    controlRevision: 2,
+    scheduledFor: new Date("2026-08-30T00:00:00.000Z"),
+    policyPrompt: "Use the current context.",
+    contextCapsule: "fresh capsule",
+    nextWakeAt: new Date("2026-08-30T01:00:00.000Z"),
+    lastValidWakeAt: new Date("2026-08-29T23:00:00.000Z"),
+    currentTime: new Date("2026-08-30T00:00:00.000Z"),
+    timezone: "Asia/Shanghai",
+    limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
+  };
   const fixture = await connected({
     sentinelTools: {
       sentinelService: {
         getWakeState: async (userId: string, wakeId: string) => {
           calls.push(`${userId}:${wakeId}`);
-          return {
-            wakeId,
-            sentinelId: "33333333-3333-4333-8333-333333333333",
-            controlRevision: 2,
-            scheduledFor: new Date("2026-08-30T00:00:00.000Z"),
-            policyPrompt: "",
-            contextCapsule: null,
-            nextWakeAt: null,
-            lastValidWakeAt: null,
-            currentTime: new Date("2026-08-30T00:00:00.000Z"),
-            timezone: "Asia/Shanghai",
-            limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
-          };
+          return { ...wakeState, wakeId };
         },
         completeWake: async () => ({
           outcome: "applied",
@@ -62,6 +63,7 @@ test("Sentinel tools expose strict read/finalize contracts and derive owner from
               controlRevision: 2,
             },
             bridge: { id: eventId },
+            state: wakeState,
           };
         },
       },
@@ -96,8 +98,22 @@ test("Sentinel tools expose strict read/finalize contracts and derive owner from
     sentinelId: "33333333-3333-4333-8333-333333333333",
     controlRevision: 2,
     claimedAt: "2026-08-30T00:00:02.000Z",
+    state: {
+      wakeId: WAKE_ID,
+      sentinelId: "33333333-3333-4333-8333-333333333333",
+      controlRevision: 2,
+      scheduledFor: "2026-08-30T00:00:00.000Z",
+      policyPrompt: "Use the current context.",
+      contextCapsule: "fresh capsule",
+      nextWakeAt: "2026-08-30T01:00:00.000Z",
+      lastValidWakeAt: "2026-08-29T23:00:00.000Z",
+      currentTime: "2026-08-30T00:00:00.000Z",
+      timezone: "Asia/Shanghai",
+      limits: { minNextWakeSeconds: 300, maxNextWakeSeconds: 604800 },
+    },
   });
   assert.equal(calls[1], `claim:${USER_ID}`);
+  assert.equal(calls.length, 2, "claim must not perform a second state read");
 
   const completion = await fixture.client.callTool({
     name: "complete_sentinel_wake",
