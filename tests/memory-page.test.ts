@@ -1268,10 +1268,15 @@ test("Memory list search becomes a refresh-safe returnTo before detail editing",
 
 test("Memory in-page return restores the searched URL and saved scroll after list load", async () => {
   const returnTo = "/memory?q=goal";
+  const list = deferred<unknown>();
+  const requests: Request[] = [];
   const api: WebApiClient = {
-    async request<T>(path: string) {
-      if (path === "/memory/memory-1") return { success: true, data: memory } as T;
-      return listResponse() as T;
+    request<T>(path: string, init?: RequestInit): Promise<T> {
+      requests.push({ path, init });
+      if (path === "/memory/memory-1") {
+        return Promise.resolve({ success: true, data: memory } as T);
+      }
+      return list.promise as Promise<T>;
     },
   };
   const page = await render(createMemoryDetailLocation("memory-1", returnTo), api);
@@ -1285,15 +1290,25 @@ test("Memory in-page return restores the searched URL and saved scroll after lis
     assert.ok(veil);
     await React.act(async () => {
       veil.click();
-      await new Promise((resolve) => page.window.setTimeout(resolve, 5));
     });
 
     assert.equal(`${page.window.location.pathname}${page.window.location.search}`, returnTo);
+    assert.equal(requests.at(-1)?.path, returnTo);
+    assert.deepEqual(scrolls, []);
     assert.equal(
       page.container.querySelector<HTMLInputElement>("input[aria-label=\"搜索记忆\"]")?.value,
       "goal",
     );
-    assert.ok(scrolls.includes(640));
+
+    await React.act(async () => {
+      list.resolve(listResponse());
+      await list.promise;
+      await new Promise<void>((resolve) => {
+        page.window.requestAnimationFrame(() => resolve());
+      });
+    });
+
+    assert.deepEqual(scrolls, [640]);
   } finally {
     await page.cleanup();
   }
