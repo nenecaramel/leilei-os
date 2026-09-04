@@ -99,3 +99,15 @@ After a successful `main` deployment:
 
 Never paste environment values or raw provider errors into Git, logs, tickets,
 or screenshots.
+
+## Optional CIMD authorization adapter
+
+This PR does not change Railway variables or deploy the adapter. If it is later
+enabled, configure `OAUTH_AS_ENABLED=true`, an Auth0 public PKCE client id,
+`OAUTH_AS_UPSTREAM_REDIRECT_URI` registered in Auth0, and the static ChatGPT
+client entry before changing discovery. The exact initial dynamic allowlist is
+`https://claude.ai/oauth/mcp-oauth-client-metadata`; an explicitly empty
+`OAUTH_CIMD_TRUSTED_CLIENT_IDS` value allows no dynamic clients. Validate the
+authorization metadata, consent screen, Auth0 callback, token exchange, and
+existing ChatGPT connector in a separate controlled deployment before changing
+production.

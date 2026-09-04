@@ -5,7 +5,12 @@ import {
   type AccessTokenVerifier,
 } from "../auth/jwt-verifier.js";
 import { createOAuthMiddleware } from "../auth/oauth-middleware.js";
-import { env, getMcpGovernanceConfig, requireOAuthConfig } from "../config/env.js";
+import {
+  env,
+  getMcpGovernanceConfig,
+  getOAuthAuthorizationServerConfig,
+  requireOAuthConfig,
+} from "../config/env.js";
 import { getWebApiConfig } from "../config/env.js";
 import {
   createDatabaseReadinessGate,
@@ -19,6 +24,10 @@ import {
 } from "../mcp/server/session-registry.js";
 import type { McpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import { createProtectedResourceMetadataHandler } from "../oauth/protected-resource-metadata.js";
+import { createClientRegistry } from "../oauth/client-registry.js";
+import { createOAuthAuthorizationServer } from "../oauth/oauth-authorization-server.js";
+import { createSecureMetadataFetcher } from "../oauth/secure-metadata-fetch.js";
+import { createAuth0CodeExchange } from "../oauth/upstream-client.js";
 import { createWebApiRouter } from "../web-api/router.js";
 import { createWebApiAuthMiddleware } from "../web-api/web-api-auth.js";
 import { createWebApiCorsMiddleware } from "../web-api/web-api-cors.js";
@@ -74,6 +83,7 @@ export function createApp(
   const logger = dependencies.logger ?? createSafeLogger({ level: env.LOG_LEVEL });
   const observeMcpLifecycle = createMcpLifecycleObserver(logger);
   const config = requireOAuthConfig(env);
+  const oauthAuthorizationServerConfig = getOAuthAuthorizationServerConfig(env);
   const mcpGovernance = getMcpGovernanceConfig(env);
   const mcpSessionRegistry = dependencies.mcpSessionRegistry ?? new McpSessionRegistry({
     idleTtlMs: mcpGovernance.idleTtlSeconds * 1_000,
@@ -145,7 +155,12 @@ export function createApp(
     });
 
   const metadataHandler =
-    createProtectedResourceMetadataHandler(config);
+    createProtectedResourceMetadataHandler(
+      config,
+      oauthAuthorizationServerConfig
+        ? { authorizationServers: [config.MCP_SERVER_URL, config.AUTH0_ISSUER] }
+        : undefined,
+    );
 
   const webApiConfig = getWebApiConfig(env);
 
@@ -207,6 +222,37 @@ export function createApp(
         "Leilei OS uses OAuth 2.1 to authorize access to its public MCP endpoint.",
       );
   });
+
+  if (oauthAuthorizationServerConfig) {
+    const metadataFetcher = createSecureMetadataFetcher({
+      timeoutMs: oauthAuthorizationServerConfig.fetchTimeoutMs,
+    });
+    const clientRegistry = createClientRegistry({
+      staticClients: oauthAuthorizationServerConfig.staticClients,
+      trustedClientMetadataUrls:
+        oauthAuthorizationServerConfig.trustedClientMetadataUrls,
+      fetchMetadata: metadataFetcher.fetch,
+    });
+    app.use(
+      createOAuthAuthorizationServer({
+        issuer: config.MCP_SERVER_URL,
+        resource: config.AUTH0_AUDIENCE,
+        audience: config.AUTH0_AUDIENCE,
+        requiredScope: config.AUTH0_REQUIRED_SCOPE,
+        upstreamAuthorizationEndpoint: new URL("authorize", config.AUTH0_ISSUER).toString(),
+        upstreamTokenEndpoint: new URL("oauth/token", config.AUTH0_ISSUER).toString(),
+        upstreamClientId: oauthAuthorizationServerConfig.upstreamClientId,
+        upstreamRedirectUri: oauthAuthorizationServerConfig.upstreamRedirectUri,
+        registry: clientRegistry,
+        verifyAccessToken,
+        allowedSubject: config.AUTH0_ALLOWED_SUBJECT,
+        exchangeUpstreamCode: createAuth0CodeExchange({
+          tokenEndpoint: new URL("oauth/token", config.AUTH0_ISSUER).toString(),
+          timeoutMs: oauthAuthorizationServerConfig.fetchTimeoutMs,
+        }),
+      }),
+    );
+  }
 
   if (webApiConfig) {
     const verifyWebAccessToken =

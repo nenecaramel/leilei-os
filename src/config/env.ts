@@ -9,6 +9,16 @@ const booleanEnv = z
   .enum(["0", "1", "false", "true"])
   .transform((value) => value === "1" || value === "true");
 
+const oauthStaticClientSchema = z.object({
+  client_id: z.string().trim().min(1),
+  client_name: z.string().min(1),
+  redirect_uris: z.array(z.string().min(1)).min(1),
+  token_endpoint_auth_method: z.string().min(1).optional(),
+  grant_types: z.array(z.string().min(1)).min(1).optional(),
+  response_types: z.array(z.string().min(1)).min(1).optional(),
+  scope: z.string().min(1).optional(),
+});
+
 const baseEnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   HOST: z.string().min(1).default("0.0.0.0"),
@@ -25,6 +35,12 @@ const baseEnvSchema = z.object({
   WEB_APP_ORIGIN: httpsUrl.optional(),
   WEB_AUTH0_AUDIENCE: httpsUrl.optional(),
   WEB_AUTH0_REQUIRED_SCOPE: z.string().trim().min(1).optional(),
+  OAUTH_AS_ENABLED: booleanEnv.optional(),
+  OAUTH_AS_UPSTREAM_CLIENT_ID: z.string().trim().min(1).optional(),
+  OAUTH_AS_UPSTREAM_REDIRECT_URI: httpsUrl.optional(),
+  OAUTH_CIMD_TRUSTED_CLIENT_IDS: z.string().optional(),
+  OAUTH_CIMD_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().max(30_000).optional(),
+  OAUTH_STATIC_CLIENTS_JSON: z.string().optional(),
   LEILEI_TOY_BRIDGE_KEY: z.string().min(32).optional(),
   LEILEI_TOY_BRIDGE_USER_ID: z.string().uuid().optional(),
   NOTION_PAT: z.string().trim().min(16).optional(),
@@ -92,6 +108,7 @@ const oauthEnvSchema = baseEnvSchema
     AUTH0_REQUIRED_SCOPE: z.string().trim().min(1),
     AUTH0_ALLOWED_SUBJECT: z.string().trim().min(1),
     BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED: z.boolean().optional(),
+    OAUTH_AS_ENABLED: z.boolean().optional(),
   })
   .superRefine((config, context) => {
     const resourceUrl = new URL("/mcp", config.MCP_SERVER_URL).toString();
@@ -116,6 +133,20 @@ export const env = baseEnvSchema.parse(process.env);
 export type RuntimeEnv = z.infer<typeof baseEnvSchema>;
 export type AppConfig = z.infer<typeof oauthEnvSchema>;
 export type WebApiConfig = z.infer<typeof webApiEnvSchema>;
+
+export type OAuthStaticClientConfig = z.infer<typeof oauthStaticClientSchema>;
+
+export type OAuthAuthorizationServerConfig = {
+  trustedClientMetadataUrls: readonly string[];
+  staticClients: readonly OAuthStaticClientConfig[];
+  fetchTimeoutMs: number;
+  upstreamClientId: string;
+  upstreamRedirectUri: string;
+};
+
+const DEFAULT_CIMD_TRUSTED_CLIENT_IDS = [
+  "https://claude.ai/oauth/mcp-oauth-client-metadata",
+] as const;
 
 export type McpGovernanceConfig = {
   idleTtlSeconds: number;
@@ -150,6 +181,50 @@ export function getMcpGovernanceConfig(
 
 export function requireOAuthConfig(environment: RuntimeEnv): AppConfig {
   return oauthEnvSchema.parse(environment);
+}
+
+export function getOAuthAuthorizationServerConfig(
+  environment: RuntimeEnv,
+): OAuthAuthorizationServerConfig | undefined {
+  if (environment.OAUTH_AS_ENABLED !== true) return undefined;
+
+  const upstreamClientId = environment.OAUTH_AS_UPSTREAM_CLIENT_ID;
+  const upstreamRedirectUri = environment.OAUTH_AS_UPSTREAM_REDIRECT_URI;
+  if (!upstreamClientId || !upstreamRedirectUri) {
+    throw new Error(
+      "OAUTH_AS_UPSTREAM_CLIENT_ID and OAUTH_AS_UPSTREAM_REDIRECT_URI are required when OAUTH_AS_ENABLED is true.",
+    );
+  }
+
+  const trustedClientMetadataUrls = environment.OAUTH_CIMD_TRUSTED_CLIENT_IDS === undefined
+    ? [...DEFAULT_CIMD_TRUSTED_CLIENT_IDS]
+    : environment.OAUTH_CIMD_TRUSTED_CLIENT_IDS
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+  let staticClients: OAuthStaticClientConfig[] = [];
+  if (environment.OAUTH_STATIC_CLIENTS_JSON !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(environment.OAUTH_STATIC_CLIENTS_JSON);
+    } catch {
+      throw new Error("OAUTH_STATIC_CLIENTS_JSON must be valid JSON.");
+    }
+    const result = z.array(oauthStaticClientSchema).safeParse(parsed);
+    if (!result.success) {
+      throw new Error("OAUTH_STATIC_CLIENTS_JSON contains an invalid static client registry.");
+    }
+    staticClients = result.data;
+  }
+
+  return {
+    trustedClientMetadataUrls,
+    staticClients,
+    fetchTimeoutMs: environment.OAUTH_CIMD_FETCH_TIMEOUT_MS ?? 5_000,
+    upstreamClientId,
+    upstreamRedirectUri,
+  };
 }
 
 export function getWebApiConfig(

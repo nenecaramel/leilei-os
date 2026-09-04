@@ -97,8 +97,9 @@ pnpm install
 npm --prefix web install
 ```
 
-The root template documents the PostgreSQL, MCP OAuth, Web API OAuth, CORS, and
-optional internal MCP variables. The Web template documents:
+The root template documents the PostgreSQL, MCP OAuth, optional Auth0-backed
+CIMD authorization adapter, Web API OAuth, CORS, and optional internal MCP
+variables. The Web template documents:
 
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
@@ -114,6 +115,10 @@ on `http://localhost:5173` by default. Useful backend routes are:
 - `/mcp` — public OAuth-protected MCP endpoint
 - `/internal/mcp` — optional internal bearer-token endpoint
 - `/api/v1` — Auth0-protected Web API
+- `/.well-known/oauth-authorization-server`, `/oauth/authorize`, and
+  `/oauth/token` — optional CIMD-compatible authorization adapter routes,
+  enabled only when `OAUTH_AS_ENABLED=true` and its upstream Auth0 settings are
+  complete
 
 ## Root development
 
@@ -166,6 +171,17 @@ secret/environment-variable stores, never in source control.
 
 - Public MCP access uses Auth0 JWT issuer, audience, scope, and allowed-subject
   checks.
+- The optional local authorization adapter keeps Auth0 as the identity and
+  token issuer. It resolves pre-registered static clients first, permits only
+  exact configured CIMD URLs, fetches metadata over a pinned HTTPS connection,
+  and requires authorization-code + PKCE S256. It is disabled by default.
+- CIMD retrieval rejects redirects, special-use DNS destinations, oversized or
+  non-JSON responses, and never fetches `logo_uri` or another secondary URL.
+- When the adapter is enabled, discovery advertises the local CIMD adapter
+  first and retains Auth0 as a fallback for existing clients. Configure the
+  existing ChatGPT client as a static client before switching discovery; its
+  Auth0 audience, required scope, subject allowlist, and MCP token permissions
+  do not change.
 - Web access uses its own Auth0 audience and scope plus an explicit allowed
   origin.
 - Authenticated subjects map server-side to `MCP_USER_ID`; clients do not
