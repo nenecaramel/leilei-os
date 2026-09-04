@@ -39,7 +39,7 @@ export function classifyRoute(pathname: string): RouteClass {
   if (matchesRoute(pathOnly, "/mcp")) return "mcp_public";
   if (matchesRoute(pathOnly, "/internal/mcp")) return "mcp_internal";
   if (
-    pathOnly === "/oauth" ||
+    matchesRoute(pathOnly, "/oauth") ||
     pathOnly === "/.well-known/oauth-protected-resource" ||
     pathOnly === "/.well-known/oauth-protected-resource/mcp"
   ) {

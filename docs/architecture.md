@@ -33,6 +33,33 @@ The Web API and MCP tools share domain services and repositories. Tool handlers
 do not query PostgreSQL directly. User identity is resolved from authenticated
 server context; clients cannot submit or select a database user ID.
 
+## OAuth authorization boundary
+
+The default production path remains the existing Auth0 Authorization Server:
+Protected Resource Metadata names Auth0, and the `/mcp` middleware verifies the
+Auth0 issuer, audience, scope, signature, and allowed subject exactly as before.
+
+An optional Auth0-backed local authorization adapter can be enabled explicitly
+with `OAUTH_AS_ENABLED=true`. In that mode, Protected Resource Metadata
+advertises the local adapter first and retains Auth0 as a fallback. The local
+adapter performs static-client lookup first and then resolves only exact
+allowlisted CIMD URLs. The adapter shows an escaped consent page,
+uses Auth0 for user login and token issuance, and returns the same Auth0 access
+token that the existing `/mcp` verifier accepts. Authorization codes are
+short-lived, single-use, and bound to the exact client, redirect URI, scope,
+resource, audience, and PKCE S256 challenge.
+
+The adapter is intentionally disabled unless its Auth0 public-client id and
+callback URI are configured. Dynamic CIMD metadata is fetched only over HTTPS
+with normal TLS validation, no redirects, a 5 KiB body cap, DNS answer
+validation/pinning, and no secondary URL fetches. Client names are HTML-escaped;
+consent displays hostnames rather than raw client or redirect URLs. The
+existing ChatGPT client must be present in the static registry before
+enabling the adapter; configuration validation refuses to start the adapter
+without a nonempty static registry, so its client resolution remains
+first-priority. Clients that continue to use Auth0 discovery retain that
+fallback path.
+
 ## Web application
 
 The Web application contains authenticated Dashboard and Day Space views plus
