@@ -18,12 +18,22 @@ const baseEnvironment = {
   AUTH0_ALLOWED_SUBJECT: "allowed-subject",
 } satisfies RuntimeEnv;
 
+const chatGptStaticClientsJson = JSON.stringify([
+  {
+    client_id: "chatgpt-static-client",
+    client_name: "ChatGPT",
+    redirect_uris: ["https://chatgpt.example/callback"],
+    token_endpoint_auth_method: "none",
+  },
+]);
+
 test("uses the initial exact CIMD trust URL when no override is configured", () => {
   const config = getOAuthAuthorizationServerConfig({
     ...baseEnvironment,
     OAUTH_AS_ENABLED: true,
     OAUTH_AS_UPSTREAM_CLIENT_ID: "auth0-upstream-client",
     OAUTH_AS_UPSTREAM_REDIRECT_URI: "https://mcp.example.test/oauth/callback",
+    OAUTH_STATIC_CLIENTS_JSON: chatGptStaticClientsJson,
   });
 
   assert.ok(config);
@@ -38,6 +48,7 @@ test("an explicitly empty trust list remains enabled but fails closed", () => {
     OAUTH_CIMD_TRUSTED_CLIENT_IDS: " , ",
     OAUTH_AS_UPSTREAM_CLIENT_ID: "auth0-upstream-client",
     OAUTH_AS_UPSTREAM_REDIRECT_URI: "https://mcp.example.test/oauth/callback",
+    OAUTH_STATIC_CLIENTS_JSON: chatGptStaticClientsJson,
   });
 
   assert.ok(config);
@@ -82,5 +93,28 @@ test("enabled configuration requires an upstream client and callback", () => {
       OAUTH_AS_ENABLED: true,
     }),
     /OAUTH_AS_UPSTREAM_CLIENT_ID|OAUTH_AS_UPSTREAM_REDIRECT_URI/u,
+  );
+});
+
+test("refuses to enable the adapter without a static ChatGPT registry", () => {
+  assert.throws(
+    () => getOAuthAuthorizationServerConfig({
+      ...baseEnvironment,
+      OAUTH_AS_ENABLED: true,
+      OAUTH_AS_UPSTREAM_CLIENT_ID: "auth0-upstream-client",
+      OAUTH_AS_UPSTREAM_REDIRECT_URI: "https://mcp.example.test/oauth/callback",
+    }),
+    /OAUTH_STATIC_CLIENTS_JSON.*ChatGPT/u,
+  );
+
+  assert.throws(
+    () => getOAuthAuthorizationServerConfig({
+      ...baseEnvironment,
+      OAUTH_AS_ENABLED: true,
+      OAUTH_AS_UPSTREAM_CLIENT_ID: "auth0-upstream-client",
+      OAUTH_AS_UPSTREAM_REDIRECT_URI: "https://mcp.example.test/oauth/callback",
+      OAUTH_STATIC_CLIENTS_JSON: "[]",
+    }),
+    /OAUTH_STATIC_CLIENTS_JSON.*ChatGPT/u,
   );
 });

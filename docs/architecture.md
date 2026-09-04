@@ -54,9 +54,11 @@ callback URI are configured. Dynamic CIMD metadata is fetched only over HTTPS
 with normal TLS validation, no redirects, a 5 KiB body cap, DNS answer
 validation/pinning, and no secondary URL fetches. Client names are HTML-escaped;
 consent displays hostnames rather than raw client or redirect URLs. The
-existing ChatGPT client should be present in the static registry before
-enabling the adapter so its client resolution remains first-priority; clients
-that continue to use Auth0 discovery retain that fallback path.
+existing ChatGPT client must be present in the static registry before
+enabling the adapter; configuration validation refuses to start the adapter
+without a nonempty static registry, so its client resolution remains
+first-priority. Clients that continue to use Auth0 discovery retain that
+fallback path.
 
 ## Web application
 

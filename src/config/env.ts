@@ -217,6 +217,11 @@ export function getOAuthAuthorizationServerConfig(
     }
     staticClients = result.data;
   }
+  if (staticClients.length === 0) {
+    throw new Error(
+      "OAUTH_STATIC_CLIENTS_JSON must include the existing ChatGPT static client before enabling OAUTH_AS_ENABLED.",
+    );
+  }
 
   return {
     trustedClientMetadataUrls,

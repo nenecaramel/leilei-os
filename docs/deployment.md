@@ -104,8 +104,10 @@ or screenshots.
 
 This PR does not change Railway variables or deploy the adapter. If it is later
 enabled, configure `OAUTH_AS_ENABLED=true`, an Auth0 public PKCE client id,
-`OAUTH_AS_UPSTREAM_REDIRECT_URI` registered in Auth0, and the static ChatGPT
-client entry before changing discovery. The exact initial dynamic allowlist is
+`OAUTH_AS_UPSTREAM_REDIRECT_URI` registered in Auth0, and a nonempty
+`OAUTH_STATIC_CLIENTS_JSON` containing the existing ChatGPT client entry before
+changing discovery. The adapter refuses to start without that static registry.
+The exact initial dynamic allowlist is
 `https://claude.ai/oauth/mcp-oauth-client-metadata`; an explicitly empty
 `OAUTH_CIMD_TRUSTED_CLIENT_IDS` value allows no dynamic clients. Validate the
 authorization metadata, consent screen, Auth0 callback, token exchange, and
