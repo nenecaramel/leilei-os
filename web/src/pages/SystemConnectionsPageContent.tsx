@@ -127,7 +127,7 @@ export function SystemConnectionsPageContent({
               }
             />
             <ConnectionRow
-              label="ChatGPT / MCP"
+              label="ChatGPT / Claude MCP"
               status={
                 state.connections.public_mcp
               }

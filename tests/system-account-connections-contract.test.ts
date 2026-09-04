@@ -39,7 +39,7 @@ test("Connections reads only the approved safe System endpoint", () => {
   assert.match(connectionsSource, /useWebApiClient/);
   assert.match(connectionsSource, /"\/system\/connections"/);
   assert.match(connectionsSource, /Web API/);
-  assert.match(connectionsSource, /ChatGPT \/ MCP/);
+  assert.match(connectionsSource, /ChatGPT \/ Claude MCP/);
   assert.match(connectionsSource, /Internal MCP/);
   assert.match(connectionsSource, /Online/);
   assert.match(connectionsSource, /Available/);
