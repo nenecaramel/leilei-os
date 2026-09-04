@@ -44,7 +44,7 @@ test("direct MCP server keeps the 40-tool core surface", async () => {
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 55 public tools with Bridge processing, Sentinel tools, and each Notion write once", async () => {
+test("production MCP session factory assembles 56 public tools with Thinking Block, Bridge processing, Sentinel tools, and each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -62,7 +62,8 @@ test("production MCP session factory assembles 55 public tools with Bridge proce
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 55);
+  assert.equal(names.length, 56);
+  assert.equal(names.filter((name) => name === "render_thinking_block").length, 1);
   assert.equal(names.filter((name) => name === "sentinel_get_state").length, 1);
   assert.equal(names.filter((name) => name === "complete_sentinel_wake").length, 1);
   assert.equal(names.filter((name) => name === "sentinel_claim_current_wake").length, 1);
@@ -86,4 +87,5 @@ test("internal MCP session factory remains free of Bridge App tools", async () =
   assert.equal(names.includes("bridge_event_complete"), false);
   assert.equal(names.includes("sentinel_get_state"), false);
   assert.equal(names.includes("complete_sentinel_wake"), false);
+  assert.equal(names.includes("render_thinking_block"), false);
 });

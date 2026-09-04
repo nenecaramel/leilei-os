@@ -21,6 +21,8 @@ import {
 } from "./create-server.js";
 import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
 import { registerSentinelTools } from "../tools/sentinel/register.js";
+import { registerRenderThinkingBlockTool } from "../tools/render-thinking-block/register.js";
+import { registerRenderThinkingBlockResource } from "../tools/render-thinking-block/resource.js";
 
 export type McpSessionServerFactory = (
   authenticatedUserId: string,
@@ -115,6 +117,10 @@ export function createProductionMcpSessionServerFactory(input: {
       userId,
       activeUserAuthorization,
     );
+    if (namespace === "public") {
+      registerRenderThinkingBlockResource(server);
+      registerRenderThinkingBlockTool(server);
+    }
     if (namespace === "public" && input.sentinelService) {
       registerSentinelTools(server, {
         sentinelService: input.sentinelService,
