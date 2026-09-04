@@ -3,10 +3,10 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { JSDOM } from "jsdom";
 import { createProductionMcpSessionServerFactory } from "../src/mcp/server/production-server-factory.js";
 import {
   RENDER_THINKING_BLOCK_RESOURCE_URI,
@@ -141,22 +141,98 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and static 
   }
 });
 
-function createCardDom(openai: Record<string, unknown>): JSDOM {
-  return new JSDOM(createRenderThinkingBlockHtml(), {
-    runScripts: "dangerously",
-    pretendToBeVisual: true,
-    beforeParse(window) {
-      Object.defineProperty(window, "openai", { value: openai, writable: true });
-      Object.defineProperty(window, "ResizeObserver", {
-        value: class {
-          observe() {}
-          disconnect() {}
-        },
-      });
-      window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
-      window.cancelAnimationFrame = (handle) => window.clearTimeout(handle);
+type FakeEvent = { detail?: { globals?: Record<string, unknown> } };
+type FakeListener = (event: FakeEvent) => void;
+
+class FakeElement {
+  readonly dataset: Record<string, string> = {};
+  readonly style: Record<string, string> = {};
+  textContent = "";
+  private readonly listeners = new Map<string, FakeListener[]>();
+
+  addEventListener(type: string, listener: FakeListener): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+
+  setAttribute(name: string, value: string): void {
+    if (name === "aria-expanded") this.dataset.ariaExpanded = value;
+  }
+
+  getBoundingClientRect(): { height: number } {
+    return { height: 12 };
+  }
+
+  click(): void {
+    for (const listener of this.listeners.get("click") ?? []) listener({});
+  }
+}
+
+class FakeDocument {
+  readonly documentElement = new FakeElement();
+  readonly body = new FakeElement();
+  readonly scrollHeight = 640;
+  private readonly elements = new Map<string, FakeElement>([
+    ["[data-thinking-card]", new FakeElement()],
+    ["[data-thinking-content]", new FakeElement()],
+    ["[data-thinking-toggle]", new FakeElement()],
+    ["[data-style-badge]", new FakeElement()],
+    ["[data-effort-badge]", new FakeElement()],
+    ["[data-skin-badge]", new FakeElement()],
+  ]);
+
+  querySelector<T extends FakeElement>(selector: string): T | null {
+    return (this.elements.get(selector) as T | undefined) ?? null;
+  }
+}
+
+class FakeWindow {
+  readonly document = new FakeDocument();
+  readonly listeners = new Map<string, FakeListener[]>();
+  readonly requestIntrinsicHeight?: (...args: unknown[]) => void;
+  openai: Record<string, unknown>;
+  thinkingBlock?: { render: (event?: FakeEvent) => void; setCollapsed: (value: boolean) => void };
+
+  constructor(openai: Record<string, unknown>) {
+    this.openai = openai;
+    this.requestIntrinsicHeight = openai.notifyIntrinsicHeight as typeof this.requestIntrinsicHeight;
+  }
+
+  addEventListener(type: string, listener: FakeListener): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+
+  dispatchEvent(type: string, event: FakeEvent): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+
+  requestAnimationFrame(callback: () => void): number {
+    callback();
+    return 1;
+  }
+
+  cancelAnimationFrame(_handle: number): void {}
+
+  close(): void {}
+}
+
+function createCardDom(openai: Record<string, unknown>): { window: FakeWindow } {
+  const window = new FakeWindow(openai);
+  const context = {
+    window,
+    document: window.document,
+    ResizeObserver: class {
+      observe() {}
+      disconnect() {}
     },
-  });
+  };
+  const script = createRenderThinkingBlockHtml().match(/<script>([\s\S]*)<\/script>/)?.[1];
+  assert.ok(script);
+  vm.runInNewContext(script, context, { timeout: 1_000 });
+  return { window };
+}
+
+function dispatchGlobals(window: FakeWindow, globals: Record<string, unknown>): void {
+  window.dispatchEvent("openai:set_globals", { detail: { globals } });
 }
 
 test("card renders fields from input, output, and result metadata and merges partial globals", async () => {
@@ -171,31 +247,20 @@ test("card renders fields from input, output, and result metadata and merges par
     assert.ok(card);
     assert.ok(thinking);
     assert.equal(thinking.textContent, THINKING);
-    dom.window.dispatchEvent(new dom.window.CustomEvent("openai:set_globals", {
-      detail: { globals: { toolInput: { style: "relational", thinking: "PARTIAL_INPUT" } } },
-    }));
+    dispatchGlobals(dom.window, { toolInput: { style: "relational", thinking: "PARTIAL_INPUT" } });
     assert.equal(thinking.textContent, "PARTIAL_INPUT");
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: low");
-    dom.window.dispatchEvent(new dom.window.CustomEvent("openai:set_globals", {
-      detail: { globals: { toolInput: { thinking: "SECOND_PARTIAL" } } },
-    }));
+    dispatchGlobals(dom.window, { toolInput: { thinking: "SECOND_PARTIAL" } });
     assert.equal(thinking.textContent, "SECOND_PARTIAL");
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
-    dom.window.dispatchEvent(new dom.window.CustomEvent("openai:set_globals", {
-      detail: { globals: { toolOutput: { thinking: outputThinking, effort: "medium" } } },
-    }));
+    dispatchGlobals(dom.window, { toolOutput: { thinking: outputThinking, effort: "medium" } });
     assert.equal(thinking.textContent, outputThinking);
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: medium");
-    dom.window.dispatchEvent(new dom.window.CustomEvent("openai:set_globals", {
-      detail: {
-        globals: {
-          toolResponseMetadata: { mcp_tool_result: { _meta: { thinking: resultThinking, skin: "microglow" } } },
-          theme: "dark",
-        },
-      },
-    }));
-    await new Promise<void>((resolve) => dom.window.setTimeout(resolve, 0));
+    dispatchGlobals(dom.window, {
+      toolResponseMetadata: { mcp_tool_result: { _meta: { thinking: resultThinking, skin: "microglow" } } },
+      theme: "dark",
+    });
     assert.equal(thinking.textContent, resultThinking);
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-skin-badge]")?.textContent, "microglow");
@@ -220,14 +285,12 @@ test("each card owns collapse state, adapts themes, constrains long content, and
     assert.equal(first.window.document.documentElement.dataset.theme, "dark");
     assert.equal(firstContent.dataset.scrollable, "true");
     assert.match(firstContent.style.maxHeight, /px$/);
-    await new Promise<void>((resolve) => first.window.setTimeout(resolve, 0));
     assert.ok(notifyCalls.length >= 1);
     first.window.document.querySelector<HTMLButtonElement>("[data-thinking-toggle]")!.click();
     assert.equal(firstCard.dataset.collapsed, "true");
     assert.equal(secondCard.dataset.collapsed, undefined);
-    first.window.dispatchEvent(new first.window.CustomEvent("openai:set_globals", { detail: { globals: { theme: "light" } } }));
+    dispatchGlobals(first.window, { theme: "light" });
     assert.equal(first.window.document.documentElement.dataset.theme, "light");
-    await new Promise<void>((resolve) => first.window.setTimeout(resolve, 0));
   } finally {
     first.window.close();
     second.window.close();

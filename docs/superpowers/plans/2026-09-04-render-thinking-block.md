@@ -10,7 +10,8 @@
 
 ## Global Constraints
 
-- Base and verify against `829b3c98011a8aeea083e8a544a89ba6dfb23503`; do not rebase, merge, deploy, or modify Railway before explicit production-acceptance authorization for #274.
+- Phase A started from `829b3c98011a8aeea083e8a544a89ba6dfb23503`; after explicit #274 production acceptance and #277 OAuth/CIMD production integration, Phase B rebases onto `9e41fefa849c1d15f05eaa3136fbfa15206f8a5d`.
+- Keep the PR Draft and do not merge, deploy, or modify Railway until the reviewed release is explicitly authorized.
 - Do not touch `main`, `plan/sentinel-ui-consolidation`, #274 history, database schema/migrations, or unrelated MCP tools.
 - Preserve the existing `/mcp` endpoint and authentication behavior. The public factory is the authentication boundary; do not add a `noauth` declaration.
 - Do not persist or log `thinking`; do not add capture behavior.
