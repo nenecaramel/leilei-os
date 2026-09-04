@@ -244,6 +244,7 @@ export function createApp(
         upstreamClientId: oauthAuthorizationServerConfig.upstreamClientId,
         upstreamRedirectUri: oauthAuthorizationServerConfig.upstreamRedirectUri,
         registry: clientRegistry,
+        fetchJwks: metadataFetcher.fetch,
         verifyAccessToken,
         allowedSubject: config.AUTH0_ALLOWED_SUBJECT,
         exchangeUpstreamCode: createAuth0CodeExchange({

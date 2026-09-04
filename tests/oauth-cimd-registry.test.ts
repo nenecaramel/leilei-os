@@ -101,6 +101,18 @@ test("rejects shared-secret authentication methods", () => {
   }
 });
 
+test("accepts the production ChatGPT private_key_jwt metadata", () => {
+  assert.doesNotThrow(() => validateClientMetadata({
+    client_id: "https://chatgpt.com/oauth/DC6KIBaz_41D/client.json",
+    client_name: "ChatGPT",
+    redirect_uris: ["https://chatgpt.com/connector/oauth/DC6KIBaz_41D"],
+    token_endpoint_auth_method: "private_key_jwt",
+    token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+    token_endpoint_auth_signing_alg: "RS256",
+    jwks_uri: "https://chatgpt.com/oauth/jwks.json",
+  }, "https://chatgpt.com/oauth/DC6KIBaz_41D/client.json"));
+});
+
 test("resolves trusted CIMD metadata and never follows logo or other secondary URLs", async () => {
   const requested: string[] = [];
   const registry = createClientRegistry({

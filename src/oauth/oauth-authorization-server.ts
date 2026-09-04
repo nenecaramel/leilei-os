@@ -18,6 +18,11 @@ import {
 import {
   createAuthorizationServerMetadataHandler,
 } from "./authorization-server-metadata.js";
+import {
+  createClientAssertionVerifier,
+  type JwksFetcher,
+  type JwksKeyCache,
+} from "./client-assertion-authentication.js";
 import { createAuth0CodeExchange } from "./upstream-client.js";
 
 export type UpstreamCodeExchange = (input: {
@@ -42,6 +47,11 @@ export type OAuthAuthorizationServerOptions = {
   verifyAccessToken: AccessTokenVerifier;
   allowedSubject: string;
   exchangeUpstreamCode?: UpstreamCodeExchange;
+  fetchJwks?: JwksFetcher;
+  jwksCache?: JwksKeyCache;
+  jwksTtlMs?: number;
+  jwksMaxEntries?: number;
+  replayMaxEntries?: number;
   codeStore?: OAuthCodeStore;
   now?: () => number;
 };
@@ -148,6 +158,16 @@ function createClientAuthorizationRouter(
   const router = express.Router();
   const exchangeUpstreamCode = options.exchangeUpstreamCode ?? createAuth0CodeExchange({
     tokenEndpoint: options.upstreamTokenEndpoint,
+  });
+  const verifyClientAssertion = createClientAssertionVerifier({
+    fetchJwks: options.fetchJwks ?? (async () => {
+      throw new Error("JWKS fetcher is not configured");
+    }),
+    now: options.now,
+    jwksCache: options.jwksCache,
+    jwksTtlMs: options.jwksTtlMs,
+    jwksMaxEntries: options.jwksMaxEntries,
+    replayMaxEntries: options.replayMaxEntries,
   });
   router.use(express.urlencoded({ extended: false, limit: "10kb" }));
 
@@ -316,12 +336,7 @@ function createClientAuthorizationRouter(
 
   router.post("/oauth/token", async (request, response) => {
     const body = request.body as Record<string, unknown> | undefined;
-    if (
-      request.header("authorization") ||
-      body?.client_secret !== undefined ||
-      body?.client_assertion !== undefined ||
-      body?.client_assertion_type !== undefined
-    ) {
+    if (request.header("authorization") || body?.client_secret !== undefined) {
       sendError(response, "invalid_client");
       return;
     }
@@ -335,8 +350,38 @@ function createClientAuthorizationRouter(
       return;
     }
 
+    let client: ResolvedClient | undefined;
+    try {
+      client = await options.registry.resolve(clientId);
+      if (!client) throw new Error("OAuth client is unknown");
+      if (client.token_endpoint_auth_method === "none") {
+        if (
+          body?.client_assertion !== undefined ||
+          body?.client_assertion_type !== undefined
+        ) {
+          throw new Error("client assertion is not supported for this client");
+        }
+      } else if (client.token_endpoint_auth_method === "private_key_jwt") {
+        await verifyClientAssertion.verify({
+          client,
+          clientId,
+          clientAssertionType: valueOf(body?.client_assertion_type),
+          clientAssertion: valueOf(body?.client_assertion),
+          tokenEndpoint: new URL("/oauth/token", options.issuer).toString(),
+        });
+      } else {
+        throw new Error("OAuth client authentication method is unsupported");
+      }
+    } catch {
+      sendError(response, "invalid_client");
+      return;
+    }
+
     try {
       const redeemed = store.redeemCode({ code, clientId, redirectUri, codeVerifier });
+      if (redeemed.clientId !== client.client_id) {
+        throw new Error("OAuth client authentication does not match the authorization code");
+      }
       if (
         (body?.resource !== undefined && body.resource !== redeemed.resource) ||
         (body?.audience !== undefined && body.audience !== redeemed.audience) ||

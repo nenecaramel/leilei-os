@@ -1,6 +1,7 @@
 import type { OAuthStaticClientConfig } from "../config/env.js";
 import {
   isCompliantCimdClientIdentifier,
+  isCompliantSecureJsonUrl,
   type MetadataFetcher,
 } from "./secure-metadata-fetch.js";
 
@@ -9,6 +10,9 @@ export type OAuthClientMetadata = {
   client_name: string;
   redirect_uris: string[];
   token_endpoint_auth_method?: string;
+  token_endpoint_auth_methods_supported?: string[];
+  token_endpoint_auth_signing_alg?: string;
+  jwks_uri?: string;
   grant_types?: string[];
   response_types?: string[];
   scope?: string;
@@ -19,7 +23,9 @@ export type ResolvedClient = {
   client_id: string;
   client_name: string;
   redirect_uris: readonly string[];
-  token_endpoint_auth_method: "none";
+  token_endpoint_auth_method: "none" | "private_key_jwt";
+  token_endpoint_auth_signing_alg?: "RS256";
+  jwks_uri?: string;
   grant_types: readonly string[];
   response_types: readonly string[];
   scope?: string;
@@ -49,11 +55,13 @@ function validateRedirectUri(value: string): void {
   }
 }
 
-function hasOnlyAllowedClientAuthenticationMethod(value: string): value is "none" {
+function hasOnlyAllowedClientAuthenticationMethod(
+  value: string,
+): value is "none" | "private_key_jwt" {
   if (/^client_secret_/u.test(value)) {
     throw new Error("shared-secret client authentication is forbidden");
   }
-  if (value !== "none") {
+  if (value !== "none" && value !== "private_key_jwt") {
     throw new Error("client authentication method is unsupported");
   }
   return true;
@@ -92,7 +100,34 @@ export function validateClientMetadata(
   if (typeof authMethod !== "string") {
     throw new Error("CIMD client authentication method is invalid");
   }
-  hasOnlyAllowedClientAuthenticationMethod(authMethod);
+  if (!hasOnlyAllowedClientAuthenticationMethod(authMethod)) {
+    throw new Error("client authentication method is unsupported");
+  }
+  if (raw.token_endpoint_auth_methods_supported !== undefined) {
+    if (
+      !Array.isArray(raw.token_endpoint_auth_methods_supported) ||
+      raw.token_endpoint_auth_methods_supported.some((value) => typeof value !== "string") ||
+      !raw.token_endpoint_auth_methods_supported.includes(authMethod)
+    ) {
+      throw new Error("CIMD client authentication methods are invalid");
+    }
+  }
+
+  let jwksUri: string | undefined;
+  let signingAlg: "RS256" | undefined;
+  if (authMethod === "private_key_jwt") {
+    if (
+      typeof raw.jwks_uri !== "string" ||
+      !isCompliantSecureJsonUrl(raw.jwks_uri)
+    ) {
+      throw new Error("private_key_jwt clients require a valid HTTPS jwks_uri");
+    }
+    if (raw.token_endpoint_auth_signing_alg !== "RS256") {
+      throw new Error("Only RS256 client assertion signing is supported");
+    }
+    jwksUri = raw.jwks_uri;
+    signingAlg = "RS256";
+  }
 
   const grantTypes = raw.grant_types === undefined ? ["authorization_code"] : raw.grant_types;
   if (
@@ -118,7 +153,9 @@ export function validateClientMetadata(
     client_id: requestedClientId,
     client_name: raw.client_name,
     redirect_uris: [...redirectUris],
-    token_endpoint_auth_method: "none",
+    token_endpoint_auth_method: authMethod,
+    ...(jwksUri !== undefined ? { jwks_uri: jwksUri } : {}),
+    ...(signingAlg !== undefined ? { token_endpoint_auth_signing_alg: signingAlg } : {}),
     grant_types: [...(grantTypes as string[])],
     response_types: [...(responseTypes as string[])],
     ...(typeof raw.scope === "string" ? { scope: raw.scope } : {}),

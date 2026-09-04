@@ -223,6 +223,15 @@ export function isCompliantCimdClientIdentifier(value: string): boolean {
   }
 }
 
+export function isCompliantSecureJsonUrl(value: string): boolean {
+  try {
+    validateMetadataUrl(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function defaultResolveHost(hostname: string): Promise<readonly ResolvedHostAddress[]> {
   const answers = await dnsLookup(hostname, { all: true, verbatim: true });
   return answers.map((answer) => {
@@ -274,7 +283,7 @@ function asBuffer(chunk: unknown): Buffer {
   throw new Error("invalid metadata response body");
 }
 
-export function createSecureMetadataFetcher(options: {
+export function createSecureJsonFetcher(options: {
   resolveHost?: HostResolver;
   request?: MetadataRequestFactory;
   timeoutMs?: number;
@@ -392,4 +401,12 @@ export function createSecureMetadataFetcher(options: {
       });
     },
   };
+}
+
+export function createSecureMetadataFetcher(options: {
+  resolveHost?: HostResolver;
+  request?: MetadataRequestFactory;
+  timeoutMs?: number;
+} = {}): MetadataFetcher {
+  return createSecureJsonFetcher(options);
 }

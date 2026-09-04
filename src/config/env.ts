@@ -13,10 +13,32 @@ const oauthStaticClientSchema = z.object({
   client_id: z.string().trim().min(1),
   client_name: z.string().min(1),
   redirect_uris: z.array(z.string().min(1)).min(1),
-  token_endpoint_auth_method: z.string().min(1).optional(),
+  token_endpoint_auth_method: z.enum(["none", "private_key_jwt"]).optional(),
+  token_endpoint_auth_methods_supported: z.array(z.string().min(1)).min(1).optional(),
+  token_endpoint_auth_signing_alg: z.string().min(1).optional(),
+  jwks_uri: httpsUrl.optional(),
   grant_types: z.array(z.string().min(1)).min(1).optional(),
   response_types: z.array(z.string().min(1)).min(1).optional(),
   scope: z.string().min(1).optional(),
+}).superRefine((client, context) => {
+  if (client.token_endpoint_auth_method !== "private_key_jwt") return;
+  if (!client.jwks_uri) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["jwks_uri"],
+      message: "private_key_jwt clients require jwks_uri.",
+    });
+  }
+  if (
+    client.token_endpoint_auth_signing_alg !== undefined &&
+    client.token_endpoint_auth_signing_alg !== "RS256"
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["token_endpoint_auth_signing_alg"],
+      message: "Only RS256 client assertion signing is supported.",
+    });
+  }
 });
 
 const baseEnvSchema = z.object({

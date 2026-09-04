@@ -113,3 +113,11 @@ The exact initial dynamic allowlist is
 authorization metadata, consent screen, Auth0 callback, token exchange, and
 existing ChatGPT connector in a separate controlled deployment before changing
 production.
+
+Copy each static client's authentication metadata exactly from its registered
+record. In particular, the ChatGPT entry must retain `private_key_jwt`,
+`token_endpoint_auth_signing_alg: "RS256"`, and its `jwks_uri`; do not replace
+that method with `none`. The adapter fetches the registered JWKS URI through
+the same HTTPS-only, no-redirect, bounded-response and DNS-rebinding-resistant
+fetcher used for CIMD documents. Shared-secret authentication methods are not
+accepted.

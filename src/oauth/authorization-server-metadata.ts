@@ -18,7 +18,7 @@ export function createAuthorizationServerMetadataHandler(
       token_endpoint: config.tokenEndpoint,
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code"],
-      token_endpoint_auth_methods_supported: ["none"],
+      token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
       code_challenge_methods_supported: ["S256"],
       scopes_supported: [config.requiredScope],
       authorization_response_iss_parameter_supported: true,
