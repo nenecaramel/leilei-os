@@ -20,10 +20,13 @@ const baseEnvironment = {
 
 const chatGptStaticClientsJson = JSON.stringify([
   {
-    client_id: "chatgpt-static-client",
+    client_id: "https://chatgpt.com/oauth/DC6KIBaz_41D/client.json",
     client_name: "ChatGPT",
-    redirect_uris: ["https://chatgpt.example/callback"],
-    token_endpoint_auth_method: "none",
+    redirect_uris: ["https://chatgpt.com/connector/oauth/DC6KIBaz_41D"],
+    token_endpoint_auth_method: "private_key_jwt",
+    token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+    token_endpoint_auth_signing_alg: "RS256",
+    jwks_uri: "https://chatgpt.com/oauth/jwks.json",
   },
 ]);
 
@@ -59,27 +62,13 @@ test("parses static client JSON without allowing a malformed registry", () => {
   const config = getOAuthAuthorizationServerConfig({
     ...baseEnvironment,
     OAUTH_AS_ENABLED: true,
-    OAUTH_STATIC_CLIENTS_JSON: JSON.stringify([
-      {
-        client_id: "chatgpt-static-client",
-        client_name: "ChatGPT",
-        redirect_uris: ["https://chatgpt.example/callback"],
-        token_endpoint_auth_method: "none",
-      },
-    ]),
+    OAUTH_STATIC_CLIENTS_JSON: chatGptStaticClientsJson,
     OAUTH_AS_UPSTREAM_CLIENT_ID: "auth0-upstream-client",
     OAUTH_AS_UPSTREAM_REDIRECT_URI: "https://mcp.example.test/oauth/callback",
   });
 
   assert.ok(config);
-  assert.deepEqual(config.staticClients, [
-    {
-      client_id: "chatgpt-static-client",
-      client_name: "ChatGPT",
-      redirect_uris: ["https://chatgpt.example/callback"],
-      token_endpoint_auth_method: "none",
-    },
-  ]);
+  assert.deepEqual(config.staticClients, JSON.parse(chatGptStaticClientsJson));
 });
 
 test("retains private_key_jwt metadata in the static client registry", () => {
@@ -103,6 +92,34 @@ test("retains private_key_jwt metadata in the static client registry", () => {
   assert.equal(config.staticClients[0]?.token_endpoint_auth_method, "private_key_jwt");
   assert.equal(config.staticClients[0]?.token_endpoint_auth_signing_alg, "RS256");
   assert.equal(config.staticClients[0]?.jwks_uri, "https://chatgpt.com/oauth/jwks.json");
+});
+
+test("refuses local OAuth AS without the exact production ChatGPT static client", () => {
+  for (const clients of [
+    [{
+      client_id: "https://other.example/client.json",
+      client_name: "Other",
+      redirect_uris: ["https://other.example/callback"],
+      token_endpoint_auth_method: "none",
+    }],
+    [{
+      client_id: "https://chatgpt.com/oauth/DC6KIBaz_41D/client.json",
+      client_name: "ChatGPT",
+      redirect_uris: ["https://chatgpt.com/connector/oauth/DC6KIBaz_41D"],
+      token_endpoint_auth_method: "none",
+    }],
+  ]) {
+    assert.throws(
+      () => getOAuthAuthorizationServerConfig({
+        ...baseEnvironment,
+        OAUTH_AS_ENABLED: true,
+        OAUTH_AS_UPSTREAM_CLIENT_ID: "auth0-upstream-client",
+        OAUTH_AS_UPSTREAM_REDIRECT_URI: "https://mcp.example.test/oauth/callback",
+        OAUTH_STATIC_CLIENTS_JSON: JSON.stringify(clients),
+      }),
+      /existing ChatGPT.*private_key_jwt|ChatGPT/u,
+    );
+  }
 });
 
 test("rejects shared-secret static authentication and incomplete private_key_jwt metadata", () => {

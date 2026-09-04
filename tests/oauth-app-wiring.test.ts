@@ -35,10 +35,13 @@ test("mounts the opt-in AS while preserving Auth0 token and resource semantics",
     OAUTH_AS_UPSTREAM_CLIENT_ID: "upstream-client",
     OAUTH_AS_UPSTREAM_REDIRECT_URI: "https://mcp.example.test/oauth/callback",
     OAUTH_STATIC_CLIENTS_JSON: JSON.stringify([{
-      client_id: "chatgpt-static-client",
+      client_id: "https://chatgpt.com/oauth/DC6KIBaz_41D/client.json",
       client_name: "ChatGPT",
-      redirect_uris: ["https://chatgpt.example/callback"],
-      token_endpoint_auth_method: "none",
+      redirect_uris: ["https://chatgpt.com/connector/oauth/DC6KIBaz_41D"],
+      token_endpoint_auth_method: "private_key_jwt",
+      token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      token_endpoint_auth_signing_alg: "RS256",
+      jwks_uri: "https://chatgpt.com/oauth/jwks.json",
     }]),
   });
   delete process.env.DATABASE_URL;

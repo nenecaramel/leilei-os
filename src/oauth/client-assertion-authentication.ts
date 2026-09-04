@@ -27,6 +27,7 @@ type JwksCacheEntry = {
 
 const DEFAULT_JWKS_TTL_MS = 5 * 60 * 1_000;
 const DEFAULT_JWKS_MAX_ENTRIES = 32;
+const DEFAULT_JWKS_REFRESH_COOLDOWN_MS = 10 * 1_000;
 const DEFAULT_REPLAY_MAX_ENTRIES = 4_096;
 const MAX_ASSERTION_BYTES = 16 * 1024;
 const MAX_KEY_ID_LENGTH = 256;
@@ -72,17 +73,43 @@ export function createJwksKeyCache(options: {
   now?: () => number;
   ttlMs?: number;
   maxEntries?: number;
+  refreshCooldownMs?: number;
 }): JwksKeyCache {
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? DEFAULT_JWKS_TTL_MS;
   const maxEntries = options.maxEntries ?? DEFAULT_JWKS_MAX_ENTRIES;
+  const refreshCooldownMs = options.refreshCooldownMs ?? DEFAULT_JWKS_REFRESH_COOLDOWN_MS;
   if (!Number.isInteger(ttlMs) || ttlMs <= 0) throw new Error("JWKS cache TTL must be positive");
   if (!Number.isInteger(maxEntries) || maxEntries <= 0) {
     throw new Error("JWKS cache capacity must be positive");
   }
+  if (!Number.isInteger(refreshCooldownMs) || refreshCooldownMs <= 0) {
+    throw new Error("JWKS refresh cooldown must be positive");
+  }
 
   const entries = new Map<string, JwksCacheEntry>();
   const inFlight = new Map<string, Promise<JwksCacheEntry>>();
+  const lastForcedRefresh = new Map<string, number>();
+
+  const refreshIsCoolingDown = (jwksUri: string): boolean => {
+    const lastRefreshAt = lastForcedRefresh.get(jwksUri);
+    if (lastRefreshAt === undefined) return false;
+    if (now() - lastRefreshAt >= refreshCooldownMs) {
+      lastForcedRefresh.delete(jwksUri);
+      return false;
+    }
+    return true;
+  };
+
+  const claimForcedRefresh = (jwksUri: string): boolean => {
+    if (refreshIsCoolingDown(jwksUri)) return false;
+    if (!lastForcedRefresh.has(jwksUri) && lastForcedRefresh.size >= maxEntries) {
+      const oldest = lastForcedRefresh.keys().next().value as string | undefined;
+      if (oldest !== undefined) lastForcedRefresh.delete(oldest);
+    }
+    lastForcedRefresh.set(jwksUri, now());
+    return true;
+  };
 
   const load = async (jwksUri: string, forceRefresh: boolean): Promise<JwksCacheEntry> => {
     const cached = entries.get(jwksUri);
@@ -96,7 +123,10 @@ export function createJwksKeyCache(options: {
       .then((entry) => {
         if (!entries.has(jwksUri) && entries.size >= maxEntries) {
           const oldest = entries.keys().next().value as string | undefined;
-          if (oldest !== undefined) entries.delete(oldest);
+          if (oldest !== undefined) {
+            entries.delete(oldest);
+            lastForcedRefresh.delete(oldest);
+          }
         }
         entries.delete(jwksUri);
         entries.set(jwksUri, entry);
@@ -112,9 +142,25 @@ export function createJwksKeyCache(options: {
 
   return {
     async getKey(jwksUri, kid, forceRefresh = false) {
-      let entry = await load(jwksUri, forceRefresh);
+      let entry: JwksCacheEntry;
+      if (forceRefresh) {
+        if (claimForcedRefresh(jwksUri)) {
+          entry = await load(jwksUri, true);
+        } else {
+          const cached = entries.get(jwksUri);
+          if (!cached || cached.expiresAt <= now()) {
+            throw new Error("JWKS refresh is cooling down");
+          }
+          entry = cached;
+        }
+      } else {
+        entry = await load(jwksUri, false);
+      }
       let key = entry.keys.find((candidate) => candidate.kid === kid);
       if (!key && !forceRefresh) {
+        if (!claimForcedRefresh(jwksUri)) {
+          throw new Error("JWKS key id is unknown");
+        }
         entry = await load(jwksUri, true);
         key = entry.keys.find((candidate) => candidate.kid === kid);
       }

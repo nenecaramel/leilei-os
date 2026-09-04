@@ -296,10 +296,51 @@ test("uses JWKS TTL, bounded capacity, and refetches for rotation or unknown kid
   assert.equal(fetches, 2);
   await assert.rejects(cache.getKey(CHATGPT_JWKS_URI, "rotated-kid"), /unknown/u);
   assert.equal(fetches, 3);
+  await assert.rejects(cache.getKey(CHATGPT_JWKS_URI, "rotated-kid"), /unknown/u);
+  assert.equal(fetches, 3);
 
   await cache.getKey("https://second.example/jwks.json", CHATGPT_KID);
   await cache.getKey(CHATGPT_JWKS_URI, CHATGPT_KID);
   assert.equal(fetches, 5);
+});
+
+test("bounds repeated failed-signature JWKS refreshes during the cooldown", async () => {
+  let fetches = 0;
+  const verifier = createClientAssertionVerifier({
+    fetchJwks: async () => {
+      fetches += 1;
+      return CHATGPT_JWKS;
+    },
+    now: () => NOW_SECONDS * 1_000,
+  });
+  const client: ResolvedClient = {
+    client_id: CHATGPT_CLIENT_ID,
+    client_name: "ChatGPT",
+    redirect_uris: [CHATGPT_REDIRECT_URI],
+    token_endpoint_auth_method: "private_key_jwt",
+    token_endpoint_auth_signing_alg: "RS256",
+    jwks_uri: CHATGPT_JWKS_URI,
+    grant_types: ["authorization_code"],
+    response_types: ["code"],
+  };
+
+  for (const jti of ["bad-signature-1", "bad-signature-2"]) {
+    await assert.rejects(
+      verifier.verify({
+        client,
+        clientId: CHATGPT_CLIENT_ID,
+        clientAssertionType: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+        clientAssertion: createChatGptAssertion({
+          now: NOW_SECONDS,
+          jti,
+          signingKey: WRONG_PRIVATE_KEY,
+        }),
+        tokenEndpoint: CHATGPT_TOKEN_ENDPOINT,
+      }),
+      /signature/u,
+    );
+  }
+  assert.equal(fetches, 2);
 });
 
 test("verifies required private_key_jwt claims with an offline client assertion verifier", async () => {

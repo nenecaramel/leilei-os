@@ -170,6 +170,10 @@ const DEFAULT_CIMD_TRUSTED_CLIENT_IDS = [
   "https://claude.ai/oauth/mcp-oauth-client-metadata",
 ] as const;
 
+const REQUIRED_CHATGPT_CLIENT_ID = "https://chatgpt.com/oauth/DC6KIBaz_41D/client.json";
+const REQUIRED_CHATGPT_REDIRECT_URI = "https://chatgpt.com/connector/oauth/DC6KIBaz_41D";
+const REQUIRED_CHATGPT_JWKS_URI = "https://chatgpt.com/oauth/jwks.json";
+
 export type McpGovernanceConfig = {
   idleTtlSeconds: number;
   absoluteTtlSeconds: number;
@@ -239,9 +243,16 @@ export function getOAuthAuthorizationServerConfig(
     }
     staticClients = result.data;
   }
-  if (staticClients.length === 0) {
+  const chatGptClient = staticClients.find((client) => client.client_id === REQUIRED_CHATGPT_CLIENT_ID);
+  if (
+    !chatGptClient ||
+    !chatGptClient.redirect_uris.includes(REQUIRED_CHATGPT_REDIRECT_URI) ||
+    chatGptClient.token_endpoint_auth_method !== "private_key_jwt" ||
+    chatGptClient.token_endpoint_auth_signing_alg !== "RS256" ||
+    chatGptClient.jwks_uri !== REQUIRED_CHATGPT_JWKS_URI
+  ) {
     throw new Error(
-      "OAUTH_STATIC_CLIENTS_JSON must include the existing ChatGPT static client before enabling OAUTH_AS_ENABLED.",
+      "OAUTH_STATIC_CLIENTS_JSON must include the exact existing ChatGPT private_key_jwt static client before enabling OAUTH_AS_ENABLED.",
     );
   }
 
