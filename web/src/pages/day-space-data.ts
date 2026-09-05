@@ -33,8 +33,10 @@ export type DaySpaceModuleState<T> =
   | { status: "ready"; value: T }
   | { status: "error"; value?: T; needsRetry?: boolean };
 
+const TODO_AUTHORS = ["L", "G", "C"] as const;
+
 export function visibleTodoPapers(day: TodoDay) {
-  return (["L", "G"] as const).flatMap((author) => {
+  return TODO_AUTHORS.flatMap((author) => {
     const paper = day.papers[author];
     return paper && paper.entries.length > 0 ? [paper] : [];
   });
