@@ -43,6 +43,14 @@ test("planner classifies a new record as create and produces an executable plan"
   assert.equal(plan.items[0]?.classification, "create");
   assert.match(plan.preview_fingerprint, /^[0-9a-f]{64}$/u);
 });
+
+test("planner classifies a C-authored canonical record as a create", () => {
+  const cDocument = { ...document, data: { memory: [{ ...memory, author: "C" }] } };
+  const cParsed = parseImportPackage(new TextEncoder().encode(JSON.stringify(cDocument)));
+  const plan = buildImportPlan(cParsed, USER_ID, emptyState);
+  assert.equal(plan.can_execute, true);
+  assert.equal(plan.items[0]?.record.author, "C");
+});
 test("planner classifies exact replay as duplicate and never executable by itself", () => {
   const plan = buildImportPlan(parsed(), USER_ID, { ...emptyState, memory: [memory] });
   assert.equal(plan.can_execute, false);

@@ -28,6 +28,36 @@ test("parseImportPackage accepts v2 and binds the exact package bytes", () => {
   assert.match(parsed.package_sha256, /^[0-9a-f]{64}$/u);
   assert.equal(parsed.raw_bytes, raw.length);
 });
+
+test("parseImportPackage accepts C for every author-bearing record and rejects Claude", () => {
+  const cMemory = {
+    id: "00000000-0000-4000-8000-000000000031", category: "profile", key: "C memory", content: "C memory content",
+    tags: [], visibility: "assistant", source: "web", author: "C", status: "active", sort_order: 0,
+    created_at: "2026-08-14T00:00:00.000Z", updated_at: "2026-08-14T00:00:00.000Z",
+  };
+  const cDiary = {
+    id: "00000000-0000-4000-8000-000000000032", title: "C diary", content: "C diary content", date: "2026-08-14",
+    tags: [], mood: null, source: "chatgpt_mcp", author: "C", status: "active",
+    created_at: "2026-08-14T00:00:00.000Z", updated_at: "2026-08-14T00:00:00.000Z",
+  };
+  const cTask = {
+    id: "00000000-0000-4000-8000-000000000033", title: "C task", description: "C task description", status: "pending",
+    resume_status: null, lifecycle_status: "active", author: "C", priority: "normal", due_time: null, timezone: "Asia/Shanghai", tags: [],
+    created_at: "2026-08-14T00:00:00.000Z", updated_at: "2026-08-14T00:00:00.000Z", completed_at: null,
+  };
+  const cTodo = {
+    date: "2026-08-14", author: "C", revision: 0,
+    created_at: "2026-08-14T00:00:00.000Z", updated_at: "2026-08-14T00:00:00.000Z", entries: [],
+  };
+  const document = validDocument({ memory: [cMemory], diary: [cDiary], task: [cTask], todo: [cTodo] });
+  const parsed = parseImportPackage(bytes(document));
+  assert.deepEqual(parsed.document.data, document.data);
+
+  assert.throws(
+    () => parseImportPackage(bytes(validDocument({ memory: [{ ...cMemory, author: "Claude" }] }))),
+    (error: unknown) => error instanceof ImportValidationError && error.code === "INVALID_IMPORT_FILE",
+  );
+});
 test("parseImportPackage rejects v1 with an explicit unsupported-version error", () => {
   assert.throws(
     () => parseImportPackage(bytes({ schema_version: 1, exported_at: "2026-08-14T00:00:00.000Z", data: { memory: [] } })),

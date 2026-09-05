@@ -10,7 +10,7 @@ import { createMcpServer } from "../src/mcp/server/create-server.js";
 const USER_ID="00000000-0000-4000-8000-000000000701";
 const TASK_ID="00000000-0000-4000-8000-000000000003";
 const rows:GlobalSearchRow[]=[
-  {entityType:"memory",entityId:"00000000-0000-4000-8000-000000000001",stableName:"Café 计划",matchedField:"content",matchedValue:`${"前".repeat(100)}Café${"后".repeat(200)}`,matchReason:"exact_phrase",lifecycleStatus:"active",businessTime:new Date("2026-08-01T10:00:00Z"),timeBasis:"updated_at",updatedAt:new Date("2026-08-01T10:00:00Z"),rank:2},
+  {entityType:"memory",entityId:"00000000-0000-4000-8000-000000000001",stableName:"Café 计划",matchedField:"content",matchedValue:`${"前".repeat(100)}Café${"后".repeat(200)}`,matchReason:"exact_phrase",lifecycleStatus:"active",businessTime:new Date("2026-08-01T10:00:00Z"),timeBasis:"updated_at",updatedAt:new Date("2026-08-01T10:00:00Z"),rank:2,author:"C"},
   {entityType:"diary",entityId:"00000000-0000-4000-8000-000000000002",stableName:"精准词",matchedField:"title",matchedValue:"精准词",matchReason:"exact_stable_name",lifecycleStatus:"archived",businessTime:new Date("2026-07-30T16:00:00Z"),timeBasis:"diary_date",updatedAt:new Date("2026-08-01T09:00:00Z"),rank:1},
 ];
 class Repository implements GlobalSearchRepository {
@@ -43,6 +43,14 @@ test("GlobalSearchService validates before search, normalizes NFC, bounds snippe
   await assert.rejects(service.search({userId:USER_ID,query:"x".repeat(201)}),/invalid/i);
   await assert.rejects(service.search({userId:USER_ID,query:"x",cursor:"not-a-valid-cursor"}),/invalid/i);
   await assert.rejects(service.search({userId:USER_ID,query:"x",modules:["memory","unknown"]}),/invalid/i);
+});
+
+test("GlobalSearchService returns a stored C author without adding an author filter", async () => {
+  const repo = new Repository();
+  repo.result = [rows[0]!];
+  const result = await new GlobalSearchService(repo).search({ userId: USER_ID, query: "Café", modules: ["memory"] });
+  assert.equal(result.results[0]?.author, "C");
+  assert.equal("author" in (repo.calls[0] ?? {}), false);
 });
 
 test("global_search is strict, read-only, server-owned, and returns detail instructions",async(t)=>{

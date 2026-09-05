@@ -114,6 +114,28 @@ test("ExportService emits the v2 owner-bound contract with a fixed UTC timestamp
   assert.equal("audit" in document, false);
 });
 
+test("ExportService preserves C exactly for every author-bearing business record", async () => {
+  const cMemory: ExportMemoryRecord = { ...memory[0]!, author: "C" };
+  const cDiary: ExportDiaryRecord = { ...diary[0]!, author: "C" };
+  const cTask: ExportTaskRecord = { ...task[0]!, author: "C" };
+  const cTodo: ExportTodoPaper = { ...todo[0]!, author: "C" };
+  const repository = createRepository();
+  repository.listMemory = async () => [cMemory];
+  repository.listDiary = async () => [cDiary];
+  repository.listTasks = async () => [cTask];
+  repository.listTodo = async () => [cTodo];
+
+  const document = await new ExportService(repository, () => new Date(EXPORTED_AT))
+    .createExport(USER_ID, "all", false);
+
+  assert.deepEqual(document.data, {
+    memory: [cMemory],
+    diary: [cDiary],
+    task: [cTask],
+    todo: [cTodo],
+  });
+});
+
 test("ExportService owner fingerprint is deterministic and does not expose the user id", async () => {
   const first = await new ExportService(createRepository(), () => new Date(EXPORTED_AT))
     .createExport(USER_ID, "memory", false);
