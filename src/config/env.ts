@@ -170,9 +170,57 @@ const DEFAULT_CIMD_TRUSTED_CLIENT_IDS = [
   "https://claude.ai/oauth/mcp-oauth-client-metadata",
 ] as const;
 
-const REQUIRED_CHATGPT_CLIENT_ID = "https://chatgpt.com/oauth/DC6KIBaz_41D/client.json";
-const REQUIRED_CHATGPT_REDIRECT_URI = "https://chatgpt.com/connector/oauth/DC6KIBaz_41D";
+const CHATGPT_ORIGIN = "https://chatgpt.com";
 const REQUIRED_CHATGPT_JWKS_URI = "https://chatgpt.com/oauth/jwks.json";
+
+function isTrustedChatGptClientId(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.origin === CHATGPT_ORIGIN &&
+    !url.username &&
+    !url.password &&
+    !url.search &&
+    !url.hash &&
+    /^\/oauth\/(?:[^/]+\/)?client\.json$/u.test(url.pathname)
+  );
+}
+
+function isTrustedChatGptRedirectUri(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.origin === CHATGPT_ORIGIN &&
+    !url.username &&
+    !url.password &&
+    !url.search &&
+    !url.hash &&
+    (
+      url.pathname === "/connector_platform_oauth_redirect" ||
+      /^\/connector\/oauth\/[^/]+$/u.test(url.pathname)
+    )
+  );
+}
+
+function isTrustedChatGptStaticClient(client: OAuthStaticClientConfig): boolean {
+  return (
+    client.client_name === "ChatGPT" &&
+    isTrustedChatGptClientId(client.client_id) &&
+    client.redirect_uris.length > 0 &&
+    client.redirect_uris.every(isTrustedChatGptRedirectUri) &&
+    client.token_endpoint_auth_method === "private_key_jwt" &&
+    client.token_endpoint_auth_signing_alg === "RS256" &&
+    client.jwks_uri === REQUIRED_CHATGPT_JWKS_URI
+  );
+}
 
 export type McpGovernanceConfig = {
   idleTtlSeconds: number;
@@ -243,16 +291,9 @@ export function getOAuthAuthorizationServerConfig(
     }
     staticClients = result.data;
   }
-  const chatGptClient = staticClients.find((client) => client.client_id === REQUIRED_CHATGPT_CLIENT_ID);
-  if (
-    !chatGptClient ||
-    !chatGptClient.redirect_uris.includes(REQUIRED_CHATGPT_REDIRECT_URI) ||
-    chatGptClient.token_endpoint_auth_method !== "private_key_jwt" ||
-    chatGptClient.token_endpoint_auth_signing_alg !== "RS256" ||
-    chatGptClient.jwks_uri !== REQUIRED_CHATGPT_JWKS_URI
-  ) {
+  if (!staticClients.some(isTrustedChatGptStaticClient)) {
     throw new Error(
-      "OAUTH_STATIC_CLIENTS_JSON must include the exact existing ChatGPT private_key_jwt static client before enabling OAUTH_AS_ENABLED.",
+      "OAUTH_STATIC_CLIENTS_JSON must include a trusted ChatGPT private_key_jwt static client before enabling OAUTH_AS_ENABLED.",
     );
   }
 
