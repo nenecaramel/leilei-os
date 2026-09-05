@@ -115,7 +115,7 @@ test("Connections loads the safe status contract from /system/connections", asyn
   const text = container.textContent ?? "";
   assert.match(text, /Web API/);
   assert.match(text, /Online/);
-  assert.match(text, /ChatGPT \/ MCP/);
+  assert.match(text, /ChatGPT \/ Claude MCP/);
   assert.match(text, /Available/);
   assert.match(text, /Internal MCP/);
   assert.match(text, /Not enabled/);

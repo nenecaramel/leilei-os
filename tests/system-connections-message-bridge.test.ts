@@ -30,7 +30,7 @@ test("System Connections keeps availability status without the Message Bridge co
   try {
     await React.act(async () => root.render(React.createElement(SystemConnectionsPageContent, { api })));
     await waitFor(() => container.textContent?.includes("Web API") === true, "connection availability");
-    assert.match(container.textContent ?? "", /ChatGPT \/ MCP/);
+    assert.match(container.textContent ?? "", /ChatGPT \/ Claude MCP/);
     assert.match(container.textContent ?? "", /Internal MCP/);
     assert.equal(container.querySelector("textarea"), null);
     assert.equal([...container.querySelectorAll("button")].some((button) => button.textContent === "Send"), false);
