@@ -173,6 +173,14 @@ const DEFAULT_CIMD_TRUSTED_CLIENT_IDS = [
 const CHATGPT_ORIGIN = "https://chatgpt.com";
 const REQUIRED_CHATGPT_JWKS_URI = "https://chatgpt.com/oauth/jwks.json";
 
+function urlHasOrigin(value: string, origin: string): boolean {
+  try {
+    return new URL(value).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
 function isTrustedChatGptClientId(value: string): boolean {
   let url: URL;
   try {
@@ -208,6 +216,10 @@ function isTrustedChatGptRedirectUri(value: string): boolean {
       /^\/connector\/oauth\/[^/]+$/u.test(url.pathname)
     )
   );
+}
+
+function isChatGptStaticClientCandidate(client: OAuthStaticClientConfig): boolean {
+  return client.client_name === "ChatGPT" || urlHasOrigin(client.client_id, CHATGPT_ORIGIN);
 }
 
 function isTrustedChatGptStaticClient(client: OAuthStaticClientConfig): boolean {
@@ -291,9 +303,14 @@ export function getOAuthAuthorizationServerConfig(
     }
     staticClients = result.data;
   }
-  if (!staticClients.some(isTrustedChatGptStaticClient)) {
+
+  const chatGptStaticClients = staticClients.filter(isChatGptStaticClientCandidate);
+  if (
+    chatGptStaticClients.length === 0 ||
+    chatGptStaticClients.some((client) => !isTrustedChatGptStaticClient(client))
+  ) {
     throw new Error(
-      "OAUTH_STATIC_CLIENTS_JSON must include a trusted ChatGPT private_key_jwt static client before enabling OAUTH_AS_ENABLED.",
+      "OAUTH_STATIC_CLIENTS_JSON must include at least one trusted ChatGPT private_key_jwt static client and no untrusted ChatGPT entries before enabling OAUTH_AS_ENABLED.",
     );
   }
 
