@@ -147,7 +147,7 @@ test(
             ]);
           }
 
-          const authorFixtureIds = [randomUUID(), randomUUID(), randomUUID()];
+          const authorFixtureIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
           await transaction.insert(coreMemories).values([
             {
               id: authorFixtureIds[0]!,
@@ -177,6 +177,18 @@ test(
               id: authorFixtureIds[2]!,
               userId: ownerId,
               category: "goal",
+              key: "author_c_memory",
+              content: "Explicit C author fixture",
+              tags: [],
+              visibility: "assistant",
+              source: "integration",
+              status: "active",
+              author: "C",
+            },
+            {
+              id: authorFixtureIds[3]!,
+              userId: ownerId,
+              category: "goal",
               key: "author_null_memory",
               content: "Legacy null author fixture",
               tags: [],
@@ -195,7 +207,7 @@ test(
             authorFixtureIds
               .map((id, index) => ({
                 id,
-                author: index === 0 ? "L" : index === 1 ? "G" : null,
+                author: index === 0 ? "L" : index === 1 ? "G" : index === 2 ? "C" : null,
               }))
               .sort((left, right) => left.id.localeCompare(right.id)),
           );
@@ -518,6 +530,7 @@ test(
             visibility: "assistant" as const,
             source: "integration",
             status: "archived" as const,
+            author: "C" as const,
             createdAt: contentTimestamp,
             updatedAt: contentTimestamp,
           };
@@ -549,6 +562,7 @@ test(
             "tags",
             "source",
             "visibility",
+            "author",
           ] as const) {
             assert.deepEqual(restored[field], restoreFields[field]);
           }
@@ -698,6 +712,24 @@ test(
             false,
             "a repeated archive must not report success",
           );
+          assert.equal(
+            await repository.updateMemory({
+              id: authorFixtureIds[2]!,
+              userId: ownerId,
+              content: "C author content update",
+              author: "C",
+            }),
+            true,
+          );
+          const [updatedC] = await transaction
+            .select({ author: coreMemories.author, content: coreMemories.content })
+            .from(coreMemories)
+            .where(eq(coreMemories.id, authorFixtureIds[2]!))
+            .limit(1);
+          assert.deepEqual(updatedC, {
+            author: "C",
+            content: "C author content update",
+          });
 
           const persisted = await transaction
             .select({

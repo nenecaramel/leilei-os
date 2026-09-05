@@ -13,13 +13,15 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 
+const contentAuthorSchema = z.enum(["L", "G", "C"]);
+
 const updateMemoryInputSchema = z.object({
   id: z.string().trim().min(1),
   category: z.enum(["profile", "preference", "goal", "project"]).optional(),
   key: z.string().max(1_000).optional(),
   content: z.string().max(MEMORY_CONTENT_MAX_LENGTH).optional(),
   tags: z.array(z.string().max(500)).max(20).optional(),
-  author: z.enum(["L", "G"]).optional(),
+  author: contentAuthorSchema.optional(),
 }).strict();
 
 const updateMemoryDataSchema = z.object({
@@ -30,7 +32,7 @@ const updateMemoryDataSchema = z.object({
   source: z.string(),
   updated_at: z.string().datetime(),
   lifecycle_status: z.literal("active"),
-  author: z.enum(["L", "G"]).nullable(),
+  author: contentAuthorSchema.nullable(),
   detail_tool: z.literal("get_memory"),
   detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
 });

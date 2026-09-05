@@ -59,6 +59,35 @@ test("MCP Memory normalizes input and persists the authoritative trusted shape",
   assert.deepEqual(result.metadata, { created: true, idempotent_replay: false });
 });
 
+test("MCP Memory creates a C author without changing its idempotent payload", async () => {
+  const calls: unknown[] = [];
+  const service = new MemoryService(repository({
+    async createMemoryIdempotently(input) {
+      calls.push(input);
+      return { outcome: "created", memory: { ...record, author: input.author } };
+    },
+  }));
+
+  const created = await service.createMcpMemory(
+    { userId: "user-a" },
+    { category: "goal", key: "ship", content: "Ship safely", author: "C" },
+    "memory-request-c-author",
+  );
+
+  assert.equal(created.memory.author, "C");
+  assert.deepEqual(calls, [{
+    userId: "user-a",
+    category: "goal",
+    key: "ship",
+    content: "Ship safely",
+    tags: [],
+    source: "mcp",
+    idempotencyKey: "memory-request-c-author",
+    requestHash: hashMcpWriteRequest({ category: "goal", key: "ship", content: "Ship safely", tags: [], author: "C" }),
+    author: "C",
+  }]);
+});
+
 test("MCP Memory reports replay and safe durable conflicts", async () => {
   for (const [outcome, code] of [["conflict", "IDEMPOTENCY_CONFLICT"], ["key_conflict", "MEMORY_KEY_CONFLICT"]] as const) {
     const service = new MemoryService(repository({
@@ -83,6 +112,7 @@ test("invalid MCP Memory input and inactive users fail before persistence", asyn
     { input: { category: "goal" as const, key: "key", content: " ", author: "L" }, key: "memory-request-0005", code: "INVALID_MEMORY_CONTENT" },
     { input: { category: "goal" as const, key: "key", content: "content", author: "L", tags: Array.from({ length: 21 }, (_, i) => `t${i}`) }, key: "memory-request-0006", code: "INVALID_MEMORY_TAGS" },
     { input: { category: "goal" as const, key: "key", content: "content", author: "L" }, key: "short", code: "INVALID_IDEMPOTENCY_KEY" },
+    { input: { category: "goal" as const, key: "key", content: "content", author: "Claude" as never }, key: "memory-request-claude", code: "AUTHOR_REQUIRED" },
   ];
   for (const item of invalid) {
     let persisted = false;

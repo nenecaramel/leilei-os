@@ -22,7 +22,7 @@ const memoryCategorySchema = z.enum(["profile", "preference", "goal", "project"]
 const rawMemoryKeySchema = z.string().max(1_000);
 const rawMemoryContentSchema = z.string().max(MEMORY_CONTENT_MAX_LENGTH);
 const rawMemoryTagSchema = z.string().max(500);
-const contentAuthorSchema = z.enum(["L", "G"]);
+const contentAuthorSchema = z.enum(["L", "G", "C"]);
 const writeMemoryInputSchema = z.object({
   category: memoryCategorySchema,
   key: rawMemoryKeySchema,

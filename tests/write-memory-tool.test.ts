@@ -11,22 +11,29 @@ const result: CreateMcpMemoryResult = {
   metadata: { created: true, idempotent_replay: false },
 };
 
+const cResult: CreateMcpMemoryResult = {
+  ...result,
+  memory: { ...result.memory, author: "C" },
+};
+
 async function fixture(memoryResult: CreateMcpMemoryResult = result) {
   const calls: unknown[] = [];
+  const updateCalls: unknown[] = [];
   let authenticationCalls = 0;
   const server = createMcpServer({
     readMemory: { memoryService: { readMemory: async () => ({ user: { display_name: "Leilei" }, memories: [], metadata: { count: 0 } }) }, getAuthenticatedUserId: () => userId },
     writeMemory: { memoryService: { async createMcpMemory(context, input, key) { calls.push({ context, input, key }); return memoryResult; } }, getAuthenticatedUserId: () => { authenticationCalls += 1; return userId; } },
+    updateMemory: { memoryService: { async updateMcpMemory(context, input) { updateCalls.push({ context, input }); return { id: "00000000-0000-4000-8000-000000000102", category: "goal", key: "ship", content: "Updated safely", tags: [], source: "mcp", updated_at: "2026-08-01T08:00:00.000Z", author: "C" }; } }, getAuthenticatedUserId: () => userId },
   });
   const client = new Client({ name: "write-memory-test", version: "1" }, { capabilities: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  return { client, server, calls, authenticationCalls: () => authenticationCalls };
+  return { client, server, calls, updateCalls, authenticationCalls: () => authenticationCalls };
 }
 
-test("write_memory exposes the confirmed idempotent server-owned contract", async (t) => {
-  const { client, server, calls } = await fixture();
+test("write_memory and update_memory preserve explicit C authors in structured responses", async (t) => {
+  const { client, server, calls, updateCalls } = await fixture(cResult);
   t.after(async () => { await client.close(); await server.close(); });
   const tools = await client.listTools();
   const tool = tools.tools.find((candidate) => candidate.name === "write_memory");
@@ -38,28 +45,33 @@ test("write_memory exposes the confirmed idempotent server-owned contract", asyn
   assert.match(tool.description ?? "", /explicitly approves/);
   assert.match(tool.description ?? "", /get_memory/);
 
-  const response = await client.callTool({ name: "write_memory", arguments: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L", idempotency_key: "memory-request-0001" } });
+  const response = await client.callTool({ name: "write_memory", arguments: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "C", idempotency_key: "memory-request-0001" } });
   assert.equal(response.isError, undefined);
-  assert.deepEqual(calls, [{ context: { userId }, input: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "L" }, key: "memory-request-0001" }]);
+  assert.deepEqual(calls, [{ context: { userId }, input: { category: "goal", key: "ship", content: "Ship safely", tags: ["Phase 6"], author: "C" }, key: "memory-request-0001" }]);
   assert.deepEqual(response.structuredContent, {
     success: true,
     data: {
       memory: {
-        id: result.memory.id,
-        category: result.memory.category,
-        key: result.memory.key,
-        tags: result.memory.tags,
-        source: result.memory.source,
-        lifecycle_status: result.memory.lifecycle_status,
-        created_at: result.memory.created_at,
-        updated_at: result.memory.updated_at,
-        author: result.memory.author,
+        id: cResult.memory.id,
+        category: cResult.memory.category,
+        key: cResult.memory.key,
+        tags: cResult.memory.tags,
+        source: cResult.memory.source,
+        lifecycle_status: cResult.memory.lifecycle_status,
+        created_at: cResult.memory.created_at,
+        updated_at: cResult.memory.updated_at,
+        author: "C",
       },
-      metadata: result.metadata,
+      metadata: cResult.metadata,
       detail_tool: "get_memory",
-      detail_arguments: { id: result.memory.id, scope: "active" },
+      detail_arguments: { id: cResult.memory.id, scope: "active" },
     },
   });
+
+  const updateResponse = await client.callTool({ name: "update_memory", arguments: { id: "00000000-0000-4000-8000-000000000102", content: "Updated safely", author: "C" } });
+  assert.equal(updateResponse.isError, undefined);
+  assert.deepEqual(updateCalls, [{ context: { userId }, input: { id: "00000000-0000-4000-8000-000000000102", content: "Updated safely", author: "C" } }]);
+  assert.equal((updateResponse.structuredContent as { data: { author: string } }).data.author, "C");
 });
 
 test("write_memory rejects identity injection and invalid values before service", async (t) => {
@@ -70,6 +82,7 @@ test("write_memory rejects identity injection and invalid values before service"
     { category: "goal", key: "ship", content: "Ship safely", author: "L", idempotency_key: "memory-request-0002b", userId },
     { category: "other", key: "ship", content: "Ship safely", author: "L", idempotency_key: "memory-request-0003" },
     { category: "goal", key: "ship", content: "Ship safely", author: "L", tags: Array.from({ length: 21 }, () => "x"), idempotency_key: "memory-request-0004" },
+    { category: "goal", key: "ship", content: "Ship safely", author: "Claude", idempotency_key: "memory-request-0005" },
   ]) {
     const response = await client.callTool({ name: "write_memory", arguments: argumentsValue });
     assert.equal(response.isError, true);
