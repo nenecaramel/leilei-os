@@ -159,7 +159,7 @@ function createFixture(failure?: Error) {
       },
       todoService: {
         async readDay() {
-          return { date: TODO_PAPER.date, papers: { L: TODO_PAPER, G: null } };
+          return { date: TODO_PAPER.date, papers: { L: TODO_PAPER, G: null, C: null } };
         },
         async listDates() {
           return [TODO_PAPER.date];
