@@ -66,7 +66,7 @@ function apiWithDiaryFailure(onTodoLoad: () => void, onDiaryLoad: () => void, on
     listTodoDates: async () => [],
     loadTodoDay: async (date) => {
       onTodoLoad();
-      return { date, papers: { L: { author: "L", date, revision: 1, entries: [{ id: "todo-1", kind: "pending", text: "Keep Todo" }] }, G: null } };
+      return { date, papers: { L: { author: "L", date, revision: 1, entries: [{ id: "todo-1", kind: "pending", text: "Keep Todo" }] }, G: null, C: null } };
     },
     listDiaryDates: async () => [],
     loadDiariesByDate: async () => {
@@ -86,6 +86,7 @@ const todo = {
   papers: {
     L: { author: "L" as const, date, revision: 1, entries: [{ id: "todo-1", kind: "pending" as const, text: "Keep Todo" }] },
     G: null,
+    C: null,
   },
 };
 const diary = {
@@ -277,7 +278,7 @@ test("Day Space retains committed Todo through refresh failure, then recovers", 
       todoLoads += 1;
       if (todoLoads === 1) return todo;
       if (todoLoads === 2) return new Promise((_, reject) => { rejectTodoRefresh = reject; });
-      return { date, papers: { L: freshTodo, G: null } };
+      return { date, papers: { L: freshTodo, G: null, C: null } };
     },
     listDiaryDates: async () => [],
     loadDiariesByDate: async () => {
@@ -322,6 +323,95 @@ test("Day Space retains committed Todo through refresh failure, then recovers", 
   await page.cleanup();
 });
 
+test("Day Space opens C Todo, retains its committed C slot on refresh failure, and offers Todo retry", async () => {
+  let todoLoads = 0;
+  let rejectTodoRefresh!: (reason?: unknown) => void;
+  const cTodo = { author: "C" as const, date, revision: 1, entries: [{ id: "c-1", kind: "pending" as const, text: "C Todo" }] };
+  const committedC = { ...cTodo, revision: 2, entries: [{ id: "c-1", kind: "pending" as const, text: "Committed C Todo" }] };
+  const api: DaySpaceApi = {
+    webClient: {
+      request: async <T>(path: string, init?: RequestInit) => {
+        assert.equal(path, "/todo/2026-08-12/C");
+        assert.equal(init?.method, "PUT");
+        return { success: true, data: committedC } as T;
+      },
+    },
+    listTodoDates: async () => [],
+    loadTodoDay: async () => {
+      todoLoads += 1;
+      if (todoLoads === 1) return { date, papers: { L: null, G: null, C: cTodo } };
+      return new Promise((_, reject) => { rejectTodoRefresh = reject; });
+    },
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => ({ date, diaries: [] }),
+    updateDiary: async () => { throw new Error("not used"); },
+  };
+  const page = await render(api);
+  await page.settle();
+  assert.equal(page.container.querySelector(".day-space-paper-signature")?.textContent, "C");
+  await saveTodoPaper(page, "Committed C Todo");
+  assert.equal(typeof rejectTodoRefresh, "function");
+  rejectTodoRefresh(new Error("Todo refresh unavailable"));
+  await page.settle();
+  assert.match(page.container.textContent ?? "", /Committed C Todo/);
+  assert.match(page.container.textContent ?? "", /重试 Todo/);
+  await page.cleanup();
+});
+
+test("Day Space treats C Todo as content when deciding whether the day is empty", async () => {
+  const api: DaySpaceApi = {
+    webClient: { request: async () => ({}) } as never,
+    listTodoDates: async () => [],
+    loadTodoDay: async () => ({
+      date,
+      papers: {
+        L: null,
+        G: null,
+        C: { author: "C", date, revision: 1, entries: [{ id: "c-1", kind: "pending", text: "C only" }] },
+      },
+    }),
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => ({ date, diaries: [] }),
+    updateDiary: async () => { throw new Error("not used"); },
+  };
+  const page = await render(api);
+  await page.settle();
+  assert.match(page.container.textContent ?? "", /C only/);
+  assert.doesNotMatch(page.container.textContent ?? "", /这一天还没有内容/);
+  await page.cleanup();
+});
+
+test("Day Space keeps C selected for Diary and preserves metadata when changing it to G", async () => {
+  const cDiary = { ...diary, author: "C" as const, tags: ["keep", "c"], mood: "focused" };
+  let updateInput: Parameters<DaySpaceApi["updateDiary"]>[0] | undefined;
+  const api: DaySpaceApi = {
+    webClient: { request: async () => ({}) } as never,
+    listTodoDates: async () => [],
+    loadTodoDay: async () => ({ date, papers: { L: null, G: null, C: null } }),
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => ({ date, diaries: [cDiary] }),
+    updateDiary: async (input) => {
+      updateInput = input;
+      return { ...cDiary, ...input };
+    },
+  };
+  const page = await render(api);
+  await page.settle();
+  assert.equal(page.container.querySelector(".day-space-paper-signature")?.textContent, "C");
+  suppressAuthorPortal(page);
+  await saveDiaryPaper(page, "C becomes G");
+  assert.deepEqual(updateInput, {
+    id: cDiary.id,
+    title: cDiary.title,
+    content: cDiary.content,
+    author: "G",
+    date: cDiary.date,
+    tags: cDiary.tags,
+    mood: cDiary.mood,
+  });
+  await page.cleanup();
+});
+
 test("Day Space keeps an emptied committed Todo paper absent after refresh failure", async () => {
   let todoLoads = 0;
   let rejectTodoRefresh!: (reason?: unknown) => void;
@@ -339,7 +429,7 @@ test("Day Space keeps an emptied committed Todo paper absent after refresh failu
       todoLoads += 1;
       if (todoLoads === 1) return todo;
       if (todoLoads === 2) return new Promise((_, reject) => { rejectTodoRefresh = reject; });
-      return { date, papers: { L: null, G: null } };
+      return { date, papers: { L: null, G: null, C: null } };
     },
     listDiaryDates: async () => [],
     loadDiariesByDate: async () => ({ date, diaries: [diary] }),
@@ -473,7 +563,7 @@ test("Day Space does not claim complete empty or loading when one failed source 
   const api: DaySpaceApi = {
     webClient: { request: async () => ({}) } as never,
     listTodoDates: async () => [],
-    loadTodoDay: async () => ({ date, papers: { L: null, G: null } }),
+    loadTodoDay: async () => ({ date, papers: { L: null, G: null, C: null } }),
     listDiaryDates: async () => [],
     loadDiariesByDate: async () => { throw new Error("Diary unavailable"); },
     updateDiary: async () => { throw new Error("not used"); },
