@@ -1446,7 +1446,7 @@ function MobileDiaryDetail({
   updating: boolean;
   archiving: boolean;
   author: PaperAuthorValue;
-  onAuthorChange(value: "L" | "G"): void;
+  onAuthorChange(value: Exclude<PaperAuthorValue, null>): void;
   values: Record<"title" | "content" | "date" | "tags" | "mood", string>;
   setValues: Record<
     "title" | "content" | "date" | "tags" | "mood",

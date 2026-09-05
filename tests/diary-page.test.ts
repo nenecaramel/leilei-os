@@ -849,9 +849,9 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
     const authorTrigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
     assert.ok(authorTrigger);
     await React.act(async () => authorTrigger.click());
-    const authorL = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
-    assert.ok(authorL);
-    await React.act(async () => authorL.click());
+    const authorC = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="C"]');
+    assert.ok(authorC);
+    await React.act(async () => authorC.click());
 
     let confirmations = 0;
     page.window.confirm = () => {
@@ -874,7 +874,7 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
     });
     assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 1);
     const createRequest = requests.find(({ init }) => init?.method === "POST");
-    assert.equal(JSON.parse(String(createRequest?.init?.body)).author, "L");
+    assert.equal(JSON.parse(String(createRequest?.init?.body)).author, "C");
     await React.act(async () => {
       first.reject(new Error("failed"));
       await first.promise.catch(() => undefined);

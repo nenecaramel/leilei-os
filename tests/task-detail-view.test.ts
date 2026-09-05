@@ -72,8 +72,8 @@ test("Dashboard quick-create intent opens Task form and focuses title once", asy
   }
 });
 
-test("Task details display the stored author or legacy unknown marker without exposing an edit control", async () => {
-  for (const [author, expected] of [["G", "G"], [null, "—"]] as const) {
+test("Task details display the stored C author or legacy unknown marker without exposing an edit control", async () => {
+  for (const [author, expected] of [["C", "C"], [null, "—"]] as const) {
     const response = { ...TASK_RESPONSE, data: { ...TASK_RESPONSE.data, author } };
     const page = await renderTaskPage(
       createTaskDetailLocation(TASK_ID, "/task"),
@@ -1126,9 +1126,9 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
     const authorTrigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
     assert.ok(authorTrigger);
     await React.act(async () => authorTrigger.click());
-    const authorL = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
-    assert.ok(authorL);
-    await React.act(async () => authorL.click());
+    const authorC = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="C"]');
+    assert.ok(authorC);
+    await React.act(async () => authorC.click());
     let confirmations = 0;
     page.window.confirm = () => {
       confirmations += 1;
@@ -1150,7 +1150,7 @@ test("Task dirty create preserves on cancel, retries once, and ignores stale suc
     });
     assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 1);
     const createRequest = requests.find(({ init }) => init?.method === "POST");
-    assert.equal(JSON.parse(String(createRequest?.init?.body)).author, "L");
+    assert.equal(JSON.parse(String(createRequest?.init?.body)).author, "C");
     await React.act(async () => {
       first.reject(new Error("failed"));
       await first.promise.catch(() => undefined);

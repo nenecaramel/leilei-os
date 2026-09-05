@@ -1781,7 +1781,7 @@ test("Memory create opens directly in the shared paper shell", async () => {
   }
 });
 
-test("Memory create starts without an author and sends the selected signature", async () => {
+test("Memory create starts without an author and sends the selected C signature", async () => {
   const requests: Request[] = [];
   const api: WebApiClient = {
     async request<T>(path: string, init?: RequestInit) {
@@ -1817,9 +1817,9 @@ test("Memory create starts without an author and sends the selected signature", 
     const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
     assert.ok(trigger);
     await React.act(async () => trigger.click());
-    const g = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="G"]');
-    assert.ok(g);
-    await React.act(async () => g.click());
+    const c = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="C"]');
+    assert.ok(c);
+    await React.act(async () => c.click());
     const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
       .find((button) => button.textContent?.trim() === "保存");
     assert.ok(save);
@@ -1829,7 +1829,7 @@ test("Memory create starts without an author and sends the selected signature", 
     await React.act(async () => save.click());
     const post = requests.find(({ init }) => init?.method === "POST");
     assert.ok(post);
-    assert.equal(JSON.parse(String(post.init?.body)).author, "G");
+    assert.equal(JSON.parse(String(post.init?.body)).author, "C");
   } finally {
     await page.cleanup();
   }

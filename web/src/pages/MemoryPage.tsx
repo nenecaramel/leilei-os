@@ -1609,7 +1609,7 @@ function MemoryDetail({
   onEditingCategoryChange(value: MemoryCategory): void;
   onEditingContentChange(value: string): void;
   onEditingTagsChange(value: string): void;
-  onEditingAuthorChange(value: "L" | "G"): void;
+  onEditingAuthorChange(value: Exclude<PaperAuthorValue, null>): void;
   onEdit(memory: MemoryRecord): void;
   onCancel(): void;
   onSave(): void;
