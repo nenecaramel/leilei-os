@@ -187,3 +187,28 @@ test("refuses to enable the adapter without a static ChatGPT registry", () => {
     /OAUTH_STATIC_CLIENTS_JSON.*ChatGPT/u,
   );
 });
+
+test("accepts the current ChatGPT static client without the legacy connector-specific id", () => {
+  const currentChatGptStaticClientsJson = JSON.stringify([{
+    client_id: "https://chatgpt.com/oauth/client.json",
+    client_name: "ChatGPT",
+    redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+    token_endpoint_auth_method: "private_key_jwt",
+    token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+    token_endpoint_auth_signing_alg: "RS256",
+    jwks_uri: "https://chatgpt.com/oauth/jwks.json",
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+  }]);
+
+  const config = getOAuthAuthorizationServerConfig({
+    ...baseEnvironment,
+    OAUTH_AS_ENABLED: true,
+    OAUTH_AS_UPSTREAM_CLIENT_ID: "auth0-upstream-client",
+    OAUTH_AS_UPSTREAM_REDIRECT_URI: "https://mcp.example.test/oauth/callback",
+    OAUTH_STATIC_CLIENTS_JSON: currentChatGptStaticClientsJson,
+  });
+
+  assert.ok(config);
+  assert.deepEqual(config.staticClients, JSON.parse(currentChatGptStaticClientsJson));
+});
