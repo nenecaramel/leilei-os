@@ -225,6 +225,13 @@
       "when": 1788022715760,
       "tag": "0031_sentinel_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788570859454,
+      "tag": "0032_content_author_c",
+      "breakpoints": true
     }
   ]
 }

@@ -40,7 +40,7 @@ export const memoryStatusEnum = pgEnum("memory_status", [
 
 export const diarySourceEnum = pgEnum("diary_source", ["chatgpt_mcp"]);
 
-export const contentAuthorEnum = pgEnum("content_author", ["L", "G"]);
+export const contentAuthorEnum = pgEnum("content_author", ["L", "G", "C"]);
 
 export const todoEntryKindEnum = pgEnum("todo_entry_kind", [
   "pending",
