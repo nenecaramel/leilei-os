@@ -7,9 +7,11 @@ const LEGACY_PREFIX = "leilei.home.todo-paper.v1";
 const MARKER_PREFIX = "leilei.home.todo-paper.migration.v1";
 const KINDS = new Set<TodoEntryKind>(["pending", "completed", "record"]);
 
+type LegacyTodoAuthor = Exclude<TodoAuthor, "C">;
+
 const LEGACY_HOME_SEED_ENTRIES: Record<
-  TodoAuthor,
-  readonly { id: string; author: TodoAuthor; kind: TodoEntryKind; text: string }[]
+  LegacyTodoAuthor,
+  readonly { id: string; author: LegacyTodoAuthor; kind: TodoEntryKind; text: string }[]
 > = {
   L: [
     { id: "l-1", author: "L", kind: "pending", text: "整理今天的事情" },
@@ -26,13 +28,13 @@ const LEGACY_HOME_SEED_ENTRIES: Record<
 };
 
 export type TodoMigrationTerminalState = "migrated" | "server-wins" | "invalid";
-export type TodoMigrationNotice = { date: string; author: TodoAuthor; state: "server-wins" };
-export type LegacyTodoCandidate = { author: TodoAuthor; date: string; key: string };
+export type TodoMigrationNotice = { date: string; author: LegacyTodoAuthor; state: "server-wins" };
+export type LegacyTodoCandidate = { author: LegacyTodoAuthor; date: string; key: string };
 
-export function legacyTodoPaperKey(author: TodoAuthor, date: string): string {
+export function legacyTodoPaperKey(author: LegacyTodoAuthor, date: string): string {
   return `${LEGACY_PREFIX}:${date}:${author}`;
 }
-export function legacyTodoMigrationMarkerKey(author: TodoAuthor, date: string): string {
+export function legacyTodoMigrationMarkerKey(author: LegacyTodoAuthor, date: string): string {
   return `${MARKER_PREFIX}:${date}:${author}`;
 }
 
@@ -42,7 +44,7 @@ export function listLegacyTodoPaperCandidates(storage: Pick<Storage, "length" | 
   for (let i = 0; i < storage.length; i += 1) {
     const key = storage.key(i);
     const match = key ? pattern.exec(key) : null;
-    if (match) result.push({ date: match[1]!, author: match[2] as TodoAuthor, key: key! });
+    if (match) result.push({ date: match[1]!, author: match[2] as LegacyTodoAuthor, key: key! });
   }
   return result.sort((a, b) => a.key.localeCompare(b.key));
 }
@@ -51,7 +53,7 @@ function sameEntries(a: unknown, b: readonly { id: string; author: string; kind:
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function isKnownLegacyHomeSeed(raw: string, author: TodoAuthor): boolean {
+function isKnownLegacyHomeSeed(raw: string, author: LegacyTodoAuthor): boolean {
   try {
     return sameEntries(JSON.parse(raw) as unknown, LEGACY_HOME_SEED_ENTRIES[author]);
   } catch {
@@ -59,7 +61,7 @@ function isKnownLegacyHomeSeed(raw: string, author: TodoAuthor): boolean {
   }
 }
 
-export function parseLegacyTodoPaper(raw: string, author: TodoAuthor): { author: TodoAuthor; entries: TodoEntry[] } | null {
+export function parseLegacyTodoPaper(raw: string, author: LegacyTodoAuthor): { author: LegacyTodoAuthor; entries: TodoEntry[] } | null {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (sameEntries(parsed, LEGACY_HOME_SEED_ENTRIES[author])) return null;
@@ -83,7 +85,7 @@ export function parseLegacyTodoPaper(raw: string, author: TodoAuthor): { author:
   }
 }
 
-function mark(storage: Storage, author: TodoAuthor, date: string, state: TodoMigrationTerminalState): void {
+function mark(storage: Storage, author: LegacyTodoAuthor, date: string, state: TodoMigrationTerminalState): void {
   storage.setItem(legacyTodoMigrationMarkerKey(author, date), JSON.stringify({ state }));
 }
 
