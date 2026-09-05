@@ -7,7 +7,7 @@ import type { ContentAuthor } from "../src/domains/content-author.js";
 export const phase2SeedEnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   MCP_USER_ID: z.string().uuid(),
-  SEED_CONTENT_AUTHOR: z.enum(["L", "G"]),
+  SEED_CONTENT_AUTHOR: z.enum(["L", "G", "C"]),
   SEED_USER_EMAIL: z
     .string()
     .email()
