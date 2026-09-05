@@ -18,8 +18,10 @@ const todoEntrySchema = z.object({
   text: z.string(),
 }).strict();
 
+const todoAuthorSchema = z.enum(["L", "G", "C"]);
+
 const todoPaperSchema = z.object({
-  author: z.enum(["L", "G"]),
+  author: todoAuthorSchema,
   date: z.string(),
   revision: z.number().int().nonnegative(),
   entries: z.array(todoEntrySchema),
@@ -27,7 +29,7 @@ const todoPaperSchema = z.object({
 
 const writeTodoPaperInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  author: z.enum(["L", "G"]),
+  author: todoAuthorSchema,
   revision: z.number().int().min(0).nullable(),
   entries: z.array(todoEntrySchema),
   idempotency_key: z.string()
@@ -75,7 +77,7 @@ export function registerWriteTodoPaperTool(
     {
       title: "Save one Todo paper",
       description:
-        "Save one complete L or G Todo paper in Leilei OS. Supply an exact YYYY-MM-DD date, the logical author, the exact current revision returned by read_todo_day (or null only when creating a missing paper), the complete ordered entry list, and a stable idempotency key. The authenticated user is assigned by the server.",
+        "Save one complete L, G, or C Todo paper in Leilei OS. Supply an exact YYYY-MM-DD date, the logical author, the exact current revision returned by read_todo_day (or null only when creating a missing paper), the complete ordered entry list, and a stable idempotency key. The authenticated user is assigned by the server.",
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {

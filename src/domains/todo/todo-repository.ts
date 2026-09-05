@@ -7,6 +7,7 @@ import {
   type McpIdempotencyTransaction,
 } from "../mcp-write/mcp-write-idempotency.js";
 import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
+import { CONTENT_AUTHORS, isContentAuthor, type ContentAuthor } from "../content-author.js";
 import type {
   ReplaceTodoPaperInput,
   ReplaceTodoPaperIdempotentlyInput,
@@ -25,9 +26,12 @@ type CommittedPaperWithId =
   | { outcome: "conflict" };
 
 function toPaper(
-  row: { author: "L" | "G"; businessDate: string; revision: number },
+  row: { author: unknown; businessDate: string; revision: number },
   entries: TodoEntry[],
 ): TodoPaper {
+  if (!isContentAuthor(row.author)) {
+    throw new Error("Todo paper has an invalid author.");
+  }
   return {
     author: row.author,
     date: row.businessDate,
@@ -52,7 +56,7 @@ export class DrizzleTodoRepository implements TodoRepository {
     database: Database,
     userId: string,
     date: string,
-    author: "L" | "G",
+    author: ContentAuthor,
   ): Promise<TodoPaper | null> {
     const [paper] = await database
       .select({
@@ -104,11 +108,16 @@ export class DrizzleTodoRepository implements TodoRepository {
   }
 
   async readDay(userId: string, date: string): Promise<TodoDayPapers> {
-    const [L, G] = await Promise.all([
-      this.readPaper(this.db, userId, date, "L"),
-      this.readPaper(this.db, userId, date, "G"),
-    ]);
-    return { L, G };
+    const papers: TodoDayPapers = { L: null, G: null, C: null };
+    await Promise.all(CONTENT_AUTHORS.map(async (author) => {
+      const paper = await this.readPaper(this.db, userId, date, author);
+      if (!paper) return;
+      if (!isContentAuthor(paper.author)) {
+        throw new Error("Todo paper has an invalid author.");
+      }
+      papers[paper.author] = paper;
+    }));
+    return papers;
   }
 
   async listContentDates(userId: string): Promise<string[]> {

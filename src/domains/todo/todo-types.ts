@@ -9,7 +9,11 @@ export type TodoPaper = {
   revision: number;
   entries: TodoEntry[];
 };
-export type TodoDayPapers = { L: TodoPaper | null; G: TodoPaper | null };
+export type TodoDayPapers = {
+  L: TodoPaper | null;
+  G: TodoPaper | null;
+  C: TodoPaper | null;
+};
 export type TodoUserRecord = { status: "active" | "disabled" };
 export type ReplaceTodoPaperInput = {
   userId: string;

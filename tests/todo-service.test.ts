@@ -20,7 +20,7 @@ class FakeTodoRepository implements TodoRepository {
     paper: { author: "L", date: "2026-08-12", revision: 1, entries: [] },
   };
   findUserById() { return Promise.resolve({ status: "active" as const }); }
-  readDay(_userId: string, _date: string): Promise<TodoDayPapers> { return Promise.resolve({ L: null, G: null }); }
+  readDay(_userId: string, _date: string): Promise<TodoDayPapers> { return Promise.resolve({ L: null, G: null, C: null }); }
   listContentDates(_userId: string): Promise<string[]> { return Promise.resolve([]); }
   replacePaper(input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult> { this.replacements.push(input); return Promise.resolve(this.result); }
   replacePaperIdempotently(input: ReplaceTodoPaperIdempotentlyInput): Promise<ReplaceTodoPaperIdempotentlyResult> {
@@ -43,6 +43,7 @@ test("TodoService rejects invalid input without repository mutation", async () =
   const service = new TodoService(repository);
   for (const input of [
     { author: "X", revision: null, entries: [] },
+    { author: "Claude", revision: null, entries: [] },
     { author: "L", revision: -1, entries: [] },
     { author: "L", revision: null, entries: [{ id: "a", kind: "bad", text: "x" }] },
     { author: "L", revision: null, entries: [{ id: "a", kind: "record", text: "x" }, { id: "a", kind: "record", text: "y" }] },
@@ -100,6 +101,30 @@ test("TodoService trims and drops blank rows while preserving order", async () =
     { id: "a", kind: "pending", text: "first" },
     { id: "b", kind: "completed", text: "second" },
   ]);
+});
+
+test("TodoService accepts C papers while rejecting the Claude display name without mutation", async () => {
+  const repository = new FakeTodoRepository();
+  const service = new TodoService(repository);
+
+  await service.replacePaper({
+    userId: "u", date: "2026-09-05", author: "C", revision: null,
+    entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+  });
+  await assert.rejects(
+    () => service.replacePaper({
+      userId: "u", date: "2026-09-05", author: "Claude", revision: null, entries: [],
+    }),
+    (error: unknown) => error instanceof TodoServiceError && error.code === "TODO_AUTHOR_INVALID",
+  );
+
+  assert.deepEqual(repository.replacements, [{
+    userId: "u",
+    date: "2026-09-05",
+    author: "C",
+    expectedRevision: null,
+    entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+  }]);
 });
 
 test("TodoService maps repository conflict to stable error", async () => {
@@ -162,6 +187,7 @@ test("TodoService idempotent fingerprint includes author and ordered normalized 
   for (const input of [
     { author: "L", revision: 2, entries },
     { author: "G", revision: 2, entries },
+    { author: "C", revision: 2, entries },
     { author: "L", revision: 3, entries },
     { author: "L", revision: 2, entries: [...entries].reverse() },
   ] as const) {
@@ -173,7 +199,7 @@ test("TodoService idempotent fingerprint includes author and ordered normalized 
     });
   }
 
-  assert.equal(new Set(repository.idempotentReplacements.map((input) => input.requestHash)).size, 4);
+  assert.equal(new Set(repository.idempotentReplacements.map((input) => input.requestHash)).size, 5);
 });
 
 test("TodoService rejects an invalid idempotency key before repository mutation", async () => {

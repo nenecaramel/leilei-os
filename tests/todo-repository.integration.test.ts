@@ -31,8 +31,34 @@ test(
             { id: userB, email: `${userB}@example.invalid`, displayName: "B", status: "active", createdAt: now, updatedAt: now },
           ]);
           const repository = new DrizzleTodoRepository(transaction as never);
-          assert.deepEqual(await repository.readDay(userA, "2026-08-12"), { L: null, G: null });
+          assert.deepEqual(await repository.readDay(userA, "2026-08-12"), { L: null, G: null, C: null });
           assert.deepEqual(await repository.listContentDates(userA), []);
+
+          const cFirst = await repository.replacePaper({
+            userId: userA, date: "2026-08-12", author: "C", expectedRevision: null,
+            entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+          });
+          assert.deepEqual(cFirst, {
+            outcome: "committed",
+            paper: {
+              author: "C", date: "2026-08-12", revision: 1,
+              entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+            },
+          });
+          assert.deepEqual(await repository.readDay(userA, "2026-08-12"), {
+            L: null,
+            G: null,
+            C: {
+              author: "C", date: "2026-08-12", revision: 1,
+              entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+            },
+          });
+          const cSecond = await repository.replacePaper({
+            userId: userA, date: "2026-08-12", author: "C", expectedRevision: 1,
+            entries: [{ id: "c-2", kind: "record", text: "Only C advances" }],
+          });
+          assert.equal(cSecond.outcome, "committed");
+          assert.equal(cSecond.outcome === "committed" ? cSecond.paper.revision : null, 2);
 
           const first = await repository.replacePaper({
             userId: userA, date: "2026-08-12", author: "L", expectedRevision: null,
@@ -49,7 +75,9 @@ test(
             { id: "l-2", kind: "record", text: "two" },
           ]);
           assert.deepEqual(await repository.listContentDates(userA), ["2026-08-12"]);
-          assert.equal((await repository.readDay(userA, "2026-08-12")).G, null);
+          const afterLCreate = await repository.readDay(userA, "2026-08-12");
+          assert.equal(afterLCreate.G, null);
+          assert.equal(afterLCreate.C?.revision, 2);
 
           const second = await repository.replacePaper({
             userId: userA, date: "2026-08-12", author: "L", expectedRevision: 1,
@@ -207,6 +235,42 @@ test(
       });
       assert.deepEqual(differentRequest, { outcome: "idempotency_conflict" });
       assert.equal((await repositories[0]!.readDay(userId, input.date)).L?.revision, 1);
+
+      const gInput = {
+        ...input,
+        date: "2026-08-16",
+        author: "G" as const,
+        idempotencyKey: "todo.repository.author-conflict-0001",
+        requestHash: hashMcpWriteRequest({
+          date: "2026-08-16", author: "G", revision: null, entries,
+        }),
+      };
+      assert.equal((await repositories[0]!.replacePaperIdempotently!(gInput)).outcome, "committed");
+      const cWithGKey = await repositories[0]!.replacePaperIdempotently!({
+        ...gInput,
+        author: "C",
+        requestHash: hashMcpWriteRequest({
+          date: "2026-08-16", author: "C", revision: null, entries,
+        }),
+      });
+      assert.deepEqual(cWithGKey, { outcome: "idempotency_conflict" });
+      assert.deepEqual(await repositories[0]!.readDay(userId, "2026-08-16"), {
+        L: null,
+        G: { author: "G", date: "2026-08-16", revision: 1, entries },
+        C: null,
+      });
+
+      const cInput = {
+        ...input,
+        date: "2026-08-17",
+        author: "C" as const,
+        idempotencyKey: "todo.repository.c-replay-0001",
+        requestHash: hashMcpWriteRequest({
+          date: "2026-08-17", author: "C", revision: null, entries,
+        }),
+      };
+      assert.equal((await repositories[0]!.replacePaperIdempotently!(cInput)).outcome, "committed");
+      assert.equal((await repositories[1]!.replacePaperIdempotently!(cInput)).outcome, "replayed");
 
       const otherResult = await repositories[0]!.replacePaperIdempotently!({
         ...input,

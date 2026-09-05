@@ -33,7 +33,13 @@ const L_PAPER: TodoPaper = {
     { id: "todo-b", kind: "record", text: "Second Todo row" },
   ],
 };
-const PAPERS: TodoDayPapers = { L: L_PAPER, G: null };
+const C_PAPER: TodoPaper = {
+  author: "C",
+  date: "2026-09-05",
+  revision: 1,
+  entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+};
+const PAPERS: TodoDayPapers = { L: null, G: null, C: C_PAPER };
 
 class TodoToolService {
   readCalls: Array<{ userId: string; date: string }> = [];
@@ -290,6 +296,45 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
     idempotencyKey: "todo-paper-direct-20260813",
   }]);
   assert.equal(fixture.authCalls(), 1);
+});
+
+test("write_todo_paper accepts C and rejects Claude before service mutation", async (t) => {
+  const fixture = await connectWriteImplementation();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const cWrite = await fixture.client.callTool({
+    name: "write_todo_paper",
+    arguments: {
+      date: C_PAPER.date,
+      author: "C",
+      revision: null,
+      entries: C_PAPER.entries,
+      idempotency_key: "todo-paper-c-author-20260905",
+    },
+  });
+  assert.equal(cWrite.isError, undefined);
+  const invalid = await fixture.client.callTool({
+    name: "write_todo_paper",
+    arguments: {
+      date: C_PAPER.date,
+      author: "Claude",
+      revision: null,
+      entries: C_PAPER.entries,
+      idempotency_key: "todo-paper-claude-invalid-01",
+    },
+  });
+  assert.equal(invalid.isError, true);
+  assert.deepEqual((fixture.todo as TodoToolService).writeCalls, [{
+    userId: USER_ID,
+    date: C_PAPER.date,
+    author: "C",
+    revision: null,
+    entries: C_PAPER.entries,
+    idempotencyKey: "todo-paper-c-author-20260905",
+  }]);
 });
 
 test("write_todo_paper strict schema rejects omissions and identity before authentication", async (t) => {

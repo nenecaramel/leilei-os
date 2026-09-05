@@ -19,16 +19,18 @@ test("Todo API routes dates before the date parameter and uses server identity",
   const calls: string[] = [];
   await withServer({
     listDates(userId: string) { calls.push(`dates:${userId}`); return Promise.resolve(["2026-08-12"]); },
-    readDay(userId: string, date: string) { calls.push(`day:${userId}:${date}`); return Promise.resolve({ date, papers: { L: null, G: null } }); },
+    readDay(userId: string, date: string) { calls.push(`day:${userId}:${date}`); return Promise.resolve({ date, papers: { L: null, G: null, C: { author: "C", date, revision: 1, entries: [{ id: "c-1", kind: "pending", text: "Claude item" }] } } }); },
     replacePaper(input: Record<string, unknown>) { calls.push(`put:${input.userId}:${input.date}:${input.author}:${String(input.revision)}`); return Promise.resolve({ author: input.author, date: input.date, revision: 1, entries: [] }); },
   }, async (url) => {
     const headers = { "x-test-user": "yes", "content-type": "application/json" };
     assert.equal((await fetch(`${url}/api/v1/todo/dates`, { headers })).status, 200);
     assert.equal((await fetch(`${url}/api/v1/todo/2026-08-12`, { headers })).status, 200);
-    const put = await fetch(`${url}/api/v1/todo/2026-08-12/G`, { method: "PUT", headers: { ...headers, "x-extra": "ignored" }, body: JSON.stringify({ userId: "attacker", revision: null, entries: [] }) });
+    const read = await fetch(`${url}/api/v1/todo/2026-08-12`, { headers });
+    assert.deepEqual(await read.json(), { success: true, data: { date: "2026-08-12", papers: { L: null, G: null, C: { author: "C", date: "2026-08-12", revision: 1, entries: [{ id: "c-1", kind: "pending", text: "Claude item" }] } } } });
+    const put = await fetch(`${url}/api/v1/todo/2026-08-12/C`, { method: "PUT", headers: { ...headers, "x-extra": "ignored" }, body: JSON.stringify({ userId: "attacker", revision: null, entries: [] }) });
     assert.equal(put.status, 200);
   });
-  assert.deepEqual(calls, [`dates:${USER_ID}`, `day:${USER_ID}:2026-08-12`, `put:${USER_ID}:2026-08-12:G:null`]);
+  assert.deepEqual(calls, [`dates:${USER_ID}`, `day:${USER_ID}:2026-08-12`, `day:${USER_ID}:2026-08-12`, `put:${USER_ID}:2026-08-12:C:null`]);
 });
 
 test("Todo API maps conflicts and validation errors to stable safe envelopes", async () => {
