@@ -199,6 +199,33 @@ test("write_diary calls the mock service with authenticated context", async (t) 
   });
 });
 
+test("write_diary accepts and serializes C-authored entries", async (t) => {
+  const diaryService = new MockDiaryToolService();
+  const { client, server } = await connectTestClient(
+    createTestDependencies(diaryService),
+  );
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const response = await client.callTool({
+    name: "write_diary",
+    arguments: {
+      title: "Claude diary",
+      content: "A C-authored entry.",
+      date: "2026-09-05",
+      tags: [],
+      author: "C",
+      idempotency_key: "diary-c-author-0001",
+    },
+  });
+
+  assert.equal(response.isError, undefined);
+  assert.equal(diaryService.calls[0]?.input.author, "C");
+  assert.equal((response.structuredContent as { data: { diary: { author: string } } }).data.diary.author, "C");
+});
+
 test("write_diary rejects invalid input before calling the service", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(

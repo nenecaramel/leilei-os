@@ -13,7 +13,7 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 
-const contentAuthorSchema = z.enum(["L", "G"]);
+const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
 const writeDiaryInputSchema = z
   .object({
@@ -22,7 +22,7 @@ const writeDiaryInputSchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("The diary date in YYYY-MM-DD format; never use relative dates."),
     tags: z.array(z.string().min(1).max(50)).max(20).describe("Organizational labels for the diary entry; use an empty array when none apply."),
     mood: z.string().min(1).max(50).optional().describe("An optional concise mood label."),
-    author: contentAuthorSchema.describe("The logical content author: L or G."),
+    author: contentAuthorSchema.describe("The logical content author: L, G, or C."),
     idempotency_key: z.string().min(16).max(128).regex(/^[A-Za-z0-9._:-]+$/).describe("A stable unique key used to prevent duplicate diary creation."),
   })
   .strict();

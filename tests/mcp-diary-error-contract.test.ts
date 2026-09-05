@@ -154,6 +154,43 @@ async function callUpdateDiaryFailure(input: {
   }
 }
 
+test("update_diary accepts C author reassignment", async () => {
+  const server = new McpServer({ name: "update-diary-c-author", version: "1.0.0" });
+  registerUpdateDiaryTool(server, {
+    getAuthenticatedUserId: () => USER_ID,
+    diaryService: {
+      async updateMcpDiary(_context, input) {
+        return {
+          id: input.id,
+          title: "Claude diary",
+          content: "A C-authored entry.",
+          date: "2026-09-05",
+          tags: [],
+          mood: null,
+          author: input.author ?? "C",
+          created_at: "2026-09-05T08:00:00.000Z",
+          updated_at: "2026-09-05T09:00:00.000Z",
+        };
+      },
+    },
+  });
+  const pair = await connectServer(server, "update-diary-c-author-client");
+  try {
+    const result = await pair.client.callTool({
+      name: "update_diary",
+      arguments: { id: "diary-c", content: "Edited by Claude.", author: "C" },
+    });
+    assert.equal(result.isError, undefined);
+    assert.equal(
+      (result.structuredContent as { data: { author: string } }).data.author,
+      "C",
+    );
+  } finally {
+    await pair.client.close();
+    await pair.server.close();
+  }
+});
+
 test("search_diary preserves domain error codes without leaking detail", async () => {
   const result = await callSearchDiaryFailure({
     error: new DiaryDomainError("INVALID_DIARY_QUERY", "SECRET_SEARCH_DETAIL"),
