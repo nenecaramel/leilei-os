@@ -34,9 +34,13 @@ const currentChatGptClient = {
 } as const;
 
 function configure(client: Record<string, unknown>): RuntimeEnv {
+  return configureClients([client]);
+}
+
+function configureClients(clients: readonly Record<string, unknown>[]): RuntimeEnv {
   return {
     ...baseEnvironment,
-    OAUTH_STATIC_CLIENTS_JSON: JSON.stringify([client]),
+    OAUTH_STATIC_CLIENTS_JSON: JSON.stringify(clients),
   };
 }
 
@@ -86,4 +90,20 @@ test("keeps current ChatGPT static trust bound to private_key_jwt RS256 and the 
       /trusted ChatGPT.*private_key_jwt|static client registry|RS256|ChatGPT/u,
     );
   }
+});
+
+test("rejects an unsafe additional ChatGPT static client even when another ChatGPT client is valid", () => {
+  const unsafeRotatedClient = {
+    ...currentChatGptClient,
+    client_id: "https://chatgpt.com/oauth/rotated-client/client.json",
+    redirect_uris: ["https://attacker.example/connector_platform_oauth_redirect"],
+  };
+
+  assert.throws(
+    () => getOAuthAuthorizationServerConfig(configureClients([
+      currentChatGptClient,
+      unsafeRotatedClient,
+    ])),
+    /trusted ChatGPT.*private_key_jwt|ChatGPT/u,
+  );
 });
