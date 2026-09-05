@@ -92,6 +92,56 @@ test("Task details display the stored C author or legacy unknown marker without 
   }
 });
 
+test("Task C edit starts at C, author changes are dirty, and cancel restores C", async () => {
+  const cResponse = {
+    ...TASK_RESPONSE,
+    data: { ...TASK_RESPONSE.data, author: "C" as const },
+  };
+  const { api, requests } = createApi((path, init) => {
+    if (path === `/task/${TASK_ID}`) return Promise.resolve(cResponse);
+    throw new Error(`Unexpected request: ${path} ${init?.method ?? "GET"}`);
+  });
+  const page = await renderTaskPage(createTaskDetailLocation(TASK_ID, "/task"), api);
+  try {
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(page.container.querySelector(".paper-author-signature")?.textContent, "C");
+
+    const edit = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "编辑");
+    assert.ok(edit);
+    await React.act(async () => edit.click());
+    const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(trigger);
+    assert.equal(trigger.textContent, "C");
+
+    await React.act(async () => trigger.click());
+    const l = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
+    assert.ok(l);
+    await React.act(async () => l.click());
+    assert.equal(trigger.textContent, "L");
+
+    let confirmations = 0;
+    page.window.confirm = () => {
+      confirmations += 1;
+      return false;
+    };
+    const cancel = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "取消");
+    assert.ok(cancel);
+    await React.act(async () => cancel.click());
+    assert.equal(confirmations, 1);
+    assert.equal(page.container.querySelector(".paper-author-signature-trigger")?.textContent, "L");
+    assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
+
+    page.window.confirm = () => true;
+    await React.act(async () => cancel.click());
+    assert.equal(page.container.querySelector(".paper-author-signature")?.textContent, "C");
+    assert.equal(page.container.querySelector(".paper-author-signature-trigger"), null);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Task detail safely consumes quick-create without opening a hidden form", async () => {
   const page = await renderTaskPage(createTaskDetailLocation(TASK_ID, "/task"), createApi(async () => new Promise<never>(() => {})).api, { quickCreate: "task" });
   try {
@@ -935,6 +985,10 @@ test("active detail archive is strict single-flight and restores the exact filte
       requests.filter((request) => request.init?.method === "DELETE").length,
       1,
     );
+    assert.equal(
+      requests.find((request) => request.init?.method === "DELETE")?.init?.body,
+      undefined,
+    );
     await React.act(async () => {
       archive.resolve({ success: true, data: {} });
       await archive.promise;
@@ -990,6 +1044,10 @@ test("archived detail restore is strict single-flight and returns to the exact a
     assert.equal(
       requests.filter((request) => request.init?.method === "POST").length,
       1,
+    );
+    assert.equal(
+      requests.find((request) => request.init?.method === "POST")?.init?.body,
+      undefined,
     );
     await React.act(async () => {
       restore.resolve({ success: true, data: {} });
