@@ -472,7 +472,7 @@ for (const author of [undefined, "X"] as const) {
   });
 }
 
-test("Task legacy-null edits require an author while authored edits preserve or switch it", async () => {
+test("Task legacy-null edits require an author while authored edits preserve or switch C, L, and G", async () => {
   const repository = new MockTaskRepository();
   const legacy = seedTask(repository, "pending");
   legacy.author = null;
@@ -493,17 +493,21 @@ test("Task legacy-null edits require an author while authored edits preserve or 
       error instanceof TaskDomainError && error.code === "AUTHOR_REQUIRED",
   );
   assert.equal(repository.updateWrites.length, 0);
-  await service.updateWebTask({ ...base, author: "G" });
-  assert.equal(repository.records.get(legacy.id)?.task.author, "G");
+  await service.updateWebTask({ ...base, author: "C" });
+  assert.equal(repository.records.get(legacy.id)?.task.author, "C");
 
   const authored = seedTask(repository, "pending");
   authored.id = "authored-task";
-  authored.author = "L";
+  authored.author = "C";
   repository.records.set(authored.id, { userId: "user-1", task: authored });
   await service.updateWebTask({ ...base, id: authored.id });
+  assert.equal(repository.records.get(authored.id)?.task.author, "C");
+  await service.updateWebTask({ ...base, id: authored.id, author: "L" });
   assert.equal(repository.records.get(authored.id)?.task.author, "L");
   await service.updateWebTask({ ...base, id: authored.id, author: "G" });
   assert.equal(repository.records.get(authored.id)?.task.author, "G");
+  await service.updateWebTask({ ...base, id: authored.id, author: "C" });
+  assert.equal(repository.records.get(authored.id)?.task.author, "C");
 });
 
 test("Task MCP partial update forwards only supplied fields and returns fresh detail", async () => {
@@ -588,22 +592,29 @@ test("Task MCP action transition propagates repository status conflicts", async 
   );
 });
 
-test("Task status and lifecycle mutations preserve the stored author", async () => {
+test("Task status and lifecycle mutations preserve C without author-bearing status requests", async () => {
   const repository = new MockTaskRepository();
   const service = new TaskService(repository);
   const task = seedTask(repository, "pending");
-  task.author = "L";
+  task.author = "C";
   task.lifecycleStatus = "active";
   await service.updateWebTaskStatus({ userId: "user-1", id: task.id, status: "in_progress" });
-  assert.equal(repository.records.get(task.id)?.task.author, "L");
-  await service.updateWebTaskStatus({ userId: "user-1", id: task.id, status: "cancelled" });
-  assert.equal(repository.records.get(task.id)?.task.author, "L");
+  assert.equal(Object.hasOwn(repository.statusWrites[0]!, "author"), false);
+  assert.equal((await repository.findTaskById("user-1", task.id))?.author, "C");
+  await service.updateWebTaskStatus({ userId: "user-1", id: task.id, status: "completed" });
+  assert.equal(Object.hasOwn(repository.statusWrites[1]!, "author"), false);
+  assert.equal((await repository.findTaskById("user-1", task.id))?.author, "C");
   await service.reopenTask({ userId: "user-1", id: task.id });
-  assert.equal(repository.records.get(task.id)?.task.author, "L");
+  assert.equal((await repository.findTaskById("user-1", task.id))?.author, "C");
+  await service.updateWebTaskStatus({ userId: "user-1", id: task.id, status: "cancelled" });
+  assert.equal(Object.hasOwn(repository.statusWrites[2]!, "author"), false);
+  assert.equal((await repository.findTaskById("user-1", task.id))?.author, "C");
+  await service.reopenTask({ userId: "user-1", id: task.id });
+  assert.equal((await repository.findTaskById("user-1", task.id))?.author, "C");
   await service.archiveTask({ userId: "user-1", id: task.id });
-  assert.equal(repository.records.get(task.id)?.task.author, "L");
+  assert.equal(repository.records.get(task.id)?.task.author, "C");
   await service.restoreTask({ userId: "user-1", id: task.id });
-  assert.equal(repository.records.get(task.id)?.task.author, "L");
+  assert.equal(repository.records.get(task.id)?.task.author, "C");
 });
 
 test("creates a task without a due date in the account timezone", async () => {

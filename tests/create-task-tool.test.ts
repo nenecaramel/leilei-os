@@ -126,7 +126,7 @@ test("create_task calls the mock service with authenticated context", async (t) 
       timezone: "Asia/Shanghai",
       priority: "high",
       tags: ["phase4", "MCP"],
-      author: "L",
+      author: "C",
       idempotency_key: "task-20260723-phase4",
     },
   });
@@ -142,7 +142,7 @@ test("create_task calls the mock service with authenticated context", async (t) 
         timezone: "Asia/Shanghai",
         priority: "high",
         tags: ["phase4", "MCP"],
-        author: "L",
+        author: "C",
       },
       idempotencyKey: "task-20260723-phase4",
     },
@@ -151,6 +151,11 @@ test("create_task calls the mock service with authenticated context", async (t) 
     (response.structuredContent as { data?: { task?: { status?: string } } })
       .data?.task?.status,
     "pending",
+  );
+  assert.equal(
+    (response.structuredContent as { data?: { task?: { author?: string } } })
+      .data?.task?.author,
+    "C",
   );
 });
 

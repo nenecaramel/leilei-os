@@ -96,11 +96,12 @@ test(
               completedAt,
             }),
           ]);
-          const authorFixtureIds = [randomUUID(), randomUUID(), randomUUID()];
+          const authorFixtureIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
           await transaction.insert(tasks).values([
             task(authorFixtureIds[0]!, owner, "active", { author: "L" }),
             task(authorFixtureIds[1]!, owner, "active", { author: "G" }),
-            task(authorFixtureIds[2]!, owner, "active", { author: null }),
+            task(authorFixtureIds[2]!, owner, "active", { author: "C" }),
+            task(authorFixtureIds[3]!, owner, "active", { author: null }),
           ]);
           assert.deepEqual(
             (await transaction.select({
@@ -111,7 +112,7 @@ test(
             authorFixtureIds
               .map((id, index) => ({
                 id,
-                author: index === 0 ? "L" : index === 1 ? "G" : null,
+                author: index === 0 ? "L" : index === 1 ? "G" : index === 2 ? "C" : null,
               }))
               .sort((left, right) => left.id.localeCompare(right.id)),
           );

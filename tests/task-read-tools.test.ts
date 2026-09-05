@@ -30,7 +30,7 @@ const TASK: TaskEntryResult = {
   updated_at: "2026-07-29T08:00:00.000Z",
   completed_at: null,
   allowed_actions: ["complete", "cancel"],
-  author: null,
+  author: "C",
 };
 
 class MockTaskService {
@@ -40,6 +40,10 @@ class MockTaskService {
   createCalls: Array<{
     context: AuthenticatedTaskContext;
     input: CreateTaskInput;
+  }> = [];
+  updateCalls: Array<{
+    context: AuthenticatedTaskContext;
+    input: { id: string; author?: "L" | "G" | "C" };
   }> = [];
   listError?: unknown;
   readError?: unknown;
@@ -76,6 +80,14 @@ class MockTaskService {
       },
     };
   }
+
+  async updateMcpTask(
+    context: AuthenticatedTaskContext,
+    input: { id: string; author?: "L" | "G" | "C" },
+  ): Promise<TaskEntryResult> {
+    this.updateCalls.push({ context, input });
+    return { ...TASK, author: input.author ?? TASK.author };
+  }
 }
 
 async function connect(
@@ -84,6 +96,7 @@ async function connect(
 ) {
   const server = createMcpServer({
     taskTools: { taskService: service, getAuthenticatedUserId },
+    updateTask: { taskService: service, getAuthenticatedUserId },
   });
   const client = new Client(
     { name: "task-read-tools-test", version: "1.0.0" },
@@ -432,11 +445,35 @@ test("shared Task dependency preserves create_task behavior", async (t) => {
       description: "This still uses the shared Task Service.",
       priority: "high",
       tags: ["MCP"],
-      author: "G",
+      author: "C",
       idempotency_key: "task-read-regression-0001",
     },
   });
   assert.equal(result.isError, undefined);
   assert.equal(service.createCalls.length, 1);
   assert.equal(service.createCalls[0]?.context.userId, USER_ID);
+});
+
+test("update_task accepts C author reassignment and returns C", async (t) => {
+  const service = new MockTaskService();
+  const { client, server } = await connect(service);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const result = await client.callTool({
+    name: "update_task",
+    arguments: { id: TASK.id, author: "C" },
+  });
+
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(service.updateCalls, [{
+    context: { userId: USER_ID },
+    input: { id: TASK.id, author: "C" },
+  }]);
+  assert.equal(
+    (result.structuredContent as { data: { author: string } }).data.author,
+    "C",
+  );
 });
