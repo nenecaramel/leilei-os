@@ -59,6 +59,7 @@ function dayResponse(date: string, label: string) {
       papers: {
         L: { author: "L", date, revision: 1, entries: [{ id: `l-${date}`, kind: "record", text: label }] },
         G: null,
+        C: null,
       },
     },
   };
@@ -129,6 +130,49 @@ test("dirty paper defers date rebinding and loads the newest date after close", 
   await waitForPaint();
   assert.match(container.textContent ?? "", /today/);
   assert.deepEqual(requests, ["GET /todo/2026-08-12", "GET /todo/dates", "GET /diary/dates", "PUT /todo/2026-08-12/L", "GET /todo/dates", "GET /diary/dates", "GET /todo/2026-08-13"]);
+  root.unmount();
+  env.restore();
+});
+
+test("a dirty C paper defers the day switch until its close saves it", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  let currentDate = new Date(2026, 7, 12, 9, 0);
+  const now = () => currentDate;
+  const requests: string[] = [];
+  const api = { request: async (path: string, init?: RequestInit) => {
+    requests.push(`${init?.method ?? "GET"} ${path}`);
+    if (init?.method === "PUT") {
+      return { success: true, data: { author: "C", date: "2026-08-12", revision: 2, entries: [{ id: "c-old", kind: "completed", text: "saved C" }] } };
+    }
+    if (path === "/todo/dates" || path === "/diary/dates") return { success: true, data: { dates: [] } };
+    return {
+      success: true,
+      data: {
+        date: path.split("/").at(-1)!,
+        papers: {
+          L: null,
+          G: null,
+          C: { author: "C", date: path.split("/").at(-1)!, revision: 1, entries: [{ id: `c-${path}`, kind: "record", text: path.includes("2026-08-13") ? "C today" : "C yesterday" }] },
+        },
+      },
+    };
+  } };
+  const root = createRoot(container);
+  root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, { api, now })));
+  await waitForCondition(() => /C yesterday/.test(container.textContent ?? ""), "initial C Todo paper");
+  container.querySelector<HTMLButtonElement>(".today-panel-c")!.click();
+  await waitForPaint();
+  container.querySelector<HTMLButtonElement>(".todo-paper-status")!.click();
+  await waitForPaint();
+  currentDate = new Date(2026, 7, 13, 9, 0);
+  env.dom.window.dispatchEvent(new env.dom.window.Event("focus"));
+  await waitForPaint();
+  assert.match(container.textContent ?? "", /C yesterday/);
+  assert.doesNotMatch(container.textContent ?? "", /C today/);
+  container.querySelector<HTMLButtonElement>(".paper-detail-veil")!.click();
+  await waitForCondition(() => /C today/.test(container.textContent ?? ""), "new C Todo paper after close");
+  assert.ok(requests.includes("PUT /todo/2026-08-12/C"));
   root.unmount();
   env.restore();
 });

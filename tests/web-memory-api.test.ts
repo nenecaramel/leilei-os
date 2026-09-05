@@ -519,7 +519,7 @@ test("Memory detail rejects unauthenticated requests before the service", async 
   assert.equal(result.status, 401);
 });
 
-test("Memory create and update ignore client source and use only editable fields", async () => {
+test("Memory create and update preserve an explicit C author while ignoring client source", async () => {
   const calls: unknown[] = [];
   const dependencies = {
     memoryService: {
@@ -544,7 +544,7 @@ test("Memory create and update ignore client source and use only editable fields
         key: "memory_key",
         content: "Content",
         tags: ["计划", "MCP"],
-        author: "L",
+        author: "C",
         source: "chatgpt_mcp",
         userId: "attacker",
       },
@@ -561,7 +561,7 @@ test("Memory create and update ignore client source and use only editable fields
         category: "project",
         content: "Updated",
         tags: ["MCP"],
-        author: "G",
+        author: "C",
         source: "system",
         userId: "attacker",
       },
@@ -578,7 +578,7 @@ test("Memory create and update ignore client source and use only editable fields
         key: "memory_key",
         content: "Content",
         tags: ["计划", "MCP"],
-        author: "L",
+        author: "C",
       },
     },
     {
@@ -589,7 +589,7 @@ test("Memory create and update ignore client source and use only editable fields
         category: "project",
         content: "Updated",
         tags: ["MCP"],
-        author: "G",
+        author: "C",
       },
     },
   ]);
@@ -628,7 +628,7 @@ test("Memory create maps missing author to a safe client error", async () => {
   assert.doesNotMatch(JSON.stringify(result.body), /private author detail/);
 });
 
-test("Memory Web create applies the domain boundary before repository mutation", async () => {
+test("Memory Web create accepts C and rejects Claude before repository mutation", async () => {
   const writes: unknown[] = [];
   const memoryService = new MemoryService({
     async findUserById() { return { displayName: "Leilei", status: "active" }; },
@@ -640,9 +640,17 @@ test("Memory Web create applies the domain boundary before repository mutation",
   const accepted = makeResponse();
   await handler({
     webUserId: "user-a",
-    body: { category: "goal", key: "k".repeat(100), content: "c".repeat(4_000), tags: [], author: "L" },
+    body: { category: "goal", key: "k".repeat(100), content: "c".repeat(4_000), tags: [], author: "C" },
   } as unknown as Request, accepted.response, (() => {}) as NextFunction);
   assert.deepEqual(accepted.result.body, { success: true });
+
+  const invalidAuthor = makeResponse();
+  await handler({
+    webUserId: "user-a",
+    body: { category: "goal", key: "memory-key", content: "content", tags: [], author: "Claude" },
+  } as unknown as Request, invalidAuthor.response, (() => {}) as NextFunction);
+  assert.equal(invalidAuthor.result.status, 400);
+  assert.equal(writes.length, 1);
 
   const rejected = makeResponse();
   await handler({

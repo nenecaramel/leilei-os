@@ -7,7 +7,7 @@ import {
   seedPhase2ValidationData,
 } from "../scripts/seed-phase-2.js";
 
-test("Phase 2 seed requires an explicit L/G author", () => {
+test("Phase 2 seed requires an explicit supported author", () => {
   const base = {
     DATABASE_URL: "postgres://localhost/phase2",
     MCP_USER_ID: randomUUID(),
@@ -21,6 +21,10 @@ test("Phase 2 seed requires an explicit L/G author", () => {
   );
   assert.equal(
     phase2SeedEnvSchema.safeParse({ ...base, SEED_CONTENT_AUTHOR: "L" }).success,
+    true,
+  );
+  assert.equal(
+    phase2SeedEnvSchema.safeParse({ ...base, SEED_CONTENT_AUTHOR: "C" }).success,
     true,
   );
 });

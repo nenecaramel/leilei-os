@@ -113,7 +113,7 @@ test("task create api forwards a null due time through the authenticated service
       dueTime: null,
       timezone: "Asia/Shanghai",
       tags: [],
-      author: "L",
+      author: "C",
     },
   } as unknown as Request, response, () => {});
 
@@ -125,7 +125,7 @@ test("task create api forwards a null due time through the authenticated service
     dueTime: null,
     timezone: "Asia/Shanghai",
     tags: [],
-    author: "L",
+    author: "C",
   }]);
   assert.equal(result.status, 201);
   assert.deepEqual(
@@ -276,7 +276,7 @@ test("task edit api forwards only editable fields and preserves identity from co
       dueTime: "2026-07-24T10:00:00Z",
       timezone: "Asia/Shanghai",
       tags: ["项目"],
-      author: "G",
+      author: "C",
       status: "completed",
       userId: "other-user",
     },
@@ -291,7 +291,7 @@ test("task edit api forwards only editable fields and preserves identity from co
     dueTime: "2026-07-24T10:00:00Z",
     timezone: "Asia/Shanghai",
     tags: ["项目"],
-    author: "G",
+    author: "C",
   }]);
   assert.deepEqual(result.body, { success: true, data: task });
 });

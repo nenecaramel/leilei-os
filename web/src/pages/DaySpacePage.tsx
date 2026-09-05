@@ -214,7 +214,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
         status: "error",
         value: current.value
           ? { ...current.value, papers: { ...current.value.papers, [committed.author]: committed.entries.length > 0 ? committed : null } }
-          : { date, papers: { L: committed.author === "L" ? committed : null, G: committed.author === "G" ? committed : null } },
+          : { date, papers: { L: committed.author === "L" ? committed : null, G: committed.author === "G" ? committed : null, C: committed.author === "C" ? committed : null } },
         needsRetry: true,
       }));
     }
@@ -261,7 +261,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
           </section>
         )}
       </div>
-      {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => { setTodoState((current) => ({ status: "ready", value: { date: selectedDate, papers: { ...(current.value?.papers ?? { L: null, G: null }), [paper.author]: paper.entries.length > 0 ? paper : null } } })); void refreshTodo(selectedDate, paper); }} onClosed={() => setOpenPaperId(null)} /> : null}
+      {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => { setTodoState((current) => ({ status: "ready", value: { date: selectedDate, papers: { ...(current.value?.papers ?? { L: null, G: null, C: null }), [paper.author]: paper.entries.length > 0 ? paper : null } } })); void refreshTodo(selectedDate, paper); }} onClosed={() => setOpenPaperId(null)} /> : null}
       {openPaper?.type === "diary" ? <DaySpaceDiaryDialog diary={openPaper.diary} api={api} open triggerRef={paperTriggerRef} onSaved={(next) => { setDiaryState((current) => ({ status: "ready", value: current.value ? current.value.map((entry) => entry.id === next.id ? next : entry) : [next] })); void refreshDiary(next.date, next); }} onClosed={() => setOpenPaperId(null)} /> : null}
     </main>
   );

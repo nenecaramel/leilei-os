@@ -10,7 +10,7 @@ import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const taskSource = readFileSync(new URL("../web/src/pages/TaskPage.tsx", import.meta.url), "utf8");
 
-test("Home prototype keeps the approved Todo, L/G, Calendar and footer structure", () => {
+test("Home prototype keeps the approved Todo panels, Calendar and footer structure", () => {
   assert.match(dashboardSource, /TodayPanel/);
   assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
   assert.match(dashboardSource, /CalendarPreview/);
@@ -63,20 +63,20 @@ test("Dashboard renders server-backed Home papers", async () => {
   const env = installDashboardDom();
   const container = env.dom.window.document.getElementById("root")!;
   let requestCount = 0;
-  const api = { request: async (path: string) => { requestCount += 1; return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: [{ id: "l-1", kind: "pending", text: "整理今天的事情" }] }, G: { author: "G", date: "2026-08-12", revision: 1, entries: [{ id: "g-1", kind: "record", text: "记录" }] } } } }; } };
+  const api = { request: async (path: string) => { requestCount += 1; return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: [{ id: "l-1", kind: "pending", text: "整理今天的事情" }] }, G: { author: "G", date: "2026-08-12", revision: 1, entries: [{ id: "g-1", kind: "record", text: "记录" }] }, C: { author: "C", date: "2026-08-12", revision: 1, entries: [{ id: "c-1", kind: "pending", text: "Claude item" }] } } } }; } };
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
     api,
   })));
   await waitForCondition(() => requestCount >= 1, "Dashboard server-backed paper request");
   await waitForCondition(
-    () => container.querySelectorAll(".today-panel").length === 2 &&
+    () => container.querySelectorAll(".today-panel").length === 3 &&
       container.querySelector(".calendar-preview") !== null,
     "Dashboard Home render",
   );
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
   assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
-  assert.equal(container.querySelectorAll(".today-panel").length, 2);
+  assert.equal(container.querySelectorAll(".today-panel").length, 3);
   assert.equal(container.querySelectorAll(".sticky-card").length, 0);
   assert.ok(container.querySelector(".calendar-preview"));
   assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 4);
@@ -92,31 +92,31 @@ test("Dashboard renders server-backed Home papers", async () => {
   env.restore();
 });
 
-test("L and G panels open a modal with their own fixture notes", async () => {
+test("C Todo panel opens a modal with its own fixture notes", async () => {
   const env = installDashboardDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
   root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
-    api: { request: async (path: string) => ({ success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: [{ id: "l-1", kind: "pending", text: "First" }] }, G: { author: "G", date: "2026-08-12", revision: 1, entries: [{ id: "g-1", kind: "record", text: "Second" }] } } } }) },
+    api: { request: async (path: string) => ({ success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: [{ id: "l-1", kind: "pending", text: "First" }] }, G: { author: "G", date: "2026-08-12", revision: 1, entries: [{ id: "g-1", kind: "record", text: "Second" }] }, C: { author: "C", date: "2026-08-12", revision: 1, entries: [{ id: "c-1", kind: "pending", text: "Claude item" }] } } } }) },
   })));
   await waitForCondition(
-    () => container.querySelectorAll<HTMLButtonElement>(".today-panel").length === 2,
+    () => container.querySelectorAll<HTMLButtonElement>(".today-panel").length === 3,
     "Dashboard paper panels",
   );
   const panels = [...container.querySelectorAll<HTMLButtonElement>(".today-panel")];
-  panels[0]?.focus();
-  panels[0]?.click();
+  panels[2]?.focus();
+  panels[2]?.click();
   await waitForCondition(
     () => container.querySelectorAll('[role="dialog"]').length === 1 &&
       env.dom.window.document.body.style.overflow === "hidden",
     "paper detail modal open",
   );
-  assert.match(container.querySelector('[role="dialog"]')?.textContent ?? "", /L/);
+  assert.match(container.querySelector('[role="dialog"]')?.textContent ?? "", /C/);
   const close = container.querySelector<HTMLButtonElement>(".paper-detail-veil");
   close?.click();
   await waitForCondition(
     () => container.querySelector('[role="dialog"]') === null &&
-      env.dom.window.document.activeElement === panels[0],
+    env.dom.window.document.activeElement === panels[2],
     "paper detail modal close",
   );
   root.unmount();

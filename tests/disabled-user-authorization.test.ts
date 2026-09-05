@@ -32,7 +32,7 @@ test("TodoService rejects disabled and missing users before read or write reposi
     let writes = 0;
     const repository = {
       findUserById: async () => user,
-      readDay: async () => { reads += 1; return { L: null, G: null }; },
+      readDay: async () => { reads += 1; return { L: null, G: null, C: null }; },
       listContentDates: async () => { reads += 1; return []; },
       replacePaper: async () => { writes += 1; return { outcome: "committed", paper: { author: "L", date: "2026-08-14", revision: 1, entries: [] } }; },
     } as unknown as TodoRepository;
@@ -49,12 +49,12 @@ test("TodoService preserves active-user behavior", async () => {
   let calls = 0;
   const repository = {
     findUserById: async () => ACTIVE,
-    readDay: async () => { calls += 1; return { L: null, G: null }; },
+    readDay: async () => { calls += 1; return { L: null, G: null, C: null }; },
     listContentDates: async () => [],
     replacePaper: async () => { calls += 1; return { outcome: "committed", paper: { author: "L", date: "2026-08-14", revision: 1, entries: [] } }; },
   } as unknown as TodoRepository;
   const service = new TodoService(repository);
-  assert.deepEqual(await service.readDay(USER_ID, "2026-08-14"), { date: "2026-08-14", papers: { L: null, G: null } });
+  assert.deepEqual(await service.readDay(USER_ID, "2026-08-14"), { date: "2026-08-14", papers: { L: null, G: null, C: null } });
   await service.replacePaper({ userId: USER_ID, date: "2026-08-14", author: "L", revision: null, entries: [] });
   assert.equal(calls, 2);
 });
@@ -64,7 +64,7 @@ test("TodoService rechecks durable status for an already-established caller", as
   let reads = 0;
   const repository = {
     findUserById: async () => ({ status }),
-    readDay: async () => { reads += 1; return { L: null, G: null }; },
+    readDay: async () => { reads += 1; return { L: null, G: null, C: null }; },
     listContentDates: async () => [],
     replacePaper: async () => ({ outcome: "committed", paper: { author: "L", date: "2026-08-14", revision: 1, entries: [] } }),
   } as unknown as TodoRepository;

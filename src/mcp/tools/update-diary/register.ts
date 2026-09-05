@@ -8,6 +8,8 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 
+const contentAuthorSchema = z.enum(["L", "G", "C"]);
+
 const updateDiaryInputSchema = z.object({
   id: z.string().trim().min(1),
   title: z.string().min(1).max(200).optional(),
@@ -15,7 +17,7 @@ const updateDiaryInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   mood: z.string().min(1).max(50).nullable().optional(),
-  author: z.enum(["L", "G"]).optional(),
+  author: contentAuthorSchema.optional(),
 }).strict();
 
 const updateDiaryDataSchema = z.object({
@@ -27,7 +29,7 @@ const updateDiaryDataSchema = z.object({
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
   lifecycle_status: z.literal("active"),
-  author: z.enum(["L", "G"]).nullable(),
+  author: contentAuthorSchema.nullable(),
   detail_tool: z.literal("get_diary"),
   detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
 });

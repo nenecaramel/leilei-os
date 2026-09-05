@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ContentAuthor } from "../content-author.js";
 import type {
   GlobalSearchCursorTuple,
   GlobalSearchMatchedField,
@@ -42,6 +43,7 @@ export type GlobalSearchItem = {
   business_time: string;
   time_basis: GlobalSearchTimeBasis;
   updated_at: string;
+  author: ContentAuthor | null;
   detail_tool: "get_memory" | "get_diary" | "get_task" | "get_universe_node" | null;
   detail_arguments: { id: string; scope: "active" | "archived" } | { id: string } | null;
 };
@@ -113,6 +115,7 @@ export class GlobalSearchService {
         business_time: row.businessTime.toISOString(),
         time_basis: row.timeBasis,
         updated_at: row.updatedAt.toISOString(),
+        author: row.author,
         detail_tool: row.entityType === "universe" ? "get_universe_node" : ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
         detail_arguments: row.entityType === "universe" ? { id: row.entityId } : { id: row.entityId, scope: row.lifecycleStatus },
       })),

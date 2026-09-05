@@ -269,6 +269,65 @@ test("produces the same request hash for equivalent normalized input", async () 
   );
 });
 
+test("Diary C creation preserves C and includes author in canonical idempotency", async () => {
+  const repository = new MockDiaryRepository();
+  let firstWrite: NormalizedDiaryCreate | undefined;
+  repository.createDiaryWithAudit = async (diary) => {
+    if (firstWrite) {
+      if (firstWrite.requestHash !== diary.requestHash) {
+        return { outcome: "conflict" };
+      }
+      return {
+        outcome: "replayed",
+        diary: {
+          id: "00000000-0000-4000-8000-000000000001",
+          title: firstWrite.title,
+          date: firstWrite.date,
+          tags: firstWrite.tags,
+          mood: firstWrite.mood,
+          author: firstWrite.author,
+          createdAt: new Date("2026-09-05T08:00:00.000Z"),
+          requestHash: firstWrite.requestHash,
+        },
+      };
+    }
+    firstWrite = diary;
+    return {
+      outcome: "created",
+      diary: {
+        id: "00000000-0000-4000-8000-000000000001",
+        title: diary.title,
+        date: diary.date,
+        tags: diary.tags,
+        mood: diary.mood,
+        author: diary.author,
+        createdAt: new Date("2026-09-05T08:00:00.000Z"),
+        requestHash: diary.requestHash,
+      },
+    };
+  };
+  const service = new DiaryService(repository);
+  const input = {
+    title: "Claude diary",
+    content: "A C-authored entry.",
+    date: "2026-09-05",
+    tags: [],
+    author: "C" as const,
+    idempotencyKey: "diary-c-author-0001",
+  };
+
+  const created = await service.createDiary({ userId: "user-1" }, input);
+  const replayed = await service.createDiary({ userId: "user-1" }, input);
+  await assert.rejects(
+    service.createDiary({ userId: "user-1" }, { ...input, author: "G" }),
+    (error: unknown) => error instanceof DiaryDomainError && error.code === "IDEMPOTENCY_CONFLICT",
+  );
+
+  assert.equal(created.diary.author, "C");
+  assert.equal(replayed.diary.author, "C");
+  assert.deepEqual(replayed.metadata, { created: false, idempotent_replay: true });
+});
+
 test("returns replay metadata for an idempotent replay", async () => {
   const repository = new MockDiaryRepository();
   repository.outcome = "replayed";
@@ -397,8 +456,39 @@ test("Diary authored edits preserve or explicitly switch author", async () => {
     date: "2026-07-23",
   };
   await service.updateWebDiary(base);
-  await service.updateWebDiary({ ...base, author: "G" });
-  assert.deepEqual(authors, ["L", "G"]);
+  await service.updateWebDiary({ ...base, author: "C" });
+  assert.deepEqual(authors, ["L", "C"]);
+  assert.equal(entry.author, "C");
+});
+
+test("Diary rejects invalid authors before a C edit can mutate", async () => {
+  const repository = new MockDiaryRepository();
+  let updates = 0;
+  repository.findDiaryById = async () => ({
+    id: "diary-c",
+    title: "Claude diary",
+    content: "A C-authored entry.",
+    date: "2026-09-05",
+    tags: [],
+    mood: null,
+    author: "C",
+    createdAt: new Date("2026-09-05T08:00:00.000Z"),
+    updatedAt: new Date("2026-09-05T08:00:00.000Z"),
+  });
+  repository.updateDiary = async () => {
+    updates += 1;
+    return null;
+  };
+  const service = new DiaryService(repository);
+
+  await assert.rejects(
+    service.updateMcpDiary(
+      { userId: "user-1" },
+      { id: "diary-c", content: "Edited by Claude.", author: "Claude" as any },
+    ),
+    (error: unknown) => error instanceof DiaryDomainError && error.code === "AUTHOR_REQUIRED",
+  );
+  assert.equal(updates, 0);
 });
 
 test("requires a user identity from the authenticated context", async () => {

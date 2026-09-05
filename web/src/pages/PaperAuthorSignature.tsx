@@ -1,13 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-export type PaperAuthorValue = "L" | "G" | null;
+export type PaperAuthorValue = "L" | "G" | "C" | null;
+export type PaperAuthor = Exclude<PaperAuthorValue, null>;
+
+const PAPER_AUTHORS: readonly PaperAuthor[] = ["L", "G", "C"];
 
 export interface PaperAuthorSignatureProps {
   value: PaperAuthorValue;
   editable: boolean;
   disabled?: boolean;
-  onChange?: (author: "L" | "G") => void;
+  onChange?: (author: PaperAuthor) => void;
   error?: string | null;
 }
 
@@ -58,7 +61,7 @@ export function PaperAuthorSignature({
       </button>
       {open ? (
         <span className="paper-author-signature-menu" role="menu" aria-label="选择作者">
-          {(["L", "G"] as const).map((author) => (
+          {PAPER_AUTHORS.map((author) => (
             <button
               key={author}
               type="button"

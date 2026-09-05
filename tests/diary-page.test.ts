@@ -674,11 +674,65 @@ test("Diary active detail archives once with archive wording", async () => {
       calls.filter(({ init }) => init?.method === "DELETE").length,
       1,
     );
+    assert.equal(
+      calls.find(({ init }) => init?.method === "DELETE")?.init?.body,
+      undefined,
+    );
     assert.match(page.container.textContent ?? "", /归档中/);
     await React.act(async () => {
       archive.resolve({ success: true });
       await archive.promise;
     });
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test("Diary C edit starts at C, author changes are dirty, and cancel restores C", async () => {
+  const cDiary = { ...diary, id: "diary-c", author: "C" as const };
+  const requests: Request[] = [];
+  const page = await render(createDiaryDetailLocation("diary-c", "/diary"), {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/diary/diary-c") return { success: true, data: cDiary } as T;
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  });
+  try {
+    await React.act(async () => { await Promise.resolve(); });
+    assert.equal(page.container.querySelector(".paper-author-signature")?.textContent, "C");
+
+    const edit = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "编辑");
+    assert.ok(edit);
+    await React.act(async () => edit.click());
+    const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(trigger);
+    assert.equal(trigger.textContent, "C");
+
+    await React.act(async () => trigger.click());
+    const g = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="G"]');
+    assert.ok(g);
+    await React.act(async () => g.click());
+    assert.equal(trigger.textContent, "G");
+
+    let confirmations = 0;
+    page.window.confirm = () => {
+      confirmations += 1;
+      return false;
+    };
+    const cancel = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.trim() === "取消");
+    assert.ok(cancel);
+    await React.act(async () => cancel.click());
+    assert.equal(confirmations, 1);
+    assert.equal(page.container.querySelector(".paper-author-signature-trigger")?.textContent, "G");
+    assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
+
+    page.window.confirm = () => true;
+    await React.act(async () => cancel.click());
+    assert.equal(page.container.querySelector(".paper-author-signature")?.textContent, "C");
+    assert.equal(page.container.querySelector(".paper-author-signature-trigger"), null);
   } finally {
     await page.cleanup();
   }
@@ -718,6 +772,10 @@ test("Diary restore is single-flight and returns to exact active filters", async
     assert.equal(
       calls.filter(({ path }) => path.endsWith("/restore")).length,
       1,
+    );
+    assert.equal(
+      calls.find(({ path }) => path.endsWith("/restore"))?.init?.body,
+      undefined,
     );
     await React.act(async () => {
       restore.resolve({ success: true });
@@ -849,9 +907,9 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
     const authorTrigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
     assert.ok(authorTrigger);
     await React.act(async () => authorTrigger.click());
-    const authorL = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
-    assert.ok(authorL);
-    await React.act(async () => authorL.click());
+    const authorC = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="C"]');
+    assert.ok(authorC);
+    await React.act(async () => authorC.click());
 
     let confirmations = 0;
     page.window.confirm = () => {
@@ -874,7 +932,7 @@ test("Diary dirty create preserves on cancel, retries once, and ignores stale su
     });
     assert.equal(requests.filter(({ init }) => init?.method === "POST").length, 1);
     const createRequest = requests.find(({ init }) => init?.method === "POST");
-    assert.equal(JSON.parse(String(createRequest?.init?.body)).author, "L");
+    assert.equal(JSON.parse(String(createRequest?.init?.body)).author, "C");
     await React.act(async () => {
       first.reject(new Error("failed"));
       await first.promise.catch(() => undefined);

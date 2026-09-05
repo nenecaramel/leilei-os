@@ -264,6 +264,26 @@ test("get_diary injects identity and returns complete content", async (t) => {
   assert.deepEqual(result.structuredContent, { success: true, data: { ...ENTRY, lifecycle_status: "active" } });
 });
 
+test("Diary search and detail preserve C author", async (t) => {
+  const service = new MockDiaryService();
+  const cEntry = { ...ENTRY, author: "C" as const };
+  service.listDiaries = async () => ({ diaries: [cEntry], metadata: { count: 1 } });
+  service.readDiary = async () => cEntry;
+  const { client, server } = await connect(service);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const search = await client.callTool({ name: "search_diary", arguments: {} });
+  const detail = await client.callTool({ name: "get_diary", arguments: { id: cEntry.id } });
+
+  assert.equal(search.isError, undefined);
+  assert.equal(detail.isError, undefined);
+  assert.equal((search.structuredContent as { data: { diaries: Array<{ author: string }> } }).data.diaries[0]?.author, "C");
+  assert.equal((detail.structuredContent as { data: { author: string } }).data.author, "C");
+});
+
 test("get_diary archived scope uses only archived detail",async(t)=>{const service=new MockDiaryService();const {client,server}=await connect(service);t.after(async()=>{await client.close();await server.close();});const result=await client.callTool({name:"get_diary",arguments:{id:ENTRY.id,scope:"archived"}});assert.equal(result.isError,undefined);assert.equal(service.readCalls.length,0);assert.deepEqual(service.archivedReadCalls,[{userId:USER_ID,id:ENTRY.id}]);assert.equal((result.structuredContent as {data:{lifecycle_status:string}}).data.lifecycle_status,"archived");});
 
 test("get_diary rejects empty ids and hides inaccessible records", async () => {

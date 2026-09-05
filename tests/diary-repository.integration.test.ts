@@ -117,7 +117,7 @@ test(
             date: string;
             tags: string[];
             mood: string;
-            author?: "L" | "G" | null;
+            author?: "L" | "G" | "C" | null;
           }) => ({
             ...input,
             source: "chatgpt_mcp" as const,

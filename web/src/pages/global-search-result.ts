@@ -23,6 +23,7 @@ export type GlobalSearchResult = {
   business_time: string;
   time_basis: string;
   updated_at: string;
+  author: "L" | "G" | "C" | null;
   detail_tool: "get_memory" | "get_diary" | "get_task" | null;
   detail_arguments: {
     id: string;

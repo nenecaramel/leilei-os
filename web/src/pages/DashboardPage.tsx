@@ -9,7 +9,7 @@ import { TodayPanel } from "./TodayPanel";
 import { TodoPaperDialog } from "./TodoPaperDialog";
 import { loadTodoDay, listTodoDates } from "./todo-api";
 import { migrateLegacyTodoPapers } from "./todo-legacy-migration";
-import type { TodoAuthor, TodoPaper } from "./todo-types";
+import type { TodoAuthor, TodoDay } from "./todo-types";
 import { navigateWithinApp } from "./app-navigation";
 import { createQuickCreateState, type QuickCreateTarget } from "./quick-create";
 
@@ -22,7 +22,7 @@ const defaultNow = () => new Date();
 export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiClient; now?: () => Date }) {
   const [dateKey, setDateKey] = useState(() => formatTodoStorageDate(now()));
   const [today, setToday] = useState(() => now());
-  const [papers, setPapers] = useState<{ L: TodoPaper | null; G: TodoPaper | null }>({ L: null, G: null });
+  const [papers, setPapers] = useState<TodoDay["papers"]>({ L: null, G: null, C: null });
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [calendarContentDates, setCalendarContentDates] = useState<string[]>([]);
   const [calendarLoadState, setCalendarLoadState] = useState<CalendarLoadState>("loading");
@@ -34,6 +34,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   const calendarLoadGeneration = useRef(0);
   const lTriggerRef = useRef<HTMLButtonElement>(null);
   const gTriggerRef = useRef<HTMLButtonElement>(null);
+  const cTriggerRef = useRef<HTMLButtonElement>(null);
 
   const loadDay = useCallback(async (nextDate: string) => {
     if (!api) { setLoadState("error"); return; }
@@ -107,7 +108,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   };
 
   const selectedPaper = dialogAuthor ? papers[dialogAuthor] : null;
-  const selectedTriggerRef = dialogAuthor === "L" ? lTriggerRef : gTriggerRef;
+  const selectedTriggerRef = dialogAuthor === "L" ? lTriggerRef : dialogAuthor === "G" ? gTriggerRef : cTriggerRef;
 
   return (
     <div className="page home-prototype">
@@ -117,6 +118,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
         {loadState === "error" ? <div className="home-module-state" role="alert">Todo 暂时无法读取。 <button type="button" onClick={() => void loadDay(dateKey)}>重试</button></div> : null}
         <TodayPanel author="L" notes={loadState === "ready" ? papers.L?.entries ?? [] : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
         <TodayPanel author="G" notes={loadState === "ready" ? papers.G?.entries ?? [] : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
+        <TodayPanel author="C" notes={loadState === "ready" ? papers.C?.entries ?? [] : []} triggerRef={cTriggerRef} onOpen={() => setDialogAuthor("C")} />
         <CalendarPreview
           contentDates={calendarContentDates}
           date={today}

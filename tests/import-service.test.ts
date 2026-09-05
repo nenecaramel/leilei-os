@@ -83,6 +83,15 @@ test("execute inserts creates and records exactly one thin audit row", async () 
   assert.equal(JSON.stringify(repository.audits[0]).includes(memory.content), false);
 });
 
+test("execute stores a C-authored canonical record unchanged", async () => {
+  const repository = new FakeImportRepository();
+  const service = new ImportService(repository);
+  const raw = packageBytes({ ...memory, author: "C" });
+  const preview = await service.preview(raw, USER_ID);
+  await service.execute(raw, USER_ID, preview.preview_fingerprint);
+  assert.equal(repository.state.memory[0]?.author, "C");
+});
+
 test("stale preview and conflicts perform no writes", async () => {
   const repository = new FakeImportRepository();
   const service = new ImportService(repository);

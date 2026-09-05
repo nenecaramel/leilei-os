@@ -16,7 +16,7 @@ const memoryCategorySchema = z.enum([
   "goal",
   "project",
 ]);
-const contentAuthorSchema = z.enum(["L", "G"]);
+const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
 const getMemoryInputSchema = z
   .object({

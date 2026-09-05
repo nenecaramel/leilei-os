@@ -282,7 +282,7 @@ test("A pending or rejected close cannot re-enter and keeps the paper open", asy
 type TodoEditorHandle = {
   getNormalizedEntries(): Array<{
     id: string;
-    author: "L" | "G";
+    author: "L" | "G" | "C";
     kind: "pending" | "completed" | "record";
     text: string;
   }>;
@@ -291,10 +291,10 @@ type TodoEditorHandle = {
 async function renderTodoEditor(
   harness: DomHarness,
   options: {
-    author?: "L" | "G";
+    author?: "L" | "G" | "C";
     initialEntries?: Array<{
       id: string;
-      author: "L" | "G";
+      author: "L" | "G" | "C";
       kind: "pending" | "completed" | "record";
       text: string;
     }>;

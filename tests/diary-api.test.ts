@@ -128,7 +128,7 @@ test("Diary create and update pass explicit author while ignoring client identit
       date: "2026-07-22",
       tags: [],
       mood: null,
-      author: "L",
+      author: "C",
       userId: "attacker",
     },
   } as unknown as Request, createResult.response, () => {});
@@ -141,7 +141,7 @@ test("Diary create and update pass explicit author while ignoring client identit
       date: "2026-07-23",
       tags: [],
       mood: null,
-      author: "G",
+      author: "C",
       userId: "attacker",
     },
   } as unknown as Request, updateResult.response, () => {});
@@ -155,7 +155,7 @@ test("Diary create and update pass explicit author while ignoring client identit
         date: "2026-07-22",
         tags: [],
         mood: null,
-        author: "L",
+        author: "C",
       },
     },
     {
@@ -167,7 +167,7 @@ test("Diary create and update pass explicit author while ignoring client identit
         date: "2026-07-23",
         tags: [],
         mood: null,
-        author: "G",
+        author: "C",
       },
     },
   ]);

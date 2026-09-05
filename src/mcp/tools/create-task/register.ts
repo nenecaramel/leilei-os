@@ -24,7 +24,7 @@ const taskStatusSchema = z.enum([
   "completed",
   "cancelled",
 ]);
-const contentAuthorSchema = z.enum(["L", "G"]);
+const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
 const createTaskInputSchema = z
   .object({
@@ -56,7 +56,7 @@ const createTaskInputSchema = z
       .array(z.string().min(1).max(50))
       .max(20)
       .describe("Organizational labels; use an empty array when none apply."),
-    author: contentAuthorSchema.describe("The logical content author: L or G."),
+    author: contentAuthorSchema.describe("The logical content author: L, G, or C."),
     idempotency_key: z
       .string()
       .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)

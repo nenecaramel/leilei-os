@@ -426,7 +426,9 @@ test("Memory active detail uses archive wording and calls the existing endpoint 
 
     assert.deepEqual(confirmations, ["确定归档“current goal”吗？"]);
     assert.equal(requests.filter(({ init }) => init?.method === "DELETE").length, 1);
-    assert.equal(requests.find(({ init }) => init?.method === "DELETE")?.path, "/memory");
+    const archiveRequest = requests.find(({ init }) => init?.method === "DELETE");
+    assert.equal(archiveRequest?.path, "/memory");
+    assert.deepEqual(JSON.parse(String(archiveRequest?.init?.body)), { id: "memory-1" });
     assert.match(page.container.querySelector(".paper-detail-error")?.textContent ?? "", /归档记忆失败/);
     assert.equal(
       page.window.location.search,
@@ -784,6 +786,10 @@ test("Memory archived detail restore is single-flight and returns to exact activ
           "/memory/archived/memory-1/restore",
       ).length,
       1,
+    );
+    assert.equal(
+      requests.find(({ path }) => path === "/memory/archived/memory-1/restore")?.init?.body,
+      undefined,
     );
 
     assert.ok(
@@ -1718,6 +1724,56 @@ test("Memory active detail renders in the shared paper shell", async () => {
   }
 });
 
+test("Memory C edit starts at C, author changes are dirty, and cancel restores C", async () => {
+  const cMemory = { ...memory, id: "memory-c", author: "C" as const };
+  const requests: Request[] = [];
+  const page = await render(createMemoryDetailLocation("memory-c", "/memory"), {
+    async request<T>(path: string, init?: RequestInit) {
+      requests.push({ path, init });
+      if (path === "/memory/memory-c") return { success: true, data: cMemory } as T;
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  });
+  try {
+    await React.act(async () => { await Promise.resolve(); });
+    assert.equal(page.container.querySelector(".paper-author-signature")?.textContent, "C");
+
+    const edit = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "编辑");
+    assert.ok(edit);
+    await React.act(async () => edit.click());
+    const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
+    assert.ok(trigger);
+    assert.equal(trigger.textContent, "C");
+
+    await React.act(async () => trigger.click());
+    const l = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="L"]');
+    assert.ok(l);
+    await React.act(async () => l.click());
+    assert.equal(trigger.textContent, "L");
+
+    let confirmations = 0;
+    page.window.confirm = () => {
+      confirmations += 1;
+      return false;
+    };
+    const cancel = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "取消");
+    assert.ok(cancel);
+    await React.act(async () => cancel.click());
+    assert.equal(confirmations, 1);
+    assert.equal(page.container.querySelector(".paper-author-signature-trigger")?.textContent, "L");
+    assert.equal(requests.some(({ init }) => init?.method === "PATCH"), false);
+
+    page.window.confirm = () => true;
+    await React.act(async () => cancel.click());
+    assert.equal(page.container.querySelector(".paper-author-signature")?.textContent, "C");
+    assert.equal(page.container.querySelector(".paper-author-signature-trigger"), null);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("Memory active paper edit exposes key category content and tags in paper positions", async () => {
   const page = await render(createMemoryDetailLocation("memory-1", "/memory"), {
     async request<T>(path: string) {
@@ -1781,7 +1837,7 @@ test("Memory create opens directly in the shared paper shell", async () => {
   }
 });
 
-test("Memory create starts without an author and sends the selected signature", async () => {
+test("Memory create starts without an author and sends the selected C signature", async () => {
   const requests: Request[] = [];
   const api: WebApiClient = {
     async request<T>(path: string, init?: RequestInit) {
@@ -1817,9 +1873,9 @@ test("Memory create starts without an author and sends the selected signature", 
     const trigger = page.container.querySelector<HTMLButtonElement>(".paper-author-signature-trigger");
     assert.ok(trigger);
     await React.act(async () => trigger.click());
-    const g = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="G"]');
-    assert.ok(g);
-    await React.act(async () => g.click());
+    const c = page.container.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="C"]');
+    assert.ok(c);
+    await React.act(async () => c.click());
     const save = [...page.container.querySelectorAll<HTMLButtonElement>("button")]
       .find((button) => button.textContent?.trim() === "保存");
     assert.ok(save);
@@ -1829,7 +1885,7 @@ test("Memory create starts without an author and sends the selected signature", 
     await React.act(async () => save.click());
     const post = requests.find(({ init }) => init?.method === "POST");
     assert.ok(post);
-    assert.equal(JSON.parse(String(post.init?.body)).author, "G");
+    assert.equal(JSON.parse(String(post.init?.body)).author, "C");
   } finally {
     await page.cleanup();
   }

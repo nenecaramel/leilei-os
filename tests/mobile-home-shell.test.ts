@@ -21,6 +21,13 @@ const G_TODO_ENTRIES: TodoEntry[] = [
   { id: "g-4", kind: "record", text: "下一轮继续调整首页细节" },
 ];
 
+const C_TODO_ENTRIES: TodoEntry[] = [
+  { id: "c-1", kind: "pending", text: "整理 Claude 的下一步" },
+  { id: "c-2", kind: "record", text: "记录 C 的独立纸张" },
+  { id: "c-3", kind: "completed", text: "确认 C 的完成事项" },
+  { id: "c-4", kind: "record", text: "为 C 留下后续笔记" },
+];
+
 const bootstrapDom = new JSDOM(
   "<!doctype html><html><body></body></html>",
   { url: "https://leilei.test/" },
@@ -91,6 +98,7 @@ test("Home Todo preview uses canonical Todo entries without runtime fixtures", (
   };
   assert.ok(L_TODO_ENTRIES.length >= 4);
   assert.ok(G_TODO_ENTRIES.length >= 4);
+  assert.ok(C_TODO_ENTRIES.length >= 2);
   assert.equal(existsSync(prototypeDataPath), false);
   assert.doesNotMatch(dashboardSource, /home-prototype-data|HomeNote|HomeAuthor|previewNotes/);
   assert.doesNotMatch(todayPanelSource, /home-prototype-data|HomeNote|HomeAuthor/);
@@ -101,6 +109,7 @@ test("Home Todo preview uses canonical Todo entries without runtime fixtures", (
   assert.match(todayPanelSource, /today-panel-overflow/);
   L_TODO_ENTRIES.forEach(entryShape);
   G_TODO_ENTRIES.forEach(entryShape);
+  C_TODO_ENTRIES.forEach(entryShape);
 });
 
 test("Home Todo preview uses three visual lines and a fading overflow marker", () => {
@@ -127,7 +136,7 @@ test("Home uses the Todo paper coordinator and server day endpoint", () => {
   assert.match(dashboardSource, /loadTodoDay/);
 });
 
-test("Home renders compact L/G Todo panels and performs real Calendar discovery", async () => {
+test("Home renders compact L/G/C Todo panels in author order and performs real Calendar discovery", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const requests: string[] = [];
@@ -139,7 +148,7 @@ test("Home renders compact L/G Todo panels and performs real Calendar discovery"
       if (path === "/todo/dates" || path === "/diary/dates") {
         return { success: true, data: { dates: [] } };
       }
-      return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map((entry) => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map((entry) => ({ ...entry })) } } } };
+      return { success: true, data: { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map((entry) => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map((entry) => ({ ...entry })) }, C: { author: "C", date: "2026-08-12", revision: 1, entries: C_TODO_ENTRIES.map((entry) => ({ ...entry })) } } } };
     } },
   })));
   await waitForCondition(
@@ -147,7 +156,7 @@ test("Home renders compact L/G Todo panels and performs real Calendar discovery"
       const panels = [...container.querySelectorAll<HTMLElement>(".today-panel")];
       return (
         container.querySelector("h1")?.textContent === "Todo" &&
-        panels.length === 2 &&
+        panels.length === 3 &&
         panels.every((panel) => panel.querySelectorAll(".today-note").length >= 4) &&
         container.querySelectorAll(".calendar-day").length === 42 &&
         requests.includes("/todo/dates") &&
@@ -159,7 +168,8 @@ test("Home renders compact L/G Todo panels and performs real Calendar discovery"
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
   assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
   const todoPanels = [...container.querySelectorAll<HTMLElement>(".today-panel")];
-  assert.equal(todoPanels.length, 2);
+  assert.equal(todoPanels.length, 3);
+  assert.deepEqual(todoPanels.map((panel) => panel.querySelector(".today-panel-author")?.textContent), ["L", "G", "C"]);
 
   for (const panel of todoPanels) {
     const notes = [...panel.querySelectorAll<HTMLElement>(".today-note")];
@@ -190,7 +200,7 @@ test("Home renders compact L/G Todo panels and performs real Calendar discovery"
   env.restore();
 });
 
-test("Home keeps both Todo panels visible while the day request is loading", async () => {
+test("Home keeps all Todo panels visible while the day request is loading", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
@@ -207,8 +217,49 @@ test("Home keeps both Todo panels visible while the day request is loading", asy
     () => container.querySelector(".calendar-frame") !== null,
     "Home Calendar shell while Todo is loading",
   );
-  assert.equal(container.querySelectorAll(".today-panel").length, 2);
+  assert.equal(container.querySelectorAll(".today-panel").length, 3);
   assert.doesNotMatch(container.textContent ?? "", /正在读取 Todo/);
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
+test("Home opens C's dialog and saves only C's paper", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const root = createRoot(container);
+  root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
+    now: () => new Date(2026, 7, 12, 12, 0, 0),
+    api: { request: async (path: string, init?: RequestInit) => {
+      requests.push({ path, init });
+      if (path === "/todo/dates" || path === "/diary/dates") return { success: true, data: { dates: [] } };
+      if (init?.method === "PUT") return { success: true, data: { author: "C", date: "2026-08-12", revision: 2, entries: JSON.parse(String(init.body)).entries } };
+      return { success: true, data: { date: "2026-08-12", papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES }, C: { author: "C", date: "2026-08-12", revision: 1, entries: C_TODO_ENTRIES } } } };
+    } },
+  })));
+  await waitForCondition(() => container.querySelectorAll(".today-panel").length === 3, "three Todo panels");
+  await waitForCondition(
+    () =>
+      (container.querySelector(".today-panel-l")?.textContent ?? "").includes("整理今天的事情") &&
+      (container.querySelector(".today-panel-g")?.textContent ?? "").includes("项目下一步：确定侧边栏交互") &&
+      (container.querySelector(".today-panel-c")?.textContent ?? "").includes("整理 Claude 的下一步"),
+    "loaded L/G/C Todo previews",
+  );
+  const lPreviewBefore = container.querySelector(".today-panel-l")?.textContent;
+  const gPreviewBefore = container.querySelector(".today-panel-g")?.textContent;
+  const cPanel = container.querySelector<HTMLButtonElement>(".today-panel-c")!;
+  cPanel.click();
+  await waitForCondition(() => container.querySelector("#today-panel-dialog-c") !== null, "C Todo dialog");
+  container.querySelector<HTMLButtonElement>(".todo-paper-status")!.click();
+  await waitForPaint();
+  container.querySelector<HTMLButtonElement>(".paper-detail-veil")!.click();
+  await waitForCondition(() => container.querySelector('[role="dialog"]') === null, "C dialog close");
+  assert.equal(requests.filter((request) => request.init?.method === "PUT").length, 1);
+  assert.equal(requests.find((request) => request.init?.method === "PUT")?.path, "/todo/2026-08-12/C");
+  assert.equal(container.querySelector(".today-panel-l")?.textContent, lPreviewBefore);
+  assert.equal(container.querySelector(".today-panel-g")?.textContent, gPreviewBefore);
+  assert.match(container.querySelector(".today-panel-c")?.textContent ?? "", /整理 Claude 的下一步/);
   root.unmount();
   await waitForPaint();
   env.restore();
@@ -247,7 +298,7 @@ test("Home saves an edited L paper, updates only L preview, and restores trigger
       BrowserRouter,
       null,
       React.createElement(DashboardPageContent, {
-        api: { request: async (path: string, init?: RequestInit) => ({ success: true, data: init?.method === "PUT" ? { author: "L", date: path.split("/").at(-2), revision: 2, entries: JSON.parse(String(init.body)).entries } : { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map((entry) => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map((entry) => ({ ...entry })) } } } }) },
+        api: { request: async (path: string, init?: RequestInit) => ({ success: true, data: init?.method === "PUT" ? { author: "L", date: path.split("/").at(-2), revision: 2, entries: JSON.parse(String(init.body)).entries } : { date: path.split("/").at(-1), papers: { L: { author: "L", date: "2026-08-12", revision: 1, entries: L_TODO_ENTRIES.map((entry) => ({ ...entry })) }, G: { author: "G", date: "2026-08-12", revision: 1, entries: G_TODO_ENTRIES.map((entry) => ({ ...entry })) }, C: { author: "C", date: "2026-08-12", revision: 1, entries: C_TODO_ENTRIES.map((entry) => ({ ...entry })) } } } }) },
       }),
     ),
   );

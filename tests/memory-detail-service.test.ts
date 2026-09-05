@@ -631,7 +631,7 @@ test("Memory creates and edits normalized tags using the shared tag rules", asyn
   ]);
 });
 
-test("Memory create requires and persists an explicit author", async () => {
+test("Memory create requires and persists an explicit C author", async () => {
   const writes: unknown[] = [];
   const service = new MemoryService(repository({
     async createMemory(input) {
@@ -644,7 +644,7 @@ test("Memory create requires and persists an explicit author", async () => {
     category: "goal",
     key: "authored_memory",
     content: "Authored content",
-    author: "G",
+    author: "C",
   });
 
   assert.deepEqual(writes, [{
@@ -654,11 +654,11 @@ test("Memory create requires and persists an explicit author", async () => {
     content: "Authored content",
     tags: [],
     source: "web",
-    author: "G",
+    author: "C",
   }]);
 });
 
-for (const author of [undefined, "X"] as const) {
+for (const author of [undefined, "Claude"] as const) {
   test("Memory create rejects missing or invalid author before persistence", async () => {
     let mutated = false;
     const service = new MemoryService(repository({
@@ -736,7 +736,7 @@ test("Memory legacy-null content edits require and then persist an explicit auth
   });
 });
 
-test("Memory authored content edits preserve or explicitly switch author", async () => {
+test("Memory authored content edits preserve or explicitly switch author including C", async () => {
   const authors: unknown[] = [];
   const service = new MemoryService(repository({
     async findActiveAssistantMemoryById() {
@@ -766,7 +766,8 @@ test("Memory authored content edits preserve or explicitly switch author", async
   };
   await service.updateMemory(base);
   await service.updateMemory({ ...base, author: "G" });
-  assert.deepEqual(authors, ["L", "G"]);
+  await service.updateMemory({ ...base, author: "C" });
+  assert.deepEqual(authors, ["L", "G", "C"]);
 });
 
 test("Memory reads expose nullable authors without inferring legacy ownership", async () => {
@@ -995,6 +996,35 @@ test("Memory archive assigns the server-owned Web lifecycle actor and channel", 
     actorType: "user",
     channel: "web",
   }]);
+});
+
+test("Memory lifecycle request builders never synthesize an author", async () => {
+  const calls: unknown[] = [];
+  const service = new MemoryService(repository({
+    async archiveMemory(input) {
+      calls.push(input);
+      return true;
+    },
+    async restoreMemory(input) {
+      calls.push(input);
+      return true;
+    },
+    async permanentlyDeleteMemory(input) {
+      calls.push(input);
+      return true;
+    },
+  }));
+
+  await service.archiveMemory({ userId: "user-a", id: "memory-1" });
+  await service.restoreMemory({ userId: "user-a", id: "memory-1" });
+  await service.permanentlyDeleteMemory({ userId: "user-a", id: "memory-1" });
+
+  assert.deepEqual(calls, [
+    { userId: "user-a", id: "memory-1", actorType: "user", channel: "web" },
+    { userId: "user-a", id: "memory-1", actorType: "user", channel: "web" },
+    { userId: "user-a", id: "memory-1", actorType: "user", channel: "web" },
+  ]);
+  assert.ok(calls.every((input) => !("author" in (input as object))));
 });
 
 test("Memory tag validation rejects blank, oversized, and excessive tags", async () => {

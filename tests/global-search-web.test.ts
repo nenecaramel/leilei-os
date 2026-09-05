@@ -120,8 +120,14 @@ function response(results: unknown[], cursor: string | null = null) {
 }
 
 function result(id: string) {
-  return { entity_type: "memory", entity_id: id, stable_name: "目标", snippet: "命中目标", matched_field: "content", match_reason: "field_match", lifecycle_status: "active", business_time: "2026-08-01T00:00:00.000Z", time_basis: "updated_at", updated_at: "2026-08-01T00:00:00.000Z", detail_tool: "get_memory", detail_arguments: { id, scope: "active" } };
+  return { entity_type: "memory", entity_id: id, stable_name: "目标", snippet: "命中目标", matched_field: "content", match_reason: "field_match", lifecycle_status: "active", business_time: "2026-08-01T00:00:00.000Z", time_basis: "updated_at", updated_at: "2026-08-01T00:00:00.000Z", detail_tool: "get_memory", detail_arguments: { id, scope: "active" }, author: "C" };
 }
+
+test("global search Web result contract retains C without an author control", () => {
+  const cResult = result("00000000-0000-4000-8000-000000000099");
+  assert.equal(cResult.author, "C");
+  assert.equal("author" in DEFAULT_GLOBAL_SEARCH_FILTERS, false);
+});
 
 async function renderSearch(path: string, api: WebApiClient) {
   const dom = new JSDOM("<main id='root'></main>", { url: `https://leilei.test${path}` });

@@ -22,6 +22,7 @@ class MockMemoryReadService {
   readError?: unknown;
   detailError?: unknown;
   includeSyntheticSource = false;
+  author: "C" | null = null;
 
   async readMemory(input: ReadMemoryInput): Promise<ReadMemoryResult> {
     this.readCalls.push(input);
@@ -36,7 +37,7 @@ class MockMemoryReadService {
           key: "leilei-os",
           content: "Bounded Memory search result.",
           tags: ["MCP", "Memory"],
-          author: null,
+          author: this.author,
           ...(this.includeSyntheticSource
             ? { source: "must-not-leak" }
             : {}),
@@ -63,13 +64,13 @@ class MockMemoryReadService {
       source: "web",
       updated_at: UPDATED_AT,
       lifecycle_status: "active",
-      author: null,
+      author: this.author,
     };
   }
 
   async readArchivedMemoryDetail(input: { userId: string; id: string }): Promise<ReadMemoryDetailResult> {
     this.archivedDetailCalls.push(input);
-    return { id: input.id, category: "project", key: "archived", content: "Archived complete content", tags: [], source: "web", updated_at: UPDATED_AT, author: null };
+    return { id: input.id, category: "project", key: "archived", content: "Archived complete content", tags: [], source: "web", updated_at: UPDATED_AT, author: this.author };
   }
 }
 
@@ -268,6 +269,26 @@ test("get_memory injects identity, trims id, and returns only safe fields", asyn
       author: null,
     },
   });
+});
+
+test("Memory read tools preserve a C author in structured responses", async (t) => {
+  const service = new MockMemoryReadService();
+  service.author = "C";
+  const { client, server } = await connect(service);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const read = await client.callTool({ name: "read_memory", arguments: {} });
+  const search = await client.callTool({ name: "search_memory", arguments: { query: "memory" } });
+  const detail = await client.callTool({ name: "get_memory", arguments: { id: MEMORY_ID } });
+  assert.equal(read.isError, undefined, textOf(read));
+  assert.equal(search.isError, undefined, textOf(search));
+  assert.equal(detail.isError, undefined, textOf(detail));
+  assert.equal((read.structuredContent as { data: { memories: Array<{ author: string }> } }).data.memories[0]?.author, "C");
+  assert.equal((search.structuredContent as { data: { memories: Array<{ author: string }> } }).data.memories[0]?.author, "C");
+  assert.equal((detail.structuredContent as { data: { author: string } }).data.author, "C");
 });
 
 test("get_memory archived scope uses only the archived detail path", async (t) => {

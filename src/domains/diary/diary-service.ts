@@ -595,7 +595,7 @@ export class DiaryService {
     }
     if (input.author !== undefined) {
       if (!isContentAuthor(input.author)) {
-        throw new DiaryDomainError("AUTHOR_REQUIRED", "Diary author must be L or G.");
+        throw new DiaryDomainError("AUTHOR_REQUIRED", "Diary author must be L, G, or C.");
       }
       patch.author = input.author;
       hasPatch = true;
@@ -669,17 +669,17 @@ export class DiaryService {
       input.idempotencyKey,
     );
 
-    const legacyHashPayload = {
+    const hashPayload = {
       title: normalized.title,
       content: normalized.content,
       date: normalized.date,
       tags: normalized.tags,
       mood: normalized.mood,
+      author: input.author!,
     };
-    const hashPayload = { ...legacyHashPayload, author: input.author! };
 
     const requestHash = createHash("sha256")
-      .update(JSON.stringify(legacyHashPayload), "utf8")
+      .update(JSON.stringify(hashPayload), "utf8")
       .digest("hex");
 
     return {

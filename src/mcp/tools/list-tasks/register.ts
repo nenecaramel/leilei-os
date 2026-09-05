@@ -30,7 +30,7 @@ const taskTimeBucketSchema = z.enum([
 ]);
 const taskActionSchema = z.enum(["start", "complete", "cancel", "reopen"]);
 const dateTimeSchema = z.string().datetime();
-const contentAuthorSchema = z.enum(["L", "G"]);
+const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
 const listTasksInputSchema = z
   .object({

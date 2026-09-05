@@ -61,7 +61,7 @@ test(
             createdAt: timestamp,
             updatedAt: timestamp,
             completedAt: null,
-            author: "G",
+            author: "C",
           });
           await transaction.insert(tasks).values({
             id: inProgressTaskId,
@@ -78,7 +78,7 @@ test(
             createdAt: timestamp,
             updatedAt: timestamp,
             completedAt: null,
-            author: "G",
+            author: "C",
           });
           const repository = new DrizzleTaskRepository(transaction as never);
 
@@ -91,7 +91,7 @@ test(
             completedAt: null,
           });
           assert.equal(cancelled?.resumeStatus, "pending");
-          assert.equal(cancelled?.author, "G");
+          assert.equal(cancelled?.author, "C");
 
           const reopened = await repository.reopenTask({
             userId: owner,
@@ -102,7 +102,7 @@ test(
           assert.equal(reopened?.status, "pending");
           assert.equal(reopened?.resumeStatus, null);
           assert.equal(reopened?.completedAt, null);
-          assert.equal(reopened?.author, "G");
+          assert.equal(reopened?.author, "C");
 
           const cancelledInProgress = await repository.updateTaskStatus({
             userId: owner,
@@ -123,7 +123,7 @@ test(
           assert.equal(reopenedInProgress?.status, "in_progress");
           assert.equal(reopenedInProgress?.resumeStatus, null);
           assert.equal(reopenedInProgress?.completedAt, null);
-          assert.equal(reopenedInProgress?.author, "G");
+          assert.equal(reopenedInProgress?.author, "C");
 
           const [first, second] = await Promise.all([
             repository.updateTaskStatus({

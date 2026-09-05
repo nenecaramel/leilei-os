@@ -40,8 +40,8 @@ async function withDom(
   }
 }
 
-test("paper author signature displays L, G, and an explicit unknown mark", async () => {
-  for (const value of ["L", "G", null] as const) {
+test("paper author signature displays L, G, C, and an explicit unknown mark", async () => {
+  for (const value of ["L", "G", "C", null] as const) {
     await withDom(
       React.createElement(PaperAuthorSignature, { value, editable: false }),
       (root) => assert.equal(root.textContent, value ?? "—"),
@@ -49,13 +49,13 @@ test("paper author signature displays L, G, and an explicit unknown mark", async
   }
 });
 
-test("editable author signature offers exactly L and G and closes after selection", async () => {
+test("editable author signature offers exactly L, G, C and closes after selection", async () => {
   const selected: string[] = [];
   await withDom(
     React.createElement(PaperAuthorSignature, {
       value: null,
       editable: true,
-      onChange: (value: "L" | "G") => selected.push(value),
+      onChange: (value: "L" | "G" | "C") => selected.push(value),
     }),
     async (root) => {
       const trigger = root.querySelector<HTMLButtonElement>("button");
@@ -63,13 +63,13 @@ test("editable author signature offers exactly L and G and closes after selectio
       assert.equal(trigger.textContent, "—");
       await React.act(async () => trigger.click());
       assert.deepEqual(
-        [...root.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].map((button) => button.textContent),
-        ["L", "G"],
+        [...root.querySelectorAll("[data-author]")].map((node) => node.getAttribute("data-author")),
+        ["L", "G", "C"],
       );
-      const g = root.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="G"]');
-      assert.ok(g);
-      await React.act(async () => g.click());
-      assert.deepEqual(selected, ["G"]);
+      const c = root.querySelector<HTMLButtonElement>('[role="menuitemradio"][data-author="C"]');
+      assert.ok(c);
+      await React.act(async () => c.click());
+      assert.deepEqual(selected, ["C"]);
       assert.equal(root.querySelector('[role="menu"]'), null);
     },
   );

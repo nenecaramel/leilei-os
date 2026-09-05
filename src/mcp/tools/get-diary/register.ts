@@ -12,7 +12,7 @@ import {
 } from "../error-contract.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const contentAuthorSchema = z.enum(["L", "G"]);
+const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
 const getDiaryInputSchema = z
   .object({

@@ -10,8 +10,10 @@ const todoEntrySchema = z.object({
   text: z.string(),
 });
 
+const todoAuthorSchema = z.enum(["L", "G", "C"]);
+
 const todoPaperSchema = z.object({
-  author: z.enum(["L", "G"]),
+  author: todoAuthorSchema,
   date: z.string(),
   revision: z.number().int().nonnegative(),
   entries: z.array(todoEntrySchema),
@@ -26,6 +28,7 @@ const readTodoDayDataSchema = z.object({
   papers: z.object({
     L: todoPaperSchema.nullable(),
     G: todoPaperSchema.nullable(),
+    C: todoPaperSchema.nullable(),
   }),
 });
 
@@ -56,7 +59,7 @@ export function registerReadTodoDayTool(
     {
       title: "Read one Todo day",
       description:
-        "Read the authenticated user's complete L and G Todo papers for one exact business date from list_todo_dates or another trusted date. Empty author slots are returned as null.",
+        "Read the authenticated user's complete L, G, and C Todo papers for one exact business date from list_todo_dates or another trusted date. Empty author slots are returned as null.",
       inputSchema: readTodoDayInputSchema,
       outputSchema: readTodoDayOutputSchema,
       annotations: {

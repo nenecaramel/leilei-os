@@ -176,7 +176,7 @@ class TodoTools {
     papers: TodoDayPapers;
   }> {
     this.readCalls.push({ userId, date });
-    return { date, papers: { L: null, G: null } };
+    return { date, papers: { L: null, G: null, C: null } };
   }
 
   async listDates(userId: string): Promise<string[]> {

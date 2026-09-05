@@ -11,13 +11,13 @@ const updateTaskInputSchema = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   due_time: z.string().trim().min(1).max(64).nullable().optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
-  author: z.enum(["L", "G"]).optional(),
+  author: z.enum(["L", "G", "C"]).optional(),
 }).strict();
 
 const taskStatusSchema = z.enum(["pending", "in_progress", "completed", "cancelled"]);
 const taskActionSchema = z.enum(["start", "complete", "cancel", "reopen"]);
 const taskOutputDataSchema = z.object({
-  id: z.string(), title: z.string(), description: z.string(), status: taskStatusSchema, priority: z.enum(["low", "normal", "high", "urgent"]), due_time: z.string().datetime().nullable(), timezone: z.string(), time_bucket: z.enum(["no_due_date", "overdue", "today", "next_7_days", "later"]), tags: z.array(z.string()), created_at: z.string().datetime(), updated_at: z.string().datetime(), completed_at: z.string().datetime().nullable(), allowed_actions: z.array(taskActionSchema), lifecycle_status: z.literal("active"), author: z.enum(["L", "G"]).nullable(),
+  id: z.string(), title: z.string(), description: z.string(), status: taskStatusSchema, priority: z.enum(["low", "normal", "high", "urgent"]), due_time: z.string().datetime().nullable(), timezone: z.string(), time_bucket: z.enum(["no_due_date", "overdue", "today", "next_7_days", "later"]), tags: z.array(z.string()), created_at: z.string().datetime(), updated_at: z.string().datetime(), completed_at: z.string().datetime().nullable(), allowed_actions: z.array(taskActionSchema), lifecycle_status: z.literal("active"), author: z.enum(["L", "G", "C"]).nullable(),
 });
 const updateTaskOutputSchema = z.object({ success: z.boolean(), data: taskOutputDataSchema.optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 
