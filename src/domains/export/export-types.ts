@@ -1,3 +1,5 @@
+import type { ContentAuthor } from "../content-author.js";
+
 export type ExportScope = "all" | "memory" | "diary" | "task" | "todo";
 
 export type ExportMemoryRecord = {
@@ -8,7 +10,7 @@ export type ExportMemoryRecord = {
   tags: string[];
   visibility: string;
   source: string;
-  author: "L" | "G" | null;
+  author: ContentAuthor | null;
   status: "active" | "archived";
   sort_order: number;
   created_at: string;
@@ -23,7 +25,7 @@ export type ExportDiaryRecord = {
   tags: string[];
   mood: string | null;
   source: string;
-  author: "L" | "G" | null;
+  author: ContentAuthor | null;
   status: "active" | "archived";
   created_at: string;
   updated_at: string;
@@ -36,7 +38,7 @@ export type ExportTaskRecord = {
   status: "pending" | "in_progress" | "completed" | "cancelled";
   resume_status: "pending" | "in_progress" | "completed" | "cancelled" | null;
   lifecycle_status: "active" | "archived";
-  author: "L" | "G" | null;
+  author: ContentAuthor | null;
   priority: "low" | "normal" | "high" | "urgent";
   due_time: string | null;
   timezone: string;
@@ -48,7 +50,7 @@ export type ExportTaskRecord = {
 
 export type ExportTodoPaper = {
   date: string;
-  author: "L" | "G";
+  author: ContentAuthor;
   revision: number;
   created_at: string;
   updated_at: string;

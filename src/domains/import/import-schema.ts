@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { CONTENT_AUTHORS } from "../content-author.js";
 import type { ExportDocumentV2 } from "../export/export-types.js";
 import {
   DIARY_MOOD_MAX_LENGTH,
@@ -48,7 +49,7 @@ const businessDate = z.string().refine((value) => {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 });
 const uuid = z.string().uuid();
-const author = z.union([z.literal("L"), z.literal("G"), z.null()]);
+const author = z.enum(CONTENT_AUTHORS).nullable();
 const boundedTags = z.array(z.string().min(1).max(MEMORY_TAG_MAX_LENGTH)).max(MEMORY_TAGS_MAX_COUNT);
 // Restore accepts the full DB text payload for unbounded text[]/text columns.
 // The raw package limit remains the outer resource bound so historical exports
@@ -109,7 +110,7 @@ const todoEntry = z.object({
 
 const todoPaper = z.object({
   date: businessDate,
-  author: z.enum(["L", "G"]),
+  author: z.enum(CONTENT_AUTHORS),
   revision: z.number().int().nonnegative(),
   created_at: isoDateTime,
   updated_at: isoDateTime,

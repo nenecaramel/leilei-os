@@ -38,6 +38,7 @@ const globalSearchResultSchema = z.object({
   business_time: z.string().datetime(),
   time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at"]),
   updated_at: z.string().datetime(),
+  author: z.enum(["L", "G", "C"]).nullable(),
   detail_tool: z.enum(["get_memory", "get_diary", "get_task", "get_universe_node"]).nullable(),
   detail_arguments: detailArgumentsSchema.nullable(),
 }).strict().superRefine((result, context) => {

@@ -11,7 +11,7 @@ const USER_ID="00000000-0000-4000-8000-000000000701";
 const TASK_ID="00000000-0000-4000-8000-000000000003";
 const rows:GlobalSearchRow[]=[
   {entityType:"memory",entityId:"00000000-0000-4000-8000-000000000001",stableName:"Café 计划",matchedField:"content",matchedValue:`${"前".repeat(100)}Café${"后".repeat(200)}`,matchReason:"exact_phrase",lifecycleStatus:"active",businessTime:new Date("2026-08-01T10:00:00Z"),timeBasis:"updated_at",updatedAt:new Date("2026-08-01T10:00:00Z"),rank:2,author:"C"},
-  {entityType:"diary",entityId:"00000000-0000-4000-8000-000000000002",stableName:"精准词",matchedField:"title",matchedValue:"精准词",matchReason:"exact_stable_name",lifecycleStatus:"archived",businessTime:new Date("2026-07-30T16:00:00Z"),timeBasis:"diary_date",updatedAt:new Date("2026-08-01T09:00:00Z"),rank:1},
+  {entityType:"diary",entityId:"00000000-0000-4000-8000-000000000002",stableName:"精准词",matchedField:"title",matchedValue:"精准词",matchReason:"exact_stable_name",lifecycleStatus:"archived",businessTime:new Date("2026-07-30T16:00:00Z"),timeBasis:"diary_date",updatedAt:new Date("2026-08-01T09:00:00Z"),rank:1,author:null},
 ];
 class Repository implements GlobalSearchRepository {
   calls:GlobalSearchQuery[]=[]; findCalls=0; result=rows;
@@ -55,7 +55,7 @@ test("GlobalSearchService returns a stored C author without adding an author fil
 
 test("global_search is strict, read-only, server-owned, and returns detail instructions",async(t)=>{
   const calls:unknown[]=[];
-  const result:GlobalSearchResult={results:[{entity_type:"task",entity_id:TASK_ID,stable_name:"计划",snippet:"😀".repeat(240),matched_field:"title",match_reason:"exact_stable_name",lifecycle_status:"archived",business_time:"2026-08-01T00:00:00.000Z",time_basis:"created_at",updated_at:"2026-08-01T00:00:00.000Z",detail_tool:"get_task",detail_arguments:{id:TASK_ID,scope:"archived"}}],metadata:{count:1,has_more:false,next_cursor:null,searched_modules:["task"],searched_scope:"all"}};
+  const result:GlobalSearchResult={results:[{entity_type:"task",entity_id:TASK_ID,stable_name:"计划",snippet:"😀".repeat(240),matched_field:"title",match_reason:"exact_stable_name",lifecycle_status:"archived",business_time:"2026-08-01T00:00:00.000Z",time_basis:"created_at",updated_at:"2026-08-01T00:00:00.000Z",author:"C",detail_tool:"get_task",detail_arguments:{id:TASK_ID,scope:"archived"}}],metadata:{count:1,has_more:false,next_cursor:null,searched_modules:["task"],searched_scope:"all"}};
   const server=createMcpServer({globalSearch:{globalSearchService:{async search(input){calls.push(input);return result;}},getAuthenticatedUserId:()=>USER_ID}});
   const client=new Client({name:"global-search-test",version:"1"},{capabilities:{}}); const [a,b]=InMemoryTransport.createLinkedPair(); await server.connect(b); await client.connect(a); t.after(async()=>{await client.close();await server.close();});
   const tools=(await client.listTools()).tools; assert.equal(tools.length,40); const tool=tools.find((x)=>x.name==="global_search")!;

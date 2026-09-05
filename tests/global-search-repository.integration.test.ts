@@ -27,7 +27,7 @@ test("real PostgreSQL global search covers fields, ranking, scope, dates, pagina
       await tx.insert(schema.userSettings).values([{userId:owner,timezone:"Asia/Shanghai"},{userId:other,timezone:"Asia/Shanghai"}]);
       const memoryIds=[randomUUID(),randomUUID()];
       await tx.insert(schema.coreMemories).values([
-        {id:memoryIds[0],userId:owner,category:"project",key:"精确计划",content:"前文，命中短语：海边旅行；后文。 Space   Format Café",tags:["记忆标签"],visibility:"assistant",source:"web",status:"active",updatedAt:now},
+        {id:memoryIds[0],userId:owner,category:"project",key:"精确计划",content:"前文，命中短语：海边旅行；后文。 Space   Format Café",tags:["记忆标签"],visibility:"assistant",source:"web",author:"C",status:"active",updatedAt:now},
         {id:memoryIds[1],userId:owner,category:"goal",key:"历史计划",content:"归档 Memory 正文",tags:["历史标签"],visibility:"assistant",source:"web",status:"archived",updatedAt:new Date("2026-07-31T08:00:00Z")},
         {id:randomUUID(),userId:other,category:"project",key:"精确计划",content:"不能泄露",tags:["记忆标签"],visibility:"assistant",source:"web",status:"active",updatedAt:now},
       ]);
@@ -43,7 +43,7 @@ test("real PostgreSQL global search covers fields, ranking, scope, dates, pagina
       const service=new GlobalSearchService(new DrizzleGlobalSearchRepository(tx as never));
       const matrix=["精确计划","命中短语：海边旅行；","记忆标签","日记正文字段","日记标签","平静心情","任务描述字段","任务标签","space format","cafe\u0301"];
       for(const query of matrix){const found=await service.search({userId:owner,query,scope:"active",limit:25});assert.ok(found.results.length>=1,query);assert.ok(found.results.every((r)=>r.snippet.length<=242));}
-      const ranked=await service.search({userId:owner,query:"精确计划",scope:"active",limit:25});assert.deepEqual(ranked.results.map((r)=>r.match_reason),["exact_stable_name","exact_stable_name","exact_stable_name"]);assert.equal(ranked.results.some((r)=>r.entity_id===memoryIds[0]),true);assert.equal(ranked.results.some((r)=>r.stable_name==="不能泄露"),false);
+      const ranked=await service.search({userId:owner,query:"精确计划",scope:"active",limit:25});assert.deepEqual(ranked.results.map((r)=>r.match_reason),["exact_stable_name","exact_stable_name","exact_stable_name"]);assert.equal(ranked.results.find((r)=>r.entity_id===memoryIds[0])?.author,"C");assert.equal(ranked.results.some((r)=>r.stable_name==="不能泄露"),false);
       const archived=await service.search({userId:owner,query:"历史",scope:"archived",limit:25});assert.equal(archived.results.length,3);assert.ok(archived.results.every((r)=>r.lifecycle_status==="archived"&&r.detail_arguments.scope==="archived"));
       const dated=await service.search({userId:owner,query:"精确计划",date_from:"2026-08-01",date_to:"2026-08-01",limit:25});assert.equal(dated.results.length,3);
       const p1=await service.search({userId:owner,query:"精确计划",limit:1});const p2=await service.search({userId:owner,query:"精确计划",limit:1,cursor:p1.metadata.next_cursor!});assert.notEqual(p1.results[0]?.entity_id,p2.results[0]?.entity_id);
