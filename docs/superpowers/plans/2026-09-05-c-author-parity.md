@@ -407,16 +407,14 @@ for reads, and non-null `ContentAuthor` for creates. Do not infer C from source 
 
 - [ ] **Step 4: Preserve edit and lifecycle semantics**
 
-Keep the current legacy-null gate:
+Keep the current legacy-null gate and expand only what `isContentAuthor` accepts:
 
 ```ts
-const nextAuthor = input.author ?? existing.author;
-if (nextAuthor === null) {
-  throw existingAuthorRequiredError;
-}
+const author = input.author ?? existing.author ?? null;
+this.requireAuthor(author);
 ```
 
-Allow explicit L↔G↔C changes on content edits. Keep author absent from archive/restore/permanent-delete inputs and persistence updates.
+The existing `requireAuthor` method continues to throw `MemoryDomainError("AUTHOR_REQUIRED", "A content author must be selected.")` for null or invalid values. Allow explicit L↔G↔C changes on content edits. Keep author absent from archive/restore/permanent-delete inputs and persistence updates.
 
 - [ ] **Step 5: Run GREEN**
 
@@ -811,9 +809,24 @@ const [papers, setPapers] = useState<TodoDay["papers"]>({
 Use a ref map or three explicit refs. Render:
 
 ```tsx
-<TodayPanel author="L" ... />
-<TodayPanel author="G" ... />
-<TodayPanel author="C" ... />
+<TodayPanel
+  author="L"
+  notes={loadState === "ready" ? papers.L?.entries ?? [] : []}
+  triggerRef={lTriggerRef}
+  onOpen={() => setDialogAuthor("L")}
+/>
+<TodayPanel
+  author="G"
+  notes={loadState === "ready" ? papers.G?.entries ?? [] : []}
+  triggerRef={gTriggerRef}
+  onOpen={() => setDialogAuthor("G")}
+/>
+<TodayPanel
+  author="C"
+  notes={loadState === "ready" ? papers.C?.entries ?? [] : []}
+  triggerRef={cTriggerRef}
+  onOpen={() => setDialogAuthor("C")}
+/>
 ```
 
 Select the matching trigger for all three authors. Keep a single `TodoPaperDialog`; do not fork a Claude-specific dialog.
@@ -1020,7 +1033,12 @@ Run the same `rg` command. Remaining matches must be confined to historical docu
 ```bash
 git diff --check
 git status --short
-git add <the exact files shown by git diff --name-only>
+git diff --name-only
+```
+
+Stage each literal path printed by `git diff --name-only`, review `git diff --cached`, then run:
+
+```bash
 git commit -m "test: close C author parity gaps"
 ```
 
@@ -1152,25 +1170,19 @@ git push -u origin feat/content-author-c
 
 Open a Draft PR targeting `main`. The PR description must include:
 
+The PR description must state these exact fixed values:
+
 ```text
 BASE_SHA=090eeb2871c37fb3f9f6ca31fc482fcd9aaf5e76
 DESIGN_SPEC=docs/superpowers/specs/2026-09-05-c-author-parity-design.md
-MIGRATION_HEAD=<the verified migration filename>
-FULL_TEST_SUITE=<pass/fail/skip totals>
-ROOT_TYPECHECK=<PASS or exact blocker>
-ROOT_BUILD=<PASS or exact blocker>
-WEB_TYPECHECK=<PASS or exact blocker>
-WEB_BUILD=<PASS or exact blocker>
-DB_CHECK=<PASS or exact blocker>
-DISPOSABLE_POSTGRES_MIGRATION=<PASS or exact blocker>
-SECURITY_SCAN=<findings and coverage>
+MIGRATION_HEAD=0032_content_author_c.sql
 LEGACY_DATA_CHANGED=NO
 MCP_TOOL_COUNT_CHANGED=NO
 PR_278_INCLUDED=NO
 PRODUCTION_TOUCHED=NO
 ```
 
-Use the actual migration filename and measured results; never leave angle-bracket placeholders in the submitted PR.
+It must also include the measured full-suite pass/fail/skip totals, PASS or the exact blocker for each Root/Web typecheck/build and DB check, disposable PostgreSQL evidence, and Security Scan findings plus coverage. If Task 1 proves the migration head is not 0032, replace the fixed migration line with the actual committed filename before opening the PR.
 
 Stop at Draft/Open. Do not Ready, merge, deploy, refresh connectors, run the production migration, or write production C content.
 
