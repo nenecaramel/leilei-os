@@ -384,6 +384,7 @@ test("active terminal Task list exposes one in-place reopen action", async () =>
     const buttons = [...page.container.querySelectorAll("button")].filter((button) => button.textContent === "恢复任务");
     assert.equal(buttons.length, 1);
     await React.act(async () => { buttons[0]!.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true })); });
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(requests.filter(({ path, init }) => path === "/task/task-123/reopen" && init?.method === "POST").length, 1);
     assert.equal(page.container.querySelector("[aria-label=\"任务列表加载中\"]"), null);
     assert.equal(page.container.textContent?.includes("详情任务"), false);
