@@ -169,8 +169,8 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
       ]);
       assert.deepEqual(countsAfter.slice(0, 7), countsBefore.slice(0, 7));
       assert.equal(
-        Number(countsAfter[7]?.count ?? 0),
-        Number(countsBefore[7]?.count ?? 0) - 1,
+        Number(countsAfter[7]?.[0]?.count ?? 0),
+        Number(countsBefore[7]?.[0]?.count ?? 0) - 1,
       );
 
       throw new RollbackExportTest();

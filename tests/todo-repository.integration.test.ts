@@ -103,8 +103,14 @@ test(
             userId: userA, date: "2026-08-12", author: "L", expectedRevision: 2, entries: [],
           });
           assert.equal(lEmpty.outcome, "committed");
-          assert.deepEqual(await repository.listContentDates(userA), []);
+          assert.deepEqual(await repository.listContentDates(userA), ["2026-08-12"]);
           assert.deepEqual((await repository.readDay(userA, "2026-08-12")).L?.entries, []);
+
+          const cEmpty = await repository.replacePaper({
+            userId: userA, date: "2026-08-12", author: "C", expectedRevision: 2, entries: [],
+          });
+          assert.equal(cEmpty.outcome, "committed");
+          assert.deepEqual(await repository.listContentDates(userA), []);
 
           const other = await repository.replacePaper({
             userId: userB, date: "2026-08-12", author: "L", expectedRevision: null,
