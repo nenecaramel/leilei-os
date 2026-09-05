@@ -167,6 +167,7 @@ test("MCP global_search returns an exact-read link for Universe results", async 
       business_time: "2026-08-10T12:00:00.000Z",
       time_basis: "updated_at",
       updated_at: "2026-08-10T12:00:00.000Z",
+      author: null,
       detail_tool: "get_universe_node",
       detail_arguments: { id: NODE_ID },
     }],
@@ -206,6 +207,7 @@ test("MCP global_search round-trips a canonical 256-character Universe cursor", 
     timeBasis: "updated_at",
     updatedAt: new Date("2026-08-10T12:00:00.000Z"),
     rank: 4,
+    author: null,
   };
   const secondRow: GlobalSearchRow = { ...firstRow, entityId: "第二节点", stableName: "第二节点" };
   const repository: GlobalSearchRepository = {
