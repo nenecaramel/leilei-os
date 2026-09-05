@@ -239,6 +239,13 @@ test("Home opens C's dialog and saves only C's paper", async () => {
     } },
   })));
   await waitForCondition(() => container.querySelectorAll(".today-panel").length === 3, "three Todo panels");
+  await waitForCondition(
+    () =>
+      (container.querySelector(".today-panel-l")?.textContent ?? "").includes("整理今天的事情") &&
+      (container.querySelector(".today-panel-g")?.textContent ?? "").includes("项目下一步：确定侧边栏交互") &&
+      (container.querySelector(".today-panel-c")?.textContent ?? "").includes("整理 Claude 的下一步"),
+    "loaded L/G/C Todo previews",
+  );
   const lPreviewBefore = container.querySelector(".today-panel-l")?.textContent;
   const gPreviewBefore = container.querySelector(".today-panel-g")?.textContent;
   const cPanel = container.querySelector<HTMLButtonElement>(".today-panel-c")!;
