@@ -66,7 +66,7 @@ All legacy rows retain their exact current authorship:
 
 No provenance-to-author migration or backfill is permitted.
 
-Application startup must apply the migration before code can accept or emit `C`. No production C record may be created until the deployed build has passed read-path acceptance.
+The production rollout must explicitly run and verify the migration before deploying code that can accept or emit `C`; the repository's current production `start` command does not run migrations automatically. No production C record may be created until the deployed build has passed read-path acceptance.
 
 ## Memory, Diary, and Task behavior
 
