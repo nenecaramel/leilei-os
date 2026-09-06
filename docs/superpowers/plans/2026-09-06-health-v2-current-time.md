@@ -28,6 +28,16 @@
 - `get_current_time` has no Health/business-data DB dependency, but its normal active-user authorization may consult durable user status.
 - TDD for each task: RED test -> verify failure -> minimal implementation -> focused GREEN -> commit.
 
+### Test runner fallback
+
+When a prescribed `pnpm exec tsx --test ...` command cannot start because of the
+known IPC/socket `EPERM` or `EINVAL` environment failure, use the equivalent
+fallback runner `node --import tsx --test ...` with the exact same test files,
+flags, and ordering. This is an approved runner substitution, not a
+temp-directory workaround: do not reduce test scope, skip RED/GREEN evidence,
+or modify tests to accommodate the environment. If the fallback runner also
+fails with an environment permission error, stop and report the blocker.
+
 ---
 
 ## File Structure
@@ -581,7 +591,11 @@ pnpm --dir web run build
 git diff --check
 ```
 
-Expected: all pass. Existing Vite >500k warning is non-blocking. If `tsx` hits the known IPC/socket `EPERM` or `EINVAL`, stop after the first controlled attempt and report the environment exception; do not retry temp-dir tricks.
+Expected: all pass. Existing Vite >500k warning is non-blocking. If a
+prescribed `pnpm exec tsx --test ...` command hits the known IPC/socket
+`EPERM` or `EINVAL`, use the exact equivalent `node --import tsx --test ...`
+fallback described above. Stop and report only if that fallback also fails
+with an environment permission error; do not retry temp-dir tricks.
 
 - [ ] **Step 5: Security/privacy review exact feature diff**
 
