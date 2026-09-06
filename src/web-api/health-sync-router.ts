@@ -42,7 +42,7 @@ export function createHealthSyncRouter(
         dependencies.userId,
         parsed.data,
       );
-      response.status(result.created ? 201 : 200).json({
+      response.status(200).json({
         success: true,
         data: serializeHealthSummary(result.summary),
       });
@@ -67,9 +67,9 @@ export function serializeHealthSummary(summary: HealthDailySummary) {
     date: summary.date,
     steps: summary.steps,
     menstruating: summary.menstruating,
-    periodStartDate: summary.periodStartDate,
-    cycleDay: summary.cycleDay,
-    updatedAt: summary.updatedAt.toISOString(),
+    period_start_date: summary.periodStartDate,
+    cycle_day: summary.cycleDay,
+    updated_at: summary.updatedAt.toISOString(),
   };
 }
 

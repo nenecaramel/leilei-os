@@ -173,16 +173,16 @@ test("Health Shortcut sync validates a strict body and returns normalized create
     assert.deepEqual(calls, []);
 
     const created = await syncRequest(baseUrl, VALID_BODY);
-    assert.equal(created.status, 201);
+    assert.equal(created.status, 200);
     assert.deepEqual(await created.json(), {
       success: true,
       data: {
         date: "2026-09-06",
         steps: 6842,
         menstruating: false,
-        periodStartDate: "2026-09-04",
-        cycleDay: 3,
-        updatedAt: "2026-09-06T04:00:00.000Z",
+        period_start_date: "2026-09-04",
+        cycle_day: 3,
+        updated_at: "2026-09-06T04:00:00.000Z",
       },
     });
 
@@ -219,7 +219,7 @@ test("Health Shortcut sync is outside Auth0, readiness-gated, and does not resto
 test("Health Shortcut sync keeps its key and Health payload out of observability output", async () => {
   await withApp({}, async (baseUrl, _calls, events) => {
     const response = await syncRequest(baseUrl, VALID_BODY);
-    assert.equal(response.status, 201);
+    assert.equal(response.status, 200);
     const serialized = JSON.stringify(events);
     assert.ok(!serialized.includes(HEALTH_KEY));
     assert.ok(!serialized.includes("6842"));

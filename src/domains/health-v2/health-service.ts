@@ -101,10 +101,17 @@ export class HealthService {
     userId: string,
     payload: HealthSyncPayload,
   ): Promise<HealthSyncResult> {
-    return this.repository.upsertDaily(
-      userId,
-      normalizeHealthSyncPayload(payload, this.now()),
-    );
+    try {
+      return await this.repository.upsertDaily(
+        userId,
+        normalizeHealthSyncPayload(payload, this.now()),
+      );
+    } catch (error) {
+      if (error instanceof ActiveUserAuthorizationError) {
+        throw new HealthServiceError(error.code);
+      }
+      throw error;
+    }
   }
 
   async readDay(

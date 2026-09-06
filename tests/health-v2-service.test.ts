@@ -5,6 +5,7 @@ import {
   HealthServiceError,
   normalizeHealthSyncPayload,
 } from "../src/domains/health-v2/health-service.js";
+import { ActiveUserAuthorizationError } from "../src/domains/require-active-user.js";
 import type {
   HealthDailySummary,
   HealthRepository,
@@ -144,6 +145,12 @@ class FakeHealthRepository implements HealthRepository {
     summary: NormalizedHealthSync,
   ): Promise<HealthSyncResult> {
     this.calls.push("upsertDaily");
+    if (!this.user) {
+      throw new ActiveUserAuthorizationError("USER_NOT_FOUND");
+    }
+    if (this.user.status !== "active") {
+      throw new ActiveUserAuthorizationError("USER_DISABLED");
+    }
     return {
       created: true,
       summary: { ...summary, updatedAt: NOW },
@@ -202,3 +209,23 @@ test("syncDaily normalizes before delegating the owner-scoped upsert", async () 
   assert.equal(result.summary.periodStartDate, "2026-09-04");
   assert.deepEqual(repository.calls, ["upsertDaily"]);
 });
+
+for (const user of [null, { status: "disabled" as const }]) {
+  const expectedCode = user === null ? "USER_NOT_FOUND" : "USER_DISABLED";
+
+  test(`syncDaily rejects ${expectedCode} before writing Health data`, async () => {
+    const repository = new FakeHealthRepository(user);
+    const service = new HealthService(repository, () => NOW);
+
+    await assert.rejects(
+      service.syncDaily("user-1", {
+        date: "2026-09-06",
+        steps: 25,
+        menstruation_dates: [],
+      }),
+      (error: unknown) =>
+        error instanceof HealthServiceError && error.code === expectedCode,
+    );
+    assert.deepEqual(repository.calls, ["upsertDaily"]);
+  });
+}
