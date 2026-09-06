@@ -232,6 +232,13 @@
       "when": 1788570859454,
       "tag": "0032_content_author_c",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788672580348,
+      "tag": "0033_health_v2_daily_summaries",
+      "breakpoints": true
     }
   ]
 }
