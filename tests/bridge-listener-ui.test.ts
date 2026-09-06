@@ -43,6 +43,11 @@ function createDom(
     runScripts: "dangerously",
     pretendToBeVisual: true,
     beforeParse(window) {
+      class ResizeObserverMock {
+        observe(): void {}
+        disconnect(): void {}
+      }
+      Object.defineProperty(window, "ResizeObserver", { value: ResizeObserverMock });
       const parent = {
         postMessage(message: BridgeCall) {
           if (message.method === "ui/initialize") {
@@ -53,7 +58,7 @@ function createDom(
                   id: message.id,
                   result: {
                     protocolVersion: "2026-01-26",
-                    hostCapabilities: { serverTools: {} },
+                    hostCapabilities: { serverTools: {}, updateModelContext: { text: {} }, message: { text: {} } },
                     hostInfo: { name: "Test Host", version: "1.0.0" },
                     hostContext: {},
                   },
@@ -64,6 +69,7 @@ function createDom(
             return;
           }
           if (message.method === "ui/notifications/initialized") return;
+          if (message.method === "ui/notifications/size-changed") return;
           calls.push(message);
         },
       };
@@ -196,7 +202,7 @@ test("listener sends a user-role message and releases definite ui/message reject
     await tick();
     response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
     await tick();
-    response(dom, calls, 2, toolResult({}));
+    response(dom, calls, 2, {});
     await tick();
     const dispatch = calls.find((call) => call.params?.name === "bridge_listener_dispatch_started");
     assert.ok(dispatch);
@@ -237,7 +243,7 @@ test("each consecutive Sentinel synthetic message carries its own routing identi
     await tick();
 
     const context = calls.findLast((call) => call.method === "ui/update-model-context")!;
-    response(dom, calls, calls.indexOf(context), toolResult({}));
+    response(dom, calls, calls.indexOf(context), {});
     await tick();
 
     const dispatchStarted = calls.findLast((call) => call.params?.name === "bridge_listener_dispatch_started")!;
@@ -290,7 +296,7 @@ test("each consecutive ordinary synthetic message carries only its own routing i
     await tick();
 
     const context = calls.findLast((call) => call.method === "ui/update-model-context")!;
-    response(dom, calls, calls.indexOf(context), toolResult({}));
+    response(dom, calls, calls.indexOf(context), {});
     await tick();
 
     const dispatchStarted = calls.findLast((call) => call.params?.name === "bridge_listener_dispatch_started")!;
@@ -343,7 +349,7 @@ test("dispatch-start failure schedules another poll instead of stalling", async 
     await tick();
     response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
     await tick();
-    response(dom, calls, 2, toolResult({}));
+    response(dom, calls, 2, {});
     await tick();
     const dispatch = calls.find((call) => call.params?.name === "bridge_listener_dispatch_started");
     assert.ok(dispatch);
@@ -375,7 +381,7 @@ test("listener quarantines an ambiguous ui/message timeout instead of retrying i
     await tick();
     response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
     await tick();
-    response(dom, calls, 2, toolResult({}));
+    response(dom, calls, 2, {});
     await tick();
     const dispatch = calls.find((call) => call.params?.name === "bridge_listener_dispatch_started");
     assert.ok(dispatch);
@@ -405,7 +411,7 @@ test("listener acknowledges only a successful ui/message outcome", async () => {
     await tick();
     response(dom, calls, 1, { ...toolResult({ event: eventRecord }), _meta: { bridgeEvent: eventRecord } });
     await tick();
-    response(dom, calls, 2, toolResult({}));
+    response(dom, calls, 2, {});
     await tick();
     const dispatch = calls.find((call) => call.params?.name === "bridge_listener_dispatch_started");
     assert.ok(dispatch);

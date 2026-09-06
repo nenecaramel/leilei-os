@@ -33,6 +33,11 @@ function createDom(
     runScripts: "dangerously",
     pretendToBeVisual: true,
     beforeParse(window) {
+      class ResizeObserverMock {
+        observe(): void {}
+        disconnect(): void {}
+      }
+      Object.defineProperty(window, "ResizeObserver", { value: ResizeObserverMock });
       const parent = {
         postMessage(message: BridgeCall) {
           if (message.method === "ui/initialize") {
@@ -43,7 +48,7 @@ function createDom(
                   id: message.id,
                   result: {
                     protocolVersion: "2026-01-26",
-                    hostCapabilities: { serverTools: {} },
+                    hostCapabilities: { serverTools: {}, updateModelContext: { text: {} }, message: { text: {} } },
                     hostInfo: { name: "Test Host", version: "1.0.0" },
                     hostContext: {},
                   },
@@ -54,6 +59,7 @@ function createDom(
             return;
           }
           if (message.method === "ui/notifications/initialized") return;
+          if (message.method === "ui/notifications/size-changed") return;
           calls.push(message);
         },
       };

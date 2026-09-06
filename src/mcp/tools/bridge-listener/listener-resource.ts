@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   registerAppResource,
   RESOURCE_MIME_TYPE,
@@ -59,10 +60,28 @@ export function composeBridgeDispatchContext(
   return `${event.modelContext}\n\nLeileiOS Bridge event metadata: eventId=${event.id}.`;
 }
 
+const BRIDGE_RESOURCE_META = {
+  ui: {
+    csp: {
+      connectDomains: [],
+      resourceDomains: [],
+    },
+  },
+} as const;
+
+const BRIDGE_BROWSER_BUNDLE = readFileSync(new URL("./browser-runtime.js", import.meta.url), "utf8");
+
+function escapeInlineScript(script: string): string {
+  return script.replaceAll("</script", "<\\/script");
+}
+
 export function createBridgeListenerHtml(
   options: BridgeListenerResourceOptions = {},
 ): string {
-  const ambiguityAcceptanceEnabled = options.ambiguityAcceptanceEnabled === true;
+  const config = JSON.stringify({
+    ambiguityAcceptanceEnabled: options.ambiguityAcceptanceEnabled === true,
+    ambiguityAcceptancePrefix: BRIDGE_AMBIGUITY_ACCEPTANCE_PREFIX,
+  });
   return `<!doctype html><meta charset="utf-8"><title>LeileiOS Message Bridge</title><style>
   :root { color-scheme: light; font: 14px system-ui, sans-serif; }
   body { margin: 0; padding: 16px; color: #333; background: #fff; }
@@ -88,209 +107,7 @@ export function createBridgeListenerHtml(
     <summary>Diagnostics</summary>
     <pre data-bridge-diag aria-live="polite"></pre>
   </details>
-</main><script>
-(() => {
-  const POLL_MS = 10000, RENEW_MS = 30000, TIMEOUT_MS = 18000, PROTOCOL_VERSION = '2026-01-26', DIAG_LIMIT = 24, AMBIGUITY_ACCEPTANCE_ENABLED = ${ambiguityAcceptanceEnabled ? "true" : "false"}, AMBIGUITY_ACCEPTANCE_PREFIX = ${JSON.stringify(BRIDGE_AMBIGUITY_ACCEPTANCE_PREFIX)};
-  const listenerInstanceId = crypto.randomUUID();
-  const pending = new Map(); const diagLines = []; let nextId = 1, initialized = false, initializePromise = null, running = false, starting = false, syncing = false, eventInFlight = null, pollTimer = null, renewTimer = null;
-  const startButton = document.querySelector('[data-bridge-start]');
-  const stopButton = document.querySelector('[data-bridge-stop]');
-  const syncButton = document.querySelector('[data-bridge-sync]');
-  const statusNode = document.querySelector('[data-bridge-status]');
-  const occupiedNode = document.querySelector('[data-bridge-occupied]');
-  const diagNode = document.querySelector('[data-bridge-diag]');
-  const recordDiag = (message) => {
-    const stamp = new Date().toISOString().slice(11, 23);
-    diagLines.push(stamp + ' ' + String(message));
-    while (diagLines.length > DIAG_LIMIT) diagLines.shift();
-    if (diagNode) { diagNode.textContent = diagLines.join('\\n'); diagNode.scrollTop = diagNode.scrollHeight; }
-  };
-  const errorSummary = (error) => {
-    if (!error) return 'unknown';
-    const code = typeof error.code === 'string' || typeof error.code === 'number' ? String(error.code) : '';
-    const rawMessage = typeof error.message === 'string' ? error.message : typeof error === 'string' ? error : '';
-    const message = rawMessage.replace(/\\s+/g, ' ').slice(0, 120);
-    return (code ? 'code=' + code : '') + (code && message ? ' ' : '') + (message || (!code ? 'unknown' : ''));
-  };
-  const setUiState = (state) => {
-    const labels = { idle: 'Idle', starting: 'Starting', running: 'Running', occupied: 'Occupied', unavailable: 'Host init failed' };
-    if (statusNode) statusNode.textContent = labels[state] || labels.idle;
-    if (occupiedNode) occupiedNode.hidden = state !== 'occupied';
-    if (startButton) startButton.disabled = state === 'starting' || state === 'running';
-    if (stopButton) stopButton.disabled = state !== 'running';
-    if (syncButton) syncButton.disabled = state !== 'running';
-  };
-  const callLabel = (method, params) => method === 'tools/call' && params && typeof params.name === 'string' ? params.name : method;
-  const call = (method, params, timeout = TIMEOUT_MS, ignoreResponse = false) => new Promise((resolve, reject) => {
-    const id = nextId++; const label = callLabel(method, params); pending.set(id, {resolve, reject, label, ignoreResponse});
-    recordDiag(label + ' sent id=' + id);
-    window.parent.postMessage({jsonrpc:'2.0', id, method, params}, '*');
-    setTimeout(() => {
-      if (!pending.delete(id)) return;
-      recordDiag(label + ' timeout id=' + id);
-      reject(Object.assign(new Error('timeout'), {ambiguous: method === 'ui/message'}));
-    }, timeout);
-  });
-  const notify = (method, params) => {
-    const message = {jsonrpc:'2.0', method};
-    if (params !== undefined) message.params = params;
-    recordDiag(method + ' notify');
-    window.parent.postMessage(message, '*');
-  };
-  window.addEventListener('message', event => {
-    if (event.source !== window.parent) return;
-    const msg = event.data;
-    if (!msg || msg.jsonrpc !== '2.0' || !pending.has(msg.id)) return;
-    const p = pending.get(msg.id);
-    if (p.ignoreResponse && !msg.error && !(msg.result && msg.result.isError === true)) {
-      recordDiag(p.label + ' response intentionally ignored id=' + msg.id);
-      return;
-    }
-    pending.delete(msg.id);
-    if (msg.error) {
-      recordDiag(p.label + ' error id=' + msg.id + ' ' + errorSummary(msg.error));
-      p.reject(msg.error);
-    } else {
-      recordDiag(p.label + ' response id=' + msg.id);
-      p.resolve(msg.result);
-    }
-  });
-  const initializeHost = async () => {
-    if (initialized) { recordDiag('ui/initialize already ready'); return; }
-    if (initializePromise) { recordDiag('ui/initialize await existing'); return initializePromise; }
-    recordDiag('ui/initialize enter');
-    initializePromise = (async () => {
-      try {
-        const result = await call('ui/initialize', {
-          appInfo: {name:'LeileiOS Message Bridge', version:'1.0.0'},
-          appCapabilities: {},
-          protocolVersion: PROTOCOL_VERSION,
-        });
-        if (!result || typeof result.protocolVersion !== 'string') throw new Error('Invalid ui/initialize result');
-        notify('ui/notifications/initialized');
-        initialized = true;
-        recordDiag('ui/initialize success');
-      } catch (error) {
-        recordDiag('ui/initialize failed ' + errorSummary(error));
-        throw Object.assign(new Error('MCP Apps initialization failed'), {code:'HOST_INIT_FAILED', cause:error});
-      } finally {
-        initializePromise = null;
-      }
-    })();
-    return initializePromise;
-  };
-  const appCall = async (name, args) => {
-    const bridgeArgs = {listenerInstanceId, ...(args || {})};
-    const result = await call('tools/call', {name, arguments: bridgeArgs});
-    const structured = result && result.structuredContent;
-    if (!result || result.isError === true || !structured || structured.success !== true) {
-      const code = structured && structured.error && structured.error.code;
-      const error = Object.assign(new Error('Bridge tool call failed'), {code: code || 'BRIDGE_UNAVAILABLE'});
-      recordDiag(name + ' semantic error ' + errorSummary(error));
-      throw error;
-    }
-    return result;
-  };
-  const report = (name, args) => appCall(name, args).catch((error) => { recordDiag(name + ' report failed ' + errorSummary(error)); return undefined; });
-  const schedulePoll = () => {
-    if (running && !pollTimer) pollTimer = setTimeout(() => { pollTimer = null; void sync('poll'); }, POLL_MS);
-  };
-  const sentinelWakeMetadata = (event) => {
-    if (!event || event.kind !== 'wake' || event.source !== 'leileios_sentinel') return null;
-    const match = typeof event.modelContext === 'string' && event.modelContext.match(/wakeId=([^;]+); sentinelId=([^;]+); controlRevision=(\\d+); scheduledFor=([^ ]+)\\./);
-    if (!match) return null;
-    return {eventId:event.id, wakeId:match[1], sentinelId:match[2], controlRevision:Number(match[3]), scheduledFor:match[4], reservedAt:event.reservedAt || null, dispatchStartedAt:event.dispatchStartedAt || null};
-  };
-  const modelContextFor = (event) => {
-    const wake = sentinelWakeMetadata(event);
-    return wake ? 'LeileiOS Sentinel event metadata: eventId=' + event.id + '; wakeId=' + wake.wakeId + '; sentinelId=' + wake.sentinelId + '; controlRevision=' + wake.controlRevision + '; scheduledFor=' + wake.scheduledFor + '.' : (event.modelContext || '') + '\\n\\nLeileiOS Bridge event metadata: eventId=' + event.id + '.';
-  };
-  const messageTextFor = (event) => {
-    return '@LeileiOS ' + event.visibleText;
-  };
-  const sync = async (source = 'auto') => {
-    recordDiag('sync enter source=' + source + ' running=' + running + ' syncing=' + syncing);
-    if (!running) { recordDiag('sync skipped not-running'); return; }
-    if (syncing) { recordDiag('sync skipped already-running'); return; }
-    syncing = true;
-    try {
-      const result = await appCall('bridge_listener_sync');
-      recordDiag('sync tool success source=' + source);
-      const event = result && result._meta && result._meta.bridgeEvent;
-      if (!event || eventInFlight) { schedulePoll(); return; }
-      eventInFlight = event;
-      try {
-        const wakeMetadata = sentinelWakeMetadata(event);
-        await call('ui/update-model-context', {content:[{type:'text', text:modelContextFor(event)}], ...(wakeMetadata ? {_meta:{leileios:{bridgeEvent:wakeMetadata}}} : {})});
-      } catch (error) { recordDiag('context update failed ' + errorSummary(error)); await report('bridge_listener_release', {eventId:event.id, safeErrorCode:'CONTEXT_UPDATE_FAILED'}); eventInFlight = null; schedulePoll(); return; }
-      try {
-        await appCall('bridge_listener_dispatch_started', {eventId:event.id});
-      } catch (error) {
-        recordDiag('dispatch start failed ' + errorSummary(error));
-        if (!error || !error.ambiguous) await report('bridge_listener_release', {eventId:event.id, safeErrorCode:'DISPATCH_START_FAILED'});
-        eventInFlight = null; schedulePoll(); return;
-      }
-      try {
-        const ambiguityAcceptance = AMBIGUITY_ACCEPTANCE_ENABLED && typeof event.visibleText === 'string' && event.visibleText.startsWith(AMBIGUITY_ACCEPTANCE_PREFIX);
-        if (ambiguityAcceptance) recordDiag('ambiguity acceptance host ACK drop armed');
-        const messageResult = await call('ui/message', {role:'user', content:[{type:'text', text:messageTextFor(event)}]}, TIMEOUT_MS, ambiguityAcceptance);
-        if (messageResult && messageResult.isError === true) throw Object.assign(new Error('Host rejected ui/message'), {ambiguous:false});
-        if (messageResult == null) throw Object.assign(new Error('Host ui/message outcome was ambiguous'), {ambiguous:true});
-      } catch (error) {
-        recordDiag('ui/message failed ' + errorSummary(error));
-        if (error && error.ambiguous) await report('bridge_listener_delivery_unknown', {eventId:event.id, safeErrorCode:'UI_MESSAGE_AMBIGUOUS'});
-        else await report('bridge_listener_release', {eventId:event.id, safeErrorCode:'UI_MESSAGE_REJECTED'});
-        eventInFlight = null; schedulePoll(); return;
-      }
-      await report('bridge_listener_delivered', {eventId:event.id});
-      eventInFlight = null; schedulePoll();
-    } catch (error) {
-      recordDiag('sync failed source=' + source + ' ' + errorSummary(error));
-      schedulePoll();
-    } finally { syncing = false; }
-  };
-  const renew = async (source) => {
-    recordDiag('renew tick source=' + source);
-    try {
-      await appCall('bridge_listener_start');
-      recordDiag('renew success source=' + source);
-      await sync(source);
-    } catch (error) { recordDiag('renew failed source=' + source + ' ' + errorSummary(error)); }
-  };
-  const start = async () => {
-    recordDiag('start enter running=' + running + ' starting=' + starting);
-    if (running || starting) return;
-    starting = true; setUiState('starting');
-    try {
-      await initializeHost();
-      await appCall('bridge_listener_start');
-      recordDiag('start success');
-      running = true; starting = false; setUiState('running');
-      renewTimer = setInterval(() => { void renew('timer'); }, RENEW_MS); if (renewTimer.unref) renewTimer.unref();
-      await sync('start');
-    } catch (error) {
-      recordDiag('start failed ' + errorSummary(error));
-      running = false; starting = false; setUiState(error && error.code === 'LISTENER_BUSY' ? 'occupied' : error && error.code === 'HOST_INIT_FAILED' ? 'unavailable' : 'idle');
-      throw error;
-    }
-  };
-  const stop = async () => {
-    recordDiag('stop enter');
-    if (!running && !starting) return;
-    running = false; starting = false; setUiState('idle');
-    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-    if (renewTimer) { clearInterval(renewTimer); renewTimer = null; }
-    await report('bridge_listener_stop');
-    recordDiag('stop complete');
-  };
-  if (startButton) startButton.addEventListener('click', () => { void start().catch(() => undefined); });
-  if (stopButton) stopButton.addEventListener('click', () => { void stop(); });
-  if (syncButton) syncButton.addEventListener('click', () => { void sync('manual'); });
-  window.addEventListener('focus', () => { if (running) { recordDiag('focus resume'); void renew('focus'); } });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && running) { recordDiag('visibility resume'); void renew('visibility'); } });
-  recordDiag('iframe ready');
-  window.bridgeListener = {call, initializeHost, start, stop, sync, diagnostics: () => diagLines.slice()};
-})();</script>`;
+</main><script>window.__LEILEIOS_BRIDGE_CONFIG__=${config};</script><script>${escapeInlineScript(BRIDGE_BROWSER_BUNDLE)}</script>`;
 }
 
 export function registerBridgeListenerResource(
@@ -301,7 +118,7 @@ export function registerBridgeListenerResource(
     server,
     "LeileiOS Message Bridge",
     BRIDGE_RESOURCE_URI,
-    { mimeType: RESOURCE_MIME_TYPE, _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } } },
-    async () => ({ contents: [{ uri: BRIDGE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: createBridgeListenerHtml(options), _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } } }] }),
+    { mimeType: RESOURCE_MIME_TYPE, _meta: BRIDGE_RESOURCE_META },
+    async () => ({ contents: [{ uri: BRIDGE_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: createBridgeListenerHtml(options), _meta: BRIDGE_RESOURCE_META }] }),
   );
 }
