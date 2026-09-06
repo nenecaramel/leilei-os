@@ -6,7 +6,7 @@ import {
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeEventRecord } from "../../../domains/bridge/bridge-event-types.js";
 
-export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v3";
+export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v4";
 export const BRIDGE_AMBIGUITY_ACCEPTANCE_PREFIX = "PHASE2 AMBIGUOUS E2E ";
 
 export type BridgeListenerResourceOptions = {

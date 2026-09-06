@@ -90,6 +90,7 @@ test("Bridge resource serves the official browser bundle without bare imports or
 });
 
 test("Bridge resource registration keeps the MCP App MIME type and minimal CSP metadata", async () => {
+  assert.equal(BRIDGE_RESOURCE_URI, "ui://leileios/message-bridge/v4");
   const registrations: Array<{ config: Record<string, unknown>; read: (...args: unknown[]) => Promise<unknown> }> = [];
   const server = {
     registerResource: (...args: unknown[]) => {
@@ -187,6 +188,52 @@ test("Bridge teardown releases a reserved event before sendMessage and returns t
     const teardownResponse = messages.find((message) => message.id === teardownId && message.method === undefined);
     assert.equal(JSON.stringify(teardownResponse?.result), "{}");
     assert.equal(messages.some((message) => message.params?.name === "bridge_listener_delivered"), false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("Bridge teardown waits for a pending sync and releases the event it reserves", async () => {
+  const { dom, messages } = createHost();
+  const event = { id: "00000000-0000-4000-8000-000000000100", visibleText: "late sync", modelContext: "route" };
+  try {
+    await tick();
+    dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!.click();
+    await tick();
+    const startCall = messages.find((message) => message.params?.name === "bridge_listener_start");
+    assert.ok(startCall);
+    respond(dom, startCall, toolResult({ state: "acquired" }));
+    await tick();
+    const syncCall = messages.find((message) => message.params?.name === "bridge_listener_sync");
+    assert.ok(syncCall);
+
+    const teardownId = 901;
+    dom.window.dispatchEvent(new dom.window.MessageEvent("message", {
+      data: { jsonrpc: "2.0", id: teardownId, method: "ui/resource-teardown", params: {} },
+      source: dom.window.parent,
+    }));
+    await tick();
+
+    assert.equal(messages.some((message) => message.id === teardownId && message.method === undefined), false);
+
+    respond(dom, syncCall, { ...toolResult({ event }), _meta: { bridgeEvent: event } });
+    await tick();
+
+    const release = messages.find((message) => message.params?.name === "bridge_listener_release");
+    assert.ok(release);
+    assert.equal((release.params?.arguments as { eventId?: string } | undefined)?.eventId, event.id);
+    assert.equal(messages.some((message) => message.method === "ui/message"), false);
+    assert.equal(messages.some((message) => message.params?.name === "bridge_listener_delivered"), false);
+    respond(dom, release, toolResult({}));
+    await tick();
+
+    const stop = messages.find((message) => message.params?.name === "bridge_listener_stop");
+    assert.ok(stop);
+    respond(dom, stop, toolResult({ stopped: true }));
+    await tick();
+
+    const teardownResponse = messages.find((message) => message.id === teardownId && message.method === undefined);
+    assert.equal(JSON.stringify(teardownResponse?.result), "{}");
   } finally {
     dom.window.close();
   }

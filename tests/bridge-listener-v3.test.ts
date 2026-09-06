@@ -27,8 +27,8 @@ const event = {
   },
 };
 
-test("Bridge resource v3 carries neutral Sentinel routing metadata", () => {
-  assert.equal(BRIDGE_RESOURCE_URI, "ui://leileios/message-bridge/v3");
+test("Bridge resource v4 carries neutral Sentinel routing metadata", () => {
+  assert.equal(BRIDGE_RESOURCE_URI, "ui://leileios/message-bridge/v4");
   const context = composeBridgeDispatchContext(event);
   assert.match(context, /eventId=11111111-1111-4111-8111-111111111111/);
   assert.match(context, /wakeId=22222222-2222-4222-8222-222222222222/);
@@ -63,7 +63,7 @@ test("Bridge resource v3 carries neutral Sentinel routing metadata", () => {
   assert.doesNotMatch(html, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake/i);
 });
 
-test("Bridge v3 keeps ordinary routing metadata factual", () => {
+test("Bridge v4 keeps ordinary routing metadata factual", () => {
   const ordinary = composeBridgeDispatchContext({
     id: event.id,
     modelContext: "chat",

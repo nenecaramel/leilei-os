@@ -70,6 +70,7 @@ function startBridgeListener(): void {
   let tearingDown = false;
   let teardownComplete = false;
   let eventInFlight: { event: BridgeEvent; messageAttempted: boolean } | null = null;
+  let pendingSyncReservation: Promise<BridgeEvent | undefined> | null = null;
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let renewTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -262,13 +263,24 @@ function startBridgeListener(): void {
     }
     syncing = true;
     try {
-      const result = await appCall("bridge_listener_sync");
-      const event = result._meta?.bridgeEvent;
-      if (!event || eventInFlight || tearingDown) {
+      const reservation = (async (): Promise<BridgeEvent | undefined> => {
+        const result = await appCall("bridge_listener_sync");
+        const event = result._meta?.bridgeEvent;
+        if (event && !eventInFlight) eventInFlight = { event, messageAttempted: false };
+        return event;
+      })();
+      pendingSyncReservation = reservation;
+      let event: BridgeEvent | undefined;
+      try {
+        event = await reservation;
+      } finally {
+        if (pendingSyncReservation === reservation) pendingSyncReservation = null;
+      }
+      if (!event || eventInFlight?.event !== event) {
         schedulePoll();
         return;
       }
-      eventInFlight = { event, messageAttempted: false };
+      if (tearingDown) return;
       try {
         const wakeMetadata = sentinelWakeMetadata(event);
         const contextResult = await trackAppCall(app.updateModelContext({
@@ -358,6 +370,7 @@ function startBridgeListener(): void {
     running = false;
     starting = false;
     stopTimers();
+    if (pendingSyncReservation) await pendingSyncReservation.catch(() => undefined);
     const inFlight = eventInFlight;
     eventInFlight = null;
     if (inFlight) {
