@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import * as schema from "../src/database/schema.js";
 import { healthDailySummaries, users } from "../src/database/schema.js";
 import { DrizzleHealthRepository } from "../src/domains/health-v2/health-repository.js";
