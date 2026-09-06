@@ -44,7 +44,7 @@ test("direct MCP server keeps the 40-tool core surface", async () => {
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 57 public tools with Health, Thinking Block, Bridge processing, Sentinel tools, and each Notion write once", async () => {
+test("production MCP session factory assembles 58 public tools with Health, Thinking Block, Bridge processing, Sentinel tools, and each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -63,7 +63,9 @@ test("production MCP session factory assembles 57 public tools with Health, Thin
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 57);
+  assert.equal(names.length, 58);
+  assert.equal(names.filter((name) => name === "get_health").length, 1);
+  assert.equal(names.filter((name) => name === "get_current_time").length, 1);
   assert.equal(names.filter((name) => name === "render_thinking_block").length, 1);
   assert.equal(names.filter((name) => name === "sentinel_get_state").length, 1);
   assert.equal(names.filter((name) => name === "complete_sentinel_wake").length, 1);
