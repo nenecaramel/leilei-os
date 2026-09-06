@@ -39,6 +39,7 @@ const C_PAPER: TodoPaper = {
   revision: 1,
   entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
 };
+const C_PAPER_ON_DATE: TodoPaper = { ...C_PAPER, date: DATE };
 const PAPERS: TodoDayPapers = { L: null, G: null, C: C_PAPER };
 
 class TodoToolService {
@@ -175,6 +176,70 @@ test("Todo read tool implementations delegate once and preserve exact server tru
   });
   assert.deepEqual((fixture.todo as TodoToolService).readCalls, [{ userId: USER_ID, date: DATE }]);
   assert.deepEqual((fixture.todo as TodoToolService).listCalls, [USER_ID]);
+});
+
+test("read_todo_day author filter exposes only the requested paper in content and structured data", async (t) => {
+  const fixture = await connectReadImplementations({
+    todoService: {
+      async readDay(_userId, date) {
+        return {
+          date,
+          papers: { L: L_PAPER, G: { ...L_PAPER, author: "G" }, C: C_PAPER_ON_DATE },
+        };
+      },
+      async listDates() { return []; },
+    },
+  });
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const response = await fixture.client.callTool({
+    name: "read_todo_day",
+    arguments: { date: DATE, author: "C" },
+  });
+  assert.equal(response.isError, undefined);
+  assert.deepEqual(response.structuredContent, {
+    success: true,
+    data: {
+      date: DATE,
+      author: "C",
+      papers: { L: null, G: null, C: C_PAPER_ON_DATE },
+    },
+  });
+  const content = response.content.map((entry) => ("text" in entry ? entry.text : "")).join("\n");
+  assert.match(content, /C paper/);
+  assert.doesNotMatch(content, /todo-a|First Todo row|G paper|author=L/);
+});
+
+test("read_todo_day reports a requested author as missing instead of claiming the whole day is empty", async (t) => {
+  const fixture = await connectReadImplementations({
+    todoService: {
+      async readDay(_userId, date) {
+        return { date, papers: { L: L_PAPER, G: null, C: null } };
+      },
+      async listDates() { return []; },
+    },
+  });
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const response = await fixture.client.callTool({
+    name: "read_todo_day",
+    arguments: { date: DATE, author: "C" },
+  });
+  assert.equal(response.isError, undefined);
+  assert.deepEqual((response.structuredContent as { data: { author: string; papers: TodoDayPapers } }).data, {
+    date: DATE,
+    author: "C",
+    papers: { L: null, G: null, C: null },
+  });
+  const content = response.content.map((entry) => ("text" in entry ? entry.text : "")).join("\n");
+  assert.match(content, /C paper.*(?:missing|not found)/i);
+  assert.doesNotMatch(content, /empty$/i);
 });
 
 test("MCP Todo reads recheck the durable user status for an established context", async (t) => {
@@ -458,7 +523,8 @@ test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
 
   const read = tools.find((tool) => tool.name === "read_todo_day");
   assert.deepEqual(read?.inputSchema.required, ["date"]);
-  assert.deepEqual(Object.keys(read?.inputSchema.properties ?? {}), ["date"]);
+  assert.deepEqual(Object.keys(read?.inputSchema.properties ?? {}).sort(), ["author", "date"]);
+  assert.equal(read?.inputSchema.properties?.author?.enum?.join(","), "L,G,C");
 
   const dates = tools.find((tool) => tool.name === "list_todo_dates");
   assert.deepEqual(Object.keys(dates?.inputSchema.properties ?? {}), []);
@@ -479,6 +545,8 @@ test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
     Object.keys(write.inputSchema.properties ?? {}).sort(),
     ["date", "author", "revision", "entries", "idempotency_key"].sort(),
   );
+  assert.match(write.description ?? "", /complete ordered array/i);
+  assert.match(write.description ?? "", /\{\s*"id"\s*:\s*"\.\.\."\s*,\s*"kind"\s*:\s*"pending\|completed\|record"\s*,\s*"text"\s*:\s*"\.\.\."\s*\}/i);
   for (const tool of todoTools) {
     assert.equal("userId" in (tool.inputSchema.properties ?? {}), false);
     assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
@@ -559,6 +627,16 @@ test("Todo tool schemas reject identity injection before authentication or servi
         entries: L_PAPER.entries,
         idempotency_key: "todo-paper-attacker-20260813",
         user_id: "attacker",
+      },
+    },
+    {
+      name: "write_todo_paper",
+      arguments: {
+        date: DATE,
+        author: "L",
+        revision: null,
+        entries: "[{\"id\":\"a\",\"kind\":\"pending\",\"text\":\"x\"}]",
+        idempotency_key: "todo-paper-string-entries-20260813",
       },
     },
   ]) {
