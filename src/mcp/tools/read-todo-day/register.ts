@@ -22,10 +22,12 @@ const todoPaperSchema = z.object({
 
 const readTodoDayInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  author: todoAuthorSchema.optional(),
 }).strict();
 
 const readTodoDayDataSchema = z.object({
   date: z.string(),
+  author: todoAuthorSchema.optional(),
   papers: z.object({
     L: todoPaperSchema.nullable(),
     G: todoPaperSchema.nullable(),
@@ -60,7 +62,7 @@ export function registerReadTodoDayTool(
     {
       title: "Read one Todo day",
       description:
-        "Read the authenticated user's complete L, G, and C Todo papers for one exact business date from list_todo_dates or another trusted date. Empty author slots are returned as null.",
+        "Read Todo papers for one exact business date. Without author, return the complete L, G, and C papers; when the user specifies author (L, G, or C), return only that author's paper. Empty or missing papers are returned as null.",
       inputSchema: readTodoDayInputSchema,
       outputSchema: readTodoDayOutputSchema,
       annotations: {
@@ -70,13 +72,24 @@ export function registerReadTodoDayTool(
         openWorldHint: false,
       },
     },
-    async ({ date }) => {
+    async ({ date, author }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
         const data = await dependencies.todoService.readDay(userId, date);
+        const scopedData = author
+          ? {
+              date: data.date,
+              author,
+              papers: {
+                L: author === "L" ? data.papers.L : null,
+                G: author === "G" ? data.papers.G : null,
+                C: author === "C" ? data.papers.C : null,
+              },
+            }
+          : data;
         return {
-          content: [{ type: "text", text: todoDayContent(data) }],
-          structuredContent: { success: true as const, data },
+          content: [{ type: "text", text: todoDayContent(scopedData) }],
+          structuredContent: { success: true as const, data: scopedData },
         };
       } catch (error) {
         return toSafeTodoReadError(error, "read_todo_day");
@@ -85,7 +98,11 @@ export function registerReadTodoDayTool(
   );
 }
 
-function todoDayContent(data: { date: string; papers: TodoDayPapers }): string {
+function todoDayContent(data: {
+  date: string;
+  author?: "L" | "G" | "C";
+  papers: TodoDayPapers;
+}): string {
   const lines = [`Todo ${data.date}`];
   let paperCount = 0;
   for (const author of ["L", "G", "C"] as const) {
@@ -101,7 +118,9 @@ function todoDayContent(data: { date: string; papers: TodoDayPapers }): string {
       lines.push(`${author} [${entry.id}] ${entry.kind}: ${quoteMcpText(entry.text)}`);
     }
   }
-  if (paperCount === 0) lines.push("empty");
+  if (paperCount === 0) {
+    lines.push(data.author ? `${data.author} paper: missing` : "empty");
+  }
   return joinMcpContentLines(lines);
 }
 
