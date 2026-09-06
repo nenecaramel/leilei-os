@@ -40,6 +40,6 @@ export function formatCurrentTime(now: Date = new Date()): CurrentTimeSnapshot {
     time,
     datetime: `${date}T${time}${zoned.offset}`,
     timezone: PRODUCT_TIMEZONE,
-    weekday: WEEKDAYS[zoned.dayOfWeek - 1],
+    weekday: WEEKDAYS[zoned.dayOfWeek - 1]!,
   };
 }
