@@ -78,7 +78,7 @@ export function registerWriteTodoPaperTool(
     {
       title: "Save one Todo paper",
       description:
-        "Save one complete L, G, or C Todo paper in Leilei OS. Supply an exact YYYY-MM-DD date, the logical author, the exact current revision returned by read_todo_day (or null only when creating a missing paper), the complete ordered entry list, and a stable idempotency key. The authenticated user is assigned by the server.",
+        "Save one complete L, G, or C Todo paper in Leilei OS. Supply an exact YYYY-MM-DD date, the logical author, the exact current revision returned by read_todo_day (or null only when creating a missing paper), a complete ordered array where every item is {\"id\":\"...\",\"kind\":\"pending|completed|record\",\"text\":\"...\"}, and a stable idempotency key. The authenticated user is assigned by the server.",
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {
