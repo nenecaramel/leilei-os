@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
+const retiredHealthRoutePattern = /\/api\/v1\/health(?=\/|["'])/u;
 const read = (relativePath: string) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
@@ -92,5 +93,8 @@ test("historical Health migration remains available for provenance", () => {
 test("the infrastructure root healthcheck remains while the product API stays retired", () => {
   const app = read("src/app/create-app.ts");
   assert.match(app, /app\.get\("\/health"/);
-  assert.doesNotMatch(app, /\/api\/v1\/health/);
+  assert.match('app.get("/api/v1/health")', retiredHealthRoutePattern);
+  assert.match('app.get("/api/v1/health/")', retiredHealthRoutePattern);
+  assert.doesNotMatch('app.use("/api/v1/health-sync")', retiredHealthRoutePattern);
+  assert.doesNotMatch(app, retiredHealthRoutePattern);
 });
