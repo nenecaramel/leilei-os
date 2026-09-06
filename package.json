@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/app/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/build-bridge-browser.mjs",
     "start": "node dist/app/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/**/*.test.ts",
@@ -43,6 +43,7 @@
     "@types/jsdom": "^28.0.3",
     "@types/node": "^24.0.0",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "0.25.12",
     "jsdom": "^29.1.1",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"

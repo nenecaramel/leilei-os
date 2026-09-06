@@ -28,10 +28,16 @@ function respond(dom: JSDOM, request: BridgeCall, result: unknown): void {
 test("bridge listener reuses one iframe-owned listenerInstanceId across bridge tool calls", async () => {
   const calls: BridgeCall[] = [];
   const expectedListenerInstanceId = "11111111-1111-4111-8111-111111111111";
-  const dom = new JSDOM(createBridgeListenerHtml(), {
+  let dom: JSDOM;
+  dom = new JSDOM(createBridgeListenerHtml(), {
     runScripts: "dangerously",
     pretendToBeVisual: true,
     beforeParse(window) {
+      class ResizeObserverMock {
+        observe(): void {}
+        disconnect(): void {}
+      }
+      Object.defineProperty(window, "ResizeObserver", { value: ResizeObserverMock });
       Object.defineProperty(window.crypto, "randomUUID", {
         configurable: true,
         value: () => expectedListenerInstanceId,
@@ -40,6 +46,23 @@ test("bridge listener reuses one iframe-owned listenerInstanceId across bridge t
         value: {
           postMessage(message: BridgeCall) {
             calls.push(message);
+            if (message.method === "ui/initialize") {
+              queueMicrotask(() => {
+                dom.window.dispatchEvent(new dom.window.MessageEvent("message", {
+                  data: {
+                    jsonrpc: "2.0",
+                    id: message.id,
+                    result: {
+                      protocolVersion: "2026-01-26",
+                      hostCapabilities: { serverTools: {}, updateModelContext: { text: {} }, message: { text: {} } },
+                      hostInfo: { name: "Test Host", version: "1.0.0" },
+                      hostContext: {},
+                    },
+                  },
+                  source: window.parent,
+                }));
+              });
+            }
           },
         },
       });
@@ -49,16 +72,11 @@ test("bridge listener reuses one iframe-owned listenerInstanceId across bridge t
   try {
     const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]");
     assert.ok(start);
-    start.click();
+    await tick();
+    assert.equal(calls[0]?.method, "ui/initialize");
+    assert.equal(calls[1]?.method, "ui/notifications/initialized");
 
-    const initialize = calls[0];
-    assert.equal(initialize?.method, "ui/initialize");
-    respond(dom, initialize!, {
-      protocolVersion: "2026-01-26",
-      hostCapabilities: { serverTools: {} },
-      hostInfo: { name: "Test Host", version: "1.0.0" },
-      hostContext: {},
-    });
+    start.click();
     await tick();
 
     const startCall = calls.find((call) => call.params?.name === "bridge_listener_start");
