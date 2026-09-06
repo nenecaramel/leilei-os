@@ -16,6 +16,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const taskStatusSchema = z.enum([
@@ -152,7 +153,10 @@ export function registerCreateTaskTool(
             content: [
               {
                 type: "text",
-                text: "Task created successfully.",
+                text: joinMcpContentLines([
+                  `Task created: ${quoteMcpText(data.task.title)} [id=${data.task.id}; status=${data.task.status}]`,
+                  formatMcpDetailPointer("get_task", { id: data.task.id }),
+                ]),
               },
             ],
             structuredContent: result,

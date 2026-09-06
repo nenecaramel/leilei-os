@@ -12,6 +12,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
@@ -82,7 +83,13 @@ export function registerUpdateMemoryTool(server: McpServer, dependencies: Update
         detail_tool: "get_memory" as const,
         detail_arguments: { id: data.id, scope: "active" as const },
       };
-      return { content: [{ type: "text", text: "Memory updated." }], structuredContent: { success: true as const, data: compact } };
+      return {
+        content: [{ type: "text", text: joinMcpContentLines([
+          `Memory updated: ${quoteMcpText(compact.key)} [id=${compact.id}; category=${compact.category}]`,
+          `get_memory(id=${compact.id}, scope=active)`,
+        ]) }],
+        structuredContent: { success: true as const, data: compact },
+      };
     },
     mapError: toSafeToolError,
   }));

@@ -4,6 +4,7 @@ import { BridgeDomainError, type BridgeService } from "../../../domains/bridge/b
 import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeErrorFingerprint, type SafeLogger } from "../../../observability/logger.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const inputSchema = z.object({ eventId: z.string().uuid() }).strict();
 const processingDataSchema = z.object({
@@ -81,7 +82,9 @@ export function registerBridgeProcessingTools(
           : dependencies.getAuthenticatedUserId();
         const event = await operation(userId, eventId);
         return {
-          content: [{ type: "text" as const, text: action === "claim" ? "Bridge event claimed." : "Bridge event completed." }],
+          content: [{ type: "text" as const, text: joinMcpContentLines([
+            `Bridge event ${compact(event).id} ${action === "claim" ? "claimed" : "completed"}; status=${compact(event).status}; processing=${compact(event).processingStatus}.`,
+          ]) }],
           structuredContent: { success: true as const, data: compact(event) },
         };
       } catch (error) {

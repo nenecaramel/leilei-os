@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const inputSchema = z.object({
   relation_id: z.string().trim().min(1).max(256),
@@ -33,7 +34,9 @@ export function registerDeleteUniverseRelationTool(server: McpServer, dependenci
     operation: async ({ userId }) => {
       const result = await dependencies.relationService.deleteRelation(userId, relation_id, expected_version);
       return {
-        content: [{ type: "text", text: "Universe relation deleted." }],
+        content: [{ type: "text", text: joinMcpContentLines([
+          `Universe relation deleted: ${relation_id}; version=${result.version}`,
+        ]) }],
         structuredContent: { success: true as const, data: { relation_id, universe_version: result.version } },
       };
     },

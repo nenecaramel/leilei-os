@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeUniverseReadError } from "../universe/shared.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const inputSchema = z.object({ node_id: z.string().trim().min(1).max(256) }).strict();
 const sourceSchema = z.object({
@@ -45,7 +46,14 @@ export function registerGetUniverseDiarySourcesTool(server: McpServer, dependenc
         status: source.status,
       }));
       return {
-        content: [{ type: "text", text: `Found ${sources.length} Universe Diary sources.` }],
+        content: [{
+          type: "text",
+          text: joinMcpContentLines([
+            `Found ${sources.length} Universe Diary sources for node ${node_id}.`,
+            ...sources.map((source) => `${source.diary_id} ${quoteMcpText(source.title)} (${source.date}; ${source.status})`),
+            ...(sources.length === 0 ? ["empty"] : []),
+          ]),
+        }],
         structuredContent: { success: true as const, data: { node_id, sources, metadata: { count: sources.length }, universe_version: result.version } },
       };
     } catch (error) {

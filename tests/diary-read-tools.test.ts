@@ -17,7 +17,7 @@ import { DiaryReadAuthenticationError } from "../src/mcp/tools/search-diary/regi
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 const ENTRY: DiaryEntryResult = {
-  id: "legacy-diary-id",
+  id: "00000000-0000-4000-8000-000000000308",
   title: "完整日记",
   content: "完整的私人日记正文。",
   date: "2026-07-28",
@@ -297,9 +297,9 @@ test("get_diary rejects empty ids and hides inaccessible records", async () => {
   assert.equal(service.readCalls.length, 0);
   await pair.client.callTool({
     name: "get_diary",
-    arguments: { id: "legacy-readable-id" },
+    arguments: { id: ENTRY.id },
   });
-  assert.equal(service.readCalls[0]?.id, "legacy-readable-id");
+  assert.equal(service.readCalls[0]?.id, ENTRY.id);
   await pair.client.close();
   await pair.server.close();
 
@@ -311,7 +311,7 @@ test("get_diary rejects empty ids and hides inaccessible records", async () => {
   const hiddenPair = await connect(hidden);
   const result = await hiddenPair.client.callTool({
     name: "get_diary",
-    arguments: { id: "inaccessible" },
+    arguments: { id: ENTRY.id },
   });
   assert.equal(textOf(result), "Diary entry was not found.");
   assert.doesNotMatch(textOf(result), /cross-user|exists/i);

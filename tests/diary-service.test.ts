@@ -87,10 +87,27 @@ test("Diary MCP creation enables durable idempotency without changing Web creati
   assert.notEqual(repository.writes[0]?.diary.mcpRequestHash, repository.writes[0]?.diary.requestHash);
 });
 
+test("Diary detail rejects a date-shaped id before repository lookup", async () => {
+  const repository = new MockDiaryRepository();
+  let lookupCalls = 0;
+  repository.findDiaryById = async () => {
+    lookupCalls += 1;
+    return null;
+  };
+  const service = new DiaryService(repository);
+
+  await assert.rejects(
+    service.readDiary({ userId: "user-1", id: "2026-09-05" }),
+    (error: unknown) => error instanceof DiaryDomainError && error.code === "INVALID_DIARY_ID",
+  );
+  assert.equal(lookupCalls, 0);
+  assert.deepEqual(repository.findUserCalls, []);
+});
+
 test("Diary MCP partial update forwards only supplied fields and returns fresh detail", async () => {
   const repository = new MockDiaryRepository();
   let current: DiaryEntryRecord = {
-    id: "diary-1",
+    id: "00000000-0000-4000-8000-000000000306",
     title: "Original title",
     content: "Original content",
     date: "2026-08-20",
@@ -102,7 +119,7 @@ test("Diary MCP partial update forwards only supplied fields and returns fresh d
   };
   repository.findDiaryById = async (userId, id) => {
     assert.equal(userId, "user-1");
-    assert.equal(id, "diary-1");
+    assert.equal(id, "00000000-0000-4000-8000-000000000306");
     return current;
   };
   const writes: unknown[] = [];
@@ -119,12 +136,12 @@ test("Diary MCP partial update forwards only supplied fields and returns fresh d
 
   const result = await service.updateMcpDiary(
     { userId: "user-1" },
-    { id: " diary-1 ", content: " Updated content ", tags: [], mood: null },
+    { id: " 00000000-0000-4000-8000-000000000306 ", content: " Updated content ", tags: [], mood: null },
   );
 
   assert.deepEqual(writes, [{
     userId: "user-1",
-    id: "diary-1",
+    id: "00000000-0000-4000-8000-000000000306",
     content: "Updated content",
     tags: [],
     mood: null,
@@ -141,7 +158,7 @@ test("Diary MCP partial update rejects an empty patch before mutation", async ()
   const repository = new MockDiaryRepository();
   let mutated = false;
   repository.findDiaryById = async () => ({
-    id: "diary-1",
+    id: "00000000-0000-4000-8000-000000000306",
     title: "Title",
     content: "Content",
     date: "2026-08-20",
@@ -158,7 +175,7 @@ test("Diary MCP partial update rejects an empty patch before mutation", async ()
   const service = new DiaryService(repository);
 
   await assert.rejects(
-    service.updateMcpDiary({ userId: "user-1" }, { id: "diary-1" }),
+    service.updateMcpDiary({ userId: "user-1" }, { id: "00000000-0000-4000-8000-000000000306" }),
     (error: unknown) => error instanceof DiaryDomainError && error.code === "INVALID_DIARY_PATCH",
   );
   assert.equal(mutated, false);
@@ -388,7 +405,7 @@ for (const author of [undefined, "X"] as const) {
 test("Diary legacy-null content edits require and persist an explicit author", async () => {
   const repository = new MockDiaryRepository();
   let entry: DiaryEntryRecord | null = {
-    id: "diary-1",
+    id: "00000000-0000-4000-8000-000000000306",
     title: "Old title",
     content: "Old content",
     date: "2026-07-22",
@@ -409,7 +426,7 @@ test("Diary legacy-null content edits require and persist an explicit author", a
   const service = new DiaryService(repository);
   const base = {
     userId: "user-1",
-    id: "diary-1",
+    id: "00000000-0000-4000-8000-000000000306",
     title: "New title",
     content: "New content",
     date: "2026-07-23",
@@ -430,7 +447,7 @@ test("Diary legacy-null content edits require and persist an explicit author", a
 test("Diary authored edits preserve or explicitly switch author", async () => {
   const repository = new MockDiaryRepository();
   let entry: DiaryEntryRecord = {
-    id: "diary-1",
+    id: "00000000-0000-4000-8000-000000000306",
     title: "Old title",
     content: "Old content",
     date: "2026-07-22",
@@ -450,7 +467,7 @@ test("Diary authored edits preserve or explicitly switch author", async () => {
   const service = new DiaryService(repository);
   const base = {
     userId: "user-1",
-    id: "diary-1",
+    id: "00000000-0000-4000-8000-000000000306",
     title: "New title",
     content: "New content",
     date: "2026-07-23",

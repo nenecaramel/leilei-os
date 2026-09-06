@@ -26,9 +26,36 @@ export const notionOutputSchema = z.object({
   data: z.record(z.string(), z.any()),
 }).strict();
 
+const NOTION_CONTENT_KEYS = [
+  "id",
+  "target_id",
+  "object",
+  "type",
+  "url",
+  "name",
+  "status",
+  "archived",
+  "in_trash",
+  "created_time",
+  "last_edited_time",
+  "operation",
+  "verified",
+] as const;
+
+function notionSuccessContent(data: NotionJsonObject): string {
+  const fields = NOTION_CONTENT_KEYS.flatMap((key) => {
+    const value = data[key];
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+      return [];
+    }
+    return [`${key}=${JSON.stringify(value)}`];
+  });
+  return fields.length > 0 ? ` [${fields.join("; ")}]` : "";
+}
+
 export function notionSuccess(data: NotionJsonObject, text: string) {
   return {
-    content: [{ type: "text" as const, text }],
+    content: [{ type: "text" as const, text: `${text}${notionSuccessContent(data)}` }],
     structuredContent: { success: true as const, data },
   };
 }

@@ -380,7 +380,7 @@ test("routing descriptions align with executable schemas and the production inve
   }
 });
 
-test("weather context keeps machine data only in structuredContent and uses one short text acknowledgement", async (t) => {
+test("weather context keeps the key weather values in content and the canonical payload in structuredContent", async (t) => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
     current: {
@@ -402,7 +402,10 @@ test("weather context keeps machine data only in structuredContent and uses one 
   const first = result.content[0];
   assert.ok(first && "text" in first);
   const text = String(first.text);
-  assert.match(text, /retrieved/i);
+  assert.match(text, /山东临沂/);
+  assert.match(text, /26/);
+  assert.match(text, /70/);
+  assert.match(text, /3/);
   assert.ok(text.length < 80);
   assert.equal(text.trimStart().startsWith("{"), false);
   assert.equal(text.includes(JSON.stringify(result.structuredContent)), false);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { TodoServiceError } from "../../../domains/todo/todo-service.js";
 import type { TodoDayPapers } from "../../../domains/todo/todo-types.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const todoEntrySchema = z.object({
   id: z.string(),
@@ -74,7 +75,7 @@ export function registerReadTodoDayTool(
         const userId = dependencies.getAuthenticatedUserId();
         const data = await dependencies.todoService.readDay(userId, date);
         return {
-          content: [{ type: "text", text: "Todo day retrieved." }],
+          content: [{ type: "text", text: todoDayContent(data) }],
           structuredContent: { success: true as const, data },
         };
       } catch (error) {
@@ -82,6 +83,26 @@ export function registerReadTodoDayTool(
       }
     },
   );
+}
+
+function todoDayContent(data: { date: string; papers: TodoDayPapers }): string {
+  const lines = [`Todo ${data.date}`];
+  let paperCount = 0;
+  for (const author of ["L", "G"] as const) {
+    const paper = data.papers[author];
+    if (!paper) continue;
+    paperCount += 1;
+    lines.push(`${author} paper (revision ${paper.revision})`);
+    if (paper.entries.length === 0) {
+      lines.push(`${author}: empty`);
+      continue;
+    }
+    for (const entry of paper.entries) {
+      lines.push(`${author} [${entry.id}] ${entry.kind}: ${quoteMcpText(entry.text)}`);
+    }
+  }
+  if (paperCount === 0) lines.push("empty");
+  return joinMcpContentLines(lines);
 }
 
 export function toSafeTodoReadError(

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const inputSchema = z.object({
   node_id: z.string().trim().min(1).max(256),
@@ -34,7 +35,9 @@ export function registerAddUniverseDiarySourceTool(server: McpServer, dependenci
     operation: async ({ userId }) => {
       const result = await dependencies.sourceService.addUniverseDiarySource(userId, node_id, diary_id, expected_version);
       return {
-        content: [{ type: "text", text: "Universe Diary source added." }],
+        content: [{ type: "text", text: joinMcpContentLines([
+          `Universe Diary source added: node=${node_id}; diary=${diary_id}; version=${result.version}`,
+        ]) }],
         structuredContent: { success: true as const, data: { node_id, diary_id, universe_version: result.version } },
       };
     },

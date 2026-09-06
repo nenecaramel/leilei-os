@@ -11,6 +11,11 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import {
+  formatMcpDetailPointer,
+  joinMcpContentLines,
+  quoteMcpText,
+} from "../content-contract.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
@@ -105,7 +110,7 @@ export function registerSearchDiaryTool(
           content: [
             {
               type: "text",
-              text: `Found ${data.metadata.count} diary entries.`,
+              text: diarySearchContent(data),
             },
           ],
           structuredContent: {
@@ -118,6 +123,16 @@ export function registerSearchDiaryTool(
       }
     },
   );
+}
+
+function diarySearchContent(data: SearchDiaryDiscoveryResult): string {
+  const lines = [`Found ${data.metadata.count} diary entries.`];
+  for (const diary of data.diaries) {
+    const pointer = formatMcpDetailPointer("get_diary", { id: diary.id, scope: "active" });
+    const snippet = diary.snippet ? ` — ${quoteMcpText(diary.snippet)}` : "";
+    lines.push(`${diary.date} ${quoteMcpText(diary.title)} [id=${diary.id}; ${pointer}]${snippet}`);
+  }
+  return joinMcpContentLines(lines);
 }
 
 function compactFallback(result: ListDiariesResult, query: string): SearchDiaryDiscoveryResult {

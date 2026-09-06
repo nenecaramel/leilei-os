@@ -11,6 +11,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -113,7 +114,7 @@ export function registerReadMemoryTool(
           content: [
             {
               type: "text",
-              text: `Retrieved ${data.metadata.count} core memories.`,
+              text: memoryReadContent(data),
             },
           ],
           structuredContent: result,
@@ -123,6 +124,15 @@ export function registerReadMemoryTool(
       }
     },
   );
+}
+
+function memoryReadContent(data: ReadMemoryDiscoveryResult): string {
+  const lines = [`Retrieved ${data.metadata.count} core memories for ${quoteMcpText(data.user.display_name)}.`];
+  for (const memory of data.memories) {
+    const pointer = formatMcpDetailPointer("get_memory", { id: memory.id, scope: "active" });
+    lines.push(`${memory.category}/${quoteMcpText(memory.key)} [id=${memory.id}; ${pointer}] — ${quoteMcpText(memory.preview)}`);
+  }
+  return joinMcpContentLines(lines);
 }
 
 function compactFallback(result: ReadMemoryResult): ReadMemoryDiscoveryResult {

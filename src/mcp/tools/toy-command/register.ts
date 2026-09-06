@@ -19,6 +19,7 @@ import {
 } from "../../../domains/toy/toy-command-types.js";
 import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const toyCommandStatusSchema = z.enum([
   "pending",
@@ -160,7 +161,9 @@ export function registerToyCommandTools(
             content: [
               {
                 type: "text",
-                text: `Toy intensity command ${percent} queued successfully for ${duration_seconds} seconds.`,
+                text: joinMcpContentLines([
+                  `Toy intensity command ${command.id} queued successfully for ${duration_seconds} seconds; status=${command.status}.`,
+                ]),
               },
             ],
             structuredContent: result,
@@ -214,7 +217,7 @@ export function registerToyCommandTools(
             content: [
               {
                 type: "text",
-                text: "Toy stop command queued successfully.",
+                text: `Toy stop command ${command.id} queued successfully; status=${command.status}.`,
               },
             ],
             structuredContent: result,

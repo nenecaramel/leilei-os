@@ -168,6 +168,7 @@ export type DiaryDomainErrorCode =
   | "USER_NOT_FOUND"
   | "USER_DISABLED"
   | "DIARY_NOT_FOUND"
+  | "INVALID_DIARY_ID"
   | "INVALID_DIARY_LIMIT"
   | "INVALID_DIARY_QUERY"
   | "INVALID_TITLE"
@@ -327,15 +328,16 @@ export class DiaryService {
   async readDiary(
     input: ReadDiaryInput,
   ): Promise<DiaryEntryResult> {
-    const userId = await this.requireActiveUser(input.userId);
     const id = input.id.trim();
 
-    if (!id) {
+    if (!isUuid(id)) {
       throw new DiaryDomainError(
-        "DIARY_NOT_FOUND",
-        "Diary entry was not found.",
+        "INVALID_DIARY_ID",
+        "Diary id must be a UUID returned by search_diary or global_search.",
       );
     }
+
+    const userId = await this.requireActiveUser(input.userId);
 
     const diary = await this.repository.findDiaryById(
       userId,
@@ -1005,4 +1007,8 @@ export class DiaryService {
       updated_at: diary.updatedAt.toISOString(),
     };
   }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }

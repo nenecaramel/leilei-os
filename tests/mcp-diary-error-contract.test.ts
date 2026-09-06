@@ -19,6 +19,7 @@ import {
 } from "../src/mcp/tools/update-diary/register.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
+const DIARY_ID = "00000000-0000-4000-8000-000000000305";
 
 async function connectServer(server: McpServer, name: string) {
   const client = new Client({ name, version: "1.0.0" }, { capabilities: {} });
@@ -89,7 +90,7 @@ async function callGetDiaryFailure(input: {
   try {
     return await pair.client.callTool({
       name: "get_diary",
-      arguments: { id: "diary-contract-id" },
+      arguments: { id: DIARY_ID },
     });
   } finally {
     await pair.client.close();

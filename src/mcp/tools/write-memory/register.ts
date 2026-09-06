@@ -17,6 +17,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const memoryCategorySchema = z.enum(["profile", "preference", "goal", "project"]);
 const rawMemoryKeySchema = z.string().max(1_000);
@@ -120,7 +121,11 @@ export function registerWriteMemoryTool(
           return {
             content: [{
               type: "text",
-              text: responseText(data),
+              text: joinMcpContentLines([
+                responseText(data),
+                `Memory ${quoteMcpText(memory.key)} [id=${memory.id}; category=${memory.category}; lifecycle=${memory.lifecycle_status}]`,
+                `get_memory(id=${memory.id}, scope=${memory.lifecycle_status})`,
+              ]),
             }],
             structuredContent: {
               success: true as const,

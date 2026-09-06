@@ -12,6 +12,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
@@ -103,7 +104,13 @@ export function registerWriteDiaryTool(
             : "Diary entry created successfully.";
 
           return {
-            content: [{ type: "text", text: message }],
+            content: [{
+              type: "text",
+              text: joinMcpContentLines([
+                `${message} Diary ${quoteMcpText(data.diary.title)} [id=${data.diary.id}; date=${data.diary.date}]`,
+                `get_diary(id=${data.diary.id}, scope=active)`,
+              ]),
+            }],
             structuredContent: result,
           };
         },

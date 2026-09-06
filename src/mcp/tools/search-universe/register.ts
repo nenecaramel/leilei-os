@@ -7,6 +7,7 @@ import {
 } from "../../../domains/global-search/global-search-service.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeUniverseReadError, UniverseAuthenticationError } from "../universe/shared.js";
+import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const MAX_CURSOR_ENCODED_LENGTH = 2800;
 const inputSchema = z.object({
@@ -94,7 +95,10 @@ export function registerSearchUniverseTool(server: McpServer, dependencies: Sear
           searched_scope: "active" as const,
         },
       };
-      return { content: [{ type: "text", text: `Found ${universeData.metadata.count} Universe nodes.` }], structuredContent: { success: true as const, data: universeData } };
+      return {
+        content: [{ type: "text", text: universeSearchContent(universeData) }],
+        structuredContent: { success: true as const, data: universeData },
+      };
     } catch (error) {
       if (error instanceof UniverseAuthenticationError) return safeUniverseReadError(error, "A Universe node was not found.");
       if (error instanceof GlobalSearchError) {
@@ -106,4 +110,12 @@ export function registerSearchUniverseTool(server: McpServer, dependencies: Sear
       return safeUniverseReadError(error, "A Universe node was not found.");
     }
   });
+}
+
+function universeSearchContent(data: { results: Array<{ entity_id: string; stable_name: string; snippet: string; detail_arguments: { id: string } }>; metadata: { count: number } }): string {
+  const lines = [`Found ${data.metadata.count} Universe nodes.`];
+  for (const result of data.results) {
+    lines.push(`${quoteMcpText(result.stable_name)} [id=${result.entity_id}; ${formatMcpDetailPointer("get_universe_node", result.detail_arguments)}] — ${quoteMcpText(result.snippet)}`);
+  }
+  return joinMcpContentLines(lines);
 }

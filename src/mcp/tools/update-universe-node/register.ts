@@ -4,6 +4,7 @@ import { UniverseServiceError, type UniverseService } from "../../../domains/uni
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { updateUniverseNodeInputSchema } from "./schema.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const successDataSchema = z.object({ node: z.object({ id: z.string().min(1).max(256), title: z.string(), type: z.string(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict(), universe_version: z.number().int().nonnegative(), detail_tool: z.literal("get_universe_node"), detail_arguments: z.object({ id: z.string().min(1).max(256) }).strict() }).strict();
 const outputSchema = z.object({
@@ -57,7 +58,10 @@ export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: 
           updatedAt: node.updatedAt,
         };
         return {
-          content: [{ type: "text", text: "Universe node updated." }],
+          content: [{ type: "text", text: joinMcpContentLines([
+            `Universe node updated: ${quoteMcpText(compactNode.title)} [id=${compactNode.id}; version=${result.version}]`,
+            `get_universe_node(id=${compactNode.id})`,
+          ]) }],
           structuredContent: {
             success: true as const,
             data: {

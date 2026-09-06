@@ -5,6 +5,7 @@ import type { UniverseNode } from "../../../domains/universe/universe-types.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeUniverseReadError } from "../universe/shared.js";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const nodeIdSchema = z.string().trim().min(1).max(256).describe("Exact canonical Universe node ID.");
 const membershipSchema = z.object({ id: z.string().min(1).max(256), weight: z.number().finite() }).strict();
@@ -37,7 +38,14 @@ export function registerGetUniverseNodeTool(server: McpServer, dependencies: Get
         : await dependencies.universeService.loadUniverse!(userId).then(({ snapshot, version }) => ({ node: snapshot.nodes.find((candidate) => candidate.id === id) ?? null, version }));
       if (!result.node) throw new UniverseServiceError("NODE_NOT_FOUND");
       return {
-        content: [{ type: "text", text: "Universe node retrieved." }],
+        content: [{
+          type: "text",
+          text: joinMcpContentLines([
+            `Universe node ${quoteMcpText(result.node.title)} [id=${result.node.id}; type=${result.node.type}]`,
+            result.node.summary,
+            result.node.content || "(empty)",
+          ]),
+        }],
         structuredContent: { success: true as const, data: { ...(result.node as UniverseNode), universe_version: result.version } },
       };
     } catch (error) {

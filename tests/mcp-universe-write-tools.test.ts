@@ -333,7 +333,7 @@ test("create Universe node forwards boundary positions and never accepts caller 
   });
   assert.equal(result.isError, undefined);
   assert.deepEqual(result, {
-    content: [{ type: "text", text: "Universe node created." }],
+    content: [{ type: "text", text: 'Universe node created: "Node" [id=node-generated; version=1]\nget_universe_node(id=node-generated)' }],
     structuredContent: {
       success: true,
       data: {
@@ -380,7 +380,7 @@ test("update Universe node is a partial patch and rejects an empty or hidden pat
   const result = await fixture.client.callTool({ name: "update_universe_node", arguments: { id: "node-generated", expected_version: 1, tags: [], galaxies: [], summary: "" } });
   assert.equal(result.isError, undefined);
   assert.deepEqual(result, {
-    content: [{ type: "text", text: "Universe node updated." }],
+    content: [{ type: "text", text: 'Universe node updated: "Node" [id=node-generated; version=2]\nget_universe_node(id=node-generated)' }],
     structuredContent: {
       success: true,
       data: {
@@ -419,7 +419,7 @@ test("create Universe relation enforces self-link and strength boundaries before
   const result = await fixture.client.callTool({ name: "create_universe_relation", arguments: { source: "node-a", target: "node-b", relation_type: "supports", strength: 1, expected_version: 2, idempotency_key: "relation-create-0001" } });
   assert.equal(result.isError, undefined);
   assert.deepEqual(result, {
-    content: [{ type: "text", text: "Universe relation created." }],
+    content: [{ type: "text", text: "Universe relation created: edge-generated node-a->node-b; version=3" }],
     structuredContent: {
       success: true,
       data: { relation, universe_version: 3, metadata: { created: true, idempotent_replay: false } },
@@ -615,7 +615,7 @@ test("preserves idempotent replay metadata in a successful Universe write", asyn
     },
   });
   assert.deepEqual(replay, {
-    content: [{ type: "text", text: "Universe node replayed." }],
+    content: [{ type: "text", text: 'Universe node replayed: "Node" [id=node-generated; version=9]\nget_universe_node(id=node-generated)' }],
     structuredContent: {
       success: true,
       data: {

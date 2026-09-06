@@ -11,6 +11,7 @@ import {
   type NotionUserAuthorizationDependencies,
 } from "../../server/notion-authorization.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const inputSchema = z.object({
   query: z
@@ -89,7 +90,10 @@ export function registerSearchNotionTool(
       return {
         content: [{
           type: "text" as const,
-          text: `Found ${data.metadata.count} Notion pages.`,
+          text: joinMcpContentLines([
+            `Found ${data.metadata.count} Notion pages.`,
+            ...structuredData.results.map((page) => `${quoteMcpText(page.title)} [id=${page.id}; ${formatMcpDetailPointer("read_notion_page", page.detail_arguments)}]`),
+          ]),
         }],
         structuredContent: { success: true as const, data: structuredData },
       };

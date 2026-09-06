@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { GlobalSearchError, type GlobalSearchInput, type GlobalSearchResult } from "../../../domains/global-search/global-search-service.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const MAX_CURSOR_ENCODED_LENGTH = 2800;
 
@@ -102,7 +103,10 @@ export function registerGlobalSearchTool(server: McpServer, dependencies: Global
     try {
       const userId = dependencies.getAuthenticatedUserId();
       const data = await dependencies.globalSearchService.search({ userId, ...args });
-      return { content: [{ type: "text", text: `Found ${data.metadata.count} records.` }], structuredContent: { success: true as const, data } };
+      return {
+        content: [{ type: "text", text: globalSearchContent(data) }],
+        structuredContent: { success: true as const, data },
+      };
     } catch (error) {
       if (error instanceof GlobalSearchAuthenticationError) {
         return createMcpToolError(
@@ -129,6 +133,17 @@ export function registerGlobalSearchTool(server: McpServer, dependencies: Global
       );
     }
   });
+}
+
+function globalSearchContent(data: GlobalSearchResult): string {
+  const lines = [`Found ${data.metadata.count} records.`];
+  for (const result of data.results) {
+    const pointer = result.detail_tool && result.detail_arguments
+      ? formatMcpDetailPointer(result.detail_tool, Object.fromEntries(Object.entries(result.detail_arguments).map(([key, value]) => [key, String(value)])))
+      : "no-detail-pointer";
+    lines.push(`${result.entity_type} ${quoteMcpText(result.stable_name)} [id=${result.entity_id}; ${pointer}] — ${quoteMcpText(result.snippet)}`);
+  }
+  return joinMcpContentLines(lines);
 }
 
 export class GlobalSearchAuthenticationError extends Error {

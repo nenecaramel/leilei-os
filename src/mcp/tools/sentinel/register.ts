@@ -8,6 +8,7 @@ import {
 } from "../../../domains/sentinel/sentinel-service.js";
 import type { SentinelWakeState } from "../../../domains/sentinel/sentinel-types.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const wakeIdSchema = z.string().uuid();
 const wakeStateDataSchema = z.object({
@@ -131,9 +132,17 @@ export function registerSentinelTools(
     try {
       const userId = await authenticatedOwner(dependencies);
       const state = await dependencies.sentinelService.getWakeState(userId, wakeId);
+      const data = stateData(state);
       return {
-        content: [{ type: "text" as const, text: "Sentinel wake state retrieved." }],
-        structuredContent: { success: true as const, data: stateData(state) },
+        content: [{
+          type: "text" as const,
+          text: joinMcpContentLines([
+            `Sentinel wake ${data.wakeId} for sentinel ${data.sentinelId} (revision ${data.controlRevision})`,
+            `Scheduled: ${data.scheduledFor}; current time: ${data.currentTime}; timezone: ${data.timezone}`,
+            `Next wake: ${data.nextWakeAt ?? "none"}; last valid wake: ${data.lastValidWakeAt ?? "none"}`,
+          ]),
+        }],
+        structuredContent: { success: true as const, data },
       };
     } catch (error) {
       return safeSentinelError(error);
@@ -197,19 +206,23 @@ export function registerSentinelTools(
       });
       if (!("wake" in result)) throw new SentinelDomainError("SENTINEL_WAKE_CONFLICT", "Sentinel wake is no longer active.");
       const message = decision === "quiet" ? "醒了一下，没事。" : undefined;
+      const data = {
+        outcome: result.outcome,
+        wakeId: result.wake.id,
+        decision: result.wake.decision!,
+        nextWakeAt: result.wake.nextWakeAt!.toISOString(),
+        finalizedAt: result.wake.finalizedAt!.toISOString(),
+        controlRevision: result.sentinel.controlRevision,
+        ...(message ? { message } : {}),
+      };
       return {
-        content: [{ type: "text" as const, text: message ?? "Sentinel wake completed." }],
+        content: [{ type: "text" as const, text: joinMcpContentLines([
+          `Sentinel wake ${data.wakeId} ${data.outcome}; decision=${data.decision}; next wake=${data.nextWakeAt}; revision=${data.controlRevision}.`,
+          ...(message ? [message] : []),
+        ]) }],
         structuredContent: {
           success: true as const,
-          data: {
-            outcome: result.outcome,
-            wakeId: result.wake.id,
-            decision: result.wake.decision!,
-            nextWakeAt: result.wake.nextWakeAt!.toISOString(),
-            finalizedAt: result.wake.finalizedAt!.toISOString(),
-            controlRevision: result.sentinel.controlRevision,
-            ...(message ? { message } : {}),
-          },
+          data,
         },
       };
     } catch (error) {
