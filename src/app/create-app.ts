@@ -54,6 +54,11 @@ import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 import type { BridgeApiDependencies } from "../web-api/bridge-router.js";
 import type { SentinelApiDependencies } from "../web-api/sentinel-router.js";
+import {
+  createHealthSyncRouter,
+  type HealthSyncApiDependencies,
+} from "../web-api/health-sync-router.js";
+import { createHealthSyncAuthMiddleware } from "../web-api/health-sync-auth.js";
 
 export type AppDependencies = {
   logger?: SafeLogger;
@@ -71,6 +76,7 @@ export type AppDependencies = {
   webUniverseService?: UniverseApiDependencies["universeService"];
   webBridgeService?: BridgeApiDependencies["bridgeService"];
   webSentinelService?: SentinelApiDependencies["sentinelService"];
+  healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
   createMcpSessionServer?: McpSessionServerFactory;
@@ -222,6 +228,19 @@ export function createApp(
         "Leilei OS uses OAuth 2.1 to authorize access to its public MCP endpoint.",
       );
   });
+
+  app.use(
+    "/api/v1/health-sync",
+    createHealthSyncAuthMiddleware(
+      env.LEILEI_HEALTH_SYNC_KEY,
+      env.LEILEI_HEALTH_SYNC_USER_ID,
+    ),
+    databaseReadinessMiddleware,
+    createHealthSyncRouter({
+      healthSyncService: dependencies.healthSyncService,
+      userId: env.LEILEI_HEALTH_SYNC_USER_ID,
+    }),
+  );
 
   if (oauthAuthorizationServerConfig) {
     const metadataFetcher = createSecureMetadataFetcher({
