@@ -143,6 +143,7 @@ export function createProcessRuntime(
     globalSearchService,
     todoService,
     universeService,
+    healthService,
     sentinelService,
     bridgeService,
     bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,

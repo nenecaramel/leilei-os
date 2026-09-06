@@ -11,6 +11,7 @@ import type { McpSessionNamespace } from "./session-registry.js";
 import type { BridgeService } from "../../domains/bridge/bridge-service.js";
 import type { SentinelService } from "../../domains/sentinel/sentinel-service.js";
 import type { SafeLogger } from "../../observability/logger.js";
+import type { HealthService } from "../../domains/health-v2/health-service.js";
 import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
 import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
 import { registerBridgeProcessingTools } from "../tools/bridge-processing/register.js";
@@ -23,6 +24,7 @@ import { registerProductionNotionExplicitWriteTools } from "./register-notion-ex
 import { registerSentinelTools } from "../tools/sentinel/register.js";
 import { registerRenderThinkingBlockTool } from "../tools/render-thinking-block/register.js";
 import { registerRenderThinkingBlockResource } from "../tools/render-thinking-block/resource.js";
+import { registerGetHealthTool } from "../tools/get-health/register.js";
 
 export type McpSessionServerFactory = (
   authenticatedUserId: string,
@@ -38,6 +40,7 @@ export function createProductionMcpSessionServerFactory(input: {
   globalSearchService: GlobalSearchService;
   todoService: TodoService;
   universeService: UniverseService;
+  healthService: HealthService;
   bridgeService?: BridgeService;
   bridgeAmbiguityAcceptanceEnabled?: boolean;
   logger?: SafeLogger;
@@ -118,6 +121,10 @@ export function createProductionMcpSessionServerFactory(input: {
       activeUserAuthorization,
     );
     if (namespace === "public") {
+      registerGetHealthTool(server, {
+        healthService: input.healthService,
+        getAuthenticatedUserId,
+      });
       registerRenderThinkingBlockResource(server);
       registerRenderThinkingBlockTool(server);
     }

@@ -32,6 +32,7 @@ function createFactory() {
     globalSearchService: {} as never,
     todoService: {} as never,
     universeService: {} as never,
+    healthService: {} as never,
     bridgeService: {} as never,
     sentinelService: {
       getWakeState: async () => { throw new Error("unused"); },
