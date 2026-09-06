@@ -56,6 +56,14 @@ test("Health repository atomically upserts and scopes reads by owner", { skip: !
         assert.ok(before);
         assert.ok(createdAt instanceof Date);
         assert.ok(before.updatedAt >= createdAt);
+        const persistedCreatedAt = (
+          await tx
+            .select({ createdAt: healthDailySummaries.createdAt })
+            .from(healthDailySummaries)
+            .where(and(eq(healthDailySummaries.userId, owner), eq(healthDailySummaries.date, date)))
+            .limit(1)
+        )[0]?.createdAt;
+        assert.deepEqual(persistedCreatedAt, createdAt);
         throw new RollbackHealthTest();
       }),
       RollbackHealthTest,
