@@ -129,8 +129,8 @@ test("Todo day content exposes entries and explicitly identifies an empty day", 
     const service = {
       async readDay(_userId: string, date: string) {
         return date === DATE
-          ? { date, papers: { L: { date, author: "L" as const, revision: 3, entries: [{ id: "todo-1", kind: "pending" as const, text: "Buy tea" }] }, G: null } }
-          : { date, papers: { L: null, G: null } };
+          ? { date, papers: { L: { date, author: "L" as const, revision: 3, entries: [{ id: "todo-1", kind: "pending" as const, text: "Buy tea" }] }, G: null, C: null } }
+          : { date, papers: { L: null, G: null, C: null } };
       },
       async listDates() { return [DATE]; },
     };
@@ -143,7 +143,7 @@ test("Todo day content exposes entries and explicitly identifies an empty day", 
   assertContentIncludes(populated, DATE, "L", "Buy tea", "todo-1");
   assert.deepEqual((populated.structuredContent as { data: unknown }).data, {
     date: DATE,
-    papers: { L: { date: DATE, author: "L", revision: 3, entries: [{ id: "todo-1", kind: "pending", text: "Buy tea" }] }, G: null },
+    papers: { L: { date: DATE, author: "L", revision: 3, entries: [{ id: "todo-1", kind: "pending", text: "Buy tea" }] }, G: null, C: null },
   });
 
   const empty = await pair.client.callTool({ name: "read_todo_day", arguments: { date: "2026-09-06" } });
@@ -231,6 +231,7 @@ test("Global, Universe, and Notion discovery/detail content exposes identifiers 
             matched_field: "content" as const,
             match_reason: "field_match" as const,
             lifecycle_status: "active" as const,
+            author: null,
             business_time: now,
             time_basis: "updated_at" as const,
             updated_at: now,

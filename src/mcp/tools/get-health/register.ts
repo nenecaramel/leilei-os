@@ -11,6 +11,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const healthDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
 
@@ -76,13 +77,14 @@ export function registerGetHealthTool(
                 getProductDate(new Date()),
               );
 
+        const publicRecords = records.map(toPublicHealthRecord);
         return {
-          content: [{ type: "text" as const, text: "Health summary retrieved." }],
+          content: [{ type: "text" as const, text: healthContent(publicRecords) }],
           structuredContent: {
             success: true as const,
             data: {
               timezone: "Asia/Shanghai" as const,
-              records: records.map(toPublicHealthRecord),
+              records: publicRecords,
             },
           },
         };
@@ -124,6 +126,16 @@ function toPublicHealthRecord(summary: HealthDailySummary) {
     cycle_day: summary.cycleDay,
     updated_at: summary.updatedAt.toISOString(),
   };
+}
+
+function healthContent(records: ReturnType<typeof toPublicHealthRecord>[]): string {
+  if (records.length === 0) return "Health summary: no records found.";
+  return joinMcpContentLines([
+    "Health summary:",
+    ...records.map((record) => (
+      `date=${record.date}; steps=${record.steps}; menstruating=${record.menstruating}; period_start=${record.period_start_date ?? "none"}; cycle_day=${record.cycle_day ?? "none"}`
+    )),
+  ]);
 }
 
 function invalidHealthRequest() {

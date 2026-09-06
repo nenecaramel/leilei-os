@@ -88,7 +88,7 @@ export function registerReadTodoDayTool(
 function todoDayContent(data: { date: string; papers: TodoDayPapers }): string {
   const lines = [`Todo ${data.date}`];
   let paperCount = 0;
-  for (const author of ["L", "G"] as const) {
+  for (const author of ["L", "G", "C"] as const) {
     const paper = data.papers[author];
     if (!paper) continue;
     paperCount += 1;
