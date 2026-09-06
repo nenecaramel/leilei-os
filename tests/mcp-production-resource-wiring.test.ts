@@ -44,7 +44,7 @@ test("direct MCP server keeps the 40-tool core surface", async () => {
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 56 public tools with Thinking Block, Bridge processing, Sentinel tools, and each Notion write once", async () => {
+test("production MCP session factory assembles 57 public tools with Health, Thinking Block, Bridge processing, Sentinel tools, and each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
