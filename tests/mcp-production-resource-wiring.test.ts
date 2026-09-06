@@ -44,7 +44,7 @@ test("direct MCP server keeps the 40-tool core surface", async () => {
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 56 public tools with Thinking Block, Bridge processing, Sentinel tools, and each Notion write once", async () => {
+test("production MCP session factory assembles 58 public tools with Health, Thinking Block, Bridge processing, Sentinel tools, and each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -56,13 +56,16 @@ test("production MCP session factory assembles 56 public tools with Thinking Blo
     globalSearchService: {} as never,
     todoService: {} as never,
     universeService: {} as never,
+    healthService: {} as never,
     bridgeService: {} as never,
     sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); }, claimCurrentWake: async () => { throw new Error("unused"); } } as never,
   });
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 56);
+  assert.equal(names.length, 58);
+  assert.equal(names.filter((name) => name === "get_health").length, 1);
+  assert.equal(names.filter((name) => name === "get_current_time").length, 1);
   assert.equal(names.filter((name) => name === "render_thinking_block").length, 1);
   assert.equal(names.filter((name) => name === "sentinel_get_state").length, 1);
   assert.equal(names.filter((name) => name === "complete_sentinel_wake").length, 1);
@@ -78,7 +81,7 @@ test("internal MCP session factory remains free of Bridge App tools", async () =
     activeUserRepository: { findUserById: async () => ({ status: "active" }) },
     memoryService: {} as never, diaryService: {} as never, taskService: {} as never,
     toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
-    universeService: {} as never, bridgeService: {} as never,
+    universeService: {} as never, healthService: {} as never, bridgeService: {} as never,
     sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); }, claimCurrentWake: async () => { throw new Error("unused"); } } as never,
   });
   const names = await listTools(createSessionServer("user-1", "internal"), "mcp-internal-inventory");

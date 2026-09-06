@@ -65,6 +65,8 @@ const baseEnvSchema = z.object({
   OAUTH_STATIC_CLIENTS_JSON: z.string().optional(),
   LEILEI_TOY_BRIDGE_KEY: z.string().min(32).optional(),
   LEILEI_TOY_BRIDGE_USER_ID: z.string().uuid().optional(),
+  LEILEI_HEALTH_SYNC_KEY: z.string().min(32).optional(),
+  LEILEI_HEALTH_SYNC_USER_ID: z.string().uuid().optional(),
   NOTION_PAT: z.string().trim().min(16).optional(),
   BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED: booleanEnv.optional(),
   MCP_SESSION_IDLE_TTL_SECONDS: z.coerce.number().int().positive().default(7_200),

@@ -10,6 +10,7 @@ test("bridge listener tool surface is model/app split", async () => {
     memoryService: {} as never, diaryService: {} as never, taskService: {} as never,
     toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
     universeService: {} as never,
+    healthService: {} as never,
     bridgeService: {} as never,
     sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); } } as never,
   })("user-1", "public");

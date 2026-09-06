@@ -32,6 +32,8 @@ import { createRetentionCoordinator } from "../domains/retention/retention-coord
 import { DATA_IMPORT_RETENTION_DAYS } from "../domains/retention/retention-policy.js";
 import { DrizzleSentinelRepository } from "../domains/sentinel/sentinel-repository.js";
 import { SentinelService } from "../domains/sentinel/sentinel-service.js";
+import { DrizzleHealthRepository } from "../domains/health-v2/health-repository.js";
+import { HealthService } from "../domains/health-v2/health-service.js";
 import {
   createSentinelScheduler as buildSentinelScheduler,
   type SentinelScheduler,
@@ -99,6 +101,7 @@ export function createProcessRuntime(
   const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
   const sentinelRepository = new DrizzleSentinelRepository(db);
   const sentinelService = new SentinelService(sentinelRepository);
+  const healthService = new HealthService(new DrizzleHealthRepository(db));
   const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
     buildSentinelScheduler({ repository })))(sentinelRepository);
 
@@ -140,6 +143,7 @@ export function createProcessRuntime(
     globalSearchService,
     todoService,
     universeService,
+    healthService,
     sentinelService,
     bridgeService,
     bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,
@@ -163,6 +167,7 @@ export function createProcessRuntime(
       webUniverseService: universeService,
       webBridgeService: bridgeService,
       webSentinelService: sentinelService,
+      healthSyncService: healthService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
       createMcpSessionServer,
