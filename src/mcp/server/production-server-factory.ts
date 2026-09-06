@@ -25,6 +25,7 @@ import { registerSentinelTools } from "../tools/sentinel/register.js";
 import { registerRenderThinkingBlockTool } from "../tools/render-thinking-block/register.js";
 import { registerRenderThinkingBlockResource } from "../tools/render-thinking-block/resource.js";
 import { registerGetHealthTool } from "../tools/get-health/register.js";
+import { registerGetCurrentTimeTool } from "../tools/get-current-time/register.js";
 
 export type McpSessionServerFactory = (
   authenticatedUserId: string,
@@ -124,6 +125,9 @@ export function createProductionMcpSessionServerFactory(input: {
       registerGetHealthTool(server, {
         healthService: input.healthService,
         getAuthenticatedUserId,
+      });
+      registerGetCurrentTimeTool(server, {
+        requireActiveUser: activeUserAuthorization,
       });
       registerRenderThinkingBlockResource(server);
       registerRenderThinkingBlockTool(server);

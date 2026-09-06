@@ -18,7 +18,7 @@ async function listTools(server: McpServer, clientName: string): Promise<string[
   }
 }
 
-test("Health v2 adds get_health exactly once to public MCP and never internal MCP", async () => {
+test("Health v2 adds exactly get_health and get_current_time to public MCP and never internal MCP", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: { findUserById: async () => ({ status: "active" }) },
     memoryService: {} as never,
@@ -39,8 +39,10 @@ test("Health v2 adds get_health exactly once to public MCP and never internal MC
 
   assert.equal(publicNames.filter((name) => name === "get_health").length, 1);
   assert.equal(internalNames.includes("get_health"), false);
+  assert.equal(publicNames.filter((name) => name === "get_current_time").length, 1);
+  assert.equal(internalNames.includes("get_current_time"), false);
   assert.deepEqual(
-    publicNames.filter((name) => name !== "get_health" && name !== "render_thinking_block"),
+    publicNames.filter((name) => name !== "get_health" && name !== "get_current_time" && name !== "render_thinking_block"),
     internalNames,
   );
 });
