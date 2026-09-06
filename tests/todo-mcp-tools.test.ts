@@ -546,7 +546,9 @@ test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
     ["date", "author", "revision", "entries", "idempotency_key"].sort(),
   );
   assert.match(write.description ?? "", /complete ordered array/i);
-  assert.match(write.description ?? "", /\{\s*"id"\s*:\s*"\.\.\."\s*,\s*"kind"\s*:\s*"pending\|completed\|record"\s*,\s*"text"\s*:\s*"\.\.\."\s*\}/i);
+  assert.match(write.description ?? "", /\{"id":"todo-1","kind":"pending","text":"\.\.\."\}/);
+  assert.match(write.description ?? "", /kind must be exactly one of "pending", "completed", or "record"/);
+  assert.doesNotMatch(write.description ?? "", /"kind":"pending\|completed\|record"/);
   for (const tool of todoTools) {
     assert.equal("userId" in (tool.inputSchema.properties ?? {}), false);
     assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
