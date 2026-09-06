@@ -9,6 +9,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -91,7 +92,10 @@ export function registerGetMemoryTool(
           content: [
             {
               type: "text",
-              text: "Memory retrieved.",
+              text: joinMcpContentLines([
+                `Memory ${quoteMcpText(data.key)} (${data.category}) [id=${data.id}; ${data.lifecycle_status}]`,
+                data.content || "(empty)",
+              ]),
             },
           ],
           structuredContent: {

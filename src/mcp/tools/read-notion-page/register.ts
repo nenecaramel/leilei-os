@@ -11,6 +11,7 @@ import {
   type NotionUserAuthorizationDependencies,
 } from "../../server/notion-authorization.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const inputSchema = z.object({
   page_id: z.string().trim().optional(),
@@ -82,7 +83,10 @@ export function registerReadNotionPageTool(
       return {
         content: [{
           type: "text" as const,
-          text: `Read Notion page "${data.page.title}".`,
+          text: joinMcpContentLines([
+            `Notion page ${quoteMcpText(data.page.title)} [id=${data.page.id}]`,
+            data.content || "(empty)",
+          ]),
         }],
         structuredContent: { success: true as const, data: structuredData },
       };

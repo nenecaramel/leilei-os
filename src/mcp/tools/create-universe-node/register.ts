@@ -4,6 +4,7 @@ import type { UniverseService } from "../../../domains/universe/universe-service
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { createUniverseNodeInputSchema } from "./schema.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const nodeOutputSchema = z.object({
   id: z.string().min(1).max(256),
@@ -60,7 +61,10 @@ export function registerCreateUniverseNodeTool(
           updatedAt: data.node.updatedAt,
         };
         return {
-          content: [{ type: "text", text: data.metadata.idempotent_replay ? "Universe node replayed." : "Universe node created." }],
+          content: [{ type: "text", text: joinMcpContentLines([
+            `${data.metadata.idempotent_replay ? "Universe node replayed" : "Universe node created"}: ${quoteMcpText(node.title)} [id=${node.id}; version=${data.universe_version}]`,
+            `get_universe_node(id=${node.id})`,
+          ]) }],
           structuredContent: {
             success: true as const,
             data: {

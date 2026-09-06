@@ -10,6 +10,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
@@ -19,7 +20,7 @@ const getDiaryInputSchema = z
     id: z
       .string()
       .trim()
-      .min(1)
+      .uuid()
       .describe("The exact Diary id returned by search_diary or global_search."),
     scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
   })
@@ -82,7 +83,13 @@ export function registerGetDiaryTool(
         const data = { ...detail, lifecycle_status: scope };
 
         return {
-          content: [{ type: "text", text: "Diary entry retrieved." }],
+          content: [{
+            type: "text",
+            text: joinMcpContentLines([
+              `Diary ${quoteMcpText(data.title)} (${data.date}) [id=${data.id}]`,
+              data.content,
+            ]),
+          }],
           structuredContent: {
             success: true as const,
             data,
@@ -109,6 +116,8 @@ function toSafeGetDiaryError(error: unknown) {
         ? "Diary is unavailable for the authenticated user."
         : error.code === "DIARY_NOT_FOUND"
           ? "Diary entry was not found."
+          : error.code === "INVALID_DIARY_ID"
+            ? "Invalid argument: id must be a Diary UUID returned by search_diary or global_search."
           : "The Diary request is invalid.";
 
     return createMcpToolError(error.code, message);

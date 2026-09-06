@@ -5,7 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
-const DIARY_ID = "diary-staged-1";
+const DIARY_ID = "00000000-0000-4000-8000-000000000301";
 const BODY = `${"前".repeat(180)} bodyneedle ${"后".repeat(180)}`;
 const diary = {
   id: DIARY_ID,

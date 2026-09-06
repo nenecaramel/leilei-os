@@ -12,6 +12,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -125,7 +126,7 @@ export function registerSearchMemoryTool(
           content: [
             {
               type: "text",
-              text: `Found ${data.metadata.count} Memory records.`,
+              text: memorySearchContent(data),
             },
           ],
           structuredContent: {
@@ -138,6 +139,16 @@ export function registerSearchMemoryTool(
       }
     },
   );
+}
+
+function memorySearchContent(data: SearchMemoryDiscoveryResult): string {
+  const lines = [`Found ${data.metadata.count} Memory records.`];
+  for (const memory of data.memories) {
+    const pointer = formatMcpDetailPointer("get_memory", { id: memory.id, scope: "active" });
+    const snippet = memory.snippet ? ` — ${quoteMcpText(memory.snippet)}` : "";
+    lines.push(`${memory.category}/${quoteMcpText(memory.key)} [id=${memory.id}; ${pointer}]${snippet}`);
+  }
+  return joinMcpContentLines(lines);
 }
 
 function compactFallback(result: ReadMemoryResult, query: string): SearchMemoryDiscoveryResult {

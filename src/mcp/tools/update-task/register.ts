@@ -3,6 +3,7 @@ import { z } from "zod";
 import { TaskDomainError, type AuthenticatedTaskContext, type TaskEntryResult, type UpdateMcpTaskInput } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const updateTaskInputSchema = z.object({
   id: z.string().trim().min(1),
@@ -32,7 +33,10 @@ export function registerUpdateTaskTool(server: McpServer, dependencies: UpdateTa
         throw new TaskDomainError("INVALID_TASK_PATCH", "At least one Task field must be supplied.");
       }
       const data = await dependencies.taskService.updateMcpTask({ userId }, { id, ...(title === undefined ? {} : { title }), ...(description === undefined ? {} : { description }), ...(priority === undefined ? {} : { priority }), ...(due_time === undefined ? {} : { dueTime: due_time }), ...(tags === undefined ? {} : { tags }), ...(author === undefined ? {} : { author }) });
-      return { content: [{ type: "text", text: "Task updated." }], structuredContent: { success: true as const, data: { ...data, lifecycle_status: "active" as const } } };
+      return {
+        content: [{ type: "text", text: `Task updated: ${quoteMcpText(data.title)} [id=${data.id}; status=${data.status}].` }],
+        structuredContent: { success: true as const, data: { ...data, lifecycle_status: "active" as const } },
+      };
     }, mapError: toSafeToolError,
   }));
 }

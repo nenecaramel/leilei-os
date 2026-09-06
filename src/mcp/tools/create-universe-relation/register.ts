@@ -4,6 +4,7 @@ import { UniverseServiceError, type UniverseService } from "../../../domains/uni
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { createUniverseRelationInputSchema } from "./schema.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const relationOutputSchema = z.object({
   id: z.string().min(1).max(256), source: z.string().min(1).max(256), target: z.string().min(1).max(256),
@@ -42,7 +43,9 @@ export function registerCreateUniverseRelationTool(server: McpServer, dependenci
           idempotency_key,
         );
         return {
-          content: [{ type: "text", text: data.metadata.idempotent_replay ? "Universe relation replayed." : "Universe relation created." }],
+          content: [{ type: "text", text: joinMcpContentLines([
+            `${data.metadata.idempotent_replay ? "Universe relation replayed" : "Universe relation created"}: ${data.relation.id} ${data.relation.source}->${data.relation.target}; version=${data.universe_version}`,
+          ]) }],
           structuredContent: { success: true as const, data },
         };
       },

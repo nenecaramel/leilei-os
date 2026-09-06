@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { NotionDataSourceQueryResult, NotionIntegration } from "../../../domains/notion/notion-read-integration.js";
 import { authorizeNotionUser, readOnlyNotionAnnotations, safeNotionAdvancedError, type NotionUserAuthorizationDependencies } from "../notion-advanced/shared.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const idSchema = z.string().trim().refine((value) => /^[0-9a-f]{32}$/i.test(value.replaceAll("-", "")), "Notion IDs must be UUIDs.");
 const jsonObjectSchema = z.record(z.any());
@@ -50,7 +51,17 @@ export function registerQueryNotionDataSourceTool(server: McpServer, dependencie
         filter,
         sorts,
       });
-      return { content: [{ type: "text" as const, text: `Read ${data.metadata.count} Notion data source pages.` }], structuredContent: { success: true as const, data } };
+      return {
+        content: [{
+          type: "text" as const,
+          text: joinMcpContentLines([
+            `Read ${data.metadata.count} Notion data source pages for ${data.data_source_id}.`,
+            ...data.results.map((page) => `${quoteMcpText(page.title)} [id=${page.id}]${page.url ? ` ${page.url}` : ""}`),
+            ...(data.results.length === 0 ? ["empty"] : []),
+          ]),
+        }],
+        structuredContent: { success: true as const, data },
+      };
     } catch (error) {
       return safeNotionAdvancedError(error);
     }

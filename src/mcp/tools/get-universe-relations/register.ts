@@ -4,6 +4,7 @@ import type { UniverseService } from "../../../domains/universe/universe-service
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeUniverseReadError } from "../universe/shared.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const relationSchema = z.object({
   id: z.string().min(1).max(256), source: z.string().min(1).max(256), target: z.string().min(1).max(256),
@@ -37,7 +38,14 @@ export function registerGetUniverseRelationsTool(server: McpServer, dependencies
         id: relation.id, source: relation.source, target: relation.target, relation_type: relation.relationType, strength: relation.strength, created_at: relation.createdAt,
       }));
       return {
-        content: [{ type: "text", text: `Found ${relations.length} Universe relations.` }],
+        content: [{
+          type: "text",
+          text: joinMcpContentLines([
+            `Found ${relations.length} Universe relations for node ${node_id}.`,
+            ...relations.map((relation) => `${relation.id}: ${relation.source} -> ${relation.target} (${relation.relation_type}, strength=${relation.strength})`),
+            ...(relations.length === 0 ? ["empty"] : []),
+          ]),
+        }],
         structuredContent: { success: true as const, data: { node_id, relations, metadata: { count: relations.length }, universe_version: version } },
       };
     } catch (error) {

@@ -17,7 +17,22 @@ const eventIdSchema = z.object({ listenerInstanceId: listenerInstanceIdSchema, e
 const errorSchema = z.object({ listenerInstanceId: listenerInstanceIdSchema, eventId: z.string().uuid(), safeErrorCode: z.string().trim().min(1).max(64) }).strict();
 const outputSchema = { success: z.boolean(), data: z.record(z.unknown()).optional(), error: mcpToolErrorDetailsSchema.optional() };
 
-function ok(data: Record<string, unknown> = {}) { return { content: [{ type: "text" as const, text: "Bridge listener operation completed." }], structuredContent: { success: true as const, data } }; }
+function ok(data: Record<string, unknown> = {}) {
+  const details: string[] = [];
+  if (typeof data.status === "string") details.push(`status=${data.status}`);
+  if (typeof data.state === "string") details.push(`state=${data.state}`);
+  if (typeof data.stopped === "boolean") details.push(`stopped=${data.stopped}`);
+  if (typeof data.resource_uri === "string") details.push(`resource=${data.resource_uri}`);
+  if (data.event && typeof data.event === "object" && !Array.isArray(data.event)) {
+    const event = data.event as Record<string, unknown>;
+    if (typeof event.id === "string") details.push(`event=${event.id}`);
+    if (typeof event.status === "string") details.push(`event_status=${event.status}`);
+  }
+  return {
+    content: [{ type: "text" as const, text: `Bridge listener operation completed${details.length ? `: ${details.join(", ")}` : "."}` }],
+    structuredContent: { success: true as const, data },
+  };
+}
 function fail(error: unknown) {
   if (error instanceof Error && "code" in error && error.code === "LISTENER_BUSY") {
     return createMcpToolError("LISTENER_BUSY", "Bridge listener is already occupied.");

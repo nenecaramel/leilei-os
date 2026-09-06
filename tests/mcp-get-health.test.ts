@@ -6,6 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { HealthDailySummary } from "../src/domains/health-v2/health-types.js";
 import { getProductDate } from "../src/domains/time/current-time.js";
 import { registerGetHealthTool } from "../src/mcp/tools/get-health/register.js";
+import { assertContentIncludes } from "./helpers/mcp-content-only.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000512";
 const SUMMARY: HealthDailySummary = {
@@ -92,6 +93,14 @@ test("get_health reads an exact day and formats only the stable public fields", 
 
   assert.equal(result.isError, undefined);
   assert.deepEqual(service.dayCalls, [{ userId: USER_ID, date: "2026-09-06" }]);
+  assertContentIncludes(
+    result,
+    "2026-09-06",
+    "steps=6842",
+    "menstruating=true",
+    "period_start=2026-09-04",
+    "cycle_day=3",
+  );
   assert.deepEqual(result.structuredContent, {
     success: true,
     data: {

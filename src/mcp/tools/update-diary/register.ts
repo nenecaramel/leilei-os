@@ -7,6 +7,7 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
@@ -70,7 +71,13 @@ export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateD
         detail_tool: "get_diary" as const,
         detail_arguments: { id: data.id, scope: "active" as const },
       };
-      return { content: [{ type: "text", text: "Diary entry updated." }], structuredContent: { success: true as const, data: compact } };
+      return {
+        content: [{ type: "text", text: joinMcpContentLines([
+          `Diary entry updated: ${quoteMcpText(compact.title)} [id=${compact.id}; date=${compact.date}]`,
+          `get_diary(id=${compact.id}, scope=active)`,
+        ]) }],
+        structuredContent: { success: true as const, data: compact },
+      };
     }, mapError: toSafeToolError,
   }));
 }

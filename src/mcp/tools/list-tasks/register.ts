@@ -6,6 +6,7 @@ import {
   type ListTasksResult,
 } from "../../../domains/task/task-service.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const taskStatusSchema = z.enum([
   "pending",
@@ -157,7 +158,7 @@ export function registerListTasksTool(
 
         return {
           content: [
-            { type: "text", text: `Found ${data.metadata.count} tasks.` },
+            { type: "text", text: taskListContent(data) },
           ],
           structuredContent: { success: true as const, data },
         };
@@ -166,6 +167,15 @@ export function registerListTasksTool(
       }
     },
   );
+}
+
+function taskListContent(data: { tasks: Array<{ id: string; title: string; status: string }>; metadata: { count: number } }): string {
+  const lines = [`Found ${data.metadata.count} tasks.`];
+  for (const task of data.tasks) {
+    const pointer = formatMcpDetailPointer("get_task", { id: task.id });
+    lines.push(`${quoteMcpText(task.title)} [id=${task.id}; ${pointer}; status=${task.status}]`);
+  }
+  return joinMcpContentLines(lines);
 }
 
 function toSafeListTasksError(error: unknown) {

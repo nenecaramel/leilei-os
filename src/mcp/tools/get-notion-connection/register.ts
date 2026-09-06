@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { NotionConnectionResult, NotionIntegration } from "../../../domains/notion/notion-read-integration.js";
 import { NotionAdvancedAuthenticationError, authorizeNotionUser, readOnlyNotionAnnotations, safeNotionAdvancedError, type NotionUserAuthorizationDependencies } from "../notion-advanced/shared.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const outputSchema = z.object({
   success: z.boolean(),
@@ -33,7 +34,17 @@ export function registerGetNotionConnectionTool(server: McpServer, dependencies:
     try {
       await authorizeNotionUser(dependencies);
       const data: NotionConnectionResult = await dependencies.notionIntegration.getConnection();
-      return { content: [{ type: "text" as const, text: "Notion connection discovered." }], structuredContent: { success: true as const, data } };
+      return {
+        content: [{
+          type: "text" as const,
+          text: joinMcpContentLines([
+            `Notion connection ${quoteMcpText(data.connection.name)} [id=${data.connection.id}; type=${data.connection.type}]`,
+            `Workspace: ${quoteMcpText(data.workspace.name ?? "unknown")} [id=${data.workspace.id ?? "unknown"}]`,
+            `Capabilities: ${data.capabilities.map((capability) => `${capability.operation}=${capability.status}`).join(", ") || "none"}`,
+          ]),
+        }],
+        structuredContent: { success: true as const, data },
+      };
     } catch (error) {
       return safeNotionAdvancedError(error);
     }

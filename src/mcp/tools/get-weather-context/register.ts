@@ -45,7 +45,7 @@ export function registerGetWeatherContextTool(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: "Weather context retrieved.",
+              text: `Weather at ${weather.location}: ${weather.temperature}°C, ${weather.condition}, humidity ${weather.humidity}%, wind ${weather.wind_speed} km/h.`,
             },
           ],
           structuredContent: result,

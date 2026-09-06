@@ -41,7 +41,7 @@ const MEMORY = {
 };
 
 const DIARY: DiaryEntryResult = {
-  id: "diary-contract-id",
+  id: "00000000-0000-4000-8000-000000000307",
   title: "Diary contract",
   content: "Complete Diary detail content.",
   date: "2026-07-29",

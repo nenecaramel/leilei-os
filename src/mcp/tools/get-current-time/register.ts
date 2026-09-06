@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
 import { formatCurrentTime } from "../../../domains/time/current-time.js";
+import { joinMcpContentLines } from "../content-contract.js";
 import { createMcpToolError } from "../error-contract.js";
 
 const getCurrentTimeInputSchema = z.object({}).strict();
@@ -43,7 +44,12 @@ export function registerGetCurrentTimeTool(
         const now = dependencies.now ?? (() => new Date());
         const currentTime = formatCurrentTime(now());
         return {
-          content: [{ type: "text" as const, text: "Current time retrieved." }],
+          content: [{
+            type: "text" as const,
+            text: joinMcpContentLines([
+              `Current time: date=${currentTime.date}; time=${currentTime.time}; datetime=${currentTime.datetime}; timezone=${currentTime.timezone}; weekday=${currentTime.weekday}.`,
+            ]),
+          }],
           structuredContent: currentTime,
         };
       } catch (error) {

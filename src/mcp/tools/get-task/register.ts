@@ -7,6 +7,7 @@ import {
 } from "../../../domains/task/task-service.js";
 import { TaskReadAuthenticationError } from "../list-tasks/register.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const taskStatusSchema = z.enum([
   "pending",
@@ -98,7 +99,13 @@ export function registerGetTaskTool(
           : await dependencies.taskService.readTask({ userId, id });
         const data = { ...detail, lifecycle_status: scope };
         return {
-          content: [{ type: "text", text: "Task retrieved." }],
+          content: [{
+            type: "text",
+            text: joinMcpContentLines([
+              `Task ${quoteMcpText(data.title)} [id=${data.id}; status=${data.status}; lifecycle=${data.lifecycle_status}]`,
+              data.description || "(empty)",
+            ]),
+          }],
           structuredContent: { success: true as const, data },
         };
       } catch (error) {

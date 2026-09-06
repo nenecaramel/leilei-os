@@ -4,6 +4,7 @@ import type { UniverseService } from "../../../domains/universe/universe-service
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeUniverseReadError } from "../universe/shared.js";
+import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const cursorSchema = z.string().min(1).max(2048);
 const outputNodeSchema = z.object({
@@ -64,7 +65,7 @@ export function registerListUniverseNodesTool(server: McpServer, dependencies: L
       }));
       const last = nodes[nodes.length - 1];
       return {
-        content: [{ type: "text", text: `Found ${nodes.length} Universe nodes.` }],
+        content: [{ type: "text", text: universeListContent(nodes) }],
         structuredContent: {
           success: true as const,
           data: {
@@ -80,6 +81,14 @@ export function registerListUniverseNodesTool(server: McpServer, dependencies: L
       return safeUniverseReadError(error, "Universe node was not found.");
     }
   });
+}
+
+function universeListContent(nodes: Array<{ id: string; title: string; summary_preview: string }>): string {
+  const lines = [`Found ${nodes.length} Universe nodes.`];
+  for (const node of nodes) {
+    lines.push(`${quoteMcpText(node.title)} [id=${node.id}; ${formatMcpDetailPointer("get_universe_node", { id: node.id })}] — ${quoteMcpText(node.summary_preview)}`);
+  }
+  return joinMcpContentLines(lines);
 }
 
 function compactSummary(summary: string): string {

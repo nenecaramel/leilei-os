@@ -5,6 +5,7 @@ import {
   type ReadTodoDayToolDependencies,
 } from "../read-todo-day/register.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines } from "../content-contract.js";
 
 const listTodoDatesInputSchema = z.object({}).strict();
 const listTodoDatesOutputSchema = z.object({
@@ -46,7 +47,13 @@ export function registerListTodoDatesTool(
         const userId = dependencies.getAuthenticatedUserId();
         const dates = await dependencies.todoService.listDates(userId);
         return {
-          content: [{ type: "text", text: `Found ${dates.length} Todo dates.` }],
+          content: [{
+            type: "text",
+            text: joinMcpContentLines([
+              `Found ${dates.length} Todo dates.`,
+              ...dates.map((date) => `read_todo_day(date=${date})`),
+            ]),
+          }],
           structuredContent: {
             success: true as const,
             data: { dates },

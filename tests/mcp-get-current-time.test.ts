@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerGetCurrentTimeTool } from "../src/mcp/tools/get-current-time/register.js";
+import { assertContentIncludes } from "./helpers/mcp-content-only.js";
 
 async function connect() {
   const server = new McpServer({ name: "current-time-tool-test", version: "1" });
@@ -47,6 +48,14 @@ test("get_current_time authorizes first and returns fixed Asia/Shanghai time", a
 
   assert.equal(result.isError, undefined);
   assert.deepEqual(authorizationCalls, ["required"]);
+  assertContentIncludes(
+    result,
+    "2026-09-06",
+    "12:33:10",
+    "2026-09-06T12:33:10+08:00",
+    "Asia/Shanghai",
+    "Sunday",
+  );
   assert.deepEqual(result.structuredContent, {
     date: "2026-09-06",
     time: "12:33:10",
