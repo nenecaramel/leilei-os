@@ -1,4 +1,5 @@
 import { App, PostMessageTransport } from "@modelcontextprotocol/ext-apps";
+import { detectMissingHostCapabilities } from "./host-capabilities.js";
 
 type BridgeEvent = {
   id: string;
@@ -117,20 +118,6 @@ function startBridgeListener(): void {
     if (syncButton) syncButton.disabled = state !== "running";
   };
 
-  const hasTextCapability = (capabilities: Record<string, unknown> | undefined, name: string): boolean => {
-    const value = capabilities?.[name];
-    return typeof value === "object" && value !== null && "text" in value;
-  };
-
-  const detectMissingCapabilities = (): string[] => {
-    const capabilities = app.getHostCapabilities() as Record<string, unknown> | undefined;
-    const missing: string[] = [];
-    if (!capabilities?.serverTools) missing.push("serverTools");
-    if (!hasTextCapability(capabilities, "updateModelContext")) missing.push("updateModelContext.text");
-    if (!hasTextCapability(capabilities, "message")) missing.push("message.text");
-    return missing;
-  };
-
   const initializeHost = async (): Promise<void> => {
     if (connectionPromise) return connectionPromise;
     recordDiag("app.connect enter");
@@ -142,7 +129,7 @@ function startBridgeListener(): void {
           updateModelContext: capabilities?.updateModelContext ?? null,
           message: capabilities?.message ?? null,
         })}`);
-        missingCapabilities = detectMissingCapabilities();
+        missingCapabilities = detectMissingHostCapabilities(app.getHostCapabilities());
         supported = missingCapabilities.length === 0;
         if (supported) {
           setUiState("idle");

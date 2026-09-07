@@ -8,6 +8,7 @@ import {
   createBridgeListenerHtml,
   registerBridgeListenerResource,
 } from "../src/mcp/tools/bridge-listener/listener-resource.js";
+import { detectMissingHostCapabilities } from "../src/mcp/tools/bridge-listener/host-capabilities.js";
 
 type JsonRpcMessage = {
   id?: number;
@@ -144,6 +145,73 @@ test("Bridge Diagnostics records the host capability shape after connect", async
     dom.window.close();
   }
 });
+
+test("Bridge accepts ChatGPT's empty capability objects", async () => {
+  const { dom, messages } = createHost({ serverTools: {}, updateModelContext: {}, message: {} });
+  try {
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]");
+    const status = dom.window.document.querySelector<HTMLElement>("[data-bridge-status]");
+    assert.ok(start);
+    assert.ok(status);
+    assert.equal(status.textContent, "Idle");
+    assert.equal(start.disabled, false);
+    assert.equal(messages.some((message) => message.params?.name?.startsWith("bridge_listener_")), false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("Bridge continues to accept explicit text host capability objects", async () => {
+  const { dom } = createHost({ serverTools: {}, updateModelContext: { text: {} }, message: { text: {} } });
+  try {
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]");
+    const status = dom.window.document.querySelector<HTMLElement>("[data-bridge-status]");
+    assert.ok(start);
+    assert.ok(status);
+    assert.equal(status.textContent, "Idle");
+    assert.equal(start.disabled, false);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("Bridge capability detection rejects missing, null, and non-object capabilities", () => {
+  const cases: Array<[string, unknown, string[]]> = [
+    ["missing updateModelContext", { serverTools: {}, message: {} }, ["updateModelContext"]],
+    ["missing message", { serverTools: {}, updateModelContext: {} }, ["message"]],
+    ["null updateModelContext", { serverTools: {}, updateModelContext: null, message: {} }, ["updateModelContext"]],
+    ["non-object message", { serverTools: {}, updateModelContext: {}, message: "text" }, ["message"]],
+    ["null serverTools", { serverTools: null, updateModelContext: {}, message: {} }, ["serverTools"]],
+    ["non-object serverTools", { serverTools: [], updateModelContext: {}, message: {} }, ["serverTools"]],
+  ];
+
+  for (const [name, capabilities, expected] of cases) {
+    assert.deepEqual(detectMissingHostCapabilities(capabilities), expected, name);
+  }
+});
+
+for (const [name, capabilities] of [
+  ["updateModelContext", { serverTools: {}, message: {} }],
+  ["message", { serverTools: {}, updateModelContext: {} }],
+] as Array<[string, Record<string, unknown>]>) {
+  test(`Bridge marks the host unsupported when ${name} is missing`, async () => {
+    const { dom, messages } = createHost(capabilities);
+    try {
+      await tick();
+      const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]");
+      const status = dom.window.document.querySelector<HTMLElement>("[data-bridge-status]");
+      assert.ok(start);
+      assert.ok(status);
+      assert.equal(start.disabled, true);
+      assert.match(status.textContent ?? "", /Unsupported/);
+      assert.equal(messages.some((message) => message.params?.name === "bridge_listener_start"), false);
+    } finally {
+      dom.window.close();
+    }
+  });
+}
 
 test("Bridge Start is disabled when required host capabilities are missing", async () => {
   const { dom, messages } = createHost({ serverTools: {} });
