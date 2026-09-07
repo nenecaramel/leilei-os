@@ -16,14 +16,7 @@ import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 const inputSchema = z.object({
   page_id: z.string().trim().optional(),
   page_url: z.string().trim().url().optional(),
-}).strict().superRefine((value, context) => {
-  if (!value.page_id && !value.page_url) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["page_id"], message: "Provide page_id or page_url." });
-  }
-  if (value.page_id && value.page_url) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["page_url"], message: "Provide only one page reference." });
-  }
-});
+}).strict();
 
 const pageSchema = z.object({
   id: z.string(),
@@ -65,6 +58,19 @@ export function registerReadNotionPageTool(
       openWorldHint: true,
     },
   }, async (args) => {
+    if (!args.page_id && !args.page_url) {
+      return createMcpToolError(
+        "INVALID_PAGE_REFERENCE",
+        "Provide page_id or page_url.",
+      );
+    }
+    if (args.page_id && args.page_url) {
+      return createMcpToolError(
+        "INVALID_PAGE_REFERENCE",
+        "Provide only one page reference.",
+      );
+    }
+
     try {
       await authorizeNotionUser(dependencies);
       const pageId = parseNotionPageReference(args.page_id ?? args.page_url ?? "");
