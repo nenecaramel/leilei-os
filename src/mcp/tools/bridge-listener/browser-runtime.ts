@@ -136,6 +136,12 @@ function startBridgeListener(): void {
     recordDiag("app.connect enter");
     connectionPromise = app.connect(transport)
       .then(() => {
+        const capabilities = app.getHostCapabilities() as Record<string, unknown> | undefined;
+        recordDiag(`app.connect host capabilities ${JSON.stringify({
+          serverTools: capabilities?.serverTools ?? null,
+          updateModelContext: capabilities?.updateModelContext ?? null,
+          message: capabilities?.message ?? null,
+        })}`);
         missingCapabilities = detectMissingCapabilities();
         supported = missingCapabilities.length === 0;
         if (supported) {

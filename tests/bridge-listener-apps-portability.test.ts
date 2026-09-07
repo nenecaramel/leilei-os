@@ -132,6 +132,19 @@ test("Bridge App connects immediately, auto-resizes, and keeps Bridge Start manu
   }
 });
 
+test("Bridge Diagnostics records the host capability shape after connect", async () => {
+  const { dom } = createHost();
+  try {
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    const diagnostics = dom.window.document.querySelector<HTMLElement>("[data-bridge-diag]")?.textContent ?? "";
+    assert.match(diagnostics, /app\.connect host capabilities .*"serverTools":\{\}/);
+    assert.match(diagnostics, /"updateModelContext":\{"text":\{\}\}/);
+    assert.match(diagnostics, /"message":\{"text":\{\}\}/);
+  } finally {
+    dom.window.close();
+  }
+});
+
 test("Bridge Start is disabled when required host capabilities are missing", async () => {
   const { dom, messages } = createHost({ serverTools: {} });
   try {
