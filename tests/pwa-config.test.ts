@@ -62,3 +62,14 @@ test("the icon master is a quiet single-L SVG with no decorative effects", async
   assert.equal((svg.match(/<path\b/g) ?? []).length, 1);
   assert.doesNotMatch(svg, /gradient|filter|stroke|circle|polygon|polyline/i);
 });
+
+test("the L uses equal visual stroke thickness for stem and foot", async () => {
+  const svg = await readFile("web/public/favicon.svg", "utf8");
+  const match = svg.match(/d="M (\d+) (\d+) H (\d+) V (\d+) H (\d+) V (\d+) H (\d+) Z"/);
+  assert.ok(match, "expected the simple geometric L path");
+  const [, x, , stemRight, , , bottom, footLeft] = match.map(Number);
+  const stemWidth = stemRight - x;
+  const footThickness = bottom - Number(match[4]);
+  assert.equal(footLeft, x);
+  assert.equal(stemWidth, footThickness);
+});
