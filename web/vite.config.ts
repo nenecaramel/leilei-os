@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
         registerType: "prompt",
         injectRegister: false,
         includeAssets: [
+          "favicon.svg",
           "pwa-192.png",
           "pwa-512.png",
           "pwa-maskable-512.png",
