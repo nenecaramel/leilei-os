@@ -8,7 +8,7 @@ const FOREGROUND = [0x7d, 0x84, 0x7f];
 const L = {
   x: 176,
   y: 78,
-  stemWidth: 104,
+  stemWidth: 80,
   stemHeight: 316,
   footWidth: 204,
   footHeight: 80,
