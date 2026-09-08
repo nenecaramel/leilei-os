@@ -1,103 +1,114 @@
 # Leilei OS Troubleshooting
 
-This document records build and deployment problems encountered while bringing
-the Phase 1 remote MCP server online.
+This document covers recurring build, deployment, and MCP Apps problems in the current repository. It is not a phase-specific acceptance checklist.
 
 ## pnpm version mismatch
 
 ### Symptoms
 
-- The local installation and Docker build use different pnpm major versions.
-- pnpm reports an unexpected store location or attempts to recreate
-  `node_modules`.
-- A frozen lockfile install behaves differently locally and in Railway.
-- Commands fail even though `pnpm-lock.yaml` exists.
-
-### Cause
-
-Corepack can activate a pnpm version different from the version used to create
-the lockfile and `node_modules`. pnpm store formats and dependency policies can
-change across major versions.
+- Local installation and Docker use different pnpm major versions.
+- pnpm reports an unexpected store location or attempts to recreate `node_modules`.
+- A frozen-lockfile install behaves differently locally and in CI/Railway.
 
 ### Resolution
 
-- Pin one pnpm version in `package.json` using `packageManager`.
-- Activate that same version in every Docker stage.
-- Regenerate or update the lockfile using the pinned version.
-- Reinstall dependencies when an existing `node_modules` directory is linked to
-  an incompatible pnpm store.
+- Use the version pinned in `package.json` (`pnpm@11.9.0`).
 - Keep local development, CI, Docker, and Railway on the same pinned version.
+- Reinstall dependencies when an existing `node_modules` directory belongs to an incompatible store/version.
+- Do not disable frozen-lockfile checks to work around a version mismatch.
 
-Do not solve this by removing the frozen-lockfile check in production. The lock
-file should remain reproducible.
-
-## esbuild build script blocked
-
-### Symptoms
-
-- pnpm reports `ERR_PNPM_IGNORED_BUILDS`.
-- Installation says the `esbuild` postinstall script was ignored.
-- `tsx` or another build command cannot find or execute the platform-specific
-  esbuild binary.
-
-### Cause
-
-Recent pnpm versions restrict dependency lifecycle scripts unless the package is
-explicitly approved. esbuild uses a postinstall step to prepare its native
-binary.
-
-### Resolution
-
-- Explicitly allow the `esbuild` build script in the project's pnpm workspace
-  configuration.
-- Ensure the workspace configuration is available before `pnpm install` runs.
-- In the runtime Docker stage, preserve the same explicit dependency-build
-  policy when installing production dependencies.
-- Reinstall dependencies and verify that the esbuild postinstall step completes.
-
-Only approve known dependencies that genuinely require a build script. Do not
-enable all lifecycle scripts globally.
-
-## Docker did not copy `pnpm-workspace.yaml`
+## esbuild lifecycle script blocked
 
 ### Symptoms
 
-- Local installation succeeds but `docker build` or Railway fails.
-- pnpm ignores the approved-build configuration.
-- esbuild is blocked again inside the container.
-- Docker reports lockfile or workspace configuration behavior that differs from
-  the local project.
-
-### Cause
-
-The Dockerfile copied `package.json` and `pnpm-lock.yaml` before dependency
-installation but omitted `pnpm-workspace.yaml`. pnpm therefore installed without
-the repository's workspace-level build policy.
+- pnpm reports an ignored build/lifecycle script.
+- `tsx`, esbuild, or the Message Bridge bundle step cannot execute the platform-specific binary.
 
 ### Resolution
 
-Copy all dependency metadata before running `pnpm install`:
+- Keep the repository's explicit esbuild build-script policy in `pnpm-workspace.yaml`/runtime configuration.
+- Ensure `pnpm-workspace.yaml` is present before dependency installation in Docker.
+- Reinstall with the pinned pnpm version and verify `pnpm build` completes.
+
+## Docker dependency metadata mismatch
+
+The Docker build must copy all dependency metadata before `pnpm install`:
 
 ```dockerfile
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 ```
 
-Apply this in both build and runtime stages when both stages run pnpm. Keeping
-the copy before the source-code layer also preserves useful Docker dependency
-caching.
+The build stage also copies `scripts/build-bridge-browser.mjs` before `pnpm build`; omitting it breaks the Message Bridge browser bundle generation.
+
+If local build succeeds but Docker/Railway fails, compare the Docker dependency/build inputs with the root scripts before changing application code.
+
+## Message Bridge renders stale or unexpected UI
+
+The current Message Bridge resource URI is:
+
+```text
+ui://leileios/message-bridge/v5
+```
+
+The Bridge browser runtime is bundled from `src/mcp/tools/bridge-listener/browser-runtime.ts` during `pnpm build`.
+
+When debugging a stale Bridge surface:
+
+1. Confirm the server build contains the expected `BRIDGE_RESOURCE_URI`.
+2. Confirm `pnpm build` regenerated the browser bundle.
+3. Confirm the deployed server is actually running the intended commit SHA.
+4. Refresh/reconnect the MCP client so it rediscovers resources.
+5. For a material UI/runtime change, use a new resource URI rather than relying on cache invalidation of an existing URI.
+
+Do not change queue/reservation/delivery behavior merely to solve a stale rendered resource.
+
+## Message Bridge stays Idle
+
+Idle is the expected initial listener state. The resource may initialize its MCP Apps host connection automatically, but listener activation is intentionally manual.
+
+- Click **Start** to activate the listener.
+- If Start reports an unsupported host, inspect the capability diagnostics rather than adding host-specific code first.
+- If another listener already owns the reservation/lease, the UI may report an occupied state.
+
+Do not convert manual Start to automatic Start as a troubleshooting shortcut.
+
+## MCP tool schema is unexpectedly empty
+
+For tools whose public schema must expose named fields, verify that the registered input schema remains representable by the MCP SDK's `tools/list` conversion.
+
+`read_notion_page` intentionally registers a plain strict object with optional `page_id` and `page_url`; the exactly-one-reference rule is enforced inside the handler. If its surfaced schema regresses, test the actual `tools/list` result rather than relying only on TypeScript/Zod types.
+
+## Migration head disagreement
+
+The checked-in migration source of truth is:
+
+```text
+drizzle/meta/_journal.json
+```
+
+Do not copy a migration-head value from an old plan, milestone, or runbook. Current authoritative docs should match the final journal entry. At the time of this cleanup, that entry is `0033_health_v2_daily_summaries`.
+
+## Railway deployment does not start immediately
+
+A merge to `main` and a Railway deployment are separate events. If Railway has not created a deployment yet:
+
+1. Confirm GitHub `main` contains the intended merge SHA.
+2. Confirm Railway is still configured to source the `main` branch.
+3. Inspect Railway deployment history before manually redeploying.
+4. Respect any platform account/region deployment restrictions; a blocked trigger is not an application build failure.
+
+Never report a change as production-live until Railway reports the expected commit and the service health check succeeds.
 
 ## Quick diagnosis sequence
 
-When Railway or Docker fails:
+When root Docker/Railway or MCP Apps behavior fails:
 
-1. Confirm the pnpm version printed by the failing environment.
-2. Compare it with `packageManager` in `package.json`.
-3. Confirm `pnpm-workspace.yaml` is copied before dependency installation.
-4. Check whether the log says an esbuild build script was ignored.
-5. Run the TypeScript type check and production build locally with the pinned
-   pnpm version.
-6. Rebuild the Docker image without changing application code.
-7. After deployment, verify `/health` and call `hello` from ChatGPT.
+1. Identify the exact Git commit being tested/deployed.
+2. Confirm the pinned pnpm version and dependency metadata.
+3. Run `pnpm typecheck` and `pnpm build`.
+4. Run the focused failing test before the full suite.
+5. For Bridge issues, verify the resource URI and generated browser bundle.
+6. For schema issues, inspect the actual MCP `tools/list` surface.
+7. After deployment, verify `/health` and the authenticated MCP handshake.
 
-Never paste production tokens, authorization headers, database URLs, or complete
-Railway environment dumps into troubleshooting logs.
+Never paste production tokens, authorization headers, database URLs, bridge keys, or complete Railway environment dumps into troubleshooting logs.

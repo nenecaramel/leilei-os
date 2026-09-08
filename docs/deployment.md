@@ -1,41 +1,57 @@
 # Leilei OS Deployment
 
-This document describes the current `main`-based release path. It does not
-contain credentials, connection strings, tokens, or private deployment URLs.
+This document describes the current `main`-based release path. It intentionally contains no credentials, connection strings, tokens, or private deployment URLs.
 
 ## Source of truth
 
 - GitHub default branch: `main`.
-- `main` is the only integration, development, and release trunk.
+- `main` is the only integration and release trunk.
 - Railway Production watches `main` for the root API/MCP service.
 - Vercel Production watches `main` for the Web SPA under `web/`.
 
-Feature and maintenance branches must enter `main` through a reviewed pull
-request. A Draft PR is not production acceptance evidence.
+A repository merge and a successful production deployment are separate facts. Always verify the platform-reported release SHA before treating a change as live.
 
 ## Railway API/MCP deployment
 
-Railway builds the repository root `Dockerfile`. The multi-stage image compiles
-the TypeScript service and starts `node dist/app/index.js` on the platform
-provided `PORT`.
+Railway builds the repository root `Dockerfile`. The build stage installs the pinned pnpm version, compiles TypeScript, and runs the Message Bridge browser bundle step through `pnpm build`. The runtime container starts:
 
-Before a new application release is promoted, `railway.json` runs:
+```text
+node dist/app/index.js
+```
+
+Before application promotion, `railway.json` runs:
 
 ```text
 node dist/database/migrate.js
 ```
 
-The pre-deploy runner performs a bounded database-readiness check, then uses
-the checked-in `drizzle/` files and the LeileiOS-owned
-`public.leilei_schema_migrations` ledger. On first bootstrap it validates the
-legacy `drizzle.__drizzle_migrations` row. Bootstrap and pending migration SQL
-are transactional; the runner fails closed on ledger, checksum, or SQL errors.
+The pre-deploy runner performs database-readiness checks and applies pending checked-in migrations transactionally through the LeileiOS migration ledger. Application startup itself does not run migrations.
 
-The current checked-in migration head is `0023_faulty_sphinx`, as recorded in
-`drizzle/meta/_journal.json`.
+The current checked-in migration head is:
 
-Application startup itself does not run migrations. A successful deployment
-must report a healthy service before production smoke checks continue.
+```text
+0033_health_v2_daily_summaries
+```
+
+The authoritative checked-in record is `drizzle/meta/_journal.json`.
+
+A successful deployment must report a healthy service before production smoke checks continue.
+
+## Message Bridge release behavior
+
+The current Message Bridge MCP Apps resource URI is:
+
+```text
+ui://leileios/message-bridge/v5
+```
+
+The resource uses a committed/generated browser bundle built from `src/mcp/tools/bridge-listener/browser-runtime.ts` by `scripts/build-bridge-browser.mjs`.
+
+The Bridge listener remains manually started from its UI. Deploying a new server build must not be interpreted as automatically activating the listener in a host session.
+
+For material Message Bridge UI/runtime changes, advance the resource URI so hosts can fetch a new resource identity instead of relying on cache invalidation of an existing URI.
+
+After an MCP surface or resource change reaches production, refresh/reconnect the relevant MCP client only as a discovery/cache step; that action is not evidence that the server deployment itself succeeded.
 
 ## Vercel Web deployment
 
@@ -45,15 +61,11 @@ The Vercel project builds from the `web/` directory using:
 npm run build
 ```
 
-The output directory is `web/dist`. `web/vercel.json` rewrites application
-routes to `index.html` so authenticated SPA routes can be refreshed directly.
-The Production Branch is `main`.
+The output directory is `web/dist`. `web/vercel.json` rewrites application routes to `index.html` so authenticated SPA routes can be refreshed directly. The Production Branch is `main`.
 
-After deployment, verify the public homepage, `manifest.webmanifest`, and
-`sw.js` before doing authenticated Web checks. Auth0 callback, logout, and Web
-origin allowlists must contain the deployed Web origin.
+After deployment, verify the public homepage, `manifest.webmanifest`, and `sw.js` before authenticated Web checks. Auth0 callback, logout, and Web origin allowlists must contain the deployed Web origin.
 
-## Local build and disposable migration verification
+## Local verification before release
 
 From the repository root:
 
@@ -74,50 +86,35 @@ npm run typecheck
 npm run build
 ```
 
-Use only a disposable/local PostgreSQL instance for migration integration
-tests. The manual Drizzle command is:
+Use only a disposable/local PostgreSQL instance for migration integration tests. The manual Drizzle command is:
 
 ```bash
 pnpm db:migrate
 ```
 
-This command is separate from Railway's compiled pre-deploy runner. Never
-point either command at production without an approved backup and release
-procedure.
+That command is separate from Railway's compiled pre-deploy runner. Never point either path at production without an approved backup and release procedure.
+
+If a local environment prevents a verification command from actually executing, record that as an environment limitation rather than reporting the gate as passed.
 
 ## Production verification
 
 After a successful `main` deployment:
 
-1. Confirm Railway and Vercel both report the expected `main` commit SHA.
-2. Call `/health` through the public HTTPS API endpoint.
-3. Confirm the MCP protected-resource metadata and authenticated `/mcp`
-   handshake.
-4. Verify representative Web routes and PWA assets.
-5. If MCP definitions changed, refresh the ChatGPT app tool list and run only
-   the approved smoke checks.
+1. Confirm Railway reports the expected `main` commit SHA.
+2. Confirm the Railway service is healthy and call `/health` through the public HTTPS endpoint.
+3. Confirm MCP protected-resource metadata and the authenticated `/mcp` handshake.
+4. If MCP definitions/resources changed, refresh the client tool/resource discovery and run only the approved smoke checks.
+5. Confirm Vercel reports the expected Web commit and verify representative routes/PWA assets when Web files changed.
+6. Record the accepted release SHA and verification result separately from the pull-request merge record.
 
-Never paste environment values or raw provider errors into Git, logs, tickets,
-or screenshots.
+Never paste environment values, authorization headers, database URLs, or raw provider secrets into Git, logs, tickets, or screenshots.
 
 ## Optional CIMD authorization adapter
 
-This PR does not change Railway variables or deploy the adapter. If it is later
-enabled, configure `OAUTH_AS_ENABLED=true`, an Auth0 public PKCE client id,
-`OAUTH_AS_UPSTREAM_REDIRECT_URI` registered in Auth0, and a nonempty
-`OAUTH_STATIC_CLIENTS_JSON` containing the existing ChatGPT client entry before
-changing discovery. The adapter refuses to start without that static registry.
-The exact initial dynamic allowlist is
-`https://claude.ai/oauth/mcp-oauth-client-metadata`; an explicitly empty
-`OAUTH_CIMD_TRUSTED_CLIENT_IDS` value allows no dynamic clients. Validate the
-authorization metadata, consent screen, Auth0 callback, token exchange, and
-existing ChatGPT connector in a separate controlled deployment before changing
-production.
+The repository contains an optional Auth0-backed local authorization adapter. Repository support for the adapter does not imply that it is enabled in production.
 
-Copy each static client's authentication metadata exactly from its registered
-record. In particular, the ChatGPT entry must retain `private_key_jwt`,
-`token_endpoint_auth_signing_alg: "RS256"`, and its `jwks_uri`; do not replace
-that method with `none`. The adapter fetches the registered JWKS URI through
-the same HTTPS-only, no-redirect, bounded-response and DNS-rebinding-resistant
-fetcher used for CIMD documents. Shared-secret authentication methods are not
-accepted.
+When enabled, configuration includes `OAUTH_AS_ENABLED=true`, an Auth0 public PKCE client id, the configured upstream redirect URI, and a nonempty static-client registry for existing clients. Dynamic CIMD metadata resolution is restricted to configured trusted client metadata URLs and uses the bounded HTTPS fetch path.
+
+Static client authentication metadata must match the registered record exactly. The adapter preserves Auth0 as the identity/token issuer and does not replace the existing `/mcp` JWT verifier.
+
+Any change to production authorization discovery or client registration requires a controlled deployment and explicit verification of metadata, consent, callback, token exchange, and existing client connectivity.
