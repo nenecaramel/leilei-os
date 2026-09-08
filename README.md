@@ -1,115 +1,77 @@
 # Leilei OS
 
-Leilei OS is an authenticated personal workspace: a React Web app, a
-PostgreSQL-backed API, and an OAuth-protected Streamable HTTP MCP server. The
-single integration, development, and release trunk is `main`; see
-[`docs/branch-release-policy.md`](docs/branch-release-policy.md) for the branch
-and release rules.
+Leilei OS is an authenticated personal workspace built around a React Web app, a PostgreSQL-backed API, and an OAuth-protected Streamable HTTP MCP server. The single integration and release trunk is `main`; see [`docs/branch-release-policy.md`](docs/branch-release-policy.md) for the repository workflow.
 
-## Current product status
+## Current product surface
 
-The current codebase contains the following working areas:
+The current codebase includes:
 
-- **Memory, Diary, and Task** — PostgreSQL-backed personal records with
-  filtering, search, editing, lifecycle actions, and server-side ownership.
-- **Dashboard and Day Space** — authenticated home and date-scoped Todo/Diary
-  views backed by the real APIs.
-- **Todo** — durable daily papers, revisions, status-aware entries, and
-  legacy-data migration support.
-- **Universe** — spatial Universe nodes, weighted galaxy memberships,
-  relations, revisions, backups, import/export, Global Search integration, and
-  explicit MCP node/relation writes.
-- **Global Search** — authenticated cross-module search for Memory, Diary, Task,
-  and Universe with cursor pagination and deep links.
-- **System** — account, connections, activity, data export/import, and about
-  pages.
-- **Notion integration** — server-side read access plus explicit, verified
-  page/comment writes through the MCP surface.
-- **PWA runtime** — Vite PWA manifest/assets, service-worker registration,
-  prompt-based updates, and online/update status UI. The backend remains the
-  source of truth for persisted application data.
+- **Memory, Diary, Task, and Todo** — durable personal records, filtering/search, lifecycle actions, and server-side ownership.
+- **Dashboard and Day Space** — authenticated date-scoped views backed by the real API.
+- **Universe** — nodes, weighted galaxy memberships, relations, revisions, provenance, backup/import/export, search, and explicit MCP writes.
+- **Global Search** — authenticated cross-module search and deep links.
+- **System** — account, connections, activity, data import/export, and supporting settings pages.
+- **Notion integration** — authenticated discovery and reads plus explicit verified page/comment writes through MCP tools.
+- **PWA Web runtime** — Vite PWA assets, service-worker registration, update prompts, and online/update status UI.
+- **MCP Apps surfaces** — a Thinking Block card and the Message Bridge interactive resource.
 
-The current database migration head is
-`0026_universe_diary_provenance` (see `drizzle/meta/_journal.json`). The migration chain
-must be reviewed before any production database change.
+The checked-in database migration chain currently ends at `0033_health_v2_daily_summaries` in [`drizzle/meta/_journal.json`](drizzle/meta/_journal.json). Review the migration chain before any production database change.
 
-## Web application
-
-The Web app is protected by Auth0 and includes Dashboard, Day Space, Memory,
-Diary, Task, Todo, Universe, Global Search, and System routes. It reads and
-writes through the authenticated `/api/v1` service; it is no longer a static
-page-shell-only foundation.
-
-## MCP and Notion capabilities
-
-The public MCP endpoint uses Auth0 and Streamable HTTP. The registered tools
-cover:
-
-- weather, Memory, Diary, Task, Todo, Toy, and Global Search;
-- Universe search, node/relation reads, node create/update, and relation create;
-- Notion connection discovery, page/database/data-source reads, and safe
-  parameterized data-source queries;
-- explicit `write_notion_page` and `write_notion_comment` operations, each
-  using fresh-read and readback verification. Destructive Notion delete/archive
-  operations are not exposed.
-
-### GPT Thinking Block
-
-The public MCP surface also provides `render_thinking_block`, which renders
-model-written external working text in a LeileiOS MCP Apps card before the
-model continues its normal answer. The card is not native hidden chain of
-thought (CoT): it only displays the text explicitly supplied in the tool's
-`thinking` argument. Thinking blocks are not persisted by default and do not
-become long-term memory or authoritative facts.
-
-Use it selectively for a difficult question, choosing `style`, `effort`, and
-`skin` for the current turn; it is not an every-turn requirement:
-
-> 遇到不简单的问题时，在正式回答前先调用 render_thinking_block；根据本轮内容选择合适的 style、effort 和 skin，工具返回后再继续回答。
-
-After deployment, refresh or reconnect the existing LeileiOS connector so it
-can discover the new tool. This integration is based on and includes adapted
-MCP Apps card behavior from
-[`sibylsea-hub/gpt-thinking-block-mcp`](https://github.com/sibylsea-hub/gpt-thinking-block-mcp),
-used with MIT attribution. It continues to use LeileiOS's existing endpoint,
-authentication, transport, and deployment service.
-
-MCP and Web clients never select a database user ID. Authenticated ownership is
-resolved server-side, and Notion credentials remain in server environment
-configuration only.
-
-## HTTP API surfaces
-
-In addition to `/health`, `/mcp`, and optional `/internal/mcp`, the authenticated
-Web API exposes `/api/v1` routes for:
-
-`/memory`, `/diary`, `/task`, `/toy`, `/system`, `/todo`, `/search`,
-`/system/export`, `/system/import`, and `/universe`.
-
-## Architecture
+## Web, API, and MCP architecture
 
 ```text
-Web / MCP
-    ↓
-Service
-    ↓
-Repository
-    ↓
-PostgreSQL
+Web / MCP client
+      │ authenticated request
+      ▼
+Express Web API / MCP router
+      │ server-owned identity
+      ▼
+Domain services
+      │ validation, ownership, lifecycle, concurrency
+      ▼
+Repositories ─────────────► PostgreSQL
+      │
+      └───────────────────► Notion API
 ```
 
-The Web API and MCP tools share domain services and repositories. Authentication
-establishes the server-owned user identity before domain code accesses data.
+The Web API and MCP tools share domain services and repositories. Authenticated clients do not select a database user ID; ownership is resolved server-side before domain code accesses persisted data.
 
-## Local requirements
+The public MCP endpoint is `/mcp`. An optional `/internal/mcp` path is available only when its internal bearer-token configuration is present. The authenticated Web API is served under `/api/v1`.
+
+## MCP Apps
+
+### Message Bridge
+
+The Message Bridge is an MCP Apps resource registered at:
+
+```text
+ui://leileios/message-bridge/v5
+```
+
+Its browser runtime uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` client APIs. The bundle is generated by the root build through `scripts/build-bridge-browser.mjs` and embedded into the MCP Apps resource.
+
+Starting the listener is intentionally manual: the UI renders a **Start** button and does not automatically start bridge polling/delivery. Host initialization may occur when the iframe loads, but bridge listener activation remains user-triggered.
+
+The v5 resource identifier is the current cache/version boundary for the Bridge UI. Future material UI/runtime changes should use a new resource URI rather than relying on hosts to invalidate an older cached resource.
+
+### Thinking Block
+
+`render_thinking_block` renders model-supplied external working text in a LeileiOS MCP Apps card. It does not expose native hidden chain of thought and is not persisted by default. The tool is intended for selective use when an explicit visual thinking card is useful.
+
+## Notion MCP surface
+
+Notion tools use server-side authorization and do not expose the configured PAT to clients. `read_notion_page` accepts exactly one of `page_id` or `page_url`; invalid or ambiguous references return a structured `INVALID_PAGE_REFERENCE` error. Explicit page/comment writes use fresh-read and readback verification. Destructive Notion delete/archive operations are not exposed.
+
+## Local development
+
+Requirements:
 
 - Node.js 20 or newer
 - pnpm 11.9.0 for the root service
 - npm for the Web package
-- PostgreSQL for persistent features and migrations
+- PostgreSQL for persistent features and migration checks
 
-Copy the environment templates and provide development values through ignored
-local files:
+Setup:
 
 ```bash
 cp .env.example .env
@@ -118,30 +80,7 @@ pnpm install
 npm --prefix web install
 ```
 
-The root template documents the PostgreSQL, MCP OAuth, optional Auth0-backed
-CIMD authorization adapter, Web API OAuth, CORS, and optional internal MCP
-variables. The Web template documents:
-
-- `VITE_AUTH0_DOMAIN`
-- `VITE_AUTH0_CLIENT_ID`
-- `VITE_AUTH0_AUDIENCE`
-- `VITE_AUTH0_SCOPE`
-- `VITE_AUTH0_REDIRECT_URI`
-- `VITE_API_BASE_URL`
-
-The API listens on `http://localhost:3000` by default. Vite serves the Web app
-on `http://localhost:5173` by default. Useful backend routes are:
-
-- `GET /health`
-- `/mcp` — public OAuth-protected MCP endpoint
-- `/internal/mcp` — optional internal bearer-token endpoint
-- `/api/v1` — Auth0-protected Web API
-- `/.well-known/oauth-authorization-server`, `/oauth/authorize`, and
-  `/oauth/token` — optional CIMD-compatible authorization adapter routes,
-  enabled only when `OAUTH_AS_ENABLED=true` and its upstream Auth0 settings are
-  complete
-
-## Root development
+Root commands:
 
 ```bash
 pnpm dev
@@ -149,12 +88,10 @@ pnpm test
 pnpm typecheck
 pnpm build
 pnpm start
+pnpm db:check
 ```
 
-`pnpm start` runs the compiled server from `dist/app/index.js`; run
-`pnpm build` first.
-
-## Web development
+Web commands:
 
 ```bash
 npm --prefix web run dev
@@ -162,54 +99,30 @@ npm --prefix web run typecheck
 npm --prefix web run build
 ```
 
-## Database migrations
+`pnpm build` compiles the service and regenerates the Message Bridge browser bundle. `pnpm start` runs `dist/app/index.js`; build first.
 
-Set `DATABASE_URL` for the intended PostgreSQL database, review pending
-migrations, and run:
+## Deployment topology
 
-```bash
-pnpm db:migrate
-```
+- **GitHub:** `main` is the canonical integration and release trunk.
+- **Railway:** the API/MCP service is built from the root `Dockerfile`; `railway.json` runs `node dist/database/migrate.js` as the pre-deploy migration step, then the container starts `node dist/app/index.js`.
+- **Vercel:** the `web/` SPA is built separately from `main` and served from `web/dist` with SPA route rewrites.
 
-Migrations are defined by the Drizzle schema in `src/database/schema.ts` and
-versioned under `drizzle/`. Never point a local migration command at production
-without an approved backup and deployment procedure.
+Repository documentation describes the checked-in release path, not the live deployment SHA. Verify the platform-reported commit and `/health` during production acceptance.
 
-## Production deployment
+## Security boundaries
 
-Railway builds the API from the root multi-stage `Dockerfile` and runs the
-compiled Node.js service on the platform-provided `PORT` (default `3000`). The
-deployed service exposes the HTTPS health, MCP, and Web API routes.
+- Public MCP access validates OAuth issuer, audience, signature, scope, and allowed subject server-side.
+- The optional local authorization adapter preserves Auth0 as the identity/token issuer and restricts dynamic client metadata resolution to configured HTTPS clients.
+- Web access uses its own Auth0 audience/scope and an explicit allowed origin.
+- `DATABASE_URL`, OAuth credentials, MCP tokens, bridge keys, and `NOTION_PAT` are server-side secrets and must not be logged or committed.
+- Database migrations, imports, and other durable production writes require explicit operational ownership.
 
-The `web/` React SPA is built separately. Its Vercel configuration runs
-`npm run build`, serves `web/dist`, and rewrites application routes to
-`index.html`.
+## Authoritative documentation
 
-Production credentials and database URLs belong in the deployment platforms'
-secret/environment-variable stores, never in source control.
+- [`docs/architecture.md`](docs/architecture.md) — current system boundaries and runtime architecture.
+- [`docs/deployment.md`](docs/deployment.md) — current release and production verification path.
+- [`docs/branch-release-policy.md`](docs/branch-release-policy.md) — branch and release rules.
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — recurring build/deployment diagnostics.
+- [`docs/leilei-os-v1-milestone.md`](docs/leilei-os-v1-milestone.md) — explicitly historical v1 acceptance snapshot.
 
-## Security and data boundaries
-
-- Public MCP access uses Auth0 JWT issuer, audience, scope, and allowed-subject
-  checks.
-- The optional local authorization adapter keeps Auth0 as the identity and
-  token issuer. It resolves pre-registered static clients first, permits only
-  exact configured CIMD URLs, fetches metadata over a pinned HTTPS connection,
-  and requires authorization-code + PKCE S256. It is disabled by default.
-- CIMD retrieval rejects redirects, special-use DNS destinations, oversized or
-  non-JSON responses, and never fetches `logo_uri` or another secondary URL.
-- When the adapter is enabled, discovery advertises the local CIMD adapter
-  first and retains Auth0 as a fallback for existing clients. Configure the
-  existing ChatGPT client as a static client before switching discovery; its
-  Auth0 audience, required scope, subject allowlist, and MCP token permissions
-  do not change.
-- Web access uses its own Auth0 audience and scope plus an explicit allowed
-  origin.
-- Authenticated subjects map server-side to `MCP_USER_ID`; clients do not
-  choose database user IDs.
-- Repositories scope personal records by user, status, and visibility as
-  required by each domain.
-- `DATABASE_URL`, OAuth credentials, internal MCP tokens, and bridge keys are
-  server-side secrets and must not be logged or committed.
-- The optional `/internal/mcp` route is enabled only when
-  `MCP_AUTH_TOKEN` is configured.
+Files under `docs/plans/` and other dated design/implementation areas are historical engineering records unless a current authoritative document links to them as active procedure.
