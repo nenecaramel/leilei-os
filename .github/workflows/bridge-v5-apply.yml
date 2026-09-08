@@ -1,0 +1,94 @@
+name: Temporary Bridge v5 apply
+
+on:
+  push:
+    branches:
+      - fix/message-bridge-resource-v5
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/message-bridge-resource-v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply minimal Bridge renderer fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/mcp/tools/bridge-listener/listener-resource.ts')
+          s = p.read_text()
+          old = 'ui://leileios/message-bridge/v4'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, 'ui://leileios/message-bridge/v5'))
+
+          p = Path('src/mcp/tools/bridge-listener/browser-runtime.ts')
+          s = p.read_text()
+          old = '''        const capabilities = app.getHostCapabilities() as Record<string, unknown> | undefined;
+          recordDiag(`app.connect host capabilities ${JSON.stringify({
+            serverTools: capabilities?.serverTools ?? null,
+            updateModelContext: capabilities?.updateModelContext ?? null,
+            message: capabilities?.message ?? null,
+          })}`);'''
+          new = '''        recordDiag("app.connect host capabilities received");'''
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+
+          p = Path('tests/bridge-listener-apps-portability.test.ts')
+          s = p.read_text()
+          assert s.count('ui://leileios/message-bridge/v4') == 1
+          s = s.replace('ui://leileios/message-bridge/v4', 'ui://leileios/message-bridge/v5')
+          old = '''test("Bridge Diagnostics records the host capability shape after connect", async () => {
+            const { dom } = createHost();
+            try {
+              await new Promise<void>((resolve) => setTimeout(resolve, 30));
+              const diagnostics = dom.window.document.querySelector<HTMLElement>("[data-bridge-diag]")?.textContent ?? "";
+              assert.match(diagnostics, /app\\.connect host capabilities .*"serverTools":\\{\\}/);
+              assert.match(diagnostics, /"updateModelContext":\\{"text":\\{\\}\\}/);
+              assert.match(diagnostics, /"message":\\{"text":\\{\\}\\}/);
+            } finally {
+              dom.window.close();
+            }
+          });'''
+          new = '''test("Bridge Diagnostics records capability readiness without serializing host data", async () => {
+            const { dom } = createHost();
+            try {
+              await new Promise<void>((resolve) => setTimeout(resolve, 30));
+              const diagnostics = dom.window.document.querySelector<HTMLElement>("[data-bridge-diag]")?.textContent ?? "";
+              assert.match(diagnostics, /app\\.connect host capabilities received/);
+              assert.doesNotMatch(diagnostics, /"serverTools"/);
+              assert.doesNotMatch(diagnostics, /"updateModelContext"/);
+              assert.doesNotMatch(diagnostics, /"message"/);
+            } finally {
+              dom.window.close();
+            }
+          });'''
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+          PY
+      - run: pnpm build
+      - name: Commit source, generated bundle, and tests
+        shell: bash
+        run: |
+          rm .github/workflows/bridge-v5-apply.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/mcp/tools/bridge-listener/listener-resource.ts \
+                  src/mcp/tools/bridge-listener/browser-runtime.ts \
+                  src/mcp/tools/bridge-listener/browser-runtime.js \
+                  tests/bridge-listener-apps-portability.test.ts \
+                  .github/workflows/bridge-v5-apply.yml
+          git commit -m 'fix(bridge): refresh Message Bridge resource'
+          git push origin HEAD:fix/message-bridge-resource-v5
