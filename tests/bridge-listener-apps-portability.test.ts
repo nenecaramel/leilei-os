@@ -91,7 +91,7 @@ test("Bridge resource serves the official browser bundle without bare imports or
 });
 
 test("Bridge resource registration keeps the MCP App MIME type and minimal CSP metadata", async () => {
-  assert.equal(BRIDGE_RESOURCE_URI, "ui://leileios/message-bridge/v4");
+  assert.equal(BRIDGE_RESOURCE_URI, "ui://leileios/message-bridge/v5");
   const registrations: Array<{ config: Record<string, unknown>; read: (...args: unknown[]) => Promise<unknown> }> = [];
   const server = {
     registerResource: (...args: unknown[]) => {
@@ -133,14 +133,14 @@ test("Bridge App connects immediately, auto-resizes, and keeps Bridge Start manu
   }
 });
 
-test("Bridge Diagnostics records the host capability shape after connect", async () => {
+test("Bridge Diagnostics records capability readiness without serializing host data", async () => {
   const { dom } = createHost();
   try {
     await new Promise<void>((resolve) => setTimeout(resolve, 30));
     const diagnostics = dom.window.document.querySelector<HTMLElement>("[data-bridge-diag]")?.textContent ?? "";
-    assert.match(diagnostics, /app\.connect host capabilities .*"serverTools":\{\}/);
-    assert.match(diagnostics, /"updateModelContext":\{"text":\{\}\}/);
-    assert.match(diagnostics, /"message":\{"text":\{\}\}/);
+    assert.match(diagnostics, /app\.connect host capabilities received/);
+    assert.doesNotMatch(diagnostics, /"serverTools"|"updateModelContext"/);
+    assert.doesNotMatch(diagnostics, /"message"/);
   } finally {
     dom.window.close();
   }
