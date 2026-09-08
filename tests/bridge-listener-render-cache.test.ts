@@ -50,6 +50,7 @@ function createHost(capabilities: Record<string, unknown>): JSDOM {
   return dom;
 }
 
+// A browser-runtime change must publish under a fresh resource URI so hosts do not reuse stale UI content.
 test("Message Bridge resource URI changes when its browser runtime changes", () => {
   assert.equal(BRIDGE_RESOURCE_URI, "ui://leileios/message-bridge/v5");
 });
