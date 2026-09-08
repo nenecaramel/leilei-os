@@ -58,6 +58,8 @@ The v5 resource identifier is the current cache/version boundary for the Bridge 
 
 `render_thinking_block` renders model-supplied external working text in a LeileiOS MCP Apps card. It does not expose native hidden chain of thought and is not persisted by default. The tool is intended for selective use when an explicit visual thinking card is useful.
 
+The Thinking Block integration includes adapted MCP Apps card behavior from [`sibylsea-hub/gpt-thinking-block-mcp`](https://github.com/sibylsea-hub/gpt-thinking-block-mcp), retained with its MIT attribution.
+
 ## Notion MCP surface
 
 Notion tools use server-side authorization and do not expose the configured PAT to clients. `read_notion_page` accepts exactly one of `page_id` or `page_url`; invalid or ambiguous references return a structured `INVALID_PAGE_REFERENCE` error. Explicit page/comment writes use fresh-read and readback verification. Destructive Notion delete/archive operations are not exposed.
