@@ -2,42 +2,39 @@
 
 ## Canonical trunk
 
-`main` is the only formal integration, development, and release trunk.
+`main` is the only formal integration and release trunk.
 
 - GitHub default branch: `main`.
 - Railway Production source: `main`.
 - Vercel Production Branch: `main`.
-- Feature, maintenance, and experiment branches are short-lived work branches;
-  they enter `main` only through a reviewed pull request.
-- `codex/phase-6-web-ui-foundation` is a historical integration branch, not an
-  active trunk. Keep it only while an open pull request or explicit release
-  obligation depends on it.
+- Feature, maintenance, experiment, and agent-created branches are short-lived work branches.
+- Work enters `main` through a reviewed pull request unless an explicitly documented emergency procedure applies.
 
 ## Integration rules
 
-1. All changes enter the integration trunk through a pull request.
-2. Direct pushes, force-pushes, reset/rebase rewrites, and merge commits made
-   outside the reviewed pull request are not part of the normal workflow.
-3. A pull request must document its scope, migration impact, production impact,
-   and the tests/build gates that were actually run.
-4. Draft pull requests are review work, not release evidence. A branch is not
-   production-accepted until the required deployment and database checks are
-   recorded separately.
+1. Branch from the latest `main` and keep the work focused on one change.
+2. Avoid direct pushes, force-pushes, reset/rebase rewrites of shared work, and merge commits made outside the reviewed pull-request flow.
+3. A pull request must document scope, migration impact, production impact, and the verification gates that actually ran.
+4. Draft pull requests are review work, not release evidence.
+5. Merge acceptance and production acceptance are separate records: a merged SHA is not considered live until the deployment platform reports that SHA and the required production checks pass.
 
 ## Release flow
 
-1. Branch from the latest `main` and keep the work focused on one change.
-2. Run the applicable root/Web tests, typechecks, builds, and database gates;
-   record skipped gates and their reasons.
-3. Open a reviewed pull request back to `main` with scope, migration impact,
-   production impact, and verification evidence.
-4. Merge only after review and deployment/migration ownership are confirmed.
-5. Deployments follow `main`; record the accepted release SHA and production
-   result after the platform reports success.
+1. Start from the latest `main`.
+2. Run the applicable root/Web tests, typechecks, builds, and database gates; record skipped gates and their reasons.
+3. Open a reviewed pull request back to `main` with scope, migration impact, production impact, and verification evidence.
+4. Merge only after review and release ownership are clear.
+5. Let the configured platform release path consume `main`, or trigger the approved deployment procedure when automatic deployment is unavailable.
+6. Record the deployed SHA and production verification result after the platform reports success.
 
-## Historical branches
+## Branch cleanup
 
-Merged or superseded branches are archived only after their pull-request state
-and patch equivalence have been checked. Open work, branches with unique
-unreviewed commits, and branches referenced by an active pull request are kept
-until their owner explicitly closes or supersedes them.
+Merged branches should be deleted once their commits are reachable from `main` and no active worktree or release process depends on them.
+
+A branch must be retained when it contains commits not reachable from `main` until those commits are explicitly triaged as one of:
+
+- active work to finish through a pull request;
+- historical work worth preserving;
+- superseded/abandoned work that an owner has explicitly approved for deletion.
+
+Do not use “no open pull request” as sufficient evidence that an unmerged branch is safe to delete. Clean worktrees only after checking for uncommitted changes and branch reachability.
