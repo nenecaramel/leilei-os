@@ -118,11 +118,13 @@ test(
             tags: string[];
             mood: string;
             author?: "L" | "G" | "C" | null;
+            status?: "active" | "archived";
           }) => ({
             ...input,
             source: "chatgpt_mcp" as const,
             idempotencyKey: `integration:${input.id}`,
             requestHash: createHash("sha256").update(input.id).digest("hex"),
+            status: input.status ?? ("active" as const),
             createdAt: now,
             updatedAt: now,
           });
@@ -174,7 +176,7 @@ test(
               title: "Diary G author",
               content: "Explicit G author fixture",
               date: "2026-07-08",
-              tags: [],
+              tags: ["author-test"],
               mood: "neutral",
               author: "G",
             }),
@@ -187,6 +189,32 @@ test(
               tags: [],
               mood: "neutral",
               author: null,
+            }),
+          ]);
+
+          const cAuthorId = randomUUID();
+          const archivedAuthorId = randomUUID();
+          await transaction.insert(diaryEntries).values([
+            record({
+              id: cAuthorId,
+              userId: owner,
+              title: "Diary C author",
+              content: "Explicit C author fixture",
+              date: "2026-07-08",
+              tags: [],
+              mood: "neutral",
+              author: "C",
+            }),
+            record({
+              id: archivedAuthorId,
+              userId: owner,
+              title: "Archived G author",
+              content: "Archived G author fixture",
+              date: "2026-07-08",
+              tags: [],
+              mood: "neutral",
+              author: "G",
+              status: "archived",
             }),
           ]);
           assert.deepEqual(
@@ -212,7 +240,7 @@ test(
           ) => (await service.listDiaries({ userId, query })).diaries;
 
           const initialList = await list({});
-          assert.equal(initialList.length, 5);
+          assert.equal(initialList.length, 6);
           assert.ok(initialList.some(({ id }) => id === exactId));
           assert.ok(initialList.some(({ id }) => id === partialId));
 
@@ -234,7 +262,7 @@ test(
             limit: 1,
           });
           assert.equal(limited.diaries.length, 1);
-          assert.equal(limited.metadata.count, 56);
+          assert.equal(limited.metadata.count, 57);
 
           assert.deepEqual(
             (await list({ q: "Japan private journal" }))
@@ -265,6 +293,29 @@ test(
             tag: "filter-test",
             mood: "calm",
           })).length, 0);
+
+          assert.deepEqual((await list({ author: "L" })).map(({ id }) => id), [authorFixtureIds[0]]);
+          assert.deepEqual((await list({ author: "G" })).map(({ id }) => id), [authorFixtureIds[1]]);
+          assert.deepEqual((await list({ author: "C" })).map(({ id }) => id), [cAuthorId]);
+          const combined = await service.listDiaries({
+            userId: owner,
+            query: {
+              q: "Explicit G author fixture",
+              tag: "author-test",
+              mood: "neutral",
+              dateFrom: "2026-07-08",
+              dateTo: "2026-07-08",
+              author: "G",
+            },
+          });
+          assert.deepEqual(combined.diaries.map(({ id }) => id), [authorFixtureIds[1]]);
+          assert.equal(combined.metadata.count, 1);
+          const compact = await service.searchDiaryDiscovery({
+            userId: owner,
+            query: { author: "C" },
+          });
+          assert.deepEqual(compact.diaries.map(({ id }) => id), [cAuthorId]);
+          assert.equal(compact.metadata.count, 1);
 
           throw new RollbackDiarySearchTest();
         }),
