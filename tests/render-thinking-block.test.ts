@@ -125,6 +125,7 @@ test("render_thinking_block rejects missing fields and invalid enums without ech
 });
 
 test("render_thinking_block resource has the versioned MCP Apps MIME and static card", async () => {
+  assert.equal(RENDER_THINKING_BLOCK_RESOURCE_URI, "ui://widget/leileios-thinking-block-v2.html");
   const server = new McpServer({ name: "resource-test", version: "1" });
   registerRenderThinkingBlockResource(server);
   const pair = await connect(server, "thinking-resource");
@@ -136,9 +137,54 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and static 
     assert.match(String(content.text), /botanical/);
     assert.match(String(content.text), /microglow/);
     assert.match(String(content.text), /notifyIntrinsicHeight/);
+    assert.match(String(content.text), /ontoolinput/);
+    assert.match(String(content.text), /ontoolinputpartial/);
+    assert.match(String(content.text), /ontoolresult/);
+    assert.match(String(content.text), /onhostcontextchanged/);
   } finally {
     await pair.client.close();
     await pair.server.close();
+  }
+});
+
+test("standard MCP Apps lifecycle renders authoritative input, result metadata, and host context", () => {
+  const dom = createCardDom({
+    toolInput: { style: "deep_think", thinking: "fallback", effort: "low", skin: "botanical" },
+  });
+  try {
+    const card = dom.window.thinkingBlock;
+    assert.ok(card);
+    assert.equal(typeof card?.handleToolInput, "function");
+    assert.equal(typeof card?.handleToolInputPartial, "function");
+    assert.equal(typeof card?.handleToolResult, "function");
+    assert.equal(typeof card?.handleHostContext, "function");
+    card?.handleToolInput({
+      style: "relational",
+      thinking: "standard input",
+      effort: "medium",
+      skin: "microglow",
+    });
+    card?.handleToolInputPartial({ thinking: "partial input" });
+    card?.handleToolResult({ _meta: { thinking: "authoritative result", effort: "high", skin: "microglow" } });
+    card?.handleHostContext({ theme: "dark", containerDimensions: { width: 420, maxHeight: 360 }, platform: "mobile" });
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent, "authoritative result");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: high");
+    assert.equal(dom.window.document.documentElement.dataset.skin, "microglow");
+    assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
+    assert.equal(dom.window.document.documentElement.dataset.platform, "mobile");
+    assert.match(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.style.maxHeight ?? "", /px$/);
+    dispatchGlobals(dom.window, {
+      toolInput: { thinking: "stale fallback" },
+      toolResponseMetadata: { _meta: { thinking: "stale result fallback", effort: "low", skin: "botanical" } },
+      theme: "light",
+    });
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent, "authoritative result");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: high");
+    assert.equal(dom.window.document.documentElement.dataset.skin, "microglow");
+    assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
+  } finally {
+    dom.window.close();
   }
 });
 
@@ -191,7 +237,15 @@ class FakeWindow {
   readonly listeners = new Map<string, FakeListener[]>();
   readonly requestIntrinsicHeight?: (...args: unknown[]) => void;
   openai: Record<string, unknown>;
-  thinkingBlock?: { render: (event?: FakeEvent) => void; setCollapsed: (value: boolean) => void };
+  __LEILEIOS_DISABLE_THINKING_BLOCK_CONNECT__ = true;
+  thinkingBlock?: {
+    render: (event?: FakeEvent) => void;
+    setCollapsed: (value: boolean) => void;
+    handleToolInput?: (argumentsValue?: Record<string, unknown>) => void;
+    handleToolInputPartial?: (argumentsValue?: Record<string, unknown>) => void;
+    handleToolResult?: (result: Record<string, unknown>) => void;
+    handleHostContext?: (context: Record<string, unknown>) => void;
+  };
 
   constructor(openai: Record<string, unknown>) {
     this.openai = openai;
