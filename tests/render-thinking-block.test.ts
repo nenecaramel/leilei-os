@@ -11,6 +11,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createProductionMcpSessionServerFactory } from "../src/mcp/server/production-server-factory.js";
 import {
+  CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI,
   RENDER_THINKING_BLOCK_RESOURCE_URI,
   createRenderThinkingBlockHtml,
   registerRenderThinkingBlockResource,
@@ -76,7 +77,7 @@ test("authenticated public tools/list exposes the Chinese render_thinking_block 
       openWorldHint: false,
     });
     assert.equal(tool._meta?.ui?.resourceUri, RENDER_THINKING_BLOCK_RESOURCE_URI);
-    assert.equal(tool._meta?.["openai/outputTemplate"], "ui://widget/leileios-thinking-block-v1.html");
+    assert.equal(tool._meta?.["openai/outputTemplate"], CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI);
     assert.doesNotMatch(JSON.stringify(tool._meta), /noauth/i);
   } finally {
     await pair.client.close();
@@ -150,7 +151,7 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and static 
 });
 
 test("render_thinking_block exposes one current HTML resource under the v2 URI and the ChatGPT v1 alias", async () => {
-  const v1Uri = "ui://widget/leileios-thinking-block-v1.html";
+  const v1Uri = CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI;
   const v2Uri = RENDER_THINKING_BLOCK_RESOURCE_URI;
   const server = new McpServer({ name: "resource-alias-test", version: "1" });
   registerRenderThinkingBlockResource(server);
@@ -175,7 +176,7 @@ test("render_thinking_block exposes one current HTML resource under the v2 URI a
     assert.deepEqual(v1Content._meta, v2Content._meta);
     assert.equal(v1Content.text, v2Content.text);
     assert.match(String(v1Content.text), /ontoolinput/);
-    assert.match(String(v1Content.text), /PostMessageTransport/);
+    assert.match(String(v1Content.text), /ui\/initialize/);
   } finally {
     await pair.client.close();
     await pair.server.close();

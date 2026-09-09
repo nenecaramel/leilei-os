@@ -1,7 +1,10 @@
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { RENDER_THINKING_BLOCK_RESOURCE_URI } from "./resource.js";
+import {
+  CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI,
+  RENDER_THINKING_BLOCK_RESOURCE_URI,
+} from "./resource.js";
 
 const styleSchema = z.enum(["deep_think", "relational"]);
 const effortSchema = z.enum(["low", "medium", "high"]);
@@ -50,7 +53,7 @@ export function registerRenderThinkingBlockTool(server: McpServer): void {
           resourceUri: RENDER_THINKING_BLOCK_RESOURCE_URI,
           visibility: ["model", "app"] as ["model", "app"],
         },
-        "openai/outputTemplate": RENDER_THINKING_BLOCK_RESOURCE_URI,
+        "openai/outputTemplate": CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI,
         "openai/toolInvocation/invoking": "正在渲染思考块…",
         "openai/toolInvocation/invoked": "思考块已渲染",
       },

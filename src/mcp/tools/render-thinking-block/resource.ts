@@ -7,6 +7,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 export const RENDER_THINKING_BLOCK_RESOURCE_URI =
   "ui://widget/leileios-thinking-block-v2.html";
+export const CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI =
+  "ui://widget/leileios-thinking-block-v1.html";
 
 const THINKING_BLOCK_BROWSER_BUNDLE = readFileSync(
   new URL("./browser-runtime.js", import.meta.url),
@@ -115,18 +117,23 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 
 export function registerRenderThinkingBlockResource(server: McpServer): void {
-  registerAppResource(
-    server,
-    "LeileiOS Thinking Block",
+  for (const resourceUri of [
     RENDER_THINKING_BLOCK_RESOURCE_URI,
-    { mimeType: RESOURCE_MIME_TYPE, _meta: RESOURCE_META },
-    async () => ({
-      contents: [{
-        uri: RENDER_THINKING_BLOCK_RESOURCE_URI,
-        mimeType: RESOURCE_MIME_TYPE,
-        text: createRenderThinkingBlockHtml(),
-        _meta: RESOURCE_META,
-      }],
-    }),
-  );
+    CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI,
+  ]) {
+    registerAppResource(
+      server,
+      "LeileiOS Thinking Block",
+      resourceUri,
+      { mimeType: RESOURCE_MIME_TYPE, _meta: RESOURCE_META },
+      async () => ({
+        contents: [{
+          uri: resourceUri,
+          mimeType: RESOURCE_MIME_TYPE,
+          text: createRenderThinkingBlockHtml(),
+          _meta: RESOURCE_META,
+        }],
+      }),
+    );
+  }
 }
