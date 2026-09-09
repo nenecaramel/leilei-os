@@ -14,6 +14,35 @@ export type TodoDayPapers = {
   G: TodoPaper | null;
   C: TodoPaper | null;
 };
+export type TodoSearchRow = {
+  id: string;
+  entryId: string;
+  date: string;
+  author: ContentAuthor;
+  kind: TodoEntryKind;
+  text: string;
+};
+export type TodoSearchInput = {
+  userId: string;
+  query: string;
+  author?: ContentAuthor;
+  kind?: TodoEntryKind;
+  dateFrom?: string;
+  dateTo?: string;
+  limit: number;
+};
+export type TodoSearchEntry = {
+  entry_id: string;
+  date: string;
+  author: ContentAuthor;
+  kind: TodoEntryKind;
+  text: string;
+  snippet: string;
+};
+export type TodoSearchResult = {
+  entries: TodoSearchEntry[];
+  metadata: { count: number; author: ContentAuthor | null };
+};
 export type TodoUserRecord = { status: "active" | "disabled" };
 export type ReplaceTodoPaperInput = {
   userId: string;
@@ -39,6 +68,7 @@ export interface TodoRepository {
   findUserById(userId: string): Promise<TodoUserRecord | null>;
   readDay(userId: string, date: string): Promise<TodoDayPapers>;
   listContentDates(userId: string): Promise<string[]>;
+  searchEntries?(input: TodoSearchInput): Promise<TodoSearchRow[]>;
   replacePaper(input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult>;
   replacePaperIdempotently?(
     input: ReplaceTodoPaperIdempotentlyInput,

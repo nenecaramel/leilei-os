@@ -2,12 +2,12 @@ import { sql, type SQL } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import type { ContentAuthor } from "../content-author.js";
 
-export type GlobalSearchModule = "memory" | "diary" | "task" | "universe";
+export type GlobalSearchModule = "memory" | "diary" | "task" | "todo" | "universe";
 export type GlobalSearchScope = "active" | "archived" | "all";
 export type GlobalSearchMode = "phrase" | "normal";
 export type GlobalSearchMatchReason = "exact_stable_name" | "exact_phrase" | "stable_name_prefix" | "field_match";
-export type GlobalSearchMatchedField = "key" | "title" | "content" | "description" | "tags" | "mood";
-export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "due_time" | "created_at";
+export type GlobalSearchMatchedField = "key" | "title" | "content" | "description" | "tags" | "mood" | "text";
+export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "due_time" | "created_at" | "todo_date";
 
 export type GlobalSearchUser = { status: "active" | "disabled"; timezone: string };
 export type GlobalSearchCursorTuple = { rank: number; businessTime: string; updatedAt: string; entityType: GlobalSearchModule; entityId: string };
@@ -65,6 +65,7 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     if (input.modules.includes("memory")) moduleQueries.push(memoryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("diary")) moduleQueries.push(diaryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("task")) moduleQueries.push(taskQuery(input, queryText, pattern, prefix));
+    if (input.modules.includes("todo") && input.scope !== "archived") moduleQueries.push(todoQuery(input, queryText, pattern));
     if (input.modules.includes("universe") && input.scope !== "archived") moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
     if (moduleQueries.length === 0) return [];
     const union = sql.join(moduleQueries, sql` union all `);
@@ -192,6 +193,26 @@ function taskQuery(input: GlobalSearchQuery, query: string, pattern: string, pre
     t.author::text author, ${effective} business_time, case when t.due_time is null then 'created_at' else 'due_time' end::text time_basis, t.updated_at
     from tasks t where t.user_id=${input.userId}::uuid and ${lifecycle(sql`t.lifecycle_status`, input.scope)}
     and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input);
+}
+
+function todoQuery(input: GlobalSearchQuery, _query: string, pattern: string): SQL {
+  const normalizedText = normalized(sql`e.text`, input.mode);
+  return bounded(sql`select 'todo'::text entity_type,
+    e.id::text entity_id,
+    concat(to_char(p.business_date, 'YYYY-MM-DD'), ' ', p.author, ' ', e.entry_id) stable_name,
+    'text'::text matched_field,
+    e.text matched_value,
+    'field_match'::text match_reason,
+    'active'::text lifecycle_status,
+    p.author::text author,
+    (p.business_date::timestamp at time zone 'UTC') business_time,
+    'todo_date'::text time_basis,
+    p.updated_at
+    from todo_entries e
+    inner join todo_papers p on p.id=e.paper_id
+    where p.user_id=${input.userId}::uuid
+      and ${normalizedText} like ${pattern} escape '\\'
+      and ${dates(sql`p.business_date`, input)}`, input);
 }
 
 function universeQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {

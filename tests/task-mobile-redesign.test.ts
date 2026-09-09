@@ -70,7 +70,9 @@ test("Task header has six accepted tools and no priority UI", async () => {
   const labels = ["按截止时间筛选", "按状态筛选", "按标签筛选", "搜索任务", "查看归档", "新增任务"];
   let cursor = -1;
   for (const label of labels) {
-    const next = header.indexOf(`aria-label="${label}"`);
+    const next = label === "搜索任务"
+      ? header.indexOf(`ModuleSearchButton label="${label}"`)
+      : header.indexOf(`aria-label="${label}"`);
     assert.ok(next > cursor, label);
     cursor = next;
   }

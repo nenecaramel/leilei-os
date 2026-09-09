@@ -20,9 +20,11 @@ import {
 import { DaySpaceDatePicker } from "./DaySpaceDatePicker.js";
 import { DaySpaceDiaryDialog } from "./DaySpaceDiaryDialog.js";
 import { TodoPaperDialog } from "./TodoPaperDialog.js";
+import { ModuleSearchButton, ModuleSearchField, ModuleSearchStateMessage, type ModuleSearchState } from "../components/ModuleSearch";
 import { composeDaySpacePapers, resolveDaySpaceDefaultDate, type DaySpaceModuleState } from "./day-space-data.js";
 import type { DaySpaceApi, DaySpaceDiary } from "./day-space-api.js";
-import type { TodoDay, TodoPaper } from "./todo-types.js";
+import type { TodoAuthor, TodoDay, TodoPaper } from "./todo-types.js";
+import type { TodoSearchEntry } from "./todo-api.js";
 
 type DaySpacePaper =
   | { type: "todo"; id: string; paper: TodoPaper }
@@ -38,6 +40,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const navigate = useNavigate();
   const today = formatLocalBusinessDate(new Date());
   const explicitDate = parseExplicitDaySpaceDate(location.search);
+  const requestedAuthor = new URLSearchParams(location.search).get("author") as TodoAuthor | null;
   const [selectedDate, setSelectedDate] = useState<string | null>(explicitDate);
   const [discoveryStatus, setDiscoveryStatus] = useState<"idle" | "loading" | "error" | "ready">(explicitDate ? "ready" : "idle");
   const [discoveryIncomplete, setDiscoveryIncomplete] = useState(false);
@@ -46,6 +49,11 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const [diaryState, setDiaryState] = useState<DaySpaceModuleState<DaySpaceDiary[]>>({ status: "loading" });
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openPaperId, setOpenPaperId] = useState<string | null>(null);
+  const [todoSearchOpen, setTodoSearchOpen] = useState(false);
+  const [todoSearchDraft, setTodoSearchDraft] = useState("");
+  const [todoSearchState, setTodoSearchState] = useState<ModuleSearchState>("idle");
+  const [todoSearchResults, setTodoSearchResults] = useState<TodoSearchEntry[]>([]);
+  const [todoSearchRetry, setTodoSearchRetry] = useState(0);
   const [stageWidth, setStageWidth] = useState(345);
   const stageMeasureRef = useRef<HTMLDivElement | null>(null);
   const paperTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -54,6 +62,9 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const diaryRequest = useRef(0);
   const todoController = useRef<AbortController | null>(null);
   const diaryController = useRef<AbortController | null>(null);
+  const todoSearchController = useRef<AbortController | null>(null);
+  const todoSearchSequence = useRef(0);
+  const openedRequestedPaper = useRef<string | null>(null);
   const selectedDateRef = useRef<string | null>(selectedDate);
   selectedDateRef.current = selectedDate;
 
@@ -178,6 +189,45 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const layoutById = useMemo(() => new Map((layout?.items ?? []).map((item) => [item.id, item])), [layout]);
   const openPaper = papers.find((paper) => paper.id === openPaperId) ?? null;
 
+  useEffect(() => {
+    if (!selectedDate || !requestedAuthor || !["L", "G", "C"].includes(requestedAuthor)) return;
+    const requestKey = `${selectedDate}:${requestedAuthor}`;
+    if (openedRequestedPaper.current === requestKey) return;
+    const target = papers.find((paper) => paper.type === "todo" && paper.paper.author === requestedAuthor);
+    if (target) {
+      openedRequestedPaper.current = requestKey;
+      setOpenPaperId(target.id);
+    }
+  }, [papers, requestedAuthor, selectedDate]);
+
+  useEffect(() => {
+    const query = todoSearchDraft.normalize("NFC").trim();
+    todoSearchController.current?.abort();
+    if (!todoSearchOpen || !query) {
+      setTodoSearchState("idle");
+      setTodoSearchResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    todoSearchController.current = controller;
+    const sequence = ++todoSearchSequence.current;
+    setTodoSearchState("loading");
+    if (!api.searchTodo) {
+      setTodoSearchState("error");
+      return () => controller.abort();
+    }
+    void api.searchTodo(query, controller.signal).then((result) => {
+      if (controller.signal.aborted || sequence !== todoSearchSequence.current) return;
+      setTodoSearchResults(result.entries);
+      setTodoSearchState(result.entries.length ? "ready" : "empty");
+    }).catch(() => {
+      if (controller.signal.aborted || sequence !== todoSearchSequence.current) return;
+      setTodoSearchState("error");
+      setTodoSearchResults([]);
+    });
+    return () => controller.abort();
+  }, [api, todoSearchDraft, todoSearchOpen, todoSearchRetry]);
+
   const refreshDiary = useCallback(async (date: string, committed: DaySpaceDiary) => {
     const current = generation.current;
     const ticket = ++diaryRequest.current;
@@ -234,7 +284,21 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
 
   return (
     <main className="day-space-page">
-      <header className="day-space-header"><div className="memory-page-heading"><div className="memory-page-title">Day Space</div></div></header>
+      <header className="day-space-header">
+        <div className="memory-page-heading"><div className="memory-page-title">Day Space</div></div>
+        <div className="memory-page-tools day-space-header-tools">
+          <ModuleSearchButton label="搜索 Todo" expanded={todoSearchOpen} onClick={() => setTodoSearchOpen((value) => !value)} />
+        </div>
+        {todoSearchOpen ? <ModuleSearchField ariaLabel="搜索 Todo 内容" placeholder="搜索 Todo 内容" value={todoSearchDraft} onChange={setTodoSearchDraft} /> : null}
+      </header>
+      {todoSearchOpen ? <div className="day-space-search-panel">
+        <ModuleSearchStateMessage state={todoSearchState} emptyText="没有匹配的 Todo" errorText="Todo 暂时无法搜索。" onRetry={() => setTodoSearchRetry((value) => value + 1)} />
+        {todoSearchState === "ready" ? <div className="day-space-search-results" aria-label="Todo 搜索结果">
+          {todoSearchResults.map((entry) => <button type="button" key={`${entry.date}:${entry.author}:${entry.entry_id}`} onClick={() => navigate(`/day-space?date=${encodeURIComponent(entry.date)}&author=${entry.author}`)}>
+            <span>{entry.date} · {entry.author} · {entry.kind}</span><strong>{entry.snippet}</strong>
+          </button>)}
+        </div> : null}
+      </div> : null}
       <div className="day-space-date-area">
         <div className="day-space-date-nav" aria-label="Day Space 日期导航">
           <button type="button" aria-label="前一天" disabled={!selectedDate} onClick={() => selectedDate && go(shiftBusinessDate(selectedDate, -1))}>‹</button>

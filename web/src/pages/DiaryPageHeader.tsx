@@ -4,8 +4,8 @@ import {
   CalendarIcon,
   MoodIcon,
   PenIcon,
-  SearchIcon,
 } from "../components/icons";
+import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
 import { NativeDateInput } from "../components/NativeDateInput";
 
 type DiaryPageHeaderProps = {
@@ -172,18 +172,15 @@ export function DiaryPageHeader({
           ) : null}
         </div>
 
-        <button
-          type="button"
-          aria-label="搜索日记"
-          aria-expanded={searchOpen}
+        <ModuleSearchButton
+          label="搜索日记"
+          expanded={searchOpen}
           disabled={busy}
           onClick={() => {
             setOpenTool(null);
             setSearchOpen((value) => !value);
           }}
-        >
-          <SearchIcon className="memory-page-search-icon" />
-        </button>
+        />
         <button
           type="button"
           aria-label="查看归档"
@@ -202,19 +199,7 @@ export function DiaryPageHeader({
         </button>
       </div>
 
-      {searchOpen ? (
-        <div className="memory-page-search diary-page-search">
-          <SearchIcon />
-          <input
-            type="text"
-            aria-label="搜索日记内容"
-            maxLength={200}
-            placeholder="搜索标题或正文"
-            value={searchDraft}
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-        </div>
-      ) : null}
+      {searchOpen ? <ModuleSearchField className="diary-page-search" ariaLabel="搜索日记内容" placeholder="搜索标题或正文" value={searchDraft} onChange={onSearchChange} /> : null}
 
       {filterError ? (
         <p className="diary-filter-error" role="alert">{filterError}</p>

@@ -72,7 +72,7 @@ test("Memory header tools use the accepted optical balance", () => {
 
 test("Memory search contains no right-side cancel cross", () => {
   assert.equal(header.includes('type="search"'), false);
-  assert.ok(header.includes('type="text"'));
+  assert.match(header, /ModuleSearchField/);
 
   assert.equal(
     header.includes('aria-label="清除筛选"'),

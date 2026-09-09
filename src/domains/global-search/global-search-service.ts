@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ContentAuthor } from "../content-author.js";
+import { createSearchSnippet, MAX_SEARCH_SNIPPET_CODE_POINTS } from "../search/search-text.js";
 import type {
   GlobalSearchCursorTuple,
   GlobalSearchMatchedField,
@@ -10,7 +11,7 @@ import type {
   GlobalSearchTimeBasis,
 } from "./global-search-repository.js";
 
-const MODULES = ["memory", "diary", "task", "universe"] as const;
+const MODULES = ["memory", "diary", "task", "todo", "universe"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
 const CURSOR_FINGERPRINT = /^[0-9a-f]{64}$/;
@@ -18,7 +19,6 @@ const CURSOR_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_CURSOR_ENCODED_LENGTH = 2800;
 const MAX_CURSOR_DECODED_BYTES = 2000;
-const MAX_SNIPPET_CODE_POINTS = 240;
 
 export type GlobalSearchInput = {
   userId: string;
@@ -44,8 +44,8 @@ export type GlobalSearchItem = {
   time_basis: GlobalSearchTimeBasis;
   updated_at: string;
   author: ContentAuthor | null;
-  detail_tool: "get_memory" | "get_diary" | "get_task" | "get_universe_node" | null;
-  detail_arguments: { id: string; scope: "active" | "archived" } | { id: string } | null;
+  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | null;
+  detail_arguments: { id: string; scope: "active" | "archived" } | { id: string } | { date: string } | null;
 };
 
 export type GlobalSearchResult = {
@@ -116,8 +116,8 @@ export class GlobalSearchService {
         time_basis: row.timeBasis,
         updated_at: row.updatedAt.toISOString(),
         author: row.author,
-        detail_tool: row.entityType === "universe" ? "get_universe_node" : ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
-        detail_arguments: row.entityType === "universe" ? { id: row.entityId } : { id: row.entityId, scope: row.lifecycleStatus },
+        detail_tool: row.entityType === "universe" ? "get_universe_node" : row.entityType === "todo" ? "read_todo_day" : ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
+        detail_arguments: row.entityType === "universe" ? { id: row.entityId } : row.entityType === "todo" ? { date: row.businessTime.toISOString().slice(0, 10) } : { id: row.entityId, scope: row.lifecycleStatus },
       })),
       metadata: {
         count: page.length,
@@ -219,42 +219,6 @@ function decodeCursor(cursor: string | undefined, fingerprint: string): GlobalSe
   }
 }
 
-function flexibleQueryPattern(query: string): RegExp {
-  const escaped = query
-    .normalize("NFC")
-    .replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")
-    .replace(/\s+/gu, "\\s+");
-  return new RegExp(escaped, "iu");
-}
-
 export function createGlobalSearchSnippet(value: string, query: string): string {
-  const source = value.normalize("NFC");
-  const match = flexibleQueryPattern(query).exec(source);
-  if (!match) throw new Error("Global search repository returned a non-matching snippet source.");
-
-  const sourcePoints = [...source];
-  const matchStart = [...source.slice(0, match.index)].length;
-  const matchLength = [...match[0]].length;
-  const matchEnd = matchStart + matchLength;
-  let start = Math.max(0, matchStart - 80);
-  let end = Math.min(sourcePoints.length, Math.max(matchEnd, start + MAX_SNIPPET_CODE_POINTS));
-  start = Math.max(0, Math.min(start, end - MAX_SNIPPET_CODE_POINTS));
-
-  let leading = start > 0;
-  let trailing = end < sourcePoints.length;
-  let contentBudget = MAX_SNIPPET_CODE_POINTS - Number(leading) - Number(trailing);
-  if (end - start > contentBudget) {
-    const before = Math.min(matchStart, Math.floor((contentBudget - matchLength) / 2));
-    start = Math.max(0, matchStart - Math.max(0, before));
-    end = Math.min(sourcePoints.length, start + contentBudget);
-    if (end < matchEnd) {
-      end = matchEnd;
-      start = Math.max(0, end - contentBudget);
-    }
-    leading = start > 0;
-    trailing = end < sourcePoints.length;
-    contentBudget = MAX_SNIPPET_CODE_POINTS - Number(leading) - Number(trailing);
-    if (end - start > contentBudget) end = start + contentBudget;
-  }
-  return `${leading ? "…" : ""}${sourcePoints.slice(start, end).join("")}${trailing ? "…" : ""}`;
+  return createSearchSnippet(value, query, MAX_SEARCH_SNIPPET_CODE_POINTS, "Global search repository returned a non-matching snippet source.");
 }

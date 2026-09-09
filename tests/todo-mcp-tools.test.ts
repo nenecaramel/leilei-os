@@ -484,7 +484,7 @@ test("write_todo_paper distinguishes bounded conflicts and sanitizes internal fa
   assert.match(JSON.stringify(response), /Authentication is required/);
 });
 
-test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
+test("Todo exposes the read/write/search MCP surface", async (t) => {
   const fixture = await connect();
   t.after(async () => {
     await fixture.client.close();
@@ -492,11 +492,11 @@ test("Todo exposes exactly the frozen three-tool MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
-  assert.equal(tools.length, 40, "the MCP surface must contain the complete read-only Notion extension, resource updates, and Universe writes");
+  assert.equal(tools.length, 41, "the MCP surface must contain the complete read-only Notion extension, resource updates, Universe writes, and Todo search");
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
-    ["list_todo_dates", "read_todo_day", "write_todo_paper"],
+    ["list_todo_dates", "read_todo_day", "search_todo", "write_todo_paper"],
   );
   for (const forbidden of [
     "get_day_space",

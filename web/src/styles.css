@@ -5903,7 +5903,74 @@ body:has(.system-page) {
   }
 
   .day-space-header {
+    position: relative;
     display: block;
+  }
+
+  .day-space-header-tools {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+
+  .day-space-header > .memory-page-search {
+    margin-top: 12px;
+  }
+
+  .day-space-search-panel {
+    margin-top: 8px;
+  }
+
+  .module-search-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    color: #777;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: center;
+  }
+
+  .module-search-state button {
+    margin-left: 8px;
+    padding: 0;
+    border: 0;
+    color: #666;
+    background: transparent;
+    font: inherit;
+    text-decoration: underline;
+  }
+
+  .day-space-search-results {
+    display: grid;
+    gap: 6px;
+  }
+
+  .day-space-search-results > button {
+    display: grid;
+    gap: 3px;
+    padding: 9px 10px;
+    border: 1px solid #e5e5e5;
+    border-radius: 9px;
+    color: #4b4b4b;
+    background: #fff;
+    font: inherit;
+    text-align: left;
+  }
+
+  .day-space-search-results > button span {
+    color: #8a8a8a;
+    font-size: 11px;
+  }
+
+  .day-space-search-results > button strong {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 450;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .day-space-header .memory-page-heading {

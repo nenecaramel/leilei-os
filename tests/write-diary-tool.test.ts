@@ -123,6 +123,7 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
       "search_diary",
       "search_memory",
       "search_notion",
+      "search_todo",
       "search_universe",
       "toy_set",
       "toy_stop",

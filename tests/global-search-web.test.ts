@@ -393,7 +393,7 @@ test("clearing a query returns to idle without requesting or restoring the old s
     assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search");
     assert.equal(page.dom.window.history.state?.globalSearch, undefined);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /目标/);
-    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task 与 Universe 中保存的内容/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task、Todo 与 Universe 中保存的内容/);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
     assert.equal(page.dom.window.document.querySelector("[role=alert]"), null);
   } finally {
@@ -421,7 +421,7 @@ test("clearing an overlong initial URL normalizes the address without requesting
     assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=memory&scope=all&mode=phrase&date_from=2026-08-01");
     assert.equal(page.dom.window.history.state?.globalSearch, undefined);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
-    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task 与 Universe 中保存的内容/);
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task、Todo 与 Universe 中保存的内容/);
   } finally {
     await page.cleanup();
   }
@@ -450,8 +450,8 @@ test("empty query filter changes update URL without requesting", async () => {
     assert.ok(from);
     await React.act(async () => { reactChange(from, "2026-08-01"); });
     assert.equal(requests.length, 0);
-    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=diary%2Ctask%2Cuniverse&scope=all&mode=phrase&date_from=2026-08-01");
-    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task 与 Universe 中保存的内容/);
+    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=diary%2Ctask%2Ctodo%2Cuniverse&scope=all&mode=phrase&date_from=2026-08-01");
+    assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task、Todo 与 Universe 中保存的内容/);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
   } finally {
     await page.cleanup();
