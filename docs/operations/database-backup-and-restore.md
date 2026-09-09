@@ -27,7 +27,7 @@ Confirmed:
 - The migration runner records the accepted migration head in
   `public.leilei_schema_migrations` and validates the legacy
   `drizzle.__drizzle_migrations` ledger during bootstrap.
-- The current verified production migration head on `main` is `0026_universe_diary_provenance`.
+- The current verified production migration head on `main` is `0033_health_v2_daily_summaries`.
 
 Railway platform backups/PITR are not assumed to be available. Persistent
 volume storage is not itself a verified backup.
@@ -182,7 +182,7 @@ database gate passed. It is historical recovery/release evidence, not a current
 merge or deployment gate.
 
 The current verified production migration head is
-`0026_universe_diary_provenance`. Future destructive migrations must satisfy the
+`0033_health_v2_daily_summaries`. Future destructive migrations must satisfy the
 general destructive migration gate above with fresh, exact-head recovery
 evidence.
 
