@@ -194,20 +194,28 @@ test("MCP session rejections emit safe structured reasons without changing respo
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
     });
     assert.equal(missingHeader.status, 400);
-    await missingHeader.text();
+    assert.deepEqual(await missingHeader.json(), {
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Invalid or missing MCP session." },
+      id: null,
+    });
 
     const unknownSession = await sessionProbeRequest("POST", url, {
       headers: { "mcp-session-id": "unknown-session" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
     });
     assert.equal(unknownSession.status, 404);
-    await unknownSession.text();
+    assert.deepEqual(await unknownSession.json(), {
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Invalid or missing MCP session." },
+      id: null,
+    });
 
     const namespaceMismatch = await sessionProbeRequest("GET", url, {
       headers: { "mcp-session-id": "known-internal" },
     });
     assert.equal(namespaceMismatch.status, 400);
-    await namespaceMismatch.text();
+    assert.equal(await namespaceMismatch.text(), "Invalid or missing MCP session.");
 
     const identityMismatch = await sessionProbeRequest("POST", url, {
       headers: {
@@ -217,14 +225,18 @@ test("MCP session rejections emit safe structured reasons without changing respo
       body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list", params: {} }),
     });
     assert.equal(identityMismatch.status, 403);
-    await identityMismatch.text();
+    assert.deepEqual(await identityMismatch.json(), {
+      jsonrpc: "2.0",
+      error: { code: -32003, message: "MCP session belongs to another user." },
+      id: null,
+    });
 
     now += 101;
     const unavailableSession = await sessionProbeRequest("GET", url, {
       headers: { "mcp-session-id": "expired-public" },
     });
     assert.equal(unavailableSession.status, 404);
-    await unavailableSession.text();
+    assert.equal(await unavailableSession.text(), "Invalid or missing MCP session.");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
@@ -235,11 +247,11 @@ test("MCP session rejections emit safe structured reasons without changing respo
   assert.deepEqual(
     rejectionLines.map(({ timestamp: _timestamp, ...line }) => line),
     [
-      { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp", status: 400, reason: "missing_session_header" },
-      { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp", status: 404, reason: "unknown_session" },
-      { level: "warn", event: "mcp_session_rejected", method: "GET", routeClass: "mcp", status: 400, reason: "namespace_mismatch" },
-      { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp", status: 403, reason: "identity_mismatch" },
-      { level: "warn", event: "mcp_session_rejected", method: "GET", routeClass: "mcp", status: 404, reason: "session_unavailable" },
+      { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp_public", status: 400, reason: "missing_session_header" },
+      { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp_public", status: 404, reason: "unknown_session" },
+      { level: "warn", event: "mcp_session_rejected", method: "GET", routeClass: "mcp_public", status: 400, reason: "namespace_mismatch" },
+      { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp_public", status: 403, reason: "identity_mismatch" },
+      { level: "warn", event: "mcp_session_rejected", method: "GET", routeClass: "mcp_public", status: 404, reason: "session_unavailable" },
     ],
   );
   const serialized = JSON.stringify(rejectionLines);
