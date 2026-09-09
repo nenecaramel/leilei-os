@@ -66,6 +66,7 @@ const EXPECTED_PRODUCTION_MCP_TOOL_NAMES = [
   "read_notion_database",
   "read_notion_page",
   "read_todo_day",
+  "search_todo",
   "search_diary",
   "search_memory",
   "search_notion",
@@ -109,6 +110,7 @@ const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKin
   read_notion_database: "structured",
   read_notion_page: "structured",
   read_todo_day: "structured",
+  search_todo: "structured",
   search_diary: "structured",
   search_memory: "structured",
   search_notion: "structured",
@@ -153,6 +155,7 @@ const STRUCTURED_ERROR_ASSERTION_TOOLS = new Set([
   "read_notion_database",
   "read_notion_page",
   "read_todo_day",
+  "search_todo",
   "search_diary",
   "search_memory",
   "search_notion",
@@ -660,7 +663,7 @@ test("production MCP error audit covers every registered tool", async (t) => {
     .map(([name]) => name)
     .sort();
   assert.deepEqual(structured, [...STRUCTURED_ERROR_ASSERTION_TOOLS].sort());
-  assert.equal(structured.length, 38);
+  assert.equal(structured.length, 39);
   assert.deepEqual(
     Object.entries(PRODUCTION_MCP_TOOL_ERROR_AUDIT)
       .filter(([, kind]) => kind === "no-handler-error")

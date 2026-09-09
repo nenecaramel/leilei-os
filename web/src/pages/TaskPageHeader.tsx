@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArchiveIcon, CalendarIcon, PenIcon, SearchIcon, StatusIcon } from "../components/icons";
+import { ArchiveIcon, CalendarIcon, PenIcon, StatusIcon } from "../components/icons";
 import { NativeDateInput } from "../components/NativeDateInput";
+import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
 import type { TaskDueFilter } from "./task-location";
 
 type Props = {
@@ -48,11 +49,11 @@ export function TaskPageHeader(props: Props) {
           <button type="button" aria-label="按标签筛选" aria-expanded={tool === "tag"} aria-pressed={Boolean(props.tagDraft)} disabled={props.busy} onClick={() => toggle("tag")}><span className="memory-page-tag-icon" aria-hidden="true">#</span></button>
           {tool === "tag" ? <div className="memory-page-popover diary-filter-popover diary-text-popover"><input type="text" aria-label="按标签筛选" placeholder="标签" maxLength={50} value={props.tagDraft} onChange={(e) => props.onTagChange(e.target.value)} /></div> : null}
         </div>
-        <button type="button" aria-label="搜索任务" aria-expanded={searchOpen} disabled={props.busy} onClick={() => { setTool(null); setSearchOpen((v) => !v); }}><SearchIcon className="memory-page-search-icon" /></button>
+        <ModuleSearchButton label="搜索任务" expanded={searchOpen} disabled={props.busy} onClick={() => { setTool(null); setSearchOpen((v) => !v); }} />
         <button type="button" aria-label="查看归档" disabled={props.busy} onClick={(e) => props.onOpenArchive(e.currentTarget)}><ArchiveIcon /></button>
         <button type="button" aria-label="新增任务" disabled={props.busy} onClick={(e) => props.onCreate(e.currentTarget)}><PenIcon className="memory-page-create-icon" /></button>
       </div>
-      {searchOpen ? <div className="memory-page-search task-page-search"><SearchIcon /><input type="text" aria-label="搜索任务内容" maxLength={200} placeholder="搜索标题或正文" value={props.searchDraft} onChange={(e) => props.onSearchChange(e.target.value)} /></div> : null}
+      {searchOpen ? <ModuleSearchField className="task-page-search" ariaLabel="搜索任务内容" placeholder="搜索标题或正文" value={props.searchDraft} onChange={props.onSearchChange} /> : null}
     </header>
   );
 }

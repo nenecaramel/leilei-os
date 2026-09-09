@@ -2691,6 +2691,28 @@ body:has(.home-prototype) {
   }
 }
 
+/* Shared module search result states */
+.module-search-state {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  color: #777;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.module-search-state > button:not(.secondary-button) {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  color: #666;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+}
+
 @media (max-width: 760px) {
   .memory-months {
     display: grid;
@@ -5902,12 +5924,39 @@ body:has(.system-page) {
     color: #171717;
   }
 
-  .day-space-header {
-    display: block;
+  .day-space-search-panel {
+    margin-top: 8px;
   }
 
-  .day-space-header .memory-page-heading {
-    padding-top: 2px;
+  .day-space-search-results {
+    display: grid;
+    gap: 6px;
+  }
+
+  .day-space-search-results > button {
+    display: grid;
+    gap: 3px;
+    padding: 9px 10px;
+    border: 1px solid #e5e5e5;
+    border-radius: 9px;
+    color: #4b4b4b;
+    background: #fff;
+    font: inherit;
+    text-align: left;
+  }
+
+  .day-space-search-results > button span {
+    color: #8a8a8a;
+    font-size: 11px;
+  }
+
+  .day-space-search-results > button strong {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 450;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .day-space-date-area {

@@ -248,6 +248,7 @@ test("all MCP read contracts and existing write boundaries stay registered", asy
     "get_task",
     "read_todo_day",
     "list_todo_dates",
+    "search_todo",
     "search_universe",
     "get_universe_node",
     "get_universe_relations",
@@ -464,6 +465,7 @@ test("strict schemas reject client-supplied identity before every module service
     "list_tasks",
     "read_todo_day",
     "list_todo_dates",
+    "search_todo",
   ]) {
     const result = await fixture.client.callTool({
       name,

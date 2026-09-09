@@ -3,8 +3,8 @@ import {
   ArchiveIcon,
   DashboardIcon,
   PenIcon,
-  SearchIcon,
 } from "../components/icons.js";
+import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
 
 type MemoryPageHeaderProps = {
   count: number;
@@ -140,18 +140,15 @@ export function MemoryPageHeader({
           ) : null}
         </div>
 
-        <button
-          type="button"
-          aria-label="搜索记忆"
-          aria-expanded={searchOpen}
+        <ModuleSearchButton
+          label="搜索记忆"
+          expanded={searchOpen}
           disabled={busy}
           onClick={() => {
             setOpenMenu(null);
             setSearchOpen((value) => !value);
           }}
-        >
-          <SearchIcon className="memory-page-search-icon" />
-        </button>
+        />
         <button
           type="button"
           aria-label="查看归档"
@@ -170,20 +167,7 @@ export function MemoryPageHeader({
         </button>
       </div>
 
-      {searchOpen ? (
-        <div className="memory-page-search">
-          <SearchIcon />
-          <input
-            type="text"
-            aria-label="搜索记忆"
-            maxLength={200}
-            placeholder="搜索 Key 或内容"
-            value={searchDraft}
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-
-        </div>
-      ) : null}
+      {searchOpen ? <ModuleSearchField ariaLabel="搜索记忆" placeholder="搜索 Key 或内容" value={searchDraft} onChange={onSearchChange} /> : null}
     </header>
   );
 }

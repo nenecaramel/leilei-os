@@ -2,12 +2,12 @@ import { sql, type SQL } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import type { ContentAuthor } from "../content-author.js";
 
-export type GlobalSearchModule = "memory" | "diary" | "task" | "universe";
+export type GlobalSearchModule = "memory" | "diary" | "task" | "todo" | "universe";
 export type GlobalSearchScope = "active" | "archived" | "all";
 export type GlobalSearchMode = "phrase" | "normal";
 export type GlobalSearchMatchReason = "exact_stable_name" | "exact_phrase" | "stable_name_prefix" | "field_match";
-export type GlobalSearchMatchedField = "key" | "title" | "content" | "description" | "tags" | "mood";
-export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "due_time" | "created_at";
+export type GlobalSearchMatchedField = "key" | "title" | "content" | "description" | "tags" | "mood" | "text";
+export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "due_time" | "created_at" | "todo_date";
 
 export type GlobalSearchUser = { status: "active" | "disabled"; timezone: string };
 export type GlobalSearchCursorTuple = { rank: number; businessTime: string; updatedAt: string; entityType: GlobalSearchModule; entityId: string };
@@ -36,6 +36,8 @@ export type GlobalSearchRow = {
   updatedAt: Date;
   rank: number;
   author: ContentAuthor | null;
+  /** Raw Todo business date for read_todo_day pointers; never infer it from businessTime. */
+  businessDate?: string | null;
 };
 
 export interface GlobalSearchRepository {
@@ -65,6 +67,7 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     if (input.modules.includes("memory")) moduleQueries.push(memoryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("diary")) moduleQueries.push(diaryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("task")) moduleQueries.push(taskQuery(input, queryText, pattern, prefix));
+    if (input.modules.includes("todo") && input.scope !== "archived") moduleQueries.push(todoQuery(input, queryText, pattern));
     if (input.modules.includes("universe") && input.scope !== "archived") moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
     if (moduleQueries.length === 0) return [];
     const union = sql.join(moduleQueries, sql` union all `);
@@ -73,7 +76,7 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
       select entity_type as "entityType", entity_id as "entityId", stable_name as "stableName",
         matched_field as "matchedField", matched_value as "matchedValue", match_reason as "matchReason",
         lifecycle_status as "lifecycleStatus", business_time as "businessTime", time_basis as "timeBasis",
-        updated_at as "updatedAt", rank, author
+        updated_at as "updatedAt", business_date as "businessDate", rank, author
       from ranked
       order by rank asc, business_time desc, updated_at desc, entity_type asc, entity_id asc
       limit ${input.limit}
@@ -139,6 +142,7 @@ function bounded(
         date_trunc('milliseconds', module_candidates.business_time) as business_time,
         module_candidates.time_basis,
         date_trunc('milliseconds', module_candidates.updated_at) as updated_at,
+        module_candidates.business_date,
         ${rankExpression()} as rank
       from (${query}) module_candidates
     ) ranked_module_candidates
@@ -170,7 +174,7 @@ function memoryQuery(input: GlobalSearchQuery, query: string, pattern: string, p
   const businessDate = sql`(m.updated_at at time zone ${input.timezone})::date`;
   return bounded(sql`select 'memory'::text entity_type, m.id::text entity_id, m.key stable_name,
     ${reasonAndField(sql`m.key`, fields, input.mode, query, pattern, prefix)}, m.status::text lifecycle_status,
-    m.author::text author, m.updated_at business_time, 'updated_at'::text time_basis, m.updated_at
+    m.author::text author, m.updated_at business_time, 'updated_at'::text time_basis, m.updated_at, null::date business_date
     from core_memories m where m.user_id=${input.userId}::uuid and m.visibility='assistant' and ${lifecycle(sql`m.status`, input.scope)}
     and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input);
 }
@@ -179,7 +183,7 @@ function diaryQuery(input: GlobalSearchQuery, query: string, pattern: string, pr
   const fields = [{ name: "title" as const, value: sql`d.title` }, { name: "content" as const, value: sql`d.content` }, { name: "tags" as const, value: tags }, { name: "mood" as const, value: mood }];
   return bounded(sql`select 'diary'::text entity_type, d.id::text entity_id, d.title stable_name,
     ${reasonAndField(sql`d.title`, fields, input.mode, query, pattern, prefix)}, d.status::text lifecycle_status,
-    d.author::text author, (d.date::timestamp at time zone ${input.timezone}) business_time, 'diary_date'::text time_basis, d.updated_at
+    d.author::text author, (d.date::timestamp at time zone ${input.timezone}) business_time, 'diary_date'::text time_basis, d.updated_at, null::date business_date
     from diary_entries d where d.user_id=${input.userId}::uuid and ${lifecycle(sql`d.status`, input.scope)}
     and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(sql`d.date`, input)}`, input);
 }
@@ -189,9 +193,30 @@ function taskQuery(input: GlobalSearchQuery, query: string, pattern: string, pre
   const effective = sql`coalesce(t.due_time, t.created_at)`; const businessDate = sql`(${effective} at time zone ${input.timezone})::date`;
   return bounded(sql`select 'task'::text entity_type, t.id::text entity_id, t.title stable_name,
     ${reasonAndField(sql`t.title`, fields, input.mode, query, pattern, prefix)}, t.lifecycle_status::text lifecycle_status,
-    t.author::text author, ${effective} business_time, case when t.due_time is null then 'created_at' else 'due_time' end::text time_basis, t.updated_at
+    t.author::text author, ${effective} business_time, case when t.due_time is null then 'created_at' else 'due_time' end::text time_basis, t.updated_at, null::date business_date
     from tasks t where t.user_id=${input.userId}::uuid and ${lifecycle(sql`t.lifecycle_status`, input.scope)}
     and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input);
+}
+
+function todoQuery(input: GlobalSearchQuery, query: string, pattern: string): SQL {
+  const normalizedText = normalized(sql`e.text`, input.mode);
+  return bounded(sql`select 'todo'::text entity_type,
+    e.id::text entity_id,
+    concat(to_char(p.business_date, 'YYYY-MM-DD'), ' ', p.author, ' ', e.entry_id) stable_name,
+    'text'::text matched_field,
+    e.text matched_value,
+    case when ${normalizedText} = ${query} then 'exact_phrase' else 'field_match' end::text match_reason,
+    'active'::text lifecycle_status,
+    p.author::text author,
+    (p.business_date::timestamp at time zone ${input.timezone}) business_time,
+    'todo_date'::text time_basis,
+    p.updated_at,
+    p.business_date business_date
+    from todo_entries e
+    inner join todo_papers p on p.id=e.paper_id
+    where p.user_id=${input.userId}::uuid
+      and ${normalizedText} like ${pattern} escape '\\'
+      and ${dates(sql`p.business_date`, input)}`, input);
 }
 
 function universeQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
@@ -205,7 +230,7 @@ function universeQuery(input: GlobalSearchQuery, query: string, pattern: string,
   const businessDate = sql`(n.updated_at at time zone ${input.timezone})::date`;
   return bounded(sql`select 'universe'::text entity_type, n.id::text entity_id, n.title stable_name,
     ${reasonAndField(sql`n.title`, fields, input.mode, query, pattern, prefix)},
-    'active'::text lifecycle_status, null::text author, n.updated_at business_time, 'updated_at'::text time_basis, n.updated_at
+    'active'::text lifecycle_status, null::text author, n.updated_at business_time, 'updated_at'::text time_basis, n.updated_at, null::date business_date
     from universe_nodes n
     inner join universe_meta um on um.user_id = n.user_id
     where n.user_id=${input.userId}::uuid

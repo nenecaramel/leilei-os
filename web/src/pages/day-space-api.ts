@@ -1,7 +1,7 @@
 import type { WebApiClient } from "../api/useWebApiClient";
 import type { PaperAuthorValue } from "./PaperAuthorSignature";
-import { loadTodoDay, listTodoDates } from "./todo-api";
-import type { TodoDay } from "./todo-types";
+import { loadTodoDay, listTodoDates, searchTodo, type TodoSearchEntry } from "./todo-api";
+import type { TodoAuthor, TodoDay } from "./todo-types";
 
 export type DaySpaceDiary = {
   id: string;
@@ -29,6 +29,7 @@ export type DaySpaceApi = {
   webClient: WebApiClient;
   listTodoDates(signal?: AbortSignal): Promise<string[]>;
   loadTodoDay(date: string, signal?: AbortSignal): Promise<TodoDay>;
+  searchTodo?(query: string, signal?: AbortSignal): Promise<{ entries: TodoSearchEntry[]; metadata: { count: number; author: TodoAuthor | null } }>;
   listDiaryDates(signal?: AbortSignal): Promise<string[]>;
   loadDiariesByDate(date: string, signal?: AbortSignal): Promise<{ date: string; diaries: DaySpaceDiary[] }>;
   updateDiary(input: {
@@ -47,6 +48,7 @@ export function createDaySpaceApi(api: WebApiClient): DaySpaceApi {
     webClient: api,
     listTodoDates: (signal) => listTodoDates(api, signal),
     loadTodoDay: (date, signal) => loadTodoDay(api, date, signal),
+    searchTodo: (query, signal) => searchTodo(api, query, signal),
     listDiaryDates: (signal) => listDiaryDates(api, signal),
     async loadDiariesByDate(date, signal) {
       const response = await api.request<Envelope<{ date: string; diaries: DaySpaceDiary[] }>>(

@@ -1,14 +1,41 @@
 import { Router, type RequestHandler, type Response } from "express";
 import { TodoServiceError, type TodoService } from "../domains/todo/todo-service.js";
 
-export type TodoApiDependencies = { todoService: Pick<TodoService, "readDay" | "listDates" | "replacePaper"> };
+export type TodoApiDependencies = { todoService: Pick<TodoService, "readDay" | "listDates" | "replacePaper" | "search"> };
 
 export function createTodoApiRouter(dependencies: TodoApiDependencies): Router {
   const router = Router();
   router.get("/dates", listDatesHandler(dependencies));
+  router.get("/search", searchHandler(dependencies));
   router.get("/:date", readDayHandler(dependencies));
   router.put("/:date/:author", replacePaperHandler(dependencies));
   return router;
+}
+
+function searchHandler({ todoService }: TodoApiDependencies): RequestHandler {
+  return async (request, response) => {
+    if (!requireUser(response, request.webUserId)) return;
+    try {
+      const data = await todoService.search({
+        userId: request.webUserId,
+        query: request.query.query,
+        author: request.query.author,
+        kind: request.query.kind,
+        date_from: request.query.date_from,
+        date_to: request.query.date_to,
+        limit: parseOptionalLimit(request.query.limit),
+      });
+      response.json({ success: true, data });
+    } catch (error) { mapError(response, error); }
+  };
+}
+
+function parseOptionalLimit(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) return value[0];
+  if (typeof value !== "string") return value;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : value;
 }
 
 function requireUser(response: Response, userId: string | undefined): userId is string {

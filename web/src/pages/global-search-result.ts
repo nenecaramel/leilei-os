@@ -24,11 +24,11 @@ export type GlobalSearchResult = {
   time_basis: string;
   updated_at: string;
   author: "L" | "G" | "C" | null;
-  detail_tool: "get_memory" | "get_diary" | "get_task" | null;
+  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | null;
   detail_arguments: {
     id: string;
     scope: "active" | "archived";
-  } | null;
+  } | { id: string } | { date: string } | null;
 };
 
 export const GLOBAL_SEARCH_MODULE_LABELS: Record<SearchModule, string> = {
@@ -36,6 +36,7 @@ export const GLOBAL_SEARCH_MODULE_LABELS: Record<SearchModule, string> = {
   diary: "Diary",
   task: "Task",
   universe: "Universe",
+  todo: "Todo",
 };
 
 export function formatGlobalSearchBusinessDate(value: string): string {
@@ -65,6 +66,12 @@ export function createGlobalSearchResultDetailLocation(
   if (result.entity_type === "universe") {
     const params = new URLSearchParams({ node: result.entity_id });
     return `/universe?${params.toString()}`;
+  }
+
+  if (result.entity_type === "todo") {
+    const params = new URLSearchParams({ date: result.detail_arguments && "date" in result.detail_arguments ? result.detail_arguments.date : result.business_time.slice(0, 10) });
+    if (result.author) params.set("author", result.author);
+    return `/day-space?${params.toString()}`;
   }
 
   return result.lifecycle_status === "archived"

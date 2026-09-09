@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { todoEntries, todoPapers, users } from "../../database/schema.js";
 import {
@@ -16,6 +16,8 @@ import type {
   TodoDayPapers,
   TodoEntry,
   TodoPaper,
+  TodoSearchInput,
+  TodoSearchRow,
   TodoRepository,
 } from "./todo-types.js";
 
@@ -128,6 +130,33 @@ export class DrizzleTodoRepository implements TodoRepository {
       .where(eq(todoPapers.userId, userId))
       .orderBy(asc(todoPapers.businessDate));
     return rows.map((row) => row.date);
+  }
+
+  async searchEntries(input: TodoSearchInput): Promise<TodoSearchRow[]> {
+    const pattern = `%${escapeLike(input.query)}%`;
+    const conditions = [
+      eq(todoPapers.userId, input.userId),
+      sql`regexp_replace(lower(normalize(${todoEntries.text}, NFC)), '\\s+', ' ', 'g') like ${pattern} escape '\\'`,
+    ];
+    if (input.author) conditions.push(eq(todoPapers.author, input.author));
+    if (input.kind) conditions.push(eq(todoEntries.kind, input.kind));
+    if (input.dateFrom) conditions.push(sql`${todoPapers.businessDate} >= ${input.dateFrom}::date`);
+    if (input.dateTo) conditions.push(sql`${todoPapers.businessDate} <= ${input.dateTo}::date`);
+    const rows = await this.db
+      .select({
+        id: todoEntries.id,
+        entryId: todoEntries.entryId,
+        date: todoPapers.businessDate,
+        author: todoPapers.author,
+        kind: todoEntries.kind,
+        text: todoEntries.text,
+      })
+      .from(todoEntries)
+      .innerJoin(todoPapers, eq(todoEntries.paperId, todoPapers.id))
+      .where(and(...conditions))
+      .orderBy(desc(todoPapers.businessDate), desc(todoPapers.updatedAt), asc(todoEntries.position), asc(todoEntries.id))
+      .limit(input.limit);
+    return rows as TodoSearchRow[];
   }
 
   async replacePaper(input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult> {
@@ -284,3 +313,5 @@ export class DrizzleTodoRepository implements TodoRepository {
     };
   }
 }
+
+function escapeLike(value: string): string { return value.replace(/[\\%_]/gu, "\\$&"); }

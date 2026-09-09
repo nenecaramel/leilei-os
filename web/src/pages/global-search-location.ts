@@ -1,4 +1,4 @@
-export const SEARCH_MODULES = ["memory", "diary", "task", "universe"] as const;
+export const SEARCH_MODULES = ["memory", "diary", "task", "todo", "universe"] as const;
 export const GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS = 200;
 export type SearchModule = typeof SEARCH_MODULES[number];
 export type SearchScope = "active" | "archived" | "all";

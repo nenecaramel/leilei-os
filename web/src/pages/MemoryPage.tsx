@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { MemoryIcon } from "../components/icons";
+import { ModuleSearchStateMessage } from "../components/ModuleSearch";
 import { MemoryPageHeader } from "./MemoryPageHeader";
 import {
   MemoryPaperEditor,
@@ -1206,9 +1207,16 @@ export function MemoryPageContent({
                         </section>
                       ))}
                     </section>
+                  ) : filters.q ? (
+                    <ModuleSearchStateMessage
+                      state="empty"
+                      emptyText="没有符合条件的记忆"
+                      errorText=""
+                      action={<button type="button" className="secondary-button memory-empty-clear" onClick={() => commitFilters(EMPTY_MEMORY_FILTERS)}>清除条件</button>}
+                    />
                   ) : (
                     <section className="memory-empty-state">
-                      <p>{filters.q || filters.category || filters.tag ? "没有符合条件的记忆" : "还没有记忆"}</p>
+                      <p>{filters.category || filters.tag ? "没有符合条件的记忆" : "还没有记忆"}</p>
                       {(filters.q || filters.category || filters.tag) && (
                         <button
                           type="button"
@@ -1224,34 +1232,53 @@ export function MemoryPageContent({
               )}
 
               {state.status === "loading" && (
-                <section className="memory-months" aria-label="Memory 加载中" aria-busy="true">
-                  <span className="visually-hidden" role="status" aria-live="polite">正在读取记忆…</span>
-                  {[0, 1].map((index) => (
-                    <div className="memory-month-skeleton" aria-hidden="true" key={index}>
-                      <span className="memory-month-skeleton-label" />
-                      <div className="memory-month-skeleton-card">
-                        <span />
-                        <span />
+                filters.q ? (
+                  <ModuleSearchStateMessage
+                    state="loading"
+                    emptyText=""
+                    errorText=""
+                    loadingText="正在搜索…"
+                  />
+                ) : (
+                  <section className="memory-months" aria-label="Memory 加载中" aria-busy="true">
+                    <span className="visually-hidden" role="status" aria-live="polite">正在读取记忆…</span>
+                    {[0, 1].map((index) => (
+                      <div className="memory-month-skeleton" aria-hidden="true" key={index}>
+                        <span className="memory-month-skeleton-label" />
+                        <div className="memory-month-skeleton-card">
+                          <span />
+                          <span />
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </section>
+                    ))}
+                  </section>
+                )
               )}
 
               {state.status === "error" && (
+                filters.q ? (
+                  <ModuleSearchStateMessage
+                    state="error"
+                    emptyText=""
+                    errorText="暂时无法读取记忆"
+                    retryLabel="重新加载"
+                    onRetry={() => setReloadKey((value) => value + 1)}
+                  />
+                ) : (
                   <MemoryMessage
                     title="暂时无法读取记忆"
                     description="请稍后重试。"
                     role="alert"
-                  action={
-                    <button
-                      className="secondary-button"
-                      onClick={() => setReloadKey((value) => value + 1)}
-                    >
-                      重新加载
-                    </button>
-                  }
-                />
+                    action={
+                      <button
+                        className="secondary-button"
+                        onClick={() => setReloadKey((value) => value + 1)}
+                      >
+                        重新加载
+                      </button>
+                    }
+                  />
+                )
               )}
             </>
           ) : null}

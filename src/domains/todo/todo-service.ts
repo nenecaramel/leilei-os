@@ -9,6 +9,8 @@ import {
   type TodoEntry,
   type TodoPaper,
   type TodoRepository,
+  type TodoSearchInput,
+  type TodoSearchResult,
 } from "./todo-types.js";
 import {
   ActiveUserAuthorizationError,
@@ -19,6 +21,7 @@ import {
   MAX_TODO_ENTRY_ID_LENGTH,
   MAX_TODO_ENTRY_TEXT_LENGTH,
 } from "../resource-limits.js";
+import { createSearchSnippet, normalizeSearchQuery } from "../search/search-text.js";
 
 export type TodoServiceErrorCode =
   | "TODO_DATE_INVALID"
@@ -27,6 +30,7 @@ export type TodoServiceErrorCode =
   | "TODO_ENTRY_INVALID"
   | "TODO_ENTRY_ID_DUPLICATE"
   | "TODO_PAPER_CONFLICT"
+  | "TODO_SEARCH_INVALID"
   | "INVALID_IDEMPOTENCY_KEY"
   | "IDEMPOTENCY_CONFLICT"
   | "USER_NOT_FOUND"
@@ -126,6 +130,50 @@ export class TodoService {
     return this.repository.listContentDates(userId);
   }
 
+  async search(input: {
+    userId: string;
+    query: unknown;
+    author?: unknown;
+    kind?: unknown;
+    date_from?: unknown;
+    date_to?: unknown;
+    limit?: unknown;
+  }): Promise<TodoSearchResult> {
+    await this.requireActiveUser(input.userId);
+    let query: string;
+    try { query = normalizeSearchQuery(input.query).toLocaleLowerCase(); } catch { throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid."); }
+    const author = input.author === undefined ? undefined : input.author;
+    if (author !== undefined && !isContentAuthor(author)) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
+    const kind = input.kind === undefined ? undefined : input.kind;
+    if (kind !== undefined && !(TODO_ENTRY_KINDS as readonly unknown[]).includes(kind)) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
+    const dateFrom = searchDate(input.date_from);
+    const dateTo = searchDate(input.date_to);
+    if (dateFrom && dateTo && dateFrom > dateTo) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
+    const limit = input.limit === undefined ? 50 : input.limit;
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 50) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
+    if (!this.repository.searchEntries) throw new Error("Todo search persistence is unavailable.");
+    const rows = await this.repository.searchEntries({
+      userId: input.userId,
+      query,
+      author: author as TodoSearchInput["author"],
+      kind: kind as TodoSearchInput["kind"],
+      dateFrom,
+      dateTo,
+      limit,
+    });
+    return {
+      entries: rows.map((row) => ({
+        entry_id: row.entryId,
+        date: row.date,
+        author: row.author,
+        kind: row.kind,
+        text: row.text,
+        snippet: createSearchSnippet(row.text, query),
+      })),
+      metadata: { count: rows.length, author: author ?? null },
+    };
+  }
+
   async replacePaper(input: ReplacePaperServiceInput): Promise<TodoPaper> {
     await this.requireActiveUser(input.userId);
     const result = await this.repository.replacePaper(
@@ -197,4 +245,9 @@ export class TodoService {
       throw error;
     }
   }
+}
+
+function searchDate(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  try { assertDate(value); return value; } catch { throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid."); }
 }
