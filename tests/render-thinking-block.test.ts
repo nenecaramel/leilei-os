@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -74,7 +76,7 @@ test("authenticated public tools/list exposes the Chinese render_thinking_block 
       openWorldHint: false,
     });
     assert.equal(tool._meta?.ui?.resourceUri, RENDER_THINKING_BLOCK_RESOURCE_URI);
-    assert.equal(tool._meta?.["openai/outputTemplate"], RENDER_THINKING_BLOCK_RESOURCE_URI);
+    assert.equal(tool._meta?.["openai/outputTemplate"], "ui://widget/leileios-thinking-block-v1.html");
     assert.doesNotMatch(JSON.stringify(tool._meta), /noauth/i);
   } finally {
     await pair.client.close();
@@ -145,6 +147,50 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and static 
     await pair.client.close();
     await pair.server.close();
   }
+});
+
+test("render_thinking_block exposes one current HTML resource under the v2 URI and the ChatGPT v1 alias", async () => {
+  const v1Uri = "ui://widget/leileios-thinking-block-v1.html";
+  const v2Uri = RENDER_THINKING_BLOCK_RESOURCE_URI;
+  const server = new McpServer({ name: "resource-alias-test", version: "1" });
+  registerRenderThinkingBlockResource(server);
+  const pair = await connect(server, "thinking-resource-alias");
+  try {
+    const listed = await pair.client.listResources();
+    assert.deepEqual(
+      listed.resources.map((resource) => resource.uri).sort(),
+      [v1Uri, v2Uri].sort(),
+    );
+    const [v1, v2] = await Promise.all([
+      pair.client.readResource({ uri: v1Uri }),
+      pair.client.readResource({ uri: v2Uri }),
+    ]);
+    const v1Content = v1.contents[0];
+    const v2Content = v2.contents[0];
+    assert.ok(v1Content);
+    assert.ok(v2Content);
+    assert.equal(v1Content.uri, v1Uri);
+    assert.equal(v2Content.uri, v2Uri);
+    assert.equal(v1Content.mimeType, v2Content.mimeType);
+    assert.deepEqual(v1Content._meta, v2Content._meta);
+    assert.equal(v1Content.text, v2Content.text);
+    assert.match(String(v1Content.text), /ontoolinput/);
+    assert.match(String(v1Content.text), /PostMessageTransport/);
+  } finally {
+    await pair.client.close();
+    await pair.server.close();
+  }
+});
+
+test("render_thinking_block compatibility keeps the committed standard browser runtime unchanged", () => {
+  const bundle = readFileSync(
+    new URL("../src/mcp/tools/render-thinking-block/browser-runtime.js", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    createHash("sha256").update(bundle).digest("hex"),
+    "543203719cbb3aa5a6f96eed6ad6d27983ccc3e187737a5ae7d95a3e21aa0efd",
+  );
 });
 
 test("standard MCP Apps lifecycle renders authoritative input, result metadata, and host context", () => {
