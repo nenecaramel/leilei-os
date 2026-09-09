@@ -57,6 +57,10 @@ MCP schemas are Zod-validated. Safe error mappings distinguish invalid input, mi
 
 `render_thinking_block` renders model-supplied external working text in an MCP Apps card. It does not expose native hidden chain of thought. Thinking-block content is not persisted by default and does not become authoritative long-term state merely by being rendered.
 
+The standard MCP Apps resource is `ui://widget/leileios-thinking-block-v2.html`. ChatGPT's `openai/outputTemplate` compatibility path points to `ui://widget/leileios-thinking-block-v1.html`. Both identifiers resolve to the same current HTML and browser runtime; the v1 identifier exists only as a host-compatibility alias.
+
+The browser client uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` lifecycle for standard MCP Apps hosts while retaining the OpenAI host globals path as a compatibility fallback. The generated Thinking Block browser bundle is produced by `scripts/build-thinking-block-browser.mjs` during the root build.
+
 ### Message Bridge MCP App
 
 The Message Bridge resource is currently registered as:
@@ -96,7 +100,7 @@ Normal application startup does not run migrations. Manual local or disposable-d
 ## Deployment topology
 
 - GitHub default branch and release trunk: `main`.
-- Railway Production source: `main`; the root `Dockerfile` builds the API/MCP service and includes the Message Bridge browser build step.
+- Railway Production source: `main`; the root `Dockerfile` builds the API/MCP service and includes both MCP Apps browser build steps (Message Bridge and Thinking Block).
 - `railway.json` configures the compiled migration runner as pre-deploy work.
 - Vercel Production Branch: `main`; Vercel builds `web/` and serves the SPA.
 - Production credentials and database URLs stay in platform secret stores.
