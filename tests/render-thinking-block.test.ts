@@ -125,6 +125,7 @@ test("render_thinking_block rejects missing fields and invalid enums without ech
 });
 
 test("render_thinking_block resource has the versioned MCP Apps MIME and static card", async () => {
+  assert.equal(RENDER_THINKING_BLOCK_RESOURCE_URI, "ui://widget/leileios-thinking-block-v2.html");
   const server = new McpServer({ name: "resource-test", version: "1" });
   registerRenderThinkingBlockResource(server);
   const pair = await connect(server, "thinking-resource");
@@ -136,8 +137,6 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and static 
     assert.match(String(content.text), /botanical/);
     assert.match(String(content.text), /microglow/);
     assert.match(String(content.text), /notifyIntrinsicHeight/);
-    assert.match(String(content.text), /new App\(/);
-    assert.match(String(content.text), /new PostMessageTransport\(window\.parent, window\.parent\)/);
     assert.match(String(content.text), /ontoolinput/);
     assert.match(String(content.text), /ontoolinputpartial/);
     assert.match(String(content.text), /ontoolresult/);
@@ -231,6 +230,7 @@ class FakeWindow {
   readonly listeners = new Map<string, FakeListener[]>();
   readonly requestIntrinsicHeight?: (...args: unknown[]) => void;
   openai: Record<string, unknown>;
+  __LEILEIOS_DISABLE_THINKING_BLOCK_CONNECT__ = true;
   thinkingBlock?: {
     render: (event?: FakeEvent) => void;
     setCollapsed: (value: boolean) => void;

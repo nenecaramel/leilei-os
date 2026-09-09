@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   registerAppResource,
   RESOURCE_MIME_TYPE,
@@ -5,7 +6,16 @@ import {
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 export const RENDER_THINKING_BLOCK_RESOURCE_URI =
-  "ui://widget/leileios-thinking-block-v1.html";
+  "ui://widget/leileios-thinking-block-v2.html";
+
+const THINKING_BLOCK_BROWSER_BUNDLE = readFileSync(
+  new URL("./browser-runtime.js", import.meta.url),
+  "utf8",
+);
+
+function escapeInlineScript(value: string): string {
+  return value.replace(/<\/script/gi, "<\\/script");
+}
 
 const RESOURCE_META = {
   ui: {
@@ -101,105 +111,7 @@ button { -webkit-tap-highlight-color: transparent; }
     <span data-thinking-badge data-skin-badge></span>
   </div>
   <section data-thinking-content aria-live="polite"></section>
-</main><script>
-(() => {
-  const card = document.querySelector('[data-thinking-card]');
-  const content = document.querySelector('[data-thinking-content]');
-  const toggle = document.querySelector('[data-thinking-toggle]');
-  const styleBadge = document.querySelector('[data-style-badge]');
-  const effortBadge = document.querySelector('[data-effort-badge]');
-  const skinBadge = document.querySelector('[data-skin-badge]');
-  let collapsed = false;
-  let heightFrame = 0;
-  let lastMeasuredHeight = -1;
-  let mergedGlobals = {};
-
-  const objectOrEmpty = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const resultMetadata = (api) => {
-    const response = objectOrEmpty(api.toolResponseMetadata || api.toolResultMetadata);
-    const output = objectOrEmpty(api.toolOutput || api.toolResult);
-    const candidates = [
-      objectOrEmpty(response.mcp_tool_result)._meta,
-      objectOrEmpty(response.call_tool_result)._meta,
-      response._meta,
-      response,
-      objectOrEmpty(output)._meta,
-      api._meta,
-      output,
-    ];
-    return candidates.filter((candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate));
-  };
-  const stringValue = (source, key) => typeof source[key] === 'string' ? source[key] : '';
-  const pick = (sources, key, fallback) => {
-    for (const source of sources) {
-      const value = stringValue(source, key);
-      if (value) return value;
-    }
-    return fallback;
-  };
-  const requestIntrinsicHeight = (force = false) => {
-    const host = objectOrEmpty(mergedGlobals);
-    if (typeof host.notifyIntrinsicHeight !== 'function') return;
-    if (heightFrame) window.cancelAnimationFrame(heightFrame);
-    heightFrame = window.requestAnimationFrame(() => {
-      const measuredHeight = Math.ceil(document.documentElement.scrollHeight);
-      if (!force && measuredHeight === lastMeasuredHeight) return;
-      lastMeasuredHeight = measuredHeight;
-      try { host.notifyIntrinsicHeight(); } catch (_) {}
-    });
-  };
-  const applyHostHeightLimit = (api) => {
-    const maxHeight = Number(api.maxHeight);
-    if (!Number.isFinite(maxHeight) || maxHeight <= 0) {
-      content.style.maxHeight = '';
-      delete content.dataset.scrollable;
-      return;
-    }
-    const chromeHeight = toggle.getBoundingClientRect().height + 58;
-    content.style.maxHeight = Math.max(180, Math.floor(maxHeight - chromeHeight)) + 'px';
-    content.dataset.scrollable = 'true';
-  };
-  const setCollapsed = (value) => {
-    collapsed = Boolean(value);
-    card.dataset.collapsed = collapsed ? 'true' : 'false';
-    toggle.setAttribute('aria-expanded', String(!collapsed));
-    toggle.textContent = collapsed ? '展开' : '折叠';
-    requestIntrinsicHeight(true);
-  };
-  const render = (event) => {
-    const bridge = objectOrEmpty(window.openai);
-    const eventGlobals = objectOrEmpty(event && event.detail && event.detail.globals);
-    const previousGlobals = mergedGlobals;
-    mergedGlobals = Object.assign({}, previousGlobals, bridge, eventGlobals);
-    for (const key of ['toolInput', 'toolOutput', 'toolResult', 'toolResponseMetadata', 'toolResultMetadata']) {
-      const nested = Object.assign({}, objectOrEmpty(bridge[key]), objectOrEmpty(previousGlobals[key]), objectOrEmpty(eventGlobals[key]));
-      if (Object.keys(nested).length > 0) mergedGlobals[key] = nested;
-    }
-    const api = mergedGlobals;
-    const input = objectOrEmpty(api.toolInput);
-    const output = objectOrEmpty(api.toolOutput || api.toolResult);
-    const metadataSources = resultMetadata(api);
-    const sources = [...metadataSources, input, output];
-    const style = pick(sources, 'style', 'deep_think');
-    const effort = pick(sources, 'effort', '');
-    const skin = pick(sources, 'skin', 'botanical');
-    const thinking = pick(sources, 'thinking', '本轮没有提供外置工作文本。');
-    if (style === 'relational' || style === 'deep_think') styleBadge.textContent = style;
-    else styleBadge.textContent = 'deep_think';
-    effortBadge.textContent = effort ? 'effort: ' + effort : 'effort';
-    document.documentElement.dataset.skin = skin === 'microglow' ? 'microglow' : 'botanical';
-    skinBadge.textContent = document.documentElement.dataset.skin;
-    content.textContent = thinking;
-    if (api.theme === 'light' || api.theme === 'dark') document.documentElement.dataset.theme = api.theme;
-    applyHostHeightLimit(api);
-    requestIntrinsicHeight(true);
-  };
-  toggle.addEventListener('click', () => setCollapsed(!collapsed));
-  window.addEventListener('openai:set_globals', render);
-  if (typeof window.ResizeObserver === 'function') new window.ResizeObserver(() => requestIntrinsicHeight()).observe(document.body);
-  render();
-  window.thinkingBlock = { render, setCollapsed };
-})();</script>`;
+</main><script>${escapeInlineScript(THINKING_BLOCK_BROWSER_BUNDLE)}</script>`;
 }
 
 export function registerRenderThinkingBlockResource(server: McpServer): void {
