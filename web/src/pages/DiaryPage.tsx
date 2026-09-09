@@ -1224,7 +1224,7 @@ export function DiaryPageContent({
                   <ModuleSearchStateMessage
                     state="error"
                     emptyText=""
-                    errorText="暂时无法搜索日记。"
+                    errorText="暂时无法读取日记"
                     retryLabel="重新加载"
                     onRetry={() => {
                       listAvailableRef.current = false;

@@ -1260,7 +1260,7 @@ export function MemoryPageContent({
                   <ModuleSearchStateMessage
                     state="error"
                     emptyText=""
-                    errorText="暂时无法搜索记忆。"
+                    errorText="暂时无法读取记忆"
                     retryLabel="重新加载"
                     onRetry={() => setReloadKey((value) => value + 1)}
                   />
