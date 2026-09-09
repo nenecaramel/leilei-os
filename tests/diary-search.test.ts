@@ -18,18 +18,31 @@ const entries: DiaryEntryRecord[] = [
     date: "2026-07-07",
     tags: ["日本", "filter-test"],
     mood: "happy",
+    author: "L",
     createdAt: new Date("2026-07-07T08:00:00Z"),
     updatedAt: new Date("2026-07-07T08:00:00Z"),
   },
   {
     id: "d2",
     title: "filter",
-    content: "旅行记录",
+    content: "旅行记录与意识",
     date: "2026-07-01",
     tags: ["filter"],
     mood: "calm",
+    author: "G",
     createdAt: new Date("2026-07-01T08:00:00Z"),
     updatedAt: new Date("2026-07-01T08:00:00Z"),
+  },
+  {
+    id: "d3",
+    title: "C note",
+    content: "C 专属记录",
+    date: "2026-06-01",
+    tags: ["c-filter"],
+    mood: "focused",
+    author: "C",
+    createdAt: new Date("2026-06-01T08:00:00Z"),
+    updatedAt: new Date("2026-06-01T08:00:00Z"),
   },
 ];
 
@@ -47,6 +60,7 @@ class SearchRepository implements DiaryRepository {
           entry.content.toLocaleLowerCase().includes(q)) &&
         (!query.tag || entry.tags.includes(query.tag)) &&
         (!query.mood || entry.mood === query.mood) &&
+        (!query.author || entry.author === query.author) &&
         (!query.dateFrom || entry.date >= query.dateFrom) &&
         (!query.dateTo || entry.date <= query.dateTo)
       );
@@ -80,7 +94,7 @@ test("diary list without parameters preserves authenticated ownership and defaul
   const result = await new DiaryService(repository).listDiaries({
     userId: "user-1",
   });
-  assert.equal(result.metadata.count, 2);
+  assert.equal(result.metadata.count, 3);
   assert.deepEqual(repository.calls[0], {
     userId: "user-1",
     limit: 50,
@@ -97,7 +111,31 @@ test("Diary metadata count is independent of the returned row limit", async () =
   });
 
   assert.equal(result.diaries.length, 1);
-  assert.equal(result.metadata.count, 2);
+  assert.equal(result.metadata.count, 3);
+});
+
+test("diary author filters exact active entries and keeps count consistent", async () => {
+  const service = new DiaryService(new SearchRepository());
+  for (const [author, expectedId] of [
+    ["L", "d1"],
+    ["G", "d2"],
+    ["C", "d3"],
+  ] as const) {
+    const result = await service.listDiaries({
+      userId: "user-1",
+      query: { author },
+    });
+    assert.deepEqual(result.diaries.map((entry) => entry.id), [expectedId]);
+    assert.equal(result.metadata.count, 1);
+  }
+
+  const repository = new SearchRepository();
+  const trimmed = await new DiaryService(repository).listDiaries({
+    userId: "user-1",
+    query: { author: " G " },
+  });
+  assert.deepEqual(trimmed.diaries.map((entry) => entry.id), ["d2"]);
+  assert.deepEqual(repository.calls[0]?.query, { author: "G" });
 });
 
 test("diary q searches normalized title and content case-insensitively", async () => {
@@ -159,7 +197,7 @@ test("diary date filters include both selected boundaries and allow one side", a
       userId: "user-1",
       query: { dateTo: "2026-07-01" },
     })).diaries.map((entry) => entry.id),
-    ["d2"],
+    ["d2", "d3"],
   );
 });
 
@@ -189,6 +227,7 @@ test("diary filters combine with AND and are passed before repository limit", as
       mood: "happy",
       dateFrom: "2026-07-07",
       dateTo: "2026-07-07",
+      author: "L",
     },
   });
   assert.deepEqual(result.diaries.map((entry) => entry.id), ["d1"]);
@@ -201,6 +240,7 @@ test("diary filters combine with AND and are passed before repository limit", as
       mood: "happy",
       dateFrom: "2026-07-07",
       dateTo: "2026-07-07",
+      author: "L",
     },
   });
 });
@@ -214,6 +254,9 @@ test("invalid or excessive diary query values are rejected safely", async () => 
     { dateFrom: "2026-02-30" },
     { dateTo: "07/01/2026" },
     { dateFrom: "2026-07-08", dateTo: "2026-07-07" },
+    { author: "Claude" },
+    { author: "" },
+    { author: null as never },
   ]) {
     await assert.rejects(
       service.listDiaries({ userId: "user-1", query }),
@@ -222,4 +265,13 @@ test("invalid or excessive diary query values are rejected safely", async () => 
         error.code === "INVALID_DIARY_QUERY",
     );
   }
+});
+
+test("diary query and author compose as an AND filter", async () => {
+  const result = await new DiaryService(new SearchRepository()).listDiaries({
+    userId: "user-1",
+    query: { q: "意识", author: "G" },
+  });
+  assert.deepEqual(result.diaries.map((entry) => entry.id), ["d2"]);
+  assert.equal(result.metadata.count, 1);
 });

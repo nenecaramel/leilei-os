@@ -422,6 +422,7 @@ test("Memory, Diary, and Task discovery-to-detail flows remain isolated", async 
       q: undefined,
       tag: undefined,
       mood: undefined,
+      author: undefined,
       dateFrom: undefined,
       dateTo: undefined,
     },

@@ -136,6 +136,7 @@ test("search_diary maps filters and identity but omits content", async (t) => {
       mood: "  开心  ",
       date_from: "2026-07-01",
       date_to: "2026-07-31",
+      author: "G",
       limit: 12,
     },
   });
@@ -148,6 +149,7 @@ test("search_diary maps filters and identity but omits content", async (t) => {
       mood: "开心",
       dateFrom: "2026-07-01",
       dateTo: "2026-07-31",
+      author: "G",
     },
   }]);
   const serialized = JSON.stringify(result.structuredContent);
@@ -189,6 +191,7 @@ test("search_diary supports no filters and rejects invalid schemas", async () =>
       mood: undefined,
       dateFrom: undefined,
       dateTo: undefined,
+      author: undefined,
     },
   });
   await pair.client.close();
@@ -201,6 +204,8 @@ test("search_diary supports no filters and rejects invalid schemas", async () =>
     { limit: 0 },
     { limit: 51 },
     { query: "x".repeat(201) },
+    { author: "Claude" },
+    { author: " G " },
     { user_id: USER_ID },
   ]) {
     const invalidService = new MockDiaryService();

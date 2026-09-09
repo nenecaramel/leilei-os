@@ -25,6 +25,7 @@ const searchDiaryInputSchema = z
     query: z.string().trim().max(200).optional(),
     tag: z.string().trim().min(1).max(50).optional(),
     mood: z.string().trim().min(1).max(50).optional(),
+    author: contentAuthorSchema.optional(),
     date_from: dateSchema.optional(),
     date_to: dateSchema.optional(),
     limit: z.number().int().min(1).max(50).optional(),
@@ -77,7 +78,7 @@ export function registerSearchDiaryTool(
     {
       title: "Search diary entries",
       description:
-        "Discover or search authorized Diary entries using optional text, exact tag, mood, and inclusive calendar-date filters. Results are compact and omit full diary content; use get_diary for the complete selected entry.",
+        "Discover or search authorized Diary entries using optional text, exact tag, mood, author, and inclusive calendar-date filters. Results are compact and omit full diary content; use get_diary for the complete selected entry.",
       inputSchema: searchDiaryInputSchema,
       outputSchema: searchDiaryOutputSchema,
       annotations: {
@@ -87,7 +88,7 @@ export function registerSearchDiaryTool(
         openWorldHint: false,
       },
     },
-    async ({ query, tag, mood, date_from, date_to, limit }) => {
+    async ({ query, tag, mood, author, date_from, date_to, limit }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
         const input = {
@@ -97,6 +98,7 @@ export function registerSearchDiaryTool(
             q: query,
             tag,
             mood,
+            author,
             dateFrom: date_from,
             dateTo: date_to,
           },

@@ -89,6 +89,7 @@ export type RawDiaryListQuery = {
   q?: string;
   tag?: string;
   mood?: string;
+  author?: string;
   dateFrom?: string;
   dateTo?: string;
 };
@@ -862,6 +863,7 @@ export class DiaryService {
       MAX_MOOD_LENGTH,
       "mood",
     );
+    const author = this.normalizeOptionalQueryAuthor(input.author);
     const dateFrom = this.normalizeOptionalQueryDate(
       input.dateFrom,
       "date_from",
@@ -882,6 +884,7 @@ export class DiaryService {
       ...(q ? { q } : {}),
       ...(tag ? { tag } : {}),
       ...(mood ? { mood } : {}),
+      ...(author ? { author } : {}),
       ...(dateFrom ? { dateFrom } : {}),
       ...(dateTo ? { dateTo } : {}),
     };
@@ -908,6 +911,28 @@ export class DiaryService {
         `Diary ${label} is too long.`,
       );
     }
+    return normalized;
+  }
+
+  private normalizeOptionalQueryAuthor(
+    value: unknown,
+  ): ContentAuthor | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_QUERY",
+        "Diary author is invalid.",
+      );
+    }
+
+    const normalized = value.normalize("NFC").trim();
+    if (!isContentAuthor(normalized)) {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_QUERY",
+        "Diary author is invalid.",
+      );
+    }
+
     return normalized;
   }
 

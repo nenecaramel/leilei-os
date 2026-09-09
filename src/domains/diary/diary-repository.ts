@@ -93,6 +93,7 @@ export type DiaryListQuery = {
   q?: string;
   tag?: string;
   mood?: string;
+  author?: ContentAuthor;
   dateFrom?: string;
   dateTo?: string;
 };
@@ -186,6 +187,9 @@ function buildActiveDiaryConditions(
     eq(diaryEntries.status, "active"),
   ];
 
+  if (query.author) {
+    conditions.push(eq(diaryEntries.author, query.author));
+  }
   if (query.q) {
     const escaped = query.q.replace(/[\\%_]/g, "\\$&");
     const pattern = `%${escaped}%`;
