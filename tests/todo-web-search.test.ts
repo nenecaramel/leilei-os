@@ -23,10 +23,17 @@ test("Memory, Diary, Task and Day Space use one module search primitive", () => 
     assert.match(source, /ModuleSearchButton/);
     assert.match(source, /ModuleSearchField/);
   }
+  for (const path of ["pages/MemoryPage.tsx", "pages/DiaryPage.tsx", "pages/TaskPage.tsx", "pages/DaySpacePage.tsx"]) {
+    assert.match(read(path), /ModuleSearchStateMessage/);
+  }
   const primitive = read("components/ModuleSearch.tsx");
   assert.match(primitive, /memory-page-search/);
   assert.match(primitive, /SearchIcon/);
   assert.match(primitive, /maxLength=\{200\}/);
+  const styles = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
+  assert.match(styles, /\.module-search-state\s*\{[\s\S]*font-size:\s*13px[\s\S]*line-height:\s*1\.4/);
+  assert.doesNotMatch(styles, /\.day-space-header-tools\s*\{/);
+  assert.doesNotMatch(styles, /\.day-space-header\s*>\s*\.memory-page-search/);
 });
 
 test("Todo search results open the matching Day Space date and author paper", () => {

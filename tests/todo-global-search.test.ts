@@ -20,6 +20,7 @@ const TODO_ROW: GlobalSearchRow = {
   updatedAt: new Date("2026-08-13T00:00:00.000Z"),
   rank: 4,
   author: "C",
+  businessDate: "2026-08-13",
 };
 
 class Repository implements GlobalSearchRepository {
@@ -57,6 +58,24 @@ test("Global Search accepts an explicit Todo-only module and keeps archived scop
   assert.equal(repository.calls.at(-1)?.modules[0], "todo");
   await service.search({ userId: USER_ID, query: "release", modules: ["todo"], scope: "archived" });
   assert.equal(repository.calls.at(-1)?.scope, "archived");
+});
+
+test("Todo detail pointers use the raw business date instead of UTC conversion", async () => {
+  const repository = new Repository();
+  repository.result = [{
+    ...TODO_ROW,
+    businessTime: new Date("2026-08-12T16:00:00.000Z"),
+    businessDate: "2026-08-13",
+  }];
+
+  const result = await new GlobalSearchService(repository).search({
+    userId: USER_ID,
+    query: "release",
+    modules: ["todo"],
+    limit: 10,
+  });
+
+  assert.deepEqual(result.results[0]?.detail_arguments, { date: "2026-08-13" });
 });
 
 test("MCP global_search exposes Todo in its module schema", async (t) => {

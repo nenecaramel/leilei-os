@@ -139,6 +139,47 @@ test("real PostgreSQL keyset pagination consumes every row after the cursor", { 
   }
 });
 
+test("real PostgreSQL Todo ranking and business-date pointers use the owner timezone", { skip: !RUN }, async () => {
+  const client = postgres(url!, { max: 1, prepare: false, ssl: false });
+  const db = drizzle(client, { schema });
+  try {
+    await assert.rejects(db.transaction(async (tx) => {
+      const owner = randomUUID();
+      const now = new Date("2026-08-13T03:00:00.000Z");
+      await tx.insert(schema.users).values({ id: owner, email: `todo-ranking-${owner}@example.invalid`, displayName: "Todo ranking owner", status: "active" });
+      await tx.insert(schema.userSettings).values({ userId: owner, timezone: "Asia/Shanghai" });
+      await tx.insert(schema.diaryEntries).values({
+        id: randomUUID(), userId: owner, title: "普通日记", content: "普通 计划 内容", date: "2026-08-13", tags: [], mood: null,
+        source: "web", status: "active", idempotencyKey: `todo-ranking-diary-${owner}`, requestHash: "a".repeat(64), createdAt: now, updatedAt: now,
+      });
+      const paperId = randomUUID();
+      const exactId = randomUUID();
+      const substringId = randomUUID();
+      await tx.insert(schema.todoPapers).values({ id: paperId, userId: owner, businessDate: "2026-08-13", author: "C", revision: 1, createdAt: now, updatedAt: now });
+      await tx.insert(schema.todoEntries).values([
+        { id: exactId, paperId, entryId: "exact", kind: "pending", text: "计划", position: 0 },
+        { id: substringId, paperId, entryId: "substring", kind: "pending", text: "计划 后续", position: 1 },
+      ]);
+      const service = new GlobalSearchService(new DrizzleGlobalSearchRepository(tx as never));
+      const ranked = await service.search({ userId: owner, query: "计划", modules: ["todo", "diary"], limit: 10 });
+      assert.equal(ranked.results[0]?.entity_id, exactId);
+      assert.equal(ranked.results[0]?.match_reason, "exact_phrase");
+      assert.equal(ranked.results[0]?.business_time, "2026-08-12T16:00:00.000Z");
+      assert.deepEqual(ranked.results[0]?.detail_arguments, { date: "2026-08-13" });
+      const diaryResult = ranked.results.find((result) => result.entity_type === "diary");
+      assert.equal(diaryResult?.business_time, ranked.results[0]?.business_time);
+      assert.equal(ranked.results.findIndex((result) => result.entity_id === exactId) < ranked.results.findIndex((result) => result.entity_id === substringId), true);
+
+      const firstPage = await service.search({ userId: owner, query: "计划", modules: ["todo", "diary"], limit: 1 });
+      const secondPage = await service.search({ userId: owner, query: "计划", modules: ["todo", "diary"], limit: 1, cursor: firstPage.metadata.next_cursor! });
+      assert.notEqual(firstPage.results[0]?.entity_id, secondPage.results[0]?.entity_id);
+      throw new Rollback();
+    }), Rollback);
+  } finally {
+    await client.end();
+  }
+});
+
 test("real PostgreSQL Universe search is owner-scoped, active-only, and empty before initialization", { skip: !RUN }, async () => {
   const client = postgres(url!, { max: 1, prepare: false, ssl: false });
   const db = drizzle(client, { schema });
