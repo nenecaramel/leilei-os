@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 
 const outputDirectory = new URL("../web/public/", import.meta.url);
+const checkOnly = process.argv.includes("--check");
 const CANVAS_SIZE = 512;
 const BACKGROUND = [255, 255, 255];
 const FOREGROUND = [0x7d, 0x84, 0x7f];
@@ -119,9 +120,30 @@ function svgMaster() {
 `;
 }
 
-await mkdir(outputDirectory, { recursive: true });
-await writeFile(new URL("favicon.svg", outputDirectory), svgMaster());
-await writeFile(new URL("apple-touch-icon.png", outputDirectory), renderPng(180));
-await writeFile(new URL("pwa-192.png", outputDirectory), renderPng(192));
-await writeFile(new URL("pwa-512.png", outputDirectory), renderPng(512));
-await writeFile(new URL("pwa-maskable-512.png", outputDirectory), renderPng(512, 0.76));
+const expectedOutputs = new Map([
+  ["favicon.svg", Buffer.from(svgMaster())],
+  ["apple-touch-icon.png", renderPng(180)],
+  ["pwa-192.png", renderPng(192)],
+  ["pwa-512.png", renderPng(512)],
+  ["pwa-maskable-512.png", renderPng(512, 0.76)],
+]);
+
+if (checkOnly) {
+  const staleArtifacts = [];
+  for (const [filename, expected] of expectedOutputs) {
+    const actual = await readFile(new URL(filename, outputDirectory)).catch(() => null);
+    if (!actual || !actual.equals(expected)) staleArtifacts.push(filename);
+  }
+
+  if (staleArtifacts.length > 0) {
+    console.error(`Web icons are stale: ${staleArtifacts.join(", ")}; run pnpm web:icons.`);
+    process.exitCode = 1;
+  } else {
+    console.log("Web icons are fresh.");
+  }
+} else {
+  await mkdir(outputDirectory, { recursive: true });
+  for (const [filename, contents] of expectedOutputs) {
+    await writeFile(new URL(filename, outputDirectory), contents);
+  }
+}

@@ -9,6 +9,8 @@ on:
       - drizzle/**
       - tests/**
       - web/**
+      - scripts/build-bridge-browser.mjs
+      - scripts/generate-web-icons.mjs
       - package.json
       - pnpm-lock.yaml
       - .github/workflows/bridge-dev.yml
@@ -20,6 +22,8 @@ on:
       - drizzle/**
       - tests/**
       - web/**
+      - scripts/build-bridge-browser.mjs
+      - scripts/generate-web-icons.mjs
       - package.json
       - pnpm-lock.yaml
       - .github/workflows/bridge-dev.yml
@@ -75,4 +79,5 @@ jobs:
           fi
       - run: pnpm test
       - run: pnpm typecheck
+      - run: pnpm check:generated
       - run: pnpm build
