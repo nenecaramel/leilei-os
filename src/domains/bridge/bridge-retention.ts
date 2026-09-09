@@ -22,8 +22,15 @@ export async function deleteExpiredBridgeEventsBatch(
     const victims = await transaction.execute<{ id: string }>(sql`
       SELECT id
       FROM bridge_events
-      WHERE (status = 'host_sent' AND host_sent_at < ${cutoff.toISOString()}::timestamptz)
-         OR (status = 'delivery_unknown' AND delivery_unknown_at < ${cutoff.toISOString()}::timestamptz)
+      WHERE (
+        (status = 'host_sent' AND host_sent_at < ${cutoff.toISOString()}::timestamptz)
+        OR (status = 'delivery_unknown' AND delivery_unknown_at < ${cutoff.toISOString()}::timestamptz)
+      )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM sentinel_wake_runs
+          WHERE sentinel_wake_runs.bridge_event_id = bridge_events.id
+        )
       ORDER BY created_at ASC, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED

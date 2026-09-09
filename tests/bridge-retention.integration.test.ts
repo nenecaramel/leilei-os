@@ -209,7 +209,7 @@ test(
       );
       assert.equal(
         (await db.select().from(schema.bridgeEvents).where(eq(schema.bridgeEvents.id, ids.batchThree))).length,
-        1,
+        0,
       );
       assert.equal(
         (await db.select().from(schema.bridgeEvents).where(eq(schema.bridgeEvents.id, ids.recentReferenced))).length,
