@@ -58,6 +58,8 @@ The v5 resource identifier is the current cache/version boundary for the Bridge 
 
 `render_thinking_block` renders model-supplied external working text in a LeileiOS MCP Apps card. It does not expose native hidden chain of thought and is not persisted by default. The tool is intended for selective use when an explicit visual thinking card is useful.
 
+The canonical standard MCP Apps resource is `ui://widget/leileios-thinking-block-v2.html`. ChatGPT's `openai/outputTemplate` compatibility pointer uses `ui://widget/leileios-thinking-block-v1.html`; both URIs serve the same current HTML/runtime, and v1 is retained only as a compatibility alias rather than restoring the old browser client.
+
 The Thinking Block integration includes adapted MCP Apps card behavior from [`sibylsea-hub/gpt-thinking-block-mcp`](https://github.com/sibylsea-hub/gpt-thinking-block-mcp), retained with its MIT attribution.
 
 ## Notion MCP surface
@@ -101,7 +103,7 @@ npm --prefix web run typecheck
 npm --prefix web run build
 ```
 
-`pnpm build` compiles the service and regenerates the Message Bridge browser bundle. `pnpm start` runs `dist/app/index.js`; build first.
+`pnpm build` compiles the service and regenerates both the Message Bridge and Thinking Block browser bundles. `pnpm start` runs `dist/app/index.js`; build first.
 
 ## Deployment topology
 

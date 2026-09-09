@@ -13,7 +13,7 @@ A repository merge and a successful production deployment are separate facts. Al
 
 ## Railway API/MCP deployment
 
-Railway builds the repository root `Dockerfile`. The build stage installs the pinned pnpm version, compiles TypeScript, and runs the Message Bridge browser bundle step through `pnpm build`. The runtime container starts:
+Railway builds the repository root `Dockerfile`. The build stage installs the pinned pnpm version, compiles TypeScript, and runs both MCP Apps browser bundle steps (Message Bridge and Thinking Block) through `pnpm build`. The runtime container starts:
 
 ```text
 node dist/app/index.js
@@ -52,6 +52,24 @@ The Bridge listener remains manually started from its UI. Deploying a new server
 For material Message Bridge UI/runtime changes, advance the resource URI so hosts can fetch a new resource identity instead of relying on cache invalidation of an existing URI.
 
 After an MCP surface or resource change reaches production, refresh/reconnect the relevant MCP client only as a discovery/cache step; that action is not evidence that the server deployment itself succeeded.
+
+## Thinking Block release behavior
+
+The current canonical standard MCP Apps resource URI is:
+
+```text
+ui://widget/leileios-thinking-block-v2.html
+```
+
+ChatGPT's `openai/outputTemplate` compatibility pointer uses:
+
+```text
+ui://widget/leileios-thinking-block-v1.html
+```
+
+Both identifiers serve the same current HTML and generated browser runtime. The v1 identifier is a compatibility alias only; it does not restore the previous browser client. The committed/generated bundle is built from `src/mcp/tools/render-thinking-block/browser-runtime.ts` by `scripts/build-thinking-block-browser.mjs`.
+
+Material standard MCP Apps UI/runtime changes should advance the canonical resource URI rather than relying on hosts to invalidate an existing resource. Any ChatGPT compatibility pointer change must be treated separately and verified on ChatGPT Web/Mobile without regressing other MCP Apps hosts.
 
 ## Vercel Web deployment
 
