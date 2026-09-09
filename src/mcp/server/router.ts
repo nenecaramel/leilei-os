@@ -52,6 +52,13 @@ export type McpRouterOptions = {
   logger?: SafeLogger;
 };
 
+type McpSessionRejectionReason =
+  | "missing_session_header"
+  | "unknown_session"
+  | "namespace_mismatch"
+  | "identity_mismatch"
+  | "session_unavailable";
+
 export function createMcpRouter(options: McpRouterOptions = {}): Router {
   const router = Router();
   const namespace = options.namespace ?? "public";
@@ -70,6 +77,35 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
       error: { code, message },
       id: null,
     });
+  };
+
+  const logSessionRejection = (
+    request: Request,
+    status: number,
+    reason: McpSessionRejectionReason,
+  ): void => {
+    try {
+      options.logger?.warn("mcp_session_rejected", {
+        method: request.method,
+        routeClass: namespace === "internal" ? "mcp_internal" : "mcp_public",
+        status,
+        reason,
+      });
+    } catch {
+      // Diagnostics must never affect the session response path.
+    }
+  };
+
+  const sendSessionError = (
+    request: Request,
+    response: Response,
+    status: number,
+    code: number,
+    message: string,
+    reason: McpSessionRejectionReason,
+  ): void => {
+    logSessionRejection(request, status, reason);
+    sendError(response, status, code, message);
   };
 
   const readSession = (sessionId: string | undefined) =>
@@ -112,12 +148,12 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
       const knownSession = readSession(sessionId);
 
       if (knownSession && knownSession.namespace !== namespace) {
-        sendError(response, 400, -32000, "Invalid or missing MCP session.");
+        sendSessionError(request, response, 400, -32000, "Invalid or missing MCP session.", "namespace_mismatch");
         return;
       }
 
       if (knownSession && knownSession.userId !== userId) {
-        sendError(response, 403, -32003, "MCP session belongs to another user.");
+        sendSessionError(request, response, 403, -32003, "MCP session belongs to another user.", "identity_mismatch");
         return;
       }
 
@@ -172,7 +208,11 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
       }
 
       if (!activeSession) {
-        sendError(response, sessionId ? 404 : 400, -32000, "Invalid or missing MCP session.");
+        const status = sessionId ? 404 : 400;
+        const reason = sessionId
+          ? (knownSession ? "session_unavailable" : "unknown_session")
+          : "missing_session_header";
+        sendSessionError(request, response, status, -32000, "Invalid or missing MCP session.", reason);
         return;
       }
 
@@ -198,21 +238,26 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
     const knownSession = readSession(sessionId);
 
     if (!knownSession) {
-      response.status(sessionId ? 404 : 400).send("Invalid or missing MCP session.");
+      const status = sessionId ? 404 : 400;
+      logSessionRejection(request, status, sessionId ? "unknown_session" : "missing_session_header");
+      response.status(status).send("Invalid or missing MCP session.");
       return;
     }
     if (knownSession.namespace !== namespace) {
+      logSessionRejection(request, 400, "namespace_mismatch");
       response.status(400).send("Invalid or missing MCP session.");
       return;
     }
 
     if (!request.mcpUserId || knownSession.userId !== request.mcpUserId) {
+      logSessionRejection(request, 403, "identity_mismatch");
       response.status(403).send("MCP session belongs to another user.");
       return;
     }
 
     const activeSession = await registry.acquire(sessionId!, namespace, request.mcpUserId);
     if (!activeSession) {
+      logSessionRejection(request, 404, "session_unavailable");
       response.status(404).send("Invalid or missing MCP session.");
       return;
     }
@@ -224,21 +269,26 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
     const knownSession = readSession(sessionId);
 
     if (!knownSession) {
-      response.status(sessionId ? 404 : 400).send("Invalid or missing MCP session.");
+      const status = sessionId ? 404 : 400;
+      logSessionRejection(request, status, sessionId ? "unknown_session" : "missing_session_header");
+      response.status(status).send("Invalid or missing MCP session.");
       return;
     }
     if (knownSession.namespace !== namespace) {
+      logSessionRejection(request, 400, "namespace_mismatch");
       response.status(400).send("Invalid or missing MCP session.");
       return;
     }
 
     if (!request.mcpUserId || knownSession.userId !== request.mcpUserId) {
+      logSessionRejection(request, 403, "identity_mismatch");
       response.status(403).send("MCP session belongs to another user.");
       return;
     }
 
     const activeSession = await registry.acquire(sessionId!, namespace, request.mcpUserId);
     if (!activeSession) {
+      logSessionRejection(request, 404, "session_unavailable");
       response.status(404).send("Invalid or missing MCP session.");
       return;
     }
