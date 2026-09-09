@@ -150,7 +150,7 @@ test("real PostgreSQL Todo ranking and business-date pointers use the owner time
       await tx.insert(schema.userSettings).values({ userId: owner, timezone: "Asia/Shanghai" });
       await tx.insert(schema.diaryEntries).values({
         id: randomUUID(), userId: owner, title: "普通日记", content: "普通 计划 内容", date: "2026-08-13", tags: [], mood: null,
-        source: "web", status: "active", idempotencyKey: `todo-ranking-diary-${owner}`, requestHash: "a".repeat(64), createdAt: now, updatedAt: now,
+        source: "chatgpt_mcp", status: "active", idempotencyKey: `todo-ranking-diary-${owner}`, requestHash: "a".repeat(64), createdAt: now, updatedAt: now,
       });
       const paperId = randomUUID();
       const exactId = randomUUID();

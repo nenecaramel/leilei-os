@@ -284,9 +284,9 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
 
   return (
     <main className="day-space-page">
-      <header className="day-space-header">
+      <header className="memory-page-header day-space-header">
         <div className="memory-page-heading"><div className="memory-page-title">Day Space</div></div>
-        <div className="memory-page-tools day-space-header-tools">
+        <div className="memory-page-tools">
           <ModuleSearchButton label="搜索 Todo" expanded={todoSearchOpen} onClick={() => setTodoSearchOpen((value) => !value)} />
         </div>
         {todoSearchOpen ? <ModuleSearchField ariaLabel="搜索 Todo 内容" placeholder="搜索 Todo 内容" value={todoSearchDraft} onChange={setTodoSearchDraft} /> : null}

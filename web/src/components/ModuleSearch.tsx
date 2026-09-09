@@ -1,4 +1,4 @@
-import type { ChangeEvent, MouseEventHandler } from "react";
+import type { ChangeEvent, MouseEventHandler, ReactNode } from "react";
 import { SearchIcon } from "./icons";
 
 type ModuleSearchButtonProps = {
@@ -36,9 +36,10 @@ export function ModuleSearchField({ ariaLabel, placeholder, value, onChange, cla
 
 export type ModuleSearchState = "idle" | "loading" | "ready" | "empty" | "error";
 
-export function ModuleSearchStateMessage({ state, emptyText, errorText, onRetry }: { state: ModuleSearchState; emptyText: string; errorText: string; onRetry?: () => void }) {
-  if (state === "loading") return <div className="module-search-state" role="status">正在搜索…</div>;
-  if (state === "empty") return <div className="module-search-state">{emptyText}</div>;
-  if (state === "error") return <div className="module-search-state" role="alert">{errorText}{onRetry ? <button type="button" onClick={onRetry}>重试</button> : null}</div>;
+export function ModuleSearchStateMessage({ state, emptyText, errorText, loadingText = "正在搜索…", retryLabel = "重试", onRetry, action, className = "" }: { state: ModuleSearchState; emptyText: string; errorText: string; loadingText?: string; retryLabel?: string; onRetry?: () => void; action?: ReactNode; className?: string }) {
+  const classNames = `module-search-state${className ? ` ${className}` : ""}`;
+  if (state === "loading") return <div className={classNames} role="status">{loadingText}</div>;
+  if (state === "empty") return <div className={classNames}>{emptyText}{action}</div>;
+  if (state === "error") return <div className={classNames} role="alert">{errorText}{onRetry ? <button className="module-search-state-retry" type="button" onClick={onRetry}>{retryLabel}</button> : null}</div>;
   return null;
 }

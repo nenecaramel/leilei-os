@@ -8,6 +8,7 @@ import {
   } from "react";
   import type { WebApiClient } from "../api/useWebApiClient";
   import { TaskIcon } from "../components/icons";
+  import { ModuleSearchStateMessage } from "../components/ModuleSearch";
   import { NativeDateInput } from "../components/NativeDateInput";
   import { PageHeader as LegacyPageHeader } from "./PageHeader";
   import {
@@ -1012,9 +1013,9 @@ import {
               onCreate={(trigger) => { paperTriggerRef.current = trigger; if (showCreate) { if (!confirmAndDiscardDraft()) return; invalidateMutationContext(); setShowCreate(false); } else { focusCreateRef.current = true; setShowCreate(true); } setActionError(""); }} />
             {desktopPage ? <p className="desktop-page-description">管理待办事项、截止时间与完成状态。</p> : null}
             {actionError && !isDetailMode && !showCreate ? <section className="memory-action-notice" role="status">{actionError}</section> : null}
-            {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task 列表" onOpen={(id, trigger) => { paperTriggerRef.current = trigger; void handleReadTask(id); }} onReopen={(task) => void handleReopenTask(task)} /> : <section className="memory-empty-state"><p>{hasFilters ? "没有符合条件的任务" : "还没有任务"}</p>{hasFilters ? <button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button> : null}</section> : null}
-            {state.status === "loading" ? <MobileTaskLoading label="Task 加载中" /> : null}
-            {state.status === "error" ? <TaskMessage title="暂时无法读取任务" description="请稍后重试。" role="alert" action={<button className="secondary-button" onClick={() => setReloadKey((v) => v + 1)}>重新加载</button>} /> : null}
+            {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task 列表" onOpen={(id, trigger) => { paperTriggerRef.current = trigger; void handleReadTask(id); }} onReopen={(task) => void handleReopenTask(task)} /> : filters.q ? <ModuleSearchStateMessage state="empty" emptyText="没有符合条件的任务" errorText="" action={<button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button>} /> : <section className="memory-empty-state"><p>{hasFilters ? "没有符合条件的任务" : "还没有任务"}</p>{hasFilters ? <button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button> : null}</section> : null}
+            {state.status === "loading" ? filters.q ? <ModuleSearchStateMessage state="loading" emptyText="" errorText="" loadingText="正在搜索…" /> : <MobileTaskLoading label="Task 加载中" /> : null}
+            {state.status === "error" ? filters.q ? <ModuleSearchStateMessage state="error" emptyText="" errorText="暂时无法搜索任务。" retryLabel="重新加载" onRetry={() => setReloadKey((v) => v + 1)} /> : <TaskMessage title="暂时无法读取任务" description="请稍后重试。" role="alert" action={<button className="secondary-button" onClick={() => setReloadKey((v) => v + 1)}>重新加载</button>} /> : null}
           </> : null}
           {showCreate ? <PaperDetailDialog id="task-create-paper" open label="创建 Task" dateLabel={<TaskDeadlineEditor value={dueTime} withoutDueTime={withoutDueTime} disabled={creating} onValueChange={(v) => { setDueTime(v); setActionError(""); }} onWithoutDueTimeChange={(v) => { setWithoutDueTime(v); setActionError(""); }} />} signature="" triggerRef={paperTriggerRef}
             onRequestClose={() => { if (!confirmAndDiscardDraft()) return false; setShowCreate(false); setActionError(""); return true; }}
@@ -1475,20 +1476,20 @@ import {
 
             {state.status === "ready" &&
               state.tasks.length === 0 && (
-                <TaskMessage
-                  title={isArchivedMode ? "还没有归档任务" : filters.q || filters.status || filters.priority || filters.tag || filters.due ? "没有符合条件的任务" : "还没有任务"}
+                filters.q ? <ModuleSearchStateMessage state="empty" emptyText="没有符合条件的任务" errorText="" action={<button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button>} /> : <TaskMessage
+                  title={isArchivedMode ? "还没有归档任务" : filters.status || filters.priority || filters.tag || filters.due ? "没有符合条件的任务" : "还没有任务"}
                   description={undefined}
-                  action={filters.q || filters.status || filters.priority || filters.tag || filters.due ? <button className="secondary-button" onClick={clearFilters}>清除条件</button> : undefined}
+                  action={filters.status || filters.priority || filters.tag || filters.due ? <button className="secondary-button" onClick={clearFilters}>清除条件</button> : undefined}
                 />
               )}
 
-            {state.status === "loading" && <TaskLoading />}
+            {state.status === "loading" && (filters.q ? <ModuleSearchStateMessage state="loading" emptyText="" errorText="" loadingText="正在搜索…" /> : <TaskLoading />)}
 
             {state.status === "error" && (
-            <TaskMessage
-              title="暂时无法读取任务"
-              description="请稍后重试。"
-              role="alert"
+              filters.q ? <ModuleSearchStateMessage state="error" emptyText="" errorText="暂时无法搜索任务。" retryLabel="重新加载" onRetry={() => setReloadKey((value) => value + 1)} /> : <TaskMessage
+                title="暂时无法读取任务"
+                description="请稍后重试。"
+                role="alert"
                 action={
                   <button
                     className="secondary-button"

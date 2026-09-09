@@ -7,6 +7,7 @@ import type {
   GlobalSearchMatchReason,
   GlobalSearchModule,
   GlobalSearchRepository,
+  GlobalSearchRow,
   GlobalSearchScope,
   GlobalSearchTimeBasis,
 } from "./global-search-repository.js";
@@ -117,7 +118,7 @@ export class GlobalSearchService {
         updated_at: row.updatedAt.toISOString(),
         author: row.author,
         detail_tool: row.entityType === "universe" ? "get_universe_node" : row.entityType === "todo" ? "read_todo_day" : ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
-        detail_arguments: row.entityType === "universe" ? { id: row.entityId } : row.entityType === "todo" ? { date: row.businessTime.toISOString().slice(0, 10) } : { id: row.entityId, scope: row.lifecycleStatus },
+        detail_arguments: row.entityType === "universe" ? { id: row.entityId } : row.entityType === "todo" ? todoDetailArguments(row) : { id: row.entityId, scope: row.lifecycleStatus },
       })),
       metadata: {
         count: page.length,
@@ -136,6 +137,14 @@ export class GlobalSearchService {
       },
     };
   }
+}
+
+function todoDetailArguments(row: GlobalSearchRow): { date: string } {
+  const date = row.businessDate;
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(date)) {
+    throw new Error("Global Search Todo row is missing its business date.");
+  }
+  return { date };
 }
 
 function invalid(): never {

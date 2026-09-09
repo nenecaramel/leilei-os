@@ -2691,6 +2691,28 @@ body:has(.home-prototype) {
   }
 }
 
+/* Shared module search result states */
+.module-search-state {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  color: #777;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.module-search-state > button:not(.secondary-button) {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  color: #666;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+}
+
 @media (max-width: 760px) {
   .memory-months {
     display: grid;
@@ -5902,44 +5924,8 @@ body:has(.system-page) {
     color: #171717;
   }
 
-  .day-space-header {
-    position: relative;
-    display: block;
-  }
-
-  .day-space-header-tools {
-    position: absolute;
-    top: 0;
-    right: 0;
-  }
-
-  .day-space-header > .memory-page-search {
-    margin-top: 12px;
-  }
-
   .day-space-search-panel {
     margin-top: 8px;
-  }
-
-  .module-search-state {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 42px;
-    color: #777;
-    font-size: 13px;
-    line-height: 1.4;
-    text-align: center;
-  }
-
-  .module-search-state button {
-    margin-left: 8px;
-    padding: 0;
-    border: 0;
-    color: #666;
-    background: transparent;
-    font: inherit;
-    text-decoration: underline;
   }
 
   .day-space-search-results {
@@ -5971,10 +5957,6 @@ body:has(.system-page) {
     line-height: 1.4;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .day-space-header .memory-page-heading {
-    padding-top: 2px;
   }
 
   .day-space-date-area {

@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { DiaryIcon } from "../components/icons";
+import { ModuleSearchStateMessage } from "../components/ModuleSearch";
 import { NativeDateInput } from "../components/NativeDateInput";
 import { DiaryPageHeader } from "./DiaryPageHeader";
 import {
@@ -1185,6 +1186,13 @@ export function DiaryPageContent({
                       openDiary(id);
                     }}
                   />
+                ) : filters.q ? (
+                  <ModuleSearchStateMessage
+                    state="empty"
+                    emptyText="没有符合条件的日记"
+                    errorText=""
+                    action={<button type="button" className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button>}
+                  />
                 ) : (
                   <section className="memory-empty-state">
                     <p>
@@ -1206,27 +1214,43 @@ export function DiaryPageContent({
               ) : null}
 
               {state.status === "loading" ? (
-                <MobileDiaryLoading label="Diary 加载中" />
+                filters.q ? (
+                  <ModuleSearchStateMessage state="loading" emptyText="" errorText="" loadingText="正在搜索…" />
+                ) : <MobileDiaryLoading label="Diary 加载中" />
               ) : null}
 
               {state.status === "error" ? (
-                <DiaryMessage
-                  title="暂时无法读取日记"
-                  description="请稍后重试。"
-                  role="alert"
-                  action={
-                    <button
-                      className="secondary-button"
-                      onClick={() => {
-                        listAvailableRef.current = false;
-                        loadedListUrlRef.current = "";
-                        setReloadKey((value) => value + 1);
-                      }}
-                    >
-                      重新加载
-                    </button>
-                  }
-                />
+                filters.q ? (
+                  <ModuleSearchStateMessage
+                    state="error"
+                    emptyText=""
+                    errorText="暂时无法搜索日记。"
+                    retryLabel="重新加载"
+                    onRetry={() => {
+                      listAvailableRef.current = false;
+                      loadedListUrlRef.current = "";
+                      setReloadKey((value) => value + 1);
+                    }}
+                  />
+                ) : (
+                  <DiaryMessage
+                    title="暂时无法读取日记"
+                    description="请稍后重试。"
+                    role="alert"
+                    action={
+                      <button
+                        className="secondary-button"
+                        onClick={() => {
+                          listAvailableRef.current = false;
+                          loadedListUrlRef.current = "";
+                          setReloadKey((value) => value + 1);
+                        }}
+                      >
+                        重新加载
+                      </button>
+                    }
+                  />
+                )
               ) : null}
             </>
           ) : null}
