@@ -157,10 +157,10 @@ export function installThinkingBlockRuntime(
     const mergedInput = { ...fallbackInput, ...standardInput };
     const mergedOutput = { ...fallbackOutput, ...standardResult };
     const sources = [
-      ...resultMetadata(fallbackGlobals),
       standardResult,
-      mergedOutput,
       standardInput,
+      ...resultMetadata(fallbackGlobals),
+      mergedOutput,
       mergedInput,
       fallbackInput,
       fallbackOutput,

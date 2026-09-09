@@ -172,9 +172,16 @@ test("standard MCP Apps lifecycle renders authoritative input, result metadata, 
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: high");
     assert.equal(dom.window.document.documentElement.dataset.skin, "microglow");
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
+    assert.equal(dom.window.document.documentElement.dataset.platform, "mobile");
     assert.match(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.style.maxHeight ?? "", /px$/);
-    dispatchGlobals(dom.window, { toolInput: { thinking: "stale fallback" }, theme: "light" });
+    dispatchGlobals(dom.window, {
+      toolInput: { thinking: "stale fallback" },
+      toolResponseMetadata: { _meta: { thinking: "stale result fallback", effort: "low", skin: "botanical" } },
+      theme: "light",
+    });
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent, "authoritative result");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: high");
+    assert.equal(dom.window.document.documentElement.dataset.skin, "microglow");
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
   } finally {
     dom.window.close();
