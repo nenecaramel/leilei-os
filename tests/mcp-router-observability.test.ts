@@ -165,6 +165,7 @@ test("MCP session rejections emit safe structured reasons without changing respo
   const registry = new McpSessionRegistry({
     now: () => now,
     absoluteTtlMs: 100,
+    scheduleAbsoluteDeadline: () => () => {},
   });
   const register = (sessionId: string, userId: string, namespace: "public" | "internal") =>
     registry.register({
