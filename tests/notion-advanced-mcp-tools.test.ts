@@ -104,6 +104,24 @@ test("advanced Notion read tools are read-only and do not accept identity or sec
   }
 });
 
+test("query_notion_data_source exposes bounded JSON filter and sort value schemas", async (t) => {
+  const fixture = await connect();
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const listed = await fixture.client.listTools();
+  const query = listed.tools.find((candidate) => candidate.name === "query_notion_data_source");
+  assert.ok(query);
+  const schema = query.inputSchema as {
+    properties?: {
+      filter?: { type?: string; additionalProperties?: unknown };
+      sorts?: { items?: { type?: string; $ref?: string; additionalProperties?: unknown } };
+    };
+  };
+  assert.equal(schema.properties?.filter?.type, "object");
+  assert.notDeepEqual(schema.properties?.filter?.additionalProperties, {});
+  assert.equal(schema.properties?.sorts?.items?.$ref, "#/properties/filter");
+});
+
 test("advanced Notion reads authenticate and preserve normalized IDs and pagination inputs", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });

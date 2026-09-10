@@ -45,14 +45,22 @@ export type NotionExplicitWriteToolsDependencies = {
 };
 
 const pageInputSchema = z.object({
-  action: z.enum(["create", "update", "update_content"]),
-  page_id: notionIdSchema.optional(),
+  action: z.enum(["create", "update", "update_content"]).describe(
+    "Select one action: create requires body; update and update_content require page_id and body.",
+  ),
+  page_id: notionIdSchema.optional().describe(
+    "Required for update and update_content; forbidden for create.",
+  ),
   body: z.union([
     notionPageCreateBodySchema,
     notionPageUpdateBodySchema,
     notionPageContentUpdateBodySchema,
-  ]).optional(),
-  parent: notionPageParentSchema.optional(),
+  ]).optional().describe(
+    "Required for create, update, and update_content; its shape selects the requested operation body.",
+  ),
+  parent: notionPageParentSchema.optional().describe(
+    "Optional for create only; forbidden for update and update_content.",
+  ),
 }).strict();
 
 const pageActionSchema = z.discriminatedUnion("action", [
@@ -120,7 +128,7 @@ export function registerNotionExplicitWriteTools(
     {
       title: "Write Notion page",
       description:
-        "Explicitly create a Notion page, update page properties, or update page content. Each operation fresh-reads before writing and verifies with fresh readback. Destructive page actions are not available.",
+        "Explicitly create a Notion page, update page properties, or update page content. Shapes: create={action,body,parent?}; update={action,page_id,body}; update_content={action,page_id,body}. page_id and body are required where shown; parent is create-only. Each operation fresh-reads before writing and verifies with fresh readback. Destructive page actions are not available.",
       inputSchema: pageInputSchema,
       outputSchema: notionOutputSchema,
       annotations: {

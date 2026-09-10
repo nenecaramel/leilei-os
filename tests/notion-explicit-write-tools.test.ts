@@ -82,6 +82,22 @@ test("Phase 8.6.2 registrar exposes only page and comment writes with frozen act
   assert.equal(comment.annotations?.destructiveHint, false);
 });
 
+test("write_notion_page exposed schema documents action-specific required and forbidden fields", async (t) => {
+  const fixture = await connect();
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const listed = await fixture.client.listTools();
+  const page = listed.tools.find((tool) => tool.name === "write_notion_page");
+  assert.ok(page);
+  const schema = page.inputSchema as {
+    properties?: Record<string, { description?: string }>;
+  };
+  assert.match(schema.properties?.action?.description ?? "", /create\s+requires\s+body/i);
+  assert.match(schema.properties?.page_id?.description ?? "", /required.*update.*update_content.*forbidden.*create/i);
+  assert.match(schema.properties?.body?.description ?? "", /required.*create.*update.*update_content/i);
+  assert.match(schema.properties?.parent?.description ?? "", /optional.*create.*only.*forbidden/i);
+});
+
 test("minimal registrar routes allowed page and comment actions only", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
