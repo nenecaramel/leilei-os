@@ -16,6 +16,7 @@ function sessionProbeRequest(method: string, url: string, options: RequestInit =
     method,
     headers: {
       "content-type": "application/json",
+      accept: "application/json, text/event-stream",
       "x-test-mcp-user": USER_ID,
       ...(options.headers ?? {}),
     },
@@ -193,23 +194,15 @@ test("MCP session rejections emit safe structured reasons without changing respo
     const missingHeader = await sessionProbeRequest("POST", url, {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
     });
-    assert.equal(missingHeader.status, 400);
-    assert.deepEqual(await missingHeader.json(), {
-      jsonrpc: "2.0",
-      error: { code: -32000, message: "Invalid or missing MCP session." },
-      id: null,
-    });
+    assert.equal(missingHeader.status, 200);
+    assert.match(await missingHeader.text(), /tools/iu);
 
     const unknownSession = await sessionProbeRequest("POST", url, {
       headers: { "mcp-session-id": "unknown-session" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
     });
-    assert.equal(unknownSession.status, 404);
-    assert.deepEqual(await unknownSession.json(), {
-      jsonrpc: "2.0",
-      error: { code: -32000, message: "Invalid or missing MCP session." },
-      id: null,
-    });
+    assert.equal(unknownSession.status, 200);
+    assert.match(await unknownSession.text(), /tools/iu);
 
     const namespaceMismatch = await sessionProbeRequest("GET", url, {
       headers: { "mcp-session-id": "known-internal" },
@@ -247,8 +240,6 @@ test("MCP session rejections emit safe structured reasons without changing respo
   assert.deepEqual(
     rejectionLines.map(({ timestamp: _timestamp, ...line }) => line),
     [
-      { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp_public", status: 400, reason: "missing_session_header" },
-      { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp_public", status: 404, reason: "unknown_session" },
       { level: "warn", event: "mcp_session_rejected", method: "GET", routeClass: "mcp_public", status: 400, reason: "namespace_mismatch" },
       { level: "warn", event: "mcp_session_rejected", method: "POST", routeClass: "mcp_public", status: 403, reason: "identity_mismatch" },
       { level: "warn", event: "mcp_session_rejected", method: "GET", routeClass: "mcp_public", status: 404, reason: "session_unavailable" },

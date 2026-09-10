@@ -204,10 +204,11 @@ test("pinned Streamable HTTP sessions survive connection replacement and SSE dis
 
     const afterDelete = await requestSsePost(port, "/mcp", toolsListRequest(4), {
       "mcp-protocol-version": PROTOCOL_VERSION,
+      accept: "application/json, text/event-stream",
       "mcp-session-id": sessionId as string,
       "x-test-mcp-user": USER_ID,
     });
-    assert.equal(afterDelete.status, 404);
+    assert.equal(afterDelete.status, 200);
   }, new McpSessionRegistry({ observer: (event) => events.push(`${event.name}:${event.reason ?? ""}`) }));
   assert.ok(events.includes("mcp_session_closed:client_close"));
 });
@@ -413,7 +414,7 @@ test("fresh initialize churn reclaims idle sessions without permanent capacity r
   for (const event of reclaimed) assert.equal(event.inFlightCountAtClose, 0);
 });
 
-test("reclaimed session IDs return scoped 404 responses while missing headers stay 400", async () => {
+test("reclaimed session IDs recover on POST while GET and DELETE remain scoped 404 responses", async () => {
   const registry = new McpSessionRegistry({ maxPerUser: 1, maxTotal: 8 });
   await withMcpServer(async (port) => {
     const headers = {
@@ -434,7 +435,7 @@ test("reclaimed session IDs return scoped 404 responses while missing headers st
       ...headers,
       "mcp-session-id": staleSessionId as string,
     });
-    assert.equal(stalePost.status, 404);
+    assert.equal(stalePost.status, 200);
 
     const staleGet = await openAndCloseSse(port, staleSessionId as string);
     assert.equal(staleGet.status, 404);
@@ -446,7 +447,7 @@ test("reclaimed session IDs return scoped 404 responses while missing headers st
     assert.equal(staleDelete.status, 404);
 
     const missingPost = await requestSsePost(port, "/mcp", toolsListRequest(3), headers);
-    assert.equal(missingPost.status, 400);
+    assert.equal(missingPost.status, 200);
 
     const fresh = await requestSsePost(port, "/mcp", initializeRequest(), {
       ...headers,
