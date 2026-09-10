@@ -102,10 +102,8 @@ export function installThinkingBlockRuntime(
   const card = documentRef.querySelector<HTMLElement>("[data-thinking-card]");
   const content = documentRef.querySelector<HTMLElement>("[data-thinking-content]");
   const toggle = documentRef.querySelector<HTMLButtonElement>("[data-thinking-toggle]");
-  const styleBadge = documentRef.querySelector<HTMLElement>("[data-style-badge]");
-  const effortBadge = documentRef.querySelector<HTMLElement>("[data-effort-badge]");
-  const skinBadge = documentRef.querySelector<HTMLElement>("[data-skin-badge]");
-  if (!card || !content || !toggle || !styleBadge || !effortBadge || !skinBadge) return null;
+  const meta = documentRef.querySelector<HTMLElement>("[data-thinking-meta]");
+  if (!card || !content || !toggle || !meta) return null;
 
   let collapsed = false;
   let heightFrame = 0;
@@ -167,12 +165,9 @@ export function installThinkingBlockRuntime(
     ];
     const style = pick(sources, "style", "deep_think");
     const effort = pick(sources, "effort", "");
-    const skin = pick(sources, "skin", "botanical");
     const thinking = pick(sources, "thinking", "本轮没有提供外置工作文本。");
-    styleBadge.textContent = style === "relational" || style === "deep_think" ? style : "deep_think";
-    effortBadge.textContent = effort ? `effort: ${effort}` : "effort";
-    documentRef.documentElement.dataset.skin = skin === "microglow" ? "microglow" : "botanical";
-    skinBadge.textContent = documentRef.documentElement.dataset.skin;
+    const normalizedStyle = style === "relational" || style === "deep_think" ? style : "deep_think";
+    meta.textContent = effort ? `${normalizedStyle} · ${effort}` : normalizedStyle;
     content.textContent = thinking;
     applyHostContext();
     requestIntrinsicHeight(true);
