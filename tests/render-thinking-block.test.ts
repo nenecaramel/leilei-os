@@ -129,7 +129,7 @@ test("render_thinking_block rejects missing fields and invalid enums without ech
     assert.equal(invalidEnum.isError, true);
     assert.match(String(invalidEnum.content[0]?.text), /Input validation error/);
     assert.doesNotMatch(JSON.stringify(invalidEnum), new RegExp(THINKING));
-    const missingField = await pair.client.callTool({ name: "render_thinking_block", arguments: { style: "deep_think", thinking: THINKING, effort: "low" } });
+    const missingField = await pair.client.callTool({ name: "render_thinking_block", arguments: { style: "deep_think", thinking: THINKING } });
     assert.equal(missingField.isError, true);
     assert.match(String(missingField.content[0]?.text), /Input validation error/);
     assert.doesNotMatch(JSON.stringify(missingField), new RegExp(THINKING));
@@ -193,6 +193,8 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and monochr
 test("render_thinking_block exposes new v3 resources while retaining legacy v1/v2 aliases", async () => {
   const chatgptV3Uri = CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI;
   const canonicalV3Uri = RENDER_THINKING_BLOCK_RESOURCE_URI;
+  assert.equal(canonicalV3Uri, "ui://widget/leileios-thinking-block-v3.html");
+  assert.equal(chatgptV3Uri, "ui://widget/leileios-thinking-block-chatgpt-v3.html");
   const legacyV1Uri = "ui://widget/leileios-thinking-block-v1.html";
   const legacyV2Uri = "ui://widget/leileios-thinking-block-v2.html";
   const server = new McpServer({ name: "resource-alias-test", version: "1" });
