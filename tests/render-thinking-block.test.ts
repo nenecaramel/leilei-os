@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -22,7 +21,6 @@ const TOOL_INPUT = {
   style: "deep_think" as const,
   thinking: THINKING,
   effort: "medium" as const,
-  skin: "botanical" as const,
 };
 
 function createFactory() {
@@ -59,15 +57,15 @@ test("authenticated public tools/list exposes the Chinese render_thinking_block 
     const result = await pair.client.listTools();
     const tool = result.tools.find((candidate) => candidate.name === "render_thinking_block");
     assert.ok(tool);
-    assert.deepEqual(tool.inputSchema.required, ["style", "thinking", "effort", "skin"]);
+    assert.deepEqual(tool.inputSchema.required, ["style", "thinking", "effort"]);
     assert.deepEqual(tool.inputSchema.properties?.style?.enum, ["deep_think", "relational"]);
     assert.match(String(tool.inputSchema.properties?.style?.description), /选择本轮思考块的文体/);
     assert.deepEqual(tool.inputSchema.properties?.effort?.enum, ["low", "medium", "high"]);
     assert.match(String(tool.inputSchema.properties?.effort?.description), /500/);
     assert.match(String(tool.inputSchema.properties?.effort?.description), /700/);
     assert.match(String(tool.inputSchema.properties?.effort?.description), /2000/);
-    assert.deepEqual(tool.inputSchema.properties?.skin?.enum, ["botanical", "microglow"]);
-    assert.match(String(tool.inputSchema.properties?.skin?.description), /视觉皮肤/);
+    assert.equal(tool.inputSchema.properties?.skin, undefined);
+    assert.doesNotMatch(String(tool.description), /skin|皮肤|botanical|microglow/);
     assert.match(String(tool.inputSchema.properties?.thinking?.description), /外置的工作文本/);
     assert.match(String(tool.description), /隐藏 CoT|原生/);
     assert.deepEqual(tool.annotations, {
@@ -110,6 +108,20 @@ test("render_thinking_block returns compact content and complete metadata withou
   }
 });
 
+test("render_thinking_block accepts only the two legacy skin values without exposing or persisting skin", async (t) => {
+  const pair = await connect(createFactory()("user-1", "public"), "thinking-legacy-skin");
+  t.after(async () => { await pair.client.close(); await pair.server.close(); });
+  for (const skin of ["botanical", "microglow"] as const) {
+    const result = await pair.client.callTool({
+      name: "render_thinking_block",
+      arguments: { ...TOOL_INPUT, skin },
+    });
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(result._meta, TOOL_INPUT);
+    assert.doesNotMatch(JSON.stringify(result), /botanical|microglow/);
+  }
+});
+
 test("render_thinking_block rejects missing fields and invalid enums without echoing thinking", async () => {
   const pair = await connect(createFactory()("user-1", "public"), "thinking-validation");
   try {
@@ -121,14 +133,18 @@ test("render_thinking_block rejects missing fields and invalid enums without ech
     assert.equal(missingField.isError, true);
     assert.match(String(missingField.content[0]?.text), /Input validation error/);
     assert.doesNotMatch(JSON.stringify(missingField), new RegExp(THINKING));
+    const arbitraryExtra = await pair.client.callTool({ name: "render_thinking_block", arguments: { ...TOOL_INPUT, arbitrary_extra_field: true } });
+    assert.equal(arbitraryExtra.isError, true);
+    assert.match(String(arbitraryExtra.content[0]?.text), /Input validation error/);
+    assert.doesNotMatch(JSON.stringify(arbitraryExtra), new RegExp(THINKING));
   } finally {
     await pair.client.close();
     await pair.server.close();
   }
 });
 
-test("render_thinking_block resource has the versioned MCP Apps MIME and static card", async () => {
-  assert.equal(RENDER_THINKING_BLOCK_RESOURCE_URI, "ui://widget/leileios-thinking-block-v2.html");
+test("render_thinking_block resource has the versioned MCP Apps MIME and monochrome static card", async () => {
+  assert.equal(RENDER_THINKING_BLOCK_RESOURCE_URI, "ui://widget/leileios-thinking-block-v3.html");
   const server = new McpServer({ name: "resource-test", version: "1" });
   registerRenderThinkingBlockResource(server);
   const pair = await connect(server, "thinking-resource");
@@ -137,22 +153,48 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and static 
     const content = result.contents[0];
     assert.equal(content.uri, RENDER_THINKING_BLOCK_RESOURCE_URI);
     assert.equal(content.mimeType, "text/html;profile=mcp-app");
-    assert.match(String(content.text), /botanical/);
-    assert.match(String(content.text), /microglow/);
-    assert.match(String(content.text), /notifyIntrinsicHeight/);
-    assert.match(String(content.text), /ontoolinput/);
-    assert.match(String(content.text), /ontoolinputpartial/);
-    assert.match(String(content.text), /ontoolresult/);
-    assert.match(String(content.text), /onhostcontextchanged/);
+    const html = String(content.text);
+    assert.match(html, /Thinking/);
+    assert.doesNotMatch(html, /Thinking block|本轮外置工作文本/);
+    assert.match(html, /data-thinking-toggle/);
+    assert.match(html, /--card-background:\s*#FCFCFC/);
+    assert.match(html, /--main-text:\s*#181818/);
+    assert.match(html, /--secondary-text:\s*#777777/);
+    assert.match(html, /--border:\s*#DDDDDD/);
+    assert.match(html, /--card-background:\s*#191919/);
+    assert.match(html, /--main-text:\s*#F0F0F0/);
+    assert.match(html, /--secondary-text:\s*#A0A0A0/);
+    assert.match(html, /--border:\s*#383838/);
+    assert.doesNotMatch(html, /botanical|microglow|data-skin|data-style-badge|data-effort-badge|data-skin-badge/);
+    assert.doesNotMatch(html, /--accent|--accent-soft|--paper-deep|--glow|linear-gradient|box-shadow|color-mix/);
+    const contentRule = html.match(/\[data-thinking-content\]\s*\{[^}]+\}/)?.[0];
+    assert.ok(contentRule);
+    assert.doesNotMatch(contentRule, /border|background|border-radius/);
+    const headerRule = html.match(/\[data-thinking-header\]\s*\{[^}]+\}/)?.[0];
+    assert.ok(headerRule);
+    assert.doesNotMatch(headerRule, /background/);
+    const toggleRule = html.match(/\[data-thinking-toggle\]\s*\{[^}]+\}/)?.[0];
+    assert.ok(toggleRule);
+    assert.match(toggleRule, /border:\s*0/);
+    assert.match(toggleRule, /background:\s*transparent/);
+    assert.match(toggleRule, /color:\s*var\(--secondary-text\)/);
+    assert.doesNotMatch(toggleRule, /border-radius/);
+    assert.match(html, /notifyIntrinsicHeight/);
+    assert.match(html, /ontoolinput/);
+    assert.match(html, /ontoolinputpartial/);
+    assert.match(html, /ontoolresult/);
+    assert.match(html, /onhostcontextchanged/);
   } finally {
     await pair.client.close();
     await pair.server.close();
   }
 });
 
-test("render_thinking_block exposes one current HTML resource under the v2 URI and the ChatGPT v1 alias", async () => {
-  const v1Uri = CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI;
-  const v2Uri = RENDER_THINKING_BLOCK_RESOURCE_URI;
+test("render_thinking_block exposes new v3 resources while retaining legacy v1/v2 aliases", async () => {
+  const chatgptV3Uri = CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI;
+  const canonicalV3Uri = RENDER_THINKING_BLOCK_RESOURCE_URI;
+  const legacyV1Uri = "ui://widget/leileios-thinking-block-v1.html";
+  const legacyV2Uri = "ui://widget/leileios-thinking-block-v2.html";
   const server = new McpServer({ name: "resource-alias-test", version: "1" });
   registerRenderThinkingBlockResource(server);
   const pair = await connect(server, "thinking-resource-alias");
@@ -160,43 +202,41 @@ test("render_thinking_block exposes one current HTML resource under the v2 URI a
     const listed = await pair.client.listResources();
     assert.deepEqual(
       listed.resources.map((resource) => resource.uri).sort(),
-      [v1Uri, v2Uri].sort(),
+      [chatgptV3Uri, canonicalV3Uri, legacyV1Uri, legacyV2Uri].sort(),
     );
-    const [v1, v2] = await Promise.all([
-      pair.client.readResource({ uri: v1Uri }),
-      pair.client.readResource({ uri: v2Uri }),
+    const results = await Promise.all([
+      pair.client.readResource({ uri: chatgptV3Uri }),
+      pair.client.readResource({ uri: canonicalV3Uri }),
+      pair.client.readResource({ uri: legacyV1Uri }),
+      pair.client.readResource({ uri: legacyV2Uri }),
     ]);
-    const v1Content = v1.contents[0];
-    const v2Content = v2.contents[0];
-    assert.ok(v1Content);
-    assert.ok(v2Content);
-    assert.equal(v1Content.uri, v1Uri);
-    assert.equal(v2Content.uri, v2Uri);
-    assert.equal(v1Content.mimeType, v2Content.mimeType);
-    assert.deepEqual(v1Content._meta, v2Content._meta);
-    assert.equal(v1Content.text, v2Content.text);
-    assert.match(String(v1Content.text), /ontoolinput/);
-    assert.match(String(v1Content.text), /ui\/initialize/);
+    const contents = results.map((result) => result.contents[0]);
+    assert.ok(contents.every(Boolean));
+    assert.equal(new Set(contents.map((content) => content?.mimeType)).size, 1);
+    assert.equal(new Set(contents.map((content) => JSON.stringify(content?._meta))).size, 1);
+    assert.equal(new Set(contents.map((content) => content?.text)).size, 1);
+    assert.match(String(contents[0]?.text), /ontoolinput/);
+    assert.match(String(contents[0]?.text), /ui\/initialize/);
   } finally {
     await pair.client.close();
     await pair.server.close();
   }
 });
 
-test("render_thinking_block compatibility keeps the committed standard browser runtime unchanged", () => {
+test("render_thinking_block compatibility keeps the committed standard browser runtime monochrome", () => {
   const bundle = readFileSync(
     new URL("../src/mcp/tools/render-thinking-block/browser-runtime.js", import.meta.url),
     "utf8",
   );
-  assert.equal(
-    createHash("sha256").update(bundle).digest("hex"),
-    "543203719cbb3aa5a6f96eed6ad6d27983ccc3e187737a5ae7d95a3e21aa0efd",
-  );
+  assert.ok(bundle.length > 0);
+  assert.match(bundle, /data-thinking-meta/);
+  assert.doesNotMatch(bundle, /data-skin|skinBadge|botanical|microglow/);
+  assert.match(bundle, /ontoolinput/);
 });
 
 test("standard MCP Apps lifecycle renders authoritative input, result metadata, and host context", () => {
   const dom = createCardDom({
-    toolInput: { style: "deep_think", thinking: "fallback", effort: "low", skin: "botanical" },
+    toolInput: { style: "deep_think", thinking: "fallback", effort: "low" },
   });
   try {
     const card = dom.window.thinkingBlock;
@@ -209,26 +249,24 @@ test("standard MCP Apps lifecycle renders authoritative input, result metadata, 
       style: "relational",
       thinking: "standard input",
       effort: "medium",
-      skin: "microglow",
     });
     card?.handleToolInputPartial({ thinking: "partial input" });
-    card?.handleToolResult({ _meta: { thinking: "authoritative result", effort: "high", skin: "microglow" } });
+    card?.handleToolResult({ _meta: { thinking: "authoritative result", effort: "high" } });
     card?.handleHostContext({ theme: "dark", containerDimensions: { width: 420, maxHeight: 360 }, platform: "mobile" });
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent, "authoritative result");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: high");
-    assert.equal(dom.window.document.documentElement.dataset.skin, "microglow");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · high");
+    assert.equal(dom.window.document.documentElement.dataset.skin, undefined);
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
     assert.equal(dom.window.document.documentElement.dataset.platform, "mobile");
     assert.match(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.style.maxHeight ?? "", /px$/);
     dispatchGlobals(dom.window, {
       toolInput: { thinking: "stale fallback" },
-      toolResponseMetadata: { _meta: { thinking: "stale result fallback", effort: "low", skin: "botanical" } },
+      toolResponseMetadata: { _meta: { thinking: "stale result fallback", effort: "low" } },
       theme: "light",
     });
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent, "authoritative result");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: high");
-    assert.equal(dom.window.document.documentElement.dataset.skin, "microglow");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · high");
+    assert.equal(dom.window.document.documentElement.dataset.skin, undefined);
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
   } finally {
     dom.window.close();
@@ -269,9 +307,7 @@ class FakeDocument {
     ["[data-thinking-card]", new FakeElement()],
     ["[data-thinking-content]", new FakeElement()],
     ["[data-thinking-toggle]", new FakeElement()],
-    ["[data-style-badge]", new FakeElement()],
-    ["[data-effort-badge]", new FakeElement()],
-    ["[data-skin-badge]", new FakeElement()],
+    ["[data-thinking-meta]", new FakeElement()],
   ]);
 
   querySelector<T extends FakeElement>(selector: string): T | null {
@@ -341,7 +377,7 @@ test("card renders fields from input, output, and result metadata and merges par
   const outputThinking = "OUTPUT_THINKING";
   const resultThinking = "RESULT_THINKING";
   const dom = createCardDom({
-    toolInput: { style: "deep_think", thinking: THINKING, effort: "low", skin: "botanical" },
+    toolInput: { style: "deep_think", thinking: THINKING, effort: "low" },
   });
   try {
     const card = dom.window.document.querySelector<HTMLElement>("[data-thinking-card]");
@@ -351,21 +387,20 @@ test("card renders fields from input, output, and result metadata and merges par
     assert.equal(thinking.textContent, THINKING);
     dispatchGlobals(dom.window, { toolInput: { style: "relational", thinking: "PARTIAL_INPUT" } });
     assert.equal(thinking.textContent, "PARTIAL_INPUT");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: low");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · low");
     dispatchGlobals(dom.window, { toolInput: { thinking: "SECOND_PARTIAL" } });
     assert.equal(thinking.textContent, "SECOND_PARTIAL");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · low");
     dispatchGlobals(dom.window, { toolOutput: { thinking: outputThinking, effort: "medium" } });
     assert.equal(thinking.textContent, outputThinking);
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: medium");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · medium");
     dispatchGlobals(dom.window, {
-      toolResponseMetadata: { mcp_tool_result: { _meta: { thinking: resultThinking, skin: "microglow" } } },
+      toolResponseMetadata: { mcp_tool_result: { _meta: { thinking: resultThinking } } },
       theme: "dark",
     });
     assert.equal(thinking.textContent, resultThinking);
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-skin-badge]")?.textContent, "microglow");
+    assert.equal(dom.window.document.documentElement.dataset.skin, undefined);
   } finally {
     dom.window.close();
   }
