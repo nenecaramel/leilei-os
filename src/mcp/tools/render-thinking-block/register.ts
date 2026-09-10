@@ -8,6 +8,7 @@ import {
 
 const styleSchema = z.enum(["deep_think", "relational"]);
 const effortSchema = z.enum(["low", "medium", "high"]);
+const skinSchema = z.enum(["botanical", "microglow"]);
 
 export const renderThinkingBlockInputSchema = z.object({
   style: styleSchema.describe(
@@ -19,6 +20,9 @@ export const renderThinkingBlockInputSchema = z.object({
   effort: effortSchema.describe(
     "本轮思考块的长度目标：low 最多约 500 tokens；medium 约 700–1000 tokens；high 约 1200–2000 tokens。这里只是 prompt-level 目标，不做静默截断；不要为了凑长度重复或虚构复杂性。",
   ),
+  skin: skinSchema.describe(
+    "本轮卡片的视觉皮肤。botanical 是温暖的纸张、鼠尾草、杏仁与杏色；microglow 是珍珠白、澄澈青蓝、薰衣草冰、薄荷雾与玻璃般的晨光。",
+  ),
 }).strict();
 
 const renderThinkingBlockOutputSchema = z.object({
@@ -27,7 +31,7 @@ const renderThinkingBlockOutputSchema = z.object({
 }).strict();
 
 const TOOL_DESCRIPTION =
-  "在正式回答前，把模型主动写入的外置工作文本显示在 LeileiOS MCP Apps 思考卡片中，然后继续正常回答。卡片内容不是模型原生隐藏 CoT，而是本次工具参数中的文本；它默认不落盘，也不会自动成为长期记忆。遇到不简单的问题时按本轮内容选择合适的 style 和 effort，不需要每一轮调用。";
+  "在正式回答前，把模型主动写入的外置工作文本显示在 LeileiOS MCP Apps 思考卡片中，然后继续正常回答。卡片内容不是模型原生隐藏 CoT，而是本次工具参数中的文本；它默认不落盘，也不会自动成为长期记忆。遇到不简单的问题时按本轮内容选择合适的 style、effort 和 skin，不需要每一轮调用。";
 
 export function registerRenderThinkingBlockTool(server: McpServer): void {
   registerAppTool(
@@ -54,13 +58,13 @@ export function registerRenderThinkingBlockTool(server: McpServer): void {
         "openai/toolInvocation/invoked": "思考块已渲染",
       },
     },
-    async ({ style, thinking, effort }) => ({
+    async ({ style, thinking, effort, skin }) => ({
       content: [{ type: "text", text: "Thinking block rendered." }],
       structuredContent: {
         success: true as const,
         data: { status: "rendered" as const },
       },
-      _meta: { style, thinking, effort },
+      _meta: { style, thinking, effort, skin },
     }),
   );
 }

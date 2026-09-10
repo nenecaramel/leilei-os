@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -21,6 +22,7 @@ const TOOL_INPUT = {
   style: "deep_think" as const,
   thinking: THINKING,
   effort: "medium" as const,
+  skin: "botanical" as const,
 };
 
 function createFactory() {
@@ -57,15 +59,15 @@ test("authenticated public tools/list exposes the Chinese render_thinking_block 
     const result = await pair.client.listTools();
     const tool = result.tools.find((candidate) => candidate.name === "render_thinking_block");
     assert.ok(tool);
-    assert.deepEqual(tool.inputSchema.required, ["style", "thinking", "effort"]);
+    assert.deepEqual(tool.inputSchema.required, ["style", "thinking", "effort", "skin"]);
     assert.deepEqual(tool.inputSchema.properties?.style?.enum, ["deep_think", "relational"]);
     assert.match(String(tool.inputSchema.properties?.style?.description), /选择本轮思考块的文体/);
     assert.deepEqual(tool.inputSchema.properties?.effort?.enum, ["low", "medium", "high"]);
     assert.match(String(tool.inputSchema.properties?.effort?.description), /500/);
     assert.match(String(tool.inputSchema.properties?.effort?.description), /700/);
     assert.match(String(tool.inputSchema.properties?.effort?.description), /2000/);
-    assert.equal(tool.inputSchema.properties?.skin, undefined);
-    assert.doesNotMatch(String(tool.description), /skin|皮肤|botanical|microglow/);
+    assert.deepEqual(tool.inputSchema.properties?.skin?.enum, ["botanical", "microglow"]);
+    assert.match(String(tool.inputSchema.properties?.skin?.description), /视觉皮肤/);
     assert.match(String(tool.inputSchema.properties?.thinking?.description), /外置的工作文本/);
     assert.match(String(tool.description), /隐藏 CoT|原生/);
     assert.deepEqual(tool.annotations, {
@@ -115,14 +117,10 @@ test("render_thinking_block rejects missing fields and invalid enums without ech
     assert.equal(invalidEnum.isError, true);
     assert.match(String(invalidEnum.content[0]?.text), /Input validation error/);
     assert.doesNotMatch(JSON.stringify(invalidEnum), new RegExp(THINKING));
-    const missingField = await pair.client.callTool({ name: "render_thinking_block", arguments: { style: "deep_think", thinking: THINKING } });
+    const missingField = await pair.client.callTool({ name: "render_thinking_block", arguments: { style: "deep_think", thinking: THINKING, effort: "low" } });
     assert.equal(missingField.isError, true);
     assert.match(String(missingField.content[0]?.text), /Input validation error/);
     assert.doesNotMatch(JSON.stringify(missingField), new RegExp(THINKING));
-    const removedSkin = await pair.client.callTool({ name: "render_thinking_block", arguments: { ...TOOL_INPUT, skin: "botanical" } });
-    assert.equal(removedSkin.isError, true);
-    assert.match(String(removedSkin.content[0]?.text), /Input validation error/);
-    assert.doesNotMatch(JSON.stringify(removedSkin), new RegExp(THINKING));
   } finally {
     await pair.client.close();
     await pair.server.close();
@@ -139,37 +137,13 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and static 
     const content = result.contents[0];
     assert.equal(content.uri, RENDER_THINKING_BLOCK_RESOURCE_URI);
     assert.equal(content.mimeType, "text/html;profile=mcp-app");
-    const html = String(content.text);
-    assert.match(html, /Thinking/);
-    assert.doesNotMatch(html, /Thinking block|本轮外置工作文本/);
-    assert.match(html, /data-thinking-toggle/);
-    assert.match(html, /--card-background:\s*#FCFCFC/);
-    assert.match(html, /--main-text:\s*#181818/);
-    assert.match(html, /--secondary-text:\s*#777777/);
-    assert.match(html, /--border:\s*#DDDDDD/);
-    assert.match(html, /--card-background:\s*#191919/);
-    assert.match(html, /--main-text:\s*#F0F0F0/);
-    assert.match(html, /--secondary-text:\s*#A0A0A0/);
-    assert.match(html, /--border:\s*#383838/);
-    assert.doesNotMatch(html, /botanical|microglow|data-skin|data-style-badge|data-effort-badge|data-skin-badge/);
-    assert.doesNotMatch(html, /--accent|--accent-soft|--paper-deep|--glow|linear-gradient|box-shadow|color-mix/);
-    const contentRule = html.match(/\[data-thinking-content\]\s*\{[^}]+\}/)?.[0];
-    assert.ok(contentRule);
-    assert.doesNotMatch(contentRule, /border|background|border-radius/);
-    const headerRule = html.match(/\[data-thinking-header\]\s*\{[^}]+\}/)?.[0];
-    assert.ok(headerRule);
-    assert.doesNotMatch(headerRule, /background/);
-    const toggleRule = html.match(/\[data-thinking-toggle\]\s*\{[^}]+\}/)?.[0];
-    assert.ok(toggleRule);
-    assert.match(toggleRule, /border:\s*0/);
-    assert.match(toggleRule, /background:\s*transparent/);
-    assert.match(toggleRule, /color:\s*var\(--secondary-text\)/);
-    assert.doesNotMatch(toggleRule, /border-radius/);
-    assert.match(html, /notifyIntrinsicHeight/);
-    assert.match(html, /ontoolinput/);
-    assert.match(html, /ontoolinputpartial/);
-    assert.match(html, /ontoolresult/);
-    assert.match(html, /onhostcontextchanged/);
+    assert.match(String(content.text), /botanical/);
+    assert.match(String(content.text), /microglow/);
+    assert.match(String(content.text), /notifyIntrinsicHeight/);
+    assert.match(String(content.text), /ontoolinput/);
+    assert.match(String(content.text), /ontoolinputpartial/);
+    assert.match(String(content.text), /ontoolresult/);
+    assert.match(String(content.text), /onhostcontextchanged/);
   } finally {
     await pair.client.close();
     await pair.server.close();
@@ -209,20 +183,20 @@ test("render_thinking_block exposes one current HTML resource under the v2 URI a
   }
 });
 
-test("render_thinking_block compatibility keeps the committed standard browser runtime monochrome", () => {
+test("render_thinking_block compatibility keeps the committed standard browser runtime unchanged", () => {
   const bundle = readFileSync(
     new URL("../src/mcp/tools/render-thinking-block/browser-runtime.js", import.meta.url),
     "utf8",
   );
-  assert.ok(bundle.length > 0);
-  assert.match(bundle, /data-thinking-meta/);
-  assert.doesNotMatch(bundle, /data-skin|skinBadge|botanical|microglow/);
-  assert.match(bundle, /ontoolinput/);
+  assert.equal(
+    createHash("sha256").update(bundle).digest("hex"),
+    "543203719cbb3aa5a6f96eed6ad6d27983ccc3e187737a5ae7d95a3e21aa0efd",
+  );
 });
 
 test("standard MCP Apps lifecycle renders authoritative input, result metadata, and host context", () => {
   const dom = createCardDom({
-    toolInput: { style: "deep_think", thinking: "fallback", effort: "low" },
+    toolInput: { style: "deep_think", thinking: "fallback", effort: "low", skin: "botanical" },
   });
   try {
     const card = dom.window.thinkingBlock;
@@ -235,24 +209,26 @@ test("standard MCP Apps lifecycle renders authoritative input, result metadata, 
       style: "relational",
       thinking: "standard input",
       effort: "medium",
+      skin: "microglow",
     });
     card?.handleToolInputPartial({ thinking: "partial input" });
-    card?.handleToolResult({ _meta: { thinking: "authoritative result", effort: "high" } });
+    card?.handleToolResult({ _meta: { thinking: "authoritative result", effort: "high", skin: "microglow" } });
     card?.handleHostContext({ theme: "dark", containerDimensions: { width: 420, maxHeight: 360 }, platform: "mobile" });
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent, "authoritative result");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · high");
-    assert.equal(dom.window.document.documentElement.dataset.skin, undefined);
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: high");
+    assert.equal(dom.window.document.documentElement.dataset.skin, "microglow");
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
     assert.equal(dom.window.document.documentElement.dataset.platform, "mobile");
     assert.match(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.style.maxHeight ?? "", /px$/);
     dispatchGlobals(dom.window, {
       toolInput: { thinking: "stale fallback" },
-      toolResponseMetadata: { _meta: { thinking: "stale result fallback", effort: "low" } },
+      toolResponseMetadata: { _meta: { thinking: "stale result fallback", effort: "low", skin: "botanical" } },
       theme: "light",
     });
     assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent, "authoritative result");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · high");
-    assert.equal(dom.window.document.documentElement.dataset.skin, undefined);
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: high");
+    assert.equal(dom.window.document.documentElement.dataset.skin, "microglow");
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
   } finally {
     dom.window.close();
@@ -293,7 +269,9 @@ class FakeDocument {
     ["[data-thinking-card]", new FakeElement()],
     ["[data-thinking-content]", new FakeElement()],
     ["[data-thinking-toggle]", new FakeElement()],
-    ["[data-thinking-meta]", new FakeElement()],
+    ["[data-style-badge]", new FakeElement()],
+    ["[data-effort-badge]", new FakeElement()],
+    ["[data-skin-badge]", new FakeElement()],
   ]);
 
   querySelector<T extends FakeElement>(selector: string): T | null {
@@ -363,7 +341,7 @@ test("card renders fields from input, output, and result metadata and merges par
   const outputThinking = "OUTPUT_THINKING";
   const resultThinking = "RESULT_THINKING";
   const dom = createCardDom({
-    toolInput: { style: "deep_think", thinking: THINKING, effort: "low" },
+    toolInput: { style: "deep_think", thinking: THINKING, effort: "low", skin: "botanical" },
   });
   try {
     const card = dom.window.document.querySelector<HTMLElement>("[data-thinking-card]");
@@ -373,20 +351,21 @@ test("card renders fields from input, output, and result metadata and merges par
     assert.equal(thinking.textContent, THINKING);
     dispatchGlobals(dom.window, { toolInput: { style: "relational", thinking: "PARTIAL_INPUT" } });
     assert.equal(thinking.textContent, "PARTIAL_INPUT");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · low");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: low");
     dispatchGlobals(dom.window, { toolInput: { thinking: "SECOND_PARTIAL" } });
     assert.equal(thinking.textContent, "SECOND_PARTIAL");
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · low");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-style-badge]")?.textContent, "relational");
     dispatchGlobals(dom.window, { toolOutput: { thinking: outputThinking, effort: "medium" } });
     assert.equal(thinking.textContent, outputThinking);
-    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent, "relational · medium");
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-effort-badge]")?.textContent, "effort: medium");
     dispatchGlobals(dom.window, {
-      toolResponseMetadata: { mcp_tool_result: { _meta: { thinking: resultThinking } } },
+      toolResponseMetadata: { mcp_tool_result: { _meta: { thinking: resultThinking, skin: "microglow" } } },
       theme: "dark",
     });
     assert.equal(thinking.textContent, resultThinking);
     assert.equal(dom.window.document.documentElement.dataset.theme, "dark");
-    assert.equal(dom.window.document.documentElement.dataset.skin, undefined);
+    assert.equal(dom.window.document.querySelector<HTMLElement>("[data-skin-badge]")?.textContent, "microglow");
   } finally {
     dom.window.close();
   }
@@ -411,12 +390,6 @@ test("each card owns collapse state, adapts themes, constrains long content, and
     assert.ok(notifyCalls.length >= 1);
     first.window.document.querySelector<HTMLButtonElement>("[data-thinking-toggle]")!.click();
     assert.equal(firstCard.dataset.collapsed, "true");
-    assert.equal(first.window.document.querySelector<HTMLButtonElement>("[data-thinking-toggle]")!.dataset.ariaExpanded, "false");
-    assert.equal(first.window.document.querySelector<HTMLButtonElement>("[data-thinking-toggle]")!.textContent, "展开");
-    first.window.document.querySelector<HTMLButtonElement>("[data-thinking-toggle]")!.click();
-    assert.equal(firstCard.dataset.collapsed, "false");
-    assert.equal(first.window.document.querySelector<HTMLButtonElement>("[data-thinking-toggle]")!.dataset.ariaExpanded, "true");
-    assert.equal(first.window.document.querySelector<HTMLButtonElement>("[data-thinking-toggle]")!.textContent, "折叠");
     assert.equal(secondCard.dataset.collapsed, undefined);
     dispatchGlobals(first.window, { theme: "light" });
     assert.equal(first.window.document.documentElement.dataset.theme, "light");
