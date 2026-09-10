@@ -136,6 +136,23 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
     }
   };
 
+  const runPublicPostRecovery = async (
+    userId: string,
+    request: Request,
+    response: Response,
+  ): Promise<void> => {
+    const server = createSessionServer(userId, namespace);
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(request, response, request.body);
+    } finally {
+      await server.close().catch(() => undefined);
+    }
+  };
+
   router.post("/", async (request: Request, response: Response) => {
     try {
       const userId = request.mcpUserId;
@@ -204,6 +221,11 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
             if (transport) await transport.close().catch(() => undefined);
           }
         }
+        return;
+      }
+
+      if (!activeSession && !knownSession && namespace === "public") {
+        await runPublicPostRecovery(userId, request, response);
         return;
       }
 
