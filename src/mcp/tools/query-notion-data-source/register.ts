@@ -6,7 +6,15 @@ import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const idSchema = z.string().trim().refine((value) => /^[0-9a-f]{32}$/i.test(value.replaceAll("-", "")), "Notion IDs must be UUIDs.");
-const jsonObjectSchema = z.record(z.any());
+const jsonValueSchema: z.ZodTypeAny = z.lazy(() => z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+  z.array(jsonValueSchema).max(100),
+  z.record(z.string().max(200), jsonValueSchema),
+]));
+const jsonObjectSchema = z.record(z.string().max(200), jsonValueSchema);
 const outputSchema = z.object({
   success: z.boolean(),
   data: z.object({
