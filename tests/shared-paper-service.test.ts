@@ -21,6 +21,7 @@ const paper = (overrides: Partial<SharedPaperRecord> = {}): SharedPaperRecord =>
   updatedBy: "L",
   createdAt: new Date("2026-01-01T00:00:00Z"),
   updatedAt: new Date("2026-01-01T00:00:00Z"),
+  archivedAt: null,
   ...overrides,
 });
 
@@ -28,15 +29,28 @@ class FakeRepository implements SharedPaperRepository {
   current = paper();
   edits: SharedPaperEdit[] = [];
   lastListInput: unknown;
+  lastSearchInput: unknown;
   findUserById() { return Promise.resolve({ status: "active" as const }); }
   createPaper(input: Parameters<SharedPaperRepository["createPaper"]>[0]) {
     this.current = paper({ title: input.title, content: input.content, createdBy: input.author, updatedBy: input.author });
     return Promise.resolve(this.current);
   }
-  listPapers() { return Promise.resolve([this.current]); }
-  searchPapers() { return Promise.resolve([this.current]); }
+  listPapers(input: Parameters<SharedPaperRepository["listPapers"]>[0]) { this.lastListInput = input; return Promise.resolve([this.current]); }
+  searchPapers(input: Parameters<SharedPaperRepository["searchPapers"]>[0]) { this.lastSearchInput = input; return Promise.resolve([this.current]); }
   getPaper() { return Promise.resolve(this.current); }
   listEdits(input: Parameters<SharedPaperRepository["listEdits"]>[0]) { this.lastListInput = input; return Promise.resolve(this.edits); }
+  archivePaper() {
+    this.current = paper({ ...this.current, archivedAt: this.current.archivedAt ?? new Date("2026-01-02T00:00:00Z") });
+    return Promise.resolve({ outcome: "committed" as const, paper: this.current });
+  }
+  restorePaper() {
+    this.current = paper({ ...this.current, archivedAt: null });
+    return Promise.resolve({ outcome: "committed" as const, paper: this.current });
+  }
+  deletePaper() {
+    if (!this.current.archivedAt) return Promise.resolve({ outcome: "not_archived" as const });
+    return Promise.resolve({ outcome: "deleted" as const });
+  }
   editPaper(input: Parameters<SharedPaperRepository["editPaper"]>[0]) {
     if (input.expectedRevision !== this.current.revision) return Promise.resolve({ outcome: "revision_conflict" as const });
     const content = replaceCodePointRange(this.current.content, input.start, input.end, input.replacement);
@@ -88,4 +102,32 @@ test("SharedPaperService forwards a before_revision history cursor", async () =>
   const service = new SharedPaperService(repository);
   await service.listEdits({ userId: "user-1", paperId: paper().id, limit: 2, beforeRevision: 3 });
   assert.deepEqual(repository.lastListInput, { userId: "user-1", paperId: paper().id, limit: 2, beforeRevision: 3 });
+});
+
+
+test("SharedPaperService defaults discovery to active and forwards archived scope", async () => {
+  const repository = new FakeRepository();
+  const service = new SharedPaperService(repository);
+  await service.listPapers({ userId: "user-1" });
+  assert.deepEqual(repository.lastListInput, { userId: "user-1", limit: 50, scope: "active" });
+  await service.searchPapers({ userId: "user-1", query: "shared", scope: "archived" });
+  assert.deepEqual(repository.lastSearchInput, { userId: "user-1", query: "shared", limit: 50, scope: "archived" });
+});
+
+test("SharedPaperService archives and restores without changing content revision, and only hard-deletes archived papers", async () => {
+  const repository = new FakeRepository();
+  const service = new SharedPaperService(repository);
+  const archived = await service.archivePaper({ userId: "user-1", paperId: paper().id });
+  assert.ok(archived.archivedAt instanceof Date);
+  assert.equal(archived.revision, 1);
+  const restored = await service.restorePaper({ userId: "user-1", paperId: paper().id });
+  assert.equal(restored.archivedAt, null);
+  assert.equal(restored.revision, 1);
+  await assert.rejects(
+    () => service.deletePaper({ userId: "user-1", paperId: paper().id }),
+    (error: unknown) => error instanceof SharedPaperServiceError && error.code === "PAPER_NOT_ARCHIVED",
+  );
+  await service.archivePaper({ userId: "user-1", paperId: paper().id });
+  const deleted = await service.deletePaper({ userId: "user-1", paperId: paper().id });
+  assert.deepEqual(deleted, { paperId: paper().id });
 });
