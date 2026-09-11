@@ -64,6 +64,56 @@ test("Shared Paper route contract and navigation entry are present", async () =>
   assert.deepEqual(NAV_GROUPS[0]?.entries.map((entry) => entry.label), ["Home", "Memory", "Diary", "Shared Paper", "Task", "Day Space", "Universe", "Sentinel"]);
 });
 
+
+test("Shared Paper deep link opens authoritative archived detail and closes back to Global Search", async () => {
+  const paperId = "00000000-0000-4000-8000-000000000006";
+  const archivedPaper: Paper = {
+    ...paper,
+    id: paperId,
+    title: "Global Search Paper",
+    content: "deep linked content",
+    archivedAt: "2026-09-11T14:00:00.000Z",
+  };
+  const returnTo = "/search?q=deep&modules=shared_paper&scope=all";
+  const env = await installDom(
+    `/shared-paper?paper=${paperId}&scope=archived&returnTo=${encodeURIComponent(returnTo)}`,
+  );
+  const calls: string[] = [];
+  const api: WebApiClient = {
+    async request<T>(path: string) {
+      calls.push(path);
+      if (path === `/shared-papers/${paperId}`) return response(archivedPaper) as T;
+      if (path === "/shared-papers?scope=archived") return response([archivedPaper]) as T;
+      return response([]) as T;
+    },
+  };
+
+  try {
+    await React.act(async () => {
+      env.root.render(React.createElement(SharedPaperPageContent, { api }));
+      await waitForPaint();
+    });
+    await waitForCondition(() => env.container.textContent?.includes("deep linked content") === true);
+
+    assert.ok(calls.includes(`/shared-papers/${paperId}`));
+    assert.ok(calls.includes("/shared-papers?scope=archived"));
+    assert.match(env.container.textContent ?? "", /Global Search Paper/);
+
+    const close = env.container.querySelector<HTMLButtonElement>('button[aria-label="关闭纸张"]');
+    assert.ok(close);
+    await React.act(async () => {
+      close!.click();
+      await waitForPaint();
+    });
+    assert.equal(
+      `${env.dom.window.location.pathname}${env.dom.window.location.search}`,
+      returnTo,
+    );
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("Shared Paper list loads, searches in-module, and opens authoritative detail", async () => {
   const calls: string[] = [];
   const env = await installDom();
