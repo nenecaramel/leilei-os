@@ -1,5 +1,5 @@
 {
-  "id": "2e9eee68-7189-4a6b-bc81-222b132fc1e9",
+  "id": "56e1e5ad-b5dd-47fa-83d9-b94f0566872f",
   "prevId": "c8947974-f7d8-41fe-93fb-0fc623be4790",
   "version": "7",
   "dialect": "postgresql",
@@ -2149,27 +2149,6 @@
         }
       },
       "indexes": {
-        "shared_papers_id_user_unique_idx": {
-          "name": "shared_papers_id_user_unique_idx",
-          "columns": [
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "shared_papers_user_updated_id_idx": {
           "name": "shared_papers_user_updated_id_idx",
           "columns": [
@@ -2214,7 +2193,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "shared_papers_id_user_unique": {
+          "name": "shared_papers_id_user_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "user_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "shared_papers_revision_positive": {
