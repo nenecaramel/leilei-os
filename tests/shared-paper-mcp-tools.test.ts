@@ -205,7 +205,7 @@ test("Shared Paper edit history text is Unicode-safe and bounded", async (t) => 
   const result = await fixture.client.callTool({ name: "list_shared_paper_edits", arguments: { id, limit: 100 } });
   const text = String(result.content?.[0]?.text);
 
-  assert.match(text, /Showing 10 of 100 returned edits; structuredContent contains all returned edits\./);
+  assert.match(text, /Showing 5 of 100 returned edits; structuredContent contains all returned edits\./);
   assert.ok(text.length < 8_000);
   const deletedLine = text.split("\n").find((line) => line.startsWith("deleted="));
   const insertedLine = text.split("\n").find((line) => line.startsWith("inserted="));

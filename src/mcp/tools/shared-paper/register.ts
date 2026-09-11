@@ -11,6 +11,8 @@ import { codePointLength } from "../../../shared/unicode.js";
 const idSchema = z.string().uuid();
 const authorSchema = z.enum(["L", "G", "C"]);
 const idempotencyKeySchema = z.string().min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH).max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH).regex(MCP_IDEMPOTENCY_KEY_PATTERN);
+const EDIT_TEXT_PREVIEW_CODE_POINTS = 200;
+const MAX_HISTORY_TEXT_EDITS = 5;
 const paperSummarySchema = z.object({ id: idSchema, title: z.string(), preview: z.string(), snippet: z.string().nullable(), revision: z.number().int().min(1), created_by: authorSchema, updated_by: authorSchema, created_at: z.string().datetime(), updated_at: z.string().datetime(), detail_tool: z.literal("get_shared_paper"), detail_arguments: z.object({ id: idSchema }).strict() }).strict();
 const paperDetailSchema = z.object({ id: idSchema, title: z.string(), content: z.string(), revision: z.number().int().min(1), created_by: authorSchema, updated_by: authorSchema, created_at: z.string().datetime(), updated_at: z.string().datetime() }).strict();
 const editSchema = z.object({ id: idSchema, paper_id: idSchema, base_revision: z.number().int().min(1), revision: z.number().int().min(2), author: authorSchema, start_offset: z.number().int().nonnegative(), end_offset: z.number().int().nonnegative(), deleted_text: z.string(), inserted_text: z.string(), created_at: z.string().datetime() }).strict();
@@ -54,9 +56,40 @@ async function runRead(read: () => Promise<SharedPaperRecord[]>, tool: string, d
   try { const papers = await read(); const summaries = papers.map((paper) => toSummary(paper, query)); return { content: [{ type: "text" as const, text: sharedPaperContent(summaries) }], structuredContent: { success: true as const, data: { papers: summaries, count: summaries.length } } }; }
   catch (error) { return sharedError(error, tool); }
 }
-async function runDetail(read: () => Promise<SharedPaperRecord>, dependencies: SharedPaperToolDependencies) { try { const paper = await read(); return { content: [{ type: "text" as const, text: `Shared paper ${quoteMcpText(paper.title)}\n${paper.content}` }], structuredContent: { success: true as const, data: { paper: toDetail(paper) } } }; } catch (error) { return sharedError(error, "get_shared_paper"); } }
+async function runDetail(read: () => Promise<SharedPaperRecord>, dependencies: SharedPaperToolDependencies) { try { const paper = await read(); return { content: [{ type: "text" as const, text: sharedPaperDetailContent(paper) }], structuredContent: { success: true as const, data: { paper: toDetail(paper) } } }; } catch (error) { return sharedError(error, "get_shared_paper"); } }
 async function runMutation(mutate: () => Promise<{ paper: SharedPaperRecord; edit?: SharedPaperEdit; outcome?: "committed" | "replayed" }>, _dependencies: SharedPaperToolDependencies) { try { const result = await mutate(); const replayed = result.outcome === "replayed"; const data = { paper_id: result.paper.id, revision: result.edit?.revision ?? result.paper.revision, ...(result.edit ? { edit_id: result.edit.id, base_revision: result.edit.baseRevision, author: result.edit.author, created_at: result.edit.createdAt.toISOString() } : {}), metadata: { idempotent_replay: replayed }, detail_tool: "get_shared_paper" as const, detail_arguments: { id: result.paper.id } }; return { content: [{ type: "text" as const, text: `Shared paper ${replayed ? "replayed" : "committed"} at revision ${data.revision}.\n${formatMcpDetailPointer("get_shared_paper", data.detail_arguments)}` }], structuredContent: { success: true as const, data } }; } catch (error) { return sharedError(error, "shared_paper_mutation"); } }
-async function runEdits(read: () => Promise<SharedPaperEdit[]>, _dependencies: SharedPaperToolDependencies) { try { const edits = await read(); const data = { edits: edits.map(toEdit), count: edits.length }; return { content: [{ type: "text" as const, text: `${edits.length} shared paper edits.` }], structuredContent: { success: true as const, data } }; } catch (error) { return sharedError(error, "list_shared_paper_edits"); } }
+async function runEdits(read: () => Promise<SharedPaperEdit[]>, _dependencies: SharedPaperToolDependencies) { try { const edits = await read(); const data = { edits: edits.map(toEdit), count: edits.length }; return { content: [{ type: "text" as const, text: sharedPaperEditsContent(edits) }], structuredContent: { success: true as const, data } }; } catch (error) { return sharedError(error, "list_shared_paper_edits"); } }
+function sharedPaperDetailContent(paper: SharedPaperRecord): string {
+  return joinMcpContentLines([
+    `Shared paper ${quoteMcpText(paper.title)}`,
+    `id=${paper.id}`,
+    `revision=${paper.revision}`,
+    `created_by=${paper.createdBy}`,
+    `updated_by=${paper.updatedBy}`,
+    `created_at=${paper.createdAt.toISOString()}`,
+    `updated_at=${paper.updatedAt.toISOString()}`,
+    paper.content,
+  ]);
+}
+
+function sharedPaperEditsContent(edits: SharedPaperEdit[]): string {
+  const visibleEdits = edits.slice(0, MAX_HISTORY_TEXT_EDITS);
+  const lines = [`${edits.length} shared paper edits.`];
+  if (visibleEdits.length < edits.length) {
+    lines.push(`Showing ${visibleEdits.length} of ${edits.length} returned edits; structuredContent contains all returned edits.`);
+  }
+  for (const edit of visibleEdits) {
+    lines.push(
+      `edit=${edit.id}`,
+      `author=${edit.author}`,
+      `revision=${edit.baseRevision}->${edit.revision}`,
+      `created_at=${edit.createdAt.toISOString()}`,
+      `deleted=${quoteMcpText(edit.deletedText, EDIT_TEXT_PREVIEW_CODE_POINTS)}`,
+      `inserted=${quoteMcpText(edit.insertedText, EDIT_TEXT_PREVIEW_CODE_POINTS)}`,
+    );
+  }
+  return joinMcpContentLines(lines);
+}
 function sharedPaperContent(summaries: ReturnType<typeof toSummary>[]) {
   const lines = [`Found ${summaries.length} shared papers.`];
   for (const paper of summaries) {
