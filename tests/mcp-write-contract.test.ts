@@ -242,7 +242,7 @@ async function invokeAllWrites(client: Client) {
   ]);
 }
 
-test("MCP exposes exactly nineteen write tools and preserves every annotation", async (t) => {
+test("MCP exposes exactly twenty-two write tools and preserves every annotation", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
@@ -271,6 +271,9 @@ test("MCP exposes exactly nineteen write tools and preserves every annotation", 
     "delete_universe_diary_source",
     "create_shared_paper",
     "edit_shared_paper",
+    "archive_shared_paper",
+    "restore_shared_paper",
+    "delete_shared_paper",
   ]);
   assert.deepEqual(
     writes.map((tool) => tool.name).sort(),
@@ -303,6 +306,12 @@ test("MCP exposes exactly nineteen write tools and preserves every annotation", 
   assert.equal(tools.find((tool) => tool.name === "write_memory")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "create_universe_node")?.annotations?.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === "create_universe_relation")?.annotations?.idempotentHint, true);
+  for (const name of ["archive_shared_paper", "restore_shared_paper", "delete_shared_paper"]) {
+    assert.equal(tools.find((tool) => tool.name === name)?.annotations?.idempotentHint, true);
+  }
+  assert.equal(tools.find((tool) => tool.name === "archive_shared_paper")?.annotations?.destructiveHint, false);
+  assert.equal(tools.find((tool) => tool.name === "restore_shared_paper")?.annotations?.destructiveHint, false);
+  assert.equal(tools.find((tool) => tool.name === "delete_shared_paper")?.annotations?.destructiveHint, true);
   for (const name of ["create_task", "write_diary", "write_memory", "write_todo_paper"]) {
     const tool = tools.find((candidate) => candidate.name === name);
     assert.ok(tool?.inputSchema.required?.includes("author"));

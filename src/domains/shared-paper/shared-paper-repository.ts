@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { sharedPaperEdits, sharedPapers, users } from "../../database/schema.js";
 import {
@@ -11,6 +11,9 @@ import { codePointLength, replaceCodePointRange, sliceCodePoints } from "../../s
 import type {
   SharedPaperCreateIdempotencyInput,
   SharedPaperCreateInput,
+  SharedPaperLifecycleIdempotencyInput,
+  SharedPaperListInput,
+  SharedPaperSearchInput,
   SharedPaperEdit,
   SharedPaperEditIdempotencyInput,
   SharedPaperRangeEditInput,
@@ -32,6 +35,7 @@ function toPaper(row: typeof sharedPapers.$inferSelect): SharedPaperRecord {
     updatedBy: row.updatedBy,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    archivedAt: row.archivedAt,
   };
 }
 
@@ -59,15 +63,17 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
     return user ?? null;
   }
 
-  async listPapers(input: { userId: string; limit?: number }): Promise<SharedPaperRecord[]> {
-    const rows = await this.db.select().from(sharedPapers).where(eq(sharedPapers.userId, input.userId)).orderBy(desc(sharedPapers.updatedAt), desc(sharedPapers.id)).limit(input.limit ?? 50);
+  async listPapers(input: SharedPaperListInput): Promise<SharedPaperRecord[]> {
+    const archiveCondition = input.scope === "archived" ? isNotNull(sharedPapers.archivedAt) : isNull(sharedPapers.archivedAt);
+    const rows = await this.db.select().from(sharedPapers).where(and(eq(sharedPapers.userId, input.userId), archiveCondition)).orderBy(desc(sharedPapers.updatedAt), desc(sharedPapers.id)).limit(input.limit ?? 50);
     return rows.map(toPaper);
   }
 
-  async searchPapers(input: { userId: string; query: string; limit?: number }): Promise<SharedPaperRecord[]> {
+  async searchPapers(input: SharedPaperSearchInput): Promise<SharedPaperRecord[]> {
     const query = `%${escapeLike(input.query)}%`;
     const normalized = sql`regexp_replace(lower(normalize(${sharedPapers.title} || ' ' || ${sharedPapers.content}, NFC)), '\\s+', ' ', 'g')`;
-    const rows = await this.db.select().from(sharedPapers).where(and(eq(sharedPapers.userId, input.userId), sql`${normalized} like ${query} escape '\\'`)).orderBy(desc(sharedPapers.updatedAt), desc(sharedPapers.id)).limit(input.limit ?? 50);
+    const archiveCondition = input.scope === "archived" ? isNotNull(sharedPapers.archivedAt) : isNull(sharedPapers.archivedAt);
+    const rows = await this.db.select().from(sharedPapers).where(and(eq(sharedPapers.userId, input.userId), archiveCondition, sql`${normalized} like ${query} escape '\\'`)).orderBy(desc(sharedPapers.updatedAt), desc(sharedPapers.id)).limit(input.limit ?? 50);
     return rows.map(toPaper);
   }
 
@@ -130,6 +136,107 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
         resourceId: paper.id,
       });
       return { outcome: "committed" as const, paper };
+    });
+  }
+
+  async archivePaper(input: { userId: string; paperId: string }) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      return this.archivePaperInTransaction(transaction as unknown as Database, input.userId, input.paperId);
+    });
+  }
+
+  async restorePaper(input: { userId: string; paperId: string }) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      return this.restorePaperInTransaction(transaction as unknown as Database, input.userId, input.paperId);
+    });
+  }
+
+  async deletePaper(input: { userId: string; paperId: string }) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      return this.deletePaperInTransaction(transaction as unknown as Database, input.userId, input.paperId);
+    });
+  }
+
+  async archivePaperIdempotently(input: SharedPaperLifecycleIdempotencyInput) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const existing = await lockAndReadMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "archive_shared_paper",
+        idempotencyKey: input.idempotencyKey,
+      });
+      if (existing) {
+        if (existing.requestHash !== input.requestHash || existing.resourceType !== "shared_paper") return { outcome: "idempotency_conflict" as const };
+        const paper = await this.getPaperInTransaction(transaction as unknown as Database, input.userId, existing.resourceId);
+        return paper ? { outcome: "replayed" as const, paper } : { outcome: "not_found" as const };
+      }
+      const result = await this.archivePaperInTransaction(transaction as unknown as Database, input.userId, input.paperId);
+      if (result.outcome === "not_found") return result;
+      await recordMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "archive_shared_paper",
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
+        resourceType: "shared_paper",
+        resourceId: input.paperId,
+      });
+      return { outcome: "committed" as const, paper: result.paper };
+    });
+  }
+
+  async restorePaperIdempotently(input: SharedPaperLifecycleIdempotencyInput) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const existing = await lockAndReadMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "restore_shared_paper",
+        idempotencyKey: input.idempotencyKey,
+      });
+      if (existing) {
+        if (existing.requestHash !== input.requestHash || existing.resourceType !== "shared_paper") return { outcome: "idempotency_conflict" as const };
+        const paper = await this.getPaperInTransaction(transaction as unknown as Database, input.userId, existing.resourceId);
+        return paper ? { outcome: "replayed" as const, paper } : { outcome: "not_found" as const };
+      }
+      const result = await this.restorePaperInTransaction(transaction as unknown as Database, input.userId, input.paperId);
+      if (result.outcome === "not_found") return result;
+      await recordMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "restore_shared_paper",
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
+        resourceType: "shared_paper",
+        resourceId: input.paperId,
+      });
+      return { outcome: "committed" as const, paper: result.paper };
+    });
+  }
+
+  async deletePaperIdempotently(input: SharedPaperLifecycleIdempotencyInput) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const existing = await lockAndReadMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "delete_shared_paper",
+        idempotencyKey: input.idempotencyKey,
+      });
+      if (existing) {
+        if (existing.requestHash !== input.requestHash || existing.resourceType !== "shared_paper") return { outcome: "idempotency_conflict" as const };
+        return { outcome: "replayed" as const, paperId: existing.resourceId };
+      }
+      const result = await this.deletePaperInTransaction(transaction as unknown as Database, input.userId, input.paperId);
+      if (result.outcome !== "deleted") return result;
+      await recordMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "delete_shared_paper",
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
+        resourceType: "shared_paper",
+        resourceId: input.paperId,
+      });
+      return { outcome: "committed" as const, paperId: input.paperId };
     });
   }
 
@@ -215,8 +322,29 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
     return { outcome: "committed" as const, paper: toPaper(paperRow), edit: toEdit(editRow) };
   }
 
+  private async archivePaperInTransaction(database: Database, userId: string, paperId: string) {
+    const [row] = await database.update(sharedPapers).set({ archivedAt: new Date() }).where(and(eq(sharedPapers.userId, userId), eq(sharedPapers.id, paperId), isNull(sharedPapers.archivedAt))).returning();
+    if (row) return { outcome: "committed" as const, paper: toPaper(row) };
+    const paper = await this.getPaperInTransaction(database, userId, paperId);
+    return paper ? { outcome: "unchanged" as const, paper } : { outcome: "not_found" as const };
+  }
+
+  private async restorePaperInTransaction(database: Database, userId: string, paperId: string) {
+    const [row] = await database.update(sharedPapers).set({ archivedAt: null }).where(and(eq(sharedPapers.userId, userId), eq(sharedPapers.id, paperId), isNotNull(sharedPapers.archivedAt))).returning();
+    if (row) return { outcome: "committed" as const, paper: toPaper(row) };
+    const paper = await this.getPaperInTransaction(database, userId, paperId);
+    return paper ? { outcome: "unchanged" as const, paper } : { outcome: "not_found" as const };
+  }
+
+  private async deletePaperInTransaction(database: Database, userId: string, paperId: string) {
+    const [row] = await database.delete(sharedPapers).where(and(eq(sharedPapers.userId, userId), eq(sharedPapers.id, paperId), isNotNull(sharedPapers.archivedAt))).returning({ id: sharedPapers.id });
+    if (row) return { outcome: "deleted" as const };
+    const paper = await this.getPaperInTransaction(database, userId, paperId);
+    return paper ? { outcome: "not_archived" as const } : { outcome: "not_found" as const };
+  }
+
   private async lockPaperInTransaction(database: Database, userId: string, paperId: string): Promise<SharedPaperRecord | null> {
-    const [row] = await database.select().from(sharedPapers).where(and(eq(sharedPapers.userId, userId), eq(sharedPapers.id, paperId))).for("update").limit(1);
+    const [row] = await database.select().from(sharedPapers).where(and(eq(sharedPapers.userId, userId), eq(sharedPapers.id, paperId), isNull(sharedPapers.archivedAt))).for("update").limit(1);
     return row ? toPaper(row) : null;
   }
 

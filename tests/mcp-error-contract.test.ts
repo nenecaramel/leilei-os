@@ -41,10 +41,12 @@ type ProductionMcpErrorAuditKind = "structured" | "no-handler-error";
 
 const EXPECTED_PRODUCTION_MCP_TOOL_NAMES = [
   "add_universe_diary_source",
+  "archive_shared_paper",
   "create_task",
   "create_shared_paper",
   "create_universe_node",
   "create_universe_relation",
+  "delete_shared_paper",
   "update_universe_relation",
   "delete_universe_diary_source",
   "delete_universe_relation",
@@ -71,6 +73,7 @@ const EXPECTED_PRODUCTION_MCP_TOOL_NAMES = [
   "read_notion_database",
   "read_notion_page",
   "read_todo_day",
+  "restore_shared_paper",
   "search_todo",
   "search_diary",
   "search_memory",
@@ -91,10 +94,12 @@ const EXPECTED_PRODUCTION_MCP_TOOL_NAMES = [
 
 const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKind> = {
   add_universe_diary_source: "structured",
+  archive_shared_paper: "structured",
   create_task: "structured",
   create_shared_paper: "structured",
   create_universe_node: "structured",
   create_universe_relation: "structured",
+  delete_shared_paper: "structured",
   update_universe_relation: "structured",
   delete_universe_diary_source: "structured",
   delete_universe_relation: "structured",
@@ -121,6 +126,7 @@ const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKin
   read_notion_database: "structured",
   read_notion_page: "structured",
   read_todo_day: "structured",
+  restore_shared_paper: "structured",
   search_todo: "structured",
   search_diary: "structured",
   search_memory: "structured",
@@ -144,10 +150,12 @@ const PRODUCTION_MCP_TOOL_ERROR_AUDIT: Record<string, ProductionMcpErrorAuditKin
 // silently bypass the focused contract suites.
 const STRUCTURED_ERROR_ASSERTION_TOOLS = new Set([
   "add_universe_diary_source",
+  "archive_shared_paper",
   "create_task",
   "create_shared_paper",
   "create_universe_node",
   "create_universe_relation",
+  "delete_shared_paper",
   "update_universe_relation",
   "delete_universe_diary_source",
   "delete_universe_relation",
@@ -172,6 +180,7 @@ const STRUCTURED_ERROR_ASSERTION_TOOLS = new Set([
   "read_notion_database",
   "read_notion_page",
   "read_todo_day",
+  "restore_shared_paper",
   "search_todo",
   "search_diary",
   "search_memory",
@@ -681,7 +690,7 @@ test("production MCP error audit covers every registered tool", async (t) => {
     .map(([name]) => name)
     .sort();
   assert.deepEqual(structured, [...STRUCTURED_ERROR_ASSERTION_TOOLS].sort());
-  assert.equal(structured.length, 45);
+  assert.equal(structured.length, 48);
   assert.deepEqual(
     Object.entries(PRODUCTION_MCP_TOOL_ERROR_AUDIT)
       .filter(([, kind]) => kind === "no-handler-error")

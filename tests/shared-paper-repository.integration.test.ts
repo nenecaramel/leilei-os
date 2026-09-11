@@ -16,8 +16,12 @@ test("Shared Paper PostgreSQL persistence is transactional, Unicode-safe, and CA
   const client = postgres(url!, { max: 4, prepare: false, ssl: false });
   const db = drizzle(client, { schema });
   const userId = randomUUID();
+  const otherUserId = randomUUID();
   try {
-    await db.insert(schema.users).values({ id: userId, email: `shared-paper-${userId}@example.invalid`, displayName: "Shared paper test", status: "active" });
+    await db.insert(schema.users).values([
+      { id: userId, email: `shared-paper-${userId}@example.invalid`, displayName: "Shared paper test", status: "active" },
+      { id: otherUserId, email: `shared-paper-${otherUserId}@example.invalid`, displayName: "Other shared paper test", status: "active" },
+    ]);
     const service = new SharedPaperService(new DrizzleSharedPaperRepository(db as never));
     const created = await service.createPaperIdempotently({ userId, title: "Canonical", content: "你好 😀", author: "L", idempotencyKey: "shared.paper:create-0001" });
     assert.equal(created.paper.revision, 1);
@@ -55,11 +59,40 @@ test("Shared Paper PostgreSQL persistence is transactional, Unicode-safe, and CA
     assert.equal((await service.listEdits({ userId, paperId: created.paper.id })).length, 2);
     const olderEdits = await service.listEdits({ userId, paperId: created.paper.id, beforeRevision: 3 });
     assert.deepEqual(olderEdits.map((entry) => entry.revision), [2]);
+
+    assert.equal((await service.listPapers({ userId })).some((entry) => entry.id === created.paper.id), true);
+    const archived = await service.archivePaperIdempotently({ userId, paperId: created.paper.id, idempotencyKey: "shared.paper:archive-0001" });
+    assert.ok(archived.paper.archivedAt instanceof Date);
+    assert.equal(archived.paper.revision, 3);
+    assert.equal((await service.listPapers({ userId })).some((entry) => entry.id === created.paper.id), false);
+    assert.equal((await service.listPapers({ userId, scope: "archived" })).some((entry) => entry.id === created.paper.id), true);
+    const archiveReplay = await service.archivePaperIdempotently({ userId, paperId: created.paper.id, idempotencyKey: "shared.paper:archive-0001" });
+    assert.equal(archiveReplay.outcome, "replayed");
+    await assert.rejects(
+      () => service.archivePaper({ userId: otherUserId, paperId: created.paper.id }),
+      (error: unknown) => error instanceof SharedPaperServiceError && error.code === "PAPER_NOT_FOUND",
+    );
+    const restored = await service.restorePaperIdempotently({ userId, paperId: created.paper.id, idempotencyKey: "shared.paper:restore-0001" });
+    assert.equal(restored.paper.archivedAt, null);
+    assert.equal(restored.paper.revision, 3);
+    await assert.rejects(
+      () => service.deletePaper({ userId, paperId: created.paper.id }),
+      (error: unknown) => error instanceof SharedPaperServiceError && error.code === "PAPER_NOT_ARCHIVED",
+    );
+    await service.archivePaper({ userId, paperId: created.paper.id });
+    const deleted = await service.deletePaperIdempotently({ userId, paperId: created.paper.id, idempotencyKey: "shared.paper:delete-0001" });
+    assert.equal(deleted.paperId, created.paper.id);
+    assert.equal(deleted.outcome, "committed");
+    const deleteReplay = await service.deletePaperIdempotently({ userId, paperId: created.paper.id, idempotencyKey: "shared.paper:delete-0001" });
+    assert.equal(deleteReplay.outcome, "replayed");
+    const remainingEditRows = await db.select().from(schema.sharedPaperEdits).where(eq(schema.sharedPaperEdits.paperId, created.paper.id));
+    assert.equal(remainingEditRows.length, 0);
   } finally {
     await db.delete(schema.sharedPaperEdits).where(eq(schema.sharedPaperEdits.userId, userId));
     await db.delete(schema.sharedPapers).where(eq(schema.sharedPapers.userId, userId));
     await db.delete(schema.mcpWriteIdempotency).where(eq(schema.mcpWriteIdempotency.userId, userId));
     await db.delete(schema.users).where(eq(schema.users.id, userId));
+    await db.delete(schema.users).where(eq(schema.users.id, otherUserId));
     await client.end();
   }
 });
