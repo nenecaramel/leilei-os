@@ -118,6 +118,108 @@ test("Shared Paper MCP schemas enforce Unicode code-point bounds with host-visib
   assert.equal(calls.length, 4);
 });
 
+test("Shared Paper detail text exposes revision and authors before canonical content", async (t) => {
+  const detailedPaper: SharedPaperRecord = {
+    ...paper,
+    title: "我们一起写的第一张纸",
+    content: "canonical content 😀\nwith a second line",
+    revision: 3,
+    updatedBy: "C",
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-03T00:00:00.000Z"),
+  };
+  const fixture = await connect(makeService({ getPaper: async () => detailedPaper }));
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const result = await fixture.client.callTool({ name: "get_shared_paper", arguments: { id } });
+  const text = String(result.content?.[0]?.text);
+
+  assert.match(text, /id=00000000-0000-4000-8000-000000000001/);
+  assert.match(text, /revision=3/);
+  assert.match(text, /created_by=L/);
+  assert.match(text, /updated_by=C/);
+  assert.match(text, /created_at=2026-01-01T00:00:00\.000Z/);
+  assert.match(text, /updated_at=2026-01-03T00:00:00\.000Z/);
+  assert.ok(text.indexOf("revision=3") < text.indexOf(detailedPaper.content));
+  assert.ok(text.includes(detailedPaper.content));
+  assert.deepEqual((result.structuredContent as any).data.paper, {
+    id: detailedPaper.id,
+    title: detailedPaper.title,
+    content: detailedPaper.content,
+    revision: detailedPaper.revision,
+    created_by: detailedPaper.createdBy,
+    updated_by: detailedPaper.updatedBy,
+    created_at: detailedPaper.createdAt.toISOString(),
+    updated_at: detailedPaper.updatedAt.toISOString(),
+  });
+});
+
+test("Shared Paper edit history text exposes ordered author and revision summaries", async (t) => {
+  const edits: SharedPaperEdit[] = [
+    { ...edit, id: "00000000-0000-4000-8000-000000000003", author: "C", baseRevision: 2, revision: 3, deletedText: "updated", insertedText: "final", createdAt: new Date("2026-01-03T00:00:00.000Z") },
+    edit,
+  ];
+  const fixture = await connect(makeService({ listEdits: async () => edits }));
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const result = await fixture.client.callTool({ name: "list_shared_paper_edits", arguments: { id } });
+  const text = String(result.content?.[0]?.text);
+
+  assert.match(text, /2 shared paper edits\./);
+  assert.match(text, /edit=00000000-0000-4000-8000-000000000003/);
+  assert.match(text, /author=C/);
+  assert.match(text, /revision=2->3/);
+  assert.match(text, /author=G/);
+  assert.match(text, /revision=1->2/);
+  assert.match(text, /created_at=2026-01-03T00:00:00\.000Z/);
+  assert.match(text, /deleted=/);
+  assert.match(text, /inserted=/);
+  assert.ok(text.indexOf("revision=2->3") < text.indexOf("revision=1->2"));
+  assert.deepEqual((result.structuredContent as any).data.edits, edits.map((value) => ({
+    id: value.id,
+    paper_id: value.paperId,
+    base_revision: value.baseRevision,
+    revision: value.revision,
+    author: value.author,
+    start_offset: value.startOffset,
+    end_offset: value.endOffset,
+    deleted_text: value.deletedText,
+    inserted_text: value.insertedText,
+    created_at: value.createdAt.toISOString(),
+  })));
+});
+
+test("Shared Paper edit history text is Unicode-safe and bounded", async (t) => {
+  const edits: SharedPaperEdit[] = Array.from({ length: 100 }, (_, index) => ({
+    ...edit,
+    id: `00000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`,
+    baseRevision: index + 1,
+    revision: index + 2,
+    deletedText: "😀".repeat(500),
+    insertedText: "👩‍💻".repeat(500),
+    createdAt: new Date(2026, 0, 1, 0, 0, index),
+  }));
+  const fixture = await connect(makeService({ listEdits: async () => edits }));
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const result = await fixture.client.callTool({ name: "list_shared_paper_edits", arguments: { id, limit: 100 } });
+  const text = String(result.content?.[0]?.text);
+
+  assert.match(text, /Showing 10 of 100 returned edits; structuredContent contains all returned edits\./);
+  assert.ok(text.length < 8_000);
+  const deletedLine = text.split("\n").find((line) => line.startsWith("deleted="));
+  const insertedLine = text.split("\n").find((line) => line.startsWith("inserted="));
+  assert.ok(deletedLine);
+  assert.ok(insertedLine);
+  const deletedPreview = JSON.parse(deletedLine.slice("deleted=".length)) as string;
+  const insertedPreview = JSON.parse(insertedLine.slice("inserted=".length)) as string;
+  assert.ok(Array.from(deletedPreview).length <= 200);
+  assert.ok(Array.from(insertedPreview).length <= 200);
+  assert.ok(deletedPreview.endsWith("…"));
+  assert.ok(insertedPreview.endsWith("…"));
+  assert.equal((result.structuredContent as any).data.edits.length, 100);
+});
+
 test("Shared Paper MCP mutation receipts distinguish fresh commits from idempotent replays", async (t) => {
   let createCount = 0;
   let editCount = 0;
