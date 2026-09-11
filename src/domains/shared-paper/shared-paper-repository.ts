@@ -17,6 +17,7 @@ import type {
   SharedPaperRepository,
   SharedPaperRecord,
 } from "./shared-paper-types.js";
+import { MAX_SHARED_PAPER_CONTENT_CODE_POINTS } from "./shared-paper-service.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -190,7 +191,7 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
     try { deleted = sliceCodePoints(paper.content, input.start, input.end); } catch { return { outcome: "invalid_edit" as const }; }
     if (deleted === input.replacement) return { outcome: "invalid_edit" as const };
     const nextContent = replaceCodePointRange(paper.content, input.start, input.end, input.replacement);
-    if (codePointLength(nextContent) > 100_000) return { outcome: "invalid_edit" as const };
+    if (codePointLength(nextContent) > MAX_SHARED_PAPER_CONTENT_CODE_POINTS) return { outcome: "invalid_edit" as const };
     const [editRow] = await (transaction as any).insert(sharedPaperEdits).values({
       userId: input.userId,
       paperId: input.paperId,
