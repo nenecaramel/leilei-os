@@ -10,13 +10,6 @@
   min-height: 100%;
 }
 
-.shared-paper-detail-content .memory-paper-title {
-  margin: 0 0 14px;
-  font-size: 17px;
-  font-weight: 500;
-  line-height: 23px;
-}
-
 .shared-paper-detail-content .memory-paper-content {
   margin: 0;
   white-space: pre-wrap;
