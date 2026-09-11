@@ -36,6 +36,7 @@ export const NAV_GROUPS: NavigationGroup[] = [
       { label: "Home", to: "/", icon: DashboardIcon, end: true },
       { label: "Memory", to: "/memory", icon: MemoryIcon },
       { label: "Diary", to: "/diary", icon: DiaryIcon },
+      { label: "Shared Paper", to: "/shared-paper", icon: DashboardIcon },
       { label: "Task", to: "/task", icon: TaskIcon },
       { label: "Day Space", to: "/day-space", icon: DashboardIcon },
       { label: "Universe", to: "/universe", icon: UniverseIcon },

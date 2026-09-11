@@ -1,0 +1,63 @@
+.shared-paper-page {
+  min-height: calc(100dvh - 44px);
+}
+
+.shared-paper-row {
+  cursor: pointer;
+}
+
+.shared-paper-detail-content {
+  min-height: 100%;
+}
+
+.shared-paper-detail-content .memory-paper-content {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 30px;
+}
+
+.shared-paper-metadata {
+  margin-top: 18px;
+  color: #777;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.shared-paper-history {
+  display: grid;
+  gap: 16px;
+  padding: 8px 0 24px;
+  color: #333;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.shared-paper-history-event {
+  display: grid;
+  gap: 2px;
+}
+
+.shared-paper-history-event span {
+  color: #777;
+}
+
+.shared-paper-history-event mark {
+  color: inherit;
+  background: #f0f0f0;
+}
+
+.shared-paper-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+@media (min-width: 761px) {
+  .shared-paper-page {
+    width: min(860px, calc(100% - 48px));
+    margin: 0 auto;
+  }
+}

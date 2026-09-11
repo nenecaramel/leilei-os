@@ -18,6 +18,7 @@ import { SystemDataPage } from "./pages/SystemDataPage";
 import { TaskPage } from "./pages/TaskPageContainer";
 import { UniversePage } from "./pages/UniversePageContainer";
 import { SentinelPage } from "./pages/SentinelPageContainer";
+import { SharedPaperPage } from "./pages/SharedPaperPageContainer";
 
 import { DaySpacePage } from "./pages/DaySpacePageContainer";
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
 
             <Route path="memory" element={<MemoryPage />} />
             <Route path="diary" element={<DiaryPage />} />
+            <Route path="shared-paper" element={<SharedPaperPage />} />
             <Route path="task" element={<TaskPage />} />
             <Route path="day-space" element={<DaySpacePage />} />
             <Route path="search" element={<GlobalSearchPage />} />
