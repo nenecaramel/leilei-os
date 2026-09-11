@@ -27,6 +27,8 @@ import { registerRenderThinkingBlockTool } from "../tools/render-thinking-block/
 import { registerRenderThinkingBlockResource } from "../tools/render-thinking-block/resource.js";
 import { registerGetHealthTool } from "../tools/get-health/register.js";
 import { registerGetCurrentTimeTool } from "../tools/get-current-time/register.js";
+import { registerSharedPaperAppTool } from "../tools/shared-paper-app/register.js";
+import { registerSharedPaperAppResource } from "../tools/shared-paper-app/resource.js";
 
 export type McpSessionServerFactory = (
   authenticatedUserId: string,
@@ -139,6 +141,8 @@ export function createProductionMcpSessionServerFactory(input: {
       });
       registerRenderThinkingBlockResource(server);
       registerRenderThinkingBlockTool(server);
+      registerSharedPaperAppResource(server);
+      registerSharedPaperAppTool(server);
     }
     if (namespace === "public" && input.sentinelService) {
       registerSentinelTools(server, {

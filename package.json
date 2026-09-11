@@ -9,8 +9,8 @@
   },
   "scripts": {
     "dev": "tsx watch src/app/index.ts",
-    "build": "tsc -p tsconfig.json && node scripts/build-bridge-browser.mjs && node scripts/build-thinking-block-browser.mjs",
-    "check:generated": "node scripts/build-bridge-browser.mjs --check && node scripts/build-thinking-block-browser.mjs --check && node scripts/generate-web-icons.mjs --check",
+    "build": "tsc -p tsconfig.json && node scripts/build-bridge-browser.mjs && node scripts/build-thinking-block-browser.mjs && node scripts/build-shared-paper-app-browser.mjs",
+    "check:generated": "node scripts/build-bridge-browser.mjs --check && node scripts/build-thinking-block-browser.mjs --check && node scripts/build-shared-paper-app-browser.mjs --check && node scripts/generate-web-icons.mjs --check",
     "start": "node dist/app/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/**/*.test.ts",
