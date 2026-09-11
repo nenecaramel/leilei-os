@@ -73,3 +73,11 @@ test("SharedPaperService rejects stale, empty, and ambiguous match edits", async
   const inserted = await service.editPaperByMatch({ userId: "user-1", paperId: paper().id, expectedRevision: 1, author: "C", matchText: "", replacementText: "😀", idempotencyKey: "shared.paper:edit-0005" });
   assert.equal(inserted.edit.endOffset, 0);
 });
+
+test("SharedPaperService rejects non-string create fields with a stable validation error", async () => {
+  const service = new SharedPaperService(new FakeRepository());
+  await assert.rejects(
+    () => service.createPaper({ userId: "user-1", title: null as unknown as string, content: "", author: "L" }),
+    (error: unknown) => error instanceof SharedPaperServiceError && error.code === "INVALID_SHARED_PAPER",
+  );
+});
