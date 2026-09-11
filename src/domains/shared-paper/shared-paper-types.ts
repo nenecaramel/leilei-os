@@ -76,7 +76,7 @@ export interface SharedPaperRepository {
   listPapers(input: SharedPaperListInput): Promise<SharedPaperRecord[]>;
   searchPapers(input: SharedPaperSearchInput): Promise<SharedPaperRecord[]>;
   getPaper(input: { userId: string; paperId: string }): Promise<SharedPaperRecord | null>;
-  listEdits(input: { userId: string; paperId: string; limit?: number }): Promise<SharedPaperEdit[]>;
+  listEdits(input: { userId: string; paperId: string; limit?: number; beforeRevision?: number }): Promise<SharedPaperEdit[]>;
   createPaper(input: SharedPaperCreateInput): Promise<SharedPaperRecord>;
   editPaper(input: SharedPaperRangeEditInput): Promise<
     { outcome: "committed"; paper: SharedPaperRecord; edit: SharedPaperEdit } | { outcome: "revision_conflict" } | { outcome: "not_found" } | { outcome: "invalid_edit" }

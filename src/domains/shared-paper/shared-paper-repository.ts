@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { sharedPaperEdits, sharedPapers, users } from "../../database/schema.js";
 import {
@@ -76,8 +76,10 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
     return row ? toPaper(row) : null;
   }
 
-  async listEdits(input: { userId: string; paperId: string; limit?: number }): Promise<SharedPaperEdit[]> {
-    const rows = await this.db.select().from(sharedPaperEdits).where(and(eq(sharedPaperEdits.userId, input.userId), eq(sharedPaperEdits.paperId, input.paperId))).orderBy(desc(sharedPaperEdits.revision), desc(sharedPaperEdits.id)).limit(input.limit ?? 100);
+  async listEdits(input: { userId: string; paperId: string; limit?: number; beforeRevision?: number }): Promise<SharedPaperEdit[]> {
+    const conditions = [eq(sharedPaperEdits.userId, input.userId), eq(sharedPaperEdits.paperId, input.paperId)];
+    if (input.beforeRevision !== undefined) conditions.push(lt(sharedPaperEdits.revision, input.beforeRevision));
+    const rows = await this.db.select().from(sharedPaperEdits).where(and(...conditions)).orderBy(desc(sharedPaperEdits.revision), desc(sharedPaperEdits.id)).limit(input.limit ?? 100);
     return rows.map(toEdit);
   }
 

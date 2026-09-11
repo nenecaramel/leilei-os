@@ -47,8 +47,9 @@ export class SharedPaperService {
     return paper;
   }
 
-  async listEdits(input: { userId: string; paperId: string; limit?: number }): Promise<SharedPaperEdit[]> {
+  async listEdits(input: { userId: string; paperId: string; limit?: number; beforeRevision?: number }): Promise<SharedPaperEdit[]> {
     await this.requireActive(input.userId);
+    if (input.beforeRevision !== undefined && (!Number.isInteger(input.beforeRevision) || input.beforeRevision < 1)) throw new SharedPaperServiceError("INVALID_SHARED_PAPER", "Shared paper history cursor is invalid.");
     return this.repository.listEdits({ ...input, limit: boundedLimit(input.limit) });
   }
 

@@ -7,7 +7,7 @@ export type SharedPaperApiService = {
   listPapers(input: { userId: string; limit?: number }): Promise<unknown>;
   searchPapers(input: { userId: string; query: unknown; limit?: number }): Promise<unknown>;
   getPaper(input: { userId: string; paperId: string }): Promise<unknown>;
-  listEdits(input: { userId: string; paperId: string; limit?: number }): Promise<unknown>;
+  listEdits(input: { userId: string; paperId: string; limit?: number; beforeRevision?: number }): Promise<unknown>;
   createPaper(input: { userId: string; title: string; content: string; author: ContentAuthor }): Promise<unknown>;
   editPaper(input: { userId: string; paperId: string; expectedRevision: number; author: ContentAuthor; start: number; end: number; replacement: string }): Promise<unknown>;
 };
@@ -21,7 +21,7 @@ export function createSharedPaperApiRouter({ sharedPaperService }: SharedPaperAp
   const router = Router();
   router.get("/search", handler(async (req) => sharedPaperService.searchPapers({ userId: req.webUserId!, query: req.query.query, limit: parseLimit(req.query.limit) })));
   router.get("/", handler(async (req) => sharedPaperService.listPapers({ userId: req.webUserId!, limit: parseLimit(req.query.limit) })));
-  router.get("/:id/edits", handler(async (req) => sharedPaperService.listEdits({ userId: req.webUserId!, paperId: param(req.params.id), limit: parseLimit(req.query.limit) })));
+  router.get("/:id/edits", handler(async (req) => sharedPaperService.listEdits({ userId: req.webUserId!, paperId: param(req.params.id), limit: parseLimit(req.query.limit), beforeRevision: parseBeforeRevision(req.query.before_revision) })));
   router.get("/:id", handler(async (req) => sharedPaperService.getPaper({ userId: req.webUserId!, paperId: param(req.params.id) })));
   router.post("/", handler(async (req) => {
     const parsed = createBodySchema.safeParse(req.body);
@@ -45,6 +45,7 @@ function handler(run: (request: ExpressRequest) => Promise<unknown>): RequestHan
 type ExpressRequest = { webUserId?: string; query: Record<string, unknown>; params: Record<string, string | string[] | undefined>; body?: Record<string, unknown> };
 function param(value: string | string[] | undefined): string { return Array.isArray(value) ? value[0] ?? "" : value ?? ""; }
 function parseLimit(value: unknown): number | undefined { if (value === undefined) return undefined; const parsed = Number(Array.isArray(value) ? value[0] : value); return Number.isFinite(parsed) ? parsed : undefined; }
+function parseBeforeRevision(value: unknown): number | undefined { if (value === undefined) return undefined; const parsed = Number(Array.isArray(value) ? value[0] : value); return Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined; }
 function mapError(response: Response, error: unknown): void {
   if (error instanceof SharedPaperServiceError) {
     if (error.code === "PAPER_NOT_FOUND") { response.status(404).json({ success: false, error: { code: error.code, message: "Shared paper was not found." } }); return; }
