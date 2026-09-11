@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const migration = readFileSync("drizzle/0034_wealthy_amazoness.sql", "utf8");
+const lifecycleMigration = readFileSync("drizzle/0035_shared_paper_lifecycle.sql", "utf8");
 const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as { entries: Array<{ idx: number; tag: string }> };
 
 test("Shared Paper migration adds canonical paper/edit tables and bounded constraints", () => {
@@ -24,9 +25,14 @@ test("Shared Paper migration adds canonical paper/edit tables and bounded constr
   assert.match(migration, /shared_paper_edit/);
 });
 
-test("Shared Paper migration journal has one current tail entry", () => {
+test("Shared Paper lifecycle migration is the current journal tail", () => {
   const tail = journal.entries.at(-1);
   assert.equal(journal.entries.filter((entry) => entry.idx === 34).length, 1);
-  assert.equal(tail?.idx, 34);
-  assert.equal(tail?.tag, "0034_wealthy_amazoness");
+  assert.equal(journal.entries.filter((entry) => entry.idx === 35).length, 1);
+  assert.equal(tail?.idx, 35);
+  assert.equal(tail?.tag, "0035_shared_paper_lifecycle");
+  assert.match(lifecycleMigration, /ADD COLUMN "archived_at"/);
+  assert.match(lifecycleMigration, /archive_shared_paper/);
+  assert.match(lifecycleMigration, /restore_shared_paper/);
+  assert.match(lifecycleMigration, /delete_shared_paper/);
 });
