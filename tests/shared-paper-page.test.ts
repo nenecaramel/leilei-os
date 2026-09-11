@@ -112,7 +112,7 @@ test("Shared Paper edit baseline, history, and revision conflict contract stay e
     const history = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "历史");
     assert.ok(history);
     await React.act(async () => history!.click());
-    assert.match(env.container.textContent ?? "", /创建/);
+    assert.match(env.container.textContent ?? "", /Created/);
     assert.match(env.container.textContent ?? "", /2→3/);
     const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(editButton);
@@ -361,7 +361,7 @@ test("Shared Paper production chrome is localized, uncluttered, ruled, and newes
     const historyText = env.container.querySelector(".shared-paper-history")?.textContent ?? "";
     const newest = historyText.indexOf("C · 2→3");
     const older = historyText.indexOf("G · 1→2");
-    const created = historyText.indexOf("创建");
+    const created = historyText.indexOf("Created");
     assert.ok(newest >= 0 && older > newest && created > older);
 
     const css = readFileSync(new URL("../web/src/pages/shared-paper.css", import.meta.url), "utf8");
