@@ -8,7 +8,7 @@ test("Docker build stage copies every browser builder referenced by root build",
   };
   const build = pkg.scripts?.build ?? "";
   const dockerfile = readFileSync("Dockerfile", "utf8");
-  const scripts = [...build.matchAll(/scripts\\/build-[a-z0-9-]+-browser\\.mjs/g)]
+  const scripts = [...build.matchAll(/scripts\/build-[a-z0-9-]+-browser\.mjs/g)]
     .map((match) => match[0]);
 
   assert.ok(scripts.length >= 3);
