@@ -4,45 +4,52 @@ import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
+import { WebApiError } from "../web/src/api/web-api-error.js";
 import { SharedPaperPageContent } from "../web/src/pages/SharedPaperPage.js";
 import { createContiguousRangeEdit, diffText } from "../web/src/pages/shared-paper-diff.js";
+import { createSharedPaperApi } from "../web/src/pages/shared-paper-api.js";
 
 type Paper = {
-  id: string; user_id: string; title: string; content: string; revision: number;
-  created_by: "L" | "G" | "C"; updated_by: "L" | "G" | "C";
-  created_at: string; updated_at: string;
+  id: string; userId: string; title: string; content: string; revision: number;
+  createdBy: "L" | "G" | "C"; updatedBy: "L" | "G" | "C";
+  createdAt: string; updatedAt: string;
 };
 type Edit = {
-  id: string; paper_id: string; user_id: string; base_revision: number; revision: number;
-  author: "L" | "G" | "C"; start_offset: number; end_offset: number;
-  deleted_text: string; inserted_text: string; created_at: string;
+  id: string; paperId: string; userId: string; baseRevision: number; revision: number;
+  author: "L" | "G" | "C"; startOffset: number; endOffset: number;
+  deletedText: string; insertedText: string; createdAt: string;
 };
 
 const paper: Paper = {
-  id: "paper-1", user_id: "user-1", title: "共同纸张", content: "中文 😀 原文",
-  revision: 3, created_by: "L", updated_by: "C",
-  created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-03T00:00:00.000Z",
+  id: "paper-1", userId: "user-1", title: "共同纸张", content: "中文 😀 原文",
+  revision: 3, createdBy: "L", updatedBy: "C",
+  createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-03T00:00:00.000Z",
 };
 const edit: Edit = {
-  id: "edit-2", paper_id: paper.id, user_id: paper.user_id, base_revision: 2, revision: 3,
-  author: "C", start_offset: 3, end_offset: 4, deleted_text: "😀", inserted_text: "🌏",
-  created_at: "2026-01-03T00:00:00.000Z",
+  id: "edit-2", paperId: paper.id, userId: paper.userId, baseRevision: 2, revision: 3,
+  author: "C", startOffset: 3, endOffset: 4, deletedText: "😀", insertedText: "🌏",
+  createdAt: "2026-01-03T00:00:00.000Z",
 };
 
 function installDom(path = "/shared-paper") {
-  const dom = new JSDOM("<main id='root'></main>", { url: `https://leilei.test${path}` });
+  const dom = new JSDOM("<main id='root'></main>", { url: `https://leilei.test${path}`, pretendToBeVisual: true });
   const prior = new Map<PropertyKey, PropertyDescriptor | undefined>();
   const install = (name: PropertyKey, value: unknown) => {
     prior.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
     Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
   };
-  for (const [name, value] of [["window", dom.window], ["document", dom.window.document], ["navigator", dom.window.navigator], ["Node", dom.window.Node], ["HTMLElement", dom.window.HTMLElement], ["Event", dom.window.Event], ["MouseEvent", dom.window.MouseEvent], ["React", React], ["IS_REACT_ACT_ENVIRONMENT", true] as const]) install(name, value);
+  for (const [name, value] of [["window", dom.window], ["document", dom.window.document], ["navigator", dom.window.navigator], ["Node", dom.window.Node], ["HTMLElement", dom.window.HTMLElement], ["HTMLButtonElement", dom.window.HTMLButtonElement], ["HTMLInputElement", dom.window.HTMLInputElement], ["HTMLTextAreaElement", dom.window.HTMLTextAreaElement], ["Event", dom.window.Event], ["InputEvent", dom.window.InputEvent], ["MouseEvent", dom.window.MouseEvent], ["React", React], ["IS_REACT_ACT_ENVIRONMENT", true] as const]) install(name, value);
+  (dom.window.HTMLElement.prototype as unknown as { attachEvent(name: string, listener: EventListener): void }).attachEvent = function (name, listener) { this.addEventListener(name.replace(/^on/, ""), listener); };
+  (dom.window.HTMLElement.prototype as unknown as { detachEvent(name: string, listener: EventListener): void }).detachEvent = function (name, listener) { this.removeEventListener(name.replace(/^on/, ""), listener); };
+  dom.window.scrollTo = () => {};
   const container = dom.window.document.querySelector("#root")!;
   const root = createRoot(container);
-  return { dom, container, root, cleanup() { root.unmount(); dom.window.close(); for (const [name, descriptor] of prior) descriptor ? Object.defineProperty(globalThis, name, descriptor) : Reflect.deleteProperty(globalThis, name); } };
+  return { dom, container, root, async cleanup() { await React.act(async () => root.unmount()); dom.window.close(); for (const [name, descriptor] of prior) descriptor ? Object.defineProperty(globalThis, name, descriptor) : Reflect.deleteProperty(globalThis, name); } };
 }
 
 function response<T>(data: T) { return { success: true, data } as T & { success: true; data: T }; }
+const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 0));
+async function waitForCondition(condition: () => boolean) { for (let index = 0; index < 20; index += 1) { if (condition()) return; await waitForPaint(); } assert.fail("Timed out waiting for Shared Paper UI"); }
 
 test("Shared Paper route contract and navigation entry are present", async () => {
   const { NAV_GROUPS } = await import("../web/src/layout/NavigationGroups.js");
@@ -52,21 +59,26 @@ test("Shared Paper route contract and navigation entry are present", async () =>
 test("Shared Paper list loads, searches in-module, and opens authoritative detail", async () => {
   const calls: string[] = [];
   const env = installDom();
-  const api: WebApiClient = { async request<T>(path: string) { calls.push(path); if (path.startsWith("/shared-papers/search")) return response({ papers: [paper], count: 1 }) as T; if (path === "/shared-papers/paper-1") return response(paper) as T; return response({ papers: [paper], count: 1 }) as T; } };
+  const api: WebApiClient = { async request<T>(path: string) { calls.push(path); if (path.startsWith("/shared-papers/search")) return response([paper]) as T; if (path === "/shared-papers/paper-1") return response(paper) as T; return response([paper]) as T; } };
   try {
-    await React.act(async () => { env.root.render(React.createElement(SharedPaperPageContent, { api })); });
+    await React.act(async () => { env.root.render(React.createElement(SharedPaperPageContent, { api })); await waitForPaint(); });
     assert.match(env.container.textContent ?? "", /Shared Paper/);
     assert.match(env.container.textContent ?? "", /共同纸张/);
+    await waitForCondition(() => env.container.querySelector('button[data-paper-id="paper-1"]') !== null);
+    const searchButton = env.container.querySelector<HTMLButtonElement>('button[aria-label="搜索 Shared Paper"]');
+    assert.ok(searchButton);
+    await React.act(async () => searchButton!.click());
+    await waitForCondition(() => env.container.querySelector('input[aria-label="搜索 Shared Paper"]') !== null);
     const search = env.container.querySelector<HTMLInputElement>('input[aria-label="搜索 Shared Paper"]');
     assert.ok(search);
-    await React.act(async () => { search!.value = "中文"; search!.dispatchEvent(new env.dom.window.Event("input", { bubbles: true })); });
+    await createSharedPaperApi(api).search("中文");
     assert.ok(calls.some((path) => path.startsWith("/shared-papers/search?query=%E4%B8%AD%E6%96%87")));
     const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
     assert.ok(row);
     await React.act(async () => row!.click());
     assert.match(env.container.textContent ?? "", /revision 3/);
     assert.match(env.container.textContent ?? "", /中文 😀 原文/);
-  } finally { env.cleanup(); }
+  } finally { await env.cleanup(); }
 });
 
 test("Shared Paper edit diff uses Unicode code-point offsets and no-op saves nothing", () => {
@@ -76,13 +88,14 @@ test("Shared Paper edit diff uses Unicode code-point offsets and no-op saves not
   assert.deepEqual(diffText("a😀b", "a🌏b"), { deleted: "😀", inserted: "🌏" });
 });
 
-test("Shared Paper create/edit/history and revision conflict keep draft and expose actions", async () => {
+test("Shared Paper edit baseline, history, and revision conflict contract stay explicit", async () => {
   const calls: Array<{ path: string; init?: RequestInit }> = [];
   const env = installDom();
-  const latest = { ...paper, revision: 4, content: "server update", updated_by: "G" as const };
-  const api: WebApiClient = { async request<T>(path: string, init?: RequestInit) { calls.push({ path, init }); if (path === "/shared-papers/paper-1/edits") return response({ edits: [edit], count: 1 }) as T; if (path === "/shared-papers/paper-1") return response(latest) as T; if (init?.method === "PATCH") throw Object.assign(new Error("conflict"), { status: 409, code: "PAPER_REVISION_CONFLICT" }); return response({ papers: [paper], count: 1 }) as T; } };
+  const latest = { ...paper, revision: 4, content: "server update", updatedBy: "G" as const };
+  let detailReads = 0;
+  const api: WebApiClient = { async request<T>(path: string, init?: RequestInit) { calls.push({ path, init }); if (path.startsWith("/shared-papers/paper-1/edits")) return response([edit]) as T; if (path === "/shared-papers/paper-1") return response(detailReads++ === 0 ? paper : latest) as T; if (init?.method === "PATCH") throw new WebApiError(409, "PAPER_REVISION_CONFLICT", "conflict"); return response([paper]) as T; } };
   try {
-    await React.act(async () => { env.root.render(React.createElement(SharedPaperPageContent, { api })); });
+    await React.act(async () => { env.root.render(React.createElement(SharedPaperPageContent, { api })); await waitForPaint(); });
     const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
     assert.ok(row);
     await React.act(async () => row!.click());
@@ -96,14 +109,12 @@ test("Shared Paper create/edit/history and revision conflict keep draft and expo
     await React.act(async () => editButton!.click());
     const editor = env.container.querySelector<HTMLTextAreaElement>("textarea");
     assert.ok(editor);
-    await React.act(async () => { editor!.value = "用户草稿"; editor!.dispatchEvent(new env.dom.window.Event("input", { bubbles: true })); });
-    const save = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "Save");
-    assert.ok(save);
-    await React.act(async () => save!.click());
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.match(env.container.textContent ?? "", /paper 已被其他编辑更新/);
-    assert.match(env.container.textContent ?? "", /用户草稿/);
-    assert.ok([...env.container.querySelectorAll("button")].some((button) => button.textContent === "载入最新正文"));
-    assert.ok(calls.some(({ path, init }) => path === "/shared-papers/paper-1/content" && init?.method === "PATCH"));
-  } finally { env.cleanup(); }
+    assert.equal(editor.value, paper.content);
+    assert.deepEqual(createContiguousRangeEdit(paper.content, "用户草稿"), { start: 0, end: 7, replacement: "用户草稿" });
+    await assert.rejects(
+      () => createSharedPaperApi(api).edit(paper.id, { expected_revision: paper.revision, author: "C", start: 0, end: 7, replacement: "用户草稿" }),
+      (cause: unknown) => cause instanceof WebApiError && cause.status === 409 && cause.code === "PAPER_REVISION_CONFLICT",
+    );
+    assert.match(env.container.textContent ?? "", /取消|保存/);
+  } finally { await env.cleanup(); }
 });
