@@ -8,6 +8,7 @@ import type {
   SharedPaperMatchEditInput,
   SharedPaperMutationResult,
   SharedPaperRangeEditInput,
+  SharedPaperScope,
   SharedPaperRepository,
   SharedPaperRecord,
 } from "./shared-paper-types.js";
@@ -16,7 +17,7 @@ export const MAX_SHARED_PAPER_CONTENT_CODE_POINTS = 100_000;
 
 export type SharedPaperServiceErrorCode =
   | "USER_NOT_FOUND" | "USER_DISABLED" | "PAPER_NOT_FOUND" | "PAPER_REVISION_CONFLICT"
-  | "PAPER_EDIT_TARGET_NOT_FOUND" | "PAPER_EDIT_TARGET_AMBIGUOUS" | "INVALID_SHARED_PAPER"
+  | "PAPER_EDIT_TARGET_NOT_FOUND" | "PAPER_EDIT_TARGET_AMBIGUOUS" | "PAPER_NOT_ARCHIVED" | "INVALID_SHARED_PAPER"
   | "INVALID_SHARED_PAPER_EDIT" | "INVALID_IDEMPOTENCY_KEY" | "IDEMPOTENCY_CONFLICT";
 
 export class SharedPaperServiceError extends Error {
@@ -29,15 +30,15 @@ export class SharedPaperServiceError extends Error {
 export class SharedPaperService {
   constructor(private readonly repository: SharedPaperRepository) {}
 
-  async listPapers(input: { userId: string; limit?: number }): Promise<SharedPaperRecord[]> {
+  async listPapers(input: { userId: string; limit?: number; scope?: SharedPaperScope }): Promise<SharedPaperRecord[]> {
     await this.requireActive(input.userId);
-    return this.repository.listPapers({ userId: input.userId, limit: boundedLimit(input.limit) });
+    return this.repository.listPapers({ userId: input.userId, limit: boundedLimit(input.limit), scope: normalizeScope(input.scope) });
   }
 
-  async searchPapers(input: { userId: string; query: unknown; limit?: number }): Promise<SharedPaperRecord[]> {
+  async searchPapers(input: { userId: string; query: unknown; limit?: number; scope?: SharedPaperScope }): Promise<SharedPaperRecord[]> {
     await this.requireActive(input.userId);
     const query = normalizeQuery(input.query);
-    return this.repository.searchPapers({ userId: input.userId, query, limit: boundedLimit(input.limit) });
+    return this.repository.searchPapers({ userId: input.userId, query, limit: boundedLimit(input.limit), scope: normalizeScope(input.scope) });
   }
 
   async getPaper(input: { userId: string; paperId: string }): Promise<SharedPaperRecord> {
@@ -74,6 +75,74 @@ export class SharedPaperService {
       }),
     });
     if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for different shared paper content.");
+    return result;
+  }
+
+  async archivePaper(input: { userId: string; paperId: string }): Promise<SharedPaperRecord> {
+    await this.requireActive(input.userId);
+    const result = await this.repository.archivePaper(input);
+    if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
+    return result.paper;
+  }
+
+  async restorePaper(input: { userId: string; paperId: string }): Promise<SharedPaperRecord> {
+    await this.requireActive(input.userId);
+    const result = await this.repository.restorePaper(input);
+    if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
+    return result.paper;
+  }
+
+  async deletePaper(input: { userId: string; paperId: string }): Promise<{ paperId: string }> {
+    await this.requireActive(input.userId);
+    const result = await this.repository.deletePaper(input);
+    if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
+    if (result.outcome === "not_archived") throw new SharedPaperServiceError("PAPER_NOT_ARCHIVED", "Shared paper must be archived before permanent deletion.");
+    return { paperId: input.paperId };
+  }
+
+  async archivePaperIdempotently(input: { userId: string; paperId: string; idempotencyKey: string }): Promise<{ paper: SharedPaperRecord; outcome: "committed" | "replayed" }> {
+    await this.requireActive(input.userId);
+    const idempotencyKey = normalizeKey(input.idempotencyKey);
+    if (!this.repository.archivePaperIdempotently) throw new Error("Shared paper lifecycle idempotency persistence is unavailable.");
+    const result = await this.repository.archivePaperIdempotently({
+      userId: input.userId,
+      paperId: input.paperId,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({ paperId: input.paperId }),
+    });
+    if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different shared paper archive request.");
+    if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
+    return result;
+  }
+
+  async restorePaperIdempotently(input: { userId: string; paperId: string; idempotencyKey: string }): Promise<{ paper: SharedPaperRecord; outcome: "committed" | "replayed" }> {
+    await this.requireActive(input.userId);
+    const idempotencyKey = normalizeKey(input.idempotencyKey);
+    if (!this.repository.restorePaperIdempotently) throw new Error("Shared paper lifecycle idempotency persistence is unavailable.");
+    const result = await this.repository.restorePaperIdempotently({
+      userId: input.userId,
+      paperId: input.paperId,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({ paperId: input.paperId }),
+    });
+    if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different shared paper restore request.");
+    if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
+    return result;
+  }
+
+  async deletePaperIdempotently(input: { userId: string; paperId: string; idempotencyKey: string }): Promise<{ paperId: string; outcome: "committed" | "replayed" }> {
+    await this.requireActive(input.userId);
+    const idempotencyKey = normalizeKey(input.idempotencyKey);
+    if (!this.repository.deletePaperIdempotently) throw new Error("Shared paper lifecycle idempotency persistence is unavailable.");
+    const result = await this.repository.deletePaperIdempotently({
+      userId: input.userId,
+      paperId: input.paperId,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({ paperId: input.paperId }),
+    });
+    if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different shared paper delete request.");
+    if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
+    if (result.outcome === "not_archived") throw new SharedPaperServiceError("PAPER_NOT_ARCHIVED", "Shared paper must be archived before permanent deletion.");
     return result;
   }
 
@@ -145,6 +214,12 @@ function normalizeQuery(value: unknown): string {
 }
 
 function normalizeNfc(value: string): string { return value.normalize("NFC"); }
+
+function normalizeScope(value: SharedPaperScope | undefined): SharedPaperScope {
+  if (value === undefined) return "active";
+  if (value === "active" || value === "archived") return value;
+  throw new SharedPaperServiceError("INVALID_SHARED_PAPER", "Shared paper scope is invalid.");
+}
 
 function boundedLimit(value: number | undefined): number { return value === undefined ? 50 : Math.max(1, Math.min(100, Math.trunc(value))); }
 
