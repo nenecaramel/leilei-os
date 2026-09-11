@@ -70,6 +70,7 @@ type SharedPaperWindow = Window & {
   sharedPaperApp?: {
     reload: () => Promise<void>;
     open: (id: string) => Promise<void>;
+    markConnected: () => void;
     state: () => RecordValue;
   };
   __LEILEIOS_DISABLE_SHARED_PAPER_APP_CONNECT__?: boolean;
@@ -755,6 +756,7 @@ export function installSharedPaperAppRuntime(
   const controller = {
     reload: loadList,
     open: openPaper,
+    markConnected: () => { connected = true; },
     state: () => ({
       scope,
       selectedId: selected?.id ?? null,
@@ -782,6 +784,7 @@ export function startSharedPaperApp(
   const transport = new PostMessageTransport(windowRef.parent, windowRef.parent);
   void app.connect(transport)
     .then(async () => {
+      controller.markConnected();
       applyConnectedHost(app, documentRef);
       const context = app.getHostContext?.();
       if (context) app.onhostcontextchanged?.(context);
