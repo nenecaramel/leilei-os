@@ -338,8 +338,8 @@ test("routing descriptions align with executable schemas and the MCP inventory r
   const pair = await connectServer(server, "mcp-response-contract-descriptions");
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
   const tools = (await pair.client.listTools()).tools;
-  // The current production registration exposes the accepted 47-tool core surface.
-  assert.equal(tools.length, 47);
+  // The current production registration exposes the accepted 50-tool core surface.
+  assert.equal(tools.length, 50);
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
   const createTask = byName.get("create_task");
