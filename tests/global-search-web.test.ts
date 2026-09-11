@@ -241,10 +241,11 @@ test("global search opens active and archived detail routes for every module", a
     { module: "memory", archived: false }, { module: "memory", archived: true },
     { module: "diary", archived: false }, { module: "diary", archived: true },
     { module: "task", archived: false }, { module: "task", archived: true },
+    { module: "shared_paper", archived: false }, { module: "shared_paper", archived: true },
     { module: "universe", archived: false },
   ];
   for (const { module, archived } of cases) {
-    const entityId = `item-${module}-${archived ? "archived" : "active"}`;
+    const entityId = module === "shared_paper" ? "00000000-0000-4000-8000-000000000006" : `item-${module}-${archived ? "archived" : "active"}`;
     const api: WebApiClient = { async request<T>() { return response([{ ...result(entityId), entity_type: module, lifecycle_status: archived ? "archived" : "active" }]) as T; } };
     const page = await renderSearch(`/search?q=goal&modules=${module}`, api);
     try {
@@ -257,13 +258,17 @@ test("global search opens active and archived detail routes for every module", a
         assert.equal(location.searchParams.get("node"), entityId);
         return;
       }
-      assert.equal(location.pathname, `/${module}`);
+      assert.equal(location.pathname, module === "shared_paper" ? "/shared-paper" : `/${module}`);
       assert.equal(location.searchParams.get("returnTo"), `/search?q=goal&modules=${module}`);
       if (module === "memory") assert.equal(location.searchParams.get(archived ? "archivedMemory" : "memory"), entityId);
       if (module === "diary") assert.equal(location.searchParams.get(archived ? "archivedDiary" : "diary"), entityId);
       if (module === "task") {
         assert.equal(location.searchParams.get("task"), entityId);
         assert.equal(location.searchParams.get("archived"), archived ? "1" : null);
+      }
+      if (module === "shared_paper") {
+        assert.equal(location.searchParams.get("paper"), entityId);
+        assert.equal(location.searchParams.get("scope"), archived ? "archived" : null);
       }
     } finally {
       await page.cleanup();
@@ -450,7 +455,7 @@ test("empty query filter changes update URL without requesting", async () => {
     assert.ok(from);
     await React.act(async () => { reactChange(from, "2026-08-01"); });
     assert.equal(requests.length, 0);
-    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=diary%2Ctask%2Ctodo%2Cuniverse&scope=all&mode=phrase&date_from=2026-08-01");
+    assert.equal(`${page.dom.window.location.pathname}${page.dom.window.location.search}`, "/search?modules=diary%2Ctask%2Ctodo%2Cuniverse%2Cshared_paper&scope=all&mode=phrase&date_from=2026-08-01");
     assert.match(page.dom.window.document.body.textContent ?? "", /搜索 Memory、Diary、Task、Todo 与 Universe 中保存的内容/);
     assert.doesNotMatch(page.dom.window.document.body.textContent ?? "", /搜索关键词不能超过 200 个字符/);
   } finally {

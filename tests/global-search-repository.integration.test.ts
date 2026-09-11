@@ -39,13 +39,19 @@ test("real PostgreSQL global search covers fields, ranking, scope, dates, pagina
         {id:taskIds[0],userId:owner,title:"精确计划",description:"任务描述字段",status:"pending",lifecycleStatus:"active",priority:"normal",dueTime:null,timezone:"Asia/Shanghai",tags:["任务标签"],createdAt:now,updatedAt:now},
         {id:taskIds[1],userId:owner,title:"归档任务",description:"历史任务正文",status:"completed",resumeStatus:"in_progress",lifecycleStatus:"archived",priority:"low",dueTime:new Date("2026-07-30T08:00:00Z"),timezone:"Asia/Shanghai",tags:["历史任务"],createdAt:now,updatedAt:now,completedAt:now},
       ]);
+      const sharedPaperIds=[randomUUID(),randomUUID()];
+      await tx.insert(schema.sharedPapers).values([
+        {id:sharedPaperIds[0],userId:owner,title:"精确计划",content:"Shared Paper 正文字段",revision:2,createdBy:"L",updatedBy:"G",createdAt:now,updatedAt:now},
+        {id:sharedPaperIds[1],userId:owner,title:"归档纸张",content:"历史 Shared Paper 正文",revision:1,createdBy:"C",updatedBy:"C",createdAt:now,updatedAt:new Date("2026-07-29T08:00:00Z"),archivedAt:new Date("2026-07-29T09:00:00Z")},
+        {id:randomUUID(),userId:other,title:"精确计划",content:"不能泄露 Shared Paper",revision:1,createdBy:"L",updatedBy:"L",createdAt:now,updatedAt:now},
+      ]);
       const before={tool:(await tx.select({v:count()}).from(schema.toolCalls))[0]!.v,life:(await tx.select({v:count()}).from(schema.resourceLifecycleEvents))[0]!.v,idem:(await tx.select({v:count()}).from(schema.mcpWriteIdempotency))[0]!.v};
       const service=new GlobalSearchService(new DrizzleGlobalSearchRepository(tx as never));
-      const matrix=["精确计划","命中短语：海边旅行；","记忆标签","日记正文字段","日记标签","平静心情","任务描述字段","任务标签","space format","cafe\u0301"];
+      const matrix=["精确计划","命中短语：海边旅行；","记忆标签","日记正文字段","日记标签","平静心情","任务描述字段","任务标签","Shared Paper 正文字段","space format","cafe\u0301"];
       for(const query of matrix){const found=await service.search({userId:owner,query,scope:"active",limit:25});assert.ok(found.results.length>=1,query);assert.ok(found.results.every((r)=>r.snippet.length<=242));}
-      const ranked=await service.search({userId:owner,query:"精确计划",scope:"active",limit:25});assert.deepEqual(ranked.results.map((r)=>r.match_reason),["exact_stable_name","exact_stable_name","exact_stable_name"]);assert.equal(ranked.results.find((r)=>r.entity_id===memoryIds[0])?.author,"C");assert.equal(ranked.results.some((r)=>r.stable_name==="不能泄露"),false);
-      const archived=await service.search({userId:owner,query:"历史",scope:"archived",limit:25});assert.equal(archived.results.length,3);assert.ok(archived.results.every((r)=>r.lifecycle_status==="archived"&&r.detail_arguments.scope==="archived"));
-      const dated=await service.search({userId:owner,query:"精确计划",date_from:"2026-08-01",date_to:"2026-08-01",limit:25});assert.equal(dated.results.length,3);
+      const ranked=await service.search({userId:owner,query:"精确计划",scope:"active",limit:25});assert.deepEqual(ranked.results.map((r)=>r.match_reason),["exact_stable_name","exact_stable_name","exact_stable_name","exact_stable_name"]);assert.equal(ranked.results.find((r)=>r.entity_id===memoryIds[0])?.author,"C");assert.equal(ranked.results.find((r)=>r.entity_id===sharedPaperIds[0])?.author,"G");assert.equal(ranked.results.find((r)=>r.entity_id===sharedPaperIds[0])?.detail_tool,"get_shared_paper");assert.equal(ranked.results.some((r)=>r.stable_name==="不能泄露"),false);
+      const archived=await service.search({userId:owner,query:"历史",scope:"archived",limit:25});assert.equal(archived.results.length,4);assert.ok(archived.results.every((r)=>r.lifecycle_status==="archived"&&r.detail_arguments.scope==="archived"));
+      const dated=await service.search({userId:owner,query:"精确计划",date_from:"2026-08-01",date_to:"2026-08-01",limit:25});assert.equal(dated.results.length,4);
       const p1=await service.search({userId:owner,query:"精确计划",limit:1});const p2=await service.search({userId:owner,query:"精确计划",limit:1,cursor:p1.metadata.next_cursor!});assert.notEqual(p1.results[0]?.entity_id,p2.results[0]?.entity_id);
       const memoryDetail=await new MemoryService(new DrizzleMemoryRepository(tx as never)).readArchivedMemoryDetail({userId:owner,id:memoryIds[1]});assert.equal(memoryDetail.content,"归档 Memory 正文");
       const diaryDetail=await new DiaryService(new DrizzleDiaryRepository(tx as never)).readArchivedDiary({userId:owner,id:diaryIds[1]});assert.equal(diaryDetail.content,"历史日记正文");

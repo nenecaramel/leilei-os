@@ -14,7 +14,7 @@ const inputSchema = z.object({
       const normalized = value.normalize("NFC").trim();
       return normalized.length > 0 && [...normalized].length <= 200;
     }, "Query must contain 1 to 200 Unicode code points after NFC normalization and trimming."),
-  modules: z.array(z.enum(["memory", "diary", "task", "todo", "universe"])).min(1).max(5).optional(),
+  modules: z.array(z.enum(["memory", "diary", "task", "todo", "universe", "shared_paper"])).min(1).max(6).optional(),
   scope: z.enum(["active", "archived", "all"]).optional(),
   mode: z.enum(["phrase", "normal"]).optional(),
   date_from: z.string().max(10).optional(),
@@ -30,7 +30,7 @@ const detailArgumentsSchema = z.union([
 ]);
 
 const globalSearchResultSchema = z.object({
-  entity_type: z.enum(["memory", "diary", "task", "todo", "universe"]),
+  entity_type: z.enum(["memory", "diary", "task", "todo", "universe", "shared_paper"]),
   entity_id: z.string().min(1).max(256),
   stable_name: z.string(),
   snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
@@ -41,7 +41,7 @@ const globalSearchResultSchema = z.object({
   time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at", "todo_date"]),
   updated_at: z.string().datetime(),
   author: z.enum(["L", "G", "C"]).nullable(),
-  detail_tool: z.enum(["get_memory", "get_diary", "get_task", "read_todo_day", "get_universe_node"]).nullable(),
+  detail_tool: z.enum(["get_memory", "get_diary", "get_task", "read_todo_day", "get_universe_node", "get_shared_paper"]).nullable(),
   detail_arguments: detailArgumentsSchema.nullable(),
 }).strict().superRefine((result, context) => {
   if (result.detail_tool === null) {
@@ -73,6 +73,16 @@ const globalSearchResultSchema = z.object({
     return;
   }
 
+  if (result.entity_type === "shared_paper") {
+    if (result.detail_tool !== "get_shared_paper") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Shared Paper results must use get_shared_paper." });
+    }
+    if ("id" in result.detail_arguments && !("scope" in result.detail_arguments)
+      && z.string().uuid().safeParse(result.detail_arguments.id).success) return;
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Shared Paper detail_arguments must contain only a UUID id." });
+    return;
+  }
+
   const expectedTool = ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[result.entity_type];
   if (result.detail_tool !== expectedTool) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Detail tool must match the result module." });
@@ -87,7 +97,7 @@ const globalSearchDataSchema = z.object({
     count: z.number().int().min(0).max(25),
     has_more: z.boolean(),
     next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
-    searched_modules: z.array(z.enum(["memory", "diary", "task", "todo", "universe"])).min(1).max(5),
+    searched_modules: z.array(z.enum(["memory", "diary", "task", "todo", "universe", "shared_paper"])).min(1).max(6),
     searched_scope: z.enum(["active", "archived", "all"]),
   }).strict(),
 }).strict();
@@ -103,7 +113,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search as the cross-domain fallback when the target domain is unknown or uncertain across Memory, Diary, Task, Todo, and Universe. When the domain is known, prefer that domain's search or browse tool. Results are compact; follow a returned detail_tool with its detail_arguments only for selected records. Use active for current state and all for 以前、曾经、历史、所有记录. No results means nothing was found: never invent an answer. Compare conflicting records by module, lifecycle, and time; archived records are historical, not automatically current.",
+    description: "Use global_search as the cross-domain fallback when the target domain is unknown or uncertain across Memory, Diary, Task, Todo, Universe, and Shared Paper. When the domain is known, prefer that domain's search or browse tool. Results are compact; follow a returned detail_tool with its detail_arguments only for selected records. Use active for current state and all for 以前、曾经、历史、所有记录. No results means nothing was found: never invent an answer. Compare conflicting records by module, lifecycle, and time; archived records are historical, not automatically current.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

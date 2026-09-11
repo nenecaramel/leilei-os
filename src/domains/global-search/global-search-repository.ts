@@ -2,7 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import type { ContentAuthor } from "../content-author.js";
 
-export type GlobalSearchModule = "memory" | "diary" | "task" | "todo" | "universe";
+export type GlobalSearchModule = "memory" | "diary" | "task" | "todo" | "universe" | "shared_paper";
 export type GlobalSearchScope = "active" | "archived" | "all";
 export type GlobalSearchMode = "phrase" | "normal";
 export type GlobalSearchMatchReason = "exact_stable_name" | "exact_phrase" | "stable_name_prefix" | "field_match";
@@ -69,6 +69,7 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     if (input.modules.includes("task")) moduleQueries.push(taskQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("todo") && input.scope !== "archived") moduleQueries.push(todoQuery(input, queryText, pattern));
     if (input.modules.includes("universe") && input.scope !== "archived") moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
+    if (input.modules.includes("shared_paper")) moduleQueries.push(sharedPaperQuery(input, queryText, pattern, prefix));
     if (moduleQueries.length === 0) return [];
     const union = sql.join(moduleQueries, sql` union all `);
     const result = await this.db.execute(sql<GlobalSearchRow>`
@@ -234,6 +235,24 @@ function universeQuery(input: GlobalSearchQuery, query: string, pattern: string,
     from universe_nodes n
     inner join universe_meta um on um.user_id = n.user_id
     where n.user_id=${input.userId}::uuid
+      and ${match(fields.map((f) => f.value), input.mode, pattern)}
+      and ${dates(businessDate, input)}`, input);
+}
+
+function sharedPaperQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
+  const lifecycleStatus = sql`case when p.archived_at is null then 'active' else 'archived' end`;
+  const fields = [
+    { name: "title" as const, value: sql`p.title` },
+    { name: "content" as const, value: sql`p.content` },
+  ];
+  const businessDate = sql`(p.updated_at at time zone ${input.timezone})::date`;
+  return bounded(sql`select 'shared_paper'::text entity_type, p.id::text entity_id, p.title stable_name,
+    ${reasonAndField(sql`p.title`, fields, input.mode, query, pattern, prefix)},
+    ${lifecycleStatus}::text lifecycle_status, p.updated_by::text author,
+    p.updated_at business_time, 'updated_at'::text time_basis, p.updated_at, null::date business_date
+    from shared_papers p
+    where p.user_id=${input.userId}::uuid
+      and ${lifecycle(lifecycleStatus, input.scope)}
       and ${match(fields.map((f) => f.value), input.mode, pattern)}
       and ${dates(businessDate, input)}`, input);
 }

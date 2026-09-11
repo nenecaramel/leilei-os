@@ -4,9 +4,11 @@ import { WebApiError } from "../api/web-api-error";
 import { ModuleSearchButton, ModuleSearchField, ModuleSearchStateMessage } from "../components/ModuleSearch";
 import { ArchiveIcon, PenIcon } from "../components/icons";
 import { PaperAuthorSignature, type PaperAuthorValue } from "./PaperAuthorSignature";
+import { navigateWithinApp } from "./app-navigation";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import { SharedPaperBodyEditor } from "./SharedPaperBodyEditor";
 import { createContiguousRangeEdit, diffText } from "./shared-paper-diff";
+import { getSharedPaperDetailLocation } from "./shared-paper-location";
 import { createSharedPaperApi, type SharedPaper, type SharedPaperAuthor, type SharedPaperEdit, type SharedPaperScope } from "./shared-paper-api";
 import { confirmUnsavedChanges } from "./submission-gate";
 import { useUnsavedChanges } from "./use-unsaved-changes";
@@ -22,12 +24,13 @@ function formatDate(value: string): string {
 
 export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
   const client = useMemo(() => createSharedPaperApi(api), [api]);
+  const initialLocation = useMemo(() => getSharedPaperDetailLocation(window.location.search), []);
   const [list, setList] = useState<ListState>({ status: "loading" });
-  const [scope, setScope] = useState<SharedPaperScope>("active");
+  const [scope, setScope] = useState<SharedPaperScope>(initialLocation.scope);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchRetry, setSearchRetry] = useState(0);
-  const [selected, setSelected] = useState<SharedPaper | null>(null);
+  const [selected, setSelected] = useState<{ id: string } | null>(null);
   const [detail, setDetail] = useState<DetailState>({ status: "idle" });
   const [history, setHistory] = useState<HistoryState>({ status: "idle" });
   const [editing, setEditing] = useState(false);
@@ -61,6 +64,29 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
   }, [client, query, scope, searchRetry]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!initialLocation.paperId) return;
+    let cancelled = false;
+    triggerRef.current = document.body;
+    setSelected({ id: initialLocation.paperId });
+    setDetail({ status: "loading" });
+    setHistory({ status: "idle" });
+    setEditing(false);
+    setConfirmingDelete(false);
+    void client.get(initialLocation.paperId)
+      .then((paper) => {
+        if (cancelled) return;
+        setSelected({ id: paper.id });
+        setDetail({ status: "ready", paper });
+        setScope(paper.archivedAt ? "archived" : "active");
+      })
+      .catch(() => {
+        if (!cancelled) setDetail({ status: "error" });
+      });
+    return () => { cancelled = true; };
+  }, [client, initialLocation.paperId]);
+
   useUnsavedChanges(Boolean(editing && baseline && draft !== baseline.content) || Boolean(createOpen && (createTitle || createContent)));
 
   const openDetail = useCallback(async (paper: SharedPaper, trigger: HTMLElement) => {
@@ -193,12 +219,18 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
     setError("");
   };
 
+  const returnFromDeepLink = (): boolean => {
+    if (!initialLocation.paperId) return false;
+    navigateWithinApp(initialLocation.returnTo, window.history.state, { resetScroll: false });
+    return true;
+  };
+
   const closeLifecycleDetail = async () => {
     setSelected(null);
     setDetail({ status: "idle" });
     setHistory({ status: "idle" });
     setConfirmingDelete(false);
-    await load();
+    if (!returnFromDeepLink()) await load();
   };
 
   const reconcileLifecycleFailure = async (
@@ -282,7 +314,9 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
     if (archiving || restoring || deleting) return false;
     const dirty = Boolean(editing && baseline && draft !== baseline.content) || Boolean(createOpen && (createTitle || createContent));
     if (!confirmUnsavedChanges(dirty, (message) => window.confirm(message))) return false;
-    setSelected(null); setDetail({ status: "idle" }); setCreateOpen(false); resetCreateDraft(); resetEditDraft(); setEditing(false); setHistory({ status: "idle" }); setConfirmingDelete(false); setError(""); return true;
+    setSelected(null); setDetail({ status: "idle" }); setCreateOpen(false); resetCreateDraft(); resetEditDraft(); setEditing(false); setHistory({ status: "idle" }); setConfirmingDelete(false); setError("");
+    returnFromDeepLink();
+    return true;
   };
 
   const papers = list.status === "ready" ? list.papers : [];

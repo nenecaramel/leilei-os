@@ -11,6 +11,7 @@ import {
   createTaskDetailLocation,
 } from "./task-location";
 import type { SearchModule } from "./global-search-location";
+import { createSharedPaperDetailLocation } from "./shared-paper-location";
 
 export type GlobalSearchResult = {
   entity_type: SearchModule;
@@ -24,7 +25,7 @@ export type GlobalSearchResult = {
   time_basis: string;
   updated_at: string;
   author: "L" | "G" | "C" | null;
-  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | null;
+  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | null;
   detail_arguments: {
     id: string;
     scope: "active" | "archived";
@@ -37,6 +38,7 @@ export const GLOBAL_SEARCH_MODULE_LABELS: Record<SearchModule, string> = {
   task: "Task",
   universe: "Universe",
   todo: "Todo",
+  shared_paper: "Shared Paper",
 };
 
 export function formatGlobalSearchBusinessDate(value: string): string {
@@ -66,6 +68,14 @@ export function createGlobalSearchResultDetailLocation(
   if (result.entity_type === "universe") {
     const params = new URLSearchParams({ node: result.entity_id });
     return `/universe?${params.toString()}`;
+  }
+
+  if (result.entity_type === "shared_paper") {
+    return createSharedPaperDetailLocation(
+      result.entity_id,
+      result.lifecycle_status,
+      returnTo,
+    );
   }
 
   if (result.entity_type === "todo") {
