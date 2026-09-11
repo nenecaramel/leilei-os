@@ -82,6 +82,7 @@ test("Shared Paper MCP App resource exposes identical portable and ChatGPT alias
     assert.equal(portable.contents[0]?.mimeType, "text/html;profile=mcp-app");
     assert.equal(chatgpt.contents[0]?.mimeType, "text/html;profile=mcp-app");
     assert.equal(portable.contents[0]?.text, chatgpt.contents[0]?.text);
+    assert.deepEqual((portable.contents[0]?._meta as any)?.ui?.csp, { connectDomains: [], resourceDomains: [] });
     const html = String(portable.contents[0]?.text);
     assert.match(html, /data-shared-paper-app/);
     assert.match(html, /data-paper-search/);
@@ -173,5 +174,4 @@ test("Shared Paper MCP App HTML has bounded CSP and theme-aware paper chrome", (
   assert.match(html, /color-scheme:\s*light dark/);
   assert.match(html, /data-theme="dark"/);
   assert.doesNotMatch(html, /<script[^>]+src=/);
-  assert.doesNotMatch(html, /https:\/\//);
 });
