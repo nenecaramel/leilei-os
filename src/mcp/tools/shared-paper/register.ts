@@ -60,7 +60,7 @@ async function runDetail(read: () => Promise<SharedPaperRecord>, dependencies: S
 async function runMutation(mutate: () => Promise<{ paper: SharedPaperRecord; edit?: SharedPaperEdit; outcome?: "committed" | "replayed" }>, _dependencies: SharedPaperToolDependencies) { try { const result = await mutate(); const replayed = result.outcome === "replayed"; const data = { paper_id: result.paper.id, revision: result.edit?.revision ?? result.paper.revision, ...(result.edit ? { edit_id: result.edit.id, base_revision: result.edit.baseRevision, author: result.edit.author, created_at: result.edit.createdAt.toISOString() } : {}), metadata: { idempotent_replay: replayed }, detail_tool: "get_shared_paper" as const, detail_arguments: { id: result.paper.id } }; return { content: [{ type: "text" as const, text: `Shared paper ${replayed ? "replayed" : "committed"} at revision ${data.revision}.\n${formatMcpDetailPointer("get_shared_paper", data.detail_arguments)}` }], structuredContent: { success: true as const, data } }; } catch (error) { return sharedError(error, "shared_paper_mutation"); } }
 async function runEdits(read: () => Promise<SharedPaperEdit[]>, _dependencies: SharedPaperToolDependencies) { try { const edits = await read(); const data = { edits: edits.map(toEdit), count: edits.length }; return { content: [{ type: "text" as const, text: sharedPaperEditsContent(edits) }], structuredContent: { success: true as const, data } }; } catch (error) { return sharedError(error, "list_shared_paper_edits"); } }
 function sharedPaperDetailContent(paper: SharedPaperRecord): string {
-  return joinMcpContentLines([
+  const metadata = joinMcpContentLines([
     `Shared paper ${quoteMcpText(paper.title)}`,
     `id=${paper.id}`,
     `revision=${paper.revision}`,
@@ -68,8 +68,8 @@ function sharedPaperDetailContent(paper: SharedPaperRecord): string {
     `updated_by=${paper.updatedBy}`,
     `created_at=${paper.createdAt.toISOString()}`,
     `updated_at=${paper.updatedAt.toISOString()}`,
-    paper.content,
   ]);
+  return paper.content.length > 0 ? `${metadata}\n\n${paper.content}` : metadata;
 }
 
 function sharedPaperEditsContent(edits: SharedPaperEdit[]): string {
