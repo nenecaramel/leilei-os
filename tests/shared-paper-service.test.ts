@@ -9,6 +9,7 @@ import type {
   SharedPaperRepository,
   SharedPaperRecord,
 } from "../src/domains/shared-paper/shared-paper-types.js";
+import { replaceCodePointRange } from "../src/shared/unicode.js";
 
 const paper = (overrides: Partial<SharedPaperRecord> = {}): SharedPaperRecord => ({
   id: "00000000-0000-4000-8000-000000000001",
@@ -37,15 +38,13 @@ class FakeRepository implements SharedPaperRepository {
   listEdits() { return Promise.resolve(this.edits); }
   editPaper(input: Parameters<SharedPaperRepository["editPaper"]>[0]) {
     if (input.expectedRevision !== this.current.revision) return Promise.resolve({ outcome: "revision_conflict" as const });
-    const content = input.replacement;
+    const content = replaceCodePointRange(this.current.content, input.start, input.end, input.replacement);
     const next = paper({ ...this.current, content, revision: 2, updatedBy: input.author });
     const edit: SharedPaperEdit = { id: "00000000-0000-4000-8000-000000000002", userId: "user-1", paperId: this.current.id, baseRevision: 1, revision: 2, author: input.author, startOffset: input.start, endOffset: input.end, deletedText: "你好", insertedText: "世界", createdAt: new Date("2026-01-01T00:00:00Z") };
     this.current = next;
     this.edits.push(edit);
     return Promise.resolve({ outcome: "committed" as const, paper: next, edit });
   }
-  editPaperIdempotently() { return Promise.reject(new Error("not used")); }
-  createPaperIdempotently() { return Promise.reject(new Error("not used")); }
 }
 
 test("SharedPaperService keeps one canonical paper across authors and records Unicode delta", async () => {
@@ -68,6 +67,8 @@ test("SharedPaperService rejects stale, empty, and ambiguous match edits", async
   await assert.rejects(() => service.editPaperByMatch({ userId: "user-1", paperId: paper().id, expectedRevision: 1, author: "C", matchText: "missing", replacementText: "x", idempotencyKey: "shared.paper:edit-0003" }), (error: unknown) => error instanceof SharedPaperServiceError && error.code === "PAPER_EDIT_TARGET_NOT_FOUND");
   repository.current = paper({ content: "x x" });
   await assert.rejects(() => service.editPaperByMatch({ userId: "user-1", paperId: paper().id, expectedRevision: 1, author: "C", matchText: "x", replacementText: "y", idempotencyKey: "shared.paper:edit-0004" }), (error: unknown) => error instanceof SharedPaperServiceError && error.code === "PAPER_EDIT_TARGET_AMBIGUOUS");
+  repository.current = paper({ content: "aaa" });
+  await assert.rejects(() => service.editPaperByMatch({ userId: "user-1", paperId: paper().id, expectedRevision: 1, author: "C", matchText: "aa", replacementText: "b", idempotencyKey: "shared.paper:edit-0006" }), (error: unknown) => error instanceof SharedPaperServiceError && error.code === "PAPER_EDIT_TARGET_AMBIGUOUS");
   repository.current = paper({ content: "" });
   const inserted = await service.editPaperByMatch({ userId: "user-1", paperId: paper().id, expectedRevision: 1, author: "C", matchText: "", replacementText: "😀", idempotencyKey: "shared.paper:edit-0005" });
   assert.equal(inserted.edit.endOffset, 0);
