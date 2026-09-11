@@ -18,25 +18,19 @@
   line-height: 30px;
 }
 
-.shared-paper-metadata {
-  margin-top: 18px;
-  color: #777;
-  font-size: 12px;
-  line-height: 20px;
-}
-
 .shared-paper-history {
   display: grid;
-  gap: 16px;
-  padding: 8px 0 24px;
+  gap: 0;
+  padding: 0 0 30px;
   color: #333;
   font-size: 13px;
-  line-height: 20px;
+  line-height: 30px;
 }
 
 .shared-paper-history-event {
   display: grid;
-  gap: 2px;
+  gap: 0;
+  line-height: 30px;
 }
 
 .shared-paper-history-event span {
