@@ -9,6 +9,7 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY scripts/build-bridge-browser.mjs ./scripts/build-bridge-browser.mjs
 COPY scripts/build-thinking-block-browser.mjs ./scripts/build-thinking-block-browser.mjs
+COPY scripts/build-shared-paper-app-browser.mjs ./scripts/build-shared-paper-app-browser.mjs
 RUN pnpm build
 
 FROM node:22-alpine AS runtime
