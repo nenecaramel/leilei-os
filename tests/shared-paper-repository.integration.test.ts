@@ -53,6 +53,8 @@ test("Shared Paper PostgreSQL persistence is transactional, Unicode-safe, and CA
     assert.equal(replayAfterLaterEdit.edit.id, edited.edit.id);
     assert.equal(replayAfterLaterEdit.paper.revision, 3);
     assert.equal((await service.listEdits({ userId, paperId: created.paper.id })).length, 2);
+    const olderEdits = await service.listEdits({ userId, paperId: created.paper.id, beforeRevision: 3 } as any);
+    assert.deepEqual(olderEdits.map((entry) => entry.revision), [2]);
   } finally {
     await db.delete(schema.sharedPaperEdits).where(eq(schema.sharedPaperEdits.userId, userId));
     await db.delete(schema.sharedPapers).where(eq(schema.sharedPapers.userId, userId));
