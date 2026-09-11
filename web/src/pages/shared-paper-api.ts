@@ -1,10 +1,11 @@
 import type { WebApiClient } from "../api/useWebApiClient";
 
 export type SharedPaperAuthor = "L" | "G" | "C";
+export type SharedPaperScope = "active" | "archived";
 export type SharedPaper = {
   id: string; userId: string; title: string; content: string; revision: number;
   createdBy: SharedPaperAuthor; updatedBy: SharedPaperAuthor;
-  createdAt: string; updatedAt: string;
+  createdAt: string; updatedAt: string; archivedAt: string | null;
 };
 export type SharedPaperEdit = {
   id: string; userId: string; paperId: string; baseRevision: number; revision: number;
@@ -15,13 +16,18 @@ type Envelope<T> = { success: true; data: T };
 
 export function createSharedPaperApi(api: WebApiClient) {
   return {
-    async list(limit?: number): Promise<SharedPaper[]> {
-      const result = await api.request<Envelope<SharedPaper[]>>(`/shared-papers${limit ? `?limit=${limit}` : ""}`);
+    async list(limit?: number, scope: SharedPaperScope = "active"): Promise<SharedPaper[]> {
+      const params = new URLSearchParams();
+      if (limit) params.set("limit", String(limit));
+      if (scope !== "active") params.set("scope", scope);
+      const suffix = params.size ? `?${params}` : "";
+      const result = await api.request<Envelope<SharedPaper[]>>(`/shared-papers${suffix}`);
       return result.data;
     },
-    async search(query: string, limit?: number): Promise<SharedPaper[]> {
+    async search(query: string, limit?: number, scope: SharedPaperScope = "active"): Promise<SharedPaper[]> {
       const params = new URLSearchParams({ query });
       if (limit) params.set("limit", String(limit));
+      if (scope !== "active") params.set("scope", scope);
       const result = await api.request<Envelope<SharedPaper[]>>(`/shared-papers/search?${params}`);
       return result.data;
     },
@@ -35,6 +41,18 @@ export function createSharedPaperApi(api: WebApiClient) {
     },
     async edit(id: string, input: { expected_revision: number; author: SharedPaperAuthor; start: number; end: number; replacement: string }): Promise<{ paper: SharedPaper; edit: SharedPaperEdit }> {
       const result = await api.request<Envelope<{ paper: SharedPaper; edit: SharedPaperEdit }>>(`/shared-papers/${encodeURIComponent(id)}/content`, { method: "PATCH", body: JSON.stringify(input) });
+      return result.data;
+    },
+    async archive(id: string): Promise<SharedPaper> {
+      const result = await api.request<Envelope<SharedPaper>>(`/shared-papers/${encodeURIComponent(id)}/archive`, { method: "POST" });
+      return result.data;
+    },
+    async restore(id: string): Promise<SharedPaper> {
+      const result = await api.request<Envelope<SharedPaper>>(`/shared-papers/${encodeURIComponent(id)}/restore`, { method: "POST" });
+      return result.data;
+    },
+    async remove(id: string): Promise<{ paperId: string }> {
+      const result = await api.request<Envelope<{ paperId: string }>>(`/shared-papers/${encodeURIComponent(id)}/permanent`, { method: "DELETE" });
       return result.data;
     },
     async edits(id: string, limit = 100): Promise<SharedPaperEdit[]> {
