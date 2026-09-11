@@ -155,6 +155,7 @@ test("Shared Paper detail text exposes revision and authors before canonical con
     updated_by: detailedPaper.updatedBy,
     created_at: detailedPaper.createdAt.toISOString(),
     updated_at: detailedPaper.updatedAt.toISOString(),
+    archived_at: null,
   });
 });
 
