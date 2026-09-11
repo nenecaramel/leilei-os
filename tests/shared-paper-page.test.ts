@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import test from "node:test";
@@ -108,12 +109,12 @@ test("Shared Paper edit baseline, history, and revision conflict contract stay e
     const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
     assert.ok(row);
     await React.act(async () => row!.click());
-    const history = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "History");
+    const history = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "历史");
     assert.ok(history);
     await React.act(async () => history!.click());
-    assert.match(env.container.textContent ?? "", /Created/);
+    assert.match(env.container.textContent ?? "", /创建/);
     assert.match(env.container.textContent ?? "", /2→3/);
-    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "Edit");
+    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(editButton);
     await React.act(async () => editButton!.click());
     const editor = env.container.querySelector<HTMLTextAreaElement>("textarea");
@@ -162,7 +163,7 @@ test("Shared Paper edit cancel blocks dirty discard and clears baseline after co
     const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
     assert.ok(row);
     await React.act(async () => row!.click());
-    const edit = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "Edit");
+    const edit = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(edit);
     await React.act(async () => edit!.click());
     const editor = env.container.querySelector<HTMLTextAreaElement>("textarea[aria-label=\"Shared Paper 正文\"]");
@@ -181,7 +182,7 @@ test("Shared Paper edit cancel blocks dirty discard and clears baseline after co
     await React.act(async () => cancel!.click());
     assert.ok(env.container.querySelector("[role=dialog]"));
     assert.equal(env.container.querySelector("textarea[aria-label=\"Shared Paper 正文\"]"), null);
-    const editAgain = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "Edit");
+    const editAgain = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(editAgain);
     await React.act(async () => editAgain!.click());
     assert.equal(env.container.querySelector<HTMLTextAreaElement>("textarea[aria-label=\"Shared Paper 正文\"]")?.value, paper.content);
@@ -203,7 +204,7 @@ test("Shared Paper Save uses the opened revision and real UI interaction for a s
     const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
     assert.ok(row);
     await React.act(async () => row!.click());
-    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "Edit");
+    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(editButton);
     await React.act(async () => editButton!.click());
     const editor = env.container.querySelector<HTMLTextAreaElement>("textarea[aria-label=\"Shared Paper 正文\"]");
@@ -237,7 +238,7 @@ test("Shared Paper 409 keeps the draft, blocks stale Save, and resolves by keepi
     const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
     assert.ok(row);
     await React.act(async () => row!.click());
-    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "Edit");
+    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(editButton);
     await React.act(async () => editButton!.click());
     const editor = env.container.querySelector<HTMLTextAreaElement>("textarea[aria-label=\"Shared Paper 正文\"]");
@@ -249,7 +250,6 @@ test("Shared Paper 409 keeps the draft, blocks stale Save, and resolves by keepi
     await waitForCondition(() => (env.container.textContent ?? "").includes("paper 已被其他编辑更新"));
     assert.equal(editor!.value, "用户草稿");
     assert.match(env.container.textContent ?? "", /revision 4/);
-    assert.match(env.container.textContent ?? "", /revision 4 · G/);
     save = [...env.container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "保存");
     assert.ok(save);
     assert.equal(save!.disabled, true);
@@ -285,7 +285,7 @@ test("Shared Paper conflict load-latest action updates draft and baseline revisi
     const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
     assert.ok(row);
     await React.act(async () => row!.click());
-    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "Edit");
+    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
     assert.ok(editButton);
     await React.act(async () => editButton!.click());
     const editor = env.container.querySelector<HTMLTextAreaElement>("textarea[aria-label=\"Shared Paper 正文\"]");
@@ -317,7 +317,7 @@ test("Shared Paper history highlights only the changed middle", async () => {
     const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
     assert.ok(row);
     await React.act(async () => row!.click());
-    const history = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "History");
+    const history = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "历史");
     assert.ok(history);
     await React.act(async () => history!.click());
     const marks = [...env.container.querySelectorAll("mark")].map((mark) => mark.textContent);
@@ -326,3 +326,47 @@ test("Shared Paper history highlights only the changed middle", async () => {
     assert.equal(marks.includes("b"), false);
   } finally { await env.cleanup(); }
 });
+
+test("Shared Paper production chrome is localized, uncluttered, ruled, and newest-first", async () => {
+  const env = await installDom();
+  const olderEdit: Edit = {
+    ...edit,
+    id: "edit-1",
+    baseRevision: 1,
+    revision: 2,
+    author: "G",
+    createdAt: "2026-01-02T00:00:00.000Z",
+  };
+  const api: WebApiClient = { async request<T>(path: string) {
+    if (path.endsWith("/edits?limit=100")) return response([olderEdit, edit]) as T;
+    if (path === "/shared-papers/paper-1") return response(paper) as T;
+    return response([paper]) as T;
+  } };
+  try {
+    await React.act(async () => { env.root.render(React.createElement(SharedPaperPageContent, { api })); await waitForPaint(); });
+    const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
+    assert.ok(row);
+    await React.act(async () => row!.click());
+
+    const detailActions = [...env.container.querySelectorAll(".paper-detail-top-right button")].map((button) => button.textContent);
+    assert.deepEqual(detailActions, ["历史", "编辑"]);
+    assert.doesNotMatch(env.container.textContent ?? "", /created by|updated by/);
+
+    const history = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "历史");
+    assert.ok(history);
+    await React.act(async () => history!.click());
+
+    const historyActions = [...env.container.querySelectorAll(".paper-detail-top-right button")].map((button) => button.textContent);
+    assert.deepEqual(historyActions, ["返回", "编辑"]);
+    const historyText = env.container.querySelector(".shared-paper-history")?.textContent ?? "";
+    const newest = historyText.indexOf("C · 2→3");
+    const older = historyText.indexOf("G · 1→2");
+    const created = historyText.indexOf("创建");
+    assert.ok(newest >= 0 && older > newest && created > older);
+
+    const css = readFileSync(new URL("../web/src/pages/shared-paper.css", import.meta.url), "utf8");
+    assert.match(css, /\.shared-paper-history\s*\{[^}]*gap:\s*0;[^}]*line-height:\s*30px;/s);
+    assert.match(css, /\.shared-paper-history-event\s*\{[^}]*gap:\s*0;[^}]*line-height:\s*30px;/s);
+  } finally { await env.cleanup(); }
+});
+
