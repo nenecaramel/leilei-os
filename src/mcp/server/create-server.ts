@@ -373,6 +373,9 @@ const productionSharedPaperService: SharedPaperToolService = {
   listEdits: () => missingDatabaseService(),
   createPaperIdempotently: () => missingDatabaseService(),
   editPaperByMatch: () => missingDatabaseService(),
+  archivePaperIdempotently: () => missingDatabaseService(),
+  restorePaperIdempotently: () => missingDatabaseService(),
+  deletePaperIdempotently: () => missingDatabaseService(),
 };
 
 type TodoToolsDependencies = {
