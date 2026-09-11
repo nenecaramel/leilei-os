@@ -148,7 +148,7 @@ async function withEditorDom(
     await React.act(async () => {
       Object.getOwnPropertyDescriptor(Object.getPrototypeOf(body), "value")?.set?.call(
         body,
-        `${initial} with a long line that needs more room`,
+        `${initial}\nsecond line that grows the editor`,
       );
       const change = new dom.window.Event("propertychange", { bubbles: true });
       Object.defineProperty(change, "propertyName", { value: "value" });
