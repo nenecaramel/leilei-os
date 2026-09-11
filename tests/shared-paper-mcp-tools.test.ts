@@ -17,6 +17,7 @@ const paper: SharedPaperRecord = {
   userId: "u",
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  archivedAt: null,
 };
 const edit: SharedPaperEdit = {
   id: "00000000-0000-4000-8000-000000000002",
@@ -40,6 +41,9 @@ function makeService(overrides: Partial<SharedPaperToolService> = {}): SharedPap
     listEdits: async () => [],
     createPaperIdempotently: async () => ({ paper, outcome: "committed" }),
     editPaperByMatch: async () => ({ paper, edit, outcome: "committed" }),
+    archivePaperIdempotently: async () => ({ paper: { ...paper, archivedAt: new Date("2026-01-02T00:00:00.000Z") }, outcome: "committed" }),
+    restorePaperIdempotently: async () => ({ paper, outcome: "committed" }),
+    deletePaperIdempotently: async () => ({ paperId: id, outcome: "committed" }),
     ...overrides,
   };
 }
@@ -52,12 +56,12 @@ async function connect(sharedPaperService: SharedPaperToolService = makeService(
   return { client, server };
 }
 
-test("Shared Paper MCP exposes six strict tools without user_id", async () => {
+test("Shared Paper MCP exposes nine strict tools without user_id", async () => {
   const fixture = await connect();
   const result = await fixture.client.listTools();
   await fixture.client.close(); await fixture.server.close();
-  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "list_shared_paper_edits"].includes(tool.name));
-  assert.deepEqual(selected.map((tool) => tool.name).sort(), ["create_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "search_shared_papers"]);
+  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "list_shared_paper_edits", "archive_shared_paper", "restore_shared_paper", "delete_shared_paper"].includes(tool.name));
+  assert.deepEqual(selected.map((tool) => tool.name).sort(), ["archive_shared_paper", "create_shared_paper", "delete_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "restore_shared_paper", "search_shared_papers"]);
   for (const tool of selected) {
     const schema = tool.inputSchema as { type?: string; properties?: Record<string, unknown> };
     assert.equal(schema.type, "object");
@@ -266,4 +270,48 @@ test("Shared Paper MCP edit history exposes a stable before_revision continuatio
   const result = await fixture.client.callTool({ name: "list_shared_paper_edits", arguments: { id, before_revision: 3, limit: 2 } });
   assert.equal(result.isError, undefined);
   assert.deepEqual(received, { userId: "u", paperId: id, limit: 2, beforeRevision: 3 });
+});
+
+
+test("Shared Paper MCP defaults discovery scope to active and accepts archived scope", async (t) => {
+  const received: Array<Record<string, unknown>> = [];
+  const fixture = await connect(makeService({
+    listPapers: async (input) => { received.push(input as unknown as Record<string, unknown>); return []; },
+    searchPapers: async (input) => { received.push(input as unknown as Record<string, unknown>); return []; },
+  }));
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+  await fixture.client.callTool({ name: "list_shared_papers", arguments: {} });
+  await fixture.client.callTool({ name: "search_shared_papers", arguments: { query: "shared", scope: "archived" } });
+  assert.equal(received[0]?.scope, "active");
+  assert.equal(received[1]?.scope, "archived");
+});
+
+test("Shared Paper MCP lifecycle tools return authoritative state and idempotent receipts", async (t) => {
+  let archiveCalls = 0;
+  let restoreCalls = 0;
+  let deleteCalls = 0;
+  const archived = { ...paper, archivedAt: new Date("2026-01-02T00:00:00.000Z") };
+  const fixture = await connect(makeService({
+    archivePaperIdempotently: async () => ({ paper: archived, outcome: archiveCalls++ === 0 ? "committed" : "replayed" }),
+    restorePaperIdempotently: async () => ({ paper, outcome: restoreCalls++ === 0 ? "committed" : "replayed" }),
+    deletePaperIdempotently: async () => ({ paperId: id, outcome: deleteCalls++ === 0 ? "committed" : "replayed" }),
+  }));
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const archivedResult = await fixture.client.callTool({ name: "archive_shared_paper", arguments: { id, idempotency_key: "shared.paper:archive-0001" } });
+  const archivedData = (archivedResult.structuredContent as any).data;
+  assert.equal(archivedData.paper_id, id);
+  assert.equal(archivedData.archived_at, "2026-01-02T00:00:00.000Z");
+  assert.equal(archivedData.metadata.idempotent_replay, false);
+  assert.deepEqual(archivedData.detail_arguments, { id });
+
+  const restoredResult = await fixture.client.callTool({ name: "restore_shared_paper", arguments: { id, idempotency_key: "shared.paper:restore-0001" } });
+  assert.equal((restoredResult.structuredContent as any).data.archived_at, null);
+
+  const deletedResult = await fixture.client.callTool({ name: "delete_shared_paper", arguments: { id, idempotency_key: "shared.paper:delete-0001" } });
+  const deletedReplay = await fixture.client.callTool({ name: "delete_shared_paper", arguments: { id, idempotency_key: "shared.paper:delete-0001" } });
+  assert.equal((deletedResult.structuredContent as any).data.deleted, true);
+  assert.equal((deletedReplay.structuredContent as any).data.metadata.idempotent_replay, true);
+  assert.equal((deletedReplay.structuredContent as any).data.paper_id, id);
+  assert.match(String(deletedReplay.content?.[0]?.text), /replayed/);
 });
