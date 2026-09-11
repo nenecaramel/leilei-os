@@ -86,6 +86,6 @@ test("SharedPaperService rejects non-string create fields with a stable validati
 test("SharedPaperService forwards a before_revision history cursor", async () => {
   const repository = new FakeRepository();
   const service = new SharedPaperService(repository);
-  await service.listEdits({ userId: "user-1", paperId: paper().id, limit: 2, beforeRevision: 3 } as any);
+  await service.listEdits({ userId: "user-1", paperId: paper().id, limit: 2, beforeRevision: 3 });
   assert.deepEqual(repository.lastListInput, { userId: "user-1", paperId: paper().id, limit: 2, beforeRevision: 3 });
 });

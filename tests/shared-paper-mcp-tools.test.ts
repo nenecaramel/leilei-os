@@ -125,6 +125,7 @@ test("Shared Paper MCP mutation receipts distinguish fresh commits from idempote
   const fixture = await connect(makeService({
     createPaperIdempotently: async () => ({ paper, outcome: createCount++ === 0 ? "committed" : "replayed" }),
     editPaperByMatch: async () => ({ paper: currentPaper, edit, outcome: editCount++ === 0 ? "committed" : "replayed" }),
+    getPaper: async () => currentPaper,
   }));
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
 
@@ -147,6 +148,8 @@ test("Shared Paper MCP mutation receipts distinguish fresh commits from idempote
   assert.equal(editReplayData.revision, 2);
   assert.deepEqual(editReplayData.detail_arguments, { id });
   assert.match(String(editReplay.content?.[0]?.text), /replayed/);
+  const current = await fixture.client.callTool({ name: "get_shared_paper", arguments: editReplayData.detail_arguments });
+  assert.equal((current.structuredContent as any).data.paper.content, "later canonical");
 });
 
 test("Shared Paper MCP edit history exposes a stable before_revision continuation", async (t) => {
