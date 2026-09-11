@@ -242,7 +242,7 @@ async function invokeAllWrites(client: Client) {
   ]);
 }
 
-test("MCP exposes exactly seventeen write tools and preserves every annotation", async (t) => {
+test("MCP exposes exactly nineteen write tools and preserves every annotation", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
@@ -269,6 +269,8 @@ test("MCP exposes exactly seventeen write tools and preserves every annotation",
     "delete_universe_relation",
     "add_universe_diary_source",
     "delete_universe_diary_source",
+    "create_shared_paper",
+    "edit_shared_paper",
   ]);
   assert.deepEqual(
     writes.map((tool) => tool.name).sort(),
@@ -306,7 +308,7 @@ test("MCP exposes exactly seventeen write tools and preserves every annotation",
     assert.ok(tool?.inputSchema.required?.includes("author"));
   }
   for (const tool of tools) {
-    if (!["create_task", "write_diary", "write_memory", "write_todo_paper", "update_memory", "update_diary", "update_task", "read_todo_day", "search_todo", "search_diary"].includes(tool.name)) {
+    if (!["create_task", "write_diary", "write_memory", "write_todo_paper", "create_shared_paper", "edit_shared_paper", "update_memory", "update_diary", "update_task", "read_todo_day", "search_todo", "search_diary"].includes(tool.name)) {
       assert.equal("author" in (tool.inputSchema.properties ?? {}), false);
     }
   }

@@ -60,9 +60,9 @@ test("Health v2 appends a daily-summary table without restoring the retired Heal
   assert.equal((migration.match(/\bALTER TABLE\b/gi) ?? []).length, 1);
   assert.doesNotMatch(migration, /health_records/i);
 
-  const entry = journal.entries.at(-1);
-  assert.equal(entry?.idx, 33);
-  assert.equal(entry?.tag, "0033_health_v2_daily_summaries");
+  const healthEntries = journal.entries.filter((entry) => entry.idx === 33);
+  assert.equal(healthEntries.length, 1);
+  assert.equal(healthEntries[0]?.tag, "0033_health_v2_daily_summaries");
   assert.match(snapshot, /public\.health_daily_summaries/);
   assert.doesNotMatch(snapshot, /public\.health_records/);
 
