@@ -6,6 +6,7 @@ import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { MemoryPaperEditor } from "../web/src/pages/MemoryPaperEditor.js";
 import { DiaryPaperEditor } from "../web/src/pages/DiaryPaperEditor.js";
 import { TaskPaperEditor } from "../web/src/pages/TaskPaperEditor.js";
+import { SharedPaperBodyEditor } from "../web/src/pages/SharedPaperBodyEditor.js";
 import { resizePaperTextarea } from "../web/src/pages/paper-editor-autosize.js";
 
 type EditorCase = {
@@ -34,6 +35,14 @@ const EDITORS: readonly EditorCase[] = [
       content: value,
       disabled: false,
       onTitleChange() {},
+      onContentChange: onChange,
+    }),
+  },
+  {
+    name: "Shared Paper",
+    bodySelector: 'textarea[aria-label="Shared Paper 正文"]',
+    render: (value, onChange) => React.createElement(SharedPaperBodyEditor, {
+      content: value,
       onContentChange: onChange,
     }),
   },
@@ -160,7 +169,7 @@ async function withEditorDom(
   }
 }
 
-test("long paper edits preserve page scroll while all three editors autosize", async () => {
+test("long paper edits preserve page scroll while all paper editors autosize", async () => {
   for (const editor of EDITORS) {
     await withEditorDom(editor, async (body, dom) => {
       assert.equal(dom.window.scrollY, 640, `${editor.name} edit clamped page scroll`);
