@@ -192,20 +192,48 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
     setError("");
   };
 
+  const closeLifecycleDetail = async () => {
+    setSelected(null);
+    setDetail({ status: "idle" });
+    setHistory({ status: "idle" });
+    setConfirmingDelete(false);
+    await load();
+  };
+
+  const reconcileLifecycleFailure = async (
+    paperId: string,
+    expected: "archived" | "active" | "deleted",
+  ): Promise<"committed" | "not_committed" | "unknown"> => {
+    try {
+      const latest = await client.get(paperId);
+      setDetail({ status: "ready", paper: latest });
+      setSelected(latest);
+      if (expected === "archived") return latest.archivedAt ? "committed" : "not_committed";
+      if (expected === "active") return latest.archivedAt ? "not_committed" : "committed";
+      return "not_committed";
+    } catch (cause) {
+      if (cause instanceof WebApiError && cause.status === 404) {
+        return expected === "deleted" ? "committed" : "unknown";
+      }
+      return "unknown";
+    }
+  };
+
   const archivePaper = async () => {
     if (detail.status !== "ready" || detail.paper.archivedAt || archiving) return;
     if (!window.confirm(`确定归档“${detail.paper.title}”吗？`)) return;
+    const paperId = detail.paper.id;
     setArchiving(true);
     setError("");
     try {
-      await client.archive(detail.paper.id);
-      setSelected(null);
-      setDetail({ status: "idle" });
-      setHistory({ status: "idle" });
-      setConfirmingDelete(false);
-      await load();
+      await client.archive(paperId);
+      await closeLifecycleDetail();
     } catch {
-      setError("无法归档 Shared Paper，请稍后重试。");
+      const reconciled = await reconcileLifecycleFailure(paperId, "archived");
+      if (reconciled === "committed") await closeLifecycleDetail();
+      else setError(reconciled === "unknown"
+        ? "归档结果暂时无法确认，请刷新后再操作。"
+        : "无法归档 Shared Paper，请稍后重试。");
     } finally {
       setArchiving(false);
     }
@@ -213,17 +241,18 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
 
   const restorePaper = async () => {
     if (detail.status !== "ready" || !detail.paper.archivedAt || restoring) return;
+    const paperId = detail.paper.id;
     setRestoring(true);
     setError("");
     try {
-      await client.restore(detail.paper.id);
-      setSelected(null);
-      setDetail({ status: "idle" });
-      setHistory({ status: "idle" });
-      setConfirmingDelete(false);
-      await load();
+      await client.restore(paperId);
+      await closeLifecycleDetail();
     } catch {
-      setError("无法恢复 Shared Paper，请稍后重试。");
+      const reconciled = await reconcileLifecycleFailure(paperId, "active");
+      if (reconciled === "committed") await closeLifecycleDetail();
+      else setError(reconciled === "unknown"
+        ? "恢复结果暂时无法确认，请刷新后再操作。"
+        : "无法恢复 Shared Paper，请稍后重试。");
     } finally {
       setRestoring(false);
     }
@@ -231,17 +260,18 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
 
   const permanentlyDeletePaper = async () => {
     if (detail.status !== "ready" || !detail.paper.archivedAt || !confirmingDelete || deleting) return;
+    const paperId = detail.paper.id;
     setDeleting(true);
     setError("");
     try {
-      await client.remove(detail.paper.id);
-      setSelected(null);
-      setDetail({ status: "idle" });
-      setHistory({ status: "idle" });
-      setConfirmingDelete(false);
-      await load();
+      await client.remove(paperId);
+      await closeLifecycleDetail();
     } catch {
-      setError("无法永久删除 Shared Paper，请稍后重试。");
+      const reconciled = await reconcileLifecycleFailure(paperId, "deleted");
+      if (reconciled === "committed") await closeLifecycleDetail();
+      else setError(reconciled === "unknown"
+        ? "删除结果暂时无法确认，请刷新后再操作。"
+        : "无法永久删除 Shared Paper，请稍后重试。");
     } finally {
       setDeleting(false);
     }
