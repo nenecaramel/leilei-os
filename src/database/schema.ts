@@ -252,10 +252,12 @@ export const sharedPapers = pgTable(
     updatedBy: contentAuthorEnum("updated_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (table) => [
     unique("shared_papers_id_user_unique").on(table.id, table.userId),
     index("shared_papers_user_updated_id_idx").on(table.userId, table.updatedAt.desc(), table.id.desc()),
+    index("shared_papers_user_archive_updated_id_idx").on(table.userId, table.archivedAt, table.updatedAt.desc(), table.id.desc()),
     check("shared_papers_revision_positive", sql`${table.revision} >= 1`),
     check("shared_papers_title_not_blank", sql`char_length(btrim(${table.title})) > 0`),
   ],
@@ -534,6 +536,9 @@ export const mcpWriteIdempotency = pgTable(
         | "create_universe_relation"
         | "create_shared_paper"
         | "edit_shared_paper"
+        | "archive_shared_paper"
+        | "restore_shared_paper"
+        | "delete_shared_paper"
       >()
       .notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
@@ -572,7 +577,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_tool_allowed",
-      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper')`,
+      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper', 'archive_shared_paper', 'restore_shared_paper', 'delete_shared_paper')`,
     ),
     check(
       "mcp_write_idempotency_key_format",
