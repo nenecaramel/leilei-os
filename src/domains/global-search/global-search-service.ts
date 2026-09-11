@@ -12,7 +12,7 @@ import type {
   GlobalSearchTimeBasis,
 } from "./global-search-repository.js";
 
-const MODULES = ["memory", "diary", "task", "todo", "universe"] as const;
+const MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
 const CURSOR_FINGERPRINT = /^[0-9a-f]{64}$/;
@@ -45,7 +45,7 @@ export type GlobalSearchItem = {
   time_basis: GlobalSearchTimeBasis;
   updated_at: string;
   author: ContentAuthor | null;
-  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | null;
+  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | null;
   detail_arguments: { id: string; scope: "active" | "archived" } | { id: string } | { date: string } | null;
 };
 
@@ -117,8 +117,18 @@ export class GlobalSearchService {
         time_basis: row.timeBasis,
         updated_at: row.updatedAt.toISOString(),
         author: row.author,
-        detail_tool: row.entityType === "universe" ? "get_universe_node" : row.entityType === "todo" ? "read_todo_day" : ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
-        detail_arguments: row.entityType === "universe" ? { id: row.entityId } : row.entityType === "todo" ? todoDetailArguments(row) : { id: row.entityId, scope: row.lifecycleStatus },
+        detail_tool: row.entityType === "universe"
+          ? "get_universe_node"
+          : row.entityType === "todo"
+            ? "read_todo_day"
+            : row.entityType === "shared_paper"
+              ? "get_shared_paper"
+              : ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
+        detail_arguments: row.entityType === "universe" || row.entityType === "shared_paper"
+          ? { id: row.entityId }
+          : row.entityType === "todo"
+            ? todoDetailArguments(row)
+            : { id: row.entityId, scope: row.lifecycleStatus },
       })),
       metadata: {
         count: page.length,
