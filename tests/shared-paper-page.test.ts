@@ -459,3 +459,74 @@ test("Shared Paper active detail archives, archived detail restores, and permane
     assert.equal(deleteAttempts, 2);
   } finally { await env.cleanup(); }
 });
+
+test("Shared Paper lifecycle reconciles uncertain archive and delete outcomes with authoritative detail reads", async () => {
+  const archived = { ...paper, archivedAt: "2026-01-04T00:00:00.000Z" };
+
+  {
+    const env = await installDom();
+    let activePapers: Paper[] = [paper];
+    let archiveCommitted = false;
+    const api: WebApiClient = { async request<T>(path: string, init?: RequestInit) {
+      if (path === "/shared-papers") return response(activePapers) as T;
+      if (path === "/shared-papers/paper-1" && !init?.method) return response(archiveCommitted ? archived : paper) as T;
+      if (path === "/shared-papers/paper-1/archive" && init?.method === "POST") {
+        archiveCommitted = true;
+        activePapers = [];
+        throw new Error("response lost after commit");
+      }
+      return response([]) as T;
+    } };
+    try {
+      await React.act(async () => { env.root.render(React.createElement(SharedPaperPageContent, { api })); await waitForPaint(); });
+      const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
+      assert.ok(row);
+      await React.act(async () => row!.click());
+      env.dom.window.confirm = () => true;
+      const archiveAction = [...env.container.querySelectorAll<HTMLButtonElement>(".paper-detail-top-right button")].find((button) => button.textContent === "归档");
+      assert.ok(archiveAction);
+      await React.act(async () => { archiveAction!.click(); await waitForPaint(); await waitForPaint(); });
+      await waitForCondition(() => env.container.querySelector("[role=dialog]") === null);
+      assert.equal(env.container.querySelector('button[data-paper-id="paper-1"]'), null);
+      assert.doesNotMatch(env.container.textContent ?? "", /无法归档|结果暂时无法确认/);
+    } finally { await env.cleanup(); }
+  }
+
+  {
+    const env = await installDom();
+    let deleted = false;
+    const api: WebApiClient = { async request<T>(path: string, init?: RequestInit) {
+      if (path === "/shared-papers?scope=archived") return response(deleted ? [] : [archived]) as T;
+      if (path === "/shared-papers") return response([]) as T;
+      if (path === "/shared-papers/paper-1/permanent" && init?.method === "DELETE") {
+        deleted = true;
+        throw new Error("response lost after commit");
+      }
+      if (path === "/shared-papers/paper-1" && !init?.method) {
+        if (deleted) throw new WebApiError(404, "PAPER_NOT_FOUND", "missing");
+        return response(archived) as T;
+      }
+      return response([]) as T;
+    } };
+    try {
+      await React.act(async () => { env.root.render(React.createElement(SharedPaperPageContent, { api })); await waitForPaint(); });
+      const archiveHeader = env.container.querySelector<HTMLButtonElement>('button[aria-label="查看归档"]');
+      assert.ok(archiveHeader);
+      await React.act(async () => { archiveHeader!.click(); await waitForPaint(); });
+      await waitForCondition(() => env.container.querySelector('button[data-paper-id="paper-1"]') !== null);
+      const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
+      assert.ok(row);
+      await React.act(async () => row!.click());
+      const deleteAction = [...env.container.querySelectorAll<HTMLButtonElement>(".paper-detail-top-right button")].find((button) => button.textContent === "删除");
+      assert.ok(deleteAction);
+      await React.act(async () => deleteAction!.click());
+      const confirmDelete = [...env.container.querySelectorAll<HTMLButtonElement>(".paper-detail-top-right button")].find((button) => button.textContent === "确认永久删除");
+      assert.ok(confirmDelete);
+      await React.act(async () => { confirmDelete!.click(); await waitForPaint(); await waitForPaint(); });
+      await waitForCondition(() => env.container.querySelector("[role=dialog]") === null);
+      assert.equal(env.container.querySelector('button[data-paper-id="paper-1"]'), null);
+      assert.doesNotMatch(env.container.textContent ?? "", /无法永久删除|结果暂时无法确认/);
+    } finally { await env.cleanup(); }
+  }
+});
+
