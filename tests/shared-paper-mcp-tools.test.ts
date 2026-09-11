@@ -89,6 +89,8 @@ test("Shared Paper MCP schemas enforce Unicode code-point bounds with host-visib
 
   const listed = await fixture.client.listTools();
   const byName = new Map(listed.tools.map((tool) => [tool.name, tool]));
+  assert.equal((byName.get("list_shared_papers")?.inputSchema.properties?.scope as { default?: string }).default, "active");
+  assert.equal((byName.get("search_shared_papers")?.inputSchema.properties?.scope as { default?: string }).default, "active");
   assert.equal((byName.get("create_shared_paper")?.inputSchema.properties?.title as { maxLength?: number }).maxLength, 400);
   assert.equal((byName.get("create_shared_paper")?.inputSchema.properties?.content as { maxLength?: number }).maxLength, 200_000);
   assert.equal((byName.get("search_shared_papers")?.inputSchema.properties?.query as { maxLength?: number }).maxLength, 400);
