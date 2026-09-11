@@ -18,6 +18,9 @@ export const MCP_WRITE_TOOL_NAMES = [
   "delete_universe_diary_source",
   "create_shared_paper",
   "edit_shared_paper",
+  "archive_shared_paper",
+  "restore_shared_paper",
+  "delete_shared_paper",
 ] as const;
 
 export type McpWriteToolName = (typeof MCP_WRITE_TOOL_NAMES)[number];
