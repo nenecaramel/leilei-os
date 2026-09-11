@@ -103,13 +103,20 @@ export interface SharedPaperRepository {
     { outcome: "deleted" } | { outcome: "not_found" | "not_archived" }
   >;
   archivePaperIdempotently?(input: SharedPaperLifecycleIdempotencyInput): Promise<
-    { outcome: "committed" | "replayed"; paper: SharedPaperRecord } | { outcome: "idempotency_conflict" | "not_found" }
+    | { outcome: "committed" | "replayed"; paper: SharedPaperRecord }
+    | { outcome: "idempotency_conflict" }
+    | { outcome: "not_found" }
   >;
   restorePaperIdempotently?(input: SharedPaperLifecycleIdempotencyInput): Promise<
-    { outcome: "committed" | "replayed"; paper: SharedPaperRecord } | { outcome: "idempotency_conflict" | "not_found" }
+    | { outcome: "committed" | "replayed"; paper: SharedPaperRecord }
+    | { outcome: "idempotency_conflict" }
+    | { outcome: "not_found" }
   >;
   deletePaperIdempotently?(input: SharedPaperLifecycleIdempotencyInput): Promise<
-    SharedPaperDeleteResult | { outcome: "idempotency_conflict" | "not_found" | "not_archived" }
+    | SharedPaperDeleteResult
+    | { outcome: "idempotency_conflict" }
+    | { outcome: "not_found" }
+    | { outcome: "not_archived" }
   >;
   editPaper(input: SharedPaperRangeEditInput): Promise<
     { outcome: "committed"; paper: SharedPaperRecord; edit: SharedPaperEdit } | { outcome: "revision_conflict" } | { outcome: "not_found" } | { outcome: "invalid_edit" }
