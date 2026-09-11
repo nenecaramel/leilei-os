@@ -22,7 +22,7 @@ async function tools() {
 
 test("Shared Paper MCP exposes six strict tools without user_id", async () => {
   const result = await tools();
-  const selected = result.tools.filter((tool) => tool.name.startsWith("shared_paper"));
+  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "list_shared_paper_edits"].includes(tool.name));
   assert.deepEqual(selected.map((tool) => tool.name).sort(), ["create_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "search_shared_papers"]);
   for (const tool of selected) {
     const schema = tool.inputSchema as { type?: string; properties?: Record<string, unknown> };

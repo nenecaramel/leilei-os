@@ -132,6 +132,7 @@ import { registerGetUniverseDiarySourcesTool, type GetUniverseDiarySourcesToolDe
 import { registerAddUniverseDiarySourceTool, type AddUniverseDiarySourceToolDependencies } from "../tools/add-universe-diary-source/register.js";
 import { registerDeleteUniverseDiarySourceTool, type DeleteUniverseDiarySourceToolDependencies } from "../tools/delete-universe-diary-source/register.js";
 import { UniverseAuthenticationError } from "../tools/universe/shared.js";
+import { registerSharedPaperTools, SharedPaperAuthenticationError, type SharedPaperToolDependencies, type SharedPaperToolService } from "../tools/shared-paper/register.js";
 import {
   ActiveUserAuthorizationError,
   requireActiveUser,
@@ -365,6 +366,15 @@ const productionTodoService = {
   search: (input: Parameters<SearchTodoToolDependencies["todoService"]["search"]>[0]) => missingDatabaseService(),
 };
 
+const productionSharedPaperService: SharedPaperToolService = {
+  listPapers: () => missingDatabaseService(),
+  searchPapers: () => missingDatabaseService(),
+  getPaper: () => missingDatabaseService(),
+  listEdits: () => missingDatabaseService(),
+  createPaperIdempotently: () => missingDatabaseService(),
+  editPaperByMatch: () => missingDatabaseService(),
+};
+
 type TodoToolsDependencies = {
   todoService: ReadTodoDayToolDependencies["todoService"] &
     ListTodoDatesToolDependencies["todoService"] &
@@ -442,6 +452,7 @@ export type McpServerDependencies = {
   toyCommand?: ToyCommandToolDependencies;
   globalSearch?: GlobalSearchToolDependencies;
   todoTools?: TodoToolsDependencies;
+  sharedPaperTools?: SharedPaperToolDependencies;
   notionTools?: NotionToolsDependencies;
   notionRead?: NotionReadDependencies;
   universeTools?: UniverseToolsDependencies;
@@ -723,6 +734,13 @@ export function createMcpServer(
     todoService: productionTodoService,
     getAuthenticatedUserId: () => {
       if (!authenticatedUserId) throw new TodoReadAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerSharedPaperTools(server, dependencies.sharedPaperTools ?? {
+    sharedPaperService: productionSharedPaperService,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new SharedPaperAuthenticationError();
       return authenticatedUserId;
     },
   });

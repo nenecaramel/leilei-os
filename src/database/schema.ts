@@ -237,6 +237,62 @@ export const todoEntries = pgTable(
   ],
 );
 
+export const sharedPapers = pgTable(
+  "shared_papers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    title: varchar("title", { length: 200 }).notNull(),
+    content: text("content").notNull(),
+    revision: integer("revision").default(1).notNull(),
+    createdBy: contentAuthorEnum("created_by").notNull(),
+    updatedBy: contentAuthorEnum("updated_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("shared_papers_id_user_unique_idx").on(table.id, table.userId),
+    index("shared_papers_user_updated_id_idx").on(table.userId, table.updatedAt.desc(), table.id.desc()),
+    check("shared_papers_revision_positive", sql`${table.revision} >= 1`),
+    check("shared_papers_title_not_blank", sql`char_length(btrim(${table.title})) > 0`),
+  ],
+);
+
+export const sharedPaperEdits = pgTable(
+  "shared_paper_edits",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    paperId: uuid("paper_id").notNull(),
+    baseRevision: integer("base_revision").notNull(),
+    revision: integer("revision").notNull(),
+    author: contentAuthorEnum("author").notNull(),
+    startOffset: integer("start_offset").notNull(),
+    endOffset: integer("end_offset").notNull(),
+    deletedText: text("deleted_text").notNull(),
+    insertedText: text("inserted_text").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.paperId, table.userId],
+      foreignColumns: [sharedPapers.id, sharedPapers.userId],
+      name: "shared_paper_edits_paper_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("shared_paper_edits_paper_revision_uidx").on(table.paperId, table.revision),
+    index("shared_paper_edits_paper_revision_idx").on(table.paperId, table.revision.desc()),
+    check("shared_paper_edits_base_revision_positive", sql`${table.baseRevision} >= 1`),
+    check("shared_paper_edits_revision_step", sql`${table.revision} = ${table.baseRevision} + 1`),
+    check("shared_paper_edits_offsets_valid", sql`${table.startOffset} >= 0 AND ${table.endOffset} >= ${table.startOffset}`),
+    check("shared_paper_edits_deleted_length_matches", sql`char_length(${table.deletedText}) = ${table.endOffset} - ${table.startOffset}`),
+    check("shared_paper_edits_not_noop", sql`${table.deletedText} <> ${table.insertedText}`),
+  ],
+);
+
 export const coreMemories = pgTable(
   "core_memories",
   {
@@ -475,6 +531,8 @@ export const mcpWriteIdempotency = pgTable(
         | "write_todo_paper"
         | "create_universe_node"
         | "create_universe_relation"
+        | "create_shared_paper"
+        | "edit_shared_paper"
       >()
       .notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
@@ -488,6 +546,8 @@ export const mcpWriteIdempotency = pgTable(
         | "todo_paper"
         | "universe_node"
         | "universe_relation"
+        | "shared_paper"
+        | "shared_paper_edit"
       >()
       .notNull(),
     resourceId: text("resource_id").notNull(),
@@ -511,7 +571,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_tool_allowed",
-      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'create_universe_node', 'create_universe_relation')`,
+      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper')`,
     ),
     check(
       "mcp_write_idempotency_key_format",
@@ -523,7 +583,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_resource_type_allowed",
-      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'universe_node', 'universe_relation')`,
+      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'universe_node', 'universe_relation', 'shared_paper', 'shared_paper_edit')`,
     ),
   ],
 );

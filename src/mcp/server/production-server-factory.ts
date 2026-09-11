@@ -12,6 +12,7 @@ import type { BridgeService } from "../../domains/bridge/bridge-service.js";
 import type { SentinelService } from "../../domains/sentinel/sentinel-service.js";
 import type { SafeLogger } from "../../observability/logger.js";
 import type { HealthService } from "../../domains/health-v2/health-service.js";
+import type { SharedPaperService } from "../../domains/shared-paper/shared-paper-service.js";
 import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
 import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
 import { registerBridgeProcessingTools } from "../tools/bridge-processing/register.js";
@@ -42,6 +43,7 @@ export function createProductionMcpSessionServerFactory(input: {
   todoService: TodoService;
   universeService: UniverseService;
   healthService: HealthService;
+  sharedPaperService?: SharedPaperService;
   bridgeService?: BridgeService;
   bridgeAmbiguityAcceptanceEnabled?: boolean;
   logger?: SafeLogger;
@@ -99,6 +101,12 @@ export function createProductionMcpSessionServerFactory(input: {
         todoService: input.todoService,
         getAuthenticatedUserId,
       },
+      ...(input.sharedPaperService ? {
+        sharedPaperTools: {
+          sharedPaperService: input.sharedPaperService,
+          getAuthenticatedUserId,
+        },
+      } : {}),
       universeTools: {
         universeService: input.universeService,
         globalSearchService: input.globalSearchService,

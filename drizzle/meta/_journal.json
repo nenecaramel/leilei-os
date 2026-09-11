@@ -239,6 +239,13 @@
       "when": 1788672580348,
       "tag": "0033_health_v2_daily_summaries",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789087852964,
+      "tag": "0034_lowly_bucky",
+      "breakpoints": true
     }
   ]
 }

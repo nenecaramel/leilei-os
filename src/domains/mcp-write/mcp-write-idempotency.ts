@@ -24,7 +24,9 @@ export type McpIdempotentToolName =
   | "toy_stop"
   | "write_todo_paper"
   | "create_universe_node"
-  | "create_universe_relation";
+  | "create_universe_relation"
+  | "create_shared_paper"
+  | "edit_shared_paper";
 
 export type McpIdempotentResourceType =
   | "task"
@@ -33,7 +35,9 @@ export type McpIdempotentResourceType =
   | "toy_command"
   | "todo_paper"
   | "universe_node"
-  | "universe_relation";
+  | "universe_relation"
+  | "shared_paper"
+  | "shared_paper_edit";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 export type McpIdempotencyTransaction = Parameters<

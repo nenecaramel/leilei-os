@@ -54,6 +54,7 @@ import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 import type { BridgeApiDependencies } from "../web-api/bridge-router.js";
 import type { SentinelApiDependencies } from "../web-api/sentinel-router.js";
+import type { SharedPaperApiDependencies } from "../web-api/shared-paper-router.js";
 import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
@@ -76,6 +77,7 @@ export type AppDependencies = {
   webUniverseService?: UniverseApiDependencies["universeService"];
   webBridgeService?: BridgeApiDependencies["bridgeService"];
   webSentinelService?: SentinelApiDependencies["sentinelService"];
+  webSharedPaperService?: SharedPaperApiDependencies["sharedPaperService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -297,6 +299,7 @@ export function createApp(
     const webUniverseService = dependencies.webUniverseService;
     const webBridgeService = dependencies.webBridgeService;
     const webSentinelService = dependencies.webSentinelService;
+    const webSharedPaperService = dependencies.webSharedPaperService;
 
     if (
       !webMemoryService ||
@@ -360,6 +363,7 @@ export function createApp(
         universe: { universeService: webUniverseService },
         ...(webBridgeService ? { bridge: { bridgeService: webBridgeService } } : {}),
         ...(webSentinelService ? { sentinel: { sentinelService: webSentinelService } } : {}),
+        ...(webSharedPaperService ? { sharedPaper: { sharedPaperService: webSharedPaperService } } : {}),
       }),
     );
   }
