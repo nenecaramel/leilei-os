@@ -1136,8 +1136,11 @@ test("archived Task permanent-delete pending state blocks desktop and mobile det
         }
       }
     } finally {
-      deletion.reject(new Error("delete failed"));
-      await deletion.promise.catch(() => undefined);
+      await React.act(async () => {
+        deletion.reject(new Error("delete failed"));
+        await deletion.promise.catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
       await page.cleanup();
     }
   }
