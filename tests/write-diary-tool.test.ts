@@ -115,7 +115,6 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
       "get_universe_relations",
       "get_weather_context",
       "global_search",
-      "hello",
       "list_shared_paper_edits",
       "list_shared_papers",
       "list_tasks",

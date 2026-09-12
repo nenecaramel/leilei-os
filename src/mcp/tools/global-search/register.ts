@@ -5,6 +5,8 @@ import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const MAX_CURSOR_ENCODED_LENGTH = 2800;
+const GLOBAL_SEARCH_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+const globalSearchModuleSchema = z.enum(GLOBAL_SEARCH_MODULES);
 
 const inputSchema = z.object({
   query: z
@@ -14,12 +16,16 @@ const inputSchema = z.object({
       const normalized = value.normalize("NFC").trim();
       return normalized.length > 0 && [...normalized].length <= 200;
     }, "Query must contain 1 to 200 Unicode code points after NFC normalization and trimming."),
-  modules: z.array(z.enum(["memory", "diary", "task", "todo", "universe", "shared_paper"])).min(1).max(6).optional(),
-  scope: z.enum(["active", "archived", "all"]).optional(),
-  mode: z.enum(["phrase", "normal"]).optional(),
+  modules: z.array(globalSearchModuleSchema).min(1).max(6).default([...GLOBAL_SEARCH_MODULES]).optional()
+    .describe("Domains to search. Defaults to all six LeileiOS content domains."),
+  scope: z.enum(["active", "archived", "all"]).default("active").optional()
+    .describe("Lifecycle scope. Defaults to active; use all for explicit historical/all-record requests."),
+  mode: z.enum(["phrase", "normal"]).default("normal").optional()
+    .describe("Search mode. Defaults to normal; use phrase only when exact phrase matching is intended."),
   date_from: z.string().max(10).optional(),
   date_to: z.string().max(10).optional(),
-  limit: z.number().int().min(1).max(25).optional(),
+  limit: z.number().int().min(1).max(25).default(10).optional()
+    .describe("Maximum results per page. Defaults to 10."),
   cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).optional(),
 }).strict();
 
@@ -30,7 +36,7 @@ const detailArgumentsSchema = z.union([
 ]);
 
 const globalSearchResultSchema = z.object({
-  entity_type: z.enum(["memory", "diary", "task", "todo", "universe", "shared_paper"]),
+  entity_type: globalSearchModuleSchema,
   entity_id: z.string().min(1).max(256),
   stable_name: z.string(),
   snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
@@ -97,7 +103,7 @@ const globalSearchDataSchema = z.object({
     count: z.number().int().min(0).max(25),
     has_more: z.boolean(),
     next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
-    searched_modules: z.array(z.enum(["memory", "diary", "task", "todo", "universe", "shared_paper"])).min(1).max(6),
+    searched_modules: z.array(globalSearchModuleSchema).min(1).max(6),
     searched_scope: z.enum(["active", "archived", "all"]),
   }).strict(),
 }).strict();
@@ -113,7 +119,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search as the cross-domain fallback when the target domain is unknown or uncertain across Memory, Diary, Task, Todo, Universe, and Shared Paper. When the domain is known, prefer that domain's search or browse tool. Results are compact; follow a returned detail_tool with its detail_arguments only for selected records. Use active for current state and all for 以前、曾经、历史、所有记录. No results means nothing was found: never invent an answer. Compare conflicting records by module, lifecycle, and time; archived records are historical, not automatically current.",
+    description: "Use global_search only for cross-domain discovery when the target domain is unknown or genuinely spans Memory, Diary, Task, Todo, Universe, and Shared Paper. When the domain is known, prefer that domain's dedicated browse/search tool, then follow its exact detail pointer. Defaults are all modules, active scope, normal mode, and 10 results. Use scope=all only for explicit 以前、曾经、历史、所有记录 intent. Global Search discovers records; it does not replace domain-specific detail or mutation tools. No results means nothing was found: never invent an answer.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

@@ -9,9 +9,10 @@ Leilei OS 的 Auth0 保护 React Web 应用。它通过已认证的 `/api/v1` AP
 - Dashboard 与 Day Space：真实 Todo/Diary 数据和日期导航；
 - Memory、Diary、Task：列表、筛选、编辑、详情和生命周期操作；
 - Todo：每日纸张、版本、条目编辑与状态操作；
+- Shared Paper：单一 canonical 正文、revision-aware 编辑、历史和生命周期操作；
 - Universe：空间画布、节点/关系、加权星系、导入导出与搜索深链；
-- Global Search：Memory、Diary、Task、Universe 的服务端搜索；
-- System：账户、连接、Activity、数据导出/导入和关于页面；
+- Global Search：Memory、Diary、Task、Todo、Universe、Shared Paper 六个 domain 的统一发现与精确详情深链；
+- System：Account、Connections、Activity、Data 和 About；
 - PWA：安装清单、service worker 更新提示以及在线/离线状态提示。
 
 后端服务仍是持久化数据的权威来源；Web 不使用本地 IndexedDB 或隐式双写来替代

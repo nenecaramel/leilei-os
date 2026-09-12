@@ -28,7 +28,7 @@ const searchDiaryInputSchema = z
     author: contentAuthorSchema.optional(),
     date_from: dateSchema.optional(),
     date_to: dateSchema.optional(),
-    limit: z.number().int().min(1).max(50).optional(),
+    limit: z.number().int().min(1).max(50).default(50).optional(),
   })
   .strict();
 

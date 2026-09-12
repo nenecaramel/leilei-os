@@ -492,7 +492,7 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
-  assert.equal(tools.length, 50, "the MCP surface must contain the complete read-only Notion extension, resource updates, Universe writes, Todo search, and Shared Paper tools");
+  assert.equal(tools.length, 49, "the MCP surface must contain the complete read-only Notion extension, resource updates, Universe writes, Todo search, and Shared Paper tools");
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),

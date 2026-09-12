@@ -47,8 +47,9 @@ const searchMemoryInputSchema = z
       .int()
       .min(1)
       .max(50)
+      .default(50)
       .optional()
-      .describe("Maximum number of search results to return."),
+      .describe("Maximum number of search results to return. Defaults to 50."),
   })
   .strict();
 
