@@ -511,7 +511,7 @@ export function GlobalSearchPageContent({ api }: Props) {
   const subtitle =
     state === "ready" || state === "empty"
       ? `${results.length}条结果`
-      : "Memory · Diary · Task · Todo · Universe";
+      : SEARCH_MODULES.map((module) => GLOBAL_SEARCH_MODULE_LABELS[module]).join(" · ");
 
   const statusText = useMemo(
     () =>
@@ -638,7 +638,7 @@ export function GlobalSearchPageContent({ api }: Props) {
 
       {state === "idle" ? (
         <p className="global-search-state-line" role="status" aria-live="polite">
-          搜索 Memory、Diary、Task、Todo 与 Universe 中保存的内容
+          搜索 Memory、Diary、Task、Todo、Universe 与 Shared Paper 中保存的内容
         </p>
       ) : null}
 
