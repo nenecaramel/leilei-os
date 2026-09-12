@@ -993,6 +993,7 @@ test("active detail archive is strict single-flight and restores the exact filte
     await React.act(async () => {
       archive.resolve({ success: true, data: {} });
       await archive.promise;
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
     assert.equal(
       `${page.window.location.pathname}${page.window.location.search}`,
@@ -1053,6 +1054,7 @@ test("archived detail restore is strict single-flight and returns to the exact a
     await React.act(async () => {
       restore.resolve({ success: true, data: {} });
       await restore.promise;
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
     assert.equal(
       `${page.window.location.pathname}${page.window.location.search}`,
