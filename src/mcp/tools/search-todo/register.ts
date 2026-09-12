@@ -18,7 +18,7 @@ const inputSchema = z.object({
   kind: kindSchema.optional().describe("Optional entry kind filter."),
   date_from: dateSchema.optional().describe("Inclusive business-date lower bound."),
   date_to: dateSchema.optional().describe("Inclusive business-date upper bound."),
-  limit: z.number().int().min(1).max(50).optional().describe("Maximum compact entries to return."),
+  limit: z.number().int().min(1).max(50).default(50).optional().describe("Maximum compact entries to return. Defaults to 50."),
 }).strict();
 
 const entrySchema = z.object({
