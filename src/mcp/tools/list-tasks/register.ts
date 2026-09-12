@@ -42,7 +42,7 @@ const listTasksInputSchema = z
     due: taskDueSchema.optional(),
     due_from: z.string().trim().min(1).max(64).optional(),
     due_to: z.string().trim().min(1).max(64).optional(),
-    limit: z.number().int().min(1).max(50).optional(),
+    limit: z.number().int().min(1).max(50).default(50).optional(),
   })
   .strict();
 
