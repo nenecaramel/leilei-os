@@ -86,7 +86,7 @@ The checked-in migration source of truth is:
 drizzle/meta/_journal.json
 ```
 
-Do not copy a migration-head value from an old plan, milestone, or runbook. Current authoritative docs should match the final journal entry. At the time of this cleanup, that entry is `0033_health_v2_daily_summaries`.
+Do not copy a migration-head value from an old plan, milestone, or runbook. Current authoritative docs should match the final journal entry. At the time of this cleanup, that entry is `0035_shared_paper_lifecycle`.
 
 ## Railway deployment does not start immediately
 
