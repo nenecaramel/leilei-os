@@ -6,16 +6,17 @@ Leilei OS is an authenticated personal workspace built around a React Web app, a
 
 The current codebase includes:
 
-- **Memory, Diary, Task, and Todo** — durable personal records, filtering/search, lifecycle actions, and server-side ownership.
+- **Memory, Diary, Task, Todo, and Shared Paper** — durable personal records, filtering/search, lifecycle actions, revision-aware Shared Paper editing, and server-side ownership.
 - **Dashboard and Day Space** — authenticated date-scoped views backed by the real API.
 - **Universe** — nodes, weighted galaxy memberships, relations, revisions, provenance, backup/import/export, search, and explicit MCP writes.
 - **Global Search** — authenticated cross-module search and deep links.
-- **System** — account, connections, activity, data import/export, and supporting settings pages.
+- **System** — Account, Connections, Activity, Data, and About surfaces.
+- **Health v2** — owner-scoped daily summaries with optional iPhone Shortcut sync and MCP reads.
 - **Notion integration** — authenticated discovery and reads plus explicit verified page/comment writes through MCP tools.
 - **PWA Web runtime** — Vite PWA assets, service-worker registration, update prompts, and online/update status UI.
 - **MCP Apps surfaces** — a Thinking Block card and the Message Bridge interactive resource.
 
-The checked-in database migration chain currently ends at `0033_health_v2_daily_summaries` in [`drizzle/meta/_journal.json`](drizzle/meta/_journal.json). Review the migration chain before any production database change.
+The checked-in database migration chain currently ends at `0035_shared_paper_lifecycle` in [`drizzle/meta/_journal.json`](drizzle/meta/_journal.json). Review the migration chain before any production database change.
 
 ## Web, API, and MCP architecture
 
