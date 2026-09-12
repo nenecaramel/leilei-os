@@ -35,7 +35,7 @@ test("System Connections keeps availability status without the Message Bridge co
     assert.equal(container.querySelector("textarea"), null);
     assert.equal([...container.querySelectorAll("button")].some((button) => button.textContent === "Send"), false);
   } finally {
-    root.unmount();
+    await React.act(async () => root.unmount());
     await new Promise((resolve) => setTimeout(resolve, 30));
     env.restore();
   }
@@ -164,7 +164,7 @@ test("mounted bridge sender posts only text, shows status, and polls owner-scope
   assert.equal(container.textContent?.includes("reply"), false);
   assert.equal(calls.some((call) => call.path === "/bridge/events/bridge-1"), true);
 
-  root.unmount();
+  await React.act(async () => root.unmount());
   await new Promise((resolve) => setTimeout(resolve, 30));
   env.restore();
 });
@@ -204,7 +204,7 @@ test("mounted bridge retry preserves the same idempotency key after an ambiguous
   await waitFor(() => posts === 2 && container.textContent?.includes("Queued") === true, "retry receipt");
   assert.equal(keys[0], keys[1]);
 
-  root.unmount();
+  await React.act(async () => root.unmount());
   await new Promise((resolve) => setTimeout(resolve, 30));
   env.restore();
 });
@@ -231,7 +231,7 @@ test("mounted bridge polling continues after transport terminality until process
   await waitFor(() => !send.disabled, "enabled send action");
   await React.act(async () => send.click());
   await waitFor(() => reads > 0 && container.textContent?.includes("Processing completed") === true, "processing completion");
-  root.unmount();
+  await React.act(async () => root.unmount());
   await new Promise((resolve) => setTimeout(resolve, 30));
   env.restore();
 });
@@ -262,7 +262,7 @@ test("mounted bridge polling continues when processing completes before transpor
   await React.act(async () => send.click());
   await waitFor(() => reads > 0 && container.textContent?.includes("Sent to ChatGPT") === true, "transport completion after model completion");
 
-  root.unmount();
+  await React.act(async () => root.unmount());
   await new Promise((resolve) => setTimeout(resolve, 30));
   env.restore();
 });
@@ -301,7 +301,7 @@ test("mounted bridge status keeps delivery uncertainty visible when later model 
   assert.match(container.textContent ?? "", /Delivery uncertain — do not resend/);
   assert.match(container.textContent ?? "", /Processing completed/);
 
-  root.unmount();
+  await React.act(async () => root.unmount());
   await new Promise((resolve) => setTimeout(resolve, 30));
   env.restore();
 });
