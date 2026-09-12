@@ -116,6 +116,10 @@ function renderRoutes(path: string) {
           element: React.createElement(NavigationButton, { to: "/task" }),
         }),
         React.createElement(Route, {
+          path: "/day-space",
+          element: React.createElement(NavigationButton, { to: "/task" }),
+        }),
+        React.createElement(Route, {
           path: "/task",
           element: React.createElement(NavigationButton, { to: "/task" }),
         }),
