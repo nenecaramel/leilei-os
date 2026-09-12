@@ -15,7 +15,7 @@ const inputSchema = z.object({
     const normalized = value.normalize("NFC").trim();
     return normalized.length > 0 && [...normalized].length <= 200;
   }, "Query must contain 1 to 200 Unicode code points after NFC normalization and trimming."),
-  limit: z.number().int().min(1).max(25).optional(),
+  limit: z.number().int().min(1).max(25).default(10).optional().describe("Maximum results per page. Defaults to 10."),
   cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).optional(),
 }).strict();
 
