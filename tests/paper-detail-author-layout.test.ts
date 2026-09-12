@@ -71,12 +71,15 @@ test("paper metadata stays bottom-left while author reuses the original signatur
     (root) => {
       const bottomLeft = root.querySelector<HTMLElement>(".paper-detail-bottom-left");
       const signatureSlot = root.querySelector<HTMLElement>(".paper-detail-signature");
+      const portalSlot = root.querySelector<HTMLElement>(".paper-detail-signature-portal");
       assert.ok(bottomLeft);
       assert.ok(signatureSlot);
+      assert.ok(portalSlot);
       assert.equal(bottomLeft.textContent, "Project · #tag");
       assert.equal(bottomLeft.querySelector(".paper-author-signature"), null);
       assert.equal(signatureSlot.textContent, "—");
-      assert.ok(signatureSlot.querySelector(".paper-author-signature"));
+      assert.ok(portalSlot.querySelector(".paper-author-signature"));
+      assert.equal(portalSlot.childNodes.length, 1);
     },
   );
 });
