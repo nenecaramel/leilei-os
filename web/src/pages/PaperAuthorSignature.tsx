@@ -27,7 +27,7 @@ export function PaperAuthorSignature({
 
   useEffect(() => {
     setSignatureSlot(
-      document.querySelector<HTMLElement>(".paper-detail-layer .paper-detail-signature"),
+      document.querySelector<HTMLElement>(".paper-detail-layer .paper-detail-signature-portal"),
     );
   }, []);
 
