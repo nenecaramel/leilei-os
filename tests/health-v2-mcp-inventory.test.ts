@@ -45,8 +45,7 @@ test("Health v2 adds exactly get_health and get_current_time to public MCP and n
     publicNames.filter((name) =>
       name !== "get_health" &&
       name !== "get_current_time" &&
-      name !== "render_thinking_block" &&
-      name !== "open_shared_paper_app"
+      name !== "render_thinking_block"
     ),
     internalNames,
   );
