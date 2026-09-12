@@ -693,7 +693,7 @@ test("production MCP error audit covers every registered tool", async (t) => {
       .filter(([, kind]) => kind === "no-handler-error")
       .map(([name]) => name)
       .sort(),
-    ["get_weather_context", "hello"],
+    ["get_weather_context"],
   );
 
   for (const [name, relativePath] of Object.entries(NO_HANDLER_ERROR_SOURCE_FILES)) {
