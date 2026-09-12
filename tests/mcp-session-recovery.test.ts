@@ -53,8 +53,30 @@ function toolsListRequest(id = 1) {
   return { jsonrpc: "2.0", id, method: "tools/list", params: {} };
 }
 
-function helloCallRequest(id = 1) {
-  return { jsonrpc: "2.0", id, method: "tools/call", params: { name: "hello", arguments: {} } };
+function recoveryProbeCallRequest(id = 1) {
+  return { jsonrpc: "2.0", id, method: "tools/call", params: { name: "recovery_probe", arguments: {} } };
+}
+
+function createRecoveryProbeServer(userId: string) {
+  const server = createMcpServer({}, userId);
+  server.registerTool(
+    "recovery_probe",
+    {
+      title: "Recovery probe",
+      description: "Test-only stateless recovery probe.",
+      inputSchema: {},
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async () => ({
+      content: [{ type: "text" as const, text: "recovery probe ok" }],
+    }),
+  );
+  return server;
 }
 
 function initializeRequest() {
@@ -93,14 +115,14 @@ test("authenticated public POST with an unknown session recovers tools/call stat
   const registry = new McpSessionRegistry();
   let factoryCalls = 0;
   await withServer(async (url) => {
-    const response = await post(url, helloCallRequest(), requestHeaders(USER_ID, "stale-session"));
+    const response = await post(url, recoveryProbeCallRequest(), requestHeaders(USER_ID, "stale-session"));
     assert.equal(response.status, 200);
-    assert.match(await response.text(), /Hello from Leilei OS/iu);
+    assert.match(await response.text(), /recovery probe ok/iu);
   }, {
     registry,
     createSessionServer: (userId) => {
       factoryCalls += 1;
-      return createMcpServer({}, userId);
+      return createRecoveryProbeServer(userId);
     },
   });
   assert.equal(factoryCalls, 1);
