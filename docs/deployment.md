@@ -30,7 +30,7 @@ The pre-deploy runner performs database-readiness checks and applies pending che
 The current checked-in migration head is:
 
 ```text
-0033_health_v2_daily_summaries
+0035_shared_paper_lifecycle
 ```
 
 The authoritative checked-in record is `drizzle/meta/_journal.json`.

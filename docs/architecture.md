@@ -41,7 +41,7 @@ The adapter is configuration-dependent; repository support for it does not by it
 
 ## Web application
 
-The Web application contains authenticated Dashboard and Day Space views plus Memory, Diary, Task, Todo, Universe, Global Search, and System routes. Durable data is read and written through `/api/v1`; the server remains authoritative.
+The Web application contains authenticated Dashboard and Day Space views plus Memory, Diary, Task, Todo, Shared Paper, Universe, Global Search, and System routes. Durable data is read and written through `/api/v1`; the server remains authoritative.
 
 The PWA build emits the manifest and service worker from `web/`. Vercel serves the built SPA from `web/dist` with history fallback. The production branch is `main`.
 
@@ -88,7 +88,7 @@ PostgreSQL holds durable user, content, Todo, Universe, audit, integration, Sent
 The checked-in Drizzle migration chain currently ends at:
 
 ```text
-0033_health_v2_daily_summaries
+0035_shared_paper_lifecycle
 ```
 
 The canonical checked-in source for that value is `drizzle/meta/_journal.json`.
