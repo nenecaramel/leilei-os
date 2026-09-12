@@ -44,7 +44,7 @@ test("direct MCP server keeps the 50-tool core surface", async () => {
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 69 public tools with Health, Thinking Block, Bridge processing, Sentinel tools, Shared Paper tools, Shared Paper App, and each Notion write once", async () => {
+test("production MCP session factory assembles 68 public tools with Health, Thinking Block, Bridge processing, Sentinel tools, Shared Paper tools, and each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -63,9 +63,8 @@ test("production MCP session factory assembles 69 public tools with Health, Thin
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 69);
-  assert.equal(names.filter((name) => name.includes("shared_paper")).length, 10);
-  assert.equal(names.filter((name) => name === "open_shared_paper_app").length, 1);
+  assert.equal(names.length, 68);
+  assert.equal(names.filter((name) => name.includes("shared_paper")).length, 9);
   assert.equal(names.filter((name) => name === "search_todo").length, 1);
   assert.equal(names.filter((name) => name === "get_health").length, 1);
   assert.equal(names.filter((name) => name === "get_current_time").length, 1);
@@ -94,5 +93,4 @@ test("internal MCP session factory remains free of Bridge App tools", async () =
   assert.equal(names.includes("sentinel_get_state"), false);
   assert.equal(names.includes("complete_sentinel_wake"), false);
   assert.equal(names.includes("render_thinking_block"), false);
-  assert.equal(names.includes("open_shared_paper_app"), false);
 });
