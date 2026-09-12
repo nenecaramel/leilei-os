@@ -31,6 +31,17 @@ Repositories ───────────────► PostgreSQL
 
 The Web API and MCP tools share domain services and repositories. Tool handlers do not select a database user ID supplied by a client. User identity is resolved from authenticated server context before domain code accesses persisted data.
 
+## Architecture decision rules
+
+- **Domain contracts define business semantics; PostgreSQL stores canonical durable state.** UI or MCP transport details must not become a second source of truth.
+- **MCP tools are the capability layer.** Reads, discovery, mutations, concurrency and lifecycle rules remain domain-owned; tool schemas make safe stable defaults explicit instead of repeatedly asking the model to choose meaningless state.
+- **Web is the primary visual product surface.** MCP Apps are optional host-specific enhancements, not a default product layer. Add one only when a concrete host-embedded interaction is materially better than ordinary MCP tools plus Web.
+- **Dedicated discovery and detail stay domain-specific.** When the domain is known, use that domain's browse/search tool and then its exact detail pointer. A domain may combine browse and search in one tool when that matches its semantics; tools are not split merely for naming symmetry.
+- **Global Search is cross-domain discovery.** Use it when the target domain is unknown or the query genuinely spans domains; it must return compact records and exact detail pointers rather than absorb domain-specific detail or mutation behavior.
+- **Modules keep their own semantics.** Memory, Diary, Task, Todo, Universe and Shared Paper do not inherit another module's revision, lifecycle, concurrency or UI model just to look architecturally uniform.
+- **Operational probes do not consume model-visible inventory when an existing transport-level health/handshake check is sufficient.** Keep the public tool surface focused on capabilities that help accomplish user work.
+- Product order, abstractions and UI shape are chosen from current value and dependencies, not from a requirement to make every module structurally identical.
+
 ## OAuth authorization boundary
 
 The public `/mcp` path verifies configured OAuth issuer, audience, scope, signature, and allowed subject before a session reaches domain tools.
