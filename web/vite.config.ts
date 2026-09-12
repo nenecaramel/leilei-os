@@ -79,6 +79,22 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            "react-vendor": [
+              "react",
+              "react-dom",
+              "react-router-dom",
+            ],
+            "auth-vendor": [
+              "@auth0/auth0-react",
+            ],
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
     },

@@ -5,7 +5,7 @@
   "description": "Authenticated Leilei OS Web workspace for Memory, Diary, Task, Todo, Shared Paper, Universe, Search, and System data.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "vite",
