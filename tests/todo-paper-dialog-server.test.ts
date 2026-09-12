@@ -11,8 +11,8 @@ const { createRoot } = requireFromWeb("react-dom/client");
 
 test("TodoPaperDialog saves normalized entries with revision and closes once", async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: "http://localhost/", pretendToBeVisual: true });
-  const previous = { window: globalThis.window, document: globalThis.document, navigator: globalThis.navigator };
-  const browserGlobals = { window: dom.window, document: dom.window.document, navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, requestAnimationFrame: (callback: FrameRequestCallback) => dom.window.setTimeout(() => callback(dom.window.performance.now()), 0), cancelAnimationFrame: (id: number) => dom.window.clearTimeout(id) };
+  const previous = { window: globalThis.window, document: globalThis.document, navigator: globalThis.navigator, IS_REACT_ACT_ENVIRONMENT: globalThis.IS_REACT_ACT_ENVIRONMENT };
+  const browserGlobals = { window: dom.window, document: dom.window.document, navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true, requestAnimationFrame: (callback: FrameRequestCallback) => dom.window.setTimeout(() => callback(dom.window.performance.now()), 0), cancelAnimationFrame: (id: number) => dom.window.clearTimeout(id) };
   dom.window.scrollTo = (() => {}) as typeof dom.window.scrollTo;
   Object.defineProperty(dom.window.HTMLElement.prototype, "attachEvent", { configurable: true, value: () => {} });
   Object.defineProperty(dom.window.HTMLElement.prototype, "detachEvent", { configurable: true, value: () => {} });
@@ -50,7 +50,7 @@ test("TodoPaperDialog saves normalized entries with revision and closes once", a
     assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { revision: 4, entries: [{ id: "l-1", kind: "record", text: "changed" }] });
     assert.equal(closed, 1);
   } finally {
-    root.unmount();
+    await act(async () => { root.unmount(); });
     await new Promise((resolve) => setTimeout(resolve, 20));
     dom.window.close();
     for (const [name, value] of Object.entries(previous)) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
