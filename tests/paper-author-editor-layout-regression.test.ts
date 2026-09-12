@@ -63,6 +63,7 @@ test("Memory and Task metadata menus can overflow their bottom-left metadata con
 test("author integration contributes no DOM node to bottom-left metadata", () => {
   assert.doesNotMatch(authorComponent, /paper-author-signature-anchor/);
   assert.doesNotMatch(css, /paper-detail-bottom-left/);
-  assert.match(authorComponent, /querySelector<HTMLElement>\("\.paper-detail-layer \.paper-detail-signature"\)/);
+  assert.match(authorComponent, /querySelector<HTMLElement>\("\.paper-detail-layer \.paper-detail-signature-portal"\)/);
   assert.match(authorComponent, /createPortal\(signature, signatureSlot\)/);
+  assert.match(dialog, /className="paper-detail-signature-portal"/);
 });

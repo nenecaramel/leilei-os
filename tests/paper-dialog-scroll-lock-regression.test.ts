@@ -12,6 +12,7 @@ test("paper dialog freezes the background document instead of relying on overflo
   assert.match(dialog, /body\.style\.position = "fixed";/);
   assert.match(dialog, /body\.style\.top = `-\$\{scrollY\}px`;/);
   assert.match(dialog, /body\.style\.width = "100%";/);
+  assert.match(dialog, /window\.scrollX !== scrollX \|\| window\.scrollY !== scrollY/);
   assert.match(dialog, /window\.scrollTo\(scrollX, scrollY\);/);
 });
 

@@ -111,7 +111,9 @@ export function PaperDetailDialog({
       body.style.left = previousBodyStyle.left;
       body.style.right = previousBodyStyle.right;
       body.style.width = previousBodyStyle.width;
-      window.scrollTo(scrollX, scrollY);
+      if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+        window.scrollTo(scrollX, scrollY);
+      }
       triggerRef.current?.focus({ preventScroll: true });
     };
   }, [open, requestClose, triggerRef]);
@@ -186,7 +188,12 @@ export function PaperDetailDialog({
             {visibleErrorMessage}
           </p>
         ) : null}
-        <span className="paper-detail-signature">{signature}</span>
+        <span className="paper-detail-signature">
+          {signature ? (
+            <span className="paper-detail-signature-fallback">{signature}</span>
+          ) : null}
+          <span className="paper-detail-signature-portal" />
+        </span>
       </section>
     </div>
   );
