@@ -6790,64 +6790,7 @@ body:has(.system-page) {
   margin-top: 12px;
 }
 
-.global-search-empty-state {
-  text-align: center;
-}
 
-.global-search-empty-state > p {
-  margin: 0;
-}
-
-@media (min-width: 761px) {
-  .global-search-empty-state,
-  .global-search-error-line.global-search-state-line-offset {
-    width: min(100%, 360px);
-    margin: 64px auto 0;
-    justify-items: center;
-    text-align: center;
-  }
-
-  .global-search-error-line.global-search-state-line-offset {
-    display: grid;
-    justify-items: center;
-    gap: 10px;
-    color: #777777;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1.4;
-  }
-
-  .global-search-empty-state > button,
-  .global-search-error-line.global-search-state-line-offset button {
-    color: #666666;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.4;
-  }
-}
-
-@media (max-width: 760px) {
-  .global-search-empty-state,
-  .global-search-error-line.global-search-state-line-offset {
-    margin-top: 96px;
-  }
-
-  .global-search-error-line.global-search-state-line-offset {
-    display: grid;
-    justify-items: center;
-    gap: 10px;
-    color: #777777;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1.4;
-    text-align: center;
-  }
-
-  .global-search-error-line.global-search-state-line-offset button {
-    font-size: 11px;
-    font-weight: 500;
-  }
-}
 
 .records-state {
   min-height: 300px;
