@@ -60,6 +60,13 @@ test("Shared Paper PostgreSQL persistence is transactional, Unicode-safe, and CA
     const olderEdits = await service.listEdits({ userId, paperId: created.paper.id, beforeRevision: 3 });
     assert.deepEqual(olderEdits.map((entry) => entry.revision), [2]);
 
+    const titlePaper = await service.createPaper({ userId, title: "Original title", content: "body", author: "L" });
+    const renamed = await service.editPaperByMatch({ userId, paperId: titlePaper.id, expectedRevision: 1, author: "G", target: "title", matchText: "Original title", replacementText: "Renamed title", idempotencyKey: "shared.paper:title-0001" });
+    assert.equal(renamed.paper.title, "Renamed title");
+    assert.equal(renamed.paper.revision, 2);
+    assert.equal(renamed.edit.target, "title");
+    assert.deepEqual((await service.listEdits({ userId, paperId: titlePaper.id })).map((entry) => ({ target: entry.target, revision: entry.revision })), [{ target: "title", revision: 2 }]);
+
     assert.equal((await service.listPapers({ userId })).some((entry) => entry.id === created.paper.id), true);
     const archived = await service.archivePaperIdempotently({ userId, paperId: created.paper.id, idempotencyKey: "shared.paper:archive-0001" });
     assert.ok(archived.paper.archivedAt instanceof Date);
