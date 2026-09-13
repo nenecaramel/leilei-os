@@ -1,6 +1,7 @@
 import type { ContentAuthor } from "../content-author.js";
 
 export type SharedPaperScope = "active" | "archived";
+export type SharedPaperEditTarget = "content" | "title";
 
 export type SharedPaperRecord = {
   id: string;
@@ -22,6 +23,7 @@ export type SharedPaperEdit = {
   baseRevision: number;
   revision: number;
   author: ContentAuthor;
+  target: SharedPaperEditTarget;
   startOffset: number;
   endOffset: number;
   deletedText: string;
@@ -44,6 +46,7 @@ export type SharedPaperRangeEditInput = {
   paperId: string;
   expectedRevision: number;
   author: ContentAuthor;
+  target?: SharedPaperEditTarget;
   start: number;
   end: number;
   replacement: string;
@@ -54,6 +57,7 @@ export type SharedPaperMatchEditInput = {
   paperId: string;
   expectedRevision: number;
   author: ContentAuthor;
+  target?: SharedPaperEditTarget;
   matchText: string;
   replacementText: string;
 };
