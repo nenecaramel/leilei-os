@@ -144,14 +144,29 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
       void load();
     } catch (cause) {
       setSaving(false);
-      if (cause instanceof WebApiError && cause.status === 409) {
-        try {
-          const latest = await client.get(detail.paper.id);
-          setDetail({ status: "ready", paper: latest });
-          setConflict(true);
-          setError("paper 已被其他编辑更新。可以继续保留当前草稿，或载入最新版本。");
-        } catch { setConflict(true); setError("paper 已被其他编辑更新。当前版本暂时无法读取。"); }
-      } else setError("无法保存 Shared Paper，请稍后重试。");
+      const revisionConflict = cause instanceof WebApiError && cause.status === 409;
+      try {
+        const latest = await client.get(detail.paper.id);
+        setDetail({ status: "ready", paper: latest });
+        setSelected(latest);
+        if (latest.title === draftTitle && latest.content === draft) {
+          setEditing(false);
+          resetEditDraft();
+          setConflict(false);
+          setError("");
+          void load();
+          return;
+        }
+        setConflict(true);
+        setError(revisionConflict
+          ? "paper 已被其他编辑更新。可以继续保留当前草稿，或载入最新版本。"
+          : "保存结果与当前草稿不一致。已读取服务器最新版本，可以继续保留当前草稿或载入最新版本。");
+      } catch {
+        setConflict(true);
+        setError(revisionConflict
+          ? "paper 已被其他编辑更新。当前版本暂时无法读取。"
+          : "保存结果暂时无法确认，且当前版本暂时无法读取。");
+      }
     }
   };
 
