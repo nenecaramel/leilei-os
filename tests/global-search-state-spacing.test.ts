@@ -16,26 +16,24 @@ const source = readFileSync(
 );
 
 test(
-  "Global Search offsets empty group and error, but not loading",
+  "Global Search loading, empty, and error share the module content anchor",
   () => {
-    assert.match(
-      source,
-      /\{state === "empty" \? \(\s*<section className="memory-empty-state global-search-empty-state"[^>]*>/,
-    );
+    for (const state of ["loading", "empty", "error"]) {
+      assert.match(
+        source,
+        new RegExp(
+          `\\{state === "${state}" \\? \\(\\s*<ModuleStateMessage[\\s\\S]*?state="${state}"[\\s\\S]*?placement="module"`,
+        ),
+      );
+    }
 
     assert.match(
-      source,
-      /\{state === "error" \? \(\s*<div className="global-search-state-line global-search-error-line global-search-state-line-offset"[^>]*>/,
+      css,
+      /\.module-state-slot\s*\{[^}]*margin:\s*64px auto 0;/,
     );
-
-    const loading = source.match(
-      /\{state === "loading" \? \(\s*<p className="([^"]+)"[^>]*>/,
-    );
-
-    assert.ok(loading);
-    assert.equal(
-      loading[1],
-      "global-search-state-line",
+    assert.match(
+      css,
+      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.module-state-slot\s*\{[^}]*margin-top:\s*96px;/,
     );
   },
 );
@@ -45,7 +43,7 @@ test(
   () => {
     assert.match(
       source,
-      />\s*没有找到匹配内容\s*</,
+      /emptyText="没有找到匹配内容"/,
     );
 
     assert.match(
@@ -61,21 +59,11 @@ test(
 );
 
 test(
-  "Global Search empty group gets the shared 96px mobile safety gap",
+  "Global Search no longer owns one-off empty or error offset classes",
   () => {
-    assert.match(
-      css,
-      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.memory-empty-state:has\(>\s*\.memory-empty-clear\)\s*\{[^}]*margin-top:\s*96px;/,
-    );
-  },
-);
-
-test(
-  "Global Search error keeps its dedicated 96px mobile offset",
-  () => {
-    assert.match(
-      css,
-      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.global-search-state-line-offset\s*\{[^}]*margin-top:\s*96px;/,
+    assert.doesNotMatch(
+      source,
+      /global-search-state-line-offset|global-search-empty-state/,
     );
   },
 );

@@ -1210,6 +1210,7 @@ export function MemoryPageContent({
                   ) : filters.q ? (
                     <ModuleSearchStateMessage
                       state="empty"
+                      placement="module"
                       emptyText="没有符合条件的记忆"
                       errorText=""
                       action={<button type="button" className="secondary-button memory-empty-clear" onClick={() => commitFilters(EMPTY_MEMORY_FILTERS)}>清除条件</button>}
@@ -1235,6 +1236,7 @@ export function MemoryPageContent({
                 filters.q ? (
                   <ModuleSearchStateMessage
                     state="loading"
+                    placement="module"
                     emptyText=""
                     errorText=""
                     loadingText="正在搜索…"
@@ -1259,6 +1261,7 @@ export function MemoryPageContent({
                 filters.q ? (
                   <ModuleSearchStateMessage
                     state="error"
+                    placement="module"
                     emptyText=""
                     errorText="暂时无法读取记忆"
                     retryLabel="重新加载"

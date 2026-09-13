@@ -6,6 +6,7 @@ import React, {
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { NativeDateInput } from "../components/NativeDateInput";
+import { ModuleStateMessage } from "../components/ModuleSearch";
 import { navigateWithinApp } from "./app-navigation";
 import { GlobalSearchPageHeader } from "./GlobalSearchPageHeader";
 import {
@@ -643,38 +644,46 @@ export function GlobalSearchPageContent({ api }: Props) {
       ) : null}
 
       {state === "loading" ? (
-        <p className="global-search-state-line" role="status" aria-live="polite">
-          正在搜索…
-        </p>
+        <ModuleStateMessage
+          state="loading"
+          placement="module"
+          emptyText=""
+          errorText=""
+          loadingText="正在搜索…"
+        />
       ) : null}
 
       {state === "empty" ? (
-        <section className="memory-empty-state global-search-empty-state" role="status">
-          <p>没有找到匹配内容</p>
-          <button
-            type="button"
-            className="secondary-button memory-empty-clear"
-            onClick={() =>
-              updateFilter({
-                ...DEFAULT_GLOBAL_SEARCH_FILTERS,
-              })
-            }
-          >
-            清除条件
-          </button>
-        </section>
+        <ModuleStateMessage
+          state="empty"
+          placement="module"
+          emptyText="没有找到匹配内容"
+          errorText=""
+          action={
+            <button
+              type="button"
+              className="secondary-button memory-empty-clear"
+              onClick={() =>
+                updateFilter({
+                  ...DEFAULT_GLOBAL_SEARCH_FILTERS,
+                })
+              }
+            >
+              清除条件
+            </button>
+          }
+        />
       ) : null}
 
       {state === "error" ? (
-        <div className="global-search-state-line global-search-error-line global-search-state-line-offset" role="alert">
-          <span>搜索暂时失败</span>
-          <button
-            type="button"
-            onClick={() => requestSearch(filters)}
-          >
-            重试
-          </button>
-        </div>
+        <ModuleStateMessage
+          state="error"
+          placement="module"
+          emptyText=""
+          errorText="搜索暂时失败"
+          retryLabel="重试"
+          onRetry={() => requestSearch(filters)}
+        />
       ) : null}
 
       {state === "ready" ? (
