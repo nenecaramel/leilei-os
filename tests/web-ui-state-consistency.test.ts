@@ -119,16 +119,40 @@ test("Diary desktop detail error keeps a centered retryable state", () => {
   assert.match(detail, /<PaperDetailDialog/);
 });
 
-test("Global Search desktop blocking states use the vertical frozen hierarchy", () => {
+test("module blocking states share one desktop/mobile content anchor", () => {
   const css = styles();
-  const start = css.lastIndexOf("@media (min-width: 761px)");
-  const end = css.indexOf("@media (max-width: 760px)", start);
-  assert.ok(start >= 0 && end > start);
-  const desktop = css.slice(start, end);
-  assert.match(desktop, /global-search-error-line\.global-search-state-line-offset[\s\S]*display:\s*grid/);
-  assert.match(desktop, /global-search-error-line\.global-search-state-line-offset[\s\S]*gap:\s*10px/);
-  assert.match(desktop, /global-search-error-line\.global-search-state-line-offset[\s\S]*margin:\s*64px auto 0/);
-  assert.match(desktop, /global-search-error-line\.global-search-state-line-offset button[\s\S]*font-size:\s*11px[\s\S]*font-weight:\s*500/);
+  assert.match(
+    css,
+    /\.module-state-slot\s*\{[\s\S]*?width:\s*min\(100%,\s*360px\)[\s\S]*?margin:\s*64px auto 0[\s\S]*?justify-items:\s*center/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width:\s*760px\)[\s\S]*?\.module-state-slot\s*\{[\s\S]*?margin-top:\s*96px/,
+  );
+
+  for (const file of [
+    "MemoryPage.tsx",
+    "DiaryPage.tsx",
+    "TaskPage.tsx",
+    "SharedPaperPage.tsx",
+  ]) {
+    assert.match(page(file), /placement="module"/);
+  }
+
+  const globalSearch = page("GlobalSearchPage.tsx");
+  assert.match(globalSearch, /<ModuleStateMessage[\s\S]*?state="loading"[\s\S]*?placement="module"/);
+  assert.match(globalSearch, /<ModuleStateMessage[\s\S]*?state="empty"[\s\S]*?placement="module"/);
+  assert.match(globalSearch, /<ModuleStateMessage[\s\S]*?state="error"[\s\S]*?placement="module"/);
+});
+
+test("Shared Paper detail and history states reuse the Paper body anchor", () => {
+  const sharedPaper = page("SharedPaperPage.tsx");
+  assert.match(sharedPaper, /placement="paper"/);
+  const css = styles();
+  assert.match(
+    css,
+    /\.paper-detail-state\s*\{[\s\S]*?width:\s*min\(100%,\s*280px\)[\s\S]*?margin:\s*96px auto 0/,
+  );
 });
 
 test("Task Archive read failure is an alert state", () => {
