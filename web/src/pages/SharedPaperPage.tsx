@@ -34,8 +34,9 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
   const [detail, setDetail] = useState<DetailState>({ status: "idle" });
   const [history, setHistory] = useState<HistoryState>({ status: "idle" });
   const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
   const [draft, setDraft] = useState("");
-  const [baseline, setBaseline] = useState<{ content: string; revision: number } | null>(null);
+  const [baseline, setBaseline] = useState<{ title: string; content: string; revision: number } | null>(null);
   const [author, setAuthor] = useState<PaperAuthorValue>("L");
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(false);
@@ -87,7 +88,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
     return () => { cancelled = true; };
   }, [client, initialLocation.paperId]);
 
-  useUnsavedChanges(Boolean(editing && baseline && draft !== baseline.content) || Boolean(createOpen && (createTitle || createContent)));
+  useUnsavedChanges(Boolean(editing && baseline && (draftTitle !== baseline.title || draft !== baseline.content)) || Boolean(createOpen && (createTitle || createContent)));
 
   const openDetail = useCallback(async (paper: SharedPaper, trigger: HTMLElement) => {
     triggerRef.current = trigger;
@@ -109,8 +110,9 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
 
   const beginEdit = () => {
     if (detail.status !== "ready" || detail.paper.archivedAt) return;
+    setDraftTitle(detail.paper.title);
     setDraft(detail.paper.content);
-    setBaseline({ content: detail.paper.content, revision: detail.paper.revision });
+    setBaseline({ title: detail.paper.title, content: detail.paper.content, revision: detail.paper.revision });
     setAuthor(detail.paper.updatedBy);
     setEditing(true);
     setConflict(false);
@@ -119,14 +121,25 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
   };
 
   const saveEdit = async () => {
-    if (detail.status !== "ready" || !baseline || author === null || conflict) return;
-    const range = createContiguousRangeEdit(baseline.content, draft);
-    if (!range) { setEditing(false); setError(""); return; }
+    if (detail.status !== "ready" || !baseline || author === null || conflict || !draftTitle.trim()) return;
+    const titleRange = createContiguousRangeEdit(baseline.title, draftTitle);
+    const contentRange = createContiguousRangeEdit(baseline.content, draft);
+    if (!titleRange && !contentRange) { setEditing(false); setError(""); return; }
     setSaving(true); setError("");
     try {
-      const result = await client.edit(detail.paper.id, { expected_revision: baseline.revision, author, ...range });
-      setDetail({ status: "ready", paper: result.paper });
-      setSelected(result.paper); setEditing(false); resetEditDraft(); setSaving(false);
+      let paper = detail.paper;
+      let revision = baseline.revision;
+      if (titleRange) {
+        const result = await client.edit(detail.paper.id, { expected_revision: revision, author, target: "title", ...titleRange });
+        paper = result.paper;
+        revision = result.paper.revision;
+      }
+      if (contentRange) {
+        const result = await client.edit(detail.paper.id, { expected_revision: revision, author, target: "content", ...contentRange });
+        paper = result.paper;
+      }
+      setDetail({ status: "ready", paper });
+      setSelected(paper); setEditing(false); resetEditDraft(); setSaving(false);
       setConflict(false);
       void load();
     } catch (cause) {
@@ -156,6 +169,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
   };
 
   const resetEditDraft = () => {
+    setDraftTitle("");
     setDraft("");
     setBaseline(null);
     setConflict(false);
@@ -170,7 +184,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
   };
 
   const cancelEdit = () => {
-    const dirty = Boolean(baseline && draft !== baseline.content);
+    const dirty = Boolean(baseline && (draftTitle !== baseline.title || draft !== baseline.content));
     if (!confirmUnsavedChanges(dirty, (message) => window.confirm(message))) return;
     resetEditDraft();
     setEditing(false);
@@ -180,15 +194,16 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
   const keepDraftAfterConflict = () => {
     if (detail.status !== "ready" || !conflict) return;
     setSelected(detail.paper);
-    setBaseline({ content: detail.paper.content, revision: detail.paper.revision });
+    setBaseline({ title: detail.paper.title, content: detail.paper.content, revision: detail.paper.revision });
     setConflict(false);
     setError("");
   };
 
   const loadLatestAfterConflict = () => {
     if (detail.status !== "ready" || !conflict) return;
+    setDraftTitle(detail.paper.title);
     setDraft(detail.paper.content);
-    setBaseline({ content: detail.paper.content, revision: detail.paper.revision });
+    setBaseline({ title: detail.paper.title, content: detail.paper.content, revision: detail.paper.revision });
     setConflict(false);
     setError("");
   };
@@ -323,7 +338,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
   const detailArchived = detail.status === "ready" && detail.paper.archivedAt !== null;
   const lifecycleBusy = archiving || restoring || deleting;
   const detailTopRight = detail.status !== "ready" ? null : editing ? (
-    <><button className="memory-paper-control" disabled={saving} onClick={cancelEdit}>取消</button><span>·</span><button className="memory-paper-control" disabled={saving || conflict || author === null} onClick={() => void saveEdit()}>{saving ? "保存中…" : "保存"}</button></>
+    <><button className="memory-paper-control" disabled={saving} onClick={cancelEdit}>取消</button><span>·</span><button className="memory-paper-control" disabled={saving || conflict || author === null || !draftTitle.trim()} onClick={() => void saveEdit()}>{saving ? "保存中…" : "保存"}</button></>
   ) : confirmingDelete ? (
     <><button className="memory-paper-control" disabled={deleting} onClick={() => setConfirmingDelete(false)}>取消</button><span>·</span><button className="memory-paper-control" disabled={deleting} onClick={() => void permanentlyDeletePaper()}>{deleting ? "删除中…" : "确认永久删除"}</button></>
   ) : history.status !== "idle" ? (
@@ -360,7 +375,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
       {selected && detail.status !== "ready" ? <PaperDetailDialog id="memory-shared-paper-detail" open label="Shared Paper" dateLabel="" signature="" triggerRef={triggerRef} onRequestClose={closeDialog}><ModuleStateMessage state={detail.status === "loading" ? "loading" : "error"} placement="paper" emptyText="" errorText="无法读取 Shared Paper" loadingText="正在读取 Shared Paper…" onRetry={() => void retryDetail()} /></PaperDetailDialog> : null}
 
       {selected && detail.status === "ready" ? <PaperDetailDialog id="memory-shared-paper-detail" open label={`Shared Paper ${detail.paper.title}`} dateLabel={formatDate(detail.paper.updatedAt)} signature="" triggerRef={triggerRef} onRequestClose={closeDialog} errorMessage={error} topRight={detailTopRight} bottomLeft={<><span>revision {detail.paper.revision} · {formatDate(detail.paper.updatedAt)}</span><PaperAuthorSignature value={editing ? author : detail.paper.updatedBy} editable={editing} disabled={saving} onChange={setAuthor} /></>}>
-          {editing ? <div className="memory-paper-editor"><input className="memory-paper-key" aria-label="Shared Paper 标题" value={detail.paper.title} readOnly /><SharedPaperBodyEditor content={draft} onContentChange={setDraft} />{conflict ? <div className="shared-paper-conflict-actions"><button className="secondary-button" type="button" onClick={keepDraftAfterConflict}>继续保留当前草稿</button><button className="secondary-button" type="button" onClick={loadLatestAfterConflict}>载入最新正文</button></div> : null}</div> : history.status === "loading" ? <ModuleStateMessage state="loading" placement="paper" emptyText="" errorText="" loadingText="正在读取历史…" /> : history.status === "error" ? <ModuleStateMessage state="error" placement="paper" emptyText="" errorText="无法读取历史" onRetry={() => void loadHistory()} /> : history.status === "ready" ? <HistoryView paper={detail.paper} edits={history.edits} /> : <div className="shared-paper-detail-content"><h1 className="memory-paper-title">{detail.paper.title}</h1><p className="memory-paper-content">{detail.paper.content}</p></div>}
+          {editing ? <div className="memory-paper-editor"><input className="memory-paper-key" aria-label="Shared Paper 标题" value={draftTitle} disabled={saving} maxLength={200} onChange={(event) => setDraftTitle(event.target.value)} /><SharedPaperBodyEditor content={draft} disabled={saving} onContentChange={setDraft} />{conflict ? <div className="shared-paper-conflict-actions"><button className="secondary-button" type="button" onClick={keepDraftAfterConflict}>继续保留当前草稿</button><button className="secondary-button" type="button" onClick={loadLatestAfterConflict}>载入最新正文</button></div> : null}</div> : history.status === "loading" ? <ModuleStateMessage state="loading" placement="paper" emptyText="" errorText="" loadingText="正在读取历史…" /> : history.status === "error" ? <ModuleStateMessage state="error" placement="paper" emptyText="" errorText="无法读取历史" onRetry={() => void loadHistory()} /> : history.status === "ready" ? <HistoryView paper={detail.paper} edits={history.edits} /> : <div className="shared-paper-detail-content"><h1 className="memory-paper-title">{detail.paper.title}</h1><p className="memory-paper-content">{detail.paper.content}</p></div>}
         </PaperDetailDialog> : null}
     </div>
   );
@@ -368,5 +383,5 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
 
 function HistoryView({ paper, edits }: { paper: SharedPaper; edits: SharedPaperEdit[] }) {
   const ordered = [...edits].sort((left, right) => right.revision - left.revision);
-  return <div className="shared-paper-history">{ordered.map((edit) => { const diff = diffText(edit.deletedText, edit.insertedText); return <div className="shared-paper-history-event" key={edit.id}><strong>{edit.author} · {edit.baseRevision}→{edit.revision}</strong><span>{formatDate(edit.createdAt)}</span><span>− <mark>{diff.deleted || "∅"}</mark></span><span>+ <mark>{diff.inserted || "∅"}</mark></span></div>; })}<div className="shared-paper-history-event shared-paper-history-created"><strong>Created</strong><span>{paper.createdBy} · revision 1 · {formatDate(paper.createdAt)}</span></div></div>;
+  return <div className="shared-paper-history">{ordered.map((edit) => { const diff = diffText(edit.deletedText, edit.insertedText); return <div className="shared-paper-history-event" key={edit.id}><strong>{edit.target === "title" ? "Title · " : ""}{edit.author} · {edit.baseRevision}→{edit.revision}</strong><span>{formatDate(edit.createdAt)}</span><span>− <mark>{diff.deleted || "∅"}</mark></span><span>+ <mark>{diff.inserted || "∅"}</mark></span></div>; })}<div className="shared-paper-history-event shared-paper-history-created"><strong>Created</strong><span>{paper.createdBy} · revision 1 · {formatDate(paper.createdAt)}</span></div></div>;
 }
