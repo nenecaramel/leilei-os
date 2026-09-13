@@ -9,7 +9,7 @@ export type SharedPaperApiService = {
   getPaper(input: { userId: string; paperId: string }): Promise<unknown>;
   listEdits(input: { userId: string; paperId: string; limit?: number; beforeRevision?: number }): Promise<unknown>;
   createPaper(input: { userId: string; title: string; content: string; author: ContentAuthor }): Promise<unknown>;
-  editPaper(input: { userId: string; paperId: string; expectedRevision: number; author: ContentAuthor; start: number; end: number; replacement: string }): Promise<unknown>;
+  editPaper(input: { userId: string; paperId: string; expectedRevision: number; author: ContentAuthor; target?: "content" | "title"; start: number; end: number; replacement: string }): Promise<unknown>;
   archivePaper(input: { userId: string; paperId: string }): Promise<unknown>;
   restorePaper(input: { userId: string; paperId: string }): Promise<unknown>;
   deletePaper(input: { userId: string; paperId: string }): Promise<unknown>;
@@ -18,7 +18,7 @@ export type SharedPaperApiDependencies = { sharedPaperService: SharedPaperApiSer
 
 const authorSchema = z.enum(["L", "G", "C"]);
 const createBodySchema = z.object({ title: z.string(), content: z.string(), author: authorSchema }).strict();
-const editBodySchema = z.object({ expected_revision: z.number().int(), author: authorSchema, start: z.number().int().nonnegative(), end: z.number().int().nonnegative(), replacement: z.string() }).strict();
+const editBodySchema = z.object({ expected_revision: z.number().int(), author: authorSchema, target: z.enum(["content", "title"]).default("content").optional(), start: z.number().int().nonnegative(), end: z.number().int().nonnegative(), replacement: z.string() }).strict();
 
 export function createSharedPaperApiRouter({ sharedPaperService }: SharedPaperApiDependencies): Router {
   const router = Router();
@@ -37,7 +37,7 @@ export function createSharedPaperApiRouter({ sharedPaperService }: SharedPaperAp
   router.patch("/:id/content", handler(async (req) => {
     const parsed = editBodySchema.safeParse(req.body);
     if (!parsed.success) throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper request is invalid.");
-    return sharedPaperService.editPaper({ userId: req.webUserId!, paperId: param(req.params.id), expectedRevision: parsed.data.expected_revision, author: parsed.data.author as ContentAuthor, start: parsed.data.start, end: parsed.data.end, replacement: parsed.data.replacement });
+    return sharedPaperService.editPaper({ userId: req.webUserId!, paperId: param(req.params.id), expectedRevision: parsed.data.expected_revision, author: parsed.data.author as ContentAuthor, target: parsed.data.target ?? "content", start: parsed.data.start, end: parsed.data.end, replacement: parsed.data.replacement });
   }));
   return router;
 }
