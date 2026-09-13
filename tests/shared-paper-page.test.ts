@@ -16,7 +16,7 @@ type Paper = {
 };
 type Edit = {
   id: string; paperId: string; userId: string; baseRevision: number; revision: number;
-  author: "L" | "G" | "C"; startOffset: number; endOffset: number;
+  author: "L" | "G" | "C"; target: "content" | "title"; startOffset: number; endOffset: number;
   deletedText: string; insertedText: string; createdAt: string;
 };
 
@@ -27,7 +27,7 @@ const paper: Paper = {
 };
 const edit: Edit = {
   id: "edit-2", paperId: paper.id, userId: paper.userId, baseRevision: 2, revision: 3,
-  author: "C", startOffset: 3, endOffset: 4, deletedText: "😀", insertedText: "🌏",
+  author: "C", target: "content", startOffset: 3, endOffset: 4, deletedText: "😀", insertedText: "🌏",
   createdAt: "2026-01-03T00:00:00.000Z",
 };
 
@@ -137,6 +137,13 @@ test("Shared Paper list loads, searches in-module, and opens authoritative detai
     assert.match(env.container.textContent ?? "", /revision 3/);
     assert.match(env.container.textContent ?? "", /中文 😀 原文/);
   } finally { await env.cleanup(); }
+});
+
+test("Shared Paper edit mode makes title editable and submits title through the revisioned target", () => {
+  const source = readFileSync(new URL("../web/src/pages/SharedPaperPage.tsx", import.meta.url), "utf8");
+  assert.match(source, /aria-label="Shared Paper 标题" value=\{draftTitle\}[^>]*onChange=\{\(event\) => setDraftTitle\(event\.target\.value\)\}/);
+  assert.match(source, /target: "title"/);
+  assert.doesNotMatch(source, /aria-label="Shared Paper 标题" value=\{detail\.paper\.title\} readOnly/);
 });
 
 test("Shared Paper edit diff uses Unicode code-point offsets and no-op saves nothing", () => {
