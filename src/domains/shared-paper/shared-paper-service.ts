@@ -74,7 +74,7 @@ export class SharedPaperService {
         author: normalized.author,
       }),
     });
-    if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for different shared paper content.");
+    if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different shared paper edit.");
     return result;
   }
 
@@ -149,8 +149,9 @@ export class SharedPaperService {
   async editPaper(input: SharedPaperRangeEditInput): Promise<{ paper: SharedPaperRecord; edit: SharedPaperEdit }> {
     await this.requireActive(input.userId);
     const target = normalizeEditTarget(input.target);
-    const normalized = { ...input, target, replacement: normalizeNfc(input.replacement) };
-    validateRangeInput(normalized);
+    const targeted = { ...input, target };
+    validateRangeInput(targeted);
+    const normalized = { ...targeted, replacement: normalizeNfc(targeted.replacement) };
     const result = await this.repository.editPaper(normalized);
     if (result.outcome === "revision_conflict") throw new SharedPaperServiceError("PAPER_REVISION_CONFLICT", "Shared paper revision conflict.");
     if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
