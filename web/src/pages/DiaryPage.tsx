@@ -1215,7 +1215,7 @@ export function DiaryPageContent({
 
               {state.status === "loading" ? (
                 filters.q ? (
-                  <ModuleSearchStateMessage state="loading" emptyText="" errorText="" loadingText="正在搜索…" />
+                  <ModuleSearchStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="正在搜索…" />
                 ) : <MobileDiaryLoading label="Diary 加载中" />
               ) : null}
 
@@ -1223,6 +1223,7 @@ export function DiaryPageContent({
                 filters.q ? (
                   <ModuleSearchStateMessage
                     state="error"
+                    placement="module"
                     emptyText=""
                     errorText="暂时无法读取日记"
                     retryLabel="重新加载"
