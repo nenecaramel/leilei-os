@@ -148,8 +148,10 @@ export class SharedPaperService {
 
   async editPaper(input: SharedPaperRangeEditInput): Promise<{ paper: SharedPaperRecord; edit: SharedPaperEdit }> {
     await this.requireActive(input.userId);
-    validateRangeInput(input);
-    const result = await this.repository.editPaper({ ...input, replacement: normalizeNfc(input.replacement) });
+    const target = normalizeEditTarget(input.target);
+    const normalized = { ...input, target, replacement: normalizeNfc(input.replacement) };
+    validateRangeInput(normalized);
+    const result = await this.repository.editPaper(normalized);
     if (result.outcome === "revision_conflict") throw new SharedPaperServiceError("PAPER_REVISION_CONFLICT", "Shared paper revision conflict.");
     if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
     if (result.outcome === "invalid_edit") throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper edit is invalid.");
@@ -159,10 +161,11 @@ export class SharedPaperService {
   async editPaperByMatch(input: SharedPaperMatchEditInput & { idempotencyKey?: string }): Promise<{ paper: SharedPaperRecord; edit: SharedPaperEdit; outcome?: "committed" | "replayed" }> {
     await this.requireActive(input.userId);
     const idempotencyKey = input.idempotencyKey === undefined ? undefined : normalizeKey(input.idempotencyKey);
+    const target = normalizeEditTarget(input.target);
     const match = normalizeNfc(input.matchText);
     const replacement = normalizeNfc(input.replacementText);
     if (idempotencyKey !== undefined && this.repository.editPaperIdempotently) {
-      const result = await this.repository.editPaperIdempotently({ ...input, matchText: match, replacementText: replacement, idempotencyKey, requestHash: hashMcpWriteRequest({ paperId: input.paperId, expectedRevision: input.expectedRevision, author: input.author, matchText: match, replacementText: replacement }) });
+      const result = await this.repository.editPaperIdempotently({ ...input, target, matchText: match, replacementText: replacement, idempotencyKey, requestHash: hashMcpWriteRequest({ paperId: input.paperId, expectedRevision: input.expectedRevision, author: input.author, target, matchText: match, replacementText: replacement }) });
       if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for different shared paper content.");
       if (result.outcome === "revision_conflict") throw new SharedPaperServiceError("PAPER_REVISION_CONFLICT", "Shared paper revision conflict.");
       if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
@@ -175,10 +178,11 @@ export class SharedPaperService {
     const paper = await this.repository.getPaper({ userId: input.userId, paperId: input.paperId });
     if (!paper) throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
     if (paper.revision !== input.expectedRevision) throw new SharedPaperServiceError("PAPER_REVISION_CONFLICT", "Shared paper revision conflict.");
-    const startUnit = findUniqueMatch(paper.content, match);
-    const start = codeUnitOffsetToCodePointOffset(paper.content, startUnit);
+    const source = target === "title" ? paper.title : paper.content;
+    const startUnit = findUniqueMatch(source, match);
+    const start = codeUnitOffsetToCodePointOffset(source, startUnit);
     const end = start + codePointLength(match);
-    const range: SharedPaperRangeEditInput = { ...input, start, end, replacement };
+    const range: SharedPaperRangeEditInput = { ...input, target, start, end, replacement };
     return { ...(await this.editPaper(range)), outcome: "committed" };
   }
 
@@ -203,7 +207,13 @@ function normalizeCreate(input: SharedPaperCreateInput): SharedPaperCreateInput 
 }
 
 function validateRangeInput(input: SharedPaperRangeEditInput): void {
-  if (!isContentAuthor(input.author) || !Number.isInteger(input.expectedRevision) || input.expectedRevision < 1 || !Number.isInteger(input.start) || !Number.isInteger(input.end) || input.start < 0 || input.end < input.start || typeof input.replacement !== "string") throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper edit is invalid.");
+  if (!isContentAuthor(input.author) || (input.target !== "content" && input.target !== "title") || !Number.isInteger(input.expectedRevision) || input.expectedRevision < 1 || !Number.isInteger(input.start) || !Number.isInteger(input.end) || input.start < 0 || input.end < input.start || typeof input.replacement !== "string") throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper edit is invalid.");
+}
+
+function normalizeEditTarget(value: SharedPaperRangeEditInput["target"]): "content" | "title" {
+  if (value === undefined || value === "content") return "content";
+  if (value === "title") return "title";
+  throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper edit target is invalid.");
 }
 
 function normalizeQuery(value: unknown): string {
