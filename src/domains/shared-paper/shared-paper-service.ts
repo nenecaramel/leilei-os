@@ -165,7 +165,8 @@ export class SharedPaperService {
     const match = normalizeNfc(input.matchText);
     const replacement = normalizeNfc(input.replacementText);
     if (idempotencyKey !== undefined && this.repository.editPaperIdempotently) {
-      const result = await this.repository.editPaperIdempotently({ ...input, target, matchText: match, replacementText: replacement, idempotencyKey, requestHash: hashMcpWriteRequest({ paperId: input.paperId, expectedRevision: input.expectedRevision, author: input.author, target, matchText: match, replacementText: replacement }) });
+      const request = { paperId: input.paperId, expectedRevision: input.expectedRevision, author: input.author, ...(target === "title" ? { target } : {}), matchText: match, replacementText: replacement };
+      const result = await this.repository.editPaperIdempotently({ ...input, target, matchText: match, replacementText: replacement, idempotencyKey, requestHash: hashMcpWriteRequest(request) });
       if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for different shared paper content.");
       if (result.outcome === "revision_conflict") throw new SharedPaperServiceError("PAPER_REVISION_CONFLICT", "Shared paper revision conflict.");
       if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
