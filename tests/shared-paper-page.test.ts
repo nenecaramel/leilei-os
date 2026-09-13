@@ -352,7 +352,7 @@ test("Shared Paper conflict load-latest action updates draft and baseline revisi
     assert.ok(save);
     await React.act(async () => { save!.click(); await waitForPaint(); await waitForPaint(); });
     await waitForCondition(() => (env.container.textContent ?? "").includes("paper 已被其他编辑更新"));
-    const loadLatest = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "载入最新正文");
+    const loadLatest = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "载入最新版本");
     assert.ok(loadLatest);
     await React.act(async () => loadLatest!.click());
     assert.equal(editor!.value, "最新正文");
