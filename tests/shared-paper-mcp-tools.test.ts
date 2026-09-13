@@ -183,6 +183,7 @@ test("Shared Paper edit history text exposes ordered author and revision summari
   assert.match(text, /2 shared paper edits\./);
   assert.match(text, /edit=00000000-0000-4000-8000-000000000003/);
   assert.match(text, /author=C/);
+  assert.match(text, /target=content/);
   assert.match(text, /revision=2->3/);
   assert.match(text, /author=G/);
   assert.match(text, /revision=1->2/);
@@ -196,6 +197,7 @@ test("Shared Paper edit history text exposes ordered author and revision summari
     base_revision: value.baseRevision,
     revision: value.revision,
     author: value.author,
+    target: value.target,
     start_offset: value.startOffset,
     end_offset: value.endOffset,
     deleted_text: value.deletedText,
