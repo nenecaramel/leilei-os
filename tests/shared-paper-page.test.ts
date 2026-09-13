@@ -326,6 +326,43 @@ test("Shared Paper 409 keeps the draft, blocks stale Save, and resolves by keepi
   } finally { await env.cleanup(); }
 });
 
+test("Shared Paper title edit reconciles a lost mutation response from authoritative readback", async () => {
+  const env = await installDom();
+  const calls: Array<{ path: string; init?: RequestInit }> = [];
+  const renamed: Paper = { ...paper, title: "新标题", revision: 4, updatedBy: "L" };
+  let committed = false;
+  const api: WebApiClient = { async request<T>(path: string, init?: RequestInit) {
+    calls.push({ path, init });
+    if (path === "/shared-papers/paper-1/content" && init?.method === "PATCH") {
+      committed = true;
+      throw new Error("response lost after commit");
+    }
+    if (path === "/shared-papers/paper-1") return response(committed ? renamed : paper) as T;
+    return response([committed ? renamed : paper]) as T;
+  } };
+  try {
+    await React.act(async () => { env.root.render(React.createElement(SharedPaperPageContent, { api })); await waitForPaint(); });
+    const row = env.container.querySelector<HTMLButtonElement>('button[data-paper-id="paper-1"]');
+    assert.ok(row);
+    await React.act(async () => row!.click());
+    const editButton = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "编辑");
+    assert.ok(editButton);
+    await React.act(async () => editButton!.click());
+    const title = env.container.querySelector<HTMLInputElement>('input[aria-label="Shared Paper 标题"]');
+    assert.ok(title);
+    await React.act(async () => setReactValue(title!, "新标题"));
+    const save = [...env.container.querySelectorAll("button")].find((button) => button.textContent === "保存");
+    assert.ok(save);
+    await React.act(async () => { save!.click(); await waitForPaint(); await waitForPaint(); });
+    await waitForCondition(() => env.container.querySelector('input[aria-label="Shared Paper 标题"]') === null);
+    assert.match(env.container.textContent ?? "", /新标题/);
+    assert.doesNotMatch(env.container.textContent ?? "", /保存结果|无法保存/);
+    const patch = calls.find(({ path, init }) => path === "/shared-papers/paper-1/content" && init?.method === "PATCH");
+    assert.ok(patch);
+    assert.equal(JSON.parse(String(patch!.init?.body)).target, "title");
+  } finally { await env.cleanup(); }
+});
+
 test("Shared Paper conflict load-latest action updates draft and baseline revision before Save", async () => {
   const calls: Array<{ path: string; init?: RequestInit }> = [];
   let patchAttempts = 0;
