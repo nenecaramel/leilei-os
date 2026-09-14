@@ -79,6 +79,10 @@ export function createProductionMcpSessionServerFactory(input: {
         diaryService: input.diaryService,
         getAuthenticatedUserId,
       },
+      diaryLifecycle: {
+        diaryService: input.diaryService,
+        getAuthenticatedUserId,
+      },
       ...(input.diaryCommentService
         ? {
             diaryComments: {
