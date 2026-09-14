@@ -28,6 +28,29 @@ test("DiaryService permanently deletes through the repository with web lifecycle
   }]);
 });
 
+test("DiaryService permanent MCP delete records MCP lifecycle context", async () => {
+  const calls: unknown[] = [];
+  const repository = {
+    findUserById: async () => ({ status: "active" as const }),
+    permanentlyDeleteDiary: async (input: unknown) => {
+      calls.push(input);
+      return true;
+    },
+  };
+
+  await new DiaryService(repository as never).permanentlyDeleteMcpDiary(
+    { userId: " user-1 " },
+    { id: " diary-1 " },
+  );
+
+  assert.deepEqual(calls, [{
+    userId: "user-1",
+    id: "diary-1",
+    actorType: "user",
+    channel: "mcp",
+  }]);
+});
+
 test("DiaryService maps an ineligible permanent delete to DIARY_NOT_FOUND", async () => {
   const repository = {
     findUserById: async () => ({ status: "active" as const }),
