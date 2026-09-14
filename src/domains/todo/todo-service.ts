@@ -29,6 +29,9 @@ export type TodoServiceErrorCode =
   | "TODO_REVISION_INVALID"
   | "TODO_ENTRY_INVALID"
   | "TODO_ENTRY_ID_DUPLICATE"
+  | "TODO_ENTRY_NOT_FOUND"
+  | "TODO_ENTRY_CONFLICT"
+  | "TODO_ENTRY_LIMIT"
   | "TODO_PAPER_CONFLICT"
   | "TODO_SEARCH_INVALID"
   | "INVALID_IDEMPOTENCY_KEY"
@@ -110,6 +113,24 @@ function normalizeReplacePaperInput(
 
 export type ReplaceTodoPaperIdempotentlyServiceResult = {
   paper: TodoPaper;
+  metadata: {
+    committed: boolean;
+    idempotent_replay: boolean;
+  };
+};
+
+export type TodoEntryMutationServiceResult = {
+  entry: TodoEntry;
+  paperRevision: number;
+  metadata: {
+    committed: boolean;
+    idempotent_replay: boolean;
+  };
+};
+
+export type TodoEntryDeleteServiceResult = {
+  entryId: string;
+  paperRevision: number;
   metadata: {
     committed: boolean;
     idempotent_replay: boolean;
@@ -235,6 +256,152 @@ export class TodoService {
     throw new Error("Unknown Todo idempotent persistence outcome.");
   }
 
+  async appendEntryIdempotently(input: {
+    userId: string;
+    date: unknown;
+    author: unknown;
+    kind: unknown;
+    text: unknown;
+    idempotencyKey: string;
+  }): Promise<TodoEntryMutationServiceResult> {
+    await this.requireActiveUser(input.userId);
+    const date = normalizeTodoDate(input.date);
+    const author = normalizeTodoAuthor(input.author);
+    const kind = normalizeTodoKind(input.kind);
+    const text = normalizeTodoEntryText(input.text);
+    const idempotencyKey = normalizeTodoIdempotencyKey(input.idempotencyKey);
+    if (!this.repository.appendEntryIdempotently) {
+      throw new Error("Todo entry append persistence is unavailable.");
+    }
+    const result = await this.repository.appendEntryIdempotently({
+      userId: input.userId,
+      date,
+      author,
+      kind,
+      text,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({ date, author, kind, text }),
+    });
+    if (result.outcome === "committed" || result.outcome === "replayed") {
+      return {
+        entry: result.entry,
+        paperRevision: result.paperRevision,
+        metadata: {
+          committed: result.outcome === "committed",
+          idempotent_replay: result.outcome === "replayed",
+        },
+      };
+    }
+    if (result.outcome === "idempotency_conflict") {
+      throw new TodoServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different Todo entry append.");
+    }
+    if (result.outcome === "entry_limit") {
+      throw new TodoServiceError("TODO_ENTRY_LIMIT", "The Todo paper already has the maximum number of entries.");
+    }
+    if (result.outcome === "entry_not_found") {
+      throw new TodoServiceError("TODO_ENTRY_NOT_FOUND", "The appended Todo entry is no longer available.");
+    }
+    throw new Error("Unknown Todo entry append persistence outcome.");
+  }
+
+  async updateEntryIdempotently(input: {
+    userId: string;
+    date: unknown;
+    author: unknown;
+    entryId: unknown;
+    expectedRevision: unknown;
+    kind?: unknown;
+    text?: unknown;
+    idempotencyKey: string;
+  }): Promise<TodoEntryMutationServiceResult> {
+    await this.requireActiveUser(input.userId);
+    const date = normalizeTodoDate(input.date);
+    const author = normalizeTodoAuthor(input.author);
+    const entryId = normalizeTodoEntryId(input.entryId);
+    const expectedRevision = normalizeTodoEntryRevision(input.expectedRevision);
+    if (input.kind === undefined && input.text === undefined) {
+      throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry update must change kind or text.");
+    }
+    const kind = input.kind === undefined ? undefined : normalizeTodoKind(input.kind);
+    const text = input.text === undefined ? undefined : normalizeTodoEntryText(input.text);
+    const idempotencyKey = normalizeTodoIdempotencyKey(input.idempotencyKey);
+    if (!this.repository.updateEntryIdempotently) {
+      throw new Error("Todo entry update persistence is unavailable.");
+    }
+    const result = await this.repository.updateEntryIdempotently({
+      userId: input.userId,
+      date,
+      author,
+      entryId,
+      expectedRevision,
+      kind,
+      text,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({
+        date,
+        author,
+        entry_id: entryId,
+        expected_revision: expectedRevision,
+        kind: kind ?? null,
+        text: text ?? null,
+      }),
+    });
+    return mapTodoEntryMutationResult(result, "update");
+  }
+
+  async deleteEntryIdempotently(input: {
+    userId: string;
+    date: unknown;
+    author: unknown;
+    entryId: unknown;
+    expectedRevision: unknown;
+    idempotencyKey: string;
+  }): Promise<TodoEntryDeleteServiceResult> {
+    await this.requireActiveUser(input.userId);
+    const date = normalizeTodoDate(input.date);
+    const author = normalizeTodoAuthor(input.author);
+    const entryId = normalizeTodoEntryId(input.entryId);
+    const expectedRevision = normalizeTodoEntryRevision(input.expectedRevision);
+    const idempotencyKey = normalizeTodoIdempotencyKey(input.idempotencyKey);
+    if (!this.repository.deleteEntryIdempotently) {
+      throw new Error("Todo entry delete persistence is unavailable.");
+    }
+    const result = await this.repository.deleteEntryIdempotently({
+      userId: input.userId,
+      date,
+      author,
+      entryId,
+      expectedRevision,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({
+        date,
+        author,
+        entry_id: entryId,
+        expected_revision: expectedRevision,
+      }),
+    });
+    if (result.outcome === "committed" || result.outcome === "replayed") {
+      return {
+        entryId: result.entryId,
+        paperRevision: result.paperRevision,
+        metadata: {
+          committed: result.outcome === "committed",
+          idempotent_replay: result.outcome === "replayed",
+        },
+      };
+    }
+    if (result.outcome === "idempotency_conflict") {
+      throw new TodoServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different Todo entry delete.");
+    }
+    if (result.outcome === "entry_not_found") {
+      throw new TodoServiceError("TODO_ENTRY_NOT_FOUND", "Todo entry was not found.");
+    }
+    if (result.outcome === "entry_revision_conflict") {
+      throw new TodoServiceError("TODO_ENTRY_CONFLICT", "Todo entry changed on another device.");
+    }
+    throw new Error("Unknown Todo entry delete persistence outcome.");
+  }
+
   private async requireActiveUser(userId: string): Promise<void> {
     try {
       await requireActiveUser(this.repository, userId);
@@ -245,6 +412,91 @@ export class TodoService {
       throw error;
     }
   }
+}
+
+function normalizeTodoDate(value: unknown): string {
+  assertDate(value);
+  return value;
+}
+
+function normalizeTodoAuthor(value: unknown): ContentAuthor {
+  if (!isContentAuthor(value)) {
+    throw new TodoServiceError("TODO_AUTHOR_INVALID", "Todo author is invalid.");
+  }
+  return value;
+}
+
+function normalizeTodoKind(value: unknown): TodoEntry["kind"] {
+  if (typeof value !== "string" || !(TODO_ENTRY_KINDS as readonly string[]).includes(value)) {
+    throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry kind is invalid.");
+  }
+  return value as TodoEntry["kind"];
+}
+
+function normalizeTodoEntryId(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry id is invalid.");
+  }
+  const normalized = value.trim();
+  if (!normalized || normalized.length > MAX_TODO_ENTRY_ID_LENGTH) {
+    throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry id is invalid.");
+  }
+  return normalized;
+}
+
+function normalizeTodoEntryText(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry text is invalid.");
+  }
+  const normalized = value.trim();
+  if (!normalized || normalized.length > MAX_TODO_ENTRY_TEXT_LENGTH) {
+    throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry text is invalid.");
+  }
+  return normalized;
+}
+
+function normalizeTodoEntryRevision(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new TodoServiceError("TODO_REVISION_INVALID", "Todo entry revision is invalid.");
+  }
+  return value;
+}
+
+function normalizeTodoIdempotencyKey(value: string): string {
+  try {
+    return normalizeMcpIdempotencyKey(value);
+  } catch {
+    throw new TodoServiceError("INVALID_IDEMPOTENCY_KEY", "The idempotency key is invalid.");
+  }
+}
+
+function mapTodoEntryMutationResult(
+  result: Awaited<ReturnType<NonNullable<TodoRepository["updateEntryIdempotently"]>>>,
+  operation: "update",
+): TodoEntryMutationServiceResult {
+  if (result.outcome === "committed" || result.outcome === "replayed") {
+    return {
+      entry: result.entry,
+      paperRevision: result.paperRevision,
+      metadata: {
+        committed: result.outcome === "committed",
+        idempotent_replay: result.outcome === "replayed",
+      },
+    };
+  }
+  if (result.outcome === "idempotency_conflict") {
+    throw new TodoServiceError("IDEMPOTENCY_CONFLICT", `The idempotency key was already used for a different Todo entry ${operation}.`);
+  }
+  if (result.outcome === "entry_not_found") {
+    throw new TodoServiceError("TODO_ENTRY_NOT_FOUND", "Todo entry was not found.");
+  }
+  if (result.outcome === "entry_revision_conflict") {
+    throw new TodoServiceError("TODO_ENTRY_CONFLICT", "Todo entry changed on another device.");
+  }
+  if (result.outcome === "entry_limit") {
+    throw new TodoServiceError("TODO_ENTRY_LIMIT", "The Todo paper already has the maximum number of entries.");
+  }
+  throw new Error("Unknown Todo entry mutation persistence outcome.");
 }
 
 function searchDate(value: unknown): string | undefined {
