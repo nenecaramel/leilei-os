@@ -13,10 +13,17 @@ import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines } from "../content-contract.js";
 
-const todoEntrySchema = z.object({
+const todoEntryInputSchema = z.object({
   id: z.string(),
   kind: z.enum(["pending", "completed", "record"]),
   text: z.string(),
+}).strict();
+
+const todoEntryOutputSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["pending", "completed", "record"]),
+  text: z.string(),
+  revision: z.number().int().min(1).optional(),
 }).strict();
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
@@ -25,14 +32,14 @@ const todoPaperSchema = z.object({
   author: todoAuthorSchema,
   date: z.string(),
   revision: z.number().int().nonnegative(),
-  entries: z.array(todoEntrySchema),
+  entries: z.array(todoEntryOutputSchema),
 });
 
 const writeTodoPaperInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   author: todoAuthorSchema,
   revision: z.number().int().min(0).nullable(),
-  entries: z.array(todoEntrySchema),
+  entries: z.array(todoEntryInputSchema),
   idempotency_key: z.string()
     .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
     .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
