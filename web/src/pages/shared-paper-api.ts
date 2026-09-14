@@ -40,7 +40,16 @@ export function createSharedPaperApi(api: WebApiClient) {
       return result.data;
     },
     async edit(id: string, input: { expected_revision: number; author: SharedPaperAuthor; target?: "content" | "title"; start: number; end: number; replacement: string }): Promise<{ paper: SharedPaper; edit: SharedPaperEdit }> {
-      const result = await api.request<Envelope<{ paper: SharedPaper; edit: SharedPaperEdit }>>(`/shared-papers/${encodeURIComponent(id)}/content`, { method: "PATCH", body: JSON.stringify(input) });
+      const body = input.target === "title"
+        ? input
+        : {
+            expected_revision: input.expected_revision,
+            author: input.author,
+            start: input.start,
+            end: input.end,
+            replacement: input.replacement,
+          };
+      const result = await api.request<Envelope<{ paper: SharedPaper; edit: SharedPaperEdit }>>(`/shared-papers/${encodeURIComponent(id)}/content`, { method: "PATCH", body: JSON.stringify(body) });
       return result.data;
     },
     async archive(id: string): Promise<SharedPaper> {
