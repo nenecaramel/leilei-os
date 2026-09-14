@@ -21,6 +21,10 @@ import {
   registerWriteTodoPaperTool,
   WriteTodoPaperAuthenticationError,
 } from "../src/mcp/tools/write-todo-paper/register.js";
+import {
+  registerTodoEntryWriteTools,
+  TodoEntryWriteAuthenticationError,
+} from "../src/mcp/tools/todo-entry/register.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 const DATE = "2026-08-13";
@@ -61,6 +65,33 @@ class TodoToolService {
     this.writeCalls.push(input);
     return {
       paper: L_PAPER,
+      metadata: { committed: true, idempotent_replay: false },
+    };
+  }
+
+  async appendEntryIdempotently(input: unknown) {
+    this.writeCalls.push(input);
+    return {
+      entry: { id: "server-entry", kind: "pending" as const, text: "Appended", revision: 1 },
+      paperRevision: 5,
+      metadata: { committed: true, idempotent_replay: false },
+    };
+  }
+
+  async updateEntryIdempotently(input: unknown) {
+    this.writeCalls.push(input);
+    return {
+      entry: { id: "todo-a", kind: "completed" as const, text: "First Todo row", revision: 2 },
+      paperRevision: 5,
+      metadata: { committed: true, idempotent_replay: false },
+    };
+  }
+
+  async deleteEntryIdempotently(input: unknown) {
+    this.writeCalls.push(input);
+    return {
+      entryId: "todo-a",
+      paperRevision: 5,
       metadata: { committed: true, idempotent_replay: false },
     };
   }
@@ -492,18 +523,16 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
-  assert.equal(tools.length, 49, "the MCP surface must contain the complete read-only Notion extension, resource updates, Universe writes, Todo search, and Shared Paper tools");
+  assert.equal(tools.length, 60, "the MCP surface must contain the complete production core surface including Diary lifecycle/comments and Todo entry writes");
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
-    ["list_todo_dates", "read_todo_day", "search_todo", "write_todo_paper"],
+    ["append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "search_todo", "update_todo_entry", "write_todo_paper"],
   );
   for (const forbidden of [
     "get_day_space",
     "list_calendar_dates",
     "create_todo_entry",
-    "update_todo_entry",
-    "delete_todo_entry",
     "archive_todo_paper",
     "restore_todo_paper",
   ]) {
@@ -549,6 +578,27 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   assert.match(write.description ?? "", /\{"id":"todo-1","kind":"pending","text":"\.\.\."\}/);
   assert.match(write.description ?? "", /kind must be exactly one of "pending", "completed", or "record"/);
   assert.doesNotMatch(write.description ?? "", /"kind":"pending\|completed\|record"/);
+
+  const append = tools.find((tool) => tool.name === "append_todo_entry");
+  assert.ok(append);
+  assert.deepEqual(
+    [...(append.inputSchema.required ?? [])].sort(),
+    ["date", "author", "kind", "text", "idempotency_key"].sort(),
+  );
+  assert.equal("revision" in (append.inputSchema.properties ?? {}), false);
+  assert.match(append.description ?? "", /server creates the entry id/i);
+  assert.match(append.description ?? "", /does not require the paper revision/i);
+
+  const updateEntry = tools.find((tool) => tool.name === "update_todo_entry");
+  assert.ok(updateEntry);
+  assert.ok(updateEntry.inputSchema.properties?.expected_revision);
+  assert.ok(updateEntry.inputSchema.properties?.entry_id);
+  assert.match(updateEntry.description ?? "", /only that entry revision is compared/i);
+
+  const deleteEntry = tools.find((tool) => tool.name === "delete_todo_entry");
+  assert.ok(deleteEntry);
+  assert.ok(deleteEntry.inputSchema.properties?.expected_revision);
+  assert.ok(deleteEntry.inputSchema.properties?.entry_id);
   for (const tool of todoTools) {
     assert.equal("userId" in (tool.inputSchema.properties ?? {}), false);
     assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
