@@ -5,6 +5,7 @@ import type {
   DiaryRecord,
   DiaryRepository,
   DiaryListQuery,
+  DiaryLifecycleMutationInput,
   NormalizedDiaryCreate,
   UpdateDiaryInput,
 } from "./diary-repository.js";
@@ -36,6 +37,16 @@ const MAX_SEARCH_LENGTH = 200;
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+type DiaryLifecycleAttribution = Pick<
+  DiaryLifecycleMutationInput,
+  "actorType" | "channel"
+>;
+
+const MCP_USER_LIFECYCLE_CONTEXT = {
+  actorType: "user",
+  channel: "mcp",
+} as const satisfies DiaryLifecycleAttribution;
 
 export type AuthenticatedDiaryContext = {
   userId: string;
@@ -403,6 +414,60 @@ export class DiaryService {
   }
 
   async archiveDiary(input: ReadDiaryInput): Promise<void> {
+    await this.archiveDiaryWithContext(
+      input,
+      WEB_USER_LIFECYCLE_CONTEXT,
+    );
+  }
+
+  async archiveMcpDiary(
+    context: AuthenticatedDiaryContext,
+    input: { id: string },
+  ): Promise<void> {
+    await this.archiveDiaryWithContext(
+      { userId: context.userId, id: input.id },
+      MCP_USER_LIFECYCLE_CONTEXT,
+    );
+  }
+
+  async restoreDiary(input: ReadDiaryInput): Promise<void> {
+    await this.restoreDiaryWithContext(
+      input,
+      WEB_USER_LIFECYCLE_CONTEXT,
+    );
+  }
+
+  async restoreMcpDiary(
+    context: AuthenticatedDiaryContext,
+    input: { id: string },
+  ): Promise<void> {
+    await this.restoreDiaryWithContext(
+      { userId: context.userId, id: input.id },
+      MCP_USER_LIFECYCLE_CONTEXT,
+    );
+  }
+
+  async permanentlyDeleteDiary(input: ReadDiaryInput): Promise<void> {
+    await this.permanentlyDeleteDiaryWithContext(
+      input,
+      WEB_USER_LIFECYCLE_CONTEXT,
+    );
+  }
+
+  async permanentlyDeleteMcpDiary(
+    context: AuthenticatedDiaryContext,
+    input: { id: string },
+  ): Promise<void> {
+    await this.permanentlyDeleteDiaryWithContext(
+      { userId: context.userId, id: input.id },
+      MCP_USER_LIFECYCLE_CONTEXT,
+    );
+  }
+
+  private async archiveDiaryWithContext(
+    input: ReadDiaryInput,
+    attribution: DiaryLifecycleAttribution,
+  ): Promise<void> {
     const userId = await this.requireActiveUser(input.userId);
     const id = input.id.trim();
     if (!id) {
@@ -415,7 +480,7 @@ export class DiaryService {
     const archived = await this.repository.archiveDiary({
       userId,
       id,
-      ...WEB_USER_LIFECYCLE_CONTEXT,
+      ...attribution,
     });
     if (!archived) {
       throw new DiaryDomainError(
@@ -425,7 +490,10 @@ export class DiaryService {
     }
   }
 
-  async restoreDiary(input: ReadDiaryInput): Promise<void> {
+  private async restoreDiaryWithContext(
+    input: ReadDiaryInput,
+    attribution: DiaryLifecycleAttribution,
+  ): Promise<void> {
     const userId = await this.requireActiveUser(input.userId);
     const id = input.id.trim();
     if (!id) {
@@ -438,7 +506,7 @@ export class DiaryService {
     const restored = await this.repository.restoreDiary({
       userId,
       id,
-      ...WEB_USER_LIFECYCLE_CONTEXT,
+      ...attribution,
     });
     if (!restored) {
       throw new DiaryDomainError(
@@ -448,7 +516,10 @@ export class DiaryService {
     }
   }
 
-  async permanentlyDeleteDiary(input: ReadDiaryInput): Promise<void> {
+  private async permanentlyDeleteDiaryWithContext(
+    input: ReadDiaryInput,
+    attribution: DiaryLifecycleAttribution,
+  ): Promise<void> {
     const userId = await this.requireActiveUser(input.userId);
     const id = input.id.trim();
     if (!id) {
@@ -469,7 +540,7 @@ export class DiaryService {
     const deleted = await permanentlyDelete.call(this.repository, {
       userId,
       id,
-      ...WEB_USER_LIFECYCLE_CONTEXT,
+      ...attribution,
     });
     if (!deleted) {
       throw new DiaryDomainError(
