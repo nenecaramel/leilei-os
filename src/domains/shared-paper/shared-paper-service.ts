@@ -170,6 +170,7 @@ export class SharedPaperService {
     if (result.outcome === "revision_conflict") throw new SharedPaperServiceError("PAPER_REVISION_CONFLICT", "Shared paper revision conflict.");
     if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
     if (result.outcome === "invalid_edit") throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper append is invalid.");
+    if (result.outcome !== "committed" && result.outcome !== "replayed") throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper append failed.");
     return result;
   }
 
