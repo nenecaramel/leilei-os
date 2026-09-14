@@ -4075,15 +4075,14 @@ body:has(.home-prototype) {
 }
 /* leilei-task-mobile-redesign-2026-08-08:end */
 
-/* Task completion timestamp stays subordinate to the paper body. */
-.task-paper-completed-at {
-  min-height: 30px;
-  margin: 0;
+.task-paper-completed-read {
+  flex: 0 0 auto;
   color: #858585;
   font-size: 12px;
   font-weight: 400;
-  line-height: 30px;
+  line-height: 20px;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 /* leilei-task-mobile-visual-polish-2026-08-09:start */
