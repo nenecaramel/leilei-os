@@ -147,7 +147,7 @@ export function registerGetDiaryTool(
                 comment.content,
               ]),
               ...(commentsMetadata?.truncated
-                ? ["Only the 50 most recent comments are included. Use list_diary_comments to read older comments."]
+                ? [`Only ${commentPage.metadata.returned} of ${commentPage.metadata.count} comments are included. Use list_diary_comments to read older comments.`]
                 : []),
             ]
           : [];
