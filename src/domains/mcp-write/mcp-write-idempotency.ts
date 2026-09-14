@@ -30,6 +30,7 @@ export type McpIdempotentToolName =
   | "create_universe_relation"
   | "create_shared_paper"
   | "edit_shared_paper"
+  | "append_shared_paper"
   | "archive_shared_paper"
   | "restore_shared_paper"
   | "delete_shared_paper"

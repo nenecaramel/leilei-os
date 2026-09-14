@@ -64,7 +64,7 @@ test("production MCP session factory assembles 78 public tools with Diary commen
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
   assert.equal(names.length, 78);
-  assert.equal(names.filter((name) => name.includes("shared_paper")).length, 9);
+  assert.equal(names.filter((name) => name.includes("shared_paper")).length, 10);
   for (const name of [
     "add_diary_comment",
     "get_diary_comment",

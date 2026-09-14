@@ -147,3 +147,23 @@ test("SharedPaperService archives and restores without changing content revision
   const deleted = await service.deletePaper({ userId: "user-1", paperId: paper().id });
   assert.deepEqual(deleted, { paperId: paper().id });
 });
+
+
+test("SharedPaperService appends at the canonical content tail", async () => {
+  class AppendRepository extends FakeRepository {
+    appendPaperIdempotently(input: any) {
+      if (input.expectedRevision !== this.current.revision) return Promise.resolve({ outcome: "revision_conflict" as const });
+      const offset = Array.from(this.current.content).length;
+      return this.editPaper({ userId: input.userId, paperId: input.paperId, expectedRevision: input.expectedRevision, author: input.author, target: "content", start: offset, end: offset, replacement: input.text }).then((result) => result.outcome === "committed" ? { ...result, outcome: "committed" as const } : result);
+    }
+  }
+  const repository = new AppendRepository();
+  const service = new SharedPaperService(repository);
+  const result = await service.appendPaperIdempotently({ userId: "user-1", paperId: paper().id, expectedRevision: 1, author: "G", text: "\n新增", idempotencyKey: "shared.paper:append-0001" });
+  assert.equal(result.paper.content, "你好 😀\n新增");
+  assert.equal(result.paper.revision, 2);
+  assert.equal(result.edit.startOffset, 4);
+  assert.equal(result.edit.endOffset, 4);
+  assert.equal(result.edit.deletedText, "");
+  assert.equal(result.edit.insertedText, "\n新增");
+});

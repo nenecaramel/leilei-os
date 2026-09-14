@@ -523,7 +523,7 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
-  assert.equal(tools.length, 60, "the MCP surface must contain the complete production core surface including Diary lifecycle/comments and Todo entry writes");
+  assert.equal(tools.length, 61, "the MCP surface must contain the complete production core surface including Shared Paper append and Todo entry writes");
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),

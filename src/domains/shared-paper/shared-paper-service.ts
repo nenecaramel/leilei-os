@@ -3,6 +3,7 @@ import { requireActiveUser, ActiveUserAuthorizationError } from "../require-acti
 import { hashMcpWriteRequest, normalizeMcpIdempotencyKey } from "../mcp-write/mcp-write-idempotency.js";
 import { codePointLength, codeUnitOffsetToCodePointOffset, replaceCodePointRange } from "../../shared/unicode.js";
 import type {
+  SharedPaperAppendIdempotencyInput,
   SharedPaperCreateInput,
   SharedPaperEdit,
   SharedPaperMatchEditInput,
@@ -143,6 +144,32 @@ export class SharedPaperService {
     if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different shared paper delete request.");
     if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
     if (result.outcome === "not_archived") throw new SharedPaperServiceError("PAPER_NOT_ARCHIVED", "Shared paper must be archived before permanent deletion.");
+    return result;
+  }
+
+  async appendPaperIdempotently(input: { userId: string; paperId: string; expectedRevision: number; author: ContentAuthor; text: string; idempotencyKey: string }): Promise<{ paper: SharedPaperRecord; edit: SharedPaperEdit; outcome: "committed" | "replayed" }> {
+    await this.requireActive(input.userId);
+    if (!isContentAuthor(input.author) || !Number.isInteger(input.expectedRevision) || input.expectedRevision < 1 || typeof input.text !== "string") {
+      throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper append is invalid.");
+    }
+    const text = normalizeNfc(input.text);
+    if (text.length === 0) throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper append is invalid.");
+    const idempotencyKey = normalizeKey(input.idempotencyKey);
+    if (!this.repository.appendPaperIdempotently) throw new Error("Shared paper append idempotency persistence is unavailable.");
+    const request: SharedPaperAppendIdempotencyInput = {
+      userId: input.userId,
+      paperId: input.paperId,
+      expectedRevision: input.expectedRevision,
+      author: input.author,
+      text,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({ paperId: input.paperId, expectedRevision: input.expectedRevision, author: input.author, text }),
+    };
+    const result = await this.repository.appendPaperIdempotently(request);
+    if (result.outcome === "idempotency_conflict") throw new SharedPaperServiceError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for different shared paper content.");
+    if (result.outcome === "revision_conflict") throw new SharedPaperServiceError("PAPER_REVISION_CONFLICT", "Shared paper revision conflict.");
+    if (result.outcome === "not_found") throw new SharedPaperServiceError("PAPER_NOT_FOUND", "Shared paper was not found.");
+    if (result.outcome === "invalid_edit") throw new SharedPaperServiceError("INVALID_SHARED_PAPER_EDIT", "Shared paper append is invalid.");
     return result;
   }
 

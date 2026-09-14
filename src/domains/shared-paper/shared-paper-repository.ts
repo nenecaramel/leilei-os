@@ -9,6 +9,7 @@ import {
 import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
 import { codePointLength, replaceCodePointRange, sliceCodePoints } from "../../shared/unicode.js";
 import type {
+  SharedPaperAppendIdempotencyInput,
   SharedPaperCreateIdempotencyInput,
   SharedPaperCreateInput,
   SharedPaperLifecycleIdempotencyInput,
@@ -238,6 +239,29 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
         resourceId: input.paperId,
       });
       return { outcome: "committed" as const, paperId: input.paperId };
+    });
+  }
+
+  async appendPaperIdempotently(input: SharedPaperAppendIdempotencyInput) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const existing = await lockAndReadMcpIdempotency(transaction, { userId: input.userId, toolName: "append_shared_paper", idempotencyKey: input.idempotencyKey });
+      if (existing) {
+        if (existing.requestHash !== input.requestHash || existing.resourceType !== "shared_paper_edit") return { outcome: "idempotency_conflict" as const };
+        const edit = await this.getEditInTransaction(transaction as unknown as Database, input.userId, existing.resourceId);
+        if (!edit) throw new Error("Idempotent shared paper append was not found.");
+        const paper = await this.getPaperInTransaction(transaction as unknown as Database, input.userId, edit.paperId);
+        if (!paper) throw new Error("Idempotent shared paper was not found.");
+        return { outcome: "replayed" as const, paper, edit };
+      }
+      const paper = await this.lockPaperInTransaction(transaction as unknown as Database, input.userId, input.paperId);
+      if (!paper) return { outcome: "not_found" as const };
+      if (paper.revision !== input.expectedRevision) return { outcome: "revision_conflict" as const };
+      const offset = codePointLength(paper.content);
+      const result = await this.editRangeInTransaction(transaction as unknown as McpIdempotencyTransaction, { userId: input.userId, paperId: input.paperId, expectedRevision: input.expectedRevision, author: input.author, target: "content", start: offset, end: offset, replacement: input.text }, paper);
+      if (result.outcome !== "committed") return result;
+      await recordMcpIdempotency(transaction, { userId: input.userId, toolName: "append_shared_paper", idempotencyKey: input.idempotencyKey, requestHash: input.requestHash, resourceType: "shared_paper_edit", resourceId: result.edit.id });
+      return result;
     });
   }
 
