@@ -2,7 +2,8 @@ import type { ContentAuthor } from "../content-author.js";
 
 export const TODO_ENTRY_KINDS = ["pending", "completed", "record"] as const;
 export type TodoEntryKind = (typeof TODO_ENTRY_KINDS)[number];
-export type TodoEntry = { id: string; kind: TodoEntryKind; text: string };
+export type TodoEntry = { id: string; kind: TodoEntryKind; text: string; revision?: number };
+export type TodoEntryWrite = { id: string; kind: TodoEntryKind; text: string };
 export type TodoPaper = {
   author: ContentAuthor;
   date: string;
@@ -49,7 +50,7 @@ export type ReplaceTodoPaperInput = {
   date: string;
   author: ContentAuthor;
   expectedRevision: number | null;
-  entries: TodoEntry[];
+  entries: TodoEntryWrite[];
 };
 export type ReplaceTodoPaperResult =
   | { outcome: "committed"; paper: TodoPaper }
@@ -64,6 +65,65 @@ export type ReplaceTodoPaperIdempotentlyResult =
   | { outcome: "committed" | "replayed"; paper: TodoPaper }
   | { outcome: "idempotency_conflict" | "revision_conflict" };
 
+export type AppendTodoEntryIdempotentlyInput = {
+  userId: string;
+  date: string;
+  author: ContentAuthor;
+  kind: TodoEntryKind;
+  text: string;
+  idempotencyKey: string;
+  requestHash: string;
+};
+
+export type UpdateTodoEntryIdempotentlyInput = {
+  userId: string;
+  date: string;
+  author: ContentAuthor;
+  entryId: string;
+  expectedRevision: number;
+  kind?: TodoEntryKind;
+  text?: string;
+  idempotencyKey: string;
+  requestHash: string;
+};
+
+export type DeleteTodoEntryIdempotentlyInput = {
+  userId: string;
+  date: string;
+  author: ContentAuthor;
+  entryId: string;
+  expectedRevision: number;
+  idempotencyKey: string;
+  requestHash: string;
+};
+
+export type TodoEntryMutationResult =
+  | {
+      outcome: "committed" | "replayed";
+      entry: TodoEntry;
+      paperRevision: number;
+    }
+  | {
+      outcome:
+        | "idempotency_conflict"
+        | "entry_not_found"
+        | "entry_revision_conflict"
+        | "entry_limit";
+    };
+
+export type TodoEntryDeleteResult =
+  | {
+      outcome: "committed" | "replayed";
+      entryId: string;
+      paperRevision: number;
+    }
+  | {
+      outcome:
+        | "idempotency_conflict"
+        | "entry_not_found"
+        | "entry_revision_conflict";
+    };
+
 export interface TodoRepository {
   findUserById(userId: string): Promise<TodoUserRecord | null>;
   readDay(userId: string, date: string): Promise<TodoDayPapers>;
@@ -73,4 +133,13 @@ export interface TodoRepository {
   replacePaperIdempotently?(
     input: ReplaceTodoPaperIdempotentlyInput,
   ): Promise<ReplaceTodoPaperIdempotentlyResult>;
+  appendEntryIdempotently?(
+    input: AppendTodoEntryIdempotentlyInput,
+  ): Promise<TodoEntryMutationResult>;
+  updateEntryIdempotently?(
+    input: UpdateTodoEntryIdempotentlyInput,
+  ): Promise<TodoEntryMutationResult>;
+  deleteEntryIdempotently?(
+    input: DeleteTodoEntryIdempotentlyInput,
+  ): Promise<TodoEntryDeleteResult>;
 }
