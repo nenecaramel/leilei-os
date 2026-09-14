@@ -133,6 +133,35 @@ test("Diary archive and restore use server-owned lifecycle attribution", async (
   ]);
 });
 
+test("Diary MCP archive and restore preserve MCP lifecycle attribution", async () => {
+  const repository = new LifecycleRepository();
+  const service = new DiaryService(repository);
+
+  await service.archiveMcpDiary(
+    { userId: " user-a " },
+    { id: " diary-1 " },
+  );
+  await service.restoreMcpDiary(
+    { userId: " user-a " },
+    { id: " diary-1 " },
+  );
+
+  assert.deepEqual(repository.mutations, [
+    {
+      userId: "user-a",
+      id: "diary-1",
+      actorType: "user",
+      channel: "mcp",
+    },
+    {
+      userId: "user-a",
+      id: "diary-1",
+      actorType: "user",
+      channel: "mcp",
+    },
+  ]);
+});
+
 for (const action of ["archive", "restore"] as const) {
   test(`Diary repeated or ineligible ${action} returns DIARY_NOT_FOUND`, async () => {
     const repository = new LifecycleRepository();
