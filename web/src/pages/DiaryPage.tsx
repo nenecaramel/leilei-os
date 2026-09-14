@@ -11,6 +11,11 @@ import { ModuleSearchStateMessage } from "../components/ModuleSearch";
 import { NativeDateInput } from "../components/NativeDateInput";
 import { DiaryPageHeader } from "./DiaryPageHeader";
 import {
+  DiaryCommentsSection,
+  type DiaryComment,
+  type DiaryCommentsMetadata,
+} from "./DiaryComments";
+import {
   DiaryPaperDateEditor,
   DiaryPaperEditor,
   DiaryPaperMetadataEditor,
@@ -75,6 +80,8 @@ type DiaryEntry = {
   created_at: string;
   updated_at: string;
   author: PaperAuthorValue;
+  comments?: DiaryComment[];
+  comments_metadata?: DiaryCommentsMetadata;
 };
 
 type DiaryListResponse = {
@@ -982,7 +989,15 @@ export function DiaryPageContent({
         },
       );
       if (!mutationOwnership.current.owns(ticket)) return;
-      setSelectedDiary(response.data);
+      setSelectedDiary((current) =>
+        current?.id === response.data.id
+          ? {
+              ...response.data,
+              comments: current.comments,
+              comments_metadata: current.comments_metadata,
+            }
+          : response.data
+      );
       setEditing(false);
       setEditingAuthor(response.data.author ?? null);
       listAvailableRef.current = false;
@@ -1258,6 +1273,7 @@ export function DiaryPageContent({
 
           {isDetail ? (
             <MobileDiaryDetail
+              api={api}
               state={detailState}
               diary={selectedDiary}
               triggerRef={paperTriggerRef}
@@ -1316,6 +1332,13 @@ export function DiaryPageContent({
                 closeDiary(true);
                 return true;
               }}
+              onCommentsChange={(comments, metadata) => {
+                setSelectedDiary((current) =>
+                  current
+                    ? { ...current, comments, comments_metadata: metadata }
+                    : current
+                );
+              }}
             />
           ) : null}
         </>
@@ -1337,6 +1360,7 @@ export function DiaryPageContent({
 
           {isArchivedDetail ? (
             <MobileArchivedDiaryDetail
+              api={api}
               state={archivedDetailState}
               diary={archivedDiary}
               triggerRef={paperTriggerRef}
@@ -1352,6 +1376,13 @@ export function DiaryPageContent({
                 setArchiveReloadKey((value) => value + 1)
               }
               onBack={closeArchivedDiary}
+              onCommentsChange={(comments, metadata) => {
+                setArchivedDiary((current) =>
+                  current
+                    ? { ...current, comments, comments_metadata: metadata }
+                    : current
+                );
+              }}
             />
           ) : null}
         </>
@@ -1444,6 +1475,7 @@ function MobileDiaryRows({
 }
 
 function MobileDiaryDetail({
+  api,
   state,
   diary,
   triggerRef,
@@ -1462,7 +1494,9 @@ function MobileDiaryDetail({
   onArchive,
   onRetry,
   onRequestClose,
+  onCommentsChange,
 }: {
+  api: WebApiClient;
   state: DetailState;
   diary: DiaryEntry | null;
   triggerRef: RefObject<HTMLElement | null>;
@@ -1484,6 +1518,10 @@ function MobileDiaryDetail({
   onArchive(id: string): void;
   onRetry(): void;
   onRequestClose(): boolean;
+  onCommentsChange(
+    comments: DiaryComment[],
+    metadata: DiaryCommentsMetadata,
+  ): void;
 }) {
   if (state === "loading") {
     return (
@@ -1622,6 +1660,19 @@ function MobileDiaryDetail({
           <p className="memory-paper-content">{diary.content}</p>
         </>
       )}
+      <DiaryCommentsSection
+        api={api}
+        diaryId={diary.id}
+        comments={diary.comments ?? []}
+        metadata={diary.comments_metadata ?? {
+          count: diary.comments?.length ?? 0,
+          returned: diary.comments?.length ?? 0,
+          truncated: false,
+        }}
+        readOnly={false}
+        disabled={editing || updating || archiving}
+        onChange={onCommentsChange}
+      />
     </PaperDetailDialog>
   );
 }
@@ -1693,6 +1744,7 @@ function MobileArchivedDiaryList({
 }
 
 function MobileArchivedDiaryDetail({
+  api,
   state,
   diary,
   triggerRef,
@@ -1706,7 +1758,9 @@ function MobileArchivedDiaryDetail({
   onCancelDelete,
   onRetry,
   onBack,
+  onCommentsChange,
 }: {
+  api: WebApiClient;
   state: DetailState;
   diary: DiaryEntry | null;
   triggerRef: RefObject<HTMLElement | null>;
@@ -1720,6 +1774,10 @@ function MobileArchivedDiaryDetail({
   onCancelDelete(): void;
   onRetry(): void;
   onBack(): void;
+  onCommentsChange(
+    comments: DiaryComment[],
+    metadata: DiaryCommentsMetadata,
+  ): void;
 }) {
   if (state === "loading") {
     return (
@@ -1802,6 +1860,19 @@ function MobileArchivedDiaryDetail({
     >
       <h2 className="memory-paper-title">{diary.title}</h2>
       <p className="memory-paper-content">{diary.content}</p>
+      <DiaryCommentsSection
+        api={api}
+        diaryId={diary.id}
+        comments={diary.comments ?? []}
+        metadata={diary.comments_metadata ?? {
+          count: diary.comments?.length ?? 0,
+          returned: diary.comments?.length ?? 0,
+          truncated: false,
+        }}
+        readOnly
+        disabled={restoring || deleting}
+        onChange={onCommentsChange}
+      />
     </PaperDetailDialog>
   );
 }
