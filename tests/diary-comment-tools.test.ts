@@ -302,6 +302,54 @@ test("get_diary includes the recent canonical comment window when the comment se
   });
 });
 
+test("get_diary marks a partial comment window as truncated and directs callers to pagination", async (t) => {
+  const comments = new CommentService();
+  comments.listComments = async (input) => {
+    comments.listCalls.push(input);
+    return {
+      comments: [COMMENT],
+      metadata: {
+        count: 73,
+        returned: 1,
+        has_more: true,
+        next_before: "older-comments",
+      },
+    };
+  };
+  const pair = await connect(comments);
+  t.after(async () => {
+    await pair.client.close();
+    await pair.server.close();
+  });
+
+  const result = await pair.client.callTool({
+    name: "get_diary",
+    arguments: { id: DIARY_ID },
+  });
+
+  const structured = result.structuredContent as {
+    data: {
+      comments_metadata: {
+        count: number;
+        returned: number;
+        truncated: boolean;
+      };
+    };
+  };
+  assert.deepEqual(structured.data.comments_metadata, {
+    count: 73,
+    returned: 1,
+    truncated: true,
+  });
+  const textContent = (result.content as Array<{ type: string; text?: string }>)
+    .map((item) => item.text ?? "")
+    .join("\n");
+  assert.match(
+    textContent,
+    /Only 1 of 73 comments are included\. Use list_diary_comments to read older comments\./,
+  );
+});
+
 test("list_diary_comments supports archived reads and opaque pagination", async (t) => {
   const comments = new CommentService();
   const pair = await connect(comments);
