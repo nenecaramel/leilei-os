@@ -212,6 +212,7 @@ export const todoEntries = pgTable(
     entryId: text("entry_id").notNull(),
     kind: todoEntryKindEnum("kind").notNull(),
     text: text("text").notNull(),
+    revision: integer("revision").default(1).notNull(),
     position: integer("position").notNull(),
   },
   (table) => [
@@ -230,6 +231,10 @@ export const todoEntries = pgTable(
     check(
       "todo_entries_text_nonblank",
       sql`char_length(btrim(${table.text})) > 0`,
+    ),
+    check(
+      "todo_entries_revision_positive",
+      sql`${table.revision} >= 1`,
     ),
     check(
       "todo_entries_position_nonnegative",
