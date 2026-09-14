@@ -7003,6 +7003,11 @@ body:has(.system-page) {
   width: 100%;
 }
 
+.diary-comments-empty .diary-comment-create-trigger,
+.diary-comments-empty .diary-comment-composer {
+  margin-top: 30px;
+}
+
 .diary-comment-create-trigger:disabled,
 .diary-comment-older:disabled {
   opacity: 0.45;
