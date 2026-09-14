@@ -34,6 +34,7 @@ class FakeRepository implements DiaryCommentRepository {
   userStatus: "active" | "disabled" | null = "active";
   diaryStatus: DiaryCommentScope | null = "active";
   createInput?: DiaryCommentCreateInput;
+  createOptions?: { mcpWriteIdempotency?: boolean };
   createOutcome: DiaryCommentCreateOutcome = {
     outcome: "created",
     comment: baseComment(),
@@ -75,8 +76,12 @@ class FakeRepository implements DiaryCommentRepository {
     return this.count;
   }
 
-  async createCommentIdempotently(input: DiaryCommentCreateInput) {
+  async createCommentIdempotently(
+    input: DiaryCommentCreateInput,
+    options?: { mcpWriteIdempotency?: boolean },
+  ) {
     this.createInput = input;
+    this.createOptions = options;
     return this.createOutcome;
   }
 
@@ -114,11 +119,36 @@ test("Diary comment create normalizes content and preserves immutable author pro
   assert.equal(repository.createInput?.author, "C");
   assert.equal(repository.createInput?.diaryId, DIARY_ID);
   assert.match(repository.createInput?.requestHash ?? "", /^[0-9a-f]{64}$/);
+  assert.match(repository.createInput?.mcpRequestHash ?? "", /^[0-9a-f]{64}$/);
+  assert.notEqual(
+    repository.createInput?.requestHash,
+    repository.createInput?.mcpRequestHash,
+    "MCP fingerprint uses the shared versioned canonical hash",
+  );
+  assert.deepEqual(repository.createOptions, {
+    mcpWriteIdempotency: true,
+  });
   assert.deepEqual(result.metadata, {
     created: true,
     idempotent_replay: false,
   });
   assert.equal(result.comment.author, "C");
+});
+
+test("Diary Web comment creation keeps local idempotency without claiming an MCP ledger write", async () => {
+  const repository = new FakeRepository();
+  const service = new DiaryCommentService(repository);
+
+  await service.addWebComment({
+    userId: USER_ID,
+    diaryId: DIARY_ID,
+    author: "L",
+    content: "web comment",
+    idempotencyKey: "diary-comment-web-0001",
+  });
+
+  assert.deepEqual(repository.createOptions, {});
+  assert.equal(repository.createInput?.author, "L");
 });
 
 test("Diary comment create reports idempotent replay without duplicating", async () => {
