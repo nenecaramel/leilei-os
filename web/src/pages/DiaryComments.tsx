@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WebApiError, type WebApiClient } from "../api/useWebApiClient";
 import {
   PaperAuthorSignature,
@@ -83,6 +83,12 @@ function createIdempotencyKey(): string {
   return `web:diary-comment:${crypto.randomUUID()}`;
 }
 
+function resizeCommentTextarea(node: HTMLTextAreaElement | null): void {
+  if (!node) return;
+  node.style.height = "30px";
+  node.style.height = `${Math.max(30, node.scrollHeight)}px`;
+}
+
 export function DiaryCommentsSection({
   api,
   diaryId,
@@ -121,6 +127,17 @@ export function DiaryCommentsSection({
   );
   const [error, setError] = useState("");
   const [conflictId, setConflictId] = useState<string | null>(null);
+
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (composerOpen) resizeCommentTextarea(composerTextareaRef.current);
+  }, [composerContent, composerOpen]);
+
+  useLayoutEffect(() => {
+    if (editingId) resizeCommentTextarea(editingTextareaRef.current);
+  }, [editingContent, editingId]);
 
   const commentById = useMemo(
     () => new Map(comments.map((comment) => [comment.id, comment])),
@@ -493,10 +510,11 @@ export function DiaryCommentsSection({
               {editing ? (
                 <div className="diary-comment-editor">
                   <textarea
+                    ref={editingTextareaRef}
                     aria-label="编辑评论"
                     value={editingContent}
                     disabled={savingEdit || disabled}
-                    rows={2}
+                    rows={1}
                     onChange={(event) => {
                       setEditingContent(event.target.value);
                       setError("");
@@ -551,12 +569,13 @@ export function DiaryCommentsSection({
         composerOpen ? (
           <div className="diary-comment-composer">
             <textarea
+              ref={composerTextareaRef}
               autoFocus
               aria-label="写一条评论"
-              placeholder="写下评论……"
+              placeholder="写一条评论…"
               value={composerContent}
               disabled={savingCreate || disabled}
-              rows={2}
+              rows={1}
               onChange={(event) => {
                 setComposerContent(event.target.value);
                 setError("");
