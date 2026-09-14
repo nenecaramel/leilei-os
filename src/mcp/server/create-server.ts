@@ -127,6 +127,11 @@ import {
   WriteTodoPaperAuthenticationError,
   type WriteTodoPaperToolDependencies,
 } from "../tools/write-todo-paper/register.js";
+import {
+  registerTodoEntryWriteTools,
+  TodoEntryWriteAuthenticationError,
+  type TodoEntryWriteToolDependencies,
+} from "../tools/todo-entry/register.js";
 import { registerSearchTodoTool, type SearchTodoToolDependencies } from "../tools/search-todo/register.js";
 import { registerSearchUniverseTool, type SearchUniverseToolDependencies } from "../tools/search-universe/register.js";
 import { registerGetUniverseNodeTool, type GetUniverseNodeToolDependencies } from "../tools/get-universe-node/register.js";
@@ -396,6 +401,15 @@ const productionTodoService = {
   replacePaperIdempotently: (
     input: Parameters<WriteTodoPaperToolDependencies["todoService"]["replacePaperIdempotently"]>[0],
   ) => missingDatabaseService(),
+  appendEntryIdempotently: (
+    input: Parameters<TodoEntryWriteToolDependencies["todoService"]["appendEntryIdempotently"]>[0],
+  ) => missingDatabaseService(),
+  updateEntryIdempotently: (
+    input: Parameters<TodoEntryWriteToolDependencies["todoService"]["updateEntryIdempotently"]>[0],
+  ) => missingDatabaseService(),
+  deleteEntryIdempotently: (
+    input: Parameters<TodoEntryWriteToolDependencies["todoService"]["deleteEntryIdempotently"]>[0],
+  ) => missingDatabaseService(),
   search: (input: Parameters<SearchTodoToolDependencies["todoService"]["search"]>[0]) => missingDatabaseService(),
 };
 
@@ -415,6 +429,7 @@ type TodoToolsDependencies = {
   todoService: ReadTodoDayToolDependencies["todoService"] &
     ListTodoDatesToolDependencies["todoService"] &
     WriteTodoPaperToolDependencies["todoService"] &
+    TodoEntryWriteToolDependencies["todoService"] &
     SearchTodoToolDependencies["todoService"];
   getAuthenticatedUserId: () => string;
 };
@@ -795,6 +810,13 @@ export function createMcpServer(
     todoService: productionTodoService,
     getAuthenticatedUserId: () => {
       if (!authenticatedUserId) throw new WriteTodoPaperAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerTodoEntryWriteTools(server, dependencies.todoTools ?? {
+    todoService: productionTodoService,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new TodoEntryWriteAuthenticationError();
       return authenticatedUserId;
     },
   });
