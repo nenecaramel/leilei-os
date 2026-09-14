@@ -1660,19 +1660,21 @@ function MobileDiaryDetail({
           <p className="memory-paper-content">{diary.content}</p>
         </>
       )}
-      <DiaryCommentsSection
-        api={api}
-        diaryId={diary.id}
-        comments={diary.comments ?? []}
-        metadata={diary.comments_metadata ?? {
-          count: diary.comments?.length ?? 0,
-          returned: diary.comments?.length ?? 0,
-          truncated: false,
-        }}
-        readOnly={false}
-        disabled={editing || updating || archiving}
-        onChange={onCommentsChange}
-      />
+      {!editing ? (
+        <DiaryCommentsSection
+          api={api}
+          diaryId={diary.id}
+          comments={diary.comments ?? []}
+          metadata={diary.comments_metadata ?? {
+            count: diary.comments?.length ?? 0,
+            returned: diary.comments?.length ?? 0,
+            truncated: false,
+          }}
+          readOnly={false}
+          disabled={updating || archiving}
+          onChange={onCommentsChange}
+        />
+      ) : null}
     </PaperDetailDialog>
   );
 }

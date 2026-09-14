@@ -7068,7 +7068,8 @@ body:has(.system-page) {
 .diary-comment-composer textarea {
   display: block;
   width: 100%;
-  min-height: 60px;
+  min-height: 30px;
+  height: 30px;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -7078,7 +7079,7 @@ body:has(.system-page) {
   color: #252525;
   background: transparent;
   box-shadow: none;
-  resize: vertical;
+  resize: none;
   font: inherit;
   font-size: 14px;
   line-height: 30px;
@@ -7090,6 +7091,12 @@ body:has(.system-page) {
   outline: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.diary-comment-composer textarea::placeholder {
+  color: #858585;
+  font-size: 13px;
+  opacity: 1;
 }
 
 .diary-comment-edit-actions,
@@ -7156,8 +7163,12 @@ body:has(.system-page) {
 
   .diary-comment-editor textarea,
   .diary-comment-composer textarea {
-    font-size: 16px;
+    font-size: 14px;
     resize: none;
+  }
+
+  .diary-comment-composer textarea::placeholder {
+    font-size: 13px;
   }
 
   .diary-comment-desktop-actions {
