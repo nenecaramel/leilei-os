@@ -95,7 +95,7 @@ export function registerGetDiaryTool(
     {
       title: "Get one diary entry",
       description:
-        "Read one authenticated, authorized Diary entry by exact ID from search_diary or global_search, including full private content. scope defaults to active. scope=active reads only active records and cannot read archived records; scope=archived reads only archived records and cannot read active records.",
+        "Read one authenticated, authorized Diary entry by exact ID from search_diary or global_search, including full private content and up to the 50 most recent canonical Diary comments. comments_metadata.truncated tells you when older comments remain; use list_diary_comments to continue. scope defaults to active. scope=active reads only active records and cannot read archived records; scope=archived reads only archived records and cannot read active records.",
       inputSchema: getDiaryInputSchema,
       outputSchema: getDiaryOutputSchema,
       annotations: {
