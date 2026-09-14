@@ -67,6 +67,7 @@ export type AppDependencies = {
   verifyWebAccessToken?: AccessTokenVerifier;
   webMemoryService?: MemoryApiDependencies["memoryService"];
   webDiaryService?: DiaryApiDependencies["diaryService"];
+  webDiaryCommentService?: DiaryApiDependencies["diaryCommentService"];
   webTaskService?: TaskApiDependencies["taskService"];
   webSystemService?: SystemApiDependencies["systemService"];
   toyService?: ToyApiDependencies["toyService"];
@@ -289,6 +290,8 @@ export function createApp(
 
     const webMemoryService = dependencies.webMemoryService;
     const webDiaryService = dependencies.webDiaryService;
+    const webDiaryCommentService =
+      dependencies.webDiaryCommentService;
     const webTaskService = dependencies.webTaskService;
     const webSystemService = dependencies.webSystemService;
     const toyService = dependencies.toyService;
@@ -348,6 +351,9 @@ export function createApp(
         },
         diary: {
           diaryService: webDiaryService,
+          ...(webDiaryCommentService
+            ? { diaryCommentService: webDiaryCommentService }
+            : {}),
         },
         task: {
           taskService: webTaskService,
