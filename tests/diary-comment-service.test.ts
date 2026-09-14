@@ -205,6 +205,28 @@ test("Diary comment update exposes the authoritative record on revision conflict
   );
 });
 
+test("Diary comment no-op update returns canonical state without advancing revision", async () => {
+  const repository = new FakeRepository();
+  repository.updateOutcome = {
+    outcome: "unchanged",
+    comment: baseComment({
+      content: "same",
+      revision: 7,
+    }),
+  };
+  const service = new DiaryCommentService(repository);
+
+  const result = await service.updateComment({
+    userId: USER_ID,
+    id: COMMENT_ID,
+    expectedRevision: 7,
+    content: "same",
+  });
+
+  assert.equal(result.content, "same");
+  assert.equal(result.revision, 7);
+});
+
 test("Archived Diary comments are readable but reject update and delete mutations", async () => {
   const repository = new FakeRepository();
   repository.diaryStatus = "archived";
