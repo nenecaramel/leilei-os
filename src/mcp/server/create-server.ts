@@ -46,6 +46,11 @@ import {
   type GetDiaryToolDependencies,
 } from "../tools/get-diary/register.js";
 import {
+  DiaryCommentAuthenticationError,
+  registerDiaryCommentTools,
+  type DiaryCommentToolDependencies,
+} from "../tools/diary-comment/register.js";
+import {
   CreateTaskAuthenticationError,
   registerCreateTaskTool,
   type CreateTaskToolDependencies,
@@ -269,6 +274,19 @@ const productionGetDiaryDependencies: GetDiaryToolDependencies = {
   },
 };
 
+const productionDiaryCommentDependencies: DiaryCommentToolDependencies = {
+  diaryCommentService: {
+    addMcpComment: (context, input) => missingDatabaseService(),
+    getComment: (input) => missingDatabaseService(),
+    listComments: (input) => missingDatabaseService(),
+    updateComment: (input) => missingDatabaseService(),
+    deleteComment: (input) => missingDatabaseService(),
+  },
+  getAuthenticatedUserId: () => {
+    throw new DiaryCommentAuthenticationError();
+  },
+};
+
 const productionCreateTaskDependencies: CreateTaskToolDependencies = {
   taskService: {
     createTaskIdempotently: (context, input, idempotencyKey) => missingDatabaseService(),
@@ -440,6 +458,7 @@ export type McpServerDependencies = {
   updateDiary?: UpdateDiaryToolDependencies;
   searchDiary?: SearchDiaryToolDependencies;
   getDiary?: GetDiaryToolDependencies;
+  diaryComments?: DiaryCommentToolDependencies;
   taskTools?: {
     taskService: CreateTaskToolDependencies["taskService"] &
       ListTasksToolDependencies["taskService"] &
@@ -556,12 +575,33 @@ export function createMcpServer(
       },
     },
   );
-  registerGetDiaryTool(
+  const getDiaryDependencies: GetDiaryToolDependencies =
+    dependencies.getDiary ?? {
+      diaryService:
+        dependencies.diaryTools?.diaryService ??
+        productionGetDiaryDependencies.diaryService,
+      ...(dependencies.diaryComments
+        ? {
+            diaryCommentService:
+              dependencies.diaryComments.diaryCommentService,
+          }
+        : {}),
+      getAuthenticatedUserId:
+        dependencies.diaryTools?.getAuthenticatedUserId ??
+        (() => {
+          if (!authenticatedUserId) throw new DiaryReadAuthenticationError();
+          return authenticatedUserId;
+        }),
+    };
+  registerGetDiaryTool(server, getDiaryDependencies);
+  registerDiaryCommentTools(
     server,
-    dependencies.getDiary ?? dependencies.diaryTools ?? {
-      ...productionGetDiaryDependencies,
+    dependencies.diaryComments ?? {
+      ...productionDiaryCommentDependencies,
       getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new DiaryReadAuthenticationError();
+        if (!authenticatedUserId) {
+          throw new DiaryCommentAuthenticationError();
+        }
         return authenticatedUserId;
       },
     },
