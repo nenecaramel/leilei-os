@@ -242,7 +242,7 @@ async function invokeAllWrites(client: Client) {
   ]);
 }
 
-test("MCP exposes exactly twenty-two write tools and preserves every annotation", async (t) => {
+test("MCP exposes exactly twenty-eight write tools and preserves every annotation", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
@@ -260,6 +260,12 @@ test("MCP exposes exactly twenty-two write tools and preserves every annotation"
     "write_todo_paper",
     "update_memory",
     "update_diary",
+    "archive_diary",
+    "restore_diary",
+    "delete_diary",
+    "add_diary_comment",
+    "update_diary_comment",
+    "delete_diary_comment",
     "update_task",
     "transition_task",
     "create_universe_node",
@@ -312,6 +318,24 @@ test("MCP exposes exactly twenty-two write tools and preserves every annotation"
   assert.equal(tools.find((tool) => tool.name === "archive_shared_paper")?.annotations?.destructiveHint, false);
   assert.equal(tools.find((tool) => tool.name === "restore_shared_paper")?.annotations?.destructiveHint, false);
   assert.equal(tools.find((tool) => tool.name === "delete_shared_paper")?.annotations?.destructiveHint, true);
+  for (const name of ["archive_diary", "restore_diary"]) {
+    assert.deepEqual(tools.find((tool) => tool.name === name)?.annotations, {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    });
+  }
+  assert.deepEqual(tools.find((tool) => tool.name === "delete_diary")?.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  });
+  assert.equal(tools.find((tool) => tool.name === "add_diary_comment")?.annotations?.idempotentHint, true);
+  for (const name of ["update_diary_comment", "delete_diary_comment"]) {
+    assert.equal(tools.find((tool) => tool.name === name)?.annotations?.idempotentHint, false);
+  }
   for (const name of ["create_task", "write_diary", "write_memory", "write_todo_paper"]) {
     const tool = tools.find((candidate) => candidate.name === name);
     assert.ok(tool?.inputSchema.required?.includes("author"));
