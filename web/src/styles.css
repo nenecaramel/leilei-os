@@ -6965,3 +6965,252 @@ body:has(.system-page) {
     margin-top: 96px;
   }
 }
+
+
+/* Diary comments: extend the existing paper language without moving Diary chrome. */
+.diary-comments {
+  display: block;
+  margin-top: 30px;
+  padding-bottom: 30px;
+  color: #252525;
+}
+
+.diary-comments-title {
+  min-height: 30px;
+  margin: 0;
+  color: #6d6d6d;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 30px;
+  letter-spacing: 0.04em;
+}
+
+.diary-comment-older,
+.diary-comment-create-trigger {
+  min-height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #858585;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 30px;
+  text-align: left;
+}
+
+.diary-comment-create-trigger {
+  width: 100%;
+}
+
+.diary-comment-create-trigger:disabled,
+.diary-comment-older:disabled {
+  opacity: 0.45;
+}
+
+.diary-comment-list {
+  display: block;
+}
+
+.diary-comment {
+  position: relative;
+  margin: 0 0 30px;
+}
+
+.diary-comment-meta {
+  position: relative;
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #858585;
+  font-size: 12px;
+  line-height: 30px;
+  letter-spacing: 0.02em;
+}
+
+.diary-comment-content {
+  margin: 0;
+  color: #252525;
+  font-size: 14px;
+  line-height: 30px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.diary-comment-desktop-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.diary-comment:hover .diary-comment-desktop-actions,
+.diary-comment:focus-within .diary-comment-desktop-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.diary-comment-desktop-actions .memory-paper-control,
+.diary-comment-edit-actions .memory-paper-control,
+.diary-comment-composer-buttons .memory-paper-control,
+.diary-comment-conflict .memory-paper-control {
+  min-height: 30px;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 30px;
+}
+
+.diary-comment-editor textarea,
+.diary-comment-composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  color: #252525;
+  background: transparent;
+  box-shadow: none;
+  resize: vertical;
+  font: inherit;
+  font-size: 14px;
+  line-height: 30px;
+}
+
+.diary-comment-editor textarea:focus,
+.diary-comment-composer textarea:focus {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.diary-comment-edit-actions,
+.diary-comment-composer-actions {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  color: #6d6d6d;
+  font-size: 13px;
+  line-height: 30px;
+}
+
+.diary-comment-composer-actions .paper-author-signature {
+  min-height: 30px;
+  color: #6d6d6d;
+  font-size: 13px;
+  line-height: 30px;
+}
+
+.diary-comment-composer-actions .paper-author-signature-trigger {
+  min-width: 30px;
+  min-height: 30px;
+  line-height: 30px;
+}
+
+.diary-comment-composer-actions .paper-author-signature-menu {
+  bottom: calc(100% + 4px);
+}
+
+.diary-comment-composer-buttons {
+  display: inline-flex;
+  align-items: center;
+}
+
+.diary-comment-conflict {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 30px;
+}
+
+.diary-comment-error {
+  min-height: 30px;
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 30px;
+}
+
+.diary-comment-mobile-menu {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .diary-comment-content {
+    font-size: 14px;
+  }
+
+  .diary-comment-editor textarea,
+  .diary-comment-composer textarea {
+    font-size: 16px;
+    resize: none;
+  }
+
+  .diary-comment-desktop-actions {
+    display: none;
+  }
+
+  .diary-comment-mobile-menu {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+  }
+
+  .diary-comment-menu-trigger {
+    min-width: 36px;
+    min-height: 30px;
+    padding: 0 0 0 8px;
+    color: #858585;
+    font-size: 15px;
+    line-height: 30px;
+    letter-spacing: 0.08em;
+  }
+
+  .diary-comment-menu-popover {
+    position: absolute;
+    z-index: 8;
+    top: 30px;
+    right: 0;
+    display: grid;
+    width: max-content;
+    min-width: 112px;
+    padding: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  }
+
+  .diary-comment-menu-popover button {
+    min-width: 96px;
+    min-height: 36px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 6px;
+    color: #303030;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+  }
+
+  .diary-comment-menu-popover button:active,
+  .diary-comment-menu-popover button:focus-visible {
+    background: rgba(0, 0, 0, 0.06);
+  }
+}
