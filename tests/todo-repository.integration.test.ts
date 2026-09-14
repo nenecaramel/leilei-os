@@ -659,6 +659,29 @@ test(
       assert.equal(replay.outcome, "replayed");
       assert.equal(replay.outcome === "replayed" ? replay.entry.id : null, appended.entry.id);
 
+      const beforeReorder = (await repository.readDay(userId, date)).L!;
+      const reordered = await repository.replacePaper({
+        userId,
+        date,
+        author: "L",
+        expectedRevision: beforeReorder.revision,
+        entries: [
+          { id: appended.entry.id, kind: appended.entry.kind, text: appended.entry.text },
+          { id: "entry-b", kind: "completed", text: "B" },
+          { id: "entry-a", kind: "pending", text: "A changed" },
+        ],
+      });
+      assert.equal(reordered.outcome, "committed");
+      if (reordered.outcome !== "committed") return;
+      assert.deepEqual(
+        reordered.paper.entries.map((entry) => ({ id: entry.id, revision: entry.revision })),
+        [
+          { id: appended.entry.id, revision: 1 },
+          { id: "entry-b", revision: 2 },
+          { id: "entry-a", revision: 2 },
+        ],
+      );
+
       const deleted = await repository.deleteEntryIdempotently!({
         userId,
         date,
