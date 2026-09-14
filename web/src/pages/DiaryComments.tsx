@@ -382,7 +382,10 @@ export function DiaryCommentsSection({
   }
 
   return (
-    <section className="diary-comments" aria-label="Diary comments">
+    <section
+      className={`diary-comments${metadata.count === 0 ? " diary-comments-empty" : ""}`}
+      aria-label="Diary comments"
+    >
       <h3 className="diary-comments-title">Comments</h3>
 
       {metadata.truncated ? (
