@@ -525,3 +525,171 @@ test(
     }
   },
 );
+
+
+test(
+  "Todo entry writes isolate CAS to one entry and preserve unrelated concurrent changes",
+  { skip: !runIntegration },
+  async () => {
+    const client = postgres(process.env.DATABASE_URL!, { prepare: false, ssl: false });
+    const database = drizzle(client, { schema });
+    const repository = new DrizzleTodoRepository(database as never);
+    const userId = randomUUID();
+    const date = "2026-09-14";
+    const now = new Date("2026-09-14T00:00:00.000Z");
+    try {
+      await database.insert(users).values({
+        id: userId,
+        email: `${userId}@example.invalid`,
+        displayName: "Todo entry writes",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const initial = await repository.replacePaper({
+        userId,
+        date,
+        author: "L",
+        expectedRevision: null,
+        entries: [
+          { id: "entry-a", kind: "pending", text: "A" },
+          { id: "entry-b", kind: "pending", text: "B" },
+        ],
+      });
+      assert.equal(initial.outcome, "committed");
+
+      const updateAInput = {
+        userId,
+        date,
+        author: "L" as const,
+        entryId: "entry-a",
+        expectedRevision: 1,
+        text: "A changed",
+        idempotencyKey: "todo.entry.integration.update-a-01",
+        requestHash: hashMcpWriteRequest({
+          date,
+          author: "L",
+          entry_id: "entry-a",
+          expected_revision: 1,
+          kind: null,
+          text: "A changed",
+        }),
+      };
+      const updateA = await repository.updateEntryIdempotently!(updateAInput);
+      assert.equal(updateA.outcome, "committed");
+      assert.equal(updateA.outcome === "committed" ? updateA.entry.revision : null, 2);
+
+      const updateB = await repository.updateEntryIdempotently!({
+        userId,
+        date,
+        author: "L",
+        entryId: "entry-b",
+        expectedRevision: 1,
+        kind: "completed",
+        idempotencyKey: "todo.entry.integration.update-b-01",
+        requestHash: hashMcpWriteRequest({
+          date,
+          author: "L",
+          entry_id: "entry-b",
+          expected_revision: 1,
+          kind: "completed",
+          text: null,
+        }),
+      });
+      assert.equal(updateB.outcome, "committed");
+      assert.equal(updateB.outcome === "committed" ? updateB.entry.revision : null, 2);
+
+      const staleA = await repository.updateEntryIdempotently!({
+        ...updateAInput,
+        idempotencyKey: "todo.entry.integration.update-a-stale",
+        requestHash: hashMcpWriteRequest({
+          date,
+          author: "L",
+          entry_id: "entry-a",
+          expected_revision: 1,
+          kind: null,
+          text: "stale overwrite",
+        }),
+        text: "stale overwrite",
+      });
+      assert.deepEqual(staleA, { outcome: "entry_revision_conflict" });
+
+      const paperBeforeNoop = (await repository.readDay(userId, date)).L!;
+      const noOpB = await repository.updateEntryIdempotently!({
+        userId,
+        date,
+        author: "L",
+        entryId: "entry-b",
+        expectedRevision: 2,
+        kind: "completed",
+        idempotencyKey: "todo.entry.integration.noop-b-001",
+        requestHash: hashMcpWriteRequest({
+          date,
+          author: "L",
+          entry_id: "entry-b",
+          expected_revision: 2,
+          kind: "completed",
+          text: null,
+        }),
+      });
+      assert.equal(noOpB.outcome, "committed");
+      if (noOpB.outcome !== "committed") return;
+      assert.equal(noOpB.entry.revision, 2);
+      assert.equal(noOpB.paperRevision, paperBeforeNoop.revision);
+
+      const appendInput = {
+        userId,
+        date,
+        author: "L" as const,
+        kind: "record" as const,
+        text: "C appended independently",
+        idempotencyKey: "todo.entry.integration.append-c-001",
+        requestHash: hashMcpWriteRequest({
+          date,
+          author: "L",
+          kind: "record",
+          text: "C appended independently",
+        }),
+      };
+      const appended = await repository.appendEntryIdempotently!(appendInput);
+      assert.equal(appended.outcome, "committed");
+      if (appended.outcome !== "committed") return;
+      assert.equal(appended.entry.revision, 1);
+      const replay = await repository.appendEntryIdempotently!(appendInput);
+      assert.equal(replay.outcome, "replayed");
+      assert.equal(replay.outcome === "replayed" ? replay.entry.id : null, appended.entry.id);
+
+      const deleted = await repository.deleteEntryIdempotently!({
+        userId,
+        date,
+        author: "L",
+        entryId: "entry-a",
+        expectedRevision: 2,
+        idempotencyKey: "todo.entry.integration.delete-a-001",
+        requestHash: hashMcpWriteRequest({
+          date,
+          author: "L",
+          entry_id: "entry-a",
+          expected_revision: 2,
+        }),
+      });
+      assert.equal(deleted.outcome, "committed");
+
+      const finalPaper = (await repository.readDay(userId, date)).L!;
+      assert.equal(finalPaper.entries.some((entry) => entry.id === "entry-a"), false);
+      assert.deepEqual(
+        finalPaper.entries
+          .filter((entry) => entry.id === "entry-b")
+          .map((entry) => ({ kind: entry.kind, text: entry.text, revision: entry.revision })),
+        [{ kind: "completed", text: "B", revision: 2 }],
+      );
+      assert.equal(finalPaper.entries.some((entry) => entry.id === appended.entry.id), true);
+    } finally {
+      await client`delete from mcp_write_idempotency where user_id = ${userId}`;
+      await client`delete from todo_entries where paper_id in (select id from todo_papers where user_id = ${userId})`;
+      await client`delete from todo_papers where user_id = ${userId}`;
+      await client`delete from users where id = ${userId}`;
+      await client.end();
+    }
+  },
+);
