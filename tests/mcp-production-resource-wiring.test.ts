@@ -82,9 +82,6 @@ test("production MCP session factory assembles 78 public tools with Diary commen
   for (const name of ["append_todo_entry", "update_todo_entry", "delete_todo_entry"]) {
     assert.equal(names.filter((candidate) => candidate === name).length, 1);
   }
-  for (const name of ["append_todo_entry", "update_todo_entry", "delete_todo_entry"]) {
-    assert.equal(names.filter((candidate) => candidate === name).length, 1);
-  }
   assert.equal(names.filter((name) => name === "get_health").length, 1);
   assert.equal(names.filter((name) => name === "get_current_time").length, 1);
   assert.equal(names.filter((name) => name === "render_thinking_block").length, 1);
