@@ -165,10 +165,37 @@ function createFixture(failure?: Error) {
           return [TODO_PAPER.date];
         },
         async replacePaperIdempotently(input: unknown) {
-          todoCalls.push(input);
+          todoCalls.push({ operation: "paper", input });
           if (failure) throw failure;
           return {
-            paper: TODO_PAPER,
+            paper: { ...TODO_PAPER, entries: TODO_PAPER.entries.map((entry) => ({ ...entry, revision: 1 })) },
+            metadata: { committed: true, idempotent_replay: false },
+          };
+        },
+        async appendEntryIdempotently(input: unknown) {
+          todoCalls.push({ operation: "append", input });
+          if (failure) throw failure;
+          return {
+            entry: { id: "todo-entry-appended", kind: "pending" as const, text: "Appended", revision: 1 },
+            paperRevision: 2,
+            metadata: { committed: true, idempotent_replay: false },
+          };
+        },
+        async updateEntryIdempotently(input: unknown) {
+          todoCalls.push({ operation: "update", input });
+          if (failure) throw failure;
+          return {
+            entry: { id: "todo-contract-row", kind: "completed" as const, text: "Todo contract", revision: 2 },
+            paperRevision: 3,
+            metadata: { committed: true, idempotent_replay: false },
+          };
+        },
+        async deleteEntryIdempotently(input: unknown) {
+          todoCalls.push({ operation: "delete", input });
+          if (failure) throw failure;
+          return {
+            entryId: "todo-contract-row",
+            paperRevision: 4,
             metadata: { committed: true, idempotent_replay: false },
           };
         },
@@ -239,10 +266,41 @@ async function invokeAllWrites(client: Client) {
         idempotency_key: "todo-paper-contract-20260813",
       },
     }),
+    client.callTool({
+      name: "append_todo_entry",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        kind: "pending",
+        text: "Appended",
+        idempotency_key: "todo-entry-append-contract-01",
+      },
+    }),
+    client.callTool({
+      name: "update_todo_entry",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        entry_id: "todo-contract-row",
+        expected_revision: 1,
+        kind: "completed",
+        idempotency_key: "todo-entry-update-contract-01",
+      },
+    }),
+    client.callTool({
+      name: "delete_todo_entry",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        entry_id: "todo-contract-row",
+        expected_revision: 2,
+        idempotency_key: "todo-entry-delete-contract-01",
+      },
+    }),
   ]);
 }
 
-test("MCP exposes exactly twenty-eight write tools and preserves every annotation", async (t) => {
+test("MCP exposes exactly thirty-one write tools and preserves every annotation", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
@@ -258,6 +316,9 @@ test("MCP exposes exactly twenty-eight write tools and preserves every annotatio
     "toy_set",
     "toy_stop",
     "write_todo_paper",
+    "append_todo_entry",
+    "update_todo_entry",
+    "delete_todo_entry",
     "update_memory",
     "update_diary",
     "archive_diary",
@@ -341,7 +402,7 @@ test("MCP exposes exactly twenty-eight write tools and preserves every annotatio
     assert.ok(tool?.inputSchema.required?.includes("author"));
   }
   for (const tool of tools) {
-    if (!["create_task", "write_diary", "write_memory", "write_todo_paper", "add_diary_comment", "create_shared_paper", "edit_shared_paper", "update_memory", "update_diary", "update_task", "read_todo_day", "search_todo", "search_diary"].includes(tool.name)) {
+    if (!["create_task", "write_diary", "write_memory", "write_todo_paper", "append_todo_entry", "update_todo_entry", "delete_todo_entry", "add_diary_comment", "create_shared_paper", "edit_shared_paper", "update_memory", "update_diary", "update_task", "read_todo_day", "search_todo", "search_diary"].includes(tool.name)) {
       assert.equal("author" in (tool.inputSchema.properties ?? {}), false);
     }
   }
@@ -362,6 +423,20 @@ test("MCP exposes exactly twenty-eight write tools and preserves every annotatio
     [...(todoWrite.inputSchema.required ?? [])].sort(),
     ["date", "author", "revision", "entries", "idempotency_key"].sort(),
   );
+  assert.deepEqual(tools.find((tool) => tool.name === "append_todo_entry")?.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  for (const name of ["update_todo_entry", "delete_todo_entry"]) {
+    assert.deepEqual(tools.find((tool) => tool.name === name)?.annotations, {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+  }
 });
 
 test("each write resolves server identity once and invokes its service once", async (t) => {
@@ -373,12 +448,12 @@ test("each write resolves server identity once and invokes its service once", as
 
   const responses = await invokeAllWrites(client);
   assert.equal(responses.every((response) => response.isError !== true), true);
-  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2, todo: 1 });
+  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2, todo: 4 });
   assert.equal(taskCalls.length, 1);
   assert.equal(diaryCalls.length, 1);
   assert.equal(memoryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
-  assert.equal(todoCalls.length, 1);
+  assert.equal(todoCalls.length, 4);
   assert.deepEqual(taskCalls[0] && (taskCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
   assert.deepEqual(diaryCalls[0] && (diaryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
   assert.deepEqual(memoryCalls[0] && (memoryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
