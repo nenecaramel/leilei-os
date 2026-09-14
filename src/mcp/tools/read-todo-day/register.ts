@@ -9,7 +9,7 @@ const todoEntrySchema = z.object({
   id: z.string(),
   kind: z.enum(["pending", "completed", "record"]),
   text: z.string(),
-  revision: z.number().int().min(1).optional(),
+  revision: z.number().int().min(1),
 });
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
@@ -77,17 +77,31 @@ export function registerReadTodoDayTool(
       try {
         const userId = dependencies.getAuthenticatedUserId();
         const data = await dependencies.todoService.readDay(userId, date);
+        const normalizePaper = (paper: TodoDayPapers["L"]) => paper
+          ? {
+              ...paper,
+              entries: paper.entries.map((entry) => ({
+                ...entry,
+                revision: entry.revision ?? 1,
+              })),
+            }
+          : null;
+        const normalizedPapers: TodoDayPapers = {
+          L: normalizePaper(data.papers.L),
+          G: normalizePaper(data.papers.G),
+          C: normalizePaper(data.papers.C),
+        };
         const scopedData = author
           ? {
               date: data.date,
               author,
               papers: {
-                L: author === "L" ? data.papers.L : null,
-                G: author === "G" ? data.papers.G : null,
-                C: author === "C" ? data.papers.C : null,
+                L: author === "L" ? normalizedPapers.L : null,
+                G: author === "G" ? normalizedPapers.G : null,
+                C: author === "C" ? normalizedPapers.C : null,
               },
             }
-          : data;
+          : { date: data.date, papers: normalizedPapers };
         return {
           content: [{ type: "text", text: todoDayContent(scopedData) }],
           structuredContent: { success: true as const, data: scopedData },
@@ -116,7 +130,7 @@ function todoDayContent(data: {
       continue;
     }
     for (const entry of paper.entries) {
-      lines.push(`${author} [${entry.id}; revision=${entry.revision ?? 1}] ${entry.kind}: ${quoteMcpText(entry.text)}`);
+      lines.push(`${author} [${entry.id}; revision=${entry.revision}] ${entry.kind}: ${quoteMcpText(entry.text)}`);
     }
   }
   if (paperCount === 0) {
