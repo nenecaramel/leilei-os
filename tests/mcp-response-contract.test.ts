@@ -339,7 +339,7 @@ test("routing descriptions align with executable schemas and the MCP inventory r
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
   const tools = (await pair.client.listTools()).tools;
   // The current production registration exposes the accepted core surface.
-  assert.equal(tools.length, 60);
+  assert.equal(tools.length, 61);
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
   const createTask = byName.get("create_task");

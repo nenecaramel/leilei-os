@@ -420,6 +420,7 @@ const productionSharedPaperService: SharedPaperToolService = {
   listEdits: () => missingDatabaseService(),
   createPaperIdempotently: () => missingDatabaseService(),
   editPaperByMatch: () => missingDatabaseService(),
+  appendPaperIdempotently: () => missingDatabaseService(),
   archivePaperIdempotently: () => missingDatabaseService(),
   restorePaperIdempotently: () => missingDatabaseService(),
   deletePaperIdempotently: () => missingDatabaseService(),
