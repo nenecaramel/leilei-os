@@ -12,6 +12,7 @@ export interface PaperAuthorSignatureProps {
   disabled?: boolean;
   onChange?: (author: PaperAuthor) => void;
   error?: string | null;
+  placement?: "paper" | "inline";
 }
 
 export function PaperAuthorSignature({
@@ -19,6 +20,7 @@ export function PaperAuthorSignature({
   editable,
   disabled = false,
   onChange,
+  placement = "paper",
 }: PaperAuthorSignatureProps) {
   const [open, setOpen] = useState(false);
   const [signatureSlot, setSignatureSlot] = useState<HTMLElement | null | undefined>(undefined);
@@ -26,10 +28,14 @@ export function PaperAuthorSignature({
   const display = value ?? "—";
 
   useEffect(() => {
+    if (placement === "inline") {
+      setSignatureSlot(null);
+      return;
+    }
     setSignatureSlot(
       document.querySelector<HTMLElement>(".paper-detail-layer .paper-detail-signature-portal"),
     );
-  }, []);
+  }, [placement]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,6 +87,7 @@ export function PaperAuthorSignature({
     </span>
   );
 
+  if (placement === "inline") return signature;
   if (signatureSlot === undefined) return null;
   return signatureSlot ? createPortal(signature, signatureSlot) : signature;
 }
