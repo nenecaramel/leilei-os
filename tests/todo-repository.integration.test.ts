@@ -42,7 +42,7 @@ test(
             outcome: "committed",
             paper: {
               author: "C", date: "2026-08-12", revision: 1,
-              entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+              entries: [{ id: "c-1", kind: "pending", text: "Claude item", revision: 1 }],
             },
           });
           assert.deepEqual(await repository.readDay(userA, "2026-08-12"), {
@@ -50,7 +50,7 @@ test(
             G: null,
             C: {
               author: "C", date: "2026-08-12", revision: 1,
-              entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+              entries: [{ id: "c-1", kind: "pending", text: "Claude item", revision: 1 }],
             },
           });
           const cSecond = await repository.replacePaper({
@@ -289,7 +289,7 @@ test(
         date: input.date,
         author: input.author,
         expectedRevision: 1,
-        entries: [{ id: "later", kind: "record", text: "current persisted state" }],
+        entries: [{ id: "later", kind: "record", text: "current persisted state", revision: 1 }],
       });
       assert.equal(later.outcome, "committed");
       const replay = await repositories[1]!.replacePaperIdempotently!(input);
@@ -298,7 +298,7 @@ test(
         author: "L",
         date: input.date,
         revision: 2,
-        entries: [{ id: "later", kind: "record", text: "current persisted state" }],
+        entries: [{ id: "later", kind: "record", text: "current persisted state", revision: 1 }],
       });
 
       const raceInputs = ["a", "b"].map((suffix) => ({
@@ -489,7 +489,7 @@ test(
         date: "2026-08-12",
         author: "G",
         expectedRevision: null,
-        entries: [{ id: "old-entry", kind: "record", text: "preserve me" }],
+        entries: [{ id: "old-entry", kind: "record", text: "preserve me", revision: 1 }],
       });
       assert.equal(original.outcome, "committed");
       await database.execute(sql.raw(`
@@ -515,7 +515,7 @@ test(
         author: "G",
         date: "2026-08-12",
         revision: 1,
-        entries: [{ id: "old-entry", kind: "record", text: "preserve me" }],
+        entries: [{ id: "old-entry", kind: "record", text: "preserve me", revision: 1 }],
       });
     } finally {
       await client`delete from todo_entries where paper_id in (select id from todo_papers where user_id = ${userId})`;
