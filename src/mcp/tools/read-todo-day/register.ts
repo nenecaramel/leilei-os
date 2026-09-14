@@ -9,6 +9,7 @@ const todoEntrySchema = z.object({
   id: z.string(),
   kind: z.enum(["pending", "completed", "record"]),
   text: z.string(),
+  revision: z.number().int().min(1).optional(),
 });
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
@@ -115,7 +116,7 @@ function todoDayContent(data: {
       continue;
     }
     for (const entry of paper.entries) {
-      lines.push(`${author} [${entry.id}] ${entry.kind}: ${quoteMcpText(entry.text)}`);
+      lines.push(`${author} [${entry.id}; revision=${entry.revision ?? 1}] ${entry.kind}: ${quoteMcpText(entry.text)}`);
     }
   }
   if (paperCount === 0) {
