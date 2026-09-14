@@ -258,7 +258,7 @@ export function createListDiariesByDateApiHandler(
             : data,
         });
       } catch (error) {
-        sendDiaryError(response, error);
+        sendDiaryOrCommentError(response, error);
       }
     };
   }
@@ -394,7 +394,7 @@ export function createListDiariesByDateApiHandler(
             : data,
         });
       } catch (error) {
-        sendDiaryError(response, error);
+        sendDiaryOrCommentError(response, error);
       }
     };
   }
@@ -685,6 +685,17 @@ export function createListDiariesByDateApiHandler(
     });
   }
   
+  function sendDiaryOrCommentError(
+    response: Response,
+    error: unknown,
+  ): void {
+    if (error instanceof DiaryCommentDomainError) {
+      sendDiaryCommentError(response, error);
+      return;
+    }
+    sendDiaryError(response, error);
+  }
+
   function sendDiaryCommentError(
     response: Response,
     error: unknown,
