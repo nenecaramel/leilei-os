@@ -607,6 +607,9 @@ export const mcpWriteIdempotency = pgTable(
         | "toy_set"
         | "toy_stop"
         | "write_todo_paper"
+        | "append_todo_entry"
+        | "update_todo_entry"
+        | "delete_todo_entry"
         | "create_universe_node"
         | "create_universe_relation"
         | "create_shared_paper"
@@ -626,6 +629,7 @@ export const mcpWriteIdempotency = pgTable(
         | "memory"
         | "toy_command"
         | "todo_paper"
+        | "todo_entry"
         | "universe_node"
         | "universe_relation"
         | "shared_paper"
@@ -654,7 +658,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_tool_allowed",
-      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper', 'archive_shared_paper', 'restore_shared_paper', 'delete_shared_paper', 'add_diary_comment')`,
+      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'append_todo_entry', 'update_todo_entry', 'delete_todo_entry', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper', 'archive_shared_paper', 'restore_shared_paper', 'delete_shared_paper', 'add_diary_comment')`,
     ),
     check(
       "mcp_write_idempotency_key_format",
@@ -666,7 +670,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_resource_type_allowed",
-      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'universe_node', 'universe_relation', 'shared_paper', 'shared_paper_edit', 'diary_comment')`,
+      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'todo_entry', 'universe_node', 'universe_relation', 'shared_paper', 'shared_paper_edit', 'diary_comment')`,
     ),
   ],
 );
