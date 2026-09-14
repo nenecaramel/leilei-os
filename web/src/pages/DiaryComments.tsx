@@ -127,6 +127,8 @@ export function DiaryCommentsSection({
     [comments],
   );
 
+  if (readOnly && metadata.count === 0) return null;
+
   function updateState(
     nextComments: DiaryComment[],
     nextMetadata: DiaryCommentsMetadata,
