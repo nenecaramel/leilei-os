@@ -38,7 +38,7 @@ export function createProductionMcpSessionServerFactory(input: {
   activeUserRepository: ActiveUserRepository;
   memoryService: MemoryService;
   diaryService: DiaryService;
-  diaryCommentService: DiaryCommentService;
+  diaryCommentService?: DiaryCommentService;
   taskService: TaskService;
   toyCommandService: ToyCommandService;
   globalSearchService: GlobalSearchService;
@@ -79,10 +79,14 @@ export function createProductionMcpSessionServerFactory(input: {
         diaryService: input.diaryService,
         getAuthenticatedUserId,
       },
-      diaryComments: {
-        diaryCommentService: input.diaryCommentService,
-        getAuthenticatedUserId,
-      },
+      ...(input.diaryCommentService
+        ? {
+            diaryComments: {
+              diaryCommentService: input.diaryCommentService,
+              getAuthenticatedUserId,
+            },
+          }
+        : {}),
       taskTools: {
         taskService: input.taskService,
         getAuthenticatedUserId,
