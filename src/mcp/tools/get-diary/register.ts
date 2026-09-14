@@ -7,6 +7,10 @@ import {
 } from "../../../domains/diary/diary-service.js";
 import { DiaryReadAuthenticationError } from "../search-diary/register.js";
 import {
+  DiaryCommentDomainError,
+  type ListDiaryCommentsResult,
+} from "../../../domains/diary/diary-comment-service.js";
+import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
@@ -14,6 +18,22 @@ import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
+
+const diaryCommentSchema = z.object({
+  id: z.string().uuid(),
+  diary_id: z.string().uuid(),
+  author: contentAuthorSchema,
+  content: z.string(),
+  revision: z.number().int().min(1),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+}).strict();
+
+const diaryCommentsMetadataSchema = z.object({
+  count: z.number().int().min(0),
+  returned: z.number().int().min(0),
+  truncated: z.boolean(),
+}).strict();
 
 const getDiaryInputSchema = z
   .object({
@@ -37,6 +57,8 @@ const getDiaryDataSchema = z.object({
   updated_at: z.string().datetime(),
   lifecycle_status: z.enum(["active", "archived"]),
   author: contentAuthorSchema.nullable(),
+  comments: z.array(diaryCommentSchema).optional(),
+  comments_metadata: diaryCommentsMetadataSchema.optional(),
 });
 
 const getDiaryOutputSchema = z.object({
@@ -52,6 +74,15 @@ export interface GetDiaryToolService {
 
 export type GetDiaryToolDependencies = {
   diaryService: GetDiaryToolService;
+  diaryCommentService?: {
+    listComments(input: {
+      userId: string;
+      diaryId: string;
+      scope?: "active" | "archived";
+      limit?: number;
+      before?: string;
+    }): Promise<ListDiaryCommentsResult>;
+  };
   getAuthenticatedUserId: () => string;
 };
 
@@ -80,7 +111,46 @@ export function registerGetDiaryTool(
         const detail = scope === "archived"
           ? await dependencies.diaryService.readArchivedDiary?.({ userId, id }) ?? (() => { throw new Error("Archived Diary reads are unavailable."); })()
           : await dependencies.diaryService.readDiary({ userId, id });
-        const data = { ...detail, lifecycle_status: scope };
+        const commentPage = dependencies.diaryCommentService
+          ? await dependencies.diaryCommentService.listComments({
+              userId,
+              diaryId: detail.id,
+              scope,
+              limit: 50,
+            })
+          : undefined;
+        const commentsMetadata = commentPage
+          ? {
+              count: commentPage.metadata.count,
+              returned: commentPage.metadata.returned,
+              truncated:
+                commentPage.metadata.count >
+                commentPage.metadata.returned,
+            }
+          : undefined;
+        const data = {
+          ...detail,
+          lifecycle_status: scope,
+          ...(commentPage
+            ? {
+                comments: commentPage.comments,
+                comments_metadata: commentsMetadata,
+              }
+            : {}),
+        };
+
+        const commentLines = commentPage
+          ? [
+              `Comments (${commentPage.metadata.count})`,
+              ...commentPage.comments.flatMap((comment) => [
+                `${comment.author} · ${comment.created_at} [comment_id=${comment.id}; revision=${comment.revision}]`,
+                comment.content,
+              ]),
+              ...(commentsMetadata?.truncated
+                ? ["Only the 50 most recent comments are included. Use list_diary_comments to read older comments."]
+                : []),
+            ]
+          : [];
 
         return {
           content: [{
@@ -88,6 +158,7 @@ export function registerGetDiaryTool(
             text: joinMcpContentLines([
               `Diary ${quoteMcpText(data.title)} (${data.date}) [id=${data.id}]`,
               data.content,
+              ...commentLines,
             ]),
           }],
           structuredContent: {
@@ -108,6 +179,16 @@ function toSafeGetDiaryError(error: unknown) {
       "AUTHENTICATION_REQUIRED",
       "Authentication is required to read Diary.",
     );
+  }
+
+  if (error instanceof DiaryCommentDomainError) {
+    const message =
+      error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND"
+        ? "Diary is unavailable for the authenticated user."
+        : error.code === "DIARY_NOT_FOUND"
+          ? "Diary entry was not found."
+          : "Diary comments are temporarily unavailable.";
+    return createMcpToolError(error.code, message);
   }
 
   if (error instanceof DiaryDomainError) {
