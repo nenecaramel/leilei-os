@@ -46,6 +46,11 @@ import {
   type GetDiaryToolDependencies,
 } from "../tools/get-diary/register.js";
 import {
+  DiaryLifecycleAuthenticationError,
+  registerDiaryLifecycleTools,
+  type DiaryLifecycleToolDependencies,
+} from "../tools/diary-lifecycle/register.js";
+import {
   DiaryCommentAuthenticationError,
   registerDiaryCommentTools,
   type DiaryCommentToolDependencies,
@@ -254,6 +259,17 @@ const productionUpdateDiaryDependencies: UpdateDiaryToolDependencies = {
   },
 };
 
+const productionDiaryLifecycleDependencies: DiaryLifecycleToolDependencies = {
+  diaryService: {
+    archiveMcpDiary: (context, input) => missingDatabaseService(),
+    restoreMcpDiary: (context, input) => missingDatabaseService(),
+    permanentlyDeleteMcpDiary: (context, input) => missingDatabaseService(),
+  },
+  getAuthenticatedUserId: () => {
+    throw new DiaryLifecycleAuthenticationError();
+  },
+};
+
 const productionSearchDiaryDependencies: SearchDiaryToolDependencies = {
   diaryService: {
     listDiaries: (input) => missingDatabaseService(),
@@ -456,6 +472,7 @@ export type McpServerDependencies = {
   };
   writeDiary?: WriteDiaryToolDependencies;
   updateDiary?: UpdateDiaryToolDependencies;
+  diaryLifecycle?: DiaryLifecycleToolDependencies;
   searchDiary?: SearchDiaryToolDependencies;
   getDiary?: GetDiaryToolDependencies;
   diaryComments?: DiaryCommentToolDependencies;
@@ -561,6 +578,16 @@ export function createMcpServer(
       ...productionUpdateDiaryDependencies,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new UpdateDiaryAuthenticationError();
+        return authenticatedUserId;
+      },
+    },
+  );
+  registerDiaryLifecycleTools(
+    server,
+    dependencies.diaryLifecycle ?? {
+      ...productionDiaryLifecycleDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new DiaryLifecycleAuthenticationError();
         return authenticatedUserId;
       },
     },
