@@ -74,8 +74,9 @@ function createInitialRows(
   entries: readonly TodoEntry[],
 ): EditableTodoRow[] {
   const rows: EditableTodoRow[] = entries.map((entry) => ({ ...entry }));
+  const visibleLineCount = Math.max(PAPER_LINE_COUNT, entries.length + 1);
 
-  while (rows.length < PAPER_LINE_COUNT) {
+  while (rows.length < visibleLineCount) {
     rows.push(createCreationRow(author));
   }
 
@@ -164,13 +165,18 @@ export const TodoPaperEditor = forwardRef<
 
       const target = current[index];
       const next = [...current];
+      const hasText = text.trim().length > 0;
       next[index] = {
         ...target,
         text,
-        creation: target.creation && text.trim().length === 0
+        creation: target.creation && !hasText
           ? true
           : undefined,
       };
+
+      if (index === current.length - 1 && hasText) {
+        next.push(createCreationRow(author));
+      }
 
       return next;
     });

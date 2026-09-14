@@ -893,6 +893,109 @@ test("Typing in a later Todo row keeps its focus and caret", async () => {
 });
 
 
+test("Filling the last visible Todo line grows the paper past 24 lines", async () => {
+  const harness = installDom();
+
+  try {
+    const entries = Array.from({ length: 23 }, (_, index) => ({
+      id: `entry-${index + 1}`,
+      author: "L" as const,
+      kind: "pending" as const,
+      text: `Item ${index + 1}`,
+    }));
+    const editorRef = await renderTodoEditor(harness, { initialEntries: entries });
+
+    assert.equal(
+      harness.container.querySelectorAll(".todo-paper-row").length,
+      24,
+    );
+
+    const lastLine =
+      harness.container.querySelector<HTMLButtonElement>(
+        '[aria-label="编辑 Todo 第 24 行"]',
+      );
+    assert.ok(lastLine);
+
+    await act(async () => {
+      lastLine.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const textarea =
+      harness.container.querySelector<HTMLTextAreaElement>(
+        '[aria-label="Todo 第 24 行"]',
+      );
+    assert.ok(textarea);
+
+    await act(async () => {
+      textarea.value = "Item 24";
+      textarea.dispatchEvent(
+        new harness.dom.window.Event("input", { bubbles: true }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    assert.equal(
+      harness.container.querySelectorAll(".todo-paper-row").length,
+      25,
+    );
+    assert.ok(
+      harness.container.querySelector(
+        '[aria-label="编辑 Todo 第 25 行"]',
+      ),
+    );
+    assert.equal(editorRef.current?.getNormalizedEntries().length, 24);
+
+    await act(async () => {
+      textarea.dispatchEvent(
+        new harness.dom.window.KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const next =
+      harness.container.querySelector<HTMLTextAreaElement>(
+        '[aria-label="Todo 第 25 行"]',
+      );
+    assert.ok(next);
+    assert.equal(harness.dom.window.document.activeElement, next);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("A full 24-entry Todo reopens with a blank 25th line", async () => {
+  const harness = installDom();
+
+  try {
+    const entries = Array.from({ length: 24 }, (_, index) => ({
+      id: `entry-${index + 1}`,
+      author: "L" as const,
+      kind: "pending" as const,
+      text: `Item ${index + 1}`,
+    }));
+
+    await renderTodoEditor(harness, { initialEntries: entries });
+
+    assert.equal(
+      harness.container.querySelectorAll(".todo-paper-row").length,
+      25,
+    );
+    assert.ok(
+      harness.container.querySelector(
+        '[aria-label="编辑 Todo 第 25 行"]',
+      ),
+    );
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+
 test("Writing into a blank visible line keeps the paper at 24 lines", async () => {
   const harness = installDom();
 
