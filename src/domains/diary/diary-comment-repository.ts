@@ -13,6 +13,10 @@ import {
   users,
 } from "../../database/schema.js";
 import type { ContentAuthor } from "../content-author.js";
+import {
+  lockAndReadMcpIdempotency,
+  recordMcpIdempotency,
+} from "../mcp-write/mcp-write-idempotency.js";
 import { requireActiveUserInTransaction } from "../require-active-user-transaction.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -42,6 +46,7 @@ export type DiaryCommentCreateInput = {
   content: string;
   idempotencyKey: string;
   requestHash: string;
+  mcpRequestHash: string;
 };
 
 export type DiaryCommentCreateOutcome =
@@ -86,6 +91,7 @@ export interface DiaryCommentRepository {
   }): Promise<number>;
   createCommentIdempotently(
     input: DiaryCommentCreateInput,
+    options?: { mcpWriteIdempotency?: boolean },
   ): Promise<DiaryCommentCreateOutcome>;
   updateComment(input: {
     userId: string;
@@ -268,9 +274,60 @@ export class DrizzleDiaryCommentRepository
 
   async createCommentIdempotently(
     input: DiaryCommentCreateInput,
+    options: { mcpWriteIdempotency?: boolean } = {},
   ): Promise<DiaryCommentCreateOutcome> {
     return this.db.transaction(async (transaction) => {
       await requireActiveUserInTransaction(transaction, input.userId);
+
+      const mcpIdempotency = options.mcpWriteIdempotency
+        ? await lockAndReadMcpIdempotency(transaction, {
+            userId: input.userId,
+            toolName: "add_diary_comment",
+            idempotencyKey: input.idempotencyKey,
+          })
+        : null;
+
+      if (mcpIdempotency) {
+        if (
+          mcpIdempotency.requestHash !== input.mcpRequestHash ||
+          mcpIdempotency.resourceType !== "diary_comment"
+        ) {
+          return { outcome: "idempotency_conflict" as const };
+        }
+
+        const [mcpReplay] = await transaction
+          .select()
+          .from(diaryComments)
+          .where(
+            and(
+              eq(diaryComments.userId, input.userId),
+              eq(diaryComments.id, mcpIdempotency.resourceId),
+            ),
+          )
+          .limit(1);
+
+        if (!mcpReplay) {
+          throw new Error(
+            "Idempotent Diary comment record was not found.",
+          );
+        }
+        return {
+          outcome: "replayed" as const,
+          comment: toRecord(mcpReplay),
+        };
+      }
+
+      const recordMcpReplay = async (commentId: string) => {
+        if (!options.mcpWriteIdempotency) return;
+        await recordMcpIdempotency(transaction, {
+          userId: input.userId,
+          toolName: "add_diary_comment",
+          idempotencyKey: input.idempotencyKey,
+          requestHash: input.mcpRequestHash,
+          resourceType: "diary_comment",
+          resourceId: commentId,
+        });
+      };
 
       const [existing] = await transaction
         .select()
@@ -284,9 +341,14 @@ export class DrizzleDiaryCommentRepository
         .limit(1);
 
       if (existing) {
-        return existing.requestHash === input.requestHash
-          ? { outcome: "replayed" as const, comment: toRecord(existing) }
-          : { outcome: "idempotency_conflict" as const };
+        if (existing.requestHash !== input.requestHash) {
+          return { outcome: "idempotency_conflict" as const };
+        }
+        await recordMcpReplay(existing.id);
+        return {
+          outcome: "replayed" as const,
+          comment: toRecord(existing),
+        };
       }
 
       const [diary] = await transaction
@@ -329,6 +391,7 @@ export class DrizzleDiaryCommentRepository
         .returning();
 
       if (inserted) {
+        await recordMcpReplay(inserted.id);
         return {
           outcome: "created" as const,
           comment: toRecord(inserted),
@@ -352,9 +415,14 @@ export class DrizzleDiaryCommentRepository
         );
       }
 
-      return replayed.requestHash === input.requestHash
-        ? { outcome: "replayed" as const, comment: toRecord(replayed) }
-        : { outcome: "idempotency_conflict" as const };
+      if (replayed.requestHash !== input.requestHash) {
+        return { outcome: "idempotency_conflict" as const };
+      }
+      await recordMcpReplay(replayed.id);
+      return {
+        outcome: "replayed" as const,
+        comment: toRecord(replayed),
+      };
     });
   }
 
