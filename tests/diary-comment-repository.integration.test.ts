@@ -8,6 +8,7 @@ import * as schema from "../src/database/schema.js";
 import {
   diaryComments,
   diaryEntries,
+  mcpWriteIdempotency,
   users,
 } from "../src/database/schema.js";
 import {
@@ -114,6 +115,26 @@ test(
           );
           assert.equal(replayed.metadata.idempotent_replay, true);
           assert.equal(replayed.comment.id, created.comment.id);
+
+          const idempotencyRows = await transaction
+            .select({
+              toolName: mcpWriteIdempotency.toolName,
+              resourceType: mcpWriteIdempotency.resourceType,
+              resourceId: mcpWriteIdempotency.resourceId,
+            })
+            .from(mcpWriteIdempotency)
+            .where(
+              and(
+                eq(mcpWriteIdempotency.userId, userId),
+                eq(mcpWriteIdempotency.toolName, "add_diary_comment"),
+                eq(mcpWriteIdempotency.idempotencyKey, idempotencyKey),
+              ),
+            );
+          assert.deepEqual(idempotencyRows, [{
+            toolName: "add_diary_comment",
+            resourceType: "diary_comment",
+            resourceId: created.comment.id,
+          }]);
 
           const diaryAfterCreate = await transaction
             .select({
@@ -254,6 +275,20 @@ test(
               ),
             );
           assert.deepEqual(remainingComments, []);
+
+          const retainedIdempotency = await transaction
+            .select({ resourceId: mcpWriteIdempotency.resourceId })
+            .from(mcpWriteIdempotency)
+            .where(
+              and(
+                eq(mcpWriteIdempotency.userId, userId),
+                eq(mcpWriteIdempotency.toolName, "add_diary_comment"),
+                eq(mcpWriteIdempotency.idempotencyKey, idempotencyKey),
+              ),
+            );
+          assert.deepEqual(retainedIdempotency, [{
+            resourceId: created.comment.id,
+          }]);
 
           throw new RollbackDiaryCommentTest();
         }),
