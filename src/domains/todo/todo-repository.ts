@@ -262,7 +262,7 @@ export class DrizzleTodoRepository implements TodoRepository {
       );
       let createdPaper = false;
       if (!paper) {
-        await transaction
+        const [insertedPaper] = await transaction
           .insert(todoPapers)
           .values({
             userId: input.userId,
@@ -272,7 +272,9 @@ export class DrizzleTodoRepository implements TodoRepository {
           })
           .onConflictDoNothing({
             target: [todoPapers.userId, todoPapers.businessDate, todoPapers.author],
-          });
+          })
+          .returning({ id: todoPapers.id });
+        createdPaper = Boolean(insertedPaper);
         paper = await this.lockPaperByIdentity(
           transaction as unknown as Database,
           input.userId,
@@ -280,7 +282,6 @@ export class DrizzleTodoRepository implements TodoRepository {
           input.author,
         );
         if (!paper) throw new Error("Todo paper creation failed.");
-        createdPaper = paper.revision === 1 && (await this.countEntries(transaction as unknown as Database, paper.id)) === 0;
       }
 
       const stats = await this.entryStats(transaction as unknown as Database, paper.id);
@@ -510,14 +511,6 @@ export class DrizzleTodoRepository implements TodoRepository {
       .where(and(eq(todoEntries.paperId, paperId), eq(todoEntries.entryId, entryId)))
       .limit(1);
     return entry ?? null;
-  }
-
-  private async countEntries(database: Database, paperId: string): Promise<number> {
-    const [row] = await database
-      .select({ count: sql<number>`count(*)::int` })
-      .from(todoEntries)
-      .where(eq(todoEntries.paperId, paperId));
-    return row?.count ?? 0;
   }
 
   private async entryStats(database: Database, paperId: string): Promise<{ count: number; maxPosition: number | null }> {
