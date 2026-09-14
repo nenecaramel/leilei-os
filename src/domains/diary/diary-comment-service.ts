@@ -228,7 +228,10 @@ export class DiaryCommentService {
       content,
     });
 
-    if (outcome.outcome === "committed") {
+    if (
+      outcome.outcome === "committed" ||
+      outcome.outcome === "unchanged"
+    ) {
       return this.toResult(outcome.comment);
     }
     if (outcome.outcome === "not_found") {
