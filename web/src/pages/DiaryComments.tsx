@@ -131,9 +131,22 @@ export function DiaryCommentsSection({
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const composerRef = useRef<HTMLDivElement | null>(null);
+
   useLayoutEffect(() => {
     if (composerOpen) resizeCommentTextarea(composerTextareaRef.current);
   }, [composerContent, composerOpen]);
+
+  useLayoutEffect(() => {
+    if (!composerOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      composerRef.current?.scrollIntoView({
+        block: "nearest",
+        inline: "nearest",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [composerOpen]);
 
   useLayoutEffect(() => {
     if (editingId) resizeCommentTextarea(editingTextareaRef.current);
@@ -567,10 +580,9 @@ export function DiaryCommentsSection({
 
       {!readOnly ? (
         composerOpen ? (
-          <div className="diary-comment-composer">
+          <div className="diary-comment-composer" ref={composerRef}>
             <textarea
               ref={composerTextareaRef}
-              autoFocus
               aria-label="写一条评论"
               placeholder="写一条评论…"
               value={composerContent}
