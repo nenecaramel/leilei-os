@@ -289,7 +289,7 @@ test(
         date: input.date,
         author: input.author,
         expectedRevision: 1,
-        entries: [{ id: "later", kind: "record", text: "current persisted state", revision: 1 }],
+        entries: [{ id: "later", kind: "record", text: "current persisted state" }],
       });
       assert.equal(later.outcome, "committed");
       const replay = await repositories[1]!.replacePaperIdempotently!(input);
@@ -489,7 +489,7 @@ test(
         date: "2026-08-12",
         author: "G",
         expectedRevision: null,
-        entries: [{ id: "old-entry", kind: "record", text: "preserve me", revision: 1 }],
+        entries: [{ id: "old-entry", kind: "record", text: "preserve me" }],
       });
       assert.equal(original.outcome, "committed");
       await database.execute(sql.raw(`
