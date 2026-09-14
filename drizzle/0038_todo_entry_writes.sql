@@ -1,0 +1,6 @@
+ALTER TABLE "todo_entries" ADD COLUMN "revision" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "todo_entries" ADD CONSTRAINT "todo_entries_revision_positive" CHECK ("todo_entries"."revision" >= 1);--> statement-breakpoint
+ALTER TABLE "mcp_write_idempotency" DROP CONSTRAINT "mcp_write_idempotency_tool_allowed";--> statement-breakpoint
+ALTER TABLE "mcp_write_idempotency" DROP CONSTRAINT "mcp_write_idempotency_resource_type_allowed";--> statement-breakpoint
+ALTER TABLE "mcp_write_idempotency" ADD CONSTRAINT "mcp_write_idempotency_tool_allowed" CHECK ("mcp_write_idempotency"."tool_name" IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'append_todo_entry', 'update_todo_entry', 'delete_todo_entry', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper', 'archive_shared_paper', 'restore_shared_paper', 'delete_shared_paper', 'add_diary_comment'));--> statement-breakpoint
+ALTER TABLE "mcp_write_idempotency" ADD CONSTRAINT "mcp_write_idempotency_resource_type_allowed" CHECK ("mcp_write_idempotency"."resource_type" IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'todo_entry', 'universe_node', 'universe_relation', 'shared_paper', 'shared_paper_edit', 'diary_comment'));
