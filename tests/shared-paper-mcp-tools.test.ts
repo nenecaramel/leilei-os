@@ -42,6 +42,7 @@ function makeService(overrides: Partial<SharedPaperToolService> = {}): SharedPap
     listEdits: async () => [],
     createPaperIdempotently: async () => ({ paper, outcome: "committed" }),
     editPaperByMatch: async () => ({ paper, edit, outcome: "committed" }),
+    appendPaperIdempotently: async () => ({ paper: { ...paper, revision: 2, content: "canonical\nadded" }, edit: { ...edit, startOffset: 9, endOffset: 9, deletedText: "", insertedText: "\nadded" }, outcome: "committed" }),
     archivePaperIdempotently: async () => ({ paper: { ...paper, archivedAt: new Date("2026-01-02T00:00:00.000Z") }, outcome: "committed" }),
     restorePaperIdempotently: async () => ({ paper, outcome: "committed" }),
     deletePaperIdempotently: async () => ({ paperId: id, outcome: "committed" }),
@@ -57,12 +58,12 @@ async function connect(sharedPaperService: SharedPaperToolService = makeService(
   return { client, server };
 }
 
-test("Shared Paper MCP exposes nine strict tools without user_id", async () => {
+test("Shared Paper MCP exposes ten strict tools without user_id", async () => {
   const fixture = await connect();
   const result = await fixture.client.listTools();
   await fixture.client.close(); await fixture.server.close();
-  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "list_shared_paper_edits", "archive_shared_paper", "restore_shared_paper", "delete_shared_paper"].includes(tool.name));
-  assert.deepEqual(selected.map((tool) => tool.name).sort(), ["archive_shared_paper", "create_shared_paper", "delete_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "restore_shared_paper", "search_shared_papers"]);
+  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "append_shared_paper", "list_shared_paper_edits", "archive_shared_paper", "restore_shared_paper", "delete_shared_paper"].includes(tool.name));
+  assert.deepEqual(selected.map((tool) => tool.name).sort(), ["append_shared_paper", "archive_shared_paper", "create_shared_paper", "delete_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "restore_shared_paper", "search_shared_papers"]);
   for (const tool of selected) {
     const schema = tool.inputSchema as { type?: string; properties?: Record<string, unknown> };
     assert.equal(schema.type, "object");
@@ -327,4 +328,22 @@ test("Shared Paper MCP lifecycle tools return authoritative state and idempotent
   assert.equal((deletedReplay.structuredContent as any).data.metadata.idempotent_replay, true);
   assert.equal((deletedReplay.structuredContent as any).data.paper_id, id);
   assert.match(String(deletedReplay.content?.[0]?.text), /replayed/);
+});
+
+
+test("Shared Paper MCP append is direct, revisioned, and idempotent-shaped", async (t) => {
+  let received: Record<string, unknown> | undefined;
+  const fixture = await connect(makeService({ appendPaperIdempotently: async (input) => { received = input as unknown as Record<string, unknown>; return { paper: { ...paper, content: "canonical\nnext", revision: 2 }, edit: { ...edit, startOffset: 9, endOffset: 9, deletedText: "", insertedText: "\nnext" }, outcome: "committed" }; } }));
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+  const listed = await fixture.client.listTools();
+  const tool = listed.tools.find((candidate) => candidate.name === "append_shared_paper");
+  assert.ok(tool);
+  assert.deepEqual([...(tool.inputSchema.required ?? [])].sort(), ["id", "expected_revision", "author", "text", "idempotency_key"].sort());
+  assert.equal("match_text" in (tool.inputSchema.properties ?? {}), false);
+  const result = await fixture.client.callTool({ name: "append_shared_paper", arguments: { id, expected_revision: 1, author: "G", text: "\nnext", idempotency_key: "shared.paper:append-0001" } });
+  assert.equal(result.isError, undefined);
+  assert.equal(received?.paperId, id);
+  assert.equal(received?.expectedRevision, 1);
+  assert.equal(received?.text, "\nnext");
+  assert.equal((result.structuredContent as any).data.revision, 2);
 });

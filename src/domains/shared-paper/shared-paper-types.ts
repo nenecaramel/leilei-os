@@ -72,6 +72,16 @@ export type SharedPaperEditIdempotencyInput = SharedPaperMatchEditInput & {
   requestHash: string;
 };
 
+export type SharedPaperAppendIdempotencyInput = {
+  userId: string;
+  paperId: string;
+  expectedRevision: number;
+  author: ContentAuthor;
+  text: string;
+  idempotencyKey: string;
+  requestHash: string;
+};
+
 export type SharedPaperLifecycleIdempotencyInput = {
   userId: string;
   paperId: string;
@@ -127,4 +137,5 @@ export interface SharedPaperRepository {
   >;
   createPaperIdempotently?(input: SharedPaperCreateIdempotencyInput): Promise<SharedPaperMutationResult | { outcome: "idempotency_conflict" }>;
   editPaperIdempotently?(input: SharedPaperEditIdempotencyInput): Promise<(SharedPaperMutationResult & { edit: SharedPaperEdit }) | { outcome: "revision_conflict" | "idempotency_conflict" | "not_found" | "target_not_found" | "target_ambiguous" | "invalid_edit" }>;
+  appendPaperIdempotently?(input: SharedPaperAppendIdempotencyInput): Promise<(SharedPaperMutationResult & { edit: SharedPaperEdit }) | { outcome: "revision_conflict" | "idempotency_conflict" | "not_found" | "invalid_edit" }>;
 }
