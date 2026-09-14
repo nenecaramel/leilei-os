@@ -9,7 +9,7 @@ export type SharedPaper = {
 };
 export type SharedPaperEdit = {
   id: string; userId: string; paperId: string; baseRevision: number; revision: number;
-  author: SharedPaperAuthor; startOffset: number; endOffset: number;
+  author: SharedPaperAuthor; target: "content" | "title"; startOffset: number; endOffset: number;
   deletedText: string; insertedText: string; createdAt: string;
 };
 type Envelope<T> = { success: true; data: T };
@@ -39,7 +39,7 @@ export function createSharedPaperApi(api: WebApiClient) {
       const result = await api.request<Envelope<SharedPaper>>("/shared-papers", { method: "POST", body: JSON.stringify(input) });
       return result.data;
     },
-    async edit(id: string, input: { expected_revision: number; author: SharedPaperAuthor; start: number; end: number; replacement: string }): Promise<{ paper: SharedPaper; edit: SharedPaperEdit }> {
+    async edit(id: string, input: { expected_revision: number; author: SharedPaperAuthor; target?: "content" | "title"; start: number; end: number; replacement: string }): Promise<{ paper: SharedPaper; edit: SharedPaperEdit }> {
       const result = await api.request<Envelope<{ paper: SharedPaper; edit: SharedPaperEdit }>>(`/shared-papers/${encodeURIComponent(id)}/content`, { method: "PATCH", body: JSON.stringify(input) });
       return result.data;
     },

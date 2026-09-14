@@ -253,6 +253,13 @@
       "when": 1789112700000,
       "tag": "0035_shared_paper_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789341720000,
+      "tag": "0036_shared_paper_edit_targets",
+      "breakpoints": true
     }
   ]
 }

@@ -47,6 +47,7 @@ function toEdit(row: typeof sharedPaperEdits.$inferSelect): SharedPaperEdit {
     baseRevision: row.baseRevision,
     revision: row.revision,
     author: row.author,
+    target: row.target as SharedPaperEdit["target"],
     startOffset: row.startOffset,
     endOffset: row.endOffset,
     deletedText: row.deletedText,
@@ -266,7 +267,9 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
       const paper = await this.lockPaperInTransaction(transaction as unknown as Database, input.userId, input.paperId);
       if (!paper) return { outcome: "not_found" as const };
       if (paper.revision !== input.expectedRevision) return { outcome: "revision_conflict" as const };
-      const range = resolveMatch(paper.content, input.matchText);
+      const target = input.target ?? "content";
+      const source = target === "title" ? paper.title : paper.content;
+      const range = resolveMatch(source, input.matchText);
       if (range === "not_found") return { outcome: "target_not_found" as const };
       if (range === "ambiguous") return { outcome: "target_ambiguous" as const };
       const result = await this.editRangeInTransaction(transaction as unknown as McpIdempotencyTransaction, {
@@ -274,6 +277,7 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
         paperId: input.paperId,
         expectedRevision: input.expectedRevision,
         author: input.author,
+        target,
         start: range.start,
         end: range.end,
         replacement: input.replacementText,
@@ -296,24 +300,29 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
     const paper = lockedPaper ?? await this.lockPaperInTransaction(database, input.userId, input.paperId);
     if (!paper) return { outcome: "not_found" as const };
     if (paper.revision !== input.expectedRevision) return { outcome: "revision_conflict" as const };
+    const target = input.target ?? "content";
+    const source = target === "title" ? paper.title : paper.content;
     let deleted: string;
-    try { deleted = sliceCodePoints(paper.content, input.start, input.end); } catch { return { outcome: "invalid_edit" as const }; }
+    try { deleted = sliceCodePoints(source, input.start, input.end); } catch { return { outcome: "invalid_edit" as const }; }
     if (deleted === input.replacement) return { outcome: "invalid_edit" as const };
-    const nextContent = replaceCodePointRange(paper.content, input.start, input.end, input.replacement);
-    if (codePointLength(nextContent) > MAX_SHARED_PAPER_CONTENT_CODE_POINTS) return { outcome: "invalid_edit" as const };
+    const nextValue = replaceCodePointRange(source, input.start, input.end, input.replacement);
+    if (target === "title") {
+      if (!nextValue.trim() || codePointLength(nextValue) > 200) return { outcome: "invalid_edit" as const };
+    } else if (codePointLength(nextValue) > MAX_SHARED_PAPER_CONTENT_CODE_POINTS) return { outcome: "invalid_edit" as const };
     const [editRow] = await (transaction as any).insert(sharedPaperEdits).values({
       userId: input.userId,
       paperId: input.paperId,
       baseRevision: paper.revision,
       revision: paper.revision + 1,
       author: input.author,
+      target,
       startOffset: input.start,
       endOffset: input.end,
       deletedText: deleted,
       insertedText: input.replacement,
     }).returning();
     const [paperRow] = await (transaction as any).update(sharedPapers).set({
-      content: nextContent,
+      ...(target === "title" ? { title: nextValue } : { content: nextValue }),
       revision: paper.revision + 1,
       updatedBy: input.author,
       updatedAt: new Date(),

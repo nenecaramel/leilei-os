@@ -26,6 +26,7 @@ const edit: SharedPaperEdit = {
   baseRevision: 1,
   revision: 2,
   author: "G",
+  target: "content",
   startOffset: 0,
   endOffset: 9,
   deletedText: "canonical",
@@ -96,6 +97,7 @@ test("Shared Paper MCP schemas enforce Unicode code-point bounds with host-visib
   assert.equal((byName.get("search_shared_papers")?.inputSchema.properties?.query as { maxLength?: number }).maxLength, 400);
   assert.equal((byName.get("edit_shared_paper")?.inputSchema.properties?.match_text as { maxLength?: number }).maxLength, 200_000);
   assert.equal((byName.get("edit_shared_paper")?.inputSchema.properties?.replacement_text as { maxLength?: number }).maxLength, 200_000);
+  assert.equal((byName.get("edit_shared_paper")?.inputSchema.properties?.target as { default?: string }).default, "content");
 
   const validTitle = await fixture.client.callTool({
     name: "create_shared_paper",
@@ -114,6 +116,12 @@ test("Shared Paper MCP schemas enforce Unicode code-point bounds with host-visib
     arguments: { id, expected_revision: 1, author: "G", match_text: "😀".repeat(100_000), replacement_text: "😀".repeat(100_000), idempotency_key: "shared.paper:emoji-0003" },
   });
   assert.equal(validEdit.isError, undefined);
+  const validTitleEdit = await fixture.client.callTool({
+    name: "edit_shared_paper",
+    arguments: { id, expected_revision: 1, author: "C", target: "title", match_text: "Shared", replacement_text: "Renamed", idempotency_key: "shared.paper:title-0001" },
+  });
+  assert.equal(validTitleEdit.isError, undefined);
+  assert.equal(calls.find((call) => call.name === "edit_shared_paper" && call.arguments.target === "title")?.arguments.target, "title");
 
   const invalidTitle = await fixture.client.callTool({ name: "create_shared_paper", arguments: { title: "😀".repeat(201), content: "ok", author: "L", idempotency_key: "shared.paper:emoji-0004" } });
   const invalidQuery = await fixture.client.callTool({ name: "search_shared_papers", arguments: { query: "😀".repeat(201) } });
@@ -121,7 +129,7 @@ test("Shared Paper MCP schemas enforce Unicode code-point bounds with host-visib
   assert.equal(invalidTitle.isError, true);
   assert.equal(invalidQuery.isError, true);
   assert.equal(invalidEdit.isError, true);
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
 });
 
 test("Shared Paper detail text exposes revision and authors before canonical content", async (t) => {
@@ -175,6 +183,7 @@ test("Shared Paper edit history text exposes ordered author and revision summari
   assert.match(text, /2 shared paper edits\./);
   assert.match(text, /edit=00000000-0000-4000-8000-000000000003/);
   assert.match(text, /author=C/);
+  assert.match(text, /target=content/);
   assert.match(text, /revision=2->3/);
   assert.match(text, /author=G/);
   assert.match(text, /revision=1->2/);
@@ -188,6 +197,7 @@ test("Shared Paper edit history text exposes ordered author and revision summari
     base_revision: value.baseRevision,
     revision: value.revision,
     author: value.author,
+    target: value.target,
     start_offset: value.startOffset,
     end_offset: value.endOffset,
     deleted_text: value.deletedText,

@@ -53,9 +53,14 @@ class FakeRepository implements SharedPaperRepository {
   }
   editPaper(input: Parameters<SharedPaperRepository["editPaper"]>[0]) {
     if (input.expectedRevision !== this.current.revision) return Promise.resolve({ outcome: "revision_conflict" as const });
-    const content = replaceCodePointRange(this.current.content, input.start, input.end, input.replacement);
-    const next = paper({ ...this.current, content, revision: 2, updatedBy: input.author });
-    const edit: SharedPaperEdit = { id: "00000000-0000-4000-8000-000000000002", userId: "user-1", paperId: this.current.id, baseRevision: 1, revision: 2, author: input.author, startOffset: input.start, endOffset: input.end, deletedText: "你好", insertedText: "世界", createdAt: new Date("2026-01-01T00:00:00Z") };
+    const target = input.target ?? "content";
+    const source = target === "title" ? this.current.title : this.current.content;
+    const points = Array.from(source);
+    const deletedText = points.slice(input.start, input.end).join("");
+    const nextValue = replaceCodePointRange(source, input.start, input.end, input.replacement);
+    const nextRevision = this.current.revision + 1;
+    const next = paper({ ...this.current, ...(target === "title" ? { title: nextValue } : { content: nextValue }), revision: nextRevision, updatedBy: input.author });
+    const edit: SharedPaperEdit = { id: "00000000-0000-4000-8000-000000000002", userId: "user-1", paperId: this.current.id, baseRevision: this.current.revision, revision: nextRevision, author: input.author, target, startOffset: input.start, endOffset: input.end, deletedText, insertedText: input.replacement, createdAt: new Date("2026-01-01T00:00:00Z") };
     this.current = next;
     this.edits.push(edit);
     return Promise.resolve({ outcome: "committed" as const, paper: next, edit });
@@ -73,6 +78,17 @@ test("SharedPaperService keeps one canonical paper across authors and records Un
   assert.equal(result.edit.startOffset, 0);
   assert.equal(result.edit.endOffset, 2);
   assert.equal(result.paper.updatedBy, "G");
+});
+
+test("SharedPaperService edits titles through the same revisioned journal", async () => {
+  const repository = new FakeRepository();
+  const service = new SharedPaperService(repository);
+  const result = await service.editPaperByMatch({ userId: "user-1", paperId: paper().id, expectedRevision: 1, author: "C", target: "title", matchText: "Shared", replacementText: "共同纸", idempotencyKey: "shared.paper:title-0001" });
+  assert.equal(result.paper.title, "共同纸");
+  assert.equal(result.paper.revision, 2);
+  assert.equal(result.edit.target, "title");
+  assert.equal(result.edit.deletedText, "Shared");
+  assert.equal(result.edit.insertedText, "共同纸");
 });
 
 test("SharedPaperService rejects stale, empty, and ambiguous match edits", async () => {

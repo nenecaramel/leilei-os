@@ -14,6 +14,22 @@ test("Shared Paper API derives owner from authenticated session", async () => {
   assert.deepEqual(calls, [{ userId: user, limit: undefined, scope: "active" }]);
 });
 
+test("Shared Paper API forwards title edit target through the canonical revision path", async () => {
+  const calls: unknown[] = [];
+  const router = createWebApiRouter({ sharedPaper: { sharedPaperService: {
+    listPapers: async () => [], searchPapers: async () => [], getPaper: async () => null, listEdits: async () => [],
+    createPaper: async () => { throw new Error("unused"); },
+    editPaper: async (input: unknown) => { calls.push(input); return { paper: null, edit: null }; },
+    archivePaper: async () => null, restorePaper: async () => null, deletePaper: async () => ({ paperId: "unused" }),
+  } }, memory: { memoryService: {} as never }, diary: { diaryService: {} as never }, task: { taskService: {} as never }, toy: { toyService: {} as never }, system: { systemService: {} as never } });
+  const layer = (router as any).stack.find((item: any) => item.handle?.stack?.some((child: any) => child.route?.path === "/:id/content"));
+  const route = layer.handle.stack.find((child: any) => child.route?.path === "/:id/content").route.stack[0].handle;
+  let body: unknown;
+  await route({ webUserId: user, query: {}, params: { id: "paper-1" }, body: { expected_revision: 4, author: "L", target: "title", start: 0, end: 3, replacement: "新的标题" } }, { json(value: unknown) { body = value; }, status() { return this; } }, () => {});
+  assert.deepEqual(body, { success: true, data: { paper: null, edit: null } });
+  assert.deepEqual(calls, [{ userId: user, paperId: "paper-1", expectedRevision: 4, author: "L", target: "title", start: 0, end: 3, replacement: "新的标题" }]);
+});
+
 test("Shared Paper API forwards before_revision for edit history", async () => {
   const calls: unknown[] = [];
   const router = createWebApiRouter({ sharedPaper: { sharedPaperService: {

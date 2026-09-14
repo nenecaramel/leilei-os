@@ -99,7 +99,7 @@ PostgreSQL holds durable user, content, Todo, Universe, audit, integration, Sent
 The checked-in Drizzle migration chain currently ends at:
 
 ```text
-0035_shared_paper_lifecycle
+0036_shared_paper_edit_targets
 ```
 
 The canonical checked-in source for that value is `drizzle/meta/_journal.json`.
