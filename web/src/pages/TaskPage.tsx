@@ -1269,12 +1269,6 @@ import {
               </>
             ) : (
               <>
-                <div className="memory-card-topline">
-              <span>
-                {statusLabels[selectedTask.status]}
-              </span>
-                </div>
-
                 <h2>{selectedTask.title}</h2>
                 <p>{selectedTask.description}</p>
 
@@ -1288,23 +1282,13 @@ import {
 
                 <p>时区：{selectedTask.timezone}</p>
 
-                {selectedTask.tags.length > 0 && (
-              <p>
-                {selectedTask.tags
-                  .map((tag) => `#${tag}`)
-                  .join(" ")}
-              </p>
-                )}
-
-                {selectedTask.completed_at && (
-              <p>
-                完成时间：
-                {formatDueTime(
-                  selectedTask.completed_at,
-                  selectedTask.timezone,
-                )}
-              </p>
-                )}
+                <TaskPaperMetadataRead
+                  status={selectedTask.status}
+                  tags={selectedTask.tags}
+                  completionLabel={selectedTask.completed_at ? `完成于 ${formatTaskPaperTimestamp(selectedTask.completed_at, selectedTask.timezone)}` : null}
+                  actions={[]}
+                  disabled
+                />
 
                 <PaperAuthorSignature
                   value={selectedTask.author}
