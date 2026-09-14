@@ -7184,8 +7184,8 @@ body:has(.system-page) {
   .diary-comment-menu-popover {
     position: absolute;
     z-index: 8;
-    top: 30px;
     right: 0;
+    bottom: 30px;
     display: grid;
     width: max-content;
     min-width: 112px;
