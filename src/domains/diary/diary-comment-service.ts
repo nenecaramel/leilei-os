@@ -4,6 +4,9 @@ import {
   type ContentAuthor,
 } from "../content-author.js";
 import {
+  hashMcpWriteRequest,
+} from "../mcp-write/mcp-write-idempotency.js";
+import {
   type DiaryCommentCursor,
   type DiaryCommentRecord,
   type DiaryCommentRepository,
@@ -90,13 +93,16 @@ export class DiaryCommentService {
       idempotencyKey: string;
     },
   ): Promise<AddDiaryCommentResult> {
-    return this.addComment({
-      userId: context.userId,
-      diaryId: input.diaryId,
-      author: input.author,
-      content: input.content,
-      idempotencyKey: input.idempotencyKey,
-    });
+    return this.addComment(
+      {
+        userId: context.userId,
+        diaryId: input.diaryId,
+        author: input.author,
+        content: input.content,
+        idempotencyKey: input.idempotencyKey,
+      },
+      { mcpWriteIdempotency: true },
+    );
   }
 
   async addWebComment(input: {
@@ -299,13 +305,16 @@ export class DiaryCommentService {
     );
   }
 
-  private async addComment(input: {
-    userId: string;
-    diaryId: string;
-    author: ContentAuthor;
-    content: string;
-    idempotencyKey: string;
-  }): Promise<AddDiaryCommentResult> {
+  private async addComment(
+    input: {
+      userId: string;
+      diaryId: string;
+      author: ContentAuthor;
+      content: string;
+      idempotencyKey: string;
+    },
+    options: { mcpWriteIdempotency?: boolean } = {},
+  ): Promise<AddDiaryCommentResult> {
     const userId = await this.requireActiveUser(input.userId);
     const diaryId = this.normalizeUuid(
       input.diaryId,
@@ -322,26 +331,29 @@ export class DiaryCommentService {
     const idempotencyKey = this.normalizeIdempotencyKey(
       input.idempotencyKey,
     );
+    const hashPayload = {
+      diary_id: diaryId,
+      author: input.author,
+      content,
+    };
     const requestHash = createHash("sha256")
-      .update(
-        JSON.stringify({
-          diary_id: diaryId,
-          author: input.author,
-          content,
-        }),
-        "utf8",
-      )
+      .update(JSON.stringify(hashPayload), "utf8")
       .digest("hex");
+    const mcpRequestHash = hashMcpWriteRequest(hashPayload);
 
     const outcome =
-      await this.repository.createCommentIdempotently({
-        userId,
-        diaryId,
-        author: input.author,
-        content,
-        idempotencyKey,
-        requestHash,
-      });
+      await this.repository.createCommentIdempotently(
+        {
+          userId,
+          diaryId,
+          author: input.author,
+          content,
+          idempotencyKey,
+          requestHash,
+          mcpRequestHash,
+        },
+        options,
+      );
 
     if (
       outcome.outcome === "created" ||
