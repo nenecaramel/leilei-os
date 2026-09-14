@@ -37,14 +37,14 @@ test("production MCP server composition cannot create database pools", () => {
   assert.doesNotMatch(routerSource, /registerProductionNotionExplicitWriteTools/);
 });
 
-test("direct MCP server keeps the 57-tool core surface", async () => {
+test("direct MCP server keeps the 60-tool core surface", async () => {
   const names = await listTools(createMcpServer({} as never), "mcp-core-inventory");
-  assert.equal(names.length, 57);
+  assert.equal(names.length, 60);
   assert.equal(names.includes("write_notion_page"), false);
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 75 public tools with Diary comments, Diary lifecycle, Health, Thinking Block, Bridge processing, Sentinel tools, Shared Paper tools, and each Notion write once", async () => {
+test("production MCP session factory assembles 78 public tools with Diary comments, Diary lifecycle, Health, Thinking Block, Bridge processing, Sentinel tools, Shared Paper tools, and each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -63,7 +63,7 @@ test("production MCP session factory assembles 75 public tools with Diary commen
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 75);
+  assert.equal(names.length, 78);
   assert.equal(names.filter((name) => name.includes("shared_paper")).length, 9);
   for (const name of [
     "add_diary_comment",
@@ -79,6 +79,9 @@ test("production MCP session factory assembles 75 public tools with Diary commen
   }
   assert.equal(names.includes("hello"), false);
   assert.equal(names.filter((name) => name === "search_todo").length, 1);
+  for (const name of ["append_todo_entry", "update_todo_entry", "delete_todo_entry"]) {
+    assert.equal(names.filter((candidate) => candidate === name).length, 1);
+  }
   assert.equal(names.filter((name) => name === "get_health").length, 1);
   assert.equal(names.filter((name) => name === "get_current_time").length, 1);
   assert.equal(names.filter((name) => name === "render_thinking_block").length, 1);
