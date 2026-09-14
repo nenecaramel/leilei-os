@@ -56,6 +56,9 @@ test("Todo MCP exposes search_todo with compact entry pointers", async (t) => {
         async readDay() { return { date: "2026-08-13", papers: { L: null, G: null, C: null } }; },
         async listDates() { return []; },
         async replacePaperIdempotently() { throw new Error("unused"); },
+        async appendEntryIdempotently() { throw new Error("unused"); },
+        async updateEntryIdempotently() { throw new Error("unused"); },
+        async deleteEntryIdempotently() { throw new Error("unused"); },
         async search() {
           return { entries: [{ entry_id: rows[0]!.entryId, date: rows[0]!.date, author: rows[0]!.author, kind: rows[0]!.kind, text: rows[0]!.text, snippet: "Café 计划" }], metadata: { count: 1, author: "C" } };
         },

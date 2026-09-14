@@ -13,10 +13,18 @@ import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines } from "../content-contract.js";
 
-const todoEntrySchema = z.object({
+const todoEntryInputSchema = z.object({
   id: z.string(),
   kind: z.enum(["pending", "completed", "record"]),
   text: z.string(),
+  revision: z.number().int().min(1).optional(),
+}).strict();
+
+const todoEntryOutputSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["pending", "completed", "record"]),
+  text: z.string(),
+  revision: z.number().int().min(1),
 }).strict();
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
@@ -25,14 +33,14 @@ const todoPaperSchema = z.object({
   author: todoAuthorSchema,
   date: z.string(),
   revision: z.number().int().nonnegative(),
-  entries: z.array(todoEntrySchema),
+  entries: z.array(todoEntryOutputSchema),
 });
 
 const writeTodoPaperInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   author: todoAuthorSchema,
   revision: z.number().int().min(0).nullable(),
-  entries: z.array(todoEntrySchema),
+  entries: z.array(todoEntryInputSchema),
   idempotency_key: z.string()
     .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
     .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
@@ -78,7 +86,7 @@ export function registerWriteTodoPaperTool(
     {
       title: "Save one Todo paper",
       description:
-        "Save one complete L, G, or C Todo paper in Leilei OS. Supply an exact YYYY-MM-DD date, the logical author, the exact current revision returned by read_todo_day (or null only when creating a missing paper), a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
+        "Replace one complete L, G, or C Todo paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding, editing, completing, or deleting a single entry, prefer append_todo_entry, update_todo_entry, or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, the exact current paper revision returned by read_todo_day (or null only when creating a missing paper), and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {

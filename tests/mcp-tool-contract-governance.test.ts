@@ -102,6 +102,16 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
     assert.ok(tool?.description, `${name} must have routing guidance`);
     assert.match(tool.description, new RegExp(detailTool, "iu"));
   }
+
+  const writeTodo = byName.get("write_todo_paper");
+  assert.ok(writeTodo?.description);
+  for (const entryTool of ["append_todo_entry", "update_todo_entry", "delete_todo_entry"]) {
+    assert.match(writeTodo.description, new RegExp(entryTool, "iu"));
+    assert.ok(byName.has(entryTool), `${entryTool} must stay registered`);
+  }
+  assert.match(byName.get("append_todo_entry")?.description ?? "", /does not require the paper revision/iu);
+  assert.match(byName.get("update_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
+  assert.match(byName.get("delete_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
 });
 
 test("operational connectivity stays out of the model-visible tool inventory", async () => {

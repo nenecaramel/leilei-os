@@ -9,6 +9,7 @@ const todoEntrySchema = z.object({
   id: z.string(),
   kind: z.enum(["pending", "completed", "record"]),
   text: z.string(),
+  revision: z.number().int().min(1),
 });
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
@@ -62,7 +63,7 @@ export function registerReadTodoDayTool(
     {
       title: "Read one Todo day",
       description:
-        "Read Todo papers for one exact business date. Without author, return the complete L, G, and C papers; when the user specifies author (L, G, or C), return only that author's paper. Empty or missing papers are returned as null.",
+        "Read Todo papers for one exact business date. Without author, return the complete L, G, and C papers; when the user specifies author (L, G, or C), return only that author's paper. Each persisted entry includes its entry revision; use that revision with update_todo_entry or delete_todo_entry. Empty or missing papers are returned as null.",
       inputSchema: readTodoDayInputSchema,
       outputSchema: readTodoDayOutputSchema,
       annotations: {
@@ -76,17 +77,31 @@ export function registerReadTodoDayTool(
       try {
         const userId = dependencies.getAuthenticatedUserId();
         const data = await dependencies.todoService.readDay(userId, date);
+        const normalizePaper = (paper: TodoDayPapers["L"]) => paper
+          ? {
+              ...paper,
+              entries: paper.entries.map((entry) => ({
+                ...entry,
+                revision: entry.revision ?? 1,
+              })),
+            }
+          : null;
+        const normalizedPapers: TodoDayPapers = {
+          L: normalizePaper(data.papers.L),
+          G: normalizePaper(data.papers.G),
+          C: normalizePaper(data.papers.C),
+        };
         const scopedData = author
           ? {
               date: data.date,
               author,
               papers: {
-                L: author === "L" ? data.papers.L : null,
-                G: author === "G" ? data.papers.G : null,
-                C: author === "C" ? data.papers.C : null,
+                L: author === "L" ? normalizedPapers.L : null,
+                G: author === "G" ? normalizedPapers.G : null,
+                C: author === "C" ? normalizedPapers.C : null,
               },
             }
-          : data;
+          : { date: data.date, papers: normalizedPapers };
         return {
           content: [{ type: "text", text: todoDayContent(scopedData) }],
           structuredContent: { success: true as const, data: scopedData },
@@ -115,7 +130,7 @@ function todoDayContent(data: {
       continue;
     }
     for (const entry of paper.entries) {
-      lines.push(`${author} [${entry.id}] ${entry.kind}: ${quoteMcpText(entry.text)}`);
+      lines.push(`${author} [${entry.id}; revision=${entry.revision}] ${entry.kind}: ${quoteMcpText(entry.text)}`);
     }
   }
   if (paperCount === 0) {

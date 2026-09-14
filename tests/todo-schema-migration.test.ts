@@ -24,6 +24,7 @@ test("Todo schema exposes relational paper and entry tables", () => {
   assert.equal(todoEntries.entryId.notNull, true);
   assert.equal(todoEntries.kind.notNull, true);
   assert.equal(todoEntries.text.notNull, true);
+  assert.equal(todoEntries.revision.notNull, true);
   assert.equal(todoEntries.position.notNull, true);
 });
 
@@ -83,4 +84,16 @@ test("0017 extends only the durable MCP Todo idempotency checks", async () => {
     4,
     "only two drops and two adds are allowed",
   );
+});
+
+test("0038 adds entry revisions and Todo entry MCP idempotency without rewriting Todo data", async () => {
+  const sql = await readFile("drizzle/0038_todo_entry_writes.sql", "utf8");
+
+  assert.match(sql, /ALTER TABLE "todo_entries" ADD COLUMN "revision" integer DEFAULT 1 NOT NULL/);
+  assert.match(sql, /todo_entries_revision_positive/);
+  for (const name of ["append_todo_entry", "update_todo_entry", "delete_todo_entry"]) {
+    assert.match(sql, new RegExp(`'${name}'`));
+  }
+  assert.match(sql, /'todo_entry'/);
+  assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM|UPDATE "todo_/i);
 });

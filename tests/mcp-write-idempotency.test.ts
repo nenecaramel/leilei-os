@@ -74,8 +74,11 @@ test("canonical MCP fingerprint golden values are version locked", () => {
   );
 });
 
-test("Universe MCP create tools extend the shared idempotency vocabulary", async () => {
+test("Todo entry and Universe MCP tools extend the shared idempotency vocabulary", async () => {
   assert.ok(MCP_WRITE_TOOL_NAMES.includes("write_todo_paper" as never));
+  assert.ok(MCP_WRITE_TOOL_NAMES.includes("append_todo_entry" as never));
+  assert.ok(MCP_WRITE_TOOL_NAMES.includes("update_todo_entry" as never));
+  assert.ok(MCP_WRITE_TOOL_NAMES.includes("delete_todo_entry" as never));
   assert.ok(MCP_WRITE_TOOL_NAMES.includes("create_universe_node" as never));
   assert.ok(MCP_WRITE_TOOL_NAMES.includes("create_universe_relation" as never));
   const source = await readFile(
@@ -84,6 +87,10 @@ test("Universe MCP create tools extend the shared idempotency vocabulary", async
   );
   assert.match(source, /McpIdempotentToolName[\s\S]*\| "write_todo_paper"/);
   assert.match(source, /McpIdempotentResourceType[\s\S]*\| "todo_paper"/);
+  assert.match(source, /McpIdempotentToolName[\s\S]*\| "append_todo_entry"/);
+  assert.match(source, /McpIdempotentToolName[\s\S]*\| "update_todo_entry"/);
+  assert.match(source, /McpIdempotentToolName[\s\S]*\| "delete_todo_entry"/);
+  assert.match(source, /McpIdempotentResourceType[\s\S]*\| "todo_entry"/);
   assert.match(source, /McpIdempotentToolName[\s\S]*\| "create_universe_node"/);
   assert.match(source, /McpIdempotentResourceType[\s\S]*\| "universe_node"/);
 });

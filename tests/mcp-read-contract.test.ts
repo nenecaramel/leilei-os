@@ -187,6 +187,18 @@ class TodoTools {
   async replacePaperIdempotently(): Promise<never> {
     throw new Error("write_todo_paper must not be invoked by this suite");
   }
+
+  async appendEntryIdempotently(): Promise<never> {
+    throw new Error("append_todo_entry must not be invoked by this suite");
+  }
+
+  async updateEntryIdempotently(): Promise<never> {
+    throw new Error("update_todo_entry must not be invoked by this suite");
+  }
+
+  async deleteEntryIdempotently(): Promise<never> {
+    throw new Error("delete_todo_entry must not be invoked by this suite");
+  }
 }
 
 async function connect() {
