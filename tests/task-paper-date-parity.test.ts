@@ -48,8 +48,10 @@ test("Task completion timestamp lives in bottom paper metadata, not the body", a
     readFile("web/src/pages/TaskPaperEditor.tsx", "utf8"),
   ]);
   assert.doesNotMatch(page, /task-paper-completed-at/);
+  assert.doesNotMatch(page, /完成时间：/);
   assert.doesNotMatch(page, /task\.completed_at \?\s*:\s*null/);
   assert.match(page, /completionLabel=\{task\.completed_at/);
+  assert.match(page, /status=\{selectedTask\.status\}[\s\S]*completionLabel=\{selectedTask\.completed_at/);
   assert.match(editor, /task-paper-completed-read/);
 });
 
