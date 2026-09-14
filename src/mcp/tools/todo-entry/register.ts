@@ -41,9 +41,7 @@ const updateInputSchema = z.object({
   kind: todoKindSchema.optional(),
   text: entryTextSchema.optional(),
   idempotency_key: idempotencyKeySchema,
-}).strict().refine((value) => value.kind !== undefined || value.text !== undefined, {
-  message: "kind or text is required",
-});
+}).strict();
 
 const deleteInputSchema = z.object({
   date: dateSchema,
@@ -179,6 +177,9 @@ export function registerTodoEntryWriteTools(
         toolName: "update_todo_entry",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
+          if (kind === undefined && text === undefined) {
+            throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry update must change kind or text.");
+          }
           const result = await dependencies.todoService.updateEntryIdempotently({
             userId,
             date,
