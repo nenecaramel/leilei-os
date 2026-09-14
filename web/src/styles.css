@@ -6975,16 +6975,6 @@ body:has(.system-page) {
   color: #252525;
 }
 
-.diary-comments-title {
-  min-height: 30px;
-  margin: 0;
-  color: #6d6d6d;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 30px;
-  letter-spacing: 0.04em;
-}
-
 .diary-comment-older,
 .diary-comment-create-trigger {
   min-height: 30px;
@@ -7001,11 +6991,6 @@ body:has(.system-page) {
 
 .diary-comment-create-trigger {
   width: 100%;
-}
-
-.diary-comments-empty .diary-comment-create-trigger,
-.diary-comments-empty .diary-comment-composer {
-  margin-top: 30px;
 }
 
 .diary-comment-create-trigger:disabled,
