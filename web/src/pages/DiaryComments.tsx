@@ -326,7 +326,7 @@ export function DiaryCommentsSection({
   }
 
   async function loadOlder() {
-    if (!metadata.truncated || loadingOlder) return;
+    if (!metadata.truncated || loadingOlder || disabled) return;
     setLoadingOlder(true);
     setError("");
     try {
@@ -357,7 +357,7 @@ export function DiaryCommentsSection({
         <button
           type="button"
           className="diary-comment-older memory-paper-control"
-          disabled={loadingOlder}
+          disabled={loadingOlder || disabled}
           onClick={() => void loadOlder()}
         >
           {loadingOlder ? "加载中…" : "查看更早评论"}
