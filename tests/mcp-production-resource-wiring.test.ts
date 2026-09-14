@@ -37,14 +37,14 @@ test("production MCP server composition cannot create database pools", () => {
   assert.doesNotMatch(routerSource, /registerProductionNotionExplicitWriteTools/);
 });
 
-test("direct MCP server keeps the 49-tool core surface", async () => {
+test("direct MCP server keeps the 54-tool core surface", async () => {
   const names = await listTools(createMcpServer({} as never), "mcp-core-inventory");
-  assert.equal(names.length, 49);
+  assert.equal(names.length, 54);
   assert.equal(names.includes("write_notion_page"), false);
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 67 public tools with Health, Thinking Block, Bridge processing, Sentinel tools, Shared Paper tools, and each Notion write once", async () => {
+test("production MCP session factory assembles 72 public tools with Diary comments, Health, Thinking Block, Bridge processing, Sentinel tools, Shared Paper tools, and each Notion write once", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -63,8 +63,17 @@ test("production MCP session factory assembles 67 public tools with Health, Thin
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 67);
+  assert.equal(names.length, 72);
   assert.equal(names.filter((name) => name.includes("shared_paper")).length, 9);
+  for (const name of [
+    "add_diary_comment",
+    "get_diary_comment",
+    "list_diary_comments",
+    "update_diary_comment",
+    "delete_diary_comment",
+  ]) {
+    assert.equal(names.filter((candidate) => candidate === name).length, 1);
+  }
   assert.equal(names.includes("hello"), false);
   assert.equal(names.filter((name) => name === "search_todo").length, 1);
   assert.equal(names.filter((name) => name === "get_health").length, 1);
