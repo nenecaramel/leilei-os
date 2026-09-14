@@ -394,7 +394,13 @@ export class DiaryCommentService {
     return normalized;
   }
 
-  private normalizeContent(value: string): string {
+  private normalizeContent(value: unknown): string {
+    if (typeof value !== "string") {
+      throw new DiaryCommentDomainError(
+        "INVALID_COMMENT_CONTENT",
+        "Diary comment content must be text.",
+      );
+    }
     const normalized = value.normalize("NFC").trim();
     const length = Array.from(normalized).length;
     if (
