@@ -33,15 +33,15 @@ const L_PAPER: TodoPaper = {
   author: "L",
   revision: 4,
   entries: [
-    { id: "todo-a", kind: "pending", text: "First Todo row" },
-    { id: "todo-b", kind: "record", text: "Second Todo row" },
+    { id: "todo-a", kind: "pending", text: "First Todo row", revision: 1 },
+    { id: "todo-b", kind: "record", text: "Second Todo row", revision: 1 },
   ],
 };
 const C_PAPER: TodoPaper = {
   author: "C",
   date: "2026-09-05",
   revision: 1,
-  entries: [{ id: "c-1", kind: "pending", text: "Claude item" }],
+  entries: [{ id: "c-1", kind: "pending", text: "Claude item", revision: 1 }],
 };
 const C_PAPER_ON_DATE: TodoPaper = { ...C_PAPER, date: DATE };
 const PAPERS: TodoDayPapers = { L: null, G: null, C: C_PAPER };
