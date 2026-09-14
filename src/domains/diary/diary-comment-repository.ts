@@ -53,6 +53,7 @@ export type DiaryCommentCreateOutcome =
 
 export type DiaryCommentMutationOutcome =
   | { outcome: "committed"; comment: DiaryCommentRecord }
+  | { outcome: "unchanged"; comment: DiaryCommentRecord }
   | { outcome: "not_found" }
   | { outcome: "diary_archived" }
   | { outcome: "revision_conflict"; comment: DiaryCommentRecord };
@@ -409,6 +410,12 @@ export class DrizzleDiaryCommentRepository
       if (current.revision !== input.expectedRevision) {
         return {
           outcome: "revision_conflict" as const,
+          comment: toRecord(current),
+        };
+      }
+      if (current.content === input.content) {
+        return {
+          outcome: "unchanged" as const,
           comment: toRecord(current),
         };
       }
