@@ -517,6 +517,40 @@ test("unexpected identity arguments are rejected before authentication or writes
         user_id: "attacker",
       },
     },
+    {
+      name: "append_todo_entry",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        kind: "pending",
+        text: "attacker",
+        idempotency_key: "todo-entry-append-attacker-01",
+        user_id: "attacker",
+      },
+    },
+    {
+      name: "update_todo_entry",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        entry_id: "todo-contract-row",
+        expected_revision: 1,
+        text: "attacker",
+        idempotency_key: "todo-entry-update-attacker-01",
+        user_id: "attacker",
+      },
+    },
+    {
+      name: "delete_todo_entry",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        entry_id: "todo-contract-row",
+        expected_revision: 1,
+        idempotency_key: "todo-entry-delete-attacker-01",
+        user_id: "attacker",
+      },
+    },
   ];
 
   for (const attempt of attempts) {
@@ -545,10 +579,10 @@ test("write failures are safe and never retried automatically", async (t) => {
     assert.equal(response.isError, true);
     assert.doesNotMatch(JSON.stringify(response), /private SQL|device transport detail/);
   }
-  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2, todo: 1 });
+  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2, todo: 4 });
   assert.equal(taskCalls.length, 1);
   assert.equal(diaryCalls.length, 1);
   assert.equal(memoryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
-  assert.equal(todoCalls.length, 1);
+  assert.equal(todoCalls.length, 4);
 });
