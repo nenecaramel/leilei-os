@@ -42,6 +42,16 @@ test("Task completion timestamp does not reuse the deadline suffix", () => {
   );
 });
 
+test("Task completion timestamp lives in bottom paper metadata, not the body", async () => {
+  const [page, editor] = await Promise.all([
+    readFile("web/src/pages/TaskPage.tsx", "utf8"),
+    readFile("web/src/pages/TaskPaperEditor.tsx", "utf8"),
+  ]);
+  assert.doesNotMatch(page, /task-paper-completed-at/);
+  assert.match(page, /completionLabel=\{task\.completed_at/);
+  assert.match(editor, /task-paper-completed-read/);
+});
+
 test("Task deadline editor shows dotted paper date while keeping datetime", async () => {
   const editor = await readFile("web/src/pages/TaskPaperEditor.tsx", "utf8");
   assert.ok(
