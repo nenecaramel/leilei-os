@@ -29,7 +29,8 @@ export type McpIdempotentToolName =
   | "edit_shared_paper"
   | "archive_shared_paper"
   | "restore_shared_paper"
-  | "delete_shared_paper";
+  | "delete_shared_paper"
+  | "add_diary_comment";
 
 export type McpIdempotentResourceType =
   | "task"
@@ -40,7 +41,8 @@ export type McpIdempotentResourceType =
   | "universe_node"
   | "universe_relation"
   | "shared_paper"
-  | "shared_paper_edit";
+  | "shared_paper_edit"
+  | "diary_comment";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 export type McpIdempotencyTransaction = Parameters<

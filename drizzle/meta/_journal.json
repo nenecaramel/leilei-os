@@ -260,6 +260,13 @@
       "when": 1789341720000,
       "tag": "0036_shared_paper_edit_targets",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789351200000,
+      "tag": "0037_diary_comments",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,8 @@ import { DrizzleMemoryRepository } from "../domains/memory/memory-repository.js"
 import { MemoryService } from "../domains/memory/memory-service.js";
 import { DrizzleDiaryRepository } from "../domains/diary/diary-repository.js";
 import { DiaryService } from "../domains/diary/diary-service.js";
+import { DrizzleDiaryCommentRepository } from "../domains/diary/diary-comment-repository.js";
+import { DiaryCommentService } from "../domains/diary/diary-comment-service.js";
 import { DrizzleTaskRepository } from "../domains/task/task-repository.js";
 import { TaskService } from "../domains/task/task-service.js";
 import { DrizzleToyCommandRepository } from "../domains/toy/toy-command-repository.js";
@@ -87,6 +89,9 @@ export function createProcessRuntime(
   const memoryRepository = new DrizzleMemoryRepository(db);
   const memoryService = new MemoryService(memoryRepository);
   const diaryService = new DiaryService(new DrizzleDiaryRepository(db));
+  const diaryCommentService = new DiaryCommentService(
+    new DrizzleDiaryCommentRepository(db),
+  );
   const taskService = new TaskService(new DrizzleTaskRepository(db));
   const toyCommandService = new ToyCommandService(
     new DrizzleToyCommandRepository(db),
@@ -141,6 +146,7 @@ export function createProcessRuntime(
     activeUserRepository: memoryRepository,
     memoryService,
     diaryService,
+    diaryCommentService,
     taskService,
     toyCommandService,
     globalSearchService,
@@ -161,6 +167,7 @@ export function createProcessRuntime(
       logger,
       webMemoryService: memoryService,
       webDiaryService: diaryService,
+      webDiaryCommentService: diaryCommentService,
       webTaskService: taskService,
       webSystemService: systemService,
       toyService: toyCommandService,

@@ -445,6 +445,74 @@ export const diaryEntries = pgTable(
   ],
 );
 
+export const diaryComments = pgTable(
+  "diary_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    diaryId: uuid("diary_id").notNull(),
+    author: contentAuthorEnum("author").notNull(),
+    content: text("content").notNull(),
+    revision: integer("revision").default(1).notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    requestHash: varchar("request_hash", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId, table.diaryId],
+      foreignColumns: [diaryEntries.userId, diaryEntries.id],
+      name: "diary_comments_user_diary_fk",
+    })
+      .onDelete("cascade")
+      .onUpdate("cascade"),
+    uniqueIndex("diary_comments_user_idempotency_unique_idx").on(
+      table.userId,
+      table.idempotencyKey,
+    ),
+    uniqueIndex("diary_comments_user_id_id_uidx").on(
+      table.userId,
+      table.id,
+    ),
+    index("diary_comments_user_diary_created_id_idx").on(
+      table.userId,
+      table.diaryId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "diary_comments_content_not_blank",
+      sql`char_length(btrim(${table.content})) > 0`,
+    ),
+    check(
+      "diary_comments_content_limit",
+      sql`char_length(${table.content}) <= 10000`,
+    ),
+    check(
+      "diary_comments_revision_positive",
+      sql`${table.revision} >= 1`,
+    ),
+    check(
+      "diary_comments_idempotency_key_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9._:-]{16,128}$'`,
+    ),
+    check(
+      "diary_comments_request_hash_format",
+      sql`${table.requestHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+  ],
+);
+
 export const toolCalls = pgTable(
   "tool_calls",
   {
@@ -541,6 +609,7 @@ export const mcpWriteIdempotency = pgTable(
         | "archive_shared_paper"
         | "restore_shared_paper"
         | "delete_shared_paper"
+        | "add_diary_comment"
       >()
       .notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
@@ -556,6 +625,7 @@ export const mcpWriteIdempotency = pgTable(
         | "universe_relation"
         | "shared_paper"
         | "shared_paper_edit"
+        | "diary_comment"
       >()
       .notNull(),
     resourceId: text("resource_id").notNull(),
@@ -579,7 +649,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_tool_allowed",
-      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper', 'archive_shared_paper', 'restore_shared_paper', 'delete_shared_paper')`,
+      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper', 'archive_shared_paper', 'restore_shared_paper', 'delete_shared_paper', 'add_diary_comment')`,
     ),
     check(
       "mcp_write_idempotency_key_format",
@@ -591,7 +661,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_resource_type_allowed",
-      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'universe_node', 'universe_relation', 'shared_paper', 'shared_paper_edit')`,
+      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'universe_node', 'universe_relation', 'shared_paper', 'shared_paper_edit', 'diary_comment')`,
     ),
   ],
 );

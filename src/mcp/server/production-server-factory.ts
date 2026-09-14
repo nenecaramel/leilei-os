@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { DiaryService } from "../../domains/diary/diary-service.js";
+import type { DiaryCommentService } from "../../domains/diary/diary-comment-service.js";
 import type { GlobalSearchService } from "../../domains/global-search/global-search-service.js";
 import type { MemoryService } from "../../domains/memory/memory-service.js";
 import type { ActiveUserRepository } from "../../domains/require-active-user.js";
@@ -37,6 +38,7 @@ export function createProductionMcpSessionServerFactory(input: {
   activeUserRepository: ActiveUserRepository;
   memoryService: MemoryService;
   diaryService: DiaryService;
+  diaryCommentService?: DiaryCommentService;
   taskService: TaskService;
   toyCommandService: ToyCommandService;
   globalSearchService: GlobalSearchService;
@@ -77,6 +79,14 @@ export function createProductionMcpSessionServerFactory(input: {
         diaryService: input.diaryService,
         getAuthenticatedUserId,
       },
+      ...(input.diaryCommentService
+        ? {
+            diaryComments: {
+              diaryCommentService: input.diaryCommentService,
+              getAuthenticatedUserId,
+            },
+          }
+        : {}),
       taskTools: {
         taskService: input.taskService,
         getAuthenticatedUserId,
