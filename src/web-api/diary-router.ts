@@ -9,6 +9,12 @@ import {
     type ListDiariesResult,
   } from "../domains/diary/diary-service.js";
   import type { ContentAuthor } from "../domains/content-author.js";
+  import {
+    DiaryCommentDomainError,
+    type AddDiaryCommentResult,
+    type DiaryCommentResult,
+    type ListDiaryCommentsResult,
+  } from "../domains/diary/diary-comment-service.js";
   
   export type DiaryApiDependencies = {
     diaryService: {
@@ -77,6 +83,38 @@ import {
         id: string;
       }): Promise<void>;
     };
+    diaryCommentService?: {
+      addWebComment(input: {
+        userId: string;
+        diaryId: string;
+        author: ContentAuthor;
+        content: string;
+        idempotencyKey?: string;
+      }): Promise<AddDiaryCommentResult>;
+      getComment(input: {
+        userId: string;
+        id: string;
+        scope?: "active" | "archived";
+      }): Promise<DiaryCommentResult>;
+      listComments(input: {
+        userId: string;
+        diaryId: string;
+        scope?: "active" | "archived";
+        limit?: number;
+        before?: string;
+      }): Promise<ListDiaryCommentsResult>;
+      updateComment(input: {
+        userId: string;
+        id: string;
+        expectedRevision: number;
+        content: string;
+      }): Promise<DiaryCommentResult>;
+      deleteComment(input: {
+        userId: string;
+        id: string;
+        expectedRevision: number;
+      }): Promise<{ comment_id: string; deleted: true }>;
+    };
   };
   
   export function createDiaryApiRouter(
@@ -92,6 +130,14 @@ import {
       createListArchivedDiariesApiHandler(dependencies),
     );
     router.get(
+      "/archived/:id/comments",
+      createListArchivedDiaryCommentsApiHandler(dependencies),
+    );
+    router.get(
+      "/archived/:id/comments/:commentId",
+      createReadArchivedDiaryCommentApiHandler(dependencies),
+    );
+    router.get(
       "/archived/:id",
       createReadArchivedDiaryApiHandler(dependencies),
     );
@@ -103,6 +149,11 @@ import {
       "/archived/:id/permanent",
       createDiaryPermanentDeleteApiHandler(dependencies),
     );
+    router.get("/:id/comments", createListDiaryCommentsApiHandler(dependencies));
+    router.post("/:id/comments", createAddDiaryCommentApiHandler(dependencies));
+    router.get("/:id/comments/:commentId", createReadDiaryCommentApiHandler(dependencies));
+    router.patch("/:id/comments/:commentId", createUpdateDiaryCommentApiHandler(dependencies));
+    router.delete("/:id/comments/:commentId", createDeleteDiaryCommentApiHandler(dependencies));
     router.get("/:id", createReadDiaryApiHandler(dependencies));
     router.post("/", createCreateDiaryApiHandler(dependencies));
     router.patch("/:id", createUpdateDiaryApiHandler(dependencies));
@@ -182,7 +233,30 @@ export function createListDiariesByDateApiHandler(
           userId: request.webUserId,
           id: getRouteParam(request.params.id),
         });
-        response.json({ success: true, data });
+        const comments = dependencies.diaryCommentService
+          ? await dependencies.diaryCommentService.listComments({
+              userId: request.webUserId,
+              diaryId: data.id,
+              scope: "archived",
+              limit: 50,
+            })
+          : null;
+        response.json({
+          success: true,
+          data: comments
+            ? {
+                ...data,
+                comments: comments.comments,
+                comments_metadata: {
+                  count: comments.metadata.count,
+                  returned: comments.metadata.returned,
+                  truncated:
+                    comments.metadata.count >
+                    comments.metadata.returned,
+                },
+              }
+            : data,
+        });
       } catch (error) {
         sendDiaryError(response, error);
       }
@@ -294,10 +368,30 @@ export function createListDiariesByDateApiHandler(
           userId: request.webUserId,
           id: getRouteParam(request.params.id),
         });
+        const comments = dependencies.diaryCommentService
+          ? await dependencies.diaryCommentService.listComments({
+              userId: request.webUserId,
+              diaryId: data.id,
+              scope: "active",
+              limit: 50,
+            })
+          : null;
   
         response.json({
           success: true,
-          data,
+          data: comments
+            ? {
+                ...data,
+                comments: comments.comments,
+                comments_metadata: {
+                  count: comments.metadata.count,
+                  returned: comments.metadata.returned,
+                  truncated:
+                    comments.metadata.count >
+                    comments.metadata.returned,
+                },
+              }
+            : data,
         });
       } catch (error) {
         sendDiaryError(response, error);
@@ -368,6 +462,219 @@ export function createListDiariesByDateApiHandler(
     };
   }
   
+  export function createListDiaryCommentsApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return createListCommentsHandler(dependencies, "active");
+  }
+
+  export function createListArchivedDiaryCommentsApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return createListCommentsHandler(dependencies, "archived");
+  }
+
+  function createListCommentsHandler(
+    dependencies: DiaryApiDependencies,
+    scope: "active" | "archived",
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      const service = requireDiaryCommentService(
+        dependencies,
+        response,
+      );
+      if (!service) return;
+      try {
+        const rawLimit = getQueryParam(request.query.limit);
+        const data = await service.listComments({
+          userId: request.webUserId,
+          diaryId: getRouteParam(request.params.id),
+          scope,
+          limit:
+            rawLimit === undefined
+              ? undefined
+              : Number(rawLimit),
+          before: getQueryParam(request.query.before),
+        });
+        response.json({ success: true, data });
+      } catch (error) {
+        sendDiaryCommentError(response, error);
+      }
+    };
+  }
+
+  export function createReadDiaryCommentApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return createReadCommentHandler(dependencies, "active");
+  }
+
+  export function createReadArchivedDiaryCommentApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return createReadCommentHandler(dependencies, "archived");
+  }
+
+  function createReadCommentHandler(
+    dependencies: DiaryApiDependencies,
+    scope: "active" | "archived",
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      const service = requireDiaryCommentService(
+        dependencies,
+        response,
+      );
+      if (!service) return;
+      try {
+        const data = await service.getComment({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.commentId),
+          scope,
+        });
+        if (data.diary_id !== getRouteParam(request.params.id)) {
+          throw new DiaryCommentDomainError(
+            "COMMENT_NOT_FOUND",
+            "Diary comment was not found.",
+          );
+        }
+        response.json({ success: true, data });
+      } catch (error) {
+        sendDiaryCommentError(response, error);
+      }
+    };
+  }
+
+  export function createAddDiaryCommentApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      const service = requireDiaryCommentService(
+        dependencies,
+        response,
+      );
+      if (!service) return;
+      try {
+        const data = await service.addWebComment({
+          userId: request.webUserId,
+          diaryId: getRouteParam(request.params.id),
+          author: request.body.author,
+          content: request.body.content,
+          idempotencyKey: request.body.idempotency_key,
+        });
+        response.status(data.metadata.created ? 201 : 200).json({
+          success: true,
+          data,
+        });
+      } catch (error) {
+        sendDiaryCommentError(response, error);
+      }
+    };
+  }
+
+  export function createUpdateDiaryCommentApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      const service = requireDiaryCommentService(
+        dependencies,
+        response,
+      );
+      if (!service) return;
+      try {
+        const existing = await service.getComment({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.commentId),
+          scope: "active",
+        });
+        if (existing.diary_id !== getRouteParam(request.params.id)) {
+          throw new DiaryCommentDomainError(
+            "COMMENT_NOT_FOUND",
+            "Diary comment was not found.",
+          );
+        }
+        const data = await service.updateComment({
+          userId: request.webUserId,
+          id: existing.id,
+          expectedRevision: request.body.expected_revision,
+          content: request.body.content,
+        });
+        response.json({ success: true, data });
+      } catch (error) {
+        sendDiaryCommentError(response, error);
+      }
+    };
+  }
+
+  export function createDeleteDiaryCommentApiHandler(
+    dependencies: DiaryApiDependencies,
+  ): RequestHandler {
+    return async (request, response) => {
+      if (!request.webUserId) {
+        sendUnauthorized(response);
+        return;
+      }
+      const service = requireDiaryCommentService(
+        dependencies,
+        response,
+      );
+      if (!service) return;
+      try {
+        const existing = await service.getComment({
+          userId: request.webUserId,
+          id: getRouteParam(request.params.commentId),
+          scope: "active",
+        });
+        if (existing.diary_id !== getRouteParam(request.params.id)) {
+          throw new DiaryCommentDomainError(
+            "COMMENT_NOT_FOUND",
+            "Diary comment was not found.",
+          );
+        }
+        const data = await service.deleteComment({
+          userId: request.webUserId,
+          id: existing.id,
+          expectedRevision: request.body.expected_revision,
+        });
+        response.json({ success: true, data });
+      } catch (error) {
+        sendDiaryCommentError(response, error);
+      }
+    };
+  }
+
+  function requireDiaryCommentService(
+    dependencies: DiaryApiDependencies,
+    response: Response,
+  ): NonNullable<DiaryApiDependencies["diaryCommentService"]> | null {
+    if (dependencies.diaryCommentService) {
+      return dependencies.diaryCommentService;
+    }
+    response.status(503).json({
+      success: false,
+      error: {
+        code: "DIARY_COMMENTS_UNAVAILABLE",
+        message: "Diary comments are temporarily unavailable.",
+      },
+    });
+    return null;
+  }
+
   function sendUnauthorized(response: Response): void {
     response.status(401).json({
       success: false,
@@ -378,6 +685,90 @@ export function createListDiariesByDateApiHandler(
     });
   }
   
+  function sendDiaryCommentError(
+    response: Response,
+    error: unknown,
+  ): void {
+    if (error instanceof DiaryCommentDomainError) {
+      if (
+        error.code === "USER_NOT_FOUND" ||
+        error.code === "USER_DISABLED"
+      ) {
+        response.status(403).json({
+          success: false,
+          error: {
+            code: "DIARY_COMMENTS_UNAVAILABLE",
+            message: "Diary comments are unavailable for the authenticated user.",
+          },
+        });
+        return;
+      }
+      if (
+        error.code === "DIARY_NOT_FOUND" ||
+        error.code === "COMMENT_NOT_FOUND"
+      ) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: error.code,
+            message:
+              error.code === "DIARY_NOT_FOUND"
+                ? "Diary entry was not found."
+                : "Diary comment was not found.",
+          },
+        });
+        return;
+      }
+      if (error.code === "DIARY_ARCHIVED") {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: "Archived Diary comments are read-only.",
+          },
+        });
+        return;
+      }
+      if (error.code === "COMMENT_REVISION_CONFLICT") {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: "Diary comment revision changed.",
+            ...(error.current ? { current: error.current } : {}),
+          },
+        });
+        return;
+      }
+      if (error.code === "IDEMPOTENCY_CONFLICT") {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: "The idempotency key was already used for a different Diary comment.",
+          },
+        });
+        return;
+      }
+      response.status(400).json({
+        success: false,
+        error: {
+          code: error.code,
+          message: "The Diary comment request is invalid.",
+        },
+      });
+      return;
+    }
+
+    response.status(503).json({
+      success: false,
+      error: {
+        code: "DIARY_COMMENTS_UNAVAILABLE",
+        message: "Diary comments are temporarily unavailable.",
+      },
+    });
+  }
+
   function sendDiaryError(
     response: Response,
     error: unknown,
