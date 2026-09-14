@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   formatTaskPaperDeadline,
+  formatTaskPaperTimestamp,
   formatTaskRowDeadline,
   type TaskMobileEntry,
 } from "../web/src/pages/task-mobile-presentation.js";
@@ -32,6 +33,23 @@ test("Task paper deadline uses Memory/Diary dotted paper-date language", () => {
 
 test("Task list deadline keeps its existing slash row format", () => {
   assert.equal(formatTaskRowDeadline(sample), "2026/08/09截止");
+});
+
+test("Task completion timestamp does not reuse the deadline suffix", () => {
+  assert.equal(
+    formatTaskPaperTimestamp(sample.due_time, sample.timezone),
+    "2026.08.09 15:30",
+  );
+});
+
+test("Task completion timestamp lives in bottom paper metadata, not the body", async () => {
+  const [page, editor] = await Promise.all([
+    readFile("web/src/pages/TaskPage.tsx", "utf8"),
+    readFile("web/src/pages/TaskPaperEditor.tsx", "utf8"),
+  ]);
+  assert.doesNotMatch(page, /task-paper-completed-at/);
+  assert.match(page, /completionLabel=\{task\.completed_at/);
+  assert.match(editor, /task-paper-completed-read/);
 });
 
 test("Task deadline editor shows dotted paper date while keeping datetime", async () => {

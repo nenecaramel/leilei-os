@@ -32,8 +32,12 @@ function StatusControl(props: { status: TaskMobileStatus; actions: readonly Task
     {open && actionable ? <span className="memory-paper-category-menu task-paper-status-menu" role="menu" aria-label="Task 状态操作">{props.actions.map((a) => <button key={a} type="button" role="menuitem" onClick={() => { setOpen(false); props.onAction?.(a); }}>{ACTION_LABELS[a]}</button>)}</span> : null}
   </span>;
 }
-export function TaskPaperMetadataRead(props: { status: TaskMobileStatus; tags: readonly string[]; actions: readonly TaskPaperAction[]; disabled: boolean; onAction?: (a: TaskPaperAction) => void }) {
-  return <span className="memory-paper-metadata task-paper-metadata"><StatusControl status={props.status} actions={props.actions} disabled={props.disabled} onAction={props.onAction} />{props.tags.length ? <><span className="memory-paper-metadata-separator">·</span><span className="task-paper-tags-read">{props.tags.map((t) => `#${t}`).join(" ")}</span></> : null}</span>;
+export function TaskPaperMetadataRead(props: { status: TaskMobileStatus; tags: readonly string[]; completionLabel?: string | null; actions: readonly TaskPaperAction[]; disabled: boolean; onAction?: (a: TaskPaperAction) => void }) {
+  return <span className="memory-paper-metadata task-paper-metadata">
+    <StatusControl status={props.status} actions={props.actions} disabled={props.disabled} onAction={props.onAction} />
+    {props.tags.length ? <><span className="memory-paper-metadata-separator">·</span><span className="task-paper-tags-read">{props.tags.map((t) => `#${t}`).join(" ")}</span></> : null}
+    {props.completionLabel ? <><span className="memory-paper-metadata-separator">·</span><span className="task-paper-completed-read">{props.completionLabel}</span></> : null}
+  </span>;
 }
 export function TaskPaperMetadataEditor(props: { status: TaskMobileStatus; tagsValue: string; disabled: boolean; onTagsChange(v: string): void }) {
   return <span className="memory-paper-metadata task-paper-metadata"><StatusControl status={props.status} actions={[]} disabled /><span className="memory-paper-metadata-separator">·</span><input className="memory-paper-tags task-paper-tags" type="text" aria-label="任务标签" placeholder="tags" autoComplete="off" value={props.tagsValue} disabled={props.disabled} onChange={(e) => props.onTagsChange(e.target.value)} /></span>;

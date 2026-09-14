@@ -68,6 +68,11 @@ export function formatTaskPaperDeadline(value: string | null, timezone: string) 
   const p = parts(value, timezone, true);
   return p ? `${p.year}.${p.month}.${p.day} ${p.hour}:${p.minute}截止` : "截止时间";
 }
+export function formatTaskPaperTimestamp(value: string | null, timezone: string) {
+  if (!value) return "";
+  const p = parts(value, timezone, true);
+  return p ? `${p.year}.${p.month}.${p.day} ${p.hour}:${p.minute}` : "";
+}
 export function formatTaskRowMeta(task: TaskMobileEntry) {
   const tags = task.tags.map((tag) => `#${tag}`).join(" ");
   return tags ? `${TASK_STATUS_LABELS[task.status]} · ${tags}` : TASK_STATUS_LABELS[task.status];

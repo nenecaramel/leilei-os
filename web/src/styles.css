@@ -4075,6 +4075,16 @@ body:has(.home-prototype) {
 }
 /* leilei-task-mobile-redesign-2026-08-08:end */
 
+.task-paper-completed-read {
+  flex: 0 0 auto;
+  color: #858585;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 /* leilei-task-mobile-visual-polish-2026-08-09:start */
 @media (max-width: 760px) {
   .paper-detail-paper[id^="task-"] .memory-paper-title,
