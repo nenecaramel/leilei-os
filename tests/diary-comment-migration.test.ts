@@ -18,6 +18,10 @@ test("Diary comments schema and migration preserve canonical ownership and lifec
   assert.match(migration, /ON DELETE cascade/);
   assert.match(migration, /"revision" integer DEFAULT 1 NOT NULL/);
   assert.match(migration, /char_length\("diary_comments"\."content"\) <= 10000/);
+  assert.match(migration, /add_diary_comment/);
+  assert.match(migration, /diary_comment/);
+  assert.match(schema, /\| "add_diary_comment"/);
+  assert.match(schema, /\| "diary_comment"/);
   assert.deepEqual(journal.entries.at(-1), {
     idx: 37,
     version: "7",
