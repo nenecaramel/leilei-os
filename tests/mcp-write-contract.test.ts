@@ -341,7 +341,7 @@ test("MCP exposes exactly twenty-eight write tools and preserves every annotatio
     assert.ok(tool?.inputSchema.required?.includes("author"));
   }
   for (const tool of tools) {
-    if (!["create_task", "write_diary", "write_memory", "write_todo_paper", "create_shared_paper", "edit_shared_paper", "update_memory", "update_diary", "update_task", "read_todo_day", "search_todo", "search_diary"].includes(tool.name)) {
+    if (!["create_task", "write_diary", "write_memory", "write_todo_paper", "add_diary_comment", "create_shared_paper", "edit_shared_paper", "update_memory", "update_diary", "update_task", "read_todo_day", "search_todo", "search_diary"].includes(tool.name)) {
       assert.equal("author" in (tool.inputSchema.properties ?? {}), false);
     }
   }
