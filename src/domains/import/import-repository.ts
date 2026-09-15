@@ -4,6 +4,7 @@ import {
   coreMemories,
   dataImportRuns,
   diaryEntries,
+  sharedPapers,
   tasks,
   todoEntries,
   todoPapers,
@@ -12,6 +13,7 @@ import {
 import type {
   ExportDiaryRecord,
   ExportMemoryRecord,
+  ExportSharedPaper,
   ExportTaskRecord,
   ExportTodoPaper,
 } from "../export/export-types.js";
@@ -37,6 +39,7 @@ export interface ImportRepository {
   insertDiary(userId: string, record: ExportDiaryRecord): Promise<void>;
   insertTask(userId: string, record: ExportTaskRecord): Promise<void>;
   insertTodo(userId: string, record: ExportTodoPaper): Promise<void>;
+  insertSharedPaper(userId: string, record: ExportSharedPaper): Promise<void>;
   rereadCreatedState(userId: string, modules: Set<keyof ImportCurrentState>): Promise<ImportCurrentState>;
   recordAuditRun(userId: string, run: ImportAuditRun): Promise<void>;
 }
@@ -63,14 +66,16 @@ export class DrizzleImportRepository implements ImportRepository {
   }
 
   async readCurrentState(userId: string): Promise<ImportCurrentState> {
-    const [memory, diary, task, papers, allMemory, allDiary, allTask] = await Promise.all([
+    const [memory, diary, task, papers, sharedPaperRows, allMemory, allDiary, allTask, allSharedPaperRows] = await Promise.all([
       this.db.select().from(coreMemories).where(eq(coreMemories.userId, userId)).orderBy(asc(coreMemories.id)),
       this.db.select().from(diaryEntries).where(eq(diaryEntries.userId, userId)).orderBy(asc(diaryEntries.id)),
       this.db.select().from(tasks).where(eq(tasks.userId, userId)).orderBy(asc(tasks.id)),
       this.db.select().from(todoPapers).where(eq(todoPapers.userId, userId)).orderBy(asc(todoPapers.businessDate), asc(todoPapers.author)),
+      this.db.select().from(sharedPapers).where(eq(sharedPapers.userId, userId)).orderBy(asc(sharedPapers.createdAt), asc(sharedPapers.id)),
       this.db.select({ id: coreMemories.id }).from(coreMemories),
       this.db.select({ id: diaryEntries.id }).from(diaryEntries),
       this.db.select({ id: tasks.id }).from(tasks),
+      this.db.select({ id: sharedPapers.id }).from(sharedPapers),
     ]);
     const entries = papers.length === 0 ? [] : await this.db.select({
       paperId: todoEntries.paperId, id: todoEntries.entryId, kind: todoEntries.kind, text: todoEntries.text,
@@ -101,9 +106,16 @@ export class DrizzleImportRepository implements ImportRepository {
         date: row.businessDate, author: row.author, revision: row.revision, created_at: toIso(row.createdAt), updated_at: toIso(row.updatedAt),
         entries: grouped.get(row.id) ?? [],
       })),
+      shared_paper: sharedPaperRows.map((row) => ({
+        id: row.id, title: row.title, content: row.content, revision: row.revision,
+        created_by: row.createdBy, updated_by: row.updatedBy,
+        created_at: toIso(row.createdAt), updated_at: toIso(row.updatedAt),
+        archived_at: row.archivedAt ? toIso(row.archivedAt) : null,
+      })),
       foreign_memory_ids: new Set(allMemory.map((row) => row.id)),
       foreign_diary_ids: new Set(allDiary.map((row) => row.id)),
       foreign_task_ids: new Set(allTask.map((row) => row.id)),
+      foreign_shared_paper_ids: new Set(allSharedPaperRows.map((row) => row.id)),
     };
   }
 
@@ -150,6 +162,21 @@ export class DrizzleImportRepository implements ImportRepository {
     }
   }
 
+  async insertSharedPaper(userId: string, record: ExportSharedPaper): Promise<void> {
+    await this.db.insert(sharedPapers).values({
+      id: record.id,
+      userId,
+      title: record.title,
+      content: record.content,
+      revision: record.revision,
+      createdBy: record.created_by,
+      updatedBy: record.updated_by,
+      createdAt: new Date(record.created_at),
+      updatedAt: new Date(record.updated_at),
+      archivedAt: record.archived_at ? new Date(record.archived_at) : null,
+    });
+  }
+
   async rereadCreatedState(userId: string, modules: Set<keyof ImportCurrentState>): Promise<ImportCurrentState> {
     const state = await this.readCurrentState(userId);
     return {
@@ -157,6 +184,7 @@ export class DrizzleImportRepository implements ImportRepository {
       diary: modules.has("diary") ? state.diary : [],
       task: modules.has("task") ? state.task : [],
       todo: modules.has("todo") ? state.todo : [],
+      shared_paper: modules.has("shared_paper") ? state.shared_paper : [],
     };
   }
 

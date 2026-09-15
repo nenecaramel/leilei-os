@@ -38,13 +38,14 @@ type ImportPreviewRow = {
   value: string;
 };
 
-const IMPORT_MODULE_ORDER = ["memory", "diary", "task", "todo"] as const;
+const IMPORT_MODULE_ORDER = ["memory", "diary", "task", "shared_paper", "todo"] as const;
 type ImportModuleKey = (typeof IMPORT_MODULE_ORDER)[number];
 
 const IMPORT_MODULE_LABELS: Record<ImportModuleKey, string> = {
   memory: "Memory",
   diary: "Diary",
   task: "Task",
+  shared_paper: "Shared Paper",
   todo: "Todo",
 };
 

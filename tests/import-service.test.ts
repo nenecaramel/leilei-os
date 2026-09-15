@@ -3,6 +3,7 @@ import test from "node:test";
 import type {
   ExportDiaryRecord,
   ExportMemoryRecord,
+  ExportSharedPaper,
   ExportTaskRecord,
   ExportTodoPaper,
 } from "../src/domains/export/export-types.js";
@@ -18,7 +19,18 @@ const memory: ExportMemoryRecord = {
   tags: [], visibility: "assistant", source: "web", author: "L", status: "active", sort_order: 0,
   created_at: "2026-08-14T00:00:00.000Z", updated_at: "2026-08-14T00:00:00.000Z",
 };
-const empty: ImportCurrentState = { memory: [], diary: [], task: [], todo: [] };
+const sharedPaper: ExportSharedPaper = {
+  id: "00000000-0000-4000-8000-000000000044",
+  title: "Shared import",
+  content: "Canonical shared paper content",
+  revision: 3,
+  created_by: "L",
+  updated_by: "C",
+  created_at: "2026-08-14T00:00:00.000Z",
+  updated_at: "2026-08-15T00:00:00.000Z",
+  archived_at: "2026-08-16T00:00:00.000Z",
+};
+const empty: ImportCurrentState = { memory: [], diary: [], task: [], todo: [], shared_paper: [] };
 
 function packageBytes(record = memory): Uint8Array {
   return new TextEncoder().encode(JSON.stringify({
@@ -31,8 +43,8 @@ function packageBytes(record = memory): Uint8Array {
 
 function cloneState(state: ImportCurrentState): ImportCurrentState {
   return {
-    memory: structuredClone(state.memory), diary: structuredClone(state.diary), task: structuredClone(state.task), todo: structuredClone(state.todo),
-    foreign_memory_ids: new Set(state.foreign_memory_ids), foreign_diary_ids: new Set(state.foreign_diary_ids), foreign_task_ids: new Set(state.foreign_task_ids),
+    memory: structuredClone(state.memory), diary: structuredClone(state.diary), task: structuredClone(state.task), todo: structuredClone(state.todo), shared_paper: structuredClone(state.shared_paper),
+    foreign_memory_ids: new Set(state.foreign_memory_ids), foreign_diary_ids: new Set(state.foreign_diary_ids), foreign_task_ids: new Set(state.foreign_task_ids), foreign_shared_paper_ids: new Set(state.foreign_shared_paper_ids),
   };
 }
 
@@ -54,9 +66,10 @@ class FakeImportRepository implements ImportRepository {
   async insertDiary(_userId: string, record: ExportDiaryRecord) { this.state.diary.push(record); this.writes += 1; }
   async insertTask(_userId: string, record: ExportTaskRecord) { this.state.task.push(record); this.writes += 1; }
   async insertTodo(_userId: string, record: ExportTodoPaper) { this.state.todo.push(record); this.writes += 1; }
+  async insertSharedPaper(_userId: string, record: ExportSharedPaper) { this.state.shared_paper.push(record); this.writes += 1; }
   async rereadCreatedState(userId: string, modules: Set<keyof ImportCurrentState>) {
     const state = await this.readCurrentState(userId);
-    return { memory: modules.has("memory") ? state.memory : [], diary: modules.has("diary") ? state.diary : [], task: modules.has("task") ? state.task : [], todo: modules.has("todo") ? state.todo : [] };
+    return { memory: modules.has("memory") ? state.memory : [], diary: modules.has("diary") ? state.diary : [], task: modules.has("task") ? state.task : [], todo: modules.has("todo") ? state.todo : [], shared_paper: modules.has("shared_paper") ? state.shared_paper : [] };
   }
   async recordAuditRun(_userId: string, run: ImportAuditRun) { this.audits.push(run); }
 }
@@ -118,4 +131,40 @@ test("an all-duplicate package is not reported as a successful restore", async (
 test("parser output can be reused for deterministic package identity", () => {
   const parsed = parseImportPackage(packageBytes());
   assert.equal(parsed.package_sha256.length, 64);
+});
+
+function sharedPaperPackage(record = sharedPaper): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify({
+    schema_version: 2,
+    owner_fingerprint: createOwnerFingerprint(USER_ID),
+    exported_at: "2026-08-14T00:00:00.000Z",
+    data: { shared_paper: [record] },
+  }));
+}
+
+test("preview accepts a dedicated Shared Paper export", async () => {
+  const repository = new FakeImportRepository();
+  const preview = await new ImportService(repository).preview(sharedPaperPackage(), USER_ID);
+  assert.equal(preview.can_execute, true);
+  assert.deepEqual(preview.summary.shared_paper, { create: 1, duplicate: 0, conflict: 0, invalid: 0 });
+  assert.equal(repository.writes, 0);
+});
+
+test("execute restores active and archived Shared Papers with canonical metadata", async () => {
+  const active = { ...sharedPaper, id: "00000000-0000-4000-8000-000000000045", archived_at: null };
+  const repository = new FakeImportRepository();
+  const service = new ImportService(repository);
+  const raw = sharedPaperPackage(active);
+  const preview = await service.preview(raw, USER_ID);
+  await service.execute(raw, USER_ID, preview.preview_fingerprint);
+  const archivedRaw = sharedPaperPackage();
+  const archivedPreview = await service.preview(archivedRaw, USER_ID);
+  await service.execute(archivedRaw, USER_ID, archivedPreview.preview_fingerprint);
+  assert.deepEqual(repository.state.shared_paper, [active, sharedPaper]);
+  assert.equal(repository.state.shared_paper[1]?.revision, 3);
+  assert.equal(repository.state.shared_paper[1]?.created_by, "L");
+  assert.equal(repository.state.shared_paper[1]?.updated_by, "C");
+  assert.equal(repository.state.shared_paper[1]?.created_at, sharedPaper.created_at);
+  assert.equal(repository.state.shared_paper[1]?.updated_at, sharedPaper.updated_at);
+  assert.equal(repository.state.shared_paper[1]?.archived_at, sharedPaper.archived_at);
 });

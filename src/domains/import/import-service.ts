@@ -2,6 +2,7 @@ import type {
   ExportDiaryRecord,
   ExportDocumentV2,
   ExportMemoryRecord,
+  ExportSharedPaper,
   ExportTaskRecord,
   ExportTodoPaper,
 } from "../export/export-types.js";
@@ -71,8 +72,12 @@ function hasExactCreatedValue(item: ImportPlanItem, state: ImportCurrentState): 
     const record = item.record as ExportTaskRecord;
     return state.task.some((candidate) => candidate.id === record.id && hashCanonical(candidate) === hashCanonical(record));
   }
-  const record = item.record as ExportTodoPaper;
-  return state.todo.some((paper) => paper.date === record.date && paper.author === record.author && hashCanonical(paper) === hashCanonical(record));
+  if (item.module === "todo") {
+    const record = item.record as ExportTodoPaper;
+    return state.todo.some((paper) => paper.date === record.date && paper.author === record.author && hashCanonical(paper) === hashCanonical(record));
+  }
+  const record = item.record as ExportSharedPaper;
+  return state.shared_paper.some((paper) => paper.id === record.id && hashCanonical(paper) === hashCanonical(record));
 }
 
 function hasDatabaseErrorCode(error: unknown, code: string): boolean {
@@ -122,6 +127,7 @@ export class ImportService {
           if (item.module === "diary") await transaction.insertDiary(userId, item.record as ExportDiaryRecord);
           if (item.module === "task") await transaction.insertTask(userId, item.record as ExportTaskRecord);
           if (item.module === "todo") await transaction.insertTodo(userId, item.record as ExportTodoPaper);
+          if (item.module === "shared_paper") await transaction.insertSharedPaper(userId, item.record as ExportSharedPaper);
         }
         const reread = await transaction.rereadCreatedState(userId, includedModules(parsed.document));
         if (creates.some((item) => !hasExactCreatedValue(item, reread))) {

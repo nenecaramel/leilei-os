@@ -165,6 +165,66 @@ test("parseImportPackage accepts values that are valid in storage but wider than
   assert.equal(parsed.document.data.todo?.[0]?.entries[0]?.text.length, 4_001);
 });
 
+test("parseImportPackage accepts the canonical Shared Paper export shape", () => {
+  const sharedPaper = {
+    id: "00000000-0000-4000-8000-000000000041",
+    title: "Shared import",
+    content: "Canonical shared paper content",
+    revision: 3,
+    created_by: "L",
+    updated_by: "C",
+    created_at: "2026-08-14T00:00:00.000Z",
+    updated_at: "2026-08-15T00:00:00.000Z",
+    archived_at: "2026-08-16T00:00:00.000Z",
+  };
+  const document = validDocument({ shared_paper: [sharedPaper] });
+  const parsed = parseImportPackage(bytes(document));
+  assert.deepEqual(parsed.document.data.shared_paper, [sharedPaper]);
+});
+
+test("parseImportPackage strictly validates Shared Paper fields", () => {
+  const sharedPaper = {
+    id: "00000000-0000-4000-8000-000000000042",
+    title: "Shared import",
+    content: "Canonical shared paper content",
+    revision: 1,
+    created_by: "L",
+    updated_by: "L",
+    created_at: "2026-08-14T00:00:00.000Z",
+    updated_at: "2026-08-14T00:00:00.000Z",
+    archived_at: null,
+  };
+  for (const invalid of [
+    { ...sharedPaper, revision: 0 },
+    { ...sharedPaper, title: "   " },
+    { ...sharedPaper, created_by: "Claude" },
+    { ...sharedPaper, archived_at: "not-a-timestamp" },
+    { ...sharedPaper, unexpected: true },
+  ]) {
+    assert.throws(
+      () => parseImportPackage(bytes(validDocument({ shared_paper: [invalid] }))),
+      (error: unknown) => error instanceof ImportValidationError && error.code === "INVALID_IMPORT_FILE",
+    );
+  }
+});
+
+test("parseImportPackage applies Shared Paper text limits in Unicode code points", () => {
+  const sharedPaper = {
+    id: "00000000-0000-4000-8000-000000000043",
+    title: "😀".repeat(200),
+    content: "😀".repeat(100_000),
+    revision: 1,
+    created_by: "L",
+    updated_by: "C",
+    created_at: "2026-08-14T00:00:00.000Z",
+    updated_at: "2026-08-14T00:00:00.000Z",
+    archived_at: null,
+  };
+  assert.doesNotThrow(() => parseImportPackage(bytes(validDocument({ shared_paper: [sharedPaper] }))));
+  assert.throws(() => parseImportPackage(bytes(validDocument({ shared_paper: [{ ...sharedPaper, title: "😀".repeat(201) }] }))), ImportValidationError);
+  assert.throws(() => parseImportPackage(bytes(validDocument({ shared_paper: [{ ...sharedPaper, content: "😀".repeat(100_001) }] }))), ImportValidationError);
+});
+
 test("parseImportPackage enforces canonical record and collection limits before planning", () => {
   const memory = {
     id: "00000000-0000-4000-8000-000000000101",

@@ -2,22 +2,25 @@ import { createOwnerFingerprint } from "../export/owner-fingerprint.js";
 import type {
   ExportDiaryRecord,
   ExportMemoryRecord,
+  ExportSharedPaper,
   ExportTaskRecord,
   ExportTodoPaper,
 } from "../export/export-types.js";
 import { ImportValidationError, type ParsedImportPackage } from "./import-schema.js";
 import { hashCanonical } from "./import-canonical.js";
 
-export type ImportModule = "memory" | "diary" | "task" | "todo";
+export type ImportModule = "memory" | "diary" | "task" | "todo" | "shared_paper";
 export type ImportClassification = "create" | "duplicate" | "conflict" | "invalid";
 export type ImportCurrentState = {
   memory: ExportMemoryRecord[];
   diary: ExportDiaryRecord[];
   task: ExportTaskRecord[];
   todo: ExportTodoPaper[];
+  shared_paper: ExportSharedPaper[];
   foreign_memory_ids?: Set<string>;
   foreign_diary_ids?: Set<string>;
   foreign_task_ids?: Set<string>;
+  foreign_shared_paper_ids?: Set<string>;
 };
 export type ImportSummary = Record<ImportModule, {
   create: number;
@@ -29,7 +32,7 @@ export type ImportPlanItem = {
   module: ImportModule;
   logical_key: string;
   classification: ImportClassification;
-  record: ExportMemoryRecord | ExportDiaryRecord | ExportTaskRecord | ExportTodoPaper;
+  record: ExportMemoryRecord | ExportDiaryRecord | ExportTaskRecord | ExportTodoPaper | ExportSharedPaper;
   current_hash: string | null;
 };
 export type ImportPlan = {
@@ -97,7 +100,7 @@ function memoryItems(imported: ExportMemoryRecord[], current: ExportMemoryRecord
 
 function summarize(items: ImportPlanItem[]): ImportSummary {
   const summary = {
-    memory: emptyCounts(), diary: emptyCounts(), task: emptyCounts(), todo: emptyCounts(),
+    memory: emptyCounts(), diary: emptyCounts(), task: emptyCounts(), todo: emptyCounts(), shared_paper: emptyCounts(),
   } satisfies ImportSummary;
   for (const item of items) summary[item.module][item.classification] += 1;
   return summary;
@@ -131,6 +134,12 @@ export function buildImportPlan(
     }
   }
   if (parsed.document.data.todo) items.push(...classify("todo", parsed.document.data.todo, current.todo, (record) => `paper:${record.date}:${record.author}`));
+  if (parsed.document.data.shared_paper) {
+    items.push(...classify("shared_paper", parsed.document.data.shared_paper, current.shared_paper, (record) => `id:${record.id}`));
+    for (const item of items.filter((candidate) => candidate.module === "shared_paper" && candidate.classification === "create")) {
+      if (current.foreign_shared_paper_ids?.has((item.record as ExportSharedPaper).id)) item.classification = "conflict";
+    }
+  }
   const summary = summarize(items);
   const fingerprint = hashCanonical({
     package_sha256: parsed.package_sha256,

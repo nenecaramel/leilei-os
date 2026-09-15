@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { CONTENT_AUTHORS } from "../content-author.js";
 import type { ExportDocumentV2 } from "../export/export-types.js";
+import { codePointLength } from "../../shared/unicode.js";
 import {
   DIARY_MOOD_MAX_LENGTH,
   DIARY_TAGS_MAX_COUNT,
@@ -117,6 +118,18 @@ const todoPaper = z.object({
   entries: z.array(todoEntry).max(MAX_TODO_ENTRIES),
 }).strict();
 
+const sharedPaper = z.object({
+  id: uuid,
+  title: z.string().min(1).max(400).refine((value) => codePointLength(value) <= 200),
+  content: z.string().max(200_000).refine((value) => codePointLength(value) <= 100_000),
+  revision: z.number().int().min(1),
+  created_by: z.enum(CONTENT_AUTHORS),
+  updated_by: z.enum(CONTENT_AUTHORS),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+  archived_at: isoDateTime.nullable(),
+}).strict();
+
 const lifecycleEvent = z.object({
   id: uuid,
   resource_type: z.string().min(1).max(32),
@@ -147,6 +160,7 @@ const documentSchema = z.object({
     diary: z.array(diaryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
     task: z.array(taskRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
     todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+    shared_paper: z.array(sharedPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
   }).strict(),
   audit: z.object({
     lifecycle: z.array(lifecycleEvent).max(MAX_IMPORT_AUDIT_EVENTS_PER_TYPE),
@@ -194,6 +208,11 @@ function assertBusinessInvariants(document: ExportDocumentV2): void {
         throw new ImportValidationError("INVALID_IMPORT_FILE", "todo entries must have unique nonblank ids and text");
       }
       ids.add(entry.id);
+    }
+  }
+  for (const paper of document.data.shared_paper ?? []) {
+    if (paper.title.trim().length === 0) {
+      throw new ImportValidationError("INVALID_IMPORT_FILE", "shared paper title must not be blank");
     }
   }
 }
