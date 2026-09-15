@@ -355,14 +355,14 @@ export function SystemDataPageContent({
                 state.summary.task.archived
               }
             />
+            <CurrentCountRow
+              label="Todo"
+              active={state.summary.todo?.active ?? "—"}
+            />
             <ArchivedCountRow
               label="Shared Paper"
               active={state.summary.shared_paper?.active ?? "—"}
               archived={state.summary.shared_paper?.archived ?? "—"}
-            />
-            <CurrentCountRow
-              label="Todo"
-              active={state.summary.todo?.active ?? "—"}
             />
           </div>
         ) : null}
