@@ -3904,7 +3904,8 @@ body:has(.home-prototype) {
   }
 
   .task-filter-popover {
-    min-width: 148px;
+    width: 184px;
+    min-width: 184px;
   }
 
   .task-time-tool-wrap .task-time-popover {
@@ -4235,7 +4236,7 @@ body:has(.home-prototype) {
    * to grow without leaving the viewport.
    */
   .task-time-tool-wrap .task-time-popover {
-    width: 244px !important;
+    width: 184px !important;
     max-width: calc(100vw - 48px) !important;
   }
 
