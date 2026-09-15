@@ -171,10 +171,15 @@ export function PaperDetailDialog({
           <div className="paper-detail-top-right">{topRight}</div>
         ) : null}
         <div className="paper-detail-scroll">
-          {showRules ? (
-            <div className="paper-detail-rules" aria-hidden="true" />
-          ) : null}
-          <div className="paper-detail-body">{children}</div>
+          <div
+            className={
+              showRules
+                ? "paper-detail-body paper-detail-body--ruled"
+                : "paper-detail-body"
+            }
+          >
+            {children}
+          </div>
         </div>
         {bottomLeft ? (
           <div className="paper-detail-bottom-left">{bottomLeft}</div>
