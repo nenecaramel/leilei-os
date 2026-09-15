@@ -43,7 +43,7 @@ export function PwaStatus({
               void store.acceptUpdate();
             }}
           >
-            刷新使用
+            刷新
           </button>
         </div>
       ) : null}

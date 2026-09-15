@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
@@ -101,6 +102,8 @@ test("PWA status shows offline state and explicit update action", async () => {
     text,
     /Leilei OS 有新版本/,
   );
+  assert.match(text, /刷新/);
+  assert.doesNotMatch(text, /刷新使用/);
 
   const button =
     container.querySelector<HTMLButtonElement>(
@@ -144,4 +147,24 @@ test("PWA status renders nothing when online and current", async () => {
   root.unmount();
   await waitForPaint();
   env.restore();
+});
+
+
+test("PWA update action keeps a 44px hit target without a filled black button", () => {
+  const styles = readFileSync(
+    new URL("../web/src/pwa/pwa-status.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    styles,
+    /\.pwa-status__update-button\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px[^}]*background:\s*transparent[^}]*color:\s*#666[^}]*font-size:\s*12px[^}]*font-weight:\s*500/s,
+  );
+  assert.match(
+    styles,
+    /\.pwa-status__update-button:hover,[\s\S]*?background:\s*rgba\(0,\s*0,\s*0,\s*0\.05\)/,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.pwa-status__update-button\s*\{[^}]*background:\s*#111/s,
+  );
 });
