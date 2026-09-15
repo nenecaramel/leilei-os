@@ -7504,6 +7504,19 @@ body:has(.system-page) {
   line-height: 1.45;
 }
 
+.quick-search-state .state-surface__message {
+  color: var(--state-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.quick-search-state .state-surface__action {
+  color: var(--state-action);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .memory-action-notice,
 .paper-detail-error,
 .system-export-error,

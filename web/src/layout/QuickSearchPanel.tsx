@@ -6,6 +6,7 @@ import {
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { SearchIcon } from "../components/icons";
+import { StateSurface } from "../components/StateSurface";
 import { navigateWithinApp } from "../pages/app-navigation";
 import {
   createGlobalSearchLocation,
@@ -61,6 +62,7 @@ export function QuickSearchPanel({
   const [results, setResults] =
     useState<GlobalSearchResult[]>([]);
   const [queryError, setQueryError] = useState("");
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -189,7 +191,7 @@ export function QuickSearchPanel({
     }, 220);
 
     return () => window.clearTimeout(timer);
-  }, [api, open, queryInput]);
+  }, [api, open, queryInput, retryNonce]);
 
   if (!open) return null;
 
@@ -260,30 +262,41 @@ export function QuickSearchPanel({
       </div>
 
       {queryError ? (
-        <p
+        <StateSurface
+          state="error"
+          message={queryError}
+          placement="inline"
           className="quick-search-state"
-          role="alert"
-        >
-          {queryError}
-        </p>
+        />
       ) : null}
 
       {!queryError && state === "loading" ? (
-        <p className="quick-search-state">
-          正在搜索…
-        </p>
+        <StateSurface
+          state="loading"
+          message="正在搜索…"
+          placement="inline"
+          className="quick-search-state"
+        />
       ) : null}
 
       {!queryError && state === "empty" ? (
-        <p className="quick-search-state">
-          没有找到匹配内容
-        </p>
+        <StateSurface
+          state="empty"
+          message="没有找到匹配内容"
+          placement="inline"
+          className="quick-search-state"
+        />
       ) : null}
 
       {!queryError && state === "error" ? (
-        <p className="quick-search-state">
-          搜索暂时失败
-        </p>
+        <StateSurface
+          state="error"
+          message="搜索暂时失败"
+          retryLabel="重试"
+          onRetry={() => setRetryNonce((value) => value + 1)}
+          placement="inline"
+          className="quick-search-state"
+        />
       ) : null}
 
       {!queryError && state === "ready" ? (
