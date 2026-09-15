@@ -2722,7 +2722,7 @@ body:has(.home-prototype) {
   gap: 10px;
   color: #777777;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.4;
   text-align: center;
 }
@@ -2759,7 +2759,7 @@ body:has(.home-prototype) {
 
 @media (max-width: 760px) {
   .module-state-slot {
-    margin-top: 96px;
+    margin-top: 64px;
   }
 
   .memory-months {
@@ -5941,7 +5941,7 @@ body:has(.system-page) {
 /* auth-search-state-polish-2026-08-09:start */
 @media (max-width: 760px) {
   .memory-empty-state:has(> .memory-empty-clear) {
-    margin-top: 96px;
+    margin-top: 64px;
   }
 
 }
@@ -6304,13 +6304,14 @@ body:has(.system-page) {
 /* leilei-mobile-module-state-polish-2026-08-09:start */
 @media (max-width: 760px) {
   .memory-page .memory-module-state {
-    display: flex;
+    display: grid;
+    width: min(100%, 360px);
     min-height: 0;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 0;
-    margin: 0;
-    padding: 96px 0 0;
+    align-content: start;
+    justify-items: center;
+    gap: 10px;
+    margin: 64px auto 0;
+    padding: 0;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -6321,7 +6322,7 @@ body:has(.system-page) {
   .memory-page .memory-module-state.memory-archive-empty-state {
     width: min(100%, 280px);
     min-height: 0;
-    margin: 96px auto 0;
+    margin: 64px auto 0;
     padding: 0;
     justify-content: center;
   }
@@ -6916,17 +6917,17 @@ body:has(.system-page) {
   .records-state {
     width: min(100%, 280px);
     min-height: 0;
-    margin: 96px auto 0;
+    margin: 64px auto 0;
     padding: 0;
     border: 0;
     background: transparent;
     box-shadow: none;
     align-items: center;
     justify-items: center;
-    gap: 0;
+    gap: 10px;
     color: #777777;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 400;
     line-height: 1.4;
     text-align: center;
   }
@@ -7223,3 +7224,345 @@ body:has(.system-page) {
     background: rgba(0, 0, 0, 0.06);
   }
 }
+
+
+/* global-state-system-2026-09-15:start */
+:root {
+  --state-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  --state-primary: #777777;
+  --state-muted: #8a8a8a;
+  --state-supporting: #a0a0a0;
+  --state-action: #666666;
+}
+
+.state-surface,
+.module-search-state,
+.memory-empty-state,
+.memory-module-state,
+.home-module-state,
+.day-space-stage-state,
+.day-space-placeholder,
+.system-state-copy,
+.system-state-message,
+.system-empty-state,
+.quick-search-state,
+.universe-loading-line,
+.universe-state-inline,
+.transient-state {
+  font-family: var(--state-font);
+}
+
+.state-surface {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  align-content: start;
+  gap: 10px;
+  color: var(--state-primary);
+  text-align: center;
+}
+
+.state-surface__message,
+.state-surface__description {
+  margin: 0;
+}
+
+.state-surface__message {
+  color: var(--state-primary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.state-surface__description {
+  max-width: 320px;
+  color: var(--state-supporting);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.state-surface__action,
+.state-surface > .secondary-button {
+  all: unset;
+  color: var(--state-action);
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.state-surface__action:hover,
+.state-surface__action:active,
+.state-surface > .secondary-button:hover,
+.state-surface > .secondary-button:active {
+  color: #444444;
+}
+
+.state-surface__action:focus-visible,
+.state-surface > .secondary-button:focus-visible {
+  outline: 1px solid #bdbdbd;
+  outline-offset: 3px;
+}
+
+.state-surface--page {
+  width: 100%;
+  min-height: min(56dvh, 520px);
+  flex: 1 1 auto;
+  place-content: center;
+  align-content: center;
+  margin: 0;
+}
+
+.state-surface--module {
+  width: min(100%, 360px);
+  min-height: 0;
+  margin: 64px auto 0;
+  padding: 0;
+}
+
+.state-surface--paper {
+  width: min(100%, 280px);
+  min-height: 192px;
+  margin: 96px auto 0;
+  padding: 0;
+}
+
+.state-surface--paper .state-surface__message {
+  font-weight: 500;
+}
+
+.state-surface--inline {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.module-state-slot {
+  font-family: var(--state-font);
+  font-weight: 400;
+}
+
+.paper-detail-state .state-surface__message {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.paper-detail-state .state-surface__description {
+  color: var(--state-supporting);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.paper-detail-state .state-surface__action,
+.paper-detail-state .module-search-state-retry {
+  color: var(--state-action);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.memory-page .memory-empty-state,
+.memory-page .memory-module-state {
+  width: min(100%, 360px);
+  min-height: 0;
+  margin: 64px auto 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-items: center;
+  align-content: start;
+  gap: 10px;
+  color: var(--state-primary);
+  font-family: var(--state-font);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.memory-page .memory-module-state {
+  display: grid;
+}
+
+.memory-page .memory-module-state .placeholder-icon {
+  display: none;
+}
+
+.memory-page .memory-module-state h2,
+.memory-page .memory-empty-state > p {
+  margin: 0;
+  color: var(--state-primary);
+  font-family: var(--state-font);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.memory-page .memory-module-state > p {
+  max-width: 320px;
+  margin: 0;
+  color: var(--state-supporting);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.memory-page .memory-module-state > .secondary-button,
+.memory-page .memory-empty-state > .memory-empty-clear {
+  all: unset;
+  color: var(--state-action);
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.home-module-state {
+  color: var(--state-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.home-module-state button {
+  margin-left: 6px;
+  color: var(--state-action);
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.day-space-warning {
+  color: var(--state-muted);
+  font-family: var(--state-font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.day-space-warning button {
+  all: unset;
+  margin-left: 6px;
+  color: var(--state-action);
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.day-space-stage-state,
+.day-space-placeholder {
+  width: min(100%, 360px);
+  margin: 64px auto 0;
+  padding: 0;
+  color: var(--state-primary);
+  font-family: var(--state-font);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.day-space-stage-state button {
+  margin-top: 10px;
+  color: var(--state-action);
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.system-state-copy,
+.system-empty-state {
+  color: var(--state-primary);
+  font-family: var(--state-font);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.system-import-status,
+.system-bridge-status {
+  color: var(--state-muted);
+  font-family: var(--state-font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.system-state-message {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  font-family: var(--state-font);
+  text-align: center;
+}
+
+.system-state-message p {
+  margin: 0;
+  color: var(--state-primary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.system-state-message .secondary-button {
+  all: unset;
+  margin: 0;
+  color: var(--state-action);
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.quick-search-state {
+  color: var(--state-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.quick-search-state .state-surface__message {
+  color: var(--state-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.quick-search-state .state-surface__action {
+  color: var(--state-action);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.memory-action-notice,
+.paper-detail-error,
+.system-export-error,
+.system-import-error-copy,
+.system-bridge-error,
+.transient-state--error {
+  color: var(--danger);
+  font-family: var(--state-font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.transient-state--neutral {
+  color: var(--state-muted);
+  font-family: var(--state-font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+/* global-state-system-2026-09-15:end */
