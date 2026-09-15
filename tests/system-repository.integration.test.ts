@@ -47,6 +47,16 @@ test("real System repository scopes counts and activity to one user", { skip: !r
         { id: randomUUID(), userId: owner, title: "owner archived task", description: "owner", status: "completed", resumeStatus: "in_progress", lifecycleStatus: "archived", priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: [], createdAt: now, updatedAt: now, completedAt: now },
         { id: randomUUID(), userId: other, title: "other task", description: "other", status: "pending", resumeStatus: null, lifecycleStatus: "active", priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: [], createdAt: now, updatedAt: now, completedAt: null },
       ]);
+      await transaction.insert(schema.sharedPapers).values([
+        { id: randomUUID(), userId: owner, title: "owner active shared paper", content: "owner", revision: 1, createdBy: "L", updatedBy: "L", createdAt: now, updatedAt: now, archivedAt: null },
+        { id: randomUUID(), userId: owner, title: "owner archived shared paper", content: "owner", revision: 2, createdBy: "G", updatedBy: "C", createdAt: now, updatedAt: now, archivedAt: now },
+        { id: randomUUID(), userId: other, title: "other shared paper", content: "other", revision: 1, createdBy: "C", updatedBy: "C", createdAt: now, updatedAt: now, archivedAt: null },
+      ]);
+      await transaction.insert(schema.todoPapers).values([
+        { id: randomUUID(), userId: owner, businessDate: "2026-08-09", author: "L", revision: 1, createdAt: now, updatedAt: now },
+        { id: randomUUID(), userId: owner, businessDate: "2026-08-10", author: "C", revision: 1, createdAt: now, updatedAt: now },
+        { id: randomUUID(), userId: other, businessDate: "2026-08-09", author: "G", revision: 1, createdAt: now, updatedAt: now },
+      ]);
       const ownerMemoryId = randomUUID();
       const otherMemoryId = randomUUID();
       await transaction.insert(schema.resourceLifecycleEvents).values([
@@ -69,6 +79,8 @@ test("real System repository scopes counts and activity to one user", { skip: !r
         memory: { active: 1, archived: 1 },
         diary: { active: 1, archived: 1 },
         task: { active: 1, archived: 1 },
+        shared_paper: { active: 1, archived: 1 },
+        todo: { active: 2 },
       });
       const lifecycle = await repository.listLifecycleActivity(owner, 10);
       assert.equal(lifecycle.length, 1);

@@ -12,6 +12,7 @@ const EXPORT_SCOPES = new Set<ExportScope>([
   "diary",
   "task",
   "todo",
+  "shared_paper",
 ]);
 
 export function createExportApiRouter(

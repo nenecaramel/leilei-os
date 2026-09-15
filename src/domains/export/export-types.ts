@@ -1,6 +1,6 @@
 import type { ContentAuthor } from "../content-author.js";
 
-export type ExportScope = "all" | "memory" | "diary" | "task" | "todo";
+export type ExportScope = "all" | "memory" | "diary" | "task" | "todo" | "shared_paper";
 
 export type ExportMemoryRecord = {
   id: string;
@@ -61,6 +61,18 @@ export type ExportTodoPaper = {
   }>;
 };
 
+export type ExportSharedPaper = {
+  id: string;
+  title: string;
+  content: string;
+  revision: number;
+  created_by: ContentAuthor;
+  updated_by: ContentAuthor;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+};
+
 export type ExportLifecycleEvent = {
   id: string;
   resource_type: string;
@@ -87,6 +99,7 @@ export type ExportDataV1 = {
   diary?: ExportDiaryRecord[];
   task?: ExportTaskRecord[];
   todo?: ExportTodoPaper[];
+  shared_paper?: ExportSharedPaper[];
 };
 
 export type ExportDocumentV1 = {

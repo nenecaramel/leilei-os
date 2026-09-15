@@ -80,7 +80,7 @@ test("SystemService rejects disabled and missing users before summary or activit
     let reads = 0;
     const repository = {
       findUserById: async () => user,
-      readDataSummary: async () => { reads += 1; return { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 } }; },
+      readDataSummary: async () => { reads += 1; return { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 }, shared_paper: { active: 0, archived: 0 }, todo: { active: 0 } }; },
       listLifecycleActivity: async () => { reads += 1; return []; },
       listToolActivity: async () => { reads += 1; return []; },
     } as unknown as SystemRepository;
@@ -99,6 +99,7 @@ function createExportRepository(user: { status: "active" | "disabled" } | null, 
     async listDiary() { calls.push("diary"); return []; },
     async listTasks() { calls.push("task"); return []; },
     async listTodo() { calls.push("todo"); return []; },
+    async listSharedPapers() { calls.push("shared_paper"); return []; },
     async listLifecycleAudit() { calls.push("lifecycle"); return []; },
     async listToolActivity() { calls.push("tool"); return []; },
   };

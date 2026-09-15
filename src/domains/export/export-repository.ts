@@ -4,6 +4,7 @@ import {
   coreMemories,
   diaryEntries,
   resourceLifecycleEvents,
+  sharedPapers,
   tasks,
   todoEntries,
   todoPapers,
@@ -17,6 +18,7 @@ import type {
   ExportLifecycleEvent,
   ExportMemoryRecord,
   ExportTaskRecord,
+  ExportSharedPaper,
   ExportToolActivity,
   ExportTodoPaper,
 } from "./export-types.js";
@@ -102,6 +104,35 @@ export class DrizzleExportRepository implements ExportRepository {
     return papers.map((paper) => ({
       date: paper.date, author: paper.author, revision: paper.revision,
       created_at: toIso(paper.createdAt), updated_at: toIso(paper.updatedAt), entries: grouped.get(paper.id) ?? [],
+    }));
+  }
+
+  async listSharedPapers(userId: string): Promise<ExportSharedPaper[]> {
+    const rows = await this.db
+      .select({
+        id: sharedPapers.id,
+        title: sharedPapers.title,
+        content: sharedPapers.content,
+        revision: sharedPapers.revision,
+        createdBy: sharedPapers.createdBy,
+        updatedBy: sharedPapers.updatedBy,
+        createdAt: sharedPapers.createdAt,
+        updatedAt: sharedPapers.updatedAt,
+        archivedAt: sharedPapers.archivedAt,
+      })
+      .from(sharedPapers)
+      .where(eq(sharedPapers.userId, userId))
+      .orderBy(asc(sharedPapers.createdAt), asc(sharedPapers.id));
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      content: row.content,
+      revision: row.revision,
+      created_by: row.createdBy,
+      updated_by: row.updatedBy,
+      created_at: toIso(row.createdAt),
+      updated_at: toIso(row.updatedAt),
+      archived_at: row.archivedAt ? toIso(row.archivedAt) : null,
     }));
   }
 

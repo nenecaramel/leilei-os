@@ -60,12 +60,30 @@ function CountCell({
   value,
 }: {
   label: string;
-  value: number;
+  value: number | string;
 }) {
   return (
     <div className="system-count-cell">
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function CurrentCountRow({
+  label,
+  active,
+}: {
+  label: string;
+  active: number;
+}) {
+  return (
+    <div className="system-data-row">
+      <strong>{label}</strong>
+      <div className="system-count-pair">
+        <CountCell label="Active" value={active} />
+        <CountCell label="Archived" value="—" />
+      </div>
     </div>
   );
 }
@@ -336,6 +354,15 @@ export function SystemDataPageContent({
                 state.summary.task.archived
               }
             />
+            <ArchivedCountRow
+              label="Shared Paper"
+              active={state.summary.shared_paper.active}
+              archived={state.summary.shared_paper.archived}
+            />
+            <CurrentCountRow
+              label="Todo"
+              active={state.summary.todo.active}
+            />
           </div>
         ) : null}
       </section>
@@ -360,6 +387,7 @@ export function SystemDataPageContent({
             ["diary", "Diary"],
             ["task", "Task"],
             ["todo", "Todo"],
+            ["shared_paper", "Shared Paper"],
           ] as const).map(([scope, label]) => (
             <button
               className="system-export-action"

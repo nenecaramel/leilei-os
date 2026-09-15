@@ -31,6 +31,8 @@ test("Data reads the approved counts endpoint and exposes the approved export ac
     "Memory",
     "Diary",
     "Task",
+    "Shared Paper",
+    "Todo",
     "Active",
     "Archived",
   ]) {
@@ -45,6 +47,7 @@ test("Data reads the approved counts endpoint and exposes the approved export ac
     ["diary", "Diary"],
     ["task", "Task"],
     ["todo", "Todo"],
+    ["shared_paper", "Shared Paper"],
   ]) {
     assert.match(dataContentSource, new RegExp(`\\["${scope}", "${label}"\\]`));
   }

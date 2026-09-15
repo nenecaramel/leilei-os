@@ -6,6 +6,7 @@ import type {
   ExportScope,
   ExportTaskRecord,
   ExportToolActivity,
+  ExportSharedPaper,
   ExportTodoPaper,
 } from "./export-types.js";
 import { createOwnerFingerprint } from "./owner-fingerprint.js";
@@ -20,6 +21,7 @@ export interface ExportRepository {
   listDiary(userId: string): Promise<ExportDiaryRecord[]>;
   listTasks(userId: string): Promise<ExportTaskRecord[]>;
   listTodo(userId: string): Promise<ExportTodoPaper[]>;
+  listSharedPapers(userId: string): Promise<ExportSharedPaper[]>;
   listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>;
   listToolActivity(userId: string): Promise<ExportToolActivity[]>;
 }
@@ -64,6 +66,9 @@ export class ExportService {
     }
     if (scope === "all" || scope === "todo") {
       data.todo = await this.repository.listTodo(userId);
+    }
+    if (scope === "all" || scope === "shared_paper") {
+      data.shared_paper = await this.repository.listSharedPapers(userId);
     }
 
     const document: ExportDocument = {

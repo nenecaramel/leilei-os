@@ -72,6 +72,8 @@ test("system connections and data routes use server-owned identity", async () =>
         memory: { active: 1, archived: 2 },
         diary: { active: 3, archived: 4 },
         task: { active: 5, archived: 6 },
+        shared_paper: { active: 7, archived: 8 },
+        todo: { active: 9 },
       };
     },
   }, async (baseUrl) => {
@@ -94,6 +96,8 @@ test("system connections and data routes use server-owned identity", async () =>
         memory: { active: 1, archived: 2 },
         diary: { active: 3, archived: 4 },
         task: { active: 5, archived: 6 },
+        shared_paper: { active: 7, archived: 8 },
+        todo: { active: 9 },
       },
     });
   });

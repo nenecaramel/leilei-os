@@ -75,7 +75,7 @@ test("export uses server identity, validates scopes and returns an attachment do
       return documentFor(scope, includeAudit);
     },
   }, async (baseUrl) => {
-    for (const scope of ["all", "memory", "diary", "task", "todo"] as const) {
+    for (const scope of ["all", "memory", "diary", "task", "todo", "shared_paper"] as const) {
       const query = scope === "all" ? "scope=all&include_audit=true&user_id=attacker" : `scope=${scope}`;
       const response = await fetch(`${baseUrl}/api/v1/system/export?${query}`, {
         headers: { "x-test-user": "authenticated" },
@@ -92,6 +92,7 @@ test("export uses server identity, validates scopes and returns an attachment do
     { userId: USER_ID, scope: "diary", includeAudit: false },
     { userId: USER_ID, scope: "task", includeAudit: false },
     { userId: USER_ID, scope: "todo", includeAudit: false },
+    { userId: USER_ID, scope: "shared_paper", includeAudit: false },
   ]);
 });
 

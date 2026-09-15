@@ -49,6 +49,8 @@ function summary() {
       memory: { active: 1, archived: 2 },
       diary: { active: 3, archived: 4 },
       task: { active: 5, archived: 6 },
+      shared_paper: { active: 7, archived: 8 },
+      todo: { active: 9 },
     },
   };
 }
@@ -90,7 +92,7 @@ test("Data renders Export title, one horizontal scope row, and inactive audit te
   assert.equal(card.querySelector(".system-export-label")?.textContent, "Export");
   assert.ok(card.querySelector(".system-export-action-row"));
   const labels = Array.from(card.querySelectorAll(".system-export-action"), (button) => button.textContent);
-  assert.deepEqual(labels, ["All", "Memory", "Diary", "Task", "Todo"]);
+  assert.deepEqual(labels, ["All", "Memory", "Diary", "Task", "Todo", "Shared Paper"]);
 
   const auditControl = card.querySelector<HTMLElement>(".system-export-audit");
   assert.ok(auditControl);

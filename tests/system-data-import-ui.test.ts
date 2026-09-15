@@ -18,7 +18,7 @@ function installDom(url: string) {
 }
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 35));
-const summary = () => ({ success: true as const, data: { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 } } });
+const summary = () => ({ success: true as const, data: { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 }, shared_paper: { active: 0, archived: 0 }, todo: { active: 0 } } });
 
 function render(api: WebApiClient) {
   const container = document.getElementById("root")!;
