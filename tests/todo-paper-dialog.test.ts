@@ -1198,3 +1198,15 @@ test("Clicking text places the caret at the clicked offset", async () => {
     await harness.cleanup();
   }
 });
+
+
+test("Todo textarea selection is not clipped by inherited rounded form corners", () => {
+  assert.match(
+    todoPaperStylesSource,
+    /\.todo-paper-row textarea\s*\{[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*transparent;/s,
+  );
+  assert.match(
+    todoPaperStylesSource,
+    /\.todo-paper-row textarea:focus\s*\{[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*outline:\s*none;/s,
+  );
+});

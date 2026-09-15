@@ -2428,6 +2428,7 @@ body:has(.home-prototype) {
   padding: 0 4px 0 0;
   resize: none;
   border: 0;
+  border-radius: 0;
   background: transparent;
   font: inherit;
   line-height: 30px;
@@ -2437,6 +2438,7 @@ body:has(.home-prototype) {
 
 .todo-paper-row textarea:focus {
   border: 0;
+  border-radius: 0;
   outline: none;
   background: transparent;
   box-shadow: none;
