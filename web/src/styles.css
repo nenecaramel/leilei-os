@@ -6966,6 +6966,11 @@ body:has(.system-page) {
   display: block;
 }
 
+.diary-comments:has(.diary-comment-create-trigger) .diary-comment-list,
+.diary-comments:has(.diary-comment-composer) .diary-comment-list {
+  margin-top: 30px;
+}
+
 .diary-comment {
   position: relative;
   margin: 0 0 30px;
