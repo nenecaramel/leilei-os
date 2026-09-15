@@ -26,3 +26,11 @@ test("Diary editor keeps its mobile minimum while comments retain one ruled-line
     /\.diary-comments\s*\{[^}]*margin-top:\s*30px[^}]*padding-bottom:\s*30px/s,
   );
 });
+
+
+test("Diary comment composer keeps one ruled-line gap before comments", () => {
+  assert.match(
+    styles,
+    /\.diary-comments:has\(\.diary-comment-create-trigger\) \.diary-comment-list,[\s\S]*\.diary-comments:has\(\.diary-comment-composer\) \.diary-comment-list\s*\{[^}]*margin-top:\s*30px/s,
+  );
+});
