@@ -76,7 +76,7 @@ function CurrentCountRow({
   active,
 }: {
   label: string;
-  active: number;
+  active: number | string;
 }) {
   return (
     <div className="system-data-row">
@@ -95,8 +95,8 @@ function ArchivedCountRow({
   archived,
 }: {
   label: string;
-  active: number;
-  archived: number;
+  active: number | string;
+  archived: number | string;
 }) {
   return (
     <div className="system-data-row">
@@ -357,12 +357,12 @@ export function SystemDataPageContent({
             />
             <ArchivedCountRow
               label="Shared Paper"
-              active={state.summary.shared_paper.active}
-              archived={state.summary.shared_paper.archived}
+              active={state.summary.shared_paper?.active ?? "—"}
+              archived={state.summary.shared_paper?.archived ?? "—"}
             />
             <CurrentCountRow
               label="Todo"
-              active={state.summary.todo.active}
+              active={state.summary.todo?.active ?? "—"}
             />
           </div>
         ) : null}
