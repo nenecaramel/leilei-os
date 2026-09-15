@@ -3500,7 +3500,6 @@ body:has(.home-prototype) {
   .paper-detail-paper[id^="diary-"] .diary-paper-content-editor {
     display: block;
     width: 100%;
-    min-height: 240px;
     margin: 0;
     padding: 0;
     border: 0;
@@ -3824,6 +3823,7 @@ body:has(.home-prototype) {
    */
   .paper-detail-paper[id^="memory-"] .memory-paper-content-editor,
   .paper-detail-paper[id^="diary-"] .diary-paper-content-editor {
+    min-height: 240px;
     font-size: 16px !important;
     line-height: 34.285714px !important;
     transform: scale(0.875);
