@@ -314,7 +314,7 @@ test("Sentinel cards use the standard System title divider and first-row rhythm"
     );
 
     for (const selector of [
-      '[aria-label="ChatGPT Message Bridge"]',
+      '[aria-label="ChatGPT / Claude Message Bridge"]',
       '[aria-labelledby="sentinel-policy-title"]',
       '[aria-label="Sentinel controls"]',
       '[aria-labelledby="sentinel-activity-title"]',
@@ -407,7 +407,7 @@ test("Sentinel page renders the Message Bridge between status and wake policy", 
   assert.doesNotMatch(container.textContent ?? "", /processing_state|delivery_unknown|bridge_event_id|chat composer|transcript/i);
   const sections = [...container.querySelectorAll("section")];
   const status = container.querySelector('[aria-labelledby="sentinel-status-title"]');
-  const bridge = container.querySelector('[aria-label="ChatGPT Message Bridge"]');
+  const bridge = container.querySelector('[aria-label="ChatGPT / Claude Message Bridge"]');
   const policy = container.querySelector('[aria-labelledby="sentinel-policy-title"]');
   assert.ok(status);
   assert.ok(bridge);
@@ -438,7 +438,7 @@ test("Sentinel renders every projected state with user-facing labels", async () 
   const projections = [
     ["paused", "Paused", false],
     ["processing", "Processing", true],
-    ["waiting_for_chatgpt", "Waiting for ChatGPT", true],
+    ["waiting_for_chatgpt", "Waiting for ChatGPT / Claude", true],
     ["sleeping", "Sleeping", true],
     ["waking", "Waking", true],
     ["recovery_required", "Recovery required", true],
@@ -513,7 +513,7 @@ test("an uninitialized Sentinel requires policy setup before wake controls becom
   assert.equal([...container.querySelectorAll("button")].some((button) => /^(Resume|Resume now|Wake now|Pause|Recovery)$/.test(button.textContent ?? "")), false);
   assert.doesNotMatch(container.textContent ?? "", /\bON\b/);
   const setup = container.querySelector('[aria-labelledby="sentinel-setup-title"]');
-  const bridge = container.querySelector('[aria-label="ChatGPT Message Bridge"]');
+  const bridge = container.querySelector('[aria-label="ChatGPT / Claude Message Bridge"]');
   const policyCard = container.querySelector('[aria-labelledby="sentinel-policy-title"]');
   assert.ok(setup);
   assert.ok(bridge);
@@ -629,7 +629,7 @@ test("Sentinel uses the shared system card order with paused controls contained 
     await waitForCondition(() => container.textContent?.includes("First wake after resume") === true, "paused Sentinel controls");
     assert.ok(container.querySelector(".system-page.sentinel-page"));
     const status = container.querySelector('[aria-labelledby="sentinel-status-title"]');
-    const bridge = container.querySelector('[aria-label="ChatGPT Message Bridge"]');
+    const bridge = container.querySelector('[aria-label="ChatGPT / Claude Message Bridge"]');
     const policy = container.querySelector('[aria-labelledby="sentinel-policy-title"]');
     const controls = container.querySelector('[aria-label="Sentinel controls"]');
     const activity = container.querySelector('[aria-labelledby="sentinel-activity-title"]');
@@ -647,4 +647,16 @@ test("Sentinel uses the shared system card order with paused controls contained 
     await waitForPaint();
     env.restore();
   }
+});
+
+test("Sentinel host-facing copy names ChatGPT and Claude together", () => {
+  assert.match(sentinelSource, /Control autonomous wakes and message ChatGPT \/ Claude\./);
+  assert.match(sentinelSource, /Waiting for ChatGPT \/ Claude/);
+  assert.match(bridgeSource, /aria-label="ChatGPT \/ Claude Message Bridge"/);
+  assert.match(bridgeSource, /connected ChatGPT \/ Claude conversation/);
+  assert.match(bridgeSource, /Sent to ChatGPT \/ Claude/);
+  assert.doesNotMatch(
+    bridgeSource,
+    /connected ChatGPT conversation|Sent to ChatGPT"/,
+  );
 });
