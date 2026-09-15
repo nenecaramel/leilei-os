@@ -124,8 +124,8 @@ test("Home Todo preview uses three visual lines and a fading overflow marker", (
 
 test("Home uses the Todo paper coordinator and server day endpoint", () => {
   assert.match(dashboardSource, />Todo</);
-  assert.match(dashboardSource, />Records</);
-  assert.match(dashboardSource, /records-section/);
+  assert.doesNotMatch(dashboardSource, />Records</);
+  assert.doesNotMatch(dashboardSource, /records-section|home-bottom-nav/);
   assert.match(dashboardSource, /home-preview-section/);
   assert.match(dashboardSource, /TodayPanel/);
   assert.match(dashboardSource, /TodoPaperDialog/);
@@ -187,11 +187,8 @@ test("Home renders compact L/G/C Todo panels in author order and performs real C
   assert.ok(container.querySelector(".calendar-grid"));
   assert.equal(container.querySelectorAll(".calendar-day").length, 42);
   assert.equal(container.querySelectorAll(".calendar-day i").length, 0);
-  assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 4);
-  assert.equal(
-    container.querySelector(".records-section .home-section-heading h2")?.textContent,
-    "Records",
-  );
+  assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 0);
+  assert.equal(container.querySelector(".records-section"), null);
   assert.equal(container.querySelector(".hero-panel"), null);
   assert.equal(container.querySelector(".space-card"), null);
   assert.deepEqual(requests, ["/todo/2026-08-12", "/todo/dates", "/diary/dates"]);
@@ -412,10 +409,6 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
     stylesSource,
     /\.calendar-preview\s*\{[^}]*gap:\s*11px[^}]*margin-top:\s*6px/,
   );
-  assert.match(
-    stylesSource,
-    /\.records-section\s*\{[^}]*gap:\s*5px[^}]*margin-top:\s*12px/,
-  );
   assert.match(stylesSource, /\.home-page-title\s*\{[^}]*font-weight:\s*500/);
   assert.match(
     stylesSource,
@@ -429,25 +422,10 @@ test("Home and mobile shell CSS keep the prototype compact and safe", () => {
     stylesSource,
     /\.home-section-heading h2\s*\{[^}]*font-weight:\s*500/,
   );
+  assert.doesNotMatch(stylesSource, /\.records-section|\.home-bottom-nav/);
   assert.match(
     stylesSource,
-    /@media \(min-width:\s*761px\)[\s\S]*?\.records-section[\s\S]*?grid-column:\s*1 \/ -1/,
-  );
-  assert.match(
-    stylesSource,
-    /\.home-bottom-nav\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)[^}]*column-gap:\s*8px[^}]*row-gap:\s*10px/,
-  );
-  assert.match(
-    stylesSource,
-    /\.home-bottom-nav a\s*\{[^}]*height:\s*35px[^}]*min-height:\s*35px/,
-  );
-  assert.match(
-    stylesSource,
-    /\.home-bottom-nav a\s*\{[^}]*place-items:\s*center/,
-  );
-  assert.match(
-    stylesSource,
-    /\.home-page-title,\s*\.calendar-section-heading h2,\s*\.records-section-heading h2\s*\{[^}]*transform:\s*translateY\(-2px\)/,
+    /\.home-page-title,\s*\.calendar-section-heading h2\s*\{[^}]*transform:\s*translateY\(-2px\)/,
   );
   assert.match(
     stylesSource,
@@ -500,14 +478,6 @@ test("Home cards share one visual surface and press feedback", () => {
   assert.match(
     stylesSource,
     /\.calendar-frame::before\s*\{[^}]*border:\s*1px solid rgba\(0,\s*0,\s*0,\s*0\.11\)[^}]*border-radius:\s*14px/,
-  );
-  assert.match(
-    stylesSource,
-    /\.home-bottom-nav a\s*\{[^}]*border:\s*1px solid rgba\(0,\s*0,\s*0,\s*0\.11\)[^}]*border-radius:\s*14px[^}]*background:\s*#ffffff[^}]*box-shadow:\s*0 10px 28px rgba\(0,\s*0,\s*0,\s*0\.055\)[^}]*transition:\s*transform 120ms ease,\s*box-shadow 120ms ease/,
-  );
-  assert.match(
-    stylesSource,
-    /\.today-panel:active,\s*\.home-bottom-nav a:active\s*\{[^}]*transform:\s*scale\(0\.99\)[^}]*box-shadow:\s*0 5px 18px rgba\(0,\s*0,\s*0,\s*0\.045\)/,
   );
 });
 
