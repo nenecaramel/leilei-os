@@ -41,6 +41,11 @@ const todoPaperDialogSource = readFileSync(
   "utf8",
 );
 
+const paperDetailDialogSource = readFileSync(
+  new URL("../web/src/pages/PaperDetailDialog.tsx", import.meta.url),
+  "utf8",
+);
+
 type DomHarness = {
   dom: JSDOM;
   root: Root;
