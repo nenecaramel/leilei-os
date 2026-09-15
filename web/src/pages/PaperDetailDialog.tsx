@@ -172,11 +172,7 @@ export function PaperDetailDialog({
         ) : null}
         <div className="paper-detail-scroll">
           {showRules ? (
-            <div className="paper-detail-rules" aria-hidden="true">
-              {Array.from({ length: 24 }, (_, index) => (
-                <span key={index} />
-              ))}
-            </div>
+            <div className="paper-detail-rules" aria-hidden="true" />
           ) : null}
           <div className="paper-detail-body">{children}</div>
         </div>

@@ -2359,28 +2359,36 @@ body:has(.home-prototype) {
 .paper-detail-scroll {
   position: absolute;
   inset: 42px 0 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 24px;
 }
 
-.paper-detail-rules {
-  position: absolute;
-  z-index: 0;
-  inset: 0 24px;
-  display: grid;
-  grid-auto-rows: 30px;
-  pointer-events: none;
+.paper-detail-rules,
+.paper-detail-body {
+  grid-area: 1 / 1;
+  min-height: 100%;
 }
 
-.paper-detail-rules span {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.075);
+.paper-detail-rules {
+  z-index: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 29px,
+      rgba(0, 0, 0, 0.075) 29px,
+      rgba(0, 0, 0, 0.075) 30px
+    );
 }
 
 .paper-detail-body {
   position: relative;
   z-index: 1;
-  min-height: 100%;
 }
 
 /* Universe papers use the same transparent paper-form language as Memory and
