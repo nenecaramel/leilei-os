@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
@@ -150,7 +151,7 @@ test("PWA status renders nothing when online and current", async () => {
 
 
 test("PWA update action keeps a 44px hit target without a filled black button", () => {
-  const styles = require("node:fs").readFileSync(
+  const styles = readFileSync(
     new URL("../web/src/pwa/pwa-status.css", import.meta.url),
     "utf8",
   );
