@@ -578,7 +578,7 @@ test("Day Space does not claim complete empty or loading when one failed source 
 });
 
 
-test("Day Space loading and empty states share the accepted placeholder treatment", () => {
+test("Day Space loading and empty states use the shared module state surface", () => {
   const daySpaceSource = readFileSync(
     new URL("../web/src/pages/DaySpacePage.tsx", import.meta.url),
     "utf8",
@@ -590,17 +590,16 @@ test("Day Space loading and empty states share the accepted placeholder treatmen
 
   assert.match(
     daySpaceSource,
-    /className="day-space-placeholder" role="status">正在读取 Day Space…<\/div>/,
+    /<ModuleState state="loading" message="正在读取 Day Space…" className="day-space-stage-state" \/>/,
   );
   assert.match(
     daySpaceSource,
-    /className="day-space-placeholder" role="status">正在读取当天内容…<\/div>/,
+    /<ModuleState state="loading" message="正在读取当天内容…" className="day-space-stage-state" \/>/,
   );
   assert.match(
     daySpaceSource,
-    /className="day-space-placeholder">这一天还没有内容<\/div>/,
+    /<ModuleState state="empty" message="这一天还没有内容" className="day-space-stage-state" \/>/,
   );
-  assert.doesNotMatch(daySpaceSource, /className="day-space-loading"/);
 
   const stageStart = daySpaceSource.indexOf(
     '<div ref={stageMeasureRef} className="day-space-stage-measure">',
@@ -611,6 +610,6 @@ test("Day Space loading and empty states share the accepted placeholder treatmen
 
   assert.match(
     stylesSource,
-    /\.day-space-placeholder\s*\{[^}]*padding-top:\s*94px[^}]*font-size:\s*12px[^}]*font-weight:\s*400[^}]*text-align:\s*center/s,
+    /\.day-space-stage-state,[\s\S]*?\.day-space-placeholder\s*\{[^}]*margin:\s*64px auto 0[^}]*font-size:\s*13px[^}]*font-weight:\s*400[^}]*text-align:\s*center/s,
   );
 });

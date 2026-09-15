@@ -21,6 +21,7 @@ import { DaySpaceDatePicker } from "./DaySpaceDatePicker.js";
 import { DaySpaceDiaryDialog } from "./DaySpaceDiaryDialog.js";
 import { TodoPaperDialog } from "./TodoPaperDialog.js";
 import { ModuleSearchButton, ModuleSearchField, ModuleSearchStateMessage, type ModuleSearchState } from "../components/ModuleSearch";
+import { ModuleState } from "../components/StateSurface";
 import { composeDaySpacePapers, resolveDaySpaceDefaultDate, type DaySpaceModuleState } from "./day-space-data.js";
 import type { DaySpaceApi, DaySpaceDiary } from "./day-space-api.js";
 import type { TodoAuthor, TodoDay, TodoPaper } from "./todo-types.js";
@@ -310,7 +311,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       {discoveryIncomplete && selectedDate ? <div className="day-space-warning" role="status">最新日期发现不完整，当前日期仍可查看。</div> : null}
       {selectedDate && moduleWarning && !bothModulesFailed ? <div className="day-space-warning" role="alert">部分 Day Space 内容暂时无法读取。{todoState.status === "error" ? <button type="button" onClick={() => retryTodo(selectedDate)}>重试 Todo</button> : null}{diaryState.status === "error" ? <button type="button" onClick={() => retryDiary(selectedDate)}>重试 Diary</button> : null}</div> : null}
       <div ref={stageMeasureRef} className="day-space-stage-measure">
-        {discoveryStatus === "loading" && !selectedDate ? <div className="day-space-placeholder" role="status">正在读取 Day Space…</div> : discoveryStatus === "error" ? <div className="day-space-error day-space-stage-state" role="alert"><p>Day Space 暂时无法读取。</p><button type="button" onClick={() => setDiscoveryRetry((value) => value + 1)}>重试</button></div> : completeEmpty ? <div className="day-space-placeholder">这一天还没有内容</div> : bothModulesFailed ? <div className="day-space-error day-space-stage-state" role="alert"><p>当天内容暂时无法读取。</p><button type="button" onClick={() => selectedDate && loadDate(selectedDate)}>重试</button></div> : moduleWarning && papers.length === 0 ? null : papers.length === 0 ? <div className="day-space-placeholder" role="status">正在读取当天内容…</div> : (
+        {discoveryStatus === "loading" && !selectedDate ? <ModuleState state="loading" message="正在读取 Day Space…" className="day-space-stage-state" /> : discoveryStatus === "error" ? <ModuleState state="error" message="Day Space 暂时无法读取。" retryLabel="重试" onRetry={() => setDiscoveryRetry((value) => value + 1)} className="day-space-stage-state" /> : completeEmpty ? <ModuleState state="empty" message="这一天还没有内容" className="day-space-stage-state" /> : bothModulesFailed ? <ModuleState state="error" message="当天内容暂时无法读取。" retryLabel="重试" onRetry={() => selectedDate && loadDate(selectedDate)} className="day-space-stage-state" /> : moduleWarning && papers.length === 0 ? null : papers.length === 0 ? <ModuleState state="loading" message="正在读取当天内容…" className="day-space-stage-state" /> : (
           <section className="day-space-stage" aria-label={`${selectedDate} 的内容`} style={{ height: `${layout?.stageHeight ?? 0}px` }}>
             {papers.map((paper) => {
               const item = layoutById.get(paper.id); if (!item) return null;

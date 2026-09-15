@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
+import { PageState } from "../components/StateSurface";
 import "./universe-state-polish.css";
 import {
   createLeileiOSUniverseAdapter,
@@ -410,17 +411,24 @@ function UniverseFrame({ children }: { children: ReactNode }) {
 
 function UniverseLoadingState() {
   return (
-    <section className="universe-cosmos universe-cosmos-loading" role="status" aria-label="Universe 加载中" aria-live="polite">
-      <div className="universe-loading-line">
-        <span>正在读取 Universe…</span>
-        <span className="universe-loading-dots" aria-hidden="true"><i /><i /><i /></span>
-      </div>
-    </section>
+    <PageState
+      state="loading"
+      message="正在读取 Universe…"
+      className="universe-cosmos universe-cosmos-loading"
+    />
   );
 }
 
 function UniverseStatus({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return <section className="universe-cosmos universe-cosmos-state" role="alert" aria-live="polite"><div className="universe-state-inline"><p>{message}</p>{onRetry ? <button className="secondary-button" type="button" onClick={onRetry}>重新加载</button> : null}</div></section>;
+  return (
+    <PageState
+      state="error"
+      message={message}
+      retryLabel="重新加载"
+      onRetry={onRetry}
+      className="universe-cosmos universe-cosmos-state"
+    />
+  );
 }
 
 export function toggleUniverseGalaxyMemberships(
