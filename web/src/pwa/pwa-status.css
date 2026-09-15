@@ -8,6 +8,10 @@
   transform: translateX(-50%);
   display: grid;
   gap: 8px;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
   pointer-events: none;
 }
 

@@ -181,3 +181,24 @@ test("PWA update toast uses the wider card geometry with stronger current typogr
     /\.pwa-status__update-button\s*\{[^}]*background:\s*#111/s,
   );
 });
+
+
+test("PWA status owns its font rendering instead of inheriting page-specific smoothing", () => {
+  const styles = readFileSync(
+    new URL("../web/src/pwa/pwa-status.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    styles,
+    /\.pwa-status\s*\{[^}]*-webkit-font-smoothing:\s*auto[^}]*-moz-osx-font-smoothing:\s*auto[^}]*font-synthesis:\s*none[^}]*text-rendering:\s*optimizeLegibility/s,
+  );
+  assert.match(
+    styles,
+    /\.pwa-status__item\s*\{[^}]*font-size:\s*14px[^}]*font-weight:\s*500/s,
+  );
+  assert.match(
+    styles,
+    /\.pwa-status__update-button\s*\{[^}]*font-size:\s*13px[^}]*font-weight:\s*600/s,
+  );
+});
