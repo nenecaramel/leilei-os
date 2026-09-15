@@ -366,7 +366,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
     <><button className="memory-paper-control" disabled={lifecycleBusy} onClick={() => void loadHistory()}>历史</button><span>·</span><button className="memory-paper-control" disabled={lifecycleBusy} onClick={() => void archivePaper()}>{archiving ? "归档中…" : "归档"}</button><span>·</span><button className="memory-paper-control" disabled={lifecycleBusy} onClick={beginEdit}>编辑</button></>
   );
   return (
-    <div className="memory-page shared-paper-page">
+    <div className="page memory-page shared-paper-page">
       {scope === "active" ? <header className="memory-page-header shared-paper-page-header">
         <div className="memory-page-heading"><div className="memory-page-title">Shared Paper</div><div className="memory-page-count">{papers.length}张纸</div></div>
         <div className="memory-page-tools shared-paper-page-tools">
