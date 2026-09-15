@@ -57,7 +57,7 @@ const STATUS_LABELS: Record<SentinelStatus, string> = {
   paused: "Paused",
   recovery_required: "Recovery required",
   processing: "Processing",
-  waiting_for_chatgpt: "Waiting for ChatGPT",
+  waiting_for_chatgpt: "Waiting for ChatGPT / Claude",
   sleeping: "Sleeping",
   waking: "Waking",
 };
@@ -85,7 +85,7 @@ function activityLabel(wake: SentinelWake): string {
   }
   if (wake.recoveryRequired || wake.state === "recovery_required") return "Recovery required";
   if (wake.state === "claimed") return "Processing";
-  if (wake.state === "bridge_enqueued") return "Waiting for ChatGPT";
+  if (wake.state === "bridge_enqueued") return "Waiting for ChatGPT / Claude";
   return "Superseded";
 }
 
@@ -189,7 +189,7 @@ export function SentinelPageContent({
   if (state.status === "loading") {
     return (
       <div className="page system-page sentinel-page">
-        <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." />
+        <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." />
 
         <section className="system-section sentinel-status-card" aria-label="Sentinel status">
           <p className="system-state-copy" role="status" aria-live="polite">Reading Sentinel…</p>
@@ -216,13 +216,13 @@ export function SentinelPageContent({
   }
 
   if (state.status === "error") {
-    return <div className="page system-page sentinel-page"><PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." /><div className="system-state-message" role="alert"><p>Sentinel is temporarily unavailable.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div></div>;
+    return <div className="page system-page sentinel-page"><PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." /><div className="system-state-message" role="alert"><p>Sentinel is temporarily unavailable.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div></div>;
   }
 
   if (state.status === "uninitialized") {
     return (
       <div className="page system-page sentinel-page">
-        <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." />
+        <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." />
         <section className="system-section sentinel-setup-card" aria-labelledby="sentinel-setup-title">
           <h2 className="system-product-name" id="sentinel-setup-title">Set up Sentinel</h2>
           <p className="system-state-copy">Save a policy to set up your private wake controls.</p>
@@ -247,7 +247,7 @@ export function SentinelPageContent({
 
   return (
     <div className="page system-page sentinel-page" aria-busy={Boolean(busyAction)}>
-      <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT." />
+      <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." />
 
       {error ? <div className="system-state-message" role="alert"><p>{error}</p></div> : null}
       {notice ? <p className="system-state-copy" role="status">{notice}</p> : null}

@@ -53,10 +53,10 @@ export function ChatGPTMessageBridgeCard({
   }, [api, bridgeReceipt?.id, bridgeReceipt?.status, bridgeReceipt?.processingStatus]);
 
   return (
-    <section className="system-section message-bridge-card" aria-label="ChatGPT Message Bridge">
+    <section className="system-section message-bridge-card" aria-label="ChatGPT / Claude Message Bridge">
       <h2 className="system-product-name">Message Bridge</h2>
       <div className="sentinel-first-row">
-        <p className="system-note">Send one message to the connected ChatGPT conversation.</p>
+        <p className="system-note">Send one message to the connected ChatGPT / Claude conversation.</p>
       </div>
       <textarea
         value={bridgeText}
@@ -81,7 +81,7 @@ function bridgeStatusLabel(receipt: BridgeEventReceipt): string {
     switch (status) {
       case "pending": return "Queued";
       case "reserved": return "Delivering";
-      case "host_sent": return "Sent to ChatGPT";
+      case "host_sent": return "Sent to ChatGPT / Claude";
       case "delivery_unknown": return "Delivery uncertain — do not resend";
     }
   })();
