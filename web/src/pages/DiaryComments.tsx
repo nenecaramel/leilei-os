@@ -383,6 +383,66 @@ export function DiaryCommentsSection({
 
   return (
     <section className="diary-comments" aria-label="Diary comments">
+      {!readOnly ? (
+        composerOpen ? (
+          <div className="diary-comment-composer" ref={composerRef}>
+            <textarea
+              ref={composerTextareaRef}
+              aria-label="写一条评论"
+              placeholder="写一条评论…"
+              value={composerContent}
+              disabled={savingCreate || disabled}
+              rows={1}
+              onChange={(event) => {
+                setComposerContent(event.target.value);
+                setError("");
+              }}
+            />
+            <div className="diary-comment-composer-actions">
+              <PaperAuthorSignature
+                value={composerAuthor}
+                editable
+                placement="inline"
+                disabled={savingCreate || disabled}
+                onChange={setComposerAuthor}
+              />
+              <span className="diary-comment-composer-buttons">
+                <button
+                  type="button"
+                  className="memory-paper-control"
+                  disabled={savingCreate}
+                  onClick={cancelComposer}
+                >
+                  取消
+                </button>
+                <span>·</span>
+                <button
+                  type="button"
+                  className="memory-paper-control"
+                  disabled={
+                    savingCreate ||
+                    disabled ||
+                    !composerContent.trim()
+                  }
+                  onClick={() => void saveComposer()}
+                >
+                  {savingCreate ? "保存中…" : "保存"}
+                </button>
+              </span>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="diary-comment-create-trigger"
+            disabled={disabled}
+            onClick={beginComposer}
+          >
+            写一条评论…
+          </button>
+        )
+      ) : null}
+
       {metadata.truncated ? (
         <button
           type="button"
@@ -576,65 +636,7 @@ export function DiaryCommentsSection({
         })}
       </div>
 
-      {!readOnly ? (
-        composerOpen ? (
-          <div className="diary-comment-composer" ref={composerRef}>
-            <textarea
-              ref={composerTextareaRef}
-              aria-label="写一条评论"
-              placeholder="写一条评论…"
-              value={composerContent}
-              disabled={savingCreate || disabled}
-              rows={1}
-              onChange={(event) => {
-                setComposerContent(event.target.value);
-                setError("");
-              }}
-            />
-            <div className="diary-comment-composer-actions">
-              <PaperAuthorSignature
-                value={composerAuthor}
-                editable
-                placement="inline"
-                disabled={savingCreate || disabled}
-                onChange={setComposerAuthor}
-              />
-              <span className="diary-comment-composer-buttons">
-                <button
-                  type="button"
-                  className="memory-paper-control"
-                  disabled={savingCreate}
-                  onClick={cancelComposer}
-                >
-                  取消
-                </button>
-                <span>·</span>
-                <button
-                  type="button"
-                  className="memory-paper-control"
-                  disabled={
-                    savingCreate ||
-                    disabled ||
-                    !composerContent.trim()
-                  }
-                  onClick={() => void saveComposer()}
-                >
-                  {savingCreate ? "保存中…" : "保存"}
-                </button>
-              </span>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="diary-comment-create-trigger"
-            disabled={disabled}
-            onClick={beginComposer}
-          >
-            写一条评论…
-          </button>
-        )
-      ) : null}
+
 
       {error ? (
         <p className="diary-comment-error" role="alert">{error}</p>
