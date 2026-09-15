@@ -155,7 +155,7 @@ test("PWA status renders nothing when online and current", async () => {
 });
 
 
-test("PWA update toast is compact, readable, and keeps a 44px action target", () => {
+test("PWA update toast uses the wider card geometry with stronger current typography", () => {
   const styles = readFileSync(
     new URL("../web/src/pwa/pwa-status.css", import.meta.url),
     "utf8",
@@ -166,11 +166,11 @@ test("PWA update toast is compact, readable, and keeps a 44px action target", ()
   );
   assert.match(
     styles,
-    /\.pwa-status\s*\{[^}]*width:\s*max-content[^}]*max-width:\s*calc\(100% - 32px\)/s,
+    /\.pwa-status\s*\{[^}]*width:\s*min\(calc\(100% - 32px\),\s*420px\)/s,
   );
   assert.match(
     styles,
-    /\.pwa-status__item\s*\{[^}]*min-height:\s*44px[^}]*padding:\s*0 10px 0 14px[^}]*color:\s*#444[^}]*font-size:\s*14px[^}]*font-weight:\s*500/s,
+    /\.pwa-status__item\s*\{[^}]*min-height:\s*48px[^}]*padding:\s*8px 12px[^}]*border-radius:\s*14px[^}]*color:\s*#444[^}]*font-size:\s*14px[^}]*font-weight:\s*500/s,
   );
   assert.match(
     styles,
