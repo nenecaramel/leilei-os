@@ -780,7 +780,23 @@ test("Todo paper CSS defines the fixed ruled paper geometry", () => {
   );
   assert.match(
     todoPaperStylesSource,
-    /\.paper-detail-rules span\s*\{[^}]*border-bottom:\s*1px solid rgba\(0,\s*0,\s*0,\s*0\.075\)/,
+    /\.paper-detail-body\s*\{[^}]*min-height:\s*100%[^}]*display:\s*flow-root/s,
+  );
+  assert.match(
+    todoPaperStylesSource,
+    /\.paper-detail-body--ruled\s*\{[^}]*repeating-linear-gradient\([\s\S]*?transparent 29px[\s\S]*?rgba\(0,\s*0,\s*0,\s*0\.075\) 30px/s,
+  );
+  assert.doesNotMatch(
+    paperDetailDialogSource,
+    /paper-detail-rules/,
+  );
+  assert.doesNotMatch(
+    paperDetailDialogSource,
+    /Array\.from\(\{\s*length:\s*24\s*\}/,
+  );
+  assert.match(
+    paperDetailDialogSource,
+    /showRules[\s\S]*paper-detail-body paper-detail-body--ruled/,
   );
   assert.match(
     todoPaperStylesSource,
