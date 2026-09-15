@@ -13,14 +13,16 @@
 
 .pwa-status__item {
   box-sizing: border-box;
-  min-height: 44px;
+  min-height: 48px;
   padding: 8px 12px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.96);
-  color: #111;
+  color: #555;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   font-size: 13px;
+  font-weight: 400;
   line-height: 1.35;
   pointer-events: auto;
 }
@@ -40,13 +42,27 @@
 
 .pwa-status__update-button {
   flex: 0 0 auto;
-  min-width: 82px;
+  min-width: 44px;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 8px;
   border: 0;
   border-radius: 10px;
-  background: #111;
-  color: #fff;
+  background: transparent;
+  color: #666;
   font: inherit;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pwa-status__update-button:hover,
+.pwa-status__update-button:active {
+  background: rgba(0, 0, 0, 0.05);
+  color: #444;
+}
+
+.pwa-status__update-button:focus-visible {
+  outline: 1px solid rgba(0, 0, 0, 0.2);
+  outline-offset: 2px;
 }
