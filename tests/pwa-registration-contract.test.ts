@@ -9,7 +9,8 @@ test("PWA registration uses prompt lifecycle and browser network events", async 
   assert.match(source, /markUpdateAvailable/);
   assert.match(source, /window\.addEventListener\(["']online["']/);
   assert.match(source, /window\.addEventListener\(["']offline["']/);
-  assert.match(source, /updateSW\(true\)/);
+  assert.match(source, /await updateSW\(true\)/);
+  assert.match(source, /window\.location\.reload\(\)/);
 });
 
 test("PWA registration starts from main instead of AppShell", async () => {

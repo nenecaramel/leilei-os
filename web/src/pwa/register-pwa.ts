@@ -63,7 +63,10 @@ export function startPwaRegistration(): void {
     },
   });
 
-  pwaStateStore.setUpdateAction(() => updateSW(true));
+  pwaStateStore.setUpdateAction(async () => {
+    await updateSW(true);
+    window.location.reload();
+  });
 
   const syncOnline = () => {
     pwaStateStore.setOnline(navigator.onLine);
