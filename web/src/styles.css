@@ -2359,23 +2359,18 @@ body:has(.home-prototype) {
 .paper-detail-scroll {
   position: absolute;
   inset: 42px 0 38px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 24px;
 }
 
-.paper-detail-rules,
 .paper-detail-body {
-  grid-area: 1 / 1;
+  position: relative;
   min-height: 100%;
+  display: flow-root;
 }
 
-.paper-detail-rules {
-  z-index: 0;
-  pointer-events: none;
+.paper-detail-body--ruled {
   background:
     repeating-linear-gradient(
       to bottom,
@@ -2384,11 +2379,6 @@ body:has(.home-prototype) {
       rgba(0, 0, 0, 0.075) 29px,
       rgba(0, 0, 0, 0.075) 30px
     );
-}
-
-.paper-detail-body {
-  position: relative;
-  z-index: 1;
 }
 
 /* Universe papers use the same transparent paper-form language as Memory and
