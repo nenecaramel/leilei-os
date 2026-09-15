@@ -23,7 +23,7 @@
 
 .system-export-action-row {
   display: grid;
-  grid-template-columns: repeat(5, max-content);
+  grid-template-columns: repeat(6, max-content);
   min-width: 0;
   min-height: 60px;
   align-items: center;
