@@ -10,14 +10,13 @@ import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const taskSource = readFileSync(new URL("../web/src/pages/TaskPage.tsx", import.meta.url), "utf8");
 
-test("Home prototype keeps the approved Todo panels, Calendar and footer structure", () => {
+test("Home keeps only the approved Todo panels and Calendar structure", () => {
   assert.match(dashboardSource, /TodayPanel/);
   assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
   assert.match(dashboardSource, /CalendarPreview/);
   assert.match(dashboardSource, />Todo</);
-  assert.match(dashboardSource, />Records</);
-  assert.match(dashboardSource, /records-section/);
-  assert.match(dashboardSource, /home-bottom-nav/);
+  assert.doesNotMatch(dashboardSource, />Records</);
+  assert.doesNotMatch(dashboardSource, /records-section|home-bottom-nav/);
   assert.doesNotMatch(dashboardSource, /hero-panel|orbit|space-card|quickTarget|Archive|Today at a glance|Wednesday, August 5|新增（预览）/);
   assert.match(dashboardSource, /loadTodoDay/);
 });
@@ -79,13 +78,9 @@ test("Dashboard renders server-backed Home papers", async () => {
   assert.equal(container.querySelectorAll(".today-panel").length, 3);
   assert.equal(container.querySelectorAll(".sticky-card").length, 0);
   assert.ok(container.querySelector(".calendar-preview"));
-  assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 4);
-  assert.equal(
-    container.querySelector(".records-section .home-section-heading h2")?.textContent,
-    "Records",
-  );
+  assert.equal(container.querySelectorAll(".home-bottom-nav a").length, 0);
+  assert.equal(container.querySelector(".records-section"), null);
   assert.equal(container.querySelectorAll(".calendar-frame").length, 1);
-  assert.deepEqual([...container.querySelectorAll(".home-bottom-nav a")].map((link) => link.textContent), ["Memory", "Diary", "Task", "Universe"]);
   assert.equal(container.querySelector(".hero-panel"), null);
   root.unmount();
   await waitForPaint();

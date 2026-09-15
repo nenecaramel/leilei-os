@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { CalendarPreview, type CalendarLoadState } from "./CalendarPreview";
 import { listDiaryDates } from "./day-space-api";
@@ -10,8 +9,6 @@ import { TodoPaperDialog } from "./TodoPaperDialog";
 import { loadTodoDay, listTodoDates } from "./todo-api";
 import { migrateLegacyTodoPapers } from "./todo-legacy-migration";
 import type { TodoAuthor, TodoDay } from "./todo-types";
-import { navigateWithinApp } from "./app-navigation";
-import { createQuickCreateState, type QuickCreateTarget } from "./quick-create";
 
 export function formatHomeDate(date: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(date);
@@ -102,11 +99,6 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
     return () => { window.removeEventListener("focus", checkDate); document.removeEventListener("visibilitychange", checkDate); };
   }, [dateKey, dialogDirty, now]);
 
-  const openQuickCreate = (target: QuickCreateTarget, event: React.MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
-    navigateWithinApp(`/${target}`, createQuickCreateState(window.history.state, target));
-  };
-
   const selectedPaper = dialogAuthor ? papers[dialogAuthor] : null;
   const selectedTriggerRef = dialogAuthor === "L" ? lTriggerRef : dialogAuthor === "G" ? gTriggerRef : cTriggerRef;
 
@@ -125,15 +117,6 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
           status={calendarLoadState}
           onRetry={loadCalendar}
         />
-        <section className="home-section home-preview-section records-section" aria-labelledby="records-title">
-          <div className="home-section-heading records-section-heading"><h2 id="records-title">Records</h2></div>
-          <nav className="home-bottom-nav" aria-label="模块入口">
-            <a href="/memory" onClick={(event) => openQuickCreate("memory", event)}>Memory</a>
-            <a href="/diary" onClick={(event) => openQuickCreate("diary", event)}>Diary</a>
-            <a href="/task" onClick={(event) => openQuickCreate("task", event)}>Task</a>
-            <Link to="/universe">Universe</Link>
-          </nav>
-        </section>
       </main>
       {dialogAuthor ? <TodoPaperDialog api={api} author={dialogAuthor} date={today} open paper={selectedPaper} triggerRef={selectedTriggerRef} onSaved={(paper) => { setPapers((current) => ({ ...current, [paper.author]: paper })); void loadCalendar(); }} onDirtyChange={setDialogDirty} onClosed={() => { setDialogAuthor(null); setDialogDirty(false); setPendingDate((nextDate) => { if (nextDate) { setToday(now()); setDateKey(nextDate); } return null; }); }} /> : null}
     </div>
