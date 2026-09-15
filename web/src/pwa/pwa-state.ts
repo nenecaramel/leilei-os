@@ -60,8 +60,29 @@ export function createPwaStateStore(
       publish();
     },
     async acceptUpdate() {
-      if (updateAction) {
+      if (!state.updateAvailable) {
+        return;
+      }
+
+      state = {
+        ...state,
+        updateAvailable: false,
+      };
+      publish();
+
+      if (!updateAction) {
+        return;
+      }
+
+      try {
         await updateAction();
+      } catch (error) {
+        state = {
+          ...state,
+          updateAvailable: true,
+        };
+        publish();
+        throw error;
       }
     },
   };

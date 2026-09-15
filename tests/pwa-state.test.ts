@@ -18,8 +18,10 @@ test("PWA store exposes update availability and user-triggered update action", a
   assert.equal(store.getSnapshot().updateAvailable, true);
   await store.acceptUpdate();
   assert.equal(updated, 1);
+  assert.equal(store.getSnapshot().updateAvailable, false);
   unsubscribe();
   assert.ok(seen.includes(true));
+  assert.ok(seen.includes(false));
 });
 
 test("PWA store tracks browser online/offline state", () => {
@@ -27,4 +29,16 @@ test("PWA store tracks browser online/offline state", () => {
   assert.equal(store.getSnapshot().online, false);
   store.setOnline(true);
   assert.equal(store.getSnapshot().online, true);
+});
+
+
+test("PWA store restores update availability when update activation fails", async () => {
+  const store = createPwaStateStore();
+  store.setUpdateAction(async () => {
+    throw new Error("activation failed");
+  });
+  store.markUpdateAvailable();
+
+  await assert.rejects(() => store.acceptUpdate(), /activation failed/);
+  assert.equal(store.getSnapshot().updateAvailable, true);
 });

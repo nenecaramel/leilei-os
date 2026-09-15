@@ -113,6 +113,11 @@ test("PWA status shows offline state and explicit update action", async () => {
   button.click();
   await waitForPaint();
   assert.equal(updates, 1);
+  assert.equal(
+    container.querySelector("[data-pwa-update]"),
+    null,
+  );
+  assert.doesNotMatch(container.textContent ?? "", /Leilei OS 有新版本/);
 
   root.unmount();
   await waitForPaint();

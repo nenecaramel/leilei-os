@@ -40,7 +40,9 @@ export function PwaStatus({
             className="pwa-status__update-button"
             data-pwa-update
             onClick={() => {
-              void store.acceptUpdate();
+              void store.acceptUpdate().catch(() => {
+                // The store restores updateAvailable on failure.
+              });
             }}
           >
             刷新
