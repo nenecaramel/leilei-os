@@ -4,7 +4,8 @@
   z-index: 320;
   left: 50%;
   bottom: calc(16px + env(safe-area-inset-bottom));
-  width: min(calc(100% - 32px), 420px);
+  width: max-content;
+  max-width: calc(100% - 32px);
   transform: translateX(-50%);
   display: grid;
   gap: 8px;
@@ -13,16 +14,16 @@
 
 .pwa-status__item {
   box-sizing: border-box;
-  min-height: 48px;
-  padding: 8px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 14px;
+  min-height: 44px;
+  padding: 0 10px 0 14px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.96);
-  color: #555;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  color: #444;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
-  font-size: 13px;
-  font-weight: 400;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1.35;
   pointer-events: auto;
 }
@@ -37,7 +38,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
 }
 
 .pwa-status__update-button {
@@ -48,10 +49,10 @@
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: #666;
+  color: #444;
   font: inherit;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }

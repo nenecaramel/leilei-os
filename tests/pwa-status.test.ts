@@ -155,14 +155,22 @@ test("PWA status renders nothing when online and current", async () => {
 });
 
 
-test("PWA update action keeps a 44px hit target without a filled black button", () => {
+test("PWA update toast is compact, readable, and keeps a 44px action target", () => {
   const styles = readFileSync(
     new URL("../web/src/pwa/pwa-status.css", import.meta.url),
     "utf8",
   );
   assert.match(
     styles,
-    /\.pwa-status__update-button\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px[^}]*background:\s*transparent[^}]*color:\s*#666[^}]*font-size:\s*12px[^}]*font-weight:\s*500/s,
+    /\.pwa-status__update-button\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px[^}]*background:\s*transparent[^}]*color:\s*#444[^}]*font-size:\s*13px[^}]*font-weight:\s*600/s,
+  );
+  assert.match(
+    styles,
+    /\.pwa-status\s*\{[^}]*width:\s*max-content[^}]*max-width:\s*calc\(100% - 32px\)/s,
+  );
+  assert.match(
+    styles,
+    /\.pwa-status__item\s*\{[^}]*min-height:\s*44px[^}]*padding:\s*0 10px 0 14px[^}]*color:\s*#444[^}]*font-size:\s*14px[^}]*font-weight:\s*500/s,
   );
   assert.match(
     styles,
