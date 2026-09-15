@@ -69,7 +69,7 @@ test(
 );
 
 test(
-  "Quick Search state spacing is not changed to 96px",
+  "Quick Search state spacing stays local to the search panel",
   () => {
     const blocks = [
       ...css.matchAll(
@@ -82,7 +82,7 @@ test(
     for (const block of blocks) {
       assert.doesNotMatch(
         block,
-        /(?:margin-top|padding-top):\s*96px;/,
+        /(?:margin-top|padding-top):\s*64px;/,
       );
     }
   },

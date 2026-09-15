@@ -1,5 +1,6 @@
 import type { ChangeEvent, MouseEventHandler, ReactNode } from "react";
 import { SearchIcon } from "./icons";
+import { StateSurface } from "./StateSurface";
 
 type ModuleSearchButtonProps = {
   label: string;
@@ -45,6 +46,7 @@ type ModuleStateMessageProps = {
   retryLabel?: string;
   onRetry?: () => void;
   action?: ReactNode;
+  description?: string;
   className?: string;
   placement?: ModuleStatePlacement;
 };
@@ -57,6 +59,7 @@ export function ModuleStateMessage({
   retryLabel = "重试",
   onRetry,
   action,
+  description,
   className = "",
   placement = "inline",
 }: ModuleStateMessageProps) {
@@ -69,44 +72,27 @@ export function ModuleStateMessage({
   const classNames =
     `module-search-state${placementClass}${className ? ` ${className}` : ""}`;
 
-  if (state === "loading") {
-    return (
-      <div className={classNames} role="status" aria-live="polite">
-        <span className="module-search-state-copy">{loadingText}</span>
-      </div>
-    );
-  }
+  if (state === "idle" || state === "ready") return null;
 
-  if (state === "empty") {
-    return (
-      <div
-        className={classNames}
-        role={placement === "inline" ? undefined : "status"}
-      >
-        <span className="module-search-state-copy">{emptyText}</span>
-        {action}
-      </div>
-    );
-  }
+  const message =
+    state === "loading"
+      ? loadingText
+      : state === "empty"
+        ? emptyText
+        : errorText;
 
-  if (state === "error") {
-    return (
-      <div className={classNames} role="alert">
-        <span className="module-search-state-copy">{errorText}</span>
-        {onRetry ? (
-          <button
-            className="module-search-state-retry"
-            type="button"
-            onClick={onRetry}
-          >
-            {retryLabel}
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-
-  return null;
+  return (
+    <StateSurface
+      state={state}
+      message={message}
+      description={description}
+      retryLabel={retryLabel}
+      onRetry={state === "error" ? onRetry : undefined}
+      action={state === "empty" ? action : undefined}
+      placement={placement}
+      className={classNames}
+    />
+  );
 }
 
 // Compatibility alias for search-only callers while module pages migrate to the
