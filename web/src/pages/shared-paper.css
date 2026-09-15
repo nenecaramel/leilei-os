@@ -48,10 +48,3 @@
   gap: 10px;
   margin-top: 14px;
 }
-
-@media (min-width: 761px) {
-  .shared-paper-page {
-    width: min(860px, calc(100% - 48px));
-    margin: 0 auto;
-  }
-}
