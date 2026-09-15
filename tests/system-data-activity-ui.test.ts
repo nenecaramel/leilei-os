@@ -134,6 +134,44 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
   env.restore();
 });
 
+test("Data tolerates a legacy summary response while backend deployment catches up", async () => {
+  const env = installDom("https://leilei.test/system/data");
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+
+  const api: WebApiClient = {
+    async request<T>(): Promise<T> {
+      return {
+        success: true,
+        data: {
+          memory: { active: 1, archived: 0 },
+          diary: { active: 2, archived: 0 },
+          task: { active: 3, archived: 0 },
+        },
+      } as T;
+    },
+  };
+
+  root.render(React.createElement(SystemDataPageContent, { api }));
+
+  await waitForCondition(
+    () => /Shared Paper/.test(container.textContent ?? "") && /Todo/.test(container.textContent ?? ""),
+    "legacy System Data response to render safely",
+  );
+
+  const rows = Array.from(container.querySelectorAll(".system-data-row"));
+  const sharedPaperRow = rows.find((row) => row.textContent?.includes("Shared Paper"));
+  const todoRow = rows.find((row) => row.textContent?.includes("Todo"));
+  assert.ok(sharedPaperRow);
+  assert.ok(todoRow);
+  assert.match(sharedPaperRow.textContent ?? "", /—/u);
+  assert.match(todoRow.textContent ?? "", /—/u);
+
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
 test("Data exposes Retry after a failed count request", async () => {
   const env = installDom(
     "https://leilei.test/system/data",
