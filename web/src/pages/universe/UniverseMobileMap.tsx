@@ -116,7 +116,7 @@ export function UniverseMobileMap({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (didFit.current) return;
     if (isDesktopViewport() && !hasMeasuredMapSize) return;
     let stored: UniverseViewport | null = null;
