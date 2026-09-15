@@ -22,6 +22,8 @@ test("isolated PostgreSQL export v2 round-trips through preview and atomic resto
   const memoryId = randomUUID();
   const diaryId = randomUUID();
   const taskId = randomUUID();
+  const sharedActiveId = randomUUID();
+  const sharedArchivedId = randomUUID();
   const now = new Date("2026-08-14T00:00:00.000Z");
   try {
     await db.insert(schema.users).values({ id: userId, email: `import-${userId}@example.invalid`, displayName: "Import test", status: "active", createdAt: now, updatedAt: now });
@@ -29,6 +31,10 @@ test("isolated PostgreSQL export v2 round-trips through preview and atomic resto
     await db.insert(schema.diaryEntries).values({ id: diaryId, userId, title: "Import diary", content: "A diary", date: "2026-08-14", tags: [], mood: null, source: "chatgpt_mcp", author: "G", status: "archived", idempotencyKey: `import-test-${userId}`, requestHash: "a".repeat(64), createdAt: now, updatedAt: now });
     await db.insert(schema.tasks).values({ id: taskId, userId, title: "Import task", description: "A task", status: "pending", resumeStatus: null, lifecycleStatus: "active", author: "L", priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: [], createdAt: now, updatedAt: now, completedAt: null });
     await db.insert(schema.todoPapers).values({ userId, businessDate: "2026-08-14", author: "G", revision: 0, createdAt: now, updatedAt: now });
+    await db.insert(schema.sharedPapers).values([
+      { id: sharedActiveId, userId, title: "Import shared active", content: "Shared active content", revision: 1, createdBy: "L", updatedBy: "L", createdAt: now, updatedAt: now, archivedAt: null },
+      { id: sharedArchivedId, userId, title: "Import shared archived", content: "Shared archived content", revision: 3, createdBy: "L", updatedBy: "C", createdAt: now, updatedAt: new Date("2026-08-15T00:00:00.000Z"), archivedAt: new Date("2026-08-16T00:00:00.000Z") },
+    ]);
 
     const exported = await new ExportService(new DrizzleExportRepository(db as never), () => now).createExport(userId, "all", true);
     const raw = new TextEncoder().encode(JSON.stringify(exported));
@@ -36,6 +42,7 @@ test("isolated PostgreSQL export v2 round-trips through preview and atomic resto
     await db.delete(schema.diaryEntries).where(eq(schema.diaryEntries.userId, userId));
     await db.delete(schema.tasks).where(eq(schema.tasks.userId, userId));
     await db.delete(schema.todoPapers).where(eq(schema.todoPapers.userId, userId));
+    await db.delete(schema.sharedPapers).where(eq(schema.sharedPapers.userId, userId));
 
     const service = new ImportService(new DrizzleImportRepository(db as never));
     const preview = await service.preview(raw, userId);
@@ -45,6 +52,7 @@ test("isolated PostgreSQL export v2 round-trips through preview and atomic resto
     assert.equal(result.summary.diary.create, 1);
     assert.equal(result.summary.task.create, 1);
     assert.equal(result.summary.todo.create, 1);
+    assert.equal(result.summary.shared_paper.create, 2);
     const reexported = await new ExportService(new DrizzleExportRepository(db as never), () => now).createExport(userId, "all", false);
     assert.deepEqual(reexported.data, exported.data);
     assert.equal((await service.preview(raw, userId)).can_execute, false);
@@ -67,6 +75,7 @@ test("isolated PostgreSQL export v2 round-trips through preview and atomic resto
     await db.delete(schema.coreMemories).where(eq(schema.coreMemories.userId, userId));
     await db.delete(schema.diaryEntries).where(eq(schema.diaryEntries.userId, userId));
     await db.delete(schema.tasks).where(eq(schema.tasks.userId, userId));
+    await db.delete(schema.sharedPapers).where(eq(schema.sharedPapers.userId, userId));
     await db.delete(schema.users).where(eq(schema.users.id, userId));
     await client.end();
   }

@@ -22,6 +22,13 @@ export type SystemDataSummary = {
     active: number;
     archived: number;
   };
+  shared_paper: {
+    active: number;
+    archived: number;
+  };
+  todo: {
+    active: number;
+  };
 };
 
 export type SystemDataResponse = {

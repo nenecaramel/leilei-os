@@ -37,6 +37,8 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
   const otherTool = randomUUID();
   const ownerPaper = randomUUID();
   const ownerEmptyPaper = randomUUID();
+  const ownerSharedActive = randomUUID();
+  const ownerSharedArchived = randomUUID();
   const now = new Date("2026-08-13T05:00:00.000Z");
   const early = new Date("2026-08-12T05:00:00.000Z");
   try {
@@ -68,6 +70,11 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
       await transaction.insert(schema.todoEntries).values([
         { paperId: ownerPaper, entryId: "second", kind: "record", text: "second entry", position: 1 },
         { paperId: ownerPaper, entryId: "first", kind: "pending", text: "first entry", position: 0 },
+      ]);
+      await transaction.insert(schema.sharedPapers).values([
+        { id: ownerSharedActive, userId: owner, title: "owner shared active", content: "canonical active", revision: 3, createdBy: "L", updatedBy: "C", createdAt: early, updatedAt: now, archivedAt: null },
+        { id: ownerSharedArchived, userId: owner, title: "owner shared archived", content: "canonical archived", revision: 4, createdBy: "G", updatedBy: "C", createdAt: early, updatedAt: now, archivedAt: now },
+        { id: randomUUID(), userId: other, title: "other shared", content: "OTHER_SHARED_SECRET", revision: 1, createdBy: "C", updatedBy: "C", createdAt: now, updatedAt: now, archivedAt: null },
       ]);
       await transaction.insert(schema.resourceLifecycleEvents).values([
         { id: ownerLifecycleEarly, userId: owner, resourceType: "memory", resourceId: ownerMemoryEarly, action: "archive", actorType: "user", channel: "web", metadata: { PRIVATE_LIFECYCLE_METADATA: true }, createdAt: early },
@@ -121,6 +128,13 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
       assert.deepEqual(papers[1]?.entries, []);
       assert.equal(JSON.stringify(papers).includes(ownerPaper), false);
 
+      const sharedPapers = await repository.listSharedPapers(owner);
+      assert.deepEqual(sharedPapers.map((row) => row.id), [ownerSharedActive, ownerSharedArchived]);
+      assert.deepEqual(sharedPapers.map((row) => row.archived_at), [null, now.toISOString()]);
+      assert.equal(sharedPapers[1]?.revision, 4);
+      assert.equal(sharedPapers[1]?.updated_by, "C");
+      assert.equal(JSON.stringify(sharedPapers).includes("OTHER_SHARED_SECRET"), false);
+
       const lifecycle = await repository.listLifecycleAudit(owner);
       assert.deepEqual(lifecycle.map((row) => row.id), [ownerLifecycleEarly, ownerLifecycleLate]);
       assert.equal(JSON.stringify(lifecycle).includes("PRIVATE_LIFECYCLE_METADATA"), false);
@@ -141,7 +155,7 @@ test("DrizzleExportRepository returns scoped deterministic privacy-safe records"
         assert.equal(toolJson.includes(forbidden), false);
       }
 
-      const serializedExport = JSON.stringify({ memory: memories, diary: diaries, task: tasks, todo: papers, audit: { lifecycle, tool_activity: tools } });
+      const serializedExport = JSON.stringify({ memory: memories, diary: diaries, task: tasks, todo: papers, shared_paper: sharedPapers, audit: { lifecycle, tool_activity: tools } });
       for (const forbidden of [
         "user_id",
         "idempotency_key",

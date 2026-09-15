@@ -31,6 +31,8 @@ test("Data reads the approved counts endpoint and exposes the approved export ac
     "Memory",
     "Diary",
     "Task",
+    "Shared Paper",
+    "Todo",
     "Active",
     "Archived",
   ]) {
@@ -45,9 +47,15 @@ test("Data reads the approved counts endpoint and exposes the approved export ac
     ["diary", "Diary"],
     ["task", "Task"],
     ["todo", "Todo"],
+    ["shared_paper", "Shared Paper"],
   ]) {
     assert.match(dataContentSource, new RegExp(`\\["${scope}", "${label}"\\]`));
   }
+});
+
+test("Data restore preview includes Shared Paper as a first-class import module", () => {
+  assert.match(dataContentSource, /const IMPORT_MODULE_ORDER = \[(?:[^\]]*"shared_paper"[^\]]*)\] as const;/s);
+  assert.match(dataContentSource, /shared_paper:\s*"Shared Paper"/);
 });
 
 test("Activity reads the approved endpoint and renders only safe public event fields", () => {

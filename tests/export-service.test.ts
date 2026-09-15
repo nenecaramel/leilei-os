@@ -8,6 +8,7 @@ import type {
   ExportDiaryRecord,
   ExportLifecycleEvent,
   ExportMemoryRecord,
+  ExportSharedPaper,
   ExportTaskRecord,
   ExportToolActivity,
   ExportTodoPaper,
@@ -68,6 +69,17 @@ const todo: ExportTodoPaper[] = [{
   updated_at: EXPORTED_AT,
   entries: [],
 }];
+const sharedPaper: ExportSharedPaper[] = [{
+  id: "shared-paper-1",
+  title: "Shared",
+  content: "Canonical shared content",
+  revision: 3,
+  created_by: "L",
+  updated_by: "C",
+  created_at: EXPORTED_AT,
+  updated_at: EXPORTED_AT,
+  archived_at: "2026-08-14T05:42:00.000Z",
+}];
 const lifecycle: ExportLifecycleEvent[] = [{
   id: "lifecycle-1",
   resource_type: "memory",
@@ -95,10 +107,23 @@ function createRepository(calls: string[] = []): ExportRepository {
     async listDiary(userId) { calls.push(`diary:${userId}`); return diary; },
     async listTasks(userId) { calls.push(`task:${userId}`); return task; },
     async listTodo(userId) { calls.push(`todo:${userId}`); return todo; },
+    async listSharedPapers(userId) { calls.push(`shared_paper:${userId}`); return sharedPaper; },
     async listLifecycleAudit(userId) { calls.push(`lifecycle:${userId}`); return lifecycle; },
     async listToolActivity(userId) { calls.push(`tool:${userId}`); return toolActivity; },
   };
 }
+
+test("ExportService includes complete active and archived Shared Paper records", async () => {
+  const document = await new ExportService(
+    createRepository(),
+    () => new Date(EXPORTED_AT),
+  ).createExport(USER_ID, "shared_paper", false);
+
+  assert.deepEqual(document.data, { shared_paper: sharedPaper });
+  assert.equal(document.data.shared_paper?.[0]?.archived_at, "2026-08-14T05:42:00.000Z");
+  assert.equal(document.data.shared_paper?.[0]?.revision, 3);
+  assert.equal(document.data.shared_paper?.[0]?.updated_by, "C");
+});
 
 test("ExportService emits the v2 owner-bound contract with a fixed UTC timestamp", async () => {
   const document = await new ExportService(
@@ -133,6 +158,7 @@ test("ExportService preserves C exactly for every author-bearing business record
     diary: [cDiary],
     task: [cTask],
     todo: [cTodo],
+    shared_paper: sharedPaper,
   });
 });
 
@@ -156,6 +182,7 @@ test("ExportService reads only the selected single-module scope", async () => {
     ["diary", "diary"],
     ["task", "task"],
     ["todo", "todo"],
+    ["shared_paper", "shared_paper"],
   ] as const) {
     const calls: string[] = [];
     const document = await new ExportService(
@@ -174,12 +201,13 @@ test("ExportService reads all business modules for all scope", async () => {
     () => new Date(EXPORTED_AT),
   ).createExport(USER_ID, "all", false);
 
-  assert.deepEqual(Object.keys(document.data), ["memory", "diary", "task", "todo"]);
+  assert.deepEqual(Object.keys(document.data), ["memory", "diary", "task", "todo", "shared_paper"]);
   assert.deepEqual(calls, [
     `memory:${USER_ID}`,
     `diary:${USER_ID}`,
     `task:${USER_ID}`,
     `todo:${USER_ID}`,
+    `shared_paper:${USER_ID}`,
   ]);
 });
 

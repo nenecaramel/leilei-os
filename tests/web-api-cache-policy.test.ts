@@ -33,7 +33,7 @@ async function withServer(callback: (baseUrl: string) => Promise<void>): Promise
     },
     system: {
       systemService: {
-        async readDataSummary() { return { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 } }; },
+        async readDataSummary() { return { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 }, shared_paper: { active: 0, archived: 0 }, todo: { active: 0 } }; },
       },
     },
     todo: { todoService: { async listDates() { return []; } } },

@@ -83,6 +83,8 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
           memory: { active: 12, archived: 3 },
           diary: { active: 8, archived: 2 },
           task: { active: 5, archived: 7 },
+          shared_paper: { active: 4, archived: 1 },
+          todo: { active: 9 },
         },
       } as T;
     },
@@ -113,9 +115,19 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
     "Task",
     "5",
     "7",
+    "Shared Paper",
+    "4",
+    "1",
+    "Todo",
+    "9",
+    "—",
   ]) {
     assert.match(text, new RegExp(expected));
   }
+
+  const todoRow = Array.from(container.querySelectorAll(".system-data-row")).find((row) => row.textContent?.includes("Todo"));
+  assert.ok(todoRow);
+  assert.match(todoRow.textContent ?? "", /—/u);
 
   root.unmount();
   await waitForPaint();
@@ -143,6 +155,8 @@ test("Data exposes Retry after a failed count request", async () => {
           memory: { active: 1, archived: 0 },
           diary: { active: 2, archived: 0 },
           task: { active: 3, archived: 0 },
+          shared_paper: { active: 0, archived: 0 },
+          todo: { active: 0 },
         },
       } as T;
     },

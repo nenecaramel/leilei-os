@@ -66,6 +66,8 @@ test("missing or partial Toy configuration fails closed without affecting existi
             memory: { active: 0, archived: 0 },
             diary: { active: 0, archived: 0 },
             task: { active: 0, archived: 0 },
+            shared_paper: { active: 0, archived: 0 },
+            todo: { active: 0 },
           };
         },
         async readActivity() { return []; },

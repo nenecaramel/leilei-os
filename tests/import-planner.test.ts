@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
+import type { ExportSharedPaper } from "../src/domains/export/export-types.js";
 import { parseImportPackage } from "../src/domains/import/import-schema.js";
 import {
   buildImportPlan,
@@ -23,6 +24,17 @@ const memory = {
   created_at: "2026-08-14T00:00:00.000Z",
   updated_at: "2026-08-14T00:00:00.000Z",
 };
+const sharedPaper: ExportSharedPaper = {
+  id: "00000000-0000-4000-8000-000000000043",
+  title: "Shared import",
+  content: "Canonical shared paper content",
+  revision: 3,
+  created_by: "L",
+  updated_by: "C",
+  created_at: "2026-08-14T00:00:00.000Z",
+  updated_at: "2026-08-15T00:00:00.000Z",
+  archived_at: "2026-08-16T00:00:00.000Z",
+};
 const document = {
   schema_version: 2 as const,
   owner_fingerprint: OWNER,
@@ -34,7 +46,7 @@ function parsed() {
   return parseImportPackage(new TextEncoder().encode(JSON.stringify(document)));
 }
 
-const emptyState: ImportCurrentState = { memory: [], diary: [], task: [], todo: [] };
+const emptyState: ImportCurrentState = { memory: [], diary: [], task: [], todo: [], shared_paper: [] };
 
 test("planner classifies a new record as create and produces an executable plan", () => {
   const plan = buildImportPlan(parsed(), USER_ID, emptyState);
@@ -77,4 +89,40 @@ test("planner rejects owner mismatch and package-internal duplicate identities",
   );
   assert.equal(duplicatePlan.summary.memory.invalid, 2);
   assert.equal(duplicatePlan.can_execute, false);
+});
+
+function parsedSharedPaper(paper: ExportSharedPaper = sharedPaper) {
+  const sharedDocument = {
+    ...document,
+    data: { shared_paper: [paper] },
+  };
+  return parseImportPackage(new TextEncoder().encode(JSON.stringify(sharedDocument)));
+}
+
+test("planner classifies Shared Paper create, duplicate, and conflict by canonical id", () => {
+  const parsedShared = parsedSharedPaper();
+  const created = buildImportPlan(parsedShared, USER_ID, emptyState);
+  assert.equal(created.can_execute, true);
+  assert.deepEqual(created.summary.shared_paper, { create: 1, duplicate: 0, conflict: 0, invalid: 0 });
+  assert.equal(created.items[0]?.logical_key, `id:${sharedPaper.id}`);
+
+  const duplicate = buildImportPlan(parsedShared, USER_ID, { ...emptyState, shared_paper: [sharedPaper] });
+  assert.deepEqual(duplicate.summary.shared_paper, { create: 0, duplicate: 1, conflict: 0, invalid: 0 });
+  assert.equal(duplicate.can_execute, false);
+
+  const conflict = buildImportPlan(parsedShared, USER_ID, {
+    ...emptyState,
+    shared_paper: [{ ...sharedPaper, content: "changed elsewhere" }],
+  });
+  assert.deepEqual(conflict.summary.shared_paper, { create: 0, duplicate: 0, conflict: 1, invalid: 0 });
+  assert.equal(conflict.can_execute, false);
+});
+
+test("planner protects against a Shared Paper id owned by another user", () => {
+  const plan = buildImportPlan(parsedSharedPaper(), USER_ID, {
+    ...emptyState,
+    foreign_shared_paper_ids: new Set([sharedPaper.id]),
+  });
+  assert.deepEqual(plan.summary.shared_paper, { create: 0, duplicate: 0, conflict: 1, invalid: 0 });
+  assert.equal(plan.can_execute, false);
 });
