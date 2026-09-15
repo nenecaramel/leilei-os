@@ -7439,6 +7439,25 @@ body:has(.system-page) {
   font-weight: 500;
 }
 
+.day-space-warning {
+  color: var(--state-muted);
+  font-family: var(--state-font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.day-space-warning button {
+  all: unset;
+  margin-left: 6px;
+  color: var(--state-action);
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
 .day-space-stage-state,
 .day-space-placeholder {
   width: min(100%, 360px);
@@ -7468,6 +7487,15 @@ body:has(.system-page) {
   font-weight: 400;
   line-height: 1.4;
   text-align: center;
+}
+
+.system-import-status,
+.system-bridge-status {
+  color: var(--state-muted);
+  font-family: var(--state-font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .system-state-message {

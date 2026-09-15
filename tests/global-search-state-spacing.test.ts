@@ -33,7 +33,7 @@ test(
     );
     assert.match(
       css,
-      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.module-state-slot\s*\{[^}]*margin-top:\s*96px;/,
+      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.module-state-slot\s*\{[^}]*margin-top:\s*64px;/,
     );
   },
 );
