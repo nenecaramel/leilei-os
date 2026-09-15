@@ -624,3 +624,11 @@ test("Shared Paper lifecycle reconciles uncertain archive and delete outcomes wi
   }
 });
 
+
+test("Shared Paper list loading matches Memory Diary Task skeleton behavior", () => {
+  const source = readFileSync(new URL("../web/src/pages/SharedPaperPage.tsx", import.meta.url), "utf8");
+  assert.match(source, /query \? \(\s*<ModuleStateMessage[^>]*state="loading"[\s\S]*loadingText="正在搜索…"/);
+  assert.match(source, /<SharedPaperListLoading label=\{scope === "archived" \? "Shared Paper Archive 加载中" : "Shared Paper 加载中"\} \/>/);
+  assert.match(source, /function SharedPaperListLoading[\s\S]*className="memory-months"[\s\S]*memory-month-skeleton[\s\S]*memory-month-skeleton-card/);
+  assert.match(source, /list\.status === "ready" && papers\.length === 0[\s\S]*query \? \([\s\S]*ModuleStateMessage[\s\S]*没有符合条件的 Shared Paper[\s\S]*memory-empty-state/);
+});

@@ -380,9 +380,21 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
         <button type="button" className="memory-archive-back" onClick={returnFromArchive}>Return</button>
       </header>}
 
-      {list.status === "loading" ? <ModuleStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText={query ? "正在搜索…" : scope === "archived" ? "正在读取归档 Shared Paper…" : "正在读取 Shared Paper…"} /> : null}
+      {list.status === "loading" ? (
+        query ? (
+          <ModuleStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="正在搜索…" />
+        ) : (
+          <SharedPaperListLoading label={scope === "archived" ? "Shared Paper Archive 加载中" : "Shared Paper 加载中"} />
+        )
+      ) : null}
       {list.status === "error" ? <ModuleStateMessage state="error" placement="module" emptyText="" errorText="暂时无法读取 Shared Paper" retryLabel="重新加载" onRetry={() => setSearchRetry((value) => value + 1)} /> : null}
-      {list.status === "ready" && papers.length === 0 ? <ModuleStateMessage state="empty" placement="module" emptyText={query ? "没有符合条件的 Shared Paper" : scope === "archived" ? "还没有归档 Shared Paper" : "还没有 Shared Paper"} errorText="" /> : null}
+      {list.status === "ready" && papers.length === 0 ? (
+        query ? (
+          <ModuleStateMessage state="empty" placement="module" emptyText="没有符合条件的 Shared Paper" errorText="" />
+        ) : (
+          <section className="memory-empty-state"><p>{scope === "archived" ? "还没有归档 Shared Paper" : "还没有 Shared Paper"}</p></section>
+        )
+      ) : null}
       {list.status === "ready" && papers.length > 0 ? <section className="memory-months shared-paper-list" aria-label={scope === "archived" ? "Shared Paper Archive 列表" : "Shared Paper 列表"}><section className="memory-month-section"><h2 className="memory-month-label">{scope === "archived" ? "Archive" : "Shared Paper"}</h2><div className="memory-month-card">{papers.map((paper) => <button key={paper.id} type="button" className="memory-row shared-paper-row" data-paper-id={paper.id} onClick={(event) => void openDetail(paper, event.currentTarget)}><span className="memory-row-title">{paper.title}</span><span className="memory-row-meta"><span>{formatDate(paper.updatedAt)}</span><span>revision {paper.revision} · {paper.updatedBy}</span></span></button>)}</div></section></section> : null}
 
       {scope === "active" && createOpen ? <PaperDetailDialog id="memory-shared-paper-create" open label="创建 Shared Paper" dateLabel="现在" signature="" triggerRef={triggerRef} onRequestClose={closeDialog} errorMessage={error} topRight={<><button className="memory-paper-control" disabled={creating} onClick={cancelCreate}>取消</button><span>·</span><button className="memory-paper-control" disabled={creating || !createTitle.trim() || createAuthor === null} onClick={() => void createPaper()}>{creating ? "保存中…" : "保存"}</button></>} bottomLeft={<PaperAuthorSignature value={createAuthor} editable disabled={creating} onChange={setCreateAuthor} />}><div className="memory-paper-editor"><input className="memory-paper-key" aria-label="Shared Paper 标题" placeholder="Title" value={createTitle} disabled={creating} maxLength={200} onChange={(event) => setCreateTitle(event.target.value)} /><SharedPaperBodyEditor content={createContent} disabled={creating} placeholder="Content" onContentChange={setCreateContent} /></div></PaperDetailDialog> : null}
@@ -393,6 +405,23 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
           {editing ? <div className="memory-paper-editor"><input className="memory-paper-key" aria-label="Shared Paper 标题" value={draftTitle} disabled={saving} maxLength={200} onChange={(event) => setDraftTitle(event.target.value)} /><SharedPaperBodyEditor content={draft} disabled={saving} onContentChange={setDraft} />{conflict ? <div className="shared-paper-conflict-actions"><button className="secondary-button" type="button" onClick={keepDraftAfterConflict}>继续保留当前草稿</button><button className="secondary-button" type="button" onClick={loadLatestAfterConflict}>载入最新版本</button></div> : null}</div> : history.status === "loading" ? <ModuleStateMessage state="loading" placement="paper" emptyText="" errorText="" loadingText="正在读取历史…" /> : history.status === "error" ? <ModuleStateMessage state="error" placement="paper" emptyText="" errorText="无法读取历史" onRetry={() => void loadHistory()} /> : history.status === "ready" ? <HistoryView paper={detail.paper} edits={history.edits} /> : <div className="shared-paper-detail-content"><h1 className="memory-paper-title">{detail.paper.title}</h1><p className="memory-paper-content">{detail.paper.content}</p></div>}
         </PaperDetailDialog> : null}
     </div>
+  );
+}
+
+function SharedPaperListLoading({ label }: { label: string }) {
+  return (
+    <section className="memory-months" aria-label={label} aria-busy="true">
+      <span className="visually-hidden" role="status" aria-live="polite">正在读取 Shared Paper…</span>
+      {[0, 1].map((index) => (
+        <div className="memory-month-skeleton" aria-hidden="true" key={index}>
+          <span className="memory-month-skeleton-label" />
+          <div className="memory-month-skeleton-card">
+            <span />
+            <span />
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 
