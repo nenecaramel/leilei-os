@@ -206,7 +206,7 @@ implements ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
-  }): Promise<{ id: string } | null> {
+  }): Promise<{ id: string; summary: Record<string, unknown> } | null> {
     const [row] = await this.db
       .select({
         id: conversationImportRuns.id,
