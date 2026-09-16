@@ -87,6 +87,7 @@ export type ConversationImportPreview = {
   summary: ConversationImportSummary;
   warning_count: number;
   warning_codes: Record<string, number>;
+  exclusions: ConversationExclusionSummary;
 };
 export type ConversationExclusionSummary = {
   conversations: number;
