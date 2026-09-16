@@ -5,6 +5,7 @@ import {
   encodeRawConversationSource,
   readTopLevelConversationObjects,
   stageConversationUpload,
+  stageStoredConversationSource,
 } from "../src/domains/conversation/conversation-import-file.js";
 
 async function *chunked(buffer: Buffer, size: number): AsyncGenerator<Buffer> {
@@ -130,6 +131,59 @@ test("top-level JSON parser handles escaped quotes and nested arrays across tiny
       values.push(value);
     }
     assert.equal(values[0]?.text, 'a "quoted" value');
+  } finally {
+    await staged.cleanup();
+  }
+});
+
+
+test("stored gzip Conversation sources reconstruct and verify the original raw source", async () => {
+  const raw = Buffer.from(JSON.stringify([
+    { conversation_id: "stored", mapping: {} },
+  ]), "utf8");
+  const staged = await stageConversationUpload(chunked(raw, 5), "conversations.json");
+  try {
+    const stored = await encodeRawConversationSource(staged);
+    assert.equal(stored.encoding, "gzip");
+    const reconstructed = await stageStoredConversationSource({
+      data: stored.data,
+      encoding: stored.encoding,
+      originalFilename: "conversations.json",
+      expectedSha256: staged.rawSha256,
+      expectedBytes: staged.rawBytes,
+    });
+    try {
+      assert.equal(reconstructed.rawSha256, staged.rawSha256);
+      assert.equal(reconstructed.rawBytes, staged.rawBytes);
+      assert.equal(reconstructed.container, "json");
+    } finally {
+      await reconstructed.cleanup();
+    }
+  } finally {
+    await staged.cleanup();
+  }
+});
+
+test("stored Conversation source integrity mismatch fails before execution", async () => {
+  const raw = Buffer.from(JSON.stringify([{ uuid: "x", chat_messages: [] }]), "utf8");
+  const staged = await stageConversationUpload(chunked(raw, 3), "conversations.json");
+  try {
+    const stored = await encodeRawConversationSource(staged);
+    await assert.rejects(
+      () => stageStoredConversationSource({
+        data: stored.data,
+        encoding: stored.encoding,
+        originalFilename: "conversations.json",
+        expectedSha256: "0".repeat(64),
+        expectedBytes: staged.rawBytes,
+      }),
+      (error: unknown) => (
+        typeof error === "object"
+        && error !== null
+        && "code" in error
+        && (error as { code?: unknown }).code === "CONVERSATION_IMPORT_SOURCE_CORRUPT"
+      ),
+    );
   } finally {
     await staged.cleanup();
   }
