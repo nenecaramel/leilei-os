@@ -232,6 +232,45 @@ export type ConversationImportBatchExecuteResult = {
   }>;
 };
 
+export type ConversationFavoriteView = "default" | "all";
+
+export type ConversationFavoriteListItem = {
+  id: string;
+  provider: ConversationProvider;
+  sourceConversationId: string;
+  conversationId: string;
+  view: ConversationFavoriteView;
+  title: string | null;
+  note: string | null;
+  tags: string[];
+  conversationTitleSnapshot: string | null;
+  startMessageId: string;
+  endMessageId: string;
+  startSourceNodeId: string;
+  endSourceNodeId: string;
+  messageCount: number;
+  canonicalConversationExists: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConversationFavoriteMessage = {
+  ordinal: number;
+  messageId: string;
+  sourceNodeId: string;
+  sourceMessageId: string | null;
+  role: ConversationMessage["role"];
+  model: string | null;
+  sourceCreatedAt: string | null;
+  displayText: string;
+  snapshot: Record<string, unknown>;
+  canonicalMessageExists: boolean;
+};
+
+export type ConversationFavoriteDetail = ConversationFavoriteListItem & {
+  messages: ConversationFavoriteMessage[];
+};
+
 type Envelope<T> = { success: true; data: T };
 
 export function createConversationArchiveApi(api: WebApiClient) {
@@ -396,6 +435,85 @@ export function createConversationArchiveApi(api: WebApiClient) {
             expected_batch_fingerprint: preview.batch_fingerprint,
           }),
         },
+      );
+      return result.data;
+    },
+
+    async listFavorites(input: {
+      provider?: ConversationProvider;
+      conversationId?: string;
+      tag?: string;
+      limit?: number;
+      offset?: number;
+    } = {}): Promise<{ items: ConversationFavoriteListItem[]; total: number }> {
+      const params = new URLSearchParams();
+      if (input.provider) params.set("provider", input.provider);
+      if (input.conversationId) params.set("conversation_id", input.conversationId);
+      if (input.tag) params.set("tag", input.tag);
+      if (input.limit !== undefined) params.set("limit", String(input.limit));
+      if (input.offset !== undefined) params.set("offset", String(input.offset));
+      const suffix = params.size ? `?${params}` : "";
+      const result = await api.request<
+        Envelope<{ items: ConversationFavoriteListItem[]; total: number }>
+      >(`/conversations/favorites${suffix}`);
+      return result.data;
+    },
+
+    async createFavorite(input: {
+      conversationId: string;
+      startMessageId: string;
+      endMessageId?: string;
+      view?: ConversationFavoriteView;
+      title?: string;
+      note?: string;
+      tags?: string[];
+    }): Promise<ConversationFavoriteDetail> {
+      const result = await api.request<Envelope<ConversationFavoriteDetail>>(
+        "/conversations/favorites",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            conversation_id: input.conversationId,
+            start_message_id: input.startMessageId,
+            ...(input.endMessageId ? { end_message_id: input.endMessageId } : {}),
+            view: input.view ?? "default",
+            title: input.title ?? "",
+            note: input.note ?? "",
+            tags: input.tags ?? [],
+          }),
+        },
+      );
+      return result.data;
+    },
+
+    async favoriteDetail(favoriteId: string): Promise<ConversationFavoriteDetail> {
+      const result = await api.request<Envelope<ConversationFavoriteDetail>>(
+        `/conversations/favorites/${encodeURIComponent(favoriteId)}`,
+      );
+      return result.data;
+    },
+
+    async updateFavorite(input: {
+      favoriteId: string;
+      title?: string | null;
+      note?: string | null;
+      tags?: string[];
+    }): Promise<ConversationFavoriteDetail> {
+      const body: Record<string, unknown> = {};
+      if ("title" in input) body.title = input.title;
+      if ("note" in input) body.note = input.note;
+      if ("tags" in input) body.tags = input.tags;
+      const result = await api.request<Envelope<ConversationFavoriteDetail>>(
+        `/conversations/favorites/${encodeURIComponent(input.favoriteId)}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      );
+      return result.data;
+    },
+
+    async deleteFavorite(favoriteId: string): Promise<{ deleted: true }> {
+      const result = await api.request<Envelope<{ deleted: true }>>(
+        `/conversations/favorites/${encodeURIComponent(favoriteId)}`,
+        { method: "DELETE" },
       );
       return result.data;
     },

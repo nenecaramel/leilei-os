@@ -6,6 +6,7 @@ import { PageHeader } from "./PageHeader";
 import { ConversationSearchPanel } from "./ConversationSearchPanel";
 import { ConversationBatchImportPreview } from "./ConversationBatchImportPreview";
 import { ConversationImportHistoryPanel } from "./ConversationImportHistoryPanel";
+import { ConversationFavoritesPanel } from "./ConversationFavoritesPanel";
 import {
   createConversationArchiveApi,
   type ConversationDailyStat,
@@ -77,6 +78,20 @@ function detailViewParams(view: "default" | "all"): Record<string, string> {
 function shortBytes(value: number): string {
   if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function favoriteTagsFromText(value: string): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const part of value.split(",")) {
+    const tag = part.trim();
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(tag);
+  }
+  return output;
 }
 
 export function ConversationArchivePageContent({ api }: { api: WebApiClient }) {
@@ -307,6 +322,8 @@ function ConversationListView({
         <p className="conversation-inline-status" role="status">{importMessage}</p>
       ) : null}
 
+      <ConversationFavoritesPanel client={client} />
+
       <ConversationImportHistoryPanel
         client={client}
         refreshKey={refreshKey}
@@ -444,6 +461,17 @@ function ConversationDetailView({
   const [loadingMore, setLoadingMore] = useState(false);
   const [pruningMessageId, setPruningMessageId] = useState<string | null>(null);
   const [pruneStatus, setPruneStatus] = useState("");
+  const [favoriteRangeMode, setFavoriteRangeMode] = useState(false);
+  const [favoriteRangeStartId, setFavoriteRangeStartId] = useState<string | null>(null);
+  const [favoriteDraft, setFavoriteDraft] = useState<{
+    startMessageId: string;
+    endMessageId: string;
+    title: string;
+    note: string;
+    tags: string;
+  } | null>(null);
+  const [favoriteSaving, setFavoriteSaving] = useState(false);
+  const [favoriteStatus, setFavoriteStatus] = useState("");
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -484,6 +512,13 @@ function ConversationDetailView({
   }, [anchorId, client, conversationId, view]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    setFavoriteRangeMode(false);
+    setFavoriteRangeStartId(null);
+    setFavoriteDraft(null);
+    setFavoriteStatus("");
+  }, [conversationId, view]);
 
   useEffect(() => {
     if (state.status !== "ready" || !anchorId) return;
@@ -560,6 +595,75 @@ function ConversationDetailView({
     }
   };
 
+  const openSingleFavorite = (messageId: string) => {
+    setFavoriteRangeMode(false);
+    setFavoriteRangeStartId(null);
+    setFavoriteStatus("");
+    setFavoriteDraft({
+      startMessageId: messageId,
+      endMessageId: messageId,
+      title: "",
+      note: "",
+      tags: "",
+    });
+  };
+
+  const toggleFavoriteRangeMode = () => {
+    setFavoriteDraft(null);
+    setFavoriteStatus("");
+    setFavoriteRangeStartId(null);
+    setFavoriteRangeMode((current) => !current);
+  };
+
+  const chooseFavoriteMessage = (messageId: string) => {
+    if (!favoriteRangeMode) {
+      openSingleFavorite(messageId);
+      return;
+    }
+    if (!favoriteRangeStartId) {
+      setFavoriteRangeStartId(messageId);
+      setFavoriteStatus("已选收藏范围起点，再选一条消息作为终点。");
+      return;
+    }
+    setFavoriteDraft({
+      startMessageId: favoriteRangeStartId,
+      endMessageId: messageId,
+      title: "",
+      note: "",
+      tags: "",
+    });
+    setFavoriteRangeMode(false);
+    setFavoriteRangeStartId(null);
+    setFavoriteStatus("");
+  };
+
+  const saveFavorite = async () => {
+    if (!favoriteDraft || favoriteSaving) return;
+    setFavoriteSaving(true);
+    setFavoriteStatus("");
+    try {
+      const result = await client.createFavorite({
+        conversationId,
+        startMessageId: favoriteDraft.startMessageId,
+        endMessageId: favoriteDraft.endMessageId,
+        view,
+        title: favoriteDraft.title,
+        note: favoriteDraft.note,
+        tags: favoriteTagsFromText(favoriteDraft.tags),
+      });
+      setFavoriteDraft(null);
+      setFavoriteRangeMode(false);
+      setFavoriteRangeStartId(null);
+      setFavoriteStatus(`已保存 Favorite snapshot（${result.messageCount} 条消息）。`);
+    } catch {
+      setFavoriteStatus(
+        "Favorite 保存失败。连续范围最多 200 条；标题最多 200 字，备注最多 4000 字，最多 20 个标签。",
+      );
+    } finally {
+      setFavoriteSaving(false);
+    }
+  };
+
   if (state.status === "loading") {
     return <div className="page"><PageState state="loading" message="正在读取对话…" /></div>;
   }
@@ -598,6 +702,13 @@ function ConversationDetailView({
               </div>
             ) : null}
             <button
+              className={`secondary-button conversation-favorite-range-toggle${favoriteRangeMode ? " active" : ""}`}
+              type="button"
+              onClick={toggleFavoriteRangeMode}
+            >
+              {favoriteRangeMode ? "取消范围选择" : "选择收藏范围"}
+            </button>
+            <button
               className="conversation-danger-button"
               type="button"
               aria-label="删除整个对话窗口并在后续导入中排除"
@@ -618,6 +729,85 @@ function ConversationDetailView({
         <p className="conversation-branch-note">
           当前正在显示 ChatGPT 保存下来的全部普通消息节点，包括非 current path 分支。
         </p>
+      ) : null}
+
+      {favoriteStatus ? (
+        <p className="conversation-inline-status" role="status">{favoriteStatus}</p>
+      ) : null}
+
+      {favoriteRangeMode ? (
+        <div className="conversation-favorite-range-banner" role="status">
+          {favoriteRangeStartId
+            ? "已选起点。再点一条消息作为连续范围终点。"
+            : "点一条消息作为收藏范围起点，再点另一条作为终点。"}
+        </div>
+      ) : null}
+
+      {favoriteDraft ? (
+        <section className="conversation-favorite-composer" aria-label="保存 Conversation Favorite">
+          <div>
+            <p className="eyebrow">Favorite snapshot</p>
+            <h2>
+              {favoriteDraft.startMessageId === favoriteDraft.endMessageId
+                ? "收藏这条消息"
+                : "收藏连续消息范围"}
+            </h2>
+            <p>保存后会保留独立 snapshot；以后即使原窗口或分支被删除，这份 Favorite 仍保留。</p>
+          </div>
+          <div className="conversation-favorite-composer-fields">
+            <label>
+              <span>标题（可选）</span>
+              <input
+                value={favoriteDraft.title}
+                maxLength={200}
+                onChange={(event) => setFavoriteDraft({
+                  ...favoriteDraft,
+                  title: event.target.value,
+                })}
+              />
+            </label>
+            <label>
+              <span>备注（可选）</span>
+              <textarea
+                value={favoriteDraft.note}
+                maxLength={4000}
+                rows={3}
+                onChange={(event) => setFavoriteDraft({
+                  ...favoriteDraft,
+                  note: event.target.value,
+                })}
+              />
+            </label>
+            <label>
+              <span>标签（逗号分隔，可选）</span>
+              <input
+                value={favoriteDraft.tags}
+                onChange={(event) => setFavoriteDraft({
+                  ...favoriteDraft,
+                  tags: event.target.value,
+                })}
+              />
+            </label>
+          </div>
+          <div className="conversation-import-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={favoriteSaving}
+              onClick={() => setFavoriteDraft(null)}
+            >
+              取消
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={favoriteSaving}
+              onClick={() => void saveFavorite()}
+            >
+              {favoriteSaving ? "保存中…" : "保存 Favorite"}
+            </button>
+          </div>
+        </section>
       ) : null}
 
       {pruneStatus ? (
@@ -647,6 +837,25 @@ function ConversationDetailView({
               <strong>{message.role === "user" ? "You" : providerLabel(detail.provider)}</strong>
               <span>{message.model ?? ""}</span>
               <time>{formatDateTime(message.sourceCreatedAt)}</time>
+              <button
+                className={`conversation-message-favorite${favoriteRangeStartId === message.id ? " active" : ""}`}
+                type="button"
+                disabled={favoriteSaving}
+                aria-label={favoriteRangeMode
+                  ? favoriteRangeStartId
+                    ? "选择这条消息作为 Favorite 范围终点"
+                    : "选择这条消息作为 Favorite 范围起点"
+                  : "收藏这条消息"}
+                onClick={() => chooseFavoriteMessage(message.id)}
+              >
+                {favoriteRangeMode
+                  ? favoriteRangeStartId === message.id
+                    ? "起点"
+                    : favoriteRangeStartId
+                      ? "选终点"
+                      : "选起点"
+                  : "收藏"}
+              </button>
               {(detail.provider === "claude" || view === "all") ? (
                 <button
                   className="conversation-message-prune"
