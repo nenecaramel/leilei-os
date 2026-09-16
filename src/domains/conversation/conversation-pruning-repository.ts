@@ -186,7 +186,7 @@ implements ConversationPruningRepository {
 
     const deletedRows = [...excludedSourceNodes]
       .map((sourceNodeId) => bySourceNode.get(sourceNodeId))
-      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+      .filter((row): row is (typeof messages)[number] => Boolean(row));
     if (deletedRows.length >= messages.length) {
       throw Object.assign(
         new Error("Deleting this branch would remove the entire conversation."),
