@@ -31,7 +31,7 @@ test("ChatGPT adapter preserves branches while marking only the current_node anc
   assert.equal(byNode.get("user-media")?.isCurrentPath, false);
   assert.deepEqual(
     conversation.messages.filter((message) => message.isCurrentPath).map((message) => message.currentPathIndex),
-    [1, 2, 3, 4],
+    [0, 1, 2, 3],
   );
 });
 
