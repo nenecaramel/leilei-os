@@ -41,6 +41,7 @@ import { SharedPaperService } from "../domains/shared-paper/shared-paper-service
 import { DrizzleConversationImportRepository } from "../domains/conversation/conversation-import-repository.js";
 import { DrizzleConversationArchiveStateRepository } from "../domains/conversation/conversation-state-repository.js";
 import { ConversationImportService } from "../domains/conversation/conversation-import-service.js";
+import { DrizzleConversationImportExecutor } from "../domains/conversation/conversation-import-executor.js";
 import {
   createSentinelScheduler as buildSentinelScheduler,
   type SentinelScheduler,
@@ -116,6 +117,7 @@ export function createProcessRuntime(
   const conversationImportService = new ConversationImportService(
     new DrizzleConversationImportRepository(db),
     new DrizzleConversationArchiveStateRepository(db),
+    new DrizzleConversationImportExecutor(db),
   );
   const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
     buildSentinelScheduler({ repository })))(sentinelRepository);
