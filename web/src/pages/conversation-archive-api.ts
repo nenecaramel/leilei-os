@@ -125,6 +125,54 @@ export type ConversationImportExecute = {
   exclusions: ConversationExclusionSummary;
 };
 
+export type ConversationImportHistoryStatus =
+  | "processing"
+  | "executed"
+  | "failed"
+  | "superseded";
+
+export type ConversationImportHistoryRun = {
+  id: string;
+  sourceId: string;
+  parserVersion: string;
+  executionKey: string;
+  executionMode: "standard" | "reapply";
+  status: ConversationImportHistoryStatus;
+  rawStatus: "processing" | "executed" | "failed";
+  previewFingerprint: string | null;
+  warningCount: number;
+  createdAt: string;
+  completedAt: string | null;
+  supersededByImportRunId: string | null;
+  summary: Record<string, unknown>;
+};
+
+export type ConversationImportSourceHistoryItem = {
+  sourceId: string;
+  provider: ConversationProvider;
+  filename: string;
+  rawSha256: string;
+  rawBytes: number;
+  receivedAt: string;
+  rawSource: {
+    kind: string | null;
+    retained: boolean;
+    encoding: "raw" | "gzip" | null;
+    storedBytes: number | null;
+  };
+  runCount: number;
+  processingRunCount: number;
+  executedRunCount: number;
+  failedRunCount: number;
+  supersededRunCount: number;
+  latestRun: Omit<ConversationImportHistoryRun, "summary"> | null;
+};
+
+export type ConversationImportSourceHistoryDetail =
+  ConversationImportSourceHistoryItem & {
+    runs: ConversationImportHistoryRun[];
+  };
+
 type Envelope<T> = { success: true; data: T };
 
 export function createConversationArchiveApi(api: WebApiClient) {
@@ -259,6 +307,37 @@ export function createConversationArchiveApi(api: WebApiClient) {
           },
           body: file,
         },
+      );
+      return result.data;
+    },
+
+    async importSources(input: {
+      provider?: ConversationProvider;
+      limit?: number;
+      offset?: number;
+    } = {}): Promise<{ items: ConversationImportSourceHistoryItem[]; total: number }> {
+      const params = new URLSearchParams();
+      if (input.provider) params.set("provider", input.provider);
+      if (input.limit !== undefined) params.set("limit", String(input.limit));
+      if (input.offset !== undefined) params.set("offset", String(input.offset));
+      const suffix = params.size ? `?${params}` : "";
+      const result = await api.request<
+        Envelope<{ items: ConversationImportSourceHistoryItem[]; total: number }>
+      >(`/conversations/import/sources${suffix}`);
+      return result.data;
+    },
+
+    async importSource(sourceId: string): Promise<ConversationImportSourceHistoryDetail> {
+      const result = await api.request<Envelope<ConversationImportSourceHistoryDetail>>(
+        `/conversations/import/sources/${encodeURIComponent(sourceId)}`,
+      );
+      return result.data;
+    },
+
+    async previewStoredSource(sourceId: string): Promise<ConversationImportPreview> {
+      const result = await api.request<Envelope<ConversationImportPreview>>(
+        `/conversations/import/sources/${encodeURIComponent(sourceId)}/preview`,
+        { method: "POST" },
       );
       return result.data;
     },
