@@ -83,14 +83,6 @@ implements ConversationPruningRepository {
         .limit(1);
       if (!conversation) return null;
 
-      const [countRow] = await transaction
-        .select({ count: conversationMessages.id })
-        .from(conversationMessages)
-        .where(and(
-          eq(conversationMessages.userId, input.userId),
-          eq(conversationMessages.conversationId, conversation.id),
-        ))
-        .limit(1);
       const messageRows = await transaction
         .select({ id: conversationMessages.id })
         .from(conversationMessages)
@@ -98,8 +90,6 @@ implements ConversationPruningRepository {
           eq(conversationMessages.userId, input.userId),
           eq(conversationMessages.conversationId, conversation.id),
         ));
-      void countRow;
-
       await transaction
         .insert(conversationExclusions)
         .values({
