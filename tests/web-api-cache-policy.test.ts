@@ -39,6 +39,29 @@ async function withServer(callback: (baseUrl: string) => Promise<void>): Promise
     todo: { todoService: { async listDates() { return []; } } },
     export: { exportService: { async createExport() { return { schema_version: 2, exported_at: "2026-08-14T00:00:00.000Z", data: { memory: [] } }; } } },
     import: { importService: { async preview() { return { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), summary: {}, can_execute: false }; } } },
+    conversationRead: {
+      conversationArchiveReadService: {
+        async list() { return { items: [], total: 0 }; },
+        async detail() {
+          return {
+            id: "11111111-1111-4111-8111-111111111111",
+            provider: "chatgpt",
+            sourceConversationId: "source",
+            title: "Test",
+            sourceCreatedAt: null,
+            sourceUpdatedAt: null,
+            defaultModel: null,
+            currentLeafSourceNodeId: null,
+            messageCount: 0,
+            turnCount: 0,
+            totalNodeCount: 0,
+            providerMetadata: {},
+          };
+        },
+        async messages() { return { items: [], total: 0 }; },
+        async stats() { return []; },
+      },
+    },
     conversationImport: {
       conversationImportService: {
         async preview() {
@@ -101,6 +124,10 @@ test("authenticated Web API responses are private and uncached without affecting
       { path: "/api/v1/system/data", init: { headers } },
       { path: "/api/v1/system/export?scope=memory", init: { headers } },
       { path: "/api/v1/system/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream" }, body: new Uint8Array([123]) } },
+      { path: "/api/v1/conversations", init: { headers } },
+      { path: "/api/v1/conversations/stats/daily?from=2026-09-01&to=2026-09-16&time_zone=Asia%2FShanghai", init: { headers } },
+      { path: "/api/v1/conversations/11111111-1111-4111-8111-111111111111", init: { headers } },
+      { path: "/api/v1/conversations/11111111-1111-4111-8111-111111111111/messages", init: { headers } },
       { path: "/api/v1/conversations/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream", "x-leilei-filename": "conversations.json" }, body: new Uint8Array([91, 93]) } },
       { path: "/api/v1/conversations/import/execute", init: { method: "POST", headers, body: JSON.stringify({ import_run_id: "11111111-1111-4111-8111-111111111111", expected_preview_fingerprint: "b".repeat(64) }) } },
       { path: "/api/v1/toy/commands", init: { method: "POST", headers, body: JSON.stringify({ action: "stop" }) } },

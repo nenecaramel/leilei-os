@@ -56,6 +56,7 @@ import type { BridgeApiDependencies } from "../web-api/bridge-router.js";
 import type { SentinelApiDependencies } from "../web-api/sentinel-router.js";
 import type { SharedPaperApiDependencies } from "../web-api/shared-paper-router.js";
 import type { ConversationImportApiDependencies } from "../web-api/conversation-import-router.js";
+import type { ConversationArchiveReadApiDependencies } from "../web-api/conversation-archive-read-router.js";
 import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
@@ -81,6 +82,7 @@ export type AppDependencies = {
   webSentinelService?: SentinelApiDependencies["sentinelService"];
   webSharedPaperService?: SharedPaperApiDependencies["sharedPaperService"];
   webConversationImportService?: ConversationImportApiDependencies["conversationImportService"];
+  webConversationArchiveReadService?: ConversationArchiveReadApiDependencies["conversationArchiveReadService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -306,6 +308,7 @@ export function createApp(
     const webSentinelService = dependencies.webSentinelService;
     const webSharedPaperService = dependencies.webSharedPaperService;
     const webConversationImportService = dependencies.webConversationImportService;
+    const webConversationArchiveReadService = dependencies.webConversationArchiveReadService;
 
     if (
       !webMemoryService ||
@@ -373,6 +376,7 @@ export function createApp(
         ...(webBridgeService ? { bridge: { bridgeService: webBridgeService } } : {}),
         ...(webSentinelService ? { sentinel: { sentinelService: webSentinelService } } : {}),
         ...(webSharedPaperService ? { sharedPaper: { sharedPaperService: webSharedPaperService } } : {}),
+        ...(webConversationArchiveReadService ? { conversationRead: { conversationArchiveReadService: webConversationArchiveReadService } } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
       }),
     );

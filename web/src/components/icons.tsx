@@ -49,6 +49,14 @@ export const TaskIcon = (props: IconProps) => (
   </IconBase>
 );
 
+export const ConversationIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <path d="M4 5.5h11a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H9l-4 3v-3H4a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3Z" />
+    <path d="M9 9h5M9 12h3" />
+    <path d="M18 8.5h1a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3h-1v2l-3-2" />
+  </IconBase>
+);
+
 export const SearchIcon = (props: IconProps) => (
   <IconBase {...props}>
     <circle cx="10.5" cy="10.5" r="6.5" />

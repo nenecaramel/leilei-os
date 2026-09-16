@@ -331,11 +331,14 @@ It gets a dedicated archive export/backup contract later. Database backups still
 
 ### PR D — web archive
 
-- [ ] Conversations navigation entry/page
-- [ ] import picker + preview + execute
-- [ ] conversation list/detail
-- [ ] message anchors
-- [ ] day statistics/calendar summary
+- [x] Conversations navigation entry/page
+- [x] import picker + preview + execute
+- [x] conversation list/detail
+- [x] message anchors
+- [x] day statistics summary with explicit browser IANA timezone until Account owns a timezone
+- [x] ChatGPT current-path / all-branch browse modes
+- [x] Claude branch-inclusive disclosure when current leaf is unavailable
+- [ ] production Web acceptance with real imported ChatGPT / Claude data
 
 ### PR E — dedicated search
 
