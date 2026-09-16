@@ -30,8 +30,8 @@ export type GlobalSearchResult = {
     id: string;
     scope: "active" | "archived";
   } | { id: string } | { date: string } | null;
-  conversation_id: string | null;
-  conversation_view: "default" | "all" | null;
+  conversation_id?: string | null;
+  conversation_view?: "default" | "all" | null;
 };
 
 export const GLOBAL_SEARCH_MODULE_LABELS: Record<SearchModule, string> = {
