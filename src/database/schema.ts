@@ -770,6 +770,7 @@ export const dataImportRuns = pgTable(
   ],
 );
 export type ConversationProvider = "chatgpt" | "claude";
+export type ConversationExclusionScope = "conversation" | "branch";
 export type ConversationImportRunStatus = "processing" | "executed" | "failed";
 export type ConversationMessageRole =
   | "user"
@@ -881,6 +882,38 @@ export const conversationImportRuns = pgTable(
     check(
       "conversation_import_runs_completion_consistency",
       sql`(${table.status} = 'processing' AND ${table.completedAt} IS NULL) OR (${table.status} IN ('executed', 'failed') AND ${table.completedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const conversationExclusions = pgTable(
+  "conversation_exclusions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    provider: varchar("provider", { length: 32 }).$type<ConversationProvider>().notNull(),
+    scope: varchar("scope", { length: 32 }).$type<ConversationExclusionScope>().notNull(),
+    sourceConversationId: text("source_conversation_id").notNull(),
+    sourceNodeId: text("source_node_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("conversation_exclusions_conversation_uidx")
+      .on(table.userId, table.provider, table.sourceConversationId)
+      .where(sql`${table.scope} = 'conversation'`),
+    uniqueIndex("conversation_exclusions_branch_uidx")
+      .on(table.userId, table.provider, table.sourceConversationId, table.sourceNodeId)
+      .where(sql`${table.scope} = 'branch' AND ${table.sourceNodeId} IS NOT NULL`),
+    index("conversation_exclusions_user_provider_idx")
+      .on(table.userId, table.provider, table.sourceConversationId),
+    check("conversation_exclusions_provider_allowed", sql`${table.provider} IN ('chatgpt', 'claude')`),
+    check("conversation_exclusions_scope_allowed", sql`${table.scope} IN ('conversation', 'branch')`),
+    check("conversation_exclusions_source_conversation_not_blank", sql`char_length(btrim(${table.sourceConversationId})) > 0`),
+    check(
+      "conversation_exclusions_scope_node_consistency",
+      sql`(${table.scope} = 'conversation' AND ${table.sourceNodeId} IS NULL) OR (${table.scope} = 'branch' AND ${table.sourceNodeId} IS NOT NULL AND char_length(btrim(${table.sourceNodeId})) > 0)`,
     ),
   ],
 );
