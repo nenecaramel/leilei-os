@@ -854,3 +854,325 @@
     margin-left: 0;
   }
 }
+
+
+.conversation-favorite-list {
+  display: grid;
+  gap: 12px;
+}
+
+.conversation-favorite-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(250, 248, 243, 0.84);
+  box-shadow: var(--shadow-soft);
+}
+
+.conversation-favorite-main {
+  min-width: 0;
+}
+
+.conversation-favorite-topline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conversation-favorite-topline time {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.conversation-favorite-card h3 {
+  margin: 13px 0 6px;
+  overflow: hidden;
+  font-family: "Newsreader", serif;
+  font-size: 20px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-favorite-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.conversation-favorite-card .conversation-favorite-note {
+  margin-top: 8px;
+  color: var(--ink-soft);
+}
+
+.conversation-favorite-card small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.conversation-favorite-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.conversation-favorite-tags span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: var(--theme-strong);
+  background: var(--theme-soft);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.conversation-favorite-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.conversation-favorite-actions .primary-button,
+.conversation-favorite-actions .secondary-button,
+.conversation-favorite-actions .conversation-danger-button {
+  min-height: 38px;
+  margin-top: 0;
+}
+
+.conversation-favorite-editor,
+.conversation-favorite-detail {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+}
+
+.conversation-favorite-editor {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.conversation-favorite-editor label,
+.conversation-favorite-composer-fields label {
+  display: grid;
+  gap: 5px;
+}
+
+.conversation-favorite-editor label > span,
+.conversation-favorite-composer-fields label > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.conversation-favorite-editor input,
+.conversation-favorite-editor textarea,
+.conversation-favorite-composer input,
+.conversation-favorite-composer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.68);
+  font: inherit;
+}
+
+.conversation-favorite-editor input,
+.conversation-favorite-composer input {
+  min-height: 40px;
+  padding: 0 11px;
+}
+
+.conversation-favorite-editor textarea,
+.conversation-favorite-composer textarea {
+  padding: 10px 11px;
+  resize: vertical;
+}
+
+.conversation-favorite-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.conversation-favorite-editor-actions .primary-button,
+.conversation-favorite-editor-actions .secondary-button {
+  margin-top: 0;
+}
+
+.conversation-favorite-detail {
+  padding-top: 16px;
+}
+
+.conversation-favorite-detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.conversation-favorite-detail-heading a {
+  color: var(--theme-strong);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.conversation-favorite-message-list {
+  display: grid;
+  gap: 7px;
+}
+
+.conversation-favorite-message {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.conversation-favorite-message > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.conversation-favorite-message strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.conversation-favorite-message p {
+  margin-top: 7px;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conversation-favorite-range-toggle {
+  margin-top: 0;
+}
+
+.conversation-favorite-range-toggle.active {
+  border-color: rgba(var(--theme-rgb), 0.36);
+  color: var(--theme-strong);
+  background: var(--theme-soft);
+}
+
+.conversation-message-favorite {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid rgba(var(--theme-rgb), 0.24);
+  border-radius: 8px;
+  color: var(--theme-strong);
+  background: rgba(var(--theme-rgb), 0.05);
+  font-size: 9px;
+}
+
+.conversation-message-favorite:hover,
+.conversation-message-favorite.active {
+  border-color: rgba(var(--theme-rgb), 0.42);
+  background: var(--theme-soft);
+}
+
+.conversation-message-favorite:focus-visible {
+  outline: 2px solid rgba(var(--theme-rgb), 0.36);
+  outline-offset: 2px;
+}
+
+.conversation-message-favorite:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.conversation-favorite-range-banner {
+  margin: -10px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--theme-rgb), 0.24);
+  border-radius: 12px;
+  color: var(--theme-strong);
+  background: var(--theme-soft);
+  font-size: 11px;
+}
+
+.conversation-favorite-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(280px, 1.2fr) auto;
+  gap: 18px;
+  align-items: start;
+  margin: -10px 0 24px;
+  padding: 20px;
+  border: 1px solid rgba(var(--theme-rgb), 0.24);
+  border-radius: 18px;
+  background: rgba(250, 248, 243, 0.9);
+  box-shadow: var(--shadow-soft);
+}
+
+.conversation-favorite-composer h2 {
+  margin: 0;
+  font-family: "Newsreader", serif;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.conversation-favorite-composer p:not(.eyebrow) {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.conversation-favorite-composer-fields {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .conversation-favorite-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-favorite-composer .conversation-import-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .conversation-favorite-card {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-favorite-actions {
+    width: 100%;
+  }
+
+  .conversation-favorite-actions button {
+    flex: 1;
+  }
+
+  .conversation-favorite-editor,
+  .conversation-favorite-detail {
+    grid-column: 1;
+  }
+
+  .conversation-favorite-detail-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .conversation-favorite-editor-actions button,
+  .conversation-favorite-composer .conversation-import-actions button {
+    flex: 1;
+  }
+
+  .conversation-message-favorite {
+    margin-left: 0;
+  }
+}
