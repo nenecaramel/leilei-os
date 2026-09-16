@@ -50,8 +50,8 @@ const globalSearchResultSchema = z.object({
   author: z.enum(["L", "G", "C"]).nullable(),
   detail_tool: z.enum(["get_memory", "get_diary", "get_task", "read_todo_day", "get_universe_node", "get_shared_paper"]).nullable(),
   detail_arguments: detailArgumentsSchema.nullable(),
-  conversation_id: z.string().uuid().nullable(),
-  conversation_view: z.enum(["default", "all"]).nullable(),
+  conversation_id: z.string().uuid().nullable().optional(),
+  conversation_view: z.enum(["default", "all"]).nullable().optional(),
 }).strict().superRefine((result, context) => {
   if (result.entity_type === "conversation") {
     if (result.detail_tool !== null || result.detail_arguments !== null) {
@@ -62,7 +62,7 @@ const globalSearchResultSchema = z.object({
     }
     return;
   }
-  if (result.conversation_id !== null || result.conversation_view !== null) {
+  if (result.conversation_id != null || result.conversation_view != null) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["conversation_id"], message: "Non-Conversation results cannot carry Conversation deep-link metadata." });
   }
   if (result.detail_tool === null) {
