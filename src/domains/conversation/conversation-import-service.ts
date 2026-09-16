@@ -208,6 +208,11 @@ export class ConversationImportService {
           parserVersion: run.parserVersion,
         });
         if (priorExecution) {
+          await transaction.markRunSuperseded({
+            userId,
+            runId,
+            executedRunId: priorExecution.id,
+          });
           return this.resultFromStoredSummary(
             "already_executed",
             priorExecution.id,
