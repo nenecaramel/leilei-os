@@ -607,6 +607,85 @@ test("Normalized editor output trims text, drops empty rows, and reports dirty c
   }
 });
 
+async function renderTodoPaperDialog(
+  harness: ReturnType<typeof installDom>,
+  options: {
+    failRequest?: boolean;
+    entries?: TodoEntry[];
+    paper?: TodoPaper | null;
+  } = {},
+) {
+  const requests: Array<{ path: string; init?: RequestInit }> = [];
+  const saved: unknown[] = [];
+  let closed = 0;
+  const triggerRef = { current: harness.dom.window.document.createElement("button") };
+
+  const paperDate = new Date(2026, 7, 7, 12, 0, 0);
+  const initialPaper = options.paper === undefined
+    ? {
+        author: "L" as const,
+        date: "2026-08-07",
+        revision: 1,
+        entries: options.entries ?? [
+          { id: "l-1", kind: "pending" as const, text: "First" },
+          { id: "l-2", kind: "record" as const, text: "Second" },
+        ],
+      }
+    : options.paper;
+
+  function DialogHarness() {
+    const [open, setOpen] = useState(true);
+    const [paper, setPaper] = useState(initialPaper);
+
+    const handleSaved = React.useCallback((nextPaper: TodoPaper) => {
+      saved.push(nextPaper.entries);
+      setPaper(nextPaper);
+    }, []);
+
+    const handleClosed = React.useCallback(() => {
+      closed += 1;
+      setOpen(false);
+    }, []);
+
+    return React.createElement(TodoPaperDialog, {
+      api: {
+        request: async <T>(path: string, init?: RequestInit) => {
+          requests.push({ path, init });
+          if (options.failRequest) throw new Error("request failed");
+          return {
+            success: true,
+            data: {
+              author: "L",
+              date: "2026-08-07",
+              revision: 2,
+              entries: JSON.parse(String(init?.body ?? "{}"))?.entries ?? [],
+            },
+          } as T;
+        },
+      },
+      author: "L",
+      date: paperDate,
+      open,
+      paper,
+      triggerRef,
+      onSaved: handleSaved,
+      onClosed: handleClosed,
+    });
+  }
+
+  await act(async () => {
+    harness.root.render(React.createElement(DialogHarness));
+  });
+
+  return {
+    requests,
+    saved,
+    get closed() {
+      return closed;
+    },
+  };
+}
+
 test("Todo paper coordinator uses only the server paper contract", () => {
   assert.doesNotMatch(todoPaperDialogSource, /@deprecated/);
   assert.doesNotMatch(todoPaperDialogSource, /entries\?:\s*readonly TodoEntry\[\]/);
