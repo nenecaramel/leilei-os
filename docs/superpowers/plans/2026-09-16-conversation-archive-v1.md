@@ -318,14 +318,16 @@ It gets a dedicated archive export/backup contract later. Database backups still
 
 ### PR C2 — batched Execute
 
-- [ ] reconstruct stored raw source for execution
-- [ ] recompute Preview fingerprint against current canonical state
-- [ ] stale-preview protection
-- [ ] batched atomic merge executor (no per-message round-trip loop)
-- [ ] changed-message version snapshot writes
-- [ ] same-source/parser execute idempotency
-- [ ] multi-file import batch support
-- [ ] real-size execution/performance test
+- [x] reconstruct stored raw source for execution with SHA-256/byte-count integrity verification
+- [x] recompute the complete Preview fingerprint before the first canonical write
+- [x] stale-preview protection
+- [x] serializable batched atomic merge executor (no per-message transaction loop)
+- [x] changed-message version snapshot writes
+- [x] same-source/parser execute idempotency and replay semantics
+- [x] authoritative ChatGPT current-path replacement without unique-index swaps
+- [x] preserve Claude no-current-leaf semantics
+- [ ] multi-file import batch orchestration
+- [ ] production execution/performance acceptance with the user's real ChatGPT and Claude exports
 
 ### PR D — web archive
 
