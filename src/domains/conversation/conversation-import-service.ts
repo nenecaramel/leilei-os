@@ -148,6 +148,49 @@ export class ConversationImportService {
     }
   }
 
+  async previewStoredSource(
+    sourceId: string,
+    userId: string,
+  ): Promise<ConversationImportPreview> {
+    const user = await this.repository.findUserById(userId);
+    if (!user || user.status !== "active") {
+      throw new ConversationImportAuthorizationError();
+    }
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(sourceId)
+    ) {
+      throw Object.assign(new Error("Conversation import source id is invalid."), {
+        code: "CONVERSATION_IMPORT_INVALID_REQUEST",
+      });
+    }
+
+    const source = await this.repository.findSourceById(userId, sourceId);
+    if (!source) {
+      throw Object.assign(new Error("Conversation import source was not found."), {
+        code: "CONVERSATION_IMPORT_SOURCE_NOT_FOUND",
+      });
+    }
+    const blob = await this.repository.readStoredBlob({ userId, sourceId });
+    if (!blob) {
+      throw Object.assign(new Error("Conversation import raw source is unavailable."), {
+        code: "CONVERSATION_IMPORT_SOURCE_MISSING",
+      });
+    }
+
+    const staged = await stageStoredConversationSource({
+      data: blob.data,
+      encoding: blob.encoding,
+      originalFilename: source.originalFilename,
+      expectedSha256: source.rawSha256,
+      expectedBytes: source.rawBytes,
+    });
+    try {
+      return await this.previewStaged(staged, userId);
+    } finally {
+      await staged.cleanup();
+    }
+  }
+
   async execute(
     runId: string,
     expectedPreviewFingerprint: string,
@@ -249,6 +292,7 @@ export class ConversationImportService {
           userId,
           sourceId: run.sourceId,
           parserVersion: run.parserVersion,
+          previewFingerprint: expectedPreviewFingerprint,
         });
         if (priorExecution) {
           await transaction.markRunSuperseded({
@@ -514,11 +558,14 @@ export class ConversationImportService {
 
       const executed = run.status === "executed"
         ? { id: run.id, summary: run.summary }
-        : await this.repository.findExecutedRun({
-            userId,
-            sourceId: run.sourceId,
-            parserVersion: run.parserVersion,
-          });
+        : run.previewFingerprint
+          ? await this.repository.findExecutedRun({
+              userId,
+              sourceId: run.sourceId,
+              parserVersion: run.parserVersion,
+              previewFingerprint: run.previewFingerprint,
+            })
+          : null;
       if (executed) {
         items.push(batchFilePreview({
           inputIndex,
@@ -693,11 +740,14 @@ export class ConversationImportService {
 
         const executed = locked.status === "executed"
           ? { id: locked.id, summary: locked.summary }
-          : await transaction.findExecutedRun({
-              userId,
-              sourceId: run.sourceId,
-              parserVersion: run.parserVersion,
-            });
+          : locked.previewFingerprint
+            ? await transaction.findExecutedRun({
+                userId,
+                sourceId: run.sourceId,
+                parserVersion: run.parserVersion,
+                previewFingerprint: locked.previewFingerprint,
+              })
+            : null;
         if (executed) {
           previewItems.push(batchFilePreview({
             inputIndex,
@@ -1031,6 +1081,7 @@ export class ConversationImportService {
       userId,
       sourceId: source.id,
       parserVersion: providerInfo.version,
+      previewFingerprint,
     });
 
     const warningCodes = Object.fromEntries(
