@@ -245,7 +245,7 @@ test("Conversation Archive is supported by Global Search but remains opt-in by d
   assert.deepEqual(repo.calls.at(-1)?.modules, ["conversation"]);
 });
 
-test("Conversation Global Search results carry exact Web deep-link metadata and no fake MCP detail pointer", async () => {
+test("Conversation Global Search results carry exact canonical MCP detail pointers", async () => {
   const repo = new Repository();
   repo.result = [{
     entityType: "conversation",
@@ -271,8 +271,12 @@ test("Conversation Global Search results carry exact Web deep-link metadata and 
   });
 
   assert.equal(result.results[0]?.entity_type, "conversation");
-  assert.equal(result.results[0]?.detail_tool, null);
-  assert.equal(result.results[0]?.detail_arguments, null);
+  assert.equal(result.results[0]?.detail_tool, "read_conversation");
+  assert.deepEqual(result.results[0]?.detail_arguments, {
+    conversation_id: "00000000-0000-4000-8000-000000000712",
+    message_id: "00000000-0000-4000-8000-000000000711",
+    view: "all",
+  });
   assert.equal(
     result.results[0]?.conversation_id,
     "00000000-0000-4000-8000-000000000712",
@@ -295,8 +299,12 @@ test("global_search accepts the opt-in Conversation module and structured deep-l
       time_basis: "message_time",
       updated_at: "2026-09-16T03:00:00.000Z",
       author: null,
-      detail_tool: null,
-      detail_arguments: null,
+      detail_tool: "read_conversation",
+      detail_arguments: {
+        conversation_id: "00000000-0000-4000-8000-000000000714",
+        message_id: "00000000-0000-4000-8000-000000000713",
+        view: "all",
+      },
       conversation_id: "00000000-0000-4000-8000-000000000714",
       conversation_view: "all",
     }],
@@ -330,5 +338,10 @@ test("global_search accepts the opt-in Conversation module and structured deep-l
   assert.equal(response.isError, undefined);
   const data = (response.structuredContent as { data: GlobalSearchResult }).data;
   assert.equal(data.results[0]?.conversation_view, "all");
-  assert.equal(data.results[0]?.detail_tool, null);
+  assert.equal(data.results[0]?.detail_tool, "read_conversation");
+  assert.deepEqual(data.results[0]?.detail_arguments, {
+    conversation_id: "00000000-0000-4000-8000-000000000714",
+    message_id: "00000000-0000-4000-8000-000000000713",
+    view: "all",
+  });
 });
