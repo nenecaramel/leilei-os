@@ -284,11 +284,6 @@ export class ConversationImportService {
               sourceConversationId: normalized.conversation.sourceConversationId,
               fingerprint: plan.previewFingerprint,
             });
-            await transaction.applyConversation({
-              userId,
-              importRunId: runId,
-              item: plan.items[0]!,
-            });
           }
         }
 
@@ -310,6 +305,53 @@ export class ConversationImportService {
         ) {
           throw Object.assign(new Error("Conversation import preview is stale."), {
             code: "CONVERSATION_IMPORT_PREVIEW_STALE",
+          });
+        }
+
+        // The complete preview fingerprint is verified before the first canonical
+        // Conversation write. The stored source is immutable, so a second
+        // streaming pass can apply the already-validated merge plan without
+        // retaining the full export in memory.
+        const applySeenConversations = new Set<string>();
+        for (const jsonPath of staged.jsonPaths) {
+          for await (const value of readTopLevelConversationObjects(jsonPath)) {
+            const detected = detectConversationProviderParser(value);
+            if (
+              detected.provider !== providerInfo.provider
+              || detected.version !== providerInfo.version
+            ) {
+              throw Object.assign(new Error("Stored Conversation source parser changed during execution."), {
+                code: "CONVERSATION_IMPORT_SOURCE_CORRUPT",
+              });
+            }
+            const normalized = detected.parser.normalizeConversation(value);
+            const key = stateKey(
+              normalized.conversation.provider,
+              normalized.conversation.sourceConversationId,
+            );
+            if (applySeenConversations.has(key)) {
+              throw Object.assign(new Error("Duplicate conversation in stored import source."), {
+                code: "CONVERSATION_IMPORT_SOURCE_CORRUPT",
+              });
+            }
+            applySeenConversations.add(key);
+            const existing = currentByKey.get(key);
+            const plan = buildConversationMergePlan(
+              [normalized.conversation],
+              { conversations: existing ? [existing] : [] },
+              run.source.rawSha256,
+              run.parserVersion,
+            );
+            await transaction.applyConversation({
+              userId,
+              importRunId: runId,
+              item: plan.items[0]!,
+            });
+          }
+        }
+        if (applySeenConversations.size !== conversationCount) {
+          throw Object.assign(new Error("Stored Conversation source changed during execution."), {
+            code: "CONVERSATION_IMPORT_SOURCE_CORRUPT",
           });
         }
 
