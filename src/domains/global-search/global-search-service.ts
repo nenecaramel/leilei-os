@@ -46,8 +46,13 @@ export type GlobalSearchItem = {
   time_basis: GlobalSearchTimeBasis;
   updated_at: string;
   author: ContentAuthor | null;
-  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | null;
-  detail_arguments: { id: string; scope: "active" | "archived" } | { id: string } | { date: string } | null;
+  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | "read_conversation" | null;
+  detail_arguments:
+    | { id: string; scope: "active" | "archived" }
+    | { id: string }
+    | { date: string }
+    | { conversation_id: string; message_id: string; view: "default" | "all" }
+    | null;
   conversation_id?: string | null;
   conversation_view?: "default" | "all" | null;
 };
@@ -151,7 +156,7 @@ export class GlobalSearchService {
 function detailTool(
   entityType: GlobalSearchModule,
 ): GlobalSearchItem["detail_tool"] {
-  if (entityType === "conversation") return null;
+  if (entityType === "conversation") return "read_conversation";
   if (entityType === "universe") return "get_universe_node";
   if (entityType === "todo") return "read_todo_day";
   if (entityType === "shared_paper") return "get_shared_paper";
@@ -161,7 +166,16 @@ function detailTool(
 function detailArguments(
   row: GlobalSearchRow,
 ): GlobalSearchItem["detail_arguments"] {
-  if (row.entityType === "conversation") return null;
+  if (row.entityType === "conversation") {
+    if (!row.conversationId) {
+      throw new Error("Global Search Conversation row is missing its conversation id.");
+    }
+    return {
+      conversation_id: row.conversationId,
+      message_id: row.entityId,
+      view: row.conversationView ?? "default",
+    };
+  }
   if (row.entityType === "universe" || row.entityType === "shared_paper") {
     return { id: row.entityId };
   }
