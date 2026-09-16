@@ -959,7 +959,7 @@ test("A full 24-entry Todo reopens with a blank 25th line", async () => {
     );
     assert.ok(
       harness.container.querySelector(
-        '[aria-label="编辑 Todo 第 25 行"]',
+        '[aria-label="Todo 第 25 行"]',
       ),
     );
   } finally {
