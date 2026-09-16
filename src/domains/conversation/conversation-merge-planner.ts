@@ -10,12 +10,14 @@ import {
   conversationSourceFingerprint,
 } from "./conversation-fingerprint.js";
 
-export type ConversationMergeClassification = "create" | "update" | "unchanged";
+export type ConversationMergeClassification = "create" | "update" | "unchanged" | "stale";
 
 export type CurrentConversationMessageState = {
   id: string;
   sourceNodeId: string;
   sourceFingerprint: string;
+  sourceCreatedAt: string | null;
+  sourceUpdatedAt: string | null;
   isCurrentPath: boolean;
   currentPathIndex: number | null;
   turnIndex: number | null;
@@ -26,6 +28,8 @@ export type CurrentConversationState = {
   provider: ConversationProvider;
   sourceConversationId: string;
   sourceFingerprint: string;
+  sourceCreatedAt: string | null;
+  sourceUpdatedAt: string | null;
   messages: CurrentConversationMessageState[];
 };
 
@@ -85,15 +89,35 @@ export class ConversationMergePlanError extends Error {
 }
 
 function emptyCounts(): Record<ConversationMergeClassification, number> {
-  return { create: 0, update: 0, unchanged: 0 };
+  return { create: 0, update: 0, unchanged: 0, stale: 0 };
+}
+
+function sourceTime(
+  updatedAt: string | null | undefined,
+  createdAt: string | null | undefined,
+): number | null {
+  const candidate = updatedAt ?? createdAt ?? null;
+  if (!candidate) return null;
+  const parsed = Date.parse(candidate);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function classification(
   currentFingerprint: string | null,
   importedFingerprint: string,
+  currentTime: number | null = null,
+  importedTime: number | null = null,
 ): ConversationMergeClassification {
   if (currentFingerprint === null) return "create";
-  return currentFingerprint === importedFingerprint ? "unchanged" : "update";
+  if (currentFingerprint === importedFingerprint) return "unchanged";
+  if (
+    currentTime !== null
+    && importedTime !== null
+    && importedTime < currentTime
+  ) {
+    return "stale";
+  }
+  return "update";
 }
 
 function conversationKey(
@@ -155,6 +179,8 @@ export function buildConversationMergePlan(
     const conversationClassification = classification(
       existing?.sourceFingerprint ?? null,
       importedFingerprint,
+      sourceTime(existing?.sourceUpdatedAt, existing?.sourceCreatedAt),
+      sourceTime(conversation.sourceUpdatedAt, conversation.sourceCreatedAt),
     );
     summary.conversations[conversationClassification] += 1;
 
@@ -167,11 +193,14 @@ export function buildConversationMergePlan(
       const messageClassification = classification(
         currentMessage?.sourceFingerprint ?? null,
         messageFingerprint,
+        sourceTime(currentMessage?.sourceUpdatedAt, currentMessage?.sourceCreatedAt),
+        sourceTime(message.sourceUpdatedAt, message.sourceCreatedAt),
       );
       const currentPathFingerprint = currentMessage === null
         ? null
         : conversationMessagePathFingerprint(currentMessage);
-      const pathChanged = currentPathFingerprint !== null
+      const pathChanged = conversationClassification !== "stale"
+        && currentPathFingerprint !== null
         && currentPathFingerprint !== conversationMessagePathFingerprint(message);
       summary.messages[messageClassification] += 1;
       if (pathChanged) summary.messages.path_changed += 1;
