@@ -4,6 +4,7 @@ import type { createDatabase } from "../../database/client.js";
 import {
   conversationAttachments,
   conversationContentBlocks,
+  conversationExclusions,
   conversationImportRuns,
   conversationImportSources,
   conversationMessages,
@@ -15,6 +16,7 @@ import type {
   ConversationMergeCurrentState,
 } from "./conversation-merge-planner.js";
 import { DrizzleConversationArchiveStateRepository } from "./conversation-state-repository.js";
+import type { ConversationExclusionRule } from "./conversation-exclusions.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) => unknown ? T : never;
@@ -57,6 +59,7 @@ export interface ConversationImportExecutionTransaction {
     parserVersion: string;
   }): Promise<{ id: string; summary: Record<string, unknown> } | null>;
   readMergeState(userId: string): Promise<ConversationMergeCurrentState>;
+  readExclusions(userId: string): Promise<ConversationExclusionRule[]>;
   applyConversation(input: {
     userId: string;
     importRunId: string;
@@ -160,6 +163,18 @@ implements ConversationImportExecutionTransaction {
 
   async readMergeState(userId: string): Promise<ConversationMergeCurrentState> {
     return new DrizzleConversationArchiveStateRepository(this.tx).readMergeState(userId);
+  }
+
+  async readExclusions(userId: string): Promise<ConversationExclusionRule[]> {
+    return this.tx
+      .select({
+        provider: conversationExclusions.provider,
+        scope: conversationExclusions.scope,
+        sourceConversationId: conversationExclusions.sourceConversationId,
+        sourceNodeId: conversationExclusions.sourceNodeId,
+      })
+      .from(conversationExclusions)
+      .where(eq(conversationExclusions.userId, userId));
   }
 
   async applyConversation(input: {
