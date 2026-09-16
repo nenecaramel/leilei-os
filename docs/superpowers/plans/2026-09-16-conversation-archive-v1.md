@@ -303,19 +303,29 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [x] message-version persistence table
 - [x] real-size planner validation against the user's ChatGPT export
 
-### PR C — large-file import + batched execute
+### PR C1 — large-file ingest + Preview
 
-- [ ] streamed raw source ingest + SHA-256
-- [ ] compressed raw-source storage abstraction
-- [ ] top-level export streaming
+- [x] streamed raw source ingest + SHA-256
+- [x] PostgreSQL raw-source blob backend behind source metadata
+- [x] JSON raw sources stored gzip-losslessly; ZIP sources preserved byte-for-byte
+- [x] official-style ZIP extraction for `conversations*.json`
+- [x] top-level export streaming without buffering the whole JSON document
+- [x] provider auto-detection
+- [x] Preview API
+- [x] stale provider snapshot classification so older exports cannot silently plan a revert
+- [x] same raw source dedupe by user + SHA-256
+- [ ] production Preview acceptance with the user's real ChatGPT JSON and Claude ZIP
+
+### PR C2 — batched Execute
+
+- [ ] reconstruct stored raw source for execution
+- [ ] recompute Preview fingerprint against current canonical state
+- [ ] stale-preview protection
 - [ ] batched atomic merge executor (no per-message round-trip loop)
 - [ ] changed-message version snapshot writes
-- [ ] Preview API
-- [ ] Execute API
-- [ ] stale-preview protection
-- [ ] same-source/parser idempotency
+- [ ] same-source/parser execute idempotency
 - [ ] multi-file import batch support
-- [ ] real-size regression/performance test
+- [ ] real-size execution/performance test
 
 ### PR D — web archive
 

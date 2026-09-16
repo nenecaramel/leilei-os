@@ -41,6 +41,31 @@ async function withApp(callback: (baseUrl: string, calls: string[]) => Promise<v
       webExportService: {} as never,
       webImportService: {} as never,
       webUniverseService: {} as never,
+      webConversationImportService: {
+        async preview(stream: AsyncIterable<Uint8Array>, filename: string) {
+          let bytes = 0;
+          for await (const chunk of stream) bytes += chunk.length;
+          calls.push(`${filename}:${bytes}`);
+          return {
+            import_run_id: "run",
+            source_id: "source",
+            provider: "chatgpt",
+            parser_version: "chatgpt-v1",
+            filename,
+            raw_sha256: "a".repeat(64),
+            raw_bytes: bytes,
+            source_reused: false,
+            already_executed: false,
+            preview_fingerprint: "b".repeat(64),
+            summary: {
+              conversations: { create: 0, update: 0, unchanged: 0, stale: 0 },
+              messages: { create: 0, update: 0, unchanged: 0, stale: 0, path_changed: 0 },
+            },
+            warning_count: 0,
+            warning_codes: {},
+          };
+        },
+      } as never,
     });
     const server = await new Promise<import("node:http").Server>((resolve) => {
       const instance = app.listen(0, () => resolve(instance));
@@ -80,5 +105,23 @@ test("the app JSON parser remains bounded above 1mb", async () => {
     });
     assert.equal(response.status, 413);
     assert.deepEqual(calls, []);
+  });
+});
+
+
+test("large Conversation octet-stream uploads bypass the global 1mb JSON parser", async () => {
+  await withApp(async (baseUrl, calls) => {
+    const body = new Uint8Array(2 * 1024 * 1024);
+    const response = await fetch(`${baseUrl}/api/v1/conversations/import/preview`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/octet-stream",
+        "x-leilei-filename": "conversations.json",
+      },
+      body,
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls, [`conversations.json:${body.length}`]);
   });
 });

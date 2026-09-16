@@ -133,7 +133,7 @@ test("allows CORS only from the configured Web origin", () => {
       if (name === "Origin") return config.WEB_APP_ORIGIN;
       if (name === "Access-Control-Request-Method") return "POST";
       if (name === "Access-Control-Request-Headers") {
-        return "authorization, content-type, idempotency-key";
+        return "authorization, content-type, idempotency-key, x-leilei-filename";
       }
       return undefined;
     },
@@ -156,6 +156,10 @@ test("allows CORS only from the configured Web origin", () => {
   assert.match(
     allowedResponse.result.headers["access-control-allow-headers"] ?? "",
     /(?:^|,)Idempotency-Key(?:,|$)/,
+  );
+  assert.match(
+    allowedResponse.result.headers["access-control-allow-headers"] ?? "",
+    /(?:^|,)X-Leilei-Filename(?:,|$)/,
   );
 
   const deniedRequest = {

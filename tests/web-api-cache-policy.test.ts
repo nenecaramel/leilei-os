@@ -39,6 +39,30 @@ async function withServer(callback: (baseUrl: string) => Promise<void>): Promise
     todo: { todoService: { async listDates() { return []; } } },
     export: { exportService: { async createExport() { return { schema_version: 2, exported_at: "2026-08-14T00:00:00.000Z", data: { memory: [] } }; } } },
     import: { importService: { async preview() { return { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), summary: {}, can_execute: false }; } } },
+    conversationImport: {
+      conversationImportService: {
+        async preview() {
+          return {
+            import_run_id: "run",
+            source_id: "source",
+            provider: "chatgpt",
+            parser_version: "chatgpt-v1",
+            filename: "conversations.json",
+            raw_sha256: "a".repeat(64),
+            raw_bytes: 2,
+            source_reused: false,
+            already_executed: false,
+            preview_fingerprint: "b".repeat(64),
+            summary: {
+              conversations: { create: 0, update: 0, unchanged: 0, stale: 0 },
+              messages: { create: 0, update: 0, unchanged: 0, stale: 0, path_changed: 0 },
+            },
+            warning_count: 0,
+            warning_codes: {},
+          };
+        },
+      },
+    },
   } as never));
   const server = await new Promise<import("node:http").Server>((resolve) => {
     const instance = app.listen(0, () => resolve(instance));
@@ -61,6 +85,7 @@ test("authenticated Web API responses are private and uncached without affecting
       { path: "/api/v1/system/data", init: { headers } },
       { path: "/api/v1/system/export?scope=memory", init: { headers } },
       { path: "/api/v1/system/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream" }, body: new Uint8Array([123]) } },
+      { path: "/api/v1/conversations/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream", "x-leilei-filename": "conversations.json" }, body: new Uint8Array([91, 93]) } },
       { path: "/api/v1/toy/commands", init: { method: "POST", headers, body: JSON.stringify({ action: "stop" }) } },
     ];
     for (const request of requests) {

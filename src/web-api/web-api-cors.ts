@@ -4,7 +4,7 @@ const ALLOWED_METHODS =
   "GET,POST,PATCH,PUT,DELETE,OPTIONS";
 
 const ALLOWED_HEADERS =
-  "Authorization,Content-Type,Idempotency-Key";
+  "Authorization,Content-Type,Idempotency-Key,X-Leilei-Filename";
 
 export function createWebApiCorsMiddleware(
   origin: string,

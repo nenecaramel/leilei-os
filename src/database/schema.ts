@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   date,
   doublePrecision,
   foreignKey,
@@ -19,6 +20,12 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const userStatusEnum = pgEnum("user_status", ["active", "disabled"]);
 
@@ -810,6 +817,29 @@ export const conversationImportSources = pgTable(
       "conversation_import_sources_storage_pair",
       sql`(${table.storageKind} IS NULL AND ${table.storageKey} IS NULL) OR (${table.storageKind} IS NOT NULL AND ${table.storageKey} IS NOT NULL)`,
     ),
+  ],
+);
+
+export const conversationImportBlobs = pgTable(
+  "conversation_import_blobs",
+  {
+    sourceId: uuid("source_id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    encoding: varchar("encoding", { length: 16 }).$type<"raw" | "gzip">().notNull(),
+    originalBytes: bigint("original_bytes", { mode: "number" }).notNull(),
+    storedBytes: bigint("stored_bytes", { mode: "number" }).notNull(),
+    data: bytea("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.sourceId, table.userId],
+      foreignColumns: [conversationImportSources.id, conversationImportSources.userId],
+      name: "conversation_import_blobs_source_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    check("conversation_import_blobs_encoding_allowed", sql`${table.encoding} IN ('raw', 'gzip')`),
+    check("conversation_import_blobs_original_bytes_nonnegative", sql`${table.originalBytes} >= 0`),
+    check("conversation_import_blobs_stored_bytes_nonnegative", sql`${table.storedBytes} >= 0`),
   ],
 );
 

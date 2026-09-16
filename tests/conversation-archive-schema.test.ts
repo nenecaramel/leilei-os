@@ -21,18 +21,27 @@ const previousSnapshot = JSON.parse(readFileSync(
 const snapshot = JSON.parse(readFileSync(
   new URL("../drizzle/meta/0040_snapshot.json", import.meta.url),
   "utf8",
+)) as { id: string; prevId: string; tables: Record<string, unknown> };
+const blobMigrationSql = readFileSync(
+  new URL("../drizzle/0041_conversation_import_blobs.sql", import.meta.url),
+  "utf8",
+);
+const blobSnapshot = JSON.parse(readFileSync(
+  new URL("../drizzle/meta/0041_snapshot.json", import.meta.url),
+  "utf8",
 )) as { prevId: string; tables: Record<string, unknown> };
 
-test("Conversation Archive migration is the checked-in journal head", () => {
+test("Conversation Archive migrations form the checked-in journal tail", () => {
+  assert.equal(snapshot.prevId, previousSnapshot.id);
+  assert.equal(blobSnapshot.prevId, snapshot.id);
   const latest = journal.entries.at(-1);
   assert.deepEqual(latest, {
-    idx: 40,
+    idx: 41,
     version: "7",
-    when: 1789537200000,
-    tag: "0040_conversation_archive_core",
+    when: 1789538400000,
+    tag: "0041_conversation_import_blobs",
     breakpoints: true,
   });
-  assert.equal(snapshot.prevId, previousSnapshot.id);
 });
 
 test("Conversation Archive schema and migration contain the seven core persistence tables", () => {
@@ -75,4 +84,16 @@ test("message versions preserve changed canonical records", () => {
   assert.match(migrationSql, /"previous_fingerprint" varchar\(64\) NOT NULL/);
   assert.match(migrationSql, /"snapshot" jsonb NOT NULL/);
   assert.match(migrationSql, /"replaced_by_import_id" uuid NOT NULL/);
+});
+
+
+test("raw Conversation source blobs are persisted behind source ownership", () => {
+  assert.match(schemaSource, /export const conversationImportBlobs = pgTable/);
+  assert.match(blobMigrationSql, /CREATE TABLE "conversation_import_blobs"/);
+  assert.match(blobMigrationSql, /"data" bytea NOT NULL/);
+  assert.match(
+    blobMigrationSql,
+    /"conversation_import_blobs_source_user_fk" FOREIGN KEY \("source_id","user_id"\)/,
+  );
+  assert.ok(blobSnapshot.tables["public.conversation_import_blobs"]);
 });

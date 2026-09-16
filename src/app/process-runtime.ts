@@ -38,6 +38,9 @@ import { DrizzleHealthRepository } from "../domains/health-v2/health-repository.
 import { HealthService } from "../domains/health-v2/health-service.js";
 import { DrizzleSharedPaperRepository } from "../domains/shared-paper/shared-paper-repository.js";
 import { SharedPaperService } from "../domains/shared-paper/shared-paper-service.js";
+import { DrizzleConversationImportRepository } from "../domains/conversation/conversation-import-repository.js";
+import { DrizzleConversationArchiveStateRepository } from "../domains/conversation/conversation-state-repository.js";
+import { ConversationImportService } from "../domains/conversation/conversation-import-service.js";
 import {
   createSentinelScheduler as buildSentinelScheduler,
   type SentinelScheduler,
@@ -110,6 +113,10 @@ export function createProcessRuntime(
   const sentinelService = new SentinelService(sentinelRepository);
   const healthService = new HealthService(new DrizzleHealthRepository(db));
   const sharedPaperService = new SharedPaperService(new DrizzleSharedPaperRepository(db));
+  const conversationImportService = new ConversationImportService(
+    new DrizzleConversationImportRepository(db),
+    new DrizzleConversationArchiveStateRepository(db),
+  );
   const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
     buildSentinelScheduler({ repository })))(sentinelRepository);
 
@@ -179,6 +186,7 @@ export function createProcessRuntime(
       webBridgeService: bridgeService,
       webSentinelService: sentinelService,
       webSharedPaperService: sharedPaperService,
+      webConversationImportService: conversationImportService,
       healthSyncService: healthService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
