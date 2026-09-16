@@ -4547,6 +4547,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "execution_key": {
+          "name": "execution_key",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'standard'"
         }
       },
       "indexes": {
@@ -4577,8 +4584,8 @@
           "method": "btree",
           "with": {}
         },
-        "conversation_import_runs_source_parser_preview_executed_uidx": {
-          "name": "conversation_import_runs_source_parser_preview_executed_uidx",
+        "conversation_import_runs_execution_executed_uidx": {
+          "name": "conversation_import_runs_execution_executed_uidx",
           "columns": [
             {
               "expression": "source_id",
@@ -4594,6 +4601,12 @@
             },
             {
               "expression": "preview_fingerprint",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "execution_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4672,6 +4685,10 @@
         "conversation_import_runs_completion_consistency": {
           "name": "conversation_import_runs_completion_consistency",
           "value": "(\"conversation_import_runs\".\"status\" = 'processing' AND \"conversation_import_runs\".\"completed_at\" IS NULL) OR (\"conversation_import_runs\".\"status\" IN ('executed', 'failed') AND \"conversation_import_runs\".\"completed_at\" IS NOT NULL)"
+        },
+        "conversation_import_runs_execution_key_not_blank": {
+          "name": "conversation_import_runs_execution_key_not_blank",
+          "value": "char_length(btrim(\"conversation_import_runs\".\"execution_key\")) > 0"
         }
       },
       "isRLSEnabled": false
