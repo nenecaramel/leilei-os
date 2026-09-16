@@ -57,7 +57,7 @@ test("message-level model wins without guessing from the conversation default", 
 });
 
 test("real export content shapes normalize to typed blocks and attachment metadata", () => {
-  const fixture = clone(chatGptConversationFixture);
+  const fixture = clone(chatGptConversationFixture) as any;
   fixture.current_node = "user-media";
   const { conversation } = ChatGPTExportParser.normalizeConversation(fixture);
   const media = conversation.messages.find((message) => message.sourceNodeId === "user-media");
@@ -84,7 +84,7 @@ test("reasoning recap and thoughts are preserved without leaking into ordinary d
 });
 
 test("unknown content types are preserved and warned instead of rejected", () => {
-  const fixture = clone(chatGptConversationFixture);
+  const fixture = clone(chatGptConversationFixture) as any;
   fixture.mapping["assistant-final"].message.content = {
     content_type: "future_magic_block",
     content: "future payload",
@@ -100,14 +100,14 @@ test("unknown content types are preserved and warned instead of rejected", () =>
 });
 
 test("invalid current-node graphs fail instead of inventing a visible path", () => {
-  const missing = clone(chatGptConversationFixture);
+  const missing = clone(chatGptConversationFixture) as any;
   missing.current_node = "missing";
   assert.throws(
     () => ChatGPTExportParser.normalizeConversation(missing),
     (error: unknown) => error instanceof ConversationProviderParseError,
   );
 
-  const cycle = clone(chatGptConversationFixture);
+  const cycle = clone(chatGptConversationFixture) as any;
   cycle.mapping["user-1"].parent = "assistant-final";
   assert.throws(
     () => ChatGPTExportParser.normalizeConversation(cycle),
