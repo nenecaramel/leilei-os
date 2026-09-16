@@ -155,6 +155,7 @@ implements ConversationImportExecutionTransaction {
     sourceId: string;
     parserVersion: string;
     previewFingerprint: string;
+    executionKey: string;
   }): Promise<{ id: string; summary: Record<string, unknown> } | null> {
     const [row] = await this.tx
       .select({
@@ -167,6 +168,7 @@ implements ConversationImportExecutionTransaction {
         eq(conversationImportRuns.sourceId, input.sourceId),
         eq(conversationImportRuns.parserVersion, input.parserVersion),
         eq(conversationImportRuns.previewFingerprint, input.previewFingerprint),
+        eq(conversationImportRuns.executionKey, input.executionKey),
         eq(conversationImportRuns.status, "executed"),
       ))
       .limit(1);
