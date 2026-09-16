@@ -34,6 +34,11 @@ const detailArgumentsSchema = z.union([
   z.object({ id: z.string().uuid(), scope: z.enum(["active", "archived"]) }).strict(),
   z.object({ id: z.string().min(1).max(256) }).strict(),
   z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict(),
+  z.object({
+    conversation_id: z.string().uuid(),
+    message_id: z.string().uuid(),
+    view: z.enum(["default", "all"]),
+  }).strict(),
 ]);
 
 const globalSearchResultSchema = z.object({
@@ -48,17 +53,26 @@ const globalSearchResultSchema = z.object({
   time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at", "todo_date", "message_time"]),
   updated_at: z.string().datetime(),
   author: z.enum(["L", "G", "C"]).nullable(),
-  detail_tool: z.enum(["get_memory", "get_diary", "get_task", "read_todo_day", "get_universe_node", "get_shared_paper"]).nullable(),
+  detail_tool: z.enum(["get_memory", "get_diary", "get_task", "read_todo_day", "get_universe_node", "get_shared_paper", "read_conversation"]).nullable(),
   detail_arguments: detailArgumentsSchema.nullable(),
   conversation_id: z.string().uuid().nullable().optional(),
   conversation_view: z.enum(["default", "all"]).nullable().optional(),
 }).strict().superRefine((result, context) => {
   if (result.entity_type === "conversation") {
-    if (result.detail_tool !== null || result.detail_arguments !== null) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Conversation results use Web deep links rather than an MCP detail pointer." });
+    if (result.detail_tool !== "read_conversation") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Conversation results must use read_conversation." });
     }
     if (!result.conversation_id || !result.conversation_view) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["conversation_id"], message: "Conversation results require canonical conversation deep-link metadata." });
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["conversation_id"], message: "Conversation results require canonical conversation metadata." });
+    }
+    if (
+      result.detail_arguments === null
+      || !("conversation_id" in result.detail_arguments)
+      || result.detail_arguments.conversation_id !== result.conversation_id
+      || result.detail_arguments.message_id !== result.entity_id
+      || result.detail_arguments.view !== result.conversation_view
+    ) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Conversation detail_arguments must point to the exact canonical message and view." });
     }
     return;
   }
@@ -134,7 +148,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search only for cross-domain discovery when the target domain is unknown or genuinely spans LeileiOS domains. Defaults remain Memory, Diary, Task, Todo, Universe, and Shared Paper; Conversation Archive is supported but opt-in via modules=['conversation', ...] so its large message corpus does not change default six-domain search. When the domain is known, prefer that domain's dedicated browse/search tool. Conversation results are exact message discoveries with Web deep-link metadata and intentionally have no MCP detail pointer. Use scope=all only for explicit historical/all-record intent. No results means nothing was found: never invent an answer.",
+    description: "Use global_search only for cross-domain discovery when the target domain is unknown or genuinely spans LeileiOS domains. Defaults remain Memory, Diary, Task, Todo, Universe, and Shared Paper; Conversation Archive is supported but opt-in via modules=['conversation', ...] so its large message corpus does not change default six-domain search. When the domain is known, prefer that domain's dedicated browse/search tool; use search_conversations for past ChatGPT/Claude messages. Conversation results point to read_conversation with the exact canonical message and saved view. Use scope=all only for explicit historical/all-record intent. No results means nothing was found: never invent an answer.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
