@@ -324,7 +324,7 @@ async function renderTodoEditor(
   return editorRef;
 }
 
-test("Activating a wrapped Todo immediately expands its textarea", async () => {
+test("Continuous Todo rows immediately size their textareas", async () => {
   const harness = installDom();
 
   try {
@@ -336,51 +336,31 @@ test("Activating a wrapped Todo immediately expands its textarea", async () => {
 
     await renderTodoEditor(harness);
 
-    const firstLine = harness.container.querySelector<HTMLButtonElement>(
-      '[aria-label="编辑 Todo 第 1 行"]',
-    );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const textarea = harness.container.querySelector<HTMLTextAreaElement>(
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
       '[aria-label="Todo 第 1 行"]',
     );
-    assert.ok(textarea);
-    assert.equal(textarea.style.height, "60px");
+
+    assert.ok(first);
+    assert.equal(first.style.height, "60px");
   } finally {
     await harness.cleanup();
   }
 });
 
-
-test("Enter moves editing to the next visible Todo line", async () => {
+test("Enter splits the current Todo and moves to the next line", async () => {
   const harness = installDom();
 
   try {
-    await renderTodoEditor(harness);
+    const editorRef = await renderTodoEditor(harness);
 
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const first =
-      harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 1 行\"]",
-      );
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
 
     await act(async () => {
+      first.focus();
+      first.setSelectionRange(2, 2);
       first.dispatchEvent(
         new harness.dom.window.KeyboardEvent("keydown", {
           key: "Enter",
@@ -391,14 +371,22 @@ test("Enter moves editing to the next visible Todo line", async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
-    const second =
-      harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 2 行\"]",
-      );
+    const firstAfter = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
+    const second = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 2 行"]',
+    );
 
+    assert.ok(firstAfter);
     assert.ok(second);
-    assert.equal(harness.container.querySelectorAll("textarea").length, 1);
+    assert.equal(firstAfter.value, "Fi");
+    assert.equal(second.value, "rst");
     assert.equal(harness.dom.window.document.activeElement, second);
+    assert.deepEqual(
+      editorRef.current?.getNormalizedEntries().map((entry) => entry.text),
+      ["Fi", "rst"],
+    );
   } finally {
     await harness.cleanup();
   }
@@ -410,24 +398,13 @@ test("Enter during IME composition stays on the current Todo line", async () => 
   try {
     await renderTodoEditor(harness);
 
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const first =
-      harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 1 行\"]",
-      );
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
 
     await act(async () => {
+      first.focus();
       first.dispatchEvent(
         new harness.dom.window.CompositionEvent("compositionstart", {
           bubbles: true,
@@ -445,16 +422,8 @@ test("Enter during IME composition stays on the current Todo line", async () => 
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
-    assert.equal(
-      harness.dom.window.document.activeElement,
-      first,
-    );
-    assert.equal(
-      harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 2 行\"]",
-      ),
-      null,
-    );
+    assert.equal(harness.dom.window.document.activeElement, first);
+    assert.equal(first.value, "First");
 
     await act(async () => {
       first.dispatchEvent(
@@ -463,6 +432,7 @@ test("Enter during IME composition stays on the current Todo line", async () => 
           data: "test",
         }),
       );
+      first.setSelectionRange(first.value.length, first.value.length);
       first.dispatchEvent(
         new harness.dom.window.KeyboardEvent("keydown", {
           key: "Enter",
@@ -473,10 +443,9 @@ test("Enter during IME composition stays on the current Todo line", async () => 
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
-    const second =
-      harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 2 行\"]",
-      );
+    const second = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 2 行"]',
+    );
     assert.ok(second);
     assert.equal(harness.dom.window.document.activeElement, second);
   } finally {
@@ -484,31 +453,25 @@ test("Enter during IME composition stays on the current Todo line", async () => 
   }
 });
 
-test("Backspace on an empty Todo line moves editing to the previous line", async () => {
+test("Backspace at the start merges a Todo into the previous line", async () => {
   const harness = installDom();
 
   try {
-    await renderTodoEditor(harness);
-
-    const secondLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 2 行\"]",
-      );
-    assert.ok(secondLine);
-
-    await act(async () => {
-      secondLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+    const editorRef = await renderTodoEditor(harness, {
+      initialEntries: [
+        { id: "l-1", author: "L", kind: "pending", text: "First" },
+        { id: "l-2", author: "L", kind: "pending", text: "Second" },
+      ],
     });
 
-    const second =
-      harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 2 行\"]",
-      );
+    const second = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 2 行"]',
+    );
     assert.ok(second);
-    assert.equal(second.value, "");
 
     await act(async () => {
+      second.focus();
+      second.setSelectionRange(0, 0);
       second.dispatchEvent(
         new harness.dom.window.KeyboardEvent("keydown", {
           key: "Backspace",
@@ -519,14 +482,60 @@ test("Backspace on an empty Todo line moves editing to the previous line", async
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
 
-    const first =
-      harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 1 行\"]",
-      );
-
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
-    assert.equal(harness.container.querySelectorAll("textarea").length, 1);
+    assert.equal(first.value, "FirstSecond");
+    assert.equal(first.selectionStart, 5);
     assert.equal(harness.dom.window.document.activeElement, first);
+    assert.deepEqual(
+      editorRef.current?.getNormalizedEntries().map((entry) => entry.text),
+      ["FirstSecond"],
+    );
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("Multiline paste creates consecutive Todo entries", async () => {
+  const harness = installDom();
+
+  try {
+    const editorRef = await renderTodoEditor(harness);
+
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
+    assert.ok(first);
+
+    await act(async () => {
+      first.focus();
+      first.setSelectionRange(first.value.length, first.value.length);
+      const paste = new harness.dom.window.Event("paste", {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(paste, "clipboardData", {
+        value: {
+          getData: (type: string) =>
+            type === "text/plain" ? "\nSecond\nThird" : "",
+        },
+      });
+      first.dispatchEvent(paste);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    assert.deepEqual(
+      editorRef.current?.getNormalizedEntries().map((entry) => entry.text),
+      ["First", "Second", "Third"],
+    );
+
+    const third = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 3 行"]',
+    );
+    assert.ok(third);
+    assert.equal(harness.dom.window.document.activeElement, third);
   } finally {
     await harness.cleanup();
   }
@@ -579,18 +588,9 @@ test("Normalized editor output trims text, drops empty rows, and reports dirty c
       onDirtyChange: (dirty) => dirtyValues.push(dirty),
     });
 
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
 
     await act(async () => {
@@ -746,18 +746,9 @@ test("Todo paper writes changed entries before closing and reports the saved pre
 
   try {
     const rendered = await renderTodoPaperDialog(harness);
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
 
     await act(async () => {
@@ -797,18 +788,9 @@ test("Todo paper keeps edits open and shows an alert when server save fails", as
 
   try {
     const rendered = await renderTodoPaperDialog(harness, { failRequest: true });
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
 
     await act(async () => {
@@ -835,7 +817,6 @@ test("Todo paper keeps edits open and shows an alert when server save fails", as
     await harness.cleanup();
   }
 });
-
 
 test("Todo paper CSS defines the fixed ruled paper geometry", () => {
   assert.match(
@@ -889,7 +870,7 @@ test("Todo paper CSS defines the fixed ruled paper geometry", () => {
 });
 
 
-test("Todo paper opens in view mode without focusing a textarea", async () => {
+test("Todo paper opens as a continuous editor without stealing focus", async () => {
   const harness = installDom();
 
   try {
@@ -899,58 +880,48 @@ test("Todo paper opens in view mode without focusing a textarea", async () => {
       harness.container.querySelector<HTMLElement>("[role=dialog]");
 
     assert.ok(dialog);
-    assert.equal(harness.container.querySelectorAll("textarea").length, 0);
+    assert.equal(
+      harness.container.querySelectorAll("textarea").length,
+      24,
+    );
     assert.equal(
       harness.dom.window.document.activeElement,
       dialog,
     );
-    assert.ok(
-      harness.container.querySelectorAll(".todo-paper-line-view").length >= 24,
+    assert.equal(
+      harness.container.querySelector(".todo-paper-line-view"),
+      null,
     );
   } finally {
     await harness.cleanup();
   }
 });
 
-
-test("Clicking one Todo line edits only that line", async () => {
+test("Every visible Todo line is immediately editable", async () => {
   const harness = installDom();
 
   try {
     await renderTodoPaperDialog(harness);
 
-    const secondLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 2 行\"]",
-      );
-
-    assert.ok(secondLine);
-
-    await act(async () => {
-      secondLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
     const textareas =
       harness.container.querySelectorAll<HTMLTextAreaElement>("textarea");
 
-    assert.equal(textareas.length, 1);
-    assert.equal(textareas[0].value, "Second");
+    assert.equal(textareas.length, 24);
+    assert.equal(textareas[0]?.value, "First");
+    assert.equal(textareas[1]?.value, "Second");
+
+    await act(async () => {
+      textareas[1]?.focus();
+    });
+
     assert.equal(
       harness.dom.window.document.activeElement,
-      textareas[0],
-    );
-
-    assert.ok(
-      harness.container.querySelector(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      ),
+      textareas[1],
     );
   } finally {
     await harness.cleanup();
   }
 });
-
 
 test("Typing in a later Todo row keeps its focus and caret", async () => {
   const harness = installDom();
@@ -958,20 +929,9 @@ test("Typing in a later Todo row keeps its focus and caret", async () => {
   try {
     await renderTodoPaperDialog(harness);
 
-    const secondLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 2 行\"]",
-      );
-    assert.ok(secondLine);
-
-    await act(async () => {
-      secondLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
     const second =
       harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 2 行\"]",
+        '[aria-label="Todo 第 2 行"]',
       );
     assert.ok(second);
 
@@ -993,7 +953,6 @@ test("Typing in a later Todo row keeps its focus and caret", async () => {
   }
 });
 
-
 test("Filling the last visible Todo line grows the paper past 24 lines", async () => {
   const harness = installDom();
 
@@ -1010,17 +969,6 @@ test("Filling the last visible Todo line grows the paper past 24 lines", async (
       harness.container.querySelectorAll(".todo-paper-row").length,
       24,
     );
-
-    const lastLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        '[aria-label="编辑 Todo 第 24 行"]',
-      );
-    assert.ok(lastLine);
-
-    await act(async () => {
-      lastLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
 
     const textarea =
       harness.container.querySelector<HTMLTextAreaElement>(
@@ -1042,12 +990,14 @@ test("Filling the last visible Todo line grows the paper past 24 lines", async (
     );
     assert.ok(
       harness.container.querySelector(
-        '[aria-label="编辑 Todo 第 25 行"]',
+        '[aria-label="Todo 第 25 行"]',
       ),
     );
     assert.equal(editorRef.current?.getNormalizedEntries().length, 24);
 
     await act(async () => {
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
       textarea.dispatchEvent(
         new harness.dom.window.KeyboardEvent("keydown", {
           key: "Enter",
@@ -1088,7 +1038,7 @@ test("A full 24-entry Todo reopens with a blank 25th line", async () => {
     );
     assert.ok(
       harness.container.querySelector(
-        '[aria-label="编辑 Todo 第 25 行"]',
+        '[aria-label="Todo 第 25 行"]',
       ),
     );
   } finally {
@@ -1108,20 +1058,9 @@ test("Writing into a blank visible line keeps the paper at 24 lines", async () =
       24,
     );
 
-    const blankLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 10 行\"]",
-      );
-    assert.ok(blankLine);
-
-    await act(async () => {
-      blankLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
     const textarea =
       harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 10 行\"]",
+        '[aria-label="Todo 第 10 行"]',
       );
     assert.ok(textarea);
     assert.equal(textarea.value, "");
@@ -1149,53 +1088,36 @@ test("Writing into a blank visible line keeps the paper at 24 lines", async () =
   }
 });
 
-
-test("Clicking elsewhere on the paper exits row editing", async () => {
+test("Blurring a Todo row keeps the continuous editor mounted", async () => {
   const harness = installDom();
 
   try {
     await renderTodoPaperDialog(harness);
 
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
+    assert.ok(first);
 
     await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      first.focus();
+      first.blur();
     });
 
-    assert.ok(harness.container.querySelector("textarea"));
-
-    const paper =
-      harness.container.querySelector<HTMLElement>(".paper-detail-paper");
-    assert.ok(paper);
-
-    await act(async () => {
-      paper.dispatchEvent(
-        new harness.dom.window.MouseEvent("mousedown", {
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    assert.equal(harness.container.querySelector("textarea"), null);
-    assert.ok(
-      harness.container.querySelector(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      ),
+    assert.equal(
+      harness.container.querySelectorAll("textarea").length,
+      24,
+    );
+    assert.equal(
+      harness.container.querySelector(".todo-paper-line-view"),
+      null,
     );
   } finally {
     await harness.cleanup();
   }
 });
 
-
-test("Todo paper uses the compact view-edit visual treatment", () => {
+test("Todo paper uses the compact continuous-editor visual treatment", () => {
   assert.match(todoPaperStylesSource, /\.paper-detail-paper\s*\{[^}]*transform:\s*translateY\(31px\)/s);
 
   assert.match(
@@ -1225,60 +1147,33 @@ test("Todo paper uses the compact view-edit visual treatment", () => {
 
   assert.match(
     todoPaperStylesSource,
-    /\.todo-paper-line-view\s*\{[^}]*min-height:\s*30px[^}]*border:\s*0[^}]*background:\s*transparent/s,
-  );
-
-  assert.match(
-    todoPaperStylesSource,
-    /\.todo-paper-status\[data-kind="completed"\] \+ textarea,[\s\S]*\.todo-paper-status\[data-kind="completed"\] \+ \.todo-paper-line-view\s*\{[^}]*color:\s*#8f8f8f[^}]*text-decoration:\s*line-through/s,
+    /\.todo-paper-row textarea\s*\{[^}]*min-height:\s*30px[^}]*border:\s*0[^}]*background:\s*transparent/s,
   );
 });
 
-
-test("Clicking text places the caret at the clicked offset", async () => {
+test("Todo rows keep native textarea caret selection", async () => {
   const harness = installDom();
 
   try {
     await renderTodoEditor(harness);
 
-    Object.defineProperty(
-      harness.dom.window.document,
-      "caretPositionFromPoint",
-      {
-        configurable: true,
-        value: () => ({ offset: 2 }),
-      },
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
     );
-
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
+    assert.ok(first);
 
     await act(async () => {
-      firstLine.dispatchEvent(
-        new harness.dom.window.MouseEvent("click", {
-          bubbles: true,
-          clientX: 40,
-          clientY: 20,
-        }),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      first.focus();
+      first.setSelectionRange(2, 2);
     });
 
-    const textarea =
-      harness.container.querySelector<HTMLTextAreaElement>(
-        "[aria-label=\"Todo 第 1 行\"]",
-      );
-    assert.ok(textarea);
-    assert.equal(textarea.selectionStart, 2);
-    assert.equal(textarea.selectionEnd, 2);
+    assert.equal(first.selectionStart, 2);
+    assert.equal(first.selectionEnd, 2);
+    assert.equal(harness.dom.window.document.activeElement, first);
   } finally {
     await harness.cleanup();
   }
 });
-
 
 test("Todo textarea selection is not clipped by inherited rounded form corners", () => {
   assert.match(
