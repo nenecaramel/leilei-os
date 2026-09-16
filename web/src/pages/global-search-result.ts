@@ -30,6 +30,8 @@ export type GlobalSearchResult = {
     id: string;
     scope: "active" | "archived";
   } | { id: string } | { date: string } | null;
+  conversation_id: string | null;
+  conversation_view: "default" | "all" | null;
 };
 
 export const GLOBAL_SEARCH_MODULE_LABELS: Record<SearchModule, string> = {
@@ -39,6 +41,7 @@ export const GLOBAL_SEARCH_MODULE_LABELS: Record<SearchModule, string> = {
   universe: "Universe",
   todo: "Todo",
   shared_paper: "Shared Paper",
+  conversation: "Conversations",
 };
 
 export function formatGlobalSearchBusinessDate(value: string): string {
@@ -53,6 +56,13 @@ export function createGlobalSearchResultDetailLocation(
   result: GlobalSearchResult,
   returnTo: string,
 ): string {
+  if (result.entity_type === "conversation") {
+    if (!result.conversation_id) return "/conversations";
+    const params = new URLSearchParams({ anchor: result.entity_id });
+    if (result.conversation_view === "all") params.set("view", "all");
+    return `/conversations/${encodeURIComponent(result.conversation_id)}?${params.toString()}#message-${encodeURIComponent(result.entity_id)}`;
+  }
+
   if (result.entity_type === "memory") {
     return result.lifecycle_status === "archived"
       ? createArchivedMemoryDetailLocation(result.entity_id, returnTo)
