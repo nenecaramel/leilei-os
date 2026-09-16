@@ -190,12 +190,18 @@ export function buildConversationMergePlan(
     const messages = conversation.messages.map((message): ConversationMergeMessageItem => {
       const currentMessage = currentMessages.get(message.sourceNodeId) ?? null;
       const messageFingerprint = conversationMessageSourceFingerprint(message);
-      const messageClassification = classification(
+      const directMessageClassification = classification(
         currentMessage?.sourceFingerprint ?? null,
         messageFingerprint,
         sourceTime(currentMessage?.sourceUpdatedAt, currentMessage?.sourceCreatedAt),
         sourceTime(message.sourceUpdatedAt, message.sourceCreatedAt),
       );
+      const messageClassification =
+        conversationClassification === "stale"
+        && currentMessage !== null
+        && directMessageClassification === "update"
+          ? "stale"
+          : directMessageClassification;
       const currentPathFingerprint = currentMessage === null
         ? null
         : conversationMessagePathFingerprint(currentMessage);
