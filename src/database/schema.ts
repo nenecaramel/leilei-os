@@ -799,6 +799,7 @@ export const conversationImportSources = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    unique("conversation_import_sources_id_user_unique").on(table.id, table.userId),
     uniqueIndex("conversation_import_sources_user_sha_uidx").on(table.userId, table.rawSha256),
     index("conversation_import_sources_user_created_idx").on(table.userId, table.createdAt.desc(), table.id.desc()),
     check("conversation_import_sources_provider_allowed", sql`${table.provider} IN ('chatgpt', 'claude')`),
@@ -829,6 +830,7 @@ export const conversationImportRuns = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
   (table) => [
+    unique("conversation_import_runs_id_user_unique").on(table.id, table.userId),
     foreignKey({
       columns: [table.sourceId, table.userId],
       foreignColumns: [conversationImportSources.id, conversationImportSources.userId],
