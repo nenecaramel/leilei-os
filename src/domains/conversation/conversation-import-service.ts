@@ -757,19 +757,24 @@ export class ConversationImportService {
         if (item.status === "already_executed") {
           const executedRunId = item.executed_run_id!;
           executedByRunId.set(run.id, executedRunId);
-          if (locked.status === "processing" && executedRunId !== run.id) {
-            await transaction.markRunSuperseded({
-              userId,
-              runId: run.id,
-              executedRunId,
-            });
-          }
           outputItems.push({
             input_index: item.input_index,
             import_run_id: run.id,
             source_id: run.sourceId,
             outcome: "already_executed",
             executed_run_id: executedRunId,
+          });
+          continue;
+        }
+
+        if (replayedBatchRuns.has(run.id)) {
+          executedByRunId.set(run.id, run.id);
+          outputItems.push({
+            input_index: item.input_index,
+            import_run_id: run.id,
+            source_id: run.sourceId,
+            outcome: "already_executed",
+            executed_run_id: run.id,
           });
           continue;
         }
@@ -826,6 +831,7 @@ export class ConversationImportService {
             exclusions: applied.exclusions,
             executed: true,
             batch_fingerprint: preview.batch_fingerprint,
+            batch_preview_fingerprint: item.preview_fingerprint,
           },
           warningCount: applied.warningCount,
         });
@@ -849,17 +855,6 @@ export class ConversationImportService {
             && candidate.executed_run_id !== null
           ))?.executed_run_id
           ?? duplicateOf;
-        const locked = lockedRuns.get(run.id)!;
-        if (
-          run.id !== duplicateOf
-          && locked.status === "processing"
-        ) {
-          await transaction.markRunSuperseded({
-            userId,
-            runId: run.id,
-            executedRunId,
-          });
-        }
         outputItems.push({
           input_index: item.input_index,
           import_run_id: run.id,
@@ -870,8 +865,9 @@ export class ConversationImportService {
       }
 
       outputItems.sort((left, right) => left.input_index - right.input_index);
+      const wroteCanonicalData = outputItems.some((item) => item.outcome === "executed");
       return {
-        outcome: preview.files.pending > 0 ? "executed" as const : "already_executed" as const,
+        outcome: wroteCanonicalData ? "executed" as const : "already_executed" as const,
         batch_fingerprint: preview.batch_fingerprint,
         files: preview.files,
         summary: preview.summary,
