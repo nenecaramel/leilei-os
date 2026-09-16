@@ -48,6 +48,7 @@ export type ConversationStoredRun = {
 export interface ConversationImportRepository {
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   findSourceBySha(userId: string, rawSha256: string): Promise<ConversationStoredSource | null>;
+  findSourceById(userId: string, sourceId: string): Promise<ConversationStoredSource | null>;
   createOrReuseSourceWithBlob(input: {
     userId: string;
     provider: ConversationProvider;
@@ -69,6 +70,7 @@ export interface ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    previewFingerprint: string;
   }): Promise<{ id: string; summary: Record<string, unknown> } | null>;
   findRunById(input: {
     userId: string;
@@ -119,6 +121,21 @@ implements ConversationImportRepository {
       .where(and(
         eq(conversationImportSources.userId, userId),
         eq(conversationImportSources.rawSha256, rawSha256),
+      ))
+      .limit(1);
+    return row ? toSource(row) : null;
+  }
+
+  async findSourceById(
+    userId: string,
+    sourceId: string,
+  ): Promise<ConversationStoredSource | null> {
+    const [row] = await this.db
+      .select()
+      .from(conversationImportSources)
+      .where(and(
+        eq(conversationImportSources.userId, userId),
+        eq(conversationImportSources.id, sourceId),
       ))
       .limit(1);
     return row ? toSource(row) : null;
@@ -209,6 +226,7 @@ implements ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    previewFingerprint: string;
   }): Promise<{ id: string; summary: Record<string, unknown> } | null> {
     const [row] = await this.db
       .select({
@@ -220,6 +238,7 @@ implements ConversationImportRepository {
         eq(conversationImportRuns.userId, input.userId),
         eq(conversationImportRuns.sourceId, input.sourceId),
         eq(conversationImportRuns.parserVersion, input.parserVersion),
+        eq(conversationImportRuns.previewFingerprint, input.previewFingerprint),
         eq(conversationImportRuns.status, "executed"),
       ))
       .limit(1);
