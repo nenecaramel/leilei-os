@@ -360,6 +360,9 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [x] branch pruning repairs an authoritative current leaf when the removed subtree contained it
 - [x] Web controls for window delete and branch delete
 - [ ] production acceptance with imported real ChatGPT / Claude data
+- [x] list exclusion rules and remove one rule without claiming immediate canonical restore
+- [x] removing a rule makes matching content eligible on the next import; old Preview fingerprints become stale automatically
+- [ ] one-click restore-now from a preserved raw source
 - [ ] optional UI-only Hide action
 - [ ] dangerous raw-source purge / privacy erase flow
 
@@ -399,7 +402,7 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - model is never guessed;
 - unknown provider fields/types are preserved or warned, never silently flattened away;
 - one provider parser cannot depend on another provider's raw schema;
-- a user-deleted conversation or branch remains excluded from later imports unless its exclusion rule is explicitly removed;
+- a user-deleted conversation or branch remains excluded from later imports unless its exclusion rule is explicitly removed; removing the rule alone does not silently restore canonical data, it only makes the content eligible on a later import;
 - ordinary Archive pruning never deletes the immutable raw import source;
 - a favorite snapshot survives later canonical conversation/message pruning and keeps its captured text/content-block/attachment metadata;
 - exclusion-rule changes after Preview make Execute stale before canonical writes;
