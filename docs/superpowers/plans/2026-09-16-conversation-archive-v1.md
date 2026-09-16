@@ -273,34 +273,37 @@ It gets a dedicated archive export/backup contract later. Database backups still
 
 ## Rollout / PR sequence
 
-### PR A — foundation
+### PR A — foundation — shipped in #371
 
-- [ ] provider-neutral normalized types
-- [ ] parser adapter interface
-- [ ] ChatGPT conversation normalizer
-- [ ] current-path derivation
-- [ ] content-block normalization
-- [ ] representative fixtures derived from the real ChatGPT export
-- [ ] tests for branches, reasoning/thoughts, multimodal, attachments, per-message model, unknown blocks
-- [ ] no DB/API/UI change yet
+- [x] provider-neutral normalized types
+- [x] parser adapter interface
+- [x] ChatGPT conversation normalizer
+- [x] current-path derivation
+- [x] content-block normalization
+- [x] representative fixtures derived from the real ChatGPT export
+- [x] tests for branches, reasoning/thoughts, multimodal, attachments, per-message model, unknown blocks
+- [x] no DB/API/UI change yet
 
-### PR B — persistence + merge
+### PR B — persistence + merge planning
 
-- [ ] migration 0040 Conversation Archive core tables
-- [ ] repositories
-- [ ] source/run audit tables
-- [ ] additive merge planner
-- [ ] message versioning
-- [ ] transaction/idempotency tests
+- [x] migration 0040 Conversation Archive core tables
+- [x] merge-state read repository
+- [x] source/run audit tables
+- [x] additive merge planner
+- [x] message-version persistence table
+- [x] real-size planner validation against the user's ChatGPT export
 
-### PR C — large-file import
+### PR C — large-file import + batched execute
 
 - [ ] streamed raw source ingest + SHA-256
 - [ ] compressed raw-source storage abstraction
 - [ ] top-level export streaming
+- [ ] batched atomic merge executor (no per-message round-trip loop)
+- [ ] changed-message version snapshot writes
 - [ ] Preview API
 - [ ] Execute API
 - [ ] stale-preview protection
+- [ ] same-source/parser idempotency
 - [ ] multi-file import batch support
 - [ ] real-size regression/performance test
 
