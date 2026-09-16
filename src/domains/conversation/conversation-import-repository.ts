@@ -205,6 +205,7 @@ implements ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    executionKey: string;
     previewFingerprint: string;
     summary: Record<string, unknown>;
     warningCount: number;
