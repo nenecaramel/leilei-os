@@ -270,13 +270,13 @@ implements ConversationFavoriteRepository {
           ),
       ]);
 
-      const blocksByMessage = new Map<string, typeof blocks>();
+      const blocksByMessage = new Map<string, (typeof blocks)[number][]>();
       for (const block of blocks) {
         const list = blocksByMessage.get(block.messageId) ?? [];
         list.push(block);
         blocksByMessage.set(block.messageId, list);
       }
-      const attachmentsByMessage = new Map<string, typeof attachments>();
+      const attachmentsByMessage = new Map<string, (typeof attachments)[number][]>();
       for (const attachment of attachments) {
         const list = attachmentsByMessage.get(attachment.messageId) ?? [];
         list.push(attachment);
