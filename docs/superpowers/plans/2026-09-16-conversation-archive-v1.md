@@ -342,9 +342,13 @@ It gets a dedicated archive export/backup contract later. Database backups still
 
 ### PR E — dedicated search
 
-- [ ] message-level full-text/substring search
-- [ ] provider/date/role/conversation filters
-- [ ] direct deep links to exact message
+- [x] message-level canonical substring search
+- [x] provider/date/role/conversation filters
+- [x] search saved branch messages rather than only ChatGPT current path
+- [x] direct deep links to exact message
+- [x] exact-message context window so deep links do not require paging from the start
+- [x] automatic all-branch view when a ChatGPT search hit is outside current path
+- [ ] production acceptance against imported real ChatGPT / Claude data
 
 ### PR F — favorites
 

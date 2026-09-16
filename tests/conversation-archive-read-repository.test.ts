@@ -32,3 +32,23 @@ test("Conversation read queries remain user scoped", () => {
   assert.match(repositorySource, /eq\(conversations\.userId, input\.userId\)/);
   assert.match(repositorySource, /eq\(conversationMessages\.userId, input\.userId\)/);
 });
+
+
+test("Conversation dedicated search scans canonical primary user/assistant text across saved branches", () => {
+  assert.match(
+    repositorySource,
+    /strpos\(lower\(\$\{conversationMessages\.displayText\}\), lower\(\$\{input\.query\}\)\) > 0/,
+  );
+  assert.match(repositorySource, /eq\(conversationMessages\.isPrimary, true\)/);
+  assert.match(repositorySource, /inArray\(conversationMessages\.role, \["user", "assistant"\]\)/);
+  const searchStart = repositorySource.indexOf("async searchMessages");
+  const searchEnd = repositorySource.indexOf("async findMessageOrdinal", searchStart);
+  const searchSource = repositorySource.slice(searchStart, searchEnd);
+  assert.doesNotMatch(searchSource, /isCurrentPath.*true/);
+});
+
+test("exact-message context uses the same provider/view visibility and stable ordering as ordinary reads", () => {
+  assert.match(repositorySource, /async findMessageOrdinal/);
+  assert.match(repositorySource, /messageVisibility\(input\.provider, input\.view\)/);
+  assert.match(repositorySource, /orderBy\(\.\.\.messageOrder\(input\.provider, input\.view\)\)/);
+});

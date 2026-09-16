@@ -9,6 +9,7 @@ import type {
   ConversationArchiveListItem,
   ConversationArchiveDetail,
   ConversationArchiveMessage,
+  ConversationArchiveSearchRecord,
   ConversationDailyStat,
 } from "../src/domains/conversation/conversation-archive-read-repository.js";
 
@@ -32,6 +33,8 @@ class FakeReadRepository implements ConversationArchiveReadRepository {
   };
   lastStatsInput: Parameters<ConversationArchiveReadRepository["dailyStats"]>[0] | null = null;
   lastMessagesInput: Parameters<ConversationArchiveReadRepository["listMessages"]>[0] | null = null;
+  lastSearchInput: Parameters<ConversationArchiveReadRepository["searchMessages"]>[0] | null = null;
+  ordinal: { index: number; total: number } | null = { index: 250, total: 400 };
 
   async findUserStatus() { return this.status; }
 
@@ -49,6 +52,29 @@ class FakeReadRepository implements ConversationArchiveReadRepository {
   async listMessages(input: Parameters<ConversationArchiveReadRepository["listMessages"]>[0]): Promise<{ items: ConversationArchiveMessage[]; total: number }> {
     this.lastMessagesInput = input;
     return { items: [], total: 0 };
+  }
+
+  async searchMessages(input: Parameters<ConversationArchiveReadRepository["searchMessages"]>[0]): Promise<{ items: ConversationArchiveSearchRecord[]; total: number }> {
+    this.lastSearchInput = input;
+    return {
+      items: [{
+        messageId: "22222222-2222-4222-8222-222222222222",
+        conversationId: CONVERSATION_ID,
+        provider: "chatgpt",
+        conversationTitle: "Example",
+        sourceNodeId: "node",
+        role: "assistant",
+        model: "gpt-5-6",
+        sourceCreatedAt: "2026-09-02T00:00:00.000Z",
+        isCurrentPath: true,
+        displayText: "prefix ".repeat(80) + "needle" + " suffix".repeat(80),
+      }],
+      total: 1,
+    };
+  }
+
+  async findMessageOrdinal() {
+    return this.ordinal;
   }
 
   async dailyStats(input: Parameters<ConversationArchiveReadRepository["dailyStats"]>[0]): Promise<ConversationDailyStat[]> {
@@ -151,6 +177,96 @@ test("Conversation read service enforces active-user ownership and not-found sem
   repository.detailValue = null;
   await assert.rejects(
     () => service.detail({ userId: "user", conversationId: CONVERSATION_ID }),
+    (error: unknown) =>
+      error instanceof ConversationArchiveReadError
+      && error.code === "CONVERSATION_NOT_FOUND",
+  );
+});
+
+
+test("Conversation search validates filters, forwards timezone, and returns a bounded snippet", async () => {
+  const repository = new FakeReadRepository();
+  const service = new ConversationArchiveReadService(repository);
+
+  const result = await service.search({
+    userId: "user",
+    query: " needle ",
+    provider: "chatgpt",
+    role: "assistant",
+    conversationId: CONVERSATION_ID,
+    from: "2026-09-01",
+    to: "2026-09-16",
+    timeZone: "Asia/Shanghai",
+  });
+
+  assert.equal(repository.lastSearchInput?.query, "needle");
+  assert.equal(repository.lastSearchInput?.provider, "chatgpt");
+  assert.equal(repository.lastSearchInput?.role, "assistant");
+  assert.equal(repository.lastSearchInput?.conversationId, CONVERSATION_ID);
+  assert.equal(repository.lastSearchInput?.timeZone, "Asia/Shanghai");
+  assert.equal(result.total, 1);
+  assert.equal(result.items.length, 1);
+  assert.ok(result.items[0]!.snippet.includes("needle"));
+  assert.ok(result.items[0]!.snippet.length <= 362);
+  assert.equal("displayText" in result.items[0]!, false);
+});
+
+test("Conversation search rejects blank queries and date filters without a valid timezone", async () => {
+  const service = new ConversationArchiveReadService(new FakeReadRepository());
+
+  await assert.rejects(
+    () => service.search({ userId: "user", query: "   " }),
+    (error: unknown) =>
+      error instanceof ConversationArchiveReadError
+      && error.code === "CONVERSATION_INVALID_REQUEST",
+  );
+
+  await assert.rejects(
+    () => service.search({
+      userId: "user",
+      query: "test",
+      from: "2026-09-01",
+      timeZone: "",
+    }),
+    (error: unknown) =>
+      error instanceof ConversationArchiveReadError
+      && error.code === "CONVERSATION_INVALID_REQUEST",
+  );
+});
+
+test("exact message context computes a bounded offset around the anchor", async () => {
+  const repository = new FakeReadRepository();
+  repository.listMessages = async (input) => {
+    repository.lastMessagesInput = input;
+    return { items: [], total: 400 };
+  };
+  const service = new ConversationArchiveReadService(repository);
+
+  const context = await service.messageContext({
+    userId: "user",
+    conversationId: CONVERSATION_ID,
+    messageId: "22222222-2222-4222-8222-222222222222",
+    radius: 20,
+  });
+
+  assert.equal(repository.lastMessagesInput?.offset, 230);
+  assert.equal(repository.lastMessagesInput?.limit, 41);
+  assert.equal(context.offset, 230);
+  assert.equal(context.anchorIndex, 20);
+  assert.equal(context.total, 400);
+});
+
+test("message context returns not-found when the requested anchor is outside the selected view", async () => {
+  const repository = new FakeReadRepository();
+  repository.ordinal = null;
+  const service = new ConversationArchiveReadService(repository);
+
+  await assert.rejects(
+    () => service.messageContext({
+      userId: "user",
+      conversationId: CONVERSATION_ID,
+      messageId: "22222222-2222-4222-8222-222222222222",
+    }),
     (error: unknown) =>
       error instanceof ConversationArchiveReadError
       && error.code === "CONVERSATION_NOT_FOUND",

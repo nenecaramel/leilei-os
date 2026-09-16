@@ -4,8 +4,23 @@ import type {
   ConversationArchiveMessage,
   ConversationArchiveReadRepository,
   ConversationArchiveListItem,
+  ConversationArchiveSearchRecord,
   ConversationDailyStat,
 } from "./conversation-archive-read-repository.js";
+
+export type ConversationArchiveSearchResult = Omit<
+  ConversationArchiveSearchRecord,
+  "displayText"
+> & {
+  snippet: string;
+};
+
+export type ConversationMessageContext = {
+  items: ConversationArchiveMessage[];
+  total: number;
+  offset: number;
+  anchorIndex: number;
+};
 
 export class ConversationArchiveReadError extends Error {
   constructor(
@@ -27,6 +42,47 @@ function provider(value: unknown): ConversationProvider | undefined {
     "CONVERSATION_INVALID_REQUEST",
     "Conversation provider is invalid.",
   );
+}
+
+function searchRole(value: unknown): "user" | "assistant" | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (value === "user" || value === "assistant") return value;
+  throw new ConversationArchiveReadError(
+    "CONVERSATION_INVALID_REQUEST",
+    "Conversation role is invalid.",
+  );
+}
+
+function searchQuery(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ConversationArchiveReadError(
+      "CONVERSATION_INVALID_REQUEST",
+      "Conversation search query is invalid.",
+    );
+  }
+  const query = value.normalize("NFC").trim();
+  if (!query || query.length > 500) {
+    throw new ConversationArchiveReadError(
+      "CONVERSATION_INVALID_REQUEST",
+      "Conversation search query is invalid.",
+    );
+  }
+  return query;
+}
+
+function optionalDate(value: unknown, name: string): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return dateOnly(value, name);
+}
+
+function snippet(text: string, query: string): string {
+  const max = 360;
+  if (text.length <= max) return text;
+  const index = text.toLowerCase().indexOf(query.toLowerCase());
+  const center = index >= 0 ? index : 0;
+  const start = Math.max(0, center - 120);
+  const end = Math.min(text.length, start + max);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 }
 
 function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
@@ -163,6 +219,118 @@ export class ConversationArchiveReadService {
       limit: boundedInt(input.limit, 200, 1, 500),
       offset: boundedInt(input.offset, 0, 0, 1_000_000),
     });
+  }
+
+  async search(input: {
+    userId: string;
+    query: unknown;
+    provider?: unknown;
+    role?: unknown;
+    conversationId?: unknown;
+    from?: unknown;
+    to?: unknown;
+    timeZone?: unknown;
+    limit?: unknown;
+    offset?: unknown;
+  }): Promise<{ items: ConversationArchiveSearchResult[]; total: number }> {
+    await this.requireActive(input.userId);
+    const query = searchQuery(input.query);
+    const from = optionalDate(input.from, "from");
+    const to = optionalDate(input.to, "to");
+    if (from && to && from > to) {
+      throw new ConversationArchiveReadError(
+        "CONVERSATION_INVALID_REQUEST",
+        "Conversation date range is invalid.",
+      );
+    }
+    const zone = from || to ? timeZone(input.timeZone) : undefined;
+    const conversationId = input.conversationId === undefined
+      || input.conversationId === null
+      || input.conversationId === ""
+        ? undefined
+        : uuid(input.conversationId);
+
+    const result = await this.repository.searchMessages({
+      userId: input.userId,
+      query,
+      provider: provider(input.provider),
+      role: searchRole(input.role),
+      conversationId,
+      from,
+      to,
+      timeZone: zone,
+      limit: boundedInt(input.limit, 50, 1, 100),
+      offset: boundedInt(input.offset, 0, 0, 1_000_000),
+    });
+    return {
+      total: result.total,
+      items: result.items.map(({ displayText, ...item }) => ({
+        ...item,
+        snippet: snippet(displayText, query),
+      })),
+    };
+  }
+
+  async messageContext(input: {
+    userId: string;
+    conversationId: unknown;
+    messageId: unknown;
+    view?: unknown;
+    radius?: unknown;
+  }): Promise<ConversationMessageContext> {
+    await this.requireActive(input.userId);
+    const conversationId = uuid(input.conversationId);
+    const messageId = uuid(input.messageId);
+    const detail = await this.repository.getConversation({
+      userId: input.userId,
+      conversationId,
+    });
+    if (!detail) {
+      throw new ConversationArchiveReadError(
+        "CONVERSATION_NOT_FOUND",
+        "Conversation was not found.",
+      );
+    }
+    const view = input.view === undefined || input.view === "" || input.view === "default"
+      ? "default"
+      : input.view === "all"
+        ? "all"
+        : null;
+    if (!view) {
+      throw new ConversationArchiveReadError(
+        "CONVERSATION_INVALID_REQUEST",
+        "Conversation message view is invalid.",
+      );
+    }
+    const radius = boundedInt(input.radius, 20, 1, 100);
+    const ordinal = await this.repository.findMessageOrdinal({
+      userId: input.userId,
+      conversationId,
+      provider: detail.provider,
+      view,
+      messageId,
+    });
+    if (!ordinal) {
+      throw new ConversationArchiveReadError(
+        "CONVERSATION_NOT_FOUND",
+        "Conversation message was not found.",
+      );
+    }
+    const offset = Math.max(0, ordinal.index - radius);
+    const result = await this.repository.listMessages({
+      userId: input.userId,
+      conversationId,
+      provider: detail.provider,
+      view,
+      limit: radius * 2 + 1,
+      offset,
+    });
+    return {
+      items: result.items,
+      total: ordinal.total,
+      offset,
+      anchorIndex: ordinal.index - offset,
+    };
   }
 
   async stats(input: {

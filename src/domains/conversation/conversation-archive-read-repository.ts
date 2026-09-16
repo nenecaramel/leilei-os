@@ -44,6 +44,19 @@ export type ConversationArchiveMessage = {
   displayText: string;
 };
 
+export type ConversationArchiveSearchRecord = {
+  messageId: string;
+  conversationId: string;
+  provider: ConversationProvider;
+  conversationTitle: string | null;
+  sourceNodeId: string;
+  role: "user" | "assistant";
+  model: string | null;
+  sourceCreatedAt: string | null;
+  isCurrentPath: boolean;
+  displayText: string;
+};
+
 export type ConversationDailyStat = {
   date: string;
   provider: ConversationProvider;
@@ -75,12 +88,57 @@ export interface ConversationArchiveReadRepository {
     limit: number;
     offset: number;
   }): Promise<{ items: ConversationArchiveMessage[]; total: number }>;
+  searchMessages(input: {
+    userId: string;
+    query: string;
+    provider?: ConversationProvider;
+    role?: "user" | "assistant";
+    conversationId?: string;
+    from?: string;
+    to?: string;
+    timeZone?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ items: ConversationArchiveSearchRecord[]; total: number }>;
+  findMessageOrdinal(input: {
+    userId: string;
+    conversationId: string;
+    provider: ConversationProvider;
+    view: "default" | "all";
+    messageId: string;
+  }): Promise<{ index: number; total: number } | null>;
   dailyStats(input: {
     userId: string;
     from: string;
     to: string;
     timeZone: string;
   }): Promise<ConversationDailyStat[]>;
+}
+
+function messageVisibility(
+  provider: ConversationProvider,
+  view: "default" | "all",
+) {
+  if (view === "all" || provider === "claude") {
+    return and(
+      eq(conversationMessages.isPrimary, true),
+      inArray(conversationMessages.role, ["user", "assistant"]),
+    );
+  }
+  return and(
+    eq(conversationMessages.isPrimary, true),
+    inArray(conversationMessages.role, ["user", "assistant"]),
+    eq(conversationMessages.isCurrentPath, true),
+  );
+}
+
+function messageOrder(
+  provider: ConversationProvider,
+  view: "default" | "all",
+) {
+  return provider === "chatgpt" && view === "default"
+    ? [asc(conversationMessages.currentPathIndex), asc(conversationMessages.id)] as const
+    : [asc(conversationMessages.sourceCreatedAt), asc(conversationMessages.id)] as const;
 }
 
 function visibleMessagePredicate() {
@@ -266,21 +324,7 @@ implements ConversationArchiveReadRepository {
     limit: number;
     offset: number;
   }): Promise<{ items: ConversationArchiveMessage[]; total: number }> {
-    const visibility = input.view === "all"
-      ? and(
-          eq(conversationMessages.isPrimary, true),
-          inArray(conversationMessages.role, ["user", "assistant"]),
-        )
-      : input.provider === "chatgpt"
-        ? and(
-            eq(conversationMessages.isPrimary, true),
-            inArray(conversationMessages.role, ["user", "assistant"]),
-            eq(conversationMessages.isCurrentPath, true),
-          )
-        : and(
-            eq(conversationMessages.isPrimary, true),
-            inArray(conversationMessages.role, ["user", "assistant"]),
-          );
+    const visibility = messageVisibility(input.provider, input.view);
     const where = and(
       eq(conversationMessages.userId, input.userId),
       eq(conversationMessages.conversationId, input.conversationId),
@@ -311,12 +355,7 @@ implements ConversationArchiveReadRepository {
       })
       .from(conversationMessages)
       .where(where)
-      .orderBy(
-        input.provider === "chatgpt" && input.view === "default"
-          ? asc(conversationMessages.currentPathIndex)
-          : asc(conversationMessages.sourceCreatedAt),
-        asc(conversationMessages.id),
-      )
+      .orderBy(...messageOrder(input.provider, input.view))
       .limit(input.limit)
       .offset(input.offset);
 
@@ -329,6 +368,100 @@ implements ConversationArchiveReadRepository {
         sourceUpdatedAt: toIso(row.sourceUpdatedAt),
       })),
     };
+  }
+
+  async searchMessages(input: {
+    userId: string;
+    query: string;
+    provider?: ConversationProvider;
+    role?: "user" | "assistant";
+    conversationId?: string;
+    from?: string;
+    to?: string;
+    timeZone?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ items: ConversationArchiveSearchRecord[]; total: number }> {
+    const localDate = input.timeZone
+      ? sql<string>`timezone(${input.timeZone}, ${conversationMessages.sourceCreatedAt})::date`
+      : null;
+    const where = and(
+      eq(conversationMessages.userId, input.userId),
+      eq(conversationMessages.isPrimary, true),
+      inArray(conversationMessages.role, ["user", "assistant"]),
+      sql`strpos(lower(${conversationMessages.displayText}), lower(${input.query})) > 0`,
+      input.provider ? eq(conversations.provider, input.provider) : undefined,
+      input.role ? eq(conversationMessages.role, input.role) : undefined,
+      input.conversationId
+        ? eq(conversations.id, input.conversationId)
+        : undefined,
+      input.from && localDate ? gte(localDate, input.from) : undefined,
+      input.to && localDate ? lte(localDate, input.to) : undefined,
+    );
+
+    const baseJoin = and(
+      eq(conversations.userId, input.userId),
+      eq(conversations.id, conversationMessages.conversationId),
+    );
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(conversationMessages)
+      .innerJoin(conversations, baseJoin)
+      .where(where);
+
+    const rows = await this.db
+      .select({
+        messageId: conversationMessages.id,
+        conversationId: conversations.id,
+        provider: conversations.provider,
+        conversationTitle: conversations.title,
+        sourceNodeId: conversationMessages.sourceNodeId,
+        role: conversationMessages.role,
+        model: conversationMessages.model,
+        sourceCreatedAt: conversationMessages.sourceCreatedAt,
+        isCurrentPath: conversationMessages.isCurrentPath,
+        displayText: conversationMessages.displayText,
+      })
+      .from(conversationMessages)
+      .innerJoin(conversations, baseJoin)
+      .where(where)
+      .orderBy(
+        desc(conversationMessages.sourceCreatedAt),
+        desc(conversationMessages.id),
+      )
+      .limit(input.limit)
+      .offset(input.offset);
+
+    return {
+      total: countRow?.total ?? 0,
+      items: rows.map((row) => ({
+        ...row,
+        provider: row.provider as ConversationProvider,
+        role: row.role as "user" | "assistant",
+        sourceCreatedAt: toIso(row.sourceCreatedAt),
+      })),
+    };
+  }
+
+  async findMessageOrdinal(input: {
+    userId: string;
+    conversationId: string;
+    provider: ConversationProvider;
+    view: "default" | "all";
+    messageId: string;
+  }): Promise<{ index: number; total: number } | null> {
+    const rows = await this.db
+      .select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.userId, input.userId),
+        eq(conversationMessages.conversationId, input.conversationId),
+        messageVisibility(input.provider, input.view),
+      ))
+      .orderBy(...messageOrder(input.provider, input.view));
+
+    const index = rows.findIndex((row) => row.id === input.messageId);
+    return index < 0 ? null : { index, total: rows.length };
   }
 
   async dailyStats(input: {
