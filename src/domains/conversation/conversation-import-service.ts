@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { hashCanonical } from "../import/import-canonical.js";
 import {
   buildConversationMergePlan,
@@ -185,7 +186,10 @@ export class ConversationImportService {
       expectedBytes: source.rawBytes,
     });
     try {
-      return await this.previewStaged(staged, userId);
+      return await this.previewStaged(staged, userId, {
+        executionKey: `reapply:${randomUUID()}`,
+        forceNewRun: true,
+      });
     } finally {
       await staged.cleanup();
     }
@@ -293,6 +297,7 @@ export class ConversationImportService {
           sourceId: run.sourceId,
           parserVersion: run.parserVersion,
           previewFingerprint: expectedPreviewFingerprint,
+          executionKey: run.executionKey,
         });
         if (priorExecution) {
           await transaction.markRunSuperseded({
@@ -564,6 +569,7 @@ export class ConversationImportService {
               sourceId: run.sourceId,
               parserVersion: run.parserVersion,
               previewFingerprint: run.previewFingerprint,
+              executionKey: run.executionKey,
             })
           : null;
       if (executed) {
@@ -746,6 +752,7 @@ export class ConversationImportService {
                 sourceId: run.sourceId,
                 parserVersion: run.parserVersion,
                 previewFingerprint: locked.previewFingerprint,
+                executionKey: locked.executionKey,
               })
             : null;
         if (executed) {
@@ -962,7 +969,12 @@ export class ConversationImportService {
   private async previewStaged(
     upload: StagedConversationUpload,
     userId: string,
+    options: {
+      executionKey?: string;
+      forceNewRun?: boolean;
+    } = {},
   ): Promise<ConversationImportPreview> {
+    const executionKey = options.executionKey ?? "standard";
     const current = await this.stateRepository.readMergeState(userId);
     const exclusions = await this.repository.listExclusions(userId);
     const currentByKey = new Map<string, CurrentConversationState>(
@@ -1077,12 +1089,15 @@ export class ConversationImportService {
           });
         })();
     const { source, reused } = persisted;
-    const executed = await this.repository.findExecutedRun({
-      userId,
-      sourceId: source.id,
-      parserVersion: providerInfo.version,
-      previewFingerprint,
-    });
+    const executed = options.forceNewRun
+      ? null
+      : await this.repository.findExecutedRun({
+          userId,
+          sourceId: source.id,
+          parserVersion: providerInfo.version,
+          previewFingerprint,
+          executionKey,
+        });
 
     const warningCodes = Object.fromEntries(
       [...warningCodeCounts.entries()].sort(([left], [right]) => left.localeCompare(right)),
@@ -1101,6 +1116,7 @@ export class ConversationImportService {
       userId,
       sourceId: source.id,
       parserVersion: providerInfo.version,
+      executionKey,
       previewFingerprint,
       summary: summaryRecord,
       warningCount,
