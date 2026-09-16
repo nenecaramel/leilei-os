@@ -4,11 +4,13 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import { PageState } from "../components/StateSurface";
 import { PageHeader } from "./PageHeader";
 import { ConversationSearchPanel } from "./ConversationSearchPanel";
+import { ConversationBatchImportPreview } from "./ConversationBatchImportPreview";
 import { ConversationImportHistoryPanel } from "./ConversationImportHistoryPanel";
 import {
   createConversationArchiveApi,
   type ConversationDailyStat,
   type ConversationDetail,
+  type ConversationImportBatchPreview,
   type ConversationImportPreview,
   type ConversationListItem,
   type ConversationMessage,
@@ -96,6 +98,7 @@ function ConversationListView({
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [stats, setStats] = useState<StatsState>({ status: "loading" });
   const [preview, setPreview] = useState<ConversationImportPreview | null>(null);
+  const [batchPreview, setBatchPreview] = useState<ConversationImportBatchPreview | null>(null);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -130,19 +133,43 @@ function ConversationListView({
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void loadStats(); }, [loadStats]);
 
-  const onFile = async (file: File | null) => {
-    if (!file) return;
+  const onFiles = async (fileList: FileList | null) => {
+    const files = fileList ? Array.from(fileList) : [];
+    if (files.length === 0) return;
+    if (files.length > 20) {
+      setImportMessage("一次最多选择 20 份 Conversation export。");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setImporting(true);
     setImportMessage("");
     setPreview(null);
+    setBatchPreview(null);
     try {
-      const result = await client.preview(file);
-      setPreview(result);
-      if (result.already_executed) {
-        setImportMessage("这份原始导出已经导入过，不会重复写入。");
+      if (files.length === 1) {
+        const result = await client.preview(files[0]!);
+        setPreview(result);
+        if (result.already_executed) {
+          setImportMessage("这份原始导出已经导入过，不会重复写入。");
+        }
+        return;
+      }
+
+      const runIds: string[] = [];
+      for (const file of files) {
+        const result = await client.preview(file);
+        runIds.push(result.import_run_id);
+      }
+      const result = await client.previewBatch(runIds);
+      setBatchPreview(result);
+      if (result.files.pending === 0) {
+        setImportMessage("这批文件都已经导入过或属于批内重复，不会产生新的写入。");
       }
     } catch {
-      setImportMessage("无法读取这份 Conversation export。");
+      setImportMessage(
+        "无法生成整批 Preview。已经成功读取的 source 只会保留在 Import history，不会自动执行写入。",
+      );
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -169,6 +196,28 @@ function ConversationListView({
     }
   };
 
+  const executeBatchImport = async () => {
+    if (!batchPreview || batchPreview.files.pending === 0) return;
+    setImporting(true);
+    setImportMessage("");
+    try {
+      const result = await client.executeBatch(batchPreview);
+      setImportMessage(
+        result.outcome === "executed"
+          ? "整批导入完成。"
+          : "这批导出已经处理过，没有重复写入。",
+      );
+      setBatchPreview(null);
+      setRefreshKey((value) => value + 1);
+    } catch {
+      setImportMessage(
+        "整批导入前数据已经变化，或执行失败。请重新选择这些文件生成新的 Batch Preview。",
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="page conversation-page">
       <PageHeader
@@ -182,7 +231,8 @@ function ConversationListView({
               className="conversation-file-input"
               type="file"
               accept=".json,.zip,application/json,application/zip"
-              onChange={(event) => void onFile(event.target.files?.[0] ?? null)}
+              multiple
+              onChange={(event) => void onFiles(event.target.files)}
             />
             <button
               className="secondary-button conversation-import-button"
@@ -244,6 +294,15 @@ function ConversationListView({
         </section>
       ) : null}
 
+      {batchPreview ? (
+        <ConversationBatchImportPreview
+          preview={batchPreview}
+          importing={importing}
+          onCancel={() => setBatchPreview(null)}
+          onExecute={() => void executeBatchImport()}
+        />
+      ) : null}
+
       {importMessage ? (
         <p className="conversation-inline-status" role="status">{importMessage}</p>
       ) : null}
@@ -252,6 +311,7 @@ function ConversationListView({
         client={client}
         refreshKey={refreshKey}
         onPreview={(result) => {
+          setBatchPreview(null);
           setPreview(result);
           setImportMessage("");
         }}
