@@ -10,6 +10,8 @@ const source = readFileSync(
 test("Conversation Archive merge-state reads stay user-scoped and minimal", () => {
   assert.match(source, /where\(eq\(conversations\.userId, userId\)\)/);
   assert.match(source, /conversationMessages\.sourceFingerprint/);
+  assert.match(source, /conversationMessages\.sourceUpdatedAt/);
+  assert.match(source, /conversations\.sourceUpdatedAt/);
   assert.match(source, /conversationMessages\.isCurrentPath/);
   assert.match(source, /conversationMessages\.currentPathIndex/);
   assert.match(source, /conversationMessages\.turnIndex/);
