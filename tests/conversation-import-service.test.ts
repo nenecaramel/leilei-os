@@ -50,6 +50,12 @@ class FakeImportRepository implements ConversationImportRepository {
     return this.sourcesBySha.get(rawSha256) ?? null;
   }
 
+  async findSourceById(userId: string, sourceId: string) {
+    return [...this.sourcesBySha.values()].find(
+      (source) => source.userId === userId && source.id === sourceId,
+    ) ?? null;
+  }
+
   async createOrReuseSourceWithBlob(input: {
     userId: string;
     provider: "chatgpt" | "claude";
@@ -95,6 +101,7 @@ class FakeImportRepository implements ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    executionKey: string;
     previewFingerprint: string;
     summary: Record<string, unknown>;
     warningCount: number;
@@ -109,6 +116,7 @@ class FakeImportRepository implements ConversationImportRepository {
       userId: input.userId,
       sourceId: input.sourceId,
       parserVersion: input.parserVersion,
+      executionKey: input.executionKey,
       status: "processing",
       previewFingerprint: input.previewFingerprint,
       summary: input.summary,
@@ -123,12 +131,16 @@ class FakeImportRepository implements ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    previewFingerprint: string;
+    executionKey: string;
   }) {
     for (const run of this.runs.values()) {
       if (
         run.userId === input.userId
         && run.sourceId === input.sourceId
         && run.parserVersion === input.parserVersion
+        && run.previewFingerprint === input.previewFingerprint
+        && run.executionKey === input.executionKey
         && run.status === "executed"
       ) {
         return { id: run.id, summary: run.summary };
@@ -178,6 +190,7 @@ class FakeExecutor implements ConversationImportExecutor {
           id: run.id,
           sourceId: run.sourceId,
           parserVersion: run.parserVersion,
+          executionKey: run.executionKey,
           status: run.status,
           previewFingerprint: run.previewFingerprint,
           summary: run.summary,
