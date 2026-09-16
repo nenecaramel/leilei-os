@@ -29,17 +29,26 @@ const blobMigrationSql = readFileSync(
 const blobSnapshot = JSON.parse(readFileSync(
   new URL("../drizzle/meta/0041_snapshot.json", import.meta.url),
   "utf8",
+)) as { id: string; prevId: string; tables: Record<string, unknown> };
+const exclusionMigrationSql = readFileSync(
+  new URL("../drizzle/0042_conversation_exclusions.sql", import.meta.url),
+  "utf8",
+);
+const exclusionSnapshot = JSON.parse(readFileSync(
+  new URL("../drizzle/meta/0042_snapshot.json", import.meta.url),
+  "utf8",
 )) as { prevId: string; tables: Record<string, unknown> };
 
 test("Conversation Archive migrations form the checked-in journal tail", () => {
   assert.equal(snapshot.prevId, previousSnapshot.id);
   assert.equal(blobSnapshot.prevId, snapshot.id);
+  assert.equal(exclusionSnapshot.prevId, blobSnapshot.id);
   const latest = journal.entries.at(-1);
   assert.deepEqual(latest, {
-    idx: 41,
+    idx: 42,
     version: "7",
-    when: 1789538400000,
-    tag: "0041_conversation_import_blobs",
+    when: 1789541400000,
+    tag: "0042_conversation_exclusions",
     breakpoints: true,
   });
 });
@@ -96,4 +105,20 @@ test("raw Conversation source blobs are persisted behind source ownership", () =
     /"conversation_import_blobs_source_user_fk" FOREIGN KEY \("source_id","user_id"\)/,
   );
   assert.ok(blobSnapshot.tables["public.conversation_import_blobs"]);
+});
+
+
+test("Conversation exclusion rules are provider/source-addressed and distinguish whole windows from branches", () => {
+  assert.match(schemaSource, /export const conversationExclusions = pgTable/);
+  assert.match(exclusionMigrationSql, /CREATE TABLE "conversation_exclusions"/);
+  assert.match(
+    exclusionMigrationSql,
+    /"conversation_exclusions_conversation_uidx"[^;]*WHERE "conversation_exclusions"."scope" = 'conversation'/,
+  );
+  assert.match(
+    exclusionMigrationSql,
+    /"conversation_exclusions_branch_uidx"[^;]*WHERE "conversation_exclusions"."scope" = 'branch' AND "conversation_exclusions"."source_node_id" IS NOT NULL/,
+  );
+  assert.match(exclusionMigrationSql, /"conversation_exclusions_scope_node_consistency"/);
+  assert.ok(exclusionSnapshot.tables["public.conversation_exclusions"]);
 });
