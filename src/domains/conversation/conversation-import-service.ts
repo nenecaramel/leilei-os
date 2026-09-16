@@ -1088,6 +1088,36 @@ function assertConversationImportBatchRunIds(runIds: readonly string[]): void {
   }
 }
 
+function readStoredMergeSummary(
+  summary: Record<string, unknown>,
+): ConversationMergeSummary {
+  const merge = summary.merge as ConversationMergeSummary | undefined;
+  return merge ?? emptyConversationImportSummary();
+}
+
+function readStoredWarningCodes(
+  summary: Record<string, unknown>,
+): Record<string, number> {
+  const value = summary.warning_codes;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    ),
+  );
+}
+
+function readStoredExclusions(
+  summary: Record<string, unknown>,
+): ConversationExclusionSummary {
+  const value = summary.exclusions as Partial<ConversationExclusionSummary> | undefined;
+  return {
+    conversations: typeof value?.conversations === "number" ? value.conversations : 0,
+    messages: typeof value?.messages === "number" ? value.messages : 0,
+    branch_roots: typeof value?.branch_roots === "number" ? value.branch_roots : 0,
+  };
+}
+
 function batchFilePreview(input: {
   inputIndex: number;
   run: {
