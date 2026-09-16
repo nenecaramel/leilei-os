@@ -394,4 +394,7 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - model is never guessed;
 - unknown provider fields/types are preserved or warned, never silently flattened away;
 - one provider parser cannot depend on another provider's raw schema;
+- a user-deleted conversation or branch remains excluded from later imports unless its exclusion rule is explicitly removed;
+- ordinary Archive pruning never deletes the immutable raw import source;
+- exclusion-rule changes after Preview make Execute stale before canonical writes;
 - Claude production support is not claimed until verified against the user's real export.
