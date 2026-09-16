@@ -12,6 +12,7 @@ import { GlobalSearchPageHeader } from "./GlobalSearchPageHeader";
 import {
   createGlobalSearchLocation,
   DEFAULT_GLOBAL_SEARCH_FILTERS,
+  DEFAULT_SEARCH_MODULES,
   hasValidGlobalSearchDateRange,
   hasSearchableGlobalSearchQuery,
   isGlobalSearchQueryWithinLimit,
@@ -230,7 +231,10 @@ export function GlobalSearchPageContent({ api }: Props) {
       query: nextFilters.q,
     });
 
-    if (nextFilters.modules.length < SEARCH_MODULES.length) {
+    const defaultModulesSelected =
+      nextFilters.modules.length === DEFAULT_SEARCH_MODULES.length
+      && DEFAULT_SEARCH_MODULES.every((module) => nextFilters.modules.includes(module));
+    if (!defaultModulesSelected) {
       params.set("modules", nextFilters.modules.join(","));
     }
 
@@ -512,7 +516,7 @@ export function GlobalSearchPageContent({ api }: Props) {
   const subtitle =
     state === "ready" || state === "empty"
       ? `${results.length}条结果`
-      : SEARCH_MODULES.map((module) => GLOBAL_SEARCH_MODULE_LABELS[module]).join(" · ");
+      : draftFilters.modules.map((module) => GLOBAL_SEARCH_MODULE_LABELS[module]).join(" · ");
 
   const statusText = useMemo(
     () =>
@@ -639,7 +643,7 @@ export function GlobalSearchPageContent({ api }: Props) {
 
       {state === "idle" ? (
         <p className="global-search-state-line" role="status" aria-live="polite">
-          搜索 Memory、Diary、Task、Todo、Universe 与 Shared Paper 中保存的内容
+          默认搜索 Memory、Diary、Task、Todo、Universe 与 Shared Paper；Conversations 可在模块筛选中开启
         </p>
       ) : null}
 

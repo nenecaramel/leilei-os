@@ -36,6 +36,66 @@ test("global search URL parsing uses safe defaults and stable serialization", ()
   assert.equal(getSafeTaskReturnTo("/search?q=goal&mode=phrase"), "/search?q=goal&mode=phrase");
 });
 
+test("global search keeps Conversations opt-in in URLs and opens exact message deep links", async () => {
+  assert.deepEqual(readGlobalSearchFilters("?q=needle&modules=conversation"), {
+    q: "needle",
+    modules: ["conversation"],
+    scope: "active",
+    mode: "normal",
+    dateFrom: "",
+    dateTo: "",
+  });
+  assert.deepEqual(readGlobalSearchFilters("?q=needle").modules, [
+    "memory",
+    "diary",
+    "task",
+    "todo",
+    "universe",
+    "shared_paper",
+  ]);
+  assert.equal(
+    createGlobalSearchLocation({
+      ...DEFAULT_GLOBAL_SEARCH_FILTERS,
+      q: "needle",
+      modules: ["conversation"],
+    }),
+    "/search?q=needle&modules=conversation",
+  );
+
+  const conversationId = "00000000-0000-4000-8000-000000000711";
+  const messageId = "00000000-0000-4000-8000-000000000712";
+  const api: WebApiClient = {
+    async request<T>() {
+      return response([{
+        ...result(messageId),
+        entity_type: "conversation",
+        stable_name: "Saved branch chat",
+        time_basis: "message_time",
+        detail_tool: null,
+        detail_arguments: null,
+        conversation_id: conversationId,
+        conversation_view: "all",
+        author: null,
+      }]) as T;
+    },
+  };
+  const page = await renderSearch("/search?q=needle&modules=conversation", api);
+  try {
+    const button = page.dom.window.document.querySelector<HTMLButtonElement>(".global-search-result-button");
+    assert.ok(button);
+    await React.act(async () => {
+      button.dispatchEvent(new page.dom.window.MouseEvent("click", { bubbles: true }));
+    });
+    const location = new URL(page.dom.window.location.href);
+    assert.equal(location.pathname, `/conversations/${conversationId}`);
+    assert.equal(location.searchParams.get("anchor"), messageId);
+    assert.equal(location.searchParams.get("view"), "all");
+    assert.equal(location.hash, `#message-${messageId}`);
+  } finally {
+    await page.cleanup();
+  }
+});
+
 test("global search distinguishes an empty query from an overlong query", () => {
   assert.equal(isGlobalSearchQueryWithinLimit(""), true);
   assert.equal(isGlobalSearchQueryWithinLimit("  \u0065\u0301  "), true);

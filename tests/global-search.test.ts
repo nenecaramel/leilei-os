@@ -219,3 +219,116 @@ test("GlobalSearchService rejects a repository row whose matched source does not
     /repository returned a non-matching snippet source/i,
   );
 });
+
+
+test("Conversation Archive is supported by Global Search but remains opt-in by default", async () => {
+  const repo = new Repository();
+  repo.result = [];
+  const service = new GlobalSearchService(repo);
+
+  await service.search({ userId: USER_ID, query: "needle" });
+  assert.deepEqual(repo.calls.at(-1)?.modules, [
+    "memory",
+    "diary",
+    "task",
+    "todo",
+    "universe",
+    "shared_paper",
+  ]);
+  assert.equal(repo.calls.at(-1)?.modules.includes("conversation"), false);
+
+  await service.search({
+    userId: USER_ID,
+    query: "needle",
+    modules: ["conversation"],
+  });
+  assert.deepEqual(repo.calls.at(-1)?.modules, ["conversation"]);
+});
+
+test("Conversation Global Search results carry exact Web deep-link metadata and no fake MCP detail pointer", async () => {
+  const repo = new Repository();
+  repo.result = [{
+    entityType: "conversation",
+    entityId: "00000000-0000-4000-8000-000000000711",
+    stableName: "Archived chat window",
+    matchedField: "text",
+    matchedValue: "some exact needle in a saved branch",
+    matchReason: "field_match",
+    lifecycleStatus: "active",
+    businessTime: new Date("2026-09-16T03:00:00.000Z"),
+    timeBasis: "message_time",
+    updatedAt: new Date("2026-09-16T03:00:00.000Z"),
+    rank: 4,
+    author: null,
+    conversationId: "00000000-0000-4000-8000-000000000712",
+    conversationView: "all",
+  }];
+
+  const result = await new GlobalSearchService(repo).search({
+    userId: USER_ID,
+    query: "needle",
+    modules: ["conversation"],
+  });
+
+  assert.equal(result.results[0]?.entity_type, "conversation");
+  assert.equal(result.results[0]?.detail_tool, null);
+  assert.equal(result.results[0]?.detail_arguments, null);
+  assert.equal(
+    result.results[0]?.conversation_id,
+    "00000000-0000-4000-8000-000000000712",
+  );
+  assert.equal(result.results[0]?.conversation_view, "all");
+  assert.equal(result.results[0]?.time_basis, "message_time");
+});
+
+test("global_search accepts the opt-in Conversation module and structured deep-link metadata", async (t) => {
+  const serviceResult: GlobalSearchResult = {
+    results: [{
+      entity_type: "conversation",
+      entity_id: "00000000-0000-4000-8000-000000000713",
+      stable_name: "Chat",
+      snippet: "needle",
+      matched_field: "text",
+      match_reason: "field_match",
+      lifecycle_status: "active",
+      business_time: "2026-09-16T03:00:00.000Z",
+      time_basis: "message_time",
+      updated_at: "2026-09-16T03:00:00.000Z",
+      author: null,
+      detail_tool: null,
+      detail_arguments: null,
+      conversation_id: "00000000-0000-4000-8000-000000000714",
+      conversation_view: "all",
+    }],
+    metadata: {
+      count: 1,
+      has_more: false,
+      next_cursor: null,
+      searched_modules: ["conversation"],
+      searched_scope: "active",
+    },
+  };
+  const server = createMcpServer({
+    globalSearch: {
+      globalSearchService: { async search() { return serviceResult; } },
+      getAuthenticatedUserId: () => USER_ID,
+    },
+  });
+  const client = new Client(
+    { name: "conversation-global-search", version: "1" },
+    { capabilities: {} },
+  );
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  await server.connect(b);
+  await client.connect(a);
+  t.after(async () => { await client.close(); await server.close(); });
+
+  const response = await client.callTool({
+    name: "global_search",
+    arguments: { query: "needle", modules: ["conversation"] },
+  });
+  assert.equal(response.isError, undefined);
+  const data = (response.structuredContent as { data: GlobalSearchResult }).data;
+  assert.equal(data.results[0]?.conversation_view, "all");
+  assert.equal(data.results[0]?.detail_tool, null);
+});

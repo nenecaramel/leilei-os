@@ -1,4 +1,5 @@
-export const SEARCH_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+export const DEFAULT_SEARCH_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+export const SEARCH_MODULES = [...DEFAULT_SEARCH_MODULES, "conversation"] as const;
 export const GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS = 200;
 export type SearchModule = typeof SEARCH_MODULES[number];
 export type SearchScope = "active" | "archived" | "all";
@@ -13,7 +14,7 @@ export type GlobalSearchFilters = {
 };
 export const DEFAULT_GLOBAL_SEARCH_FILTERS: GlobalSearchFilters = {
   q: "",
-  modules: [...SEARCH_MODULES],
+  modules: [...DEFAULT_SEARCH_MODULES],
   scope: "active",
   mode: "normal",
   dateFrom: "",
@@ -41,10 +42,10 @@ const modes = new Set<SearchMode>(["normal", "phrase"]);
 export function readGlobalSearchFilters(search: string): GlobalSearchFilters {
   const params = new URLSearchParams(search);
   const modulesValue = params.get("modules");
-  const modules = modulesValue?.split(",") ?? [...SEARCH_MODULES];
+  const modules = modulesValue?.split(",") ?? [...DEFAULT_SEARCH_MODULES];
   const uniqueModules = [...new Set(modules)];
   const modulesAreValid = uniqueModules.length > 0 && uniqueModules.every((module) => SEARCH_MODULES.includes(module as SearchModule));
-  const validModules = modulesAreValid ? uniqueModules as SearchModule[] : [...SEARCH_MODULES];
+  const validModules = modulesAreValid ? uniqueModules as SearchModule[] : [...DEFAULT_SEARCH_MODULES];
   const q = normalizeGlobalSearchQuery(params.get("q") ?? "");
   const scope = scopes.has(params.get("scope") as SearchScope)
     ? params.get("scope") as SearchScope
@@ -70,7 +71,10 @@ export function createGlobalSearchLocation(filters: GlobalSearchFilters): string
   const q = normalizeGlobalSearchQuery(filters.q);
   if (q) params.set("q", q);
   const modules = SEARCH_MODULES.filter((module) => filters.modules.includes(module));
-  if (modules.length && modules.length < SEARCH_MODULES.length) params.set("modules", modules.join(","));
+  const isDefaultModuleSet =
+    modules.length === DEFAULT_SEARCH_MODULES.length
+    && DEFAULT_SEARCH_MODULES.every((module) => modules.includes(module));
+  if (modules.length && !isDefaultModuleSet) params.set("modules", modules.join(","));
   if (filters.scope !== "active") params.set("scope", filters.scope);
   if (filters.mode !== "normal") params.set("mode", filters.mode);
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);

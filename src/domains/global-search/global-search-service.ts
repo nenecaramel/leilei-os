@@ -12,7 +12,8 @@ import type {
   GlobalSearchTimeBasis,
 } from "./global-search-repository.js";
 
-const MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+const DEFAULT_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+const MODULES = [...DEFAULT_MODULES, "conversation"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
 const CURSOR_FINGERPRINT = /^[0-9a-f]{64}$/;
@@ -47,6 +48,8 @@ export type GlobalSearchItem = {
   author: ContentAuthor | null;
   detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | null;
   detail_arguments: { id: string; scope: "active" | "archived" } | { id: string } | { date: string } | null;
+  conversation_id?: string | null;
+  conversation_view?: "default" | "all" | null;
 };
 
 export type GlobalSearchResult = {
@@ -117,18 +120,14 @@ export class GlobalSearchService {
         time_basis: row.timeBasis,
         updated_at: row.updatedAt.toISOString(),
         author: row.author,
-        detail_tool: row.entityType === "universe"
-          ? "get_universe_node"
-          : row.entityType === "todo"
-            ? "read_todo_day"
-            : row.entityType === "shared_paper"
-              ? "get_shared_paper"
-              : ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[row.entityType],
-        detail_arguments: row.entityType === "universe" || row.entityType === "shared_paper"
-          ? { id: row.entityId }
-          : row.entityType === "todo"
-            ? todoDetailArguments(row)
-            : { id: row.entityId, scope: row.lifecycleStatus },
+        detail_tool: detailTool(row.entityType),
+        detail_arguments: detailArguments(row),
+        conversation_id: row.entityType === "conversation"
+          ? row.conversationId ?? null
+          : null,
+        conversation_view: row.entityType === "conversation"
+          ? row.conversationView ?? "default"
+          : null,
       })),
       metadata: {
         count: page.length,
@@ -147,6 +146,27 @@ export class GlobalSearchService {
       },
     };
   }
+}
+
+function detailTool(
+  entityType: GlobalSearchModule,
+): GlobalSearchItem["detail_tool"] {
+  if (entityType === "conversation") return null;
+  if (entityType === "universe") return "get_universe_node";
+  if (entityType === "todo") return "read_todo_day";
+  if (entityType === "shared_paper") return "get_shared_paper";
+  return ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[entityType];
+}
+
+function detailArguments(
+  row: GlobalSearchRow,
+): GlobalSearchItem["detail_arguments"] {
+  if (row.entityType === "conversation") return null;
+  if (row.entityType === "universe" || row.entityType === "shared_paper") {
+    return { id: row.entityId };
+  }
+  if (row.entityType === "todo") return todoDetailArguments(row);
+  return { id: row.entityId, scope: row.lifecycleStatus };
 }
 
 function todoDetailArguments(row: GlobalSearchRow): { date: string } {
@@ -169,7 +189,7 @@ function normalizeRequired(value: unknown, max: number): string {
 }
 
 function normalizeModules(values?: readonly string[]): GlobalSearchModule[] {
-  if (values === undefined) return [...MODULES];
+  if (values === undefined) return [...DEFAULT_MODULES];
   if (!Array.isArray(values) || values.length === 0) invalid();
   const unique = [...new Set(values)];
   if (unique.some((value) => typeof value !== "string" || !MODULES.includes(value as GlobalSearchModule))) invalid();
