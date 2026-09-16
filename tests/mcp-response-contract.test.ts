@@ -339,8 +339,10 @@ test("routing descriptions align with executable schemas and the MCP inventory r
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
   const tools = (await pair.client.listTools()).tools;
   // The current production registration exposes the accepted core surface.
-  assert.equal(tools.length, 61);
+  assert.equal(tools.length, 63);
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
+  assert.ok(byName.has("search_conversations"));
+  assert.ok(byName.has("read_conversation"));
 
   const createTask = byName.get("create_task");
   assert.ok(createTask?.inputSchema.required?.includes("idempotency_key"));
