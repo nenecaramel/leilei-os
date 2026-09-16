@@ -50,6 +50,8 @@ import { DrizzleConversationFavoriteRepository } from "../domains/conversation/c
 import { ConversationFavoriteService } from "../domains/conversation/conversation-favorite-service.js";
 import { DrizzleConversationExclusionManagementRepository } from "../domains/conversation/conversation-exclusion-management-repository.js";
 import { ConversationExclusionManagementService } from "../domains/conversation/conversation-exclusion-management-service.js";
+import { DrizzleConversationImportHistoryRepository } from "../domains/conversation/conversation-import-history-repository.js";
+import { ConversationImportHistoryService } from "../domains/conversation/conversation-import-history-service.js";
 import {
   createSentinelScheduler as buildSentinelScheduler,
   type SentinelScheduler,
@@ -139,6 +141,9 @@ export function createProcessRuntime(
   const conversationExclusionManagementService = new ConversationExclusionManagementService(
     new DrizzleConversationExclusionManagementRepository(db),
   );
+  const conversationImportHistoryService = new ConversationImportHistoryService(
+    new DrizzleConversationImportHistoryRepository(db),
+  );
   const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
     buildSentinelScheduler({ repository })))(sentinelRepository);
 
@@ -213,6 +218,7 @@ export function createProcessRuntime(
       webConversationPruningService: conversationPruningService,
       webConversationFavoriteService: conversationFavoriteService,
       webConversationExclusionManagementService: conversationExclusionManagementService,
+      webConversationImportHistoryService: conversationImportHistoryService,
       healthSyncService: healthService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
