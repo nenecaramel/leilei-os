@@ -60,3 +60,27 @@ test("desktop navigation owns its typography so route-level fonts cannot shift t
   assert.match(navigationCss, /-apple-system/);
   assert.match(navigationCss, /BlinkMacSystemFont/);
 });
+
+
+test("Conversation list reuses the native module header and search chrome", () => {
+  assert.match(page, /className="memory-page-header conversation-page-header"/);
+  assert.match(page, /className="memory-page-title">Conversations/);
+  assert.match(page, /className="memory-page-count"/);
+  assert.match(page, /<ModuleSearchButton/);
+  assert.match(page, /<ModuleSearchField/);
+  assert.match(css, /conversation-page-header \.memory-page-title/);
+  assert.match(css, /font-size:\s*18px/);
+  assert.match(css, /conversation-page-header \.memory-page-count/);
+  assert.match(css, /font-size:\s*12px/);
+  assert.match(css, /width:\s*44px/);
+  assert.match(css, /min-height:\s*42px/);
+});
+
+test("Conversation rows use the approved Memory inset-card geometry", () => {
+  assert.match(css, /\.conversation-card\s*\{[^}]*min-height:\s*60px/s);
+  assert.match(css, /\.conversation-card\s*\{[^}]*padding:\s*11px 13px/s);
+  assert.match(css, /\.conversation-card \+ \.conversation-card::before/);
+  assert.match(css, /right:\s*13px/);
+  assert.match(css, /left:\s*13px/);
+  assert.match(css, /border-radius:\s*14px/);
+});
