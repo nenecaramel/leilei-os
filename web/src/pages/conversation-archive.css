@@ -569,6 +569,12 @@
   background: rgba(158, 78, 63, 0.11);
 }
 
+.conversation-danger-button:focus-visible,
+.conversation-message-prune:focus-visible {
+  outline: 2px solid rgba(145, 68, 55, 0.42);
+  outline-offset: 2px;
+}
+
 .conversation-message-prune {
   flex: 0 0 auto;
   margin-left: 2px;
