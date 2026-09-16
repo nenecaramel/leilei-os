@@ -530,6 +530,8 @@ function ConversationDetailView({
             <button
               className="conversation-danger-button"
               type="button"
+              aria-label="删除整个对话窗口并在后续导入中排除"
+              title="删除窗口；原始 export 仍保留"
               onClick={() => void deleteWindow()}
             >
               删除窗口
@@ -579,6 +581,8 @@ function ConversationDetailView({
                 <button
                   className="conversation-message-prune"
                   type="button"
+                  aria-label="从这条消息开始删除整个分支并在后续导入中排除"
+                  title="删除此分支；原始 export 仍保留"
                   disabled={pruningMessageId !== null}
                   onClick={() => void deleteBranch(message)}
                 >
