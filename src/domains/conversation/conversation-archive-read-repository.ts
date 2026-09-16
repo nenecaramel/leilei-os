@@ -381,6 +381,7 @@ implements ConversationArchiveReadRepository {
     from?: string;
     to?: string;
     timeZone?: string;
+    favoritesOnly?: boolean;
     limit: number;
     offset: number;
   }): Promise<{ items: ConversationArchiveSearchRecord[]; total: number }> {
