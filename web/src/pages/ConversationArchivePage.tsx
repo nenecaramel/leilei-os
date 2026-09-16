@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { PageState } from "../components/StateSurface";
 import { PageHeader } from "./PageHeader";
@@ -65,6 +65,10 @@ function dateInZone(date: Date, timeZone: string): string {
 
 function providerLabel(provider: ConversationProvider): string {
   return provider === "chatgpt" ? "ChatGPT" : "Claude";
+}
+
+function detailViewParams(view: "default" | "all"): Record<string, string> {
+  return view === "all" ? { view: "all" } : {};
 }
 
 function shortBytes(value: number): string {
@@ -205,6 +209,12 @@ function ConversationListView({
             {preview.summary.conversations.stale || preview.summary.messages.stale ? (
               <p className="conversation-import-note">
                 有较旧记录会保留现有新版本，不会回退。
+              </p>
+            ) : null}
+            {(preview.exclusions?.conversations ?? 0) > 0 || (preview.exclusions?.messages ?? 0) > 0 ? (
+              <p className="conversation-import-note">
+                已按你的删除规则跳过 {preview.exclusions?.conversations ?? 0} 个窗口、
+                {" "}{preview.exclusions?.messages ?? 0} 个消息节点；后续导入也不会加回来。
               </p>
             ) : null}
             {preview.warning_count > 0 ? (
@@ -356,11 +366,14 @@ function ConversationDetailView({
   client: ReturnType<typeof createConversationArchiveApi>;
   conversationId: string;
 }) {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const view: "default" | "all" = searchParams.get("view") === "all" ? "all" : "default";
   const anchorId = searchParams.get("anchor");
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [pruningMessageId, setPruningMessageId] = useState<string | null>(null);
+  const [pruneStatus, setPruneStatus] = useState("");
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -434,6 +447,49 @@ function ConversationDetailView({
     }
   };
 
+  const deleteWindow = async () => {
+    if (!window.confirm(
+      "从 Conversation Archive 删除整个窗口，并记住以后导入也跳过它？\n\n原始 export 文件仍会保留。",
+    )) return;
+    setPruneStatus("");
+    try {
+      const result = await client.deleteConversation(conversationId);
+      setPruneStatus(`已删除 ${result.deletedMessages} 个保存节点。`);
+      navigate("/conversations", { replace: true });
+    } catch {
+      setPruneStatus("窗口删除失败。");
+    }
+  };
+
+  const deleteBranch = async (message: ConversationMessage) => {
+    if (!window.confirm(
+      "从这条消息开始删除整个分支，并记住以后导入也跳过这个分支？\n\n原始 export 文件仍会保留。",
+    )) return;
+    setPruningMessageId(message.id);
+    setPruneStatus("");
+    try {
+      const result = await client.deleteBranch({
+        conversationId,
+        messageId: message.id,
+      });
+      setPruneStatus(
+        `已删除这个分支的 ${result.deletedMessages} 个保存节点；后续导入不会加回来。`,
+      );
+      if (anchorId) {
+        setSearchParams(
+          detailViewParams(view),
+          { replace: true },
+        );
+      } else {
+        await load();
+      }
+    } catch {
+      setPruneStatus("这个分支无法删除；如果它包含整个窗口，请直接删除窗口。");
+    } finally {
+      setPruningMessageId(null);
+    }
+  };
+
   if (state.status === "loading") {
     return <div className="page"><PageState state="loading" message="正在读取对话…" /></div>;
   }
@@ -452,24 +508,33 @@ function ConversationDetailView({
         title={detail.title?.trim() || "Untitled conversation"}
         description={`${detail.messageCount.toLocaleString()} 条普通消息 · ${detail.turnCount.toLocaleString()} 轮 · ${detail.totalNodeCount.toLocaleString()} 个保存节点`}
         action={
-          detail.provider === "chatgpt" ? (
-            <div className="conversation-view-toggle">
-              <button
-                className={view === "default" ? "active" : ""}
-                type="button"
-                onClick={() => setSearchParams({})}
-              >
-                当前路径
-              </button>
-              <button
-                className={view === "all" ? "active" : ""}
-                type="button"
-                onClick={() => setSearchParams({ view: "all" })}
-              >
-                全部分支
-              </button>
-            </div>
-          ) : null
+          <div className="conversation-detail-actions">
+            {detail.provider === "chatgpt" ? (
+              <div className="conversation-view-toggle">
+                <button
+                  className={view === "default" ? "active" : ""}
+                  type="button"
+                  onClick={() => setSearchParams({})}
+                >
+                  当前路径
+                </button>
+                <button
+                  className={view === "all" ? "active" : ""}
+                  type="button"
+                  onClick={() => setSearchParams({ view: "all" })}
+                >
+                  全部分支
+                </button>
+              </div>
+            ) : null}
+            <button
+              className="conversation-danger-button"
+              type="button"
+              onClick={() => void deleteWindow()}
+            >
+              删除窗口
+            </button>
+          </div>
         }
       />
 
@@ -481,6 +546,10 @@ function ConversationDetailView({
         <p className="conversation-branch-note">
           当前正在显示 ChatGPT 保存下来的全部普通消息节点，包括非 current path 分支。
         </p>
+      ) : null}
+
+      {pruneStatus ? (
+        <p className="conversation-inline-status" role="status">{pruneStatus}</p>
       ) : null}
 
       {state.contextual && anchorId ? (
@@ -506,6 +575,16 @@ function ConversationDetailView({
               <strong>{message.role === "user" ? "You" : providerLabel(detail.provider)}</strong>
               <span>{message.model ?? ""}</span>
               <time>{formatDateTime(message.sourceCreatedAt)}</time>
+              {(detail.provider === "claude" || view === "all") ? (
+                <button
+                  className="conversation-message-prune"
+                  type="button"
+                  disabled={pruningMessageId !== null}
+                  onClick={() => void deleteBranch(message)}
+                >
+                  {pruningMessageId === message.id ? "删除中…" : "删此分支"}
+                </button>
+              ) : null}
             </div>
             <div className="conversation-message-text">{message.displayText || "（无可见文本）"}</div>
           </article>

@@ -87,7 +87,31 @@ export type ConversationImportPreview = {
   summary: ConversationImportSummary;
   warning_count: number;
   warning_codes: Record<string, number>;
+  exclusions: ConversationExclusionSummary;
 };
+export type ConversationExclusionSummary = {
+  conversations: number;
+  messages: number;
+  branch_roots: number;
+};
+
+export type ConversationPruneConversationResult = {
+  provider: ConversationProvider;
+  sourceConversationId: string;
+  deletedMessages: number;
+  rawSourcePreserved: true;
+};
+
+export type ConversationPruneBranchResult = {
+  provider: ConversationProvider;
+  sourceConversationId: string;
+  sourceNodeId: string;
+  deletedMessages: number;
+  remainingMessages: number;
+  currentLeafSourceNodeId: string | null;
+  rawSourcePreserved: true;
+};
+
 export type ConversationImportExecute = {
   outcome: "executed" | "replayed" | "already_executed";
   import_run_id: string;
@@ -98,6 +122,7 @@ export type ConversationImportExecute = {
   summary: ConversationImportSummary;
   warning_count: number;
   warning_codes: Record<string, number>;
+  exclusions: ConversationExclusionSummary;
 };
 
 type Envelope<T> = { success: true; data: T };
@@ -198,6 +223,27 @@ export function createConversationArchiveApi(api: WebApiClient) {
       const suffix = params.size ? `?${params}` : "";
       const result = await api.request<Envelope<ConversationMessageContext>>(
         `/conversations/${encodeURIComponent(input.conversationId)}/messages/${encodeURIComponent(input.messageId)}/context${suffix}`,
+      );
+      return result.data;
+    },
+
+    async deleteConversation(
+      conversationId: string,
+    ): Promise<ConversationPruneConversationResult> {
+      const result = await api.request<Envelope<ConversationPruneConversationResult>>(
+        `/conversations/${encodeURIComponent(conversationId)}`,
+        { method: "DELETE" },
+      );
+      return result.data;
+    },
+
+    async deleteBranch(input: {
+      conversationId: string;
+      messageId: string;
+    }): Promise<ConversationPruneBranchResult> {
+      const result = await api.request<Envelope<ConversationPruneBranchResult>>(
+        `/conversations/${encodeURIComponent(input.conversationId)}/branches/${encodeURIComponent(input.messageId)}`,
+        { method: "DELETE" },
       );
       return result.data;
     },

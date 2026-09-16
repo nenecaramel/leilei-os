@@ -64,6 +64,29 @@ async function withServer(callback: (baseUrl: string) => Promise<void>): Promise
         async stats() { return []; },
       },
     },
+    conversationPruning: {
+      conversationPruningService: {
+        async deleteConversation() {
+          return {
+            provider: "chatgpt",
+            sourceConversationId: "source",
+            deletedMessages: 1,
+            rawSourcePreserved: true,
+          };
+        },
+        async deleteBranch() {
+          return {
+            provider: "chatgpt",
+            sourceConversationId: "source",
+            sourceNodeId: "node",
+            deletedMessages: 1,
+            remainingMessages: 1,
+            currentLeafSourceNodeId: null,
+            rawSourcePreserved: true,
+          };
+        },
+      },
+    },
     conversationImport: {
       conversationImportService: {
         async preview() {
@@ -132,6 +155,8 @@ test("authenticated Web API responses are private and uncached without affecting
       { path: "/api/v1/conversations/11111111-1111-4111-8111-111111111111/messages", init: { headers } },
       { path: "/api/v1/conversations/search?q=test", init: { headers } },
       { path: "/api/v1/conversations/11111111-1111-4111-8111-111111111111/messages/22222222-2222-4222-8222-222222222222/context", init: { headers } },
+      { path: "/api/v1/conversations/11111111-1111-4111-8111-111111111111", init: { method: "DELETE", headers } },
+      { path: "/api/v1/conversations/11111111-1111-4111-8111-111111111111/branches/22222222-2222-4222-8222-222222222222", init: { method: "DELETE", headers } },
       { path: "/api/v1/conversations/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream", "x-leilei-filename": "conversations.json" }, body: new Uint8Array([91, 93]) } },
       { path: "/api/v1/conversations/import/execute", init: { method: "POST", headers, body: JSON.stringify({ import_run_id: "11111111-1111-4111-8111-111111111111", expected_preview_fingerprint: "b".repeat(64) }) } },
       { path: "/api/v1/toy/commands", init: { method: "POST", headers, body: JSON.stringify({ action: "stop" }) } },
