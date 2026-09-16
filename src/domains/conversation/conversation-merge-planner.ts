@@ -38,6 +38,7 @@ export type ConversationMergeMessageItem = {
   classification: ConversationMergeClassification;
   currentId: string | null;
   currentFingerprint: string | null;
+  currentPathFingerprint: string | null;
   importedFingerprint: string;
   pathChanged: boolean;
   message: NormalizedConversationMessage;
@@ -167,9 +168,11 @@ export function buildConversationMergePlan(
         currentMessage?.sourceFingerprint ?? null,
         messageFingerprint,
       );
-      const pathChanged = currentMessage !== null
-        && conversationMessagePathFingerprint(currentMessage)
-          !== conversationMessagePathFingerprint(message);
+      const currentPathFingerprint = currentMessage === null
+        ? null
+        : conversationMessagePathFingerprint(currentMessage);
+      const pathChanged = currentPathFingerprint !== null
+        && currentPathFingerprint !== conversationMessagePathFingerprint(message);
       summary.messages[messageClassification] += 1;
       if (pathChanged) summary.messages.path_changed += 1;
       return {
@@ -177,6 +180,7 @@ export function buildConversationMergePlan(
         classification: messageClassification,
         currentId: currentMessage?.id ?? null,
         currentFingerprint: currentMessage?.sourceFingerprint ?? null,
+        currentPathFingerprint,
         importedFingerprint: messageFingerprint,
         pathChanged,
         message,
@@ -212,20 +216,7 @@ export function buildConversationMergePlan(
       messages: item.messages.map((message) => ({
         sourceNodeId: message.sourceNodeId,
         currentFingerprint: message.currentFingerprint,
-        currentPath: message.currentId === null ? null : {
-          isCurrentPath: current.conversations
-            .find((candidate) => candidate.id === item.currentId)
-            ?.messages.find((candidate) => candidate.id === message.currentId)
-            ?.isCurrentPath ?? false,
-          currentPathIndex: current.conversations
-            .find((candidate) => candidate.id === item.currentId)
-            ?.messages.find((candidate) => candidate.id === message.currentId)
-            ?.currentPathIndex ?? null,
-          turnIndex: current.conversations
-            .find((candidate) => candidate.id === item.currentId)
-            ?.messages.find((candidate) => candidate.id === message.currentId)
-            ?.turnIndex ?? null,
-        },
+        currentPathFingerprint: message.currentPathFingerprint,
       })),
     })),
   });
