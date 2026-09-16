@@ -78,8 +78,18 @@ function createStoredPreviewHandler(
   return async (request, response) => {
     if (!requireWebUser(response, request.webUserId)) return;
     try {
+      const sourceId = request.params.sourceId;
+      if (typeof sourceId !== "string") {
+        sendError(
+          response,
+          400,
+          "CONVERSATION_IMPORT_INVALID_REQUEST",
+          "Conversation import source id is invalid.",
+        );
+        return;
+      }
       const result = await dependencies.conversationImportService.previewStoredSource(
-        request.params.sourceId ?? "",
+        sourceId,
         request.webUserId,
       );
       response.json({ success: true, data: result });
