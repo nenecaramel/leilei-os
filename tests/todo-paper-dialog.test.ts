@@ -404,6 +404,86 @@ test("Enter moves editing to the next visible Todo line", async () => {
   }
 });
 
+test("Enter during IME composition stays on the current Todo line", async () => {
+  const harness = installDom();
+
+  try {
+    await renderTodoEditor(harness);
+
+    const firstLine =
+      harness.container.querySelector<HTMLButtonElement>(
+        "[aria-label=\"编辑 Todo 第 1 行\"]",
+      );
+    assert.ok(firstLine);
+
+    await act(async () => {
+      firstLine.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const first =
+      harness.container.querySelector<HTMLTextAreaElement>(
+        "[aria-label=\"Todo 第 1 行\"]",
+      );
+    assert.ok(first);
+
+    await act(async () => {
+      first.dispatchEvent(
+        new harness.dom.window.CompositionEvent("compositionstart", {
+          bubbles: true,
+          data: "test",
+        }),
+      );
+      first.dispatchEvent(
+        new harness.dom.window.KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+          isComposing: true,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    assert.equal(
+      harness.dom.window.document.activeElement,
+      first,
+    );
+    assert.equal(
+      harness.container.querySelector<HTMLTextAreaElement>(
+        "[aria-label=\"Todo 第 2 行\"]",
+      ),
+      null,
+    );
+
+    await act(async () => {
+      first.dispatchEvent(
+        new harness.dom.window.CompositionEvent("compositionend", {
+          bubbles: true,
+          data: "test",
+        }),
+      );
+      first.dispatchEvent(
+        new harness.dom.window.KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const second =
+      harness.container.querySelector<HTMLTextAreaElement>(
+        "[aria-label=\"Todo 第 2 行\"]",
+      );
+    assert.ok(second);
+    assert.equal(harness.dom.window.document.activeElement, second);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("Backspace on an empty Todo line moves editing to the previous line", async () => {
   const harness = installDom();
 
