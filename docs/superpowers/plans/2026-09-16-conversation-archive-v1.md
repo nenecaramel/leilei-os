@@ -189,13 +189,25 @@ A missing-message structural/root node may be retained only as graph metadata if
 
 ## Claude adapter contract
 
-Create the provider interface now, but do not implement production Claude parsing from internet examples.
+The user's real 2026-09-16 Claude export is now available and is the production source of truth for this adapter.
 
-When the user's real Claude export arrives, implement a dedicated adapter and fixture against that file.
+Verified shape:
 
-Expected normalized input can support flat `chat_messages[]` plus parent pointers, but no field is considered guaranteed until verified from the real export.
+- conversation: `uuid / name / summary / created_at / updated_at / account / chat_messages[]`
+- message: `uuid / text / content[] / sender / created_at / updated_at / attachments[] / files[] / parent_message_uuid`
+- sender values observed: `human / assistant`
+- content block types observed: `text / thinking / tool_use / tool_result / injected_prompt_block`
+- no conversation-level or message-level model field is present in this export
+- every message carries a parent pointer; the root uses the all-zero UUID sentinel
+- the export contains real branching but no authoritative `current_leaf_message_uuid`
 
-Model remains nullable.
+Therefore:
+
+- model stays null unless a future real export explicitly supplies it;
+- all parent branches are preserved;
+- Claude current-path fields remain unset rather than inferred from the latest message;
+- `injected_prompt_block` is preserved as an internal unknown/raw block and excluded from ordinary display text;
+- `files[]` and `attachments[]` normalize into attachment metadata without assuming file bytes exist.
 
 ## Incremental merge rules
 
@@ -227,15 +239,13 @@ Repeated exact import should resolve to no changes.
 
 Timezone comes from LeileiOS user settings.
 
-Daily ordinary-message counts include only:
+Daily ordinary-message counting must not invent path certainty.
 
-- current-path
-- primary
-- user/assistant visible messages
+For providers with an authoritative current leaf (currently ChatGPT), the default path metric can use current-path primary visible messages.
 
-Daily turns are counted by current-path primary user messages.
+For providers whose official export omits the selected/current leaf (verified for the user's current Claude export), the archive must expose branch-inclusive primary message/turn counts rather than pretending an inferred leaf is authoritative. A later UI may additionally offer a clearly labeled inferred display path, but it must never be stored or presented as provider-supplied truth.
 
-Reasoning/thought/tool nodes remain queryable in raw/detail mode but do not inflate the normal daily message/turn numbers.
+Reasoning/thought/tool/internal-only blocks remain queryable in raw/detail mode but do not inflate ordinary visible message counts.
 
 ## Search
 
@@ -334,12 +344,13 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [ ] return message snippet + exact deep link
 - [ ] prevent Conversation volume from drowning the existing six modules
 
-### PR H — Claude
+### PR H — Claude — pulled forward after the real export arrived
 
-- [ ] inspect the user's real Claude export
-- [ ] implement Claude adapter
-- [ ] add real-shape fixtures
-- [ ] verify repeated incremental Claude import
+- [x] inspect the user's real Claude export
+- [x] implement Claude adapter
+- [x] add privacy-safe fixtures derived from the real shape
+- [x] preserve branching without inventing a current leaf
+- [ ] verify repeated incremental Claude import through the production import pipeline
 
 ## Acceptance invariants
 
