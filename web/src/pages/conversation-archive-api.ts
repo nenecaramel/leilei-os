@@ -33,6 +33,26 @@ export type ConversationMessage = {
   isPrimary: boolean;
   displayText: string;
 };
+export type ConversationSearchResult = {
+  messageId: string;
+  conversationId: string;
+  provider: ConversationProvider;
+  conversationTitle: string | null;
+  sourceNodeId: string;
+  role: "user" | "assistant";
+  model: string | null;
+  sourceCreatedAt: string | null;
+  isCurrentPath: boolean;
+  snippet: string;
+};
+
+export type ConversationMessageContext = {
+  items: ConversationMessage[];
+  total: number;
+  offset: number;
+  anchorIndex: number;
+};
+
 export type ConversationDailyStat = {
   date: string;
   provider: ConversationProvider;
@@ -136,6 +156,48 @@ export function createConversationArchiveApi(api: WebApiClient) {
       });
       const result = await api.request<Envelope<ConversationDailyStat[]>>(
         `/conversations/stats/daily?${params}`,
+      );
+      return result.data;
+    },
+
+    async search(input: {
+      query: string;
+      provider?: ConversationProvider;
+      role?: "user" | "assistant";
+      conversationId?: string;
+      from?: string;
+      to?: string;
+      timeZone?: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<{ items: ConversationSearchResult[]; total: number }> {
+      const params = new URLSearchParams({ q: input.query });
+      if (input.provider) params.set("provider", input.provider);
+      if (input.role) params.set("role", input.role);
+      if (input.conversationId) params.set("conversation_id", input.conversationId);
+      if (input.from) params.set("from", input.from);
+      if (input.to) params.set("to", input.to);
+      if (input.timeZone) params.set("time_zone", input.timeZone);
+      if (input.limit !== undefined) params.set("limit", String(input.limit));
+      if (input.offset !== undefined) params.set("offset", String(input.offset));
+      const result = await api.request<Envelope<{ items: ConversationSearchResult[]; total: number }>>(
+        `/conversations/search?${params}`,
+      );
+      return result.data;
+    },
+
+    async messageContext(input: {
+      conversationId: string;
+      messageId: string;
+      view?: "default" | "all";
+      radius?: number;
+    }): Promise<ConversationMessageContext> {
+      const params = new URLSearchParams();
+      if (input.view && input.view !== "default") params.set("view", input.view);
+      if (input.radius !== undefined) params.set("radius", String(input.radius));
+      const suffix = params.size ? `?${params}` : "";
+      const result = await api.request<Envelope<ConversationMessageContext>>(
+        `/conversations/${encodeURIComponent(input.conversationId)}/messages/${encodeURIComponent(input.messageId)}/context${suffix}`,
       );
       return result.data;
     },
