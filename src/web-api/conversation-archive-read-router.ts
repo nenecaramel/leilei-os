@@ -7,7 +7,7 @@ import {
 export type ConversationArchiveReadApiDependencies = {
   conversationArchiveReadService: Pick<
     ConversationArchiveReadService,
-    "list" | "detail" | "messages" | "stats"
+    "list" | "detail" | "messages" | "stats" | "search" | "messageContext"
   >;
 };
 
@@ -25,12 +25,37 @@ export function createConversationArchiveReadApiRouter(
     })
   ));
 
+  router.get("/search", handler(async (request) =>
+    dependencies.conversationArchiveReadService.search({
+      userId: requireUser(request.webUserId),
+      query: request.query.q,
+      provider: request.query.provider,
+      role: request.query.role,
+      conversationId: request.query.conversation_id,
+      from: request.query.from,
+      to: request.query.to,
+      timeZone: request.query.time_zone,
+      limit: request.query.limit,
+      offset: request.query.offset,
+    })
+  ));
+
   router.get("/stats/daily", handler(async (request) =>
     dependencies.conversationArchiveReadService.stats({
       userId: requireUser(request.webUserId),
       from: request.query.from,
       to: request.query.to,
       timeZone: request.query.time_zone,
+    })
+  ));
+
+  router.get("/:conversationId/messages/:messageId/context", handler(async (request) =>
+    dependencies.conversationArchiveReadService.messageContext({
+      userId: requireUser(request.webUserId),
+      conversationId: request.params.conversationId,
+      messageId: request.params.messageId,
+      view: request.query.view,
+      radius: request.query.radius,
     })
   ));
 
