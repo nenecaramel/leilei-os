@@ -30,6 +30,19 @@ export type ConversationStoredBlob = {
   data: Buffer;
 };
 
+export type ConversationStoredRun = {
+  id: string;
+  userId: string;
+  sourceId: string;
+  parserVersion: string;
+  status: "processing" | "executed" | "failed";
+  previewFingerprint: string | null;
+  summary: Record<string, unknown>;
+  warningCount: number;
+  completedAt: Date | null;
+  source: ConversationStoredSource;
+};
+
 export interface ConversationImportRepository {
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   findSourceBySha(userId: string, rawSha256: string): Promise<ConversationStoredSource | null>;
@@ -54,7 +67,11 @@ export interface ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
-  }): Promise<{ id: string } | null>;
+  }): Promise<{ id: string; summary: Record<string, unknown> } | null>;
+  findRunById(input: {
+    userId: string;
+    runId: string;
+  }): Promise<ConversationStoredRun | null>;
   readStoredBlob(input: {
     userId: string;
     sourceId: string;
@@ -191,7 +208,10 @@ implements ConversationImportRepository {
     parserVersion: string;
   }): Promise<{ id: string } | null> {
     const [row] = await this.db
-      .select({ id: conversationImportRuns.id })
+      .select({
+        id: conversationImportRuns.id,
+        summary: conversationImportRuns.summary,
+      })
       .from(conversationImportRuns)
       .where(and(
         eq(conversationImportRuns.userId, input.userId),
@@ -201,6 +221,65 @@ implements ConversationImportRepository {
       ))
       .limit(1);
     return row ?? null;
+  }
+
+  async findRunById(input: {
+    userId: string;
+    runId: string;
+  }): Promise<ConversationStoredRun | null> {
+    const [row] = await this.db
+      .select({
+        id: conversationImportRuns.id,
+        userId: conversationImportRuns.userId,
+        sourceId: conversationImportRuns.sourceId,
+        parserVersion: conversationImportRuns.parserVersion,
+        status: conversationImportRuns.status,
+        previewFingerprint: conversationImportRuns.previewFingerprint,
+        summary: conversationImportRuns.summary,
+        warningCount: conversationImportRuns.warningCount,
+        completedAt: conversationImportRuns.completedAt,
+        sourceProvider: conversationImportSources.provider,
+        originalFilename: conversationImportSources.originalFilename,
+        rawSha256: conversationImportSources.rawSha256,
+        rawBytes: conversationImportSources.rawBytes,
+        storageKind: conversationImportSources.storageKind,
+        storageKey: conversationImportSources.storageKey,
+      })
+      .from(conversationImportRuns)
+      .innerJoin(
+        conversationImportSources,
+        and(
+          eq(conversationImportSources.id, conversationImportRuns.sourceId),
+          eq(conversationImportSources.userId, conversationImportRuns.userId),
+        ),
+      )
+      .where(and(
+        eq(conversationImportRuns.userId, input.userId),
+        eq(conversationImportRuns.id, input.runId),
+      ))
+      .limit(1);
+    if (!row) return null;
+    return {
+      id: row.id,
+      userId: row.userId,
+      sourceId: row.sourceId,
+      parserVersion: row.parserVersion,
+      status: row.status,
+      previewFingerprint: row.previewFingerprint,
+      summary: row.summary,
+      warningCount: row.warningCount,
+      completedAt: row.completedAt,
+      source: {
+        id: row.sourceId,
+        userId: row.userId,
+        provider: row.sourceProvider,
+        originalFilename: row.originalFilename,
+        rawSha256: row.rawSha256,
+        rawBytes: row.rawBytes,
+        storageKind: row.storageKind,
+        storageKey: row.storageKey,
+      },
+    };
   }
 
   async readStoredBlob(input: {
