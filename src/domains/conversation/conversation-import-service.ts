@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { hashCanonical } from "../import/import-canonical.js";
 import {
   buildConversationMergePlan,
@@ -148,6 +149,52 @@ export class ConversationImportService {
     }
   }
 
+  async previewStoredSource(
+    sourceId: string,
+    userId: string,
+  ): Promise<ConversationImportPreview> {
+    const user = await this.repository.findUserById(userId);
+    if (!user || user.status !== "active") {
+      throw new ConversationImportAuthorizationError();
+    }
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(sourceId)
+    ) {
+      throw Object.assign(new Error("Conversation import source id is invalid."), {
+        code: "CONVERSATION_IMPORT_INVALID_REQUEST",
+      });
+    }
+
+    const source = await this.repository.findSourceById(userId, sourceId);
+    if (!source) {
+      throw Object.assign(new Error("Conversation import source was not found."), {
+        code: "CONVERSATION_IMPORT_SOURCE_NOT_FOUND",
+      });
+    }
+    const blob = await this.repository.readStoredBlob({ userId, sourceId });
+    if (!blob) {
+      throw Object.assign(new Error("Conversation import raw source is unavailable."), {
+        code: "CONVERSATION_IMPORT_SOURCE_MISSING",
+      });
+    }
+
+    const staged = await stageStoredConversationSource({
+      data: blob.data,
+      encoding: blob.encoding,
+      originalFilename: source.originalFilename,
+      expectedSha256: source.rawSha256,
+      expectedBytes: source.rawBytes,
+    });
+    try {
+      return await this.previewStaged(staged, userId, {
+        executionKey: `reapply:${randomUUID()}`,
+        forceNewRun: true,
+      });
+    } finally {
+      await staged.cleanup();
+    }
+  }
+
   async execute(
     runId: string,
     expectedPreviewFingerprint: string,
@@ -249,6 +296,8 @@ export class ConversationImportService {
           userId,
           sourceId: run.sourceId,
           parserVersion: run.parserVersion,
+          previewFingerprint: expectedPreviewFingerprint,
+          executionKey: run.executionKey,
         });
         if (priorExecution) {
           await transaction.markRunSuperseded({
@@ -498,7 +547,7 @@ export class ConversationImportService {
         });
       }
 
-      const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}`;
+      const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}\u0000${run.executionKey}`;
       const firstRunId = seenSourceParser.get(dedupeKey) ?? null;
       if (firstRunId) {
         items.push(batchFilePreview({
@@ -514,11 +563,15 @@ export class ConversationImportService {
 
       const executed = run.status === "executed"
         ? { id: run.id, summary: run.summary }
-        : await this.repository.findExecutedRun({
-            userId,
-            sourceId: run.sourceId,
-            parserVersion: run.parserVersion,
-          });
+        : run.previewFingerprint
+          ? await this.repository.findExecutedRun({
+              userId,
+              sourceId: run.sourceId,
+              parserVersion: run.parserVersion,
+              previewFingerprint: run.previewFingerprint,
+              executionKey: run.executionKey,
+            })
+          : null;
       if (executed) {
         items.push(batchFilePreview({
           inputIndex,
@@ -646,7 +699,7 @@ export class ConversationImportService {
 
       for (const [inputIndex, run] of resolved.entries()) {
         const locked = lockedRuns.get(run.id)!;
-        const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}`;
+        const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}\u0000${run.executionKey}`;
         const firstRunId = seenSourceParser.get(dedupeKey) ?? null;
         if (firstRunId) {
           previewItems.push(batchFilePreview({
@@ -693,11 +746,15 @@ export class ConversationImportService {
 
         const executed = locked.status === "executed"
           ? { id: locked.id, summary: locked.summary }
-          : await transaction.findExecutedRun({
-              userId,
-              sourceId: run.sourceId,
-              parserVersion: run.parserVersion,
-            });
+          : locked.previewFingerprint
+            ? await transaction.findExecutedRun({
+                userId,
+                sourceId: run.sourceId,
+                parserVersion: run.parserVersion,
+                previewFingerprint: locked.previewFingerprint,
+                executionKey: locked.executionKey,
+              })
+            : null;
         if (executed) {
           previewItems.push(batchFilePreview({
             inputIndex,
@@ -912,7 +969,12 @@ export class ConversationImportService {
   private async previewStaged(
     upload: StagedConversationUpload,
     userId: string,
+    options: {
+      executionKey?: string;
+      forceNewRun?: boolean;
+    } = {},
   ): Promise<ConversationImportPreview> {
+    const executionKey = options.executionKey ?? "standard";
     const current = await this.stateRepository.readMergeState(userId);
     const exclusions = await this.repository.listExclusions(userId);
     const currentByKey = new Map<string, CurrentConversationState>(
@@ -1027,11 +1089,15 @@ export class ConversationImportService {
           });
         })();
     const { source, reused } = persisted;
-    const executed = await this.repository.findExecutedRun({
-      userId,
-      sourceId: source.id,
-      parserVersion: providerInfo.version,
-    });
+    const executed = options.forceNewRun
+      ? null
+      : await this.repository.findExecutedRun({
+          userId,
+          sourceId: source.id,
+          parserVersion: providerInfo.version,
+          previewFingerprint,
+          executionKey,
+        });
 
     const warningCodes = Object.fromEntries(
       [...warningCodeCounts.entries()].sort(([left], [right]) => left.localeCompare(right)),
@@ -1050,6 +1116,7 @@ export class ConversationImportService {
       userId,
       sourceId: source.id,
       parserVersion: providerInfo.version,
+      executionKey,
       previewFingerprint,
       summary: summaryRecord,
       warningCount,

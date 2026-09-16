@@ -35,6 +35,8 @@ function item(): ConversationImportHistoryListItem {
       id: "22222222-2222-4222-8222-222222222222",
       sourceId: SOURCE_ID,
       parserVersion: "claude-v1",
+      executionKey: "standard",
+      executionMode: "standard",
       status: "executed",
       rawStatus: "executed",
       previewFingerprint: "b".repeat(64),

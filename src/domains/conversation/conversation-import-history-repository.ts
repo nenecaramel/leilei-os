@@ -21,6 +21,8 @@ export type ConversationImportHistoryRun = {
   id: string;
   sourceId: string;
   parserVersion: string;
+  executionKey: string;
+  executionMode: "standard" | "reapply";
   status: ConversationImportHistoryStatus;
   rawStatus: ConversationImportRunStatus;
   previewFingerprint: string | null;
@@ -90,6 +92,7 @@ type RunRow = {
   id: string;
   sourceId: string;
   parserVersion: string;
+  executionKey: string;
   status: ConversationImportRunStatus;
   previewFingerprint: string | null;
   summary: Record<string, unknown>;
@@ -113,6 +116,8 @@ function toRun(row: RunRow): ConversationImportHistoryRun {
     id: row.id,
     sourceId: row.sourceId,
     parserVersion: row.parserVersion,
+    executionKey: row.executionKey,
+    executionMode: row.executionKey.startsWith("reapply:") ? "reapply" : "standard",
     status: row.status === "failed" && supersededByImportRunId
       ? "superseded"
       : row.status,
@@ -160,6 +165,8 @@ function summarizeSource(
       id: latest.id,
       sourceId: latest.sourceId,
       parserVersion: latest.parserVersion,
+      executionKey: latest.executionKey,
+      executionMode: latest.executionMode,
       status: latest.status,
       rawStatus: latest.rawStatus,
       previewFingerprint: latest.previewFingerprint,
@@ -297,6 +304,7 @@ implements ConversationImportHistoryRepository {
         id: conversationImportRuns.id,
         sourceId: conversationImportRuns.sourceId,
         parserVersion: conversationImportRuns.parserVersion,
+        executionKey: conversationImportRuns.executionKey,
         status: conversationImportRuns.status,
         previewFingerprint: conversationImportRuns.previewFingerprint,
         summary: conversationImportRuns.summary,

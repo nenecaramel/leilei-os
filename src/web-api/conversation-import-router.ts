@@ -10,7 +10,7 @@ import { ConversationMergePlanError } from "../domains/conversation/conversation
 export type ConversationImportApiDependencies = {
   conversationImportService: Pick<
     ConversationImportService,
-    "preview" | "execute" | "previewBatch" | "executeBatch"
+    "preview" | "previewStoredSource" | "execute" | "previewBatch" | "executeBatch"
   >;
 };
 
@@ -19,6 +19,7 @@ export function createConversationImportApiRouter(
 ): Router {
   const router = Router();
   router.post("/import/preview", createPreviewHandler(dependencies));
+  router.post("/import/sources/:sourceId/preview", createStoredPreviewHandler(dependencies));
   router.post("/import/execute", createExecuteHandler(dependencies));
   router.post("/import/batch/preview", createBatchPreviewHandler(dependencies));
   router.post("/import/batch/execute", createBatchExecuteHandler(dependencies));
@@ -62,6 +63,23 @@ function createPreviewHandler(
       const result = await dependencies.conversationImportService.preview(
         request,
         filename,
+        request.webUserId,
+      );
+      response.json({ success: true, data: result });
+    } catch (error) {
+      sendConversationImportError(response, error);
+    }
+  };
+}
+
+function createStoredPreviewHandler(
+  dependencies: ConversationImportApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    try {
+      const result = await dependencies.conversationImportService.previewStoredSource(
+        request.params.sourceId ?? "",
         request.webUserId,
       );
       response.json({ success: true, data: result });
@@ -209,8 +227,13 @@ function sendConversationImportError(response: Response, error: unknown): void {
     sendError(response, 409, code, "Conversation import preview is stale or no longer executable.");
     return;
   }
-  if (code === "CONVERSATION_IMPORT_RUN_NOT_FOUND") {
-    sendError(response, 404, code, "Conversation import run was not found.");
+  if (
+    code === "CONVERSATION_IMPORT_RUN_NOT_FOUND"
+    || code === "CONVERSATION_IMPORT_SOURCE_NOT_FOUND"
+  ) {
+    sendError(response, 404, code, code === "CONVERSATION_IMPORT_SOURCE_NOT_FOUND"
+      ? "Conversation import source was not found."
+      : "Conversation import run was not found.");
     return;
   }
   if (code === "CONVERSATION_IMPORT_TOO_LARGE") {

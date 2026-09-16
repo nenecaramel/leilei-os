@@ -50,6 +50,12 @@ class FakeImportRepository implements ConversationImportRepository {
     return this.sourcesBySha.get(rawSha256) ?? null;
   }
 
+  async findSourceById(userId: string, sourceId: string) {
+    return [...this.sourcesBySha.values()].find(
+      (source) => source.userId === userId && source.id === sourceId,
+    ) ?? null;
+  }
+
   async createOrReuseSourceWithBlob(input: {
     userId: string;
     provider: "chatgpt" | "claude";
@@ -95,6 +101,7 @@ class FakeImportRepository implements ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    executionKey: string;
     previewFingerprint: string;
     summary: Record<string, unknown>;
     warningCount: number;
@@ -109,6 +116,7 @@ class FakeImportRepository implements ConversationImportRepository {
       userId: input.userId,
       sourceId: input.sourceId,
       parserVersion: input.parserVersion,
+      executionKey: input.executionKey,
       status: "processing",
       previewFingerprint: input.previewFingerprint,
       summary: input.summary,
@@ -123,12 +131,16 @@ class FakeImportRepository implements ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    previewFingerprint: string;
+    executionKey: string;
   }) {
     for (const run of this.runs.values()) {
       if (
         run.userId === input.userId
         && run.sourceId === input.sourceId
         && run.parserVersion === input.parserVersion
+        && run.previewFingerprint === input.previewFingerprint
+        && run.executionKey === input.executionKey
         && run.status === "executed"
       ) {
         return { id: run.id, summary: run.summary };
@@ -178,6 +190,7 @@ class FakeExecutor implements ConversationImportExecutor {
           id: run.id,
           sourceId: run.sourceId,
           parserVersion: run.parserVersion,
+          executionKey: run.executionKey,
           status: run.status,
           previewFingerprint: run.previewFingerprint,
           summary: run.summary,
@@ -409,6 +422,73 @@ test("Previewing an exact raw source after execution reuses the executed run", a
   assert.equal(repository.runCounter, runsBefore);
 });
 
+
+test("preserved-source re-preview creates a distinct explicit reapply run", async () => {
+  const repository = new FakeImportRepository();
+  const executor = new FakeExecutor(repository);
+  const service = new ConversationImportService(
+    repository,
+    new FakeStateRepository(),
+    executor,
+  );
+  const raw = Buffer.from(JSON.stringify([chatGptConversationFixture]), "utf8");
+  const standard = await service.preview(stream(raw), "conversations.json", "user-id");
+  await service.execute(
+    standard.import_run_id,
+    standard.preview_fingerprint,
+    "user-id",
+  );
+  const standardRun = repository.runs.get(standard.import_run_id);
+  assert.equal(standardRun?.executionKey, "standard");
+
+  const reapply = await service.previewStoredSource(standard.source_id, "user-id");
+  const reapplyRun = repository.runs.get(reapply.import_run_id);
+
+  assert.notEqual(reapply.import_run_id, standard.import_run_id);
+  assert.equal(reapply.source_id, standard.source_id);
+  assert.equal(reapply.preview_fingerprint, standard.preview_fingerprint);
+  assert.equal(reapply.already_executed, false);
+  assert.match(reapplyRun?.executionKey ?? "", /^reapply:[0-9a-f-]{36}$/u);
+  assert.equal(reapplyRun?.status, "processing");
+});
+
+test("explicit preserved-source reapply can execute after an identical standard run and then replays write-free", async () => {
+  const repository = new FakeImportRepository();
+  const executor = new FakeExecutor(repository);
+  const service = new ConversationImportService(
+    repository,
+    new FakeStateRepository(),
+    executor,
+  );
+  const raw = Buffer.from(JSON.stringify([chatGptConversationFixture]), "utf8");
+  const standard = await service.preview(stream(raw), "conversations.json", "user-id");
+  await service.execute(
+    standard.import_run_id,
+    standard.preview_fingerprint,
+    "user-id",
+  );
+  const writesAfterStandard = executor.applied.length;
+
+  const reapply = await service.previewStoredSource(standard.source_id, "user-id");
+  const first = await service.execute(
+    reapply.import_run_id,
+    reapply.preview_fingerprint,
+    "user-id",
+  );
+
+  assert.equal(first.outcome, "executed");
+  assert.ok(executor.applied.length > writesAfterStandard);
+  assert.equal(repository.runs.get(reapply.import_run_id)?.status, "executed");
+
+  const writesAfterReapply = executor.applied.length;
+  const replay = await service.execute(
+    reapply.import_run_id,
+    reapply.preview_fingerprint,
+    "user-id",
+  );
+  assert.equal(replay.outcome, "replayed");
+  assert.equal(executor.applied.length, writesAfterReapply);
+});
 
 test("Conversation-level exclusions skip canonical planning and survive in Preview metadata", async () => {
   const repository = new FakeImportRepository();

@@ -46,6 +46,7 @@ export type LockedConversationImportRun = {
   id: string;
   sourceId: string;
   parserVersion: string;
+  executionKey: string;
   status: "processing" | "executed" | "failed";
   previewFingerprint: string | null;
   summary: Record<string, unknown>;
@@ -59,6 +60,8 @@ export interface ConversationImportExecutionTransaction {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    previewFingerprint: string;
+    executionKey: string;
   }): Promise<{ id: string; summary: Record<string, unknown> } | null>;
   readMergeState(userId: string): Promise<ConversationMergeCurrentState>;
   readExclusions(userId: string): Promise<ConversationExclusionRule[]>;
@@ -131,6 +134,7 @@ implements ConversationImportExecutionTransaction {
         id: conversationImportRuns.id,
         sourceId: conversationImportRuns.sourceId,
         parserVersion: conversationImportRuns.parserVersion,
+        executionKey: conversationImportRuns.executionKey,
         status: conversationImportRuns.status,
         previewFingerprint: conversationImportRuns.previewFingerprint,
         summary: conversationImportRuns.summary,
@@ -150,6 +154,8 @@ implements ConversationImportExecutionTransaction {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    previewFingerprint: string;
+    executionKey: string;
   }): Promise<{ id: string; summary: Record<string, unknown> } | null> {
     const [row] = await this.tx
       .select({
@@ -161,6 +167,8 @@ implements ConversationImportExecutionTransaction {
         eq(conversationImportRuns.userId, input.userId),
         eq(conversationImportRuns.sourceId, input.sourceId),
         eq(conversationImportRuns.parserVersion, input.parserVersion),
+        eq(conversationImportRuns.previewFingerprint, input.previewFingerprint),
+        eq(conversationImportRuns.executionKey, input.executionKey),
         eq(conversationImportRuns.status, "executed"),
       ))
       .limit(1);
