@@ -482,6 +482,7 @@ export const TodoPaperEditor = forwardRef<
             }}
             rows={1}
             value={row.text}
+            tabIndex={index === 0 ? 0 : -1}
             aria-label={`Todo 第 ${index + 1} 行`}
             onChange={(event) => handleChange(row.id, event)}
             onPaste={(event) => pasteMultiline(index, event)}
