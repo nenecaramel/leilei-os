@@ -1255,3 +1255,449 @@ body:has(.conversation-page) {
     padding-inline: 5px;
   }
 }
+
+
+/* Conversation exact-native alignment: reuse Memory/System geometry. */
+
+/* Desktop keeps the same route start as the other .page modules. */
+@media (min-width: 761px) {
+  .conversation-page {
+    padding-top: 40px;
+    padding-bottom: 72px;
+  }
+}
+
+/* Header: literal Memory header geometry, not a Conversation-specific approximation. */
+.conversation-page-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 0 0 10px;
+  color: #171717;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "PingFang SC",
+    "Helvetica Neue",
+    sans-serif;
+}
+
+.conversation-page-header .memory-page-heading {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.conversation-page-header .memory-page-title {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.conversation-page-header .memory-page-count {
+  margin-top: 3px;
+  color: #8a8a8a;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.conversation-page-header .memory-page-tools {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.conversation-page-header .memory-page-tools > button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: #3f3f3f;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.conversation-page-header .memory-page-tools > button:hover,
+.conversation-page-header .memory-page-tools > button:active,
+.conversation-page-header .memory-page-tools > button[aria-expanded="true"] {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.conversation-page-header .memory-page-tools svg {
+  width: 20px;
+  height: 20px;
+}
+
+.conversation-page-header .memory-page-search-icon {
+  width: 21px;
+  height: 21px;
+}
+
+.conversation-page-header .memory-page-search {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 42px;
+  margin-top: 2px;
+  padding: 0 10px 0 12px;
+  border-radius: 10px;
+  background: #f3f3f3;
+}
+
+.conversation-page-header .memory-page-search > svg {
+  width: 18px;
+  height: 18px;
+  color: #7d7d7d;
+}
+
+.conversation-page-header .memory-page-search:focus-within {
+  box-shadow: 0 0 0 1px #d8d8d8;
+}
+
+.conversation-page-header .memory-page-search input {
+  min-width: 0;
+  height: 42px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  color: #171717;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 14px;
+}
+
+.conversation-page-header .memory-page-search input:focus {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Top-level sections borrow the quiet System text-action row. */
+.conversation-surface-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  justify-content: start;
+  gap: 30px;
+  margin: 0 0 18px;
+  padding: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+  background: transparent;
+}
+
+.conversation-surface-tabs button {
+  display: block;
+  width: auto;
+  min-width: 0;
+  min-height: 28px;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  color: #8a8a8a;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.conversation-surface-tabs button:hover,
+.conversation-surface-tabs button:active {
+  color: #555555;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.conversation-surface-tabs button.active {
+  color: #171717;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 500;
+}
+
+/* Search field lives in the page header. Advanced filters remain a quiet inset row. */
+.conversation-search-section {
+  margin: 0 0 18px;
+}
+
+.conversation-search-filters {
+  display: grid;
+  grid-template-columns: 0.8fr 0.8fr 1.4fr 1fr 1fr;
+  gap: 0;
+  overflow: hidden;
+  padding: 0 13px;
+  border: 1px solid rgba(0, 0, 0, 0.11);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.055);
+}
+
+.conversation-search-filters > select,
+.conversation-search-filters > label {
+  min-width: 0;
+  min-height: 60px;
+  border: 0;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+  color: #555555;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.conversation-search-filters > :last-child {
+  border-right: 0;
+}
+
+.conversation-search-filters select {
+  height: 60px;
+  min-height: 60px;
+  padding: 0 10px;
+}
+
+.conversation-search-filters label {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 6px 10px;
+}
+
+.conversation-search-filters label > span {
+  color: #8a8a8a;
+  font-size: 10px;
+}
+
+.conversation-search-filters input {
+  min-height: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.conversation-search-state {
+  min-height: 42px;
+  padding-top: 14px;
+  color: #8a8a8a;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Archive rows are the same two-line inset rows used by Memory. */
+.conversation-card {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 60px;
+  gap: 6px;
+  padding: 11px 13px;
+  border: 0;
+  border-radius: 0;
+  color: #171717;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.conversation-card + .conversation-card {
+  border-top: 0;
+}
+
+.conversation-card + .conversation-card::before,
+.conversation-day-card + .conversation-day-card::before,
+.conversation-search-result + .conversation-search-result::before,
+.conversation-favorite-card + .conversation-favorite-card::before,
+.conversation-import-source-card + .conversation-import-source-card::before,
+.conversation-message + .conversation-message::before {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 13px;
+  left: 13px;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+  content: "";
+}
+
+.conversation-card h3 {
+  margin: 0;
+  overflow: hidden;
+  color: #171717;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-card-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #8a8a8a;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.conversation-card-meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-card-meta > span:first-child {
+  min-width: max-content;
+  flex: 0 0 auto;
+}
+
+.conversation-card-meta > span:last-child {
+  flex: 1 1 auto;
+  text-align: right;
+}
+
+.conversation-day-card,
+.conversation-search-result,
+.conversation-favorite-card,
+.conversation-import-source-card,
+.conversation-message {
+  position: relative;
+}
+
+.conversation-day-card + .conversation-day-card,
+.conversation-search-result + .conversation-search-result,
+.conversation-favorite-card + .conversation-favorite-card,
+.conversation-import-source-card + .conversation-import-source-card,
+.conversation-message + .conversation-message {
+  border-top: 0;
+}
+
+/* Source import uses the same 60px System action row rather than a header button. */
+.conversation-source-import {
+  overflow: hidden;
+  margin: 0 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.11);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.055);
+}
+
+.conversation-source-import-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 60px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 13px;
+}
+
+.conversation-source-import-row > span {
+  min-width: 0;
+  overflow: hidden;
+  color: #171717;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-source-import-row > button {
+  display: block;
+  width: auto;
+  min-width: 0;
+  min-height: 28px;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  color: #171717;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.conversation-source-import-row > button:hover,
+.conversation-source-import-row > button:active {
+  color: #555555;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+@media (max-width: 760px) {
+  .conversation-page {
+    padding-top: 18px;
+    padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .conversation-surface-tabs {
+    gap: 20px;
+  }
+
+  .conversation-search-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0;
+  }
+
+  .conversation-search-filters > select,
+  .conversation-search-filters > label,
+  .conversation-search-filters > :last-child {
+    min-height: 52px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .conversation-search-filters > :nth-child(odd) {
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .conversation-search-filters > :nth-child(3) {
+    grid-column: 1 / -1;
+    border-right: 0;
+  }
+
+  .conversation-search-filters > :last-child {
+    border-bottom: 0;
+  }
+
+  .conversation-search-filters select {
+    height: 52px;
+    min-height: 52px;
+  }
+}
