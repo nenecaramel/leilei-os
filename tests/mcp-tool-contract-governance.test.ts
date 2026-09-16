@@ -66,6 +66,8 @@ test("stable MCP defaults are explicit in tools/list", async () => {
     search_todo: 50,
     list_universe_nodes: 25,
     search_universe: 10,
+    search_conversations: 20,
+    read_conversation: 40,
     list_shared_paper_edits: 50,
   };
   for (const [name, expected] of Object.entries(expectedLimits)) {
@@ -95,6 +97,7 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
     ["search_universe", "get_universe_node"],
     ["list_shared_papers", "get_shared_paper"],
     ["search_shared_papers", "get_shared_paper"],
+    ["search_conversations", "read_conversation"],
   ] as const;
 
   for (const [name, detailTool] of dedicatedDiscovery) {
