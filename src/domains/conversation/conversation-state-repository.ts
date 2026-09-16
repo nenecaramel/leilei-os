@@ -44,6 +44,8 @@ implements ConversationArchiveStateRepository {
         provider: conversations.provider,
         sourceConversationId: conversations.sourceConversationId,
         sourceFingerprint: conversations.sourceFingerprint,
+        sourceCreatedAt: conversations.sourceCreatedAt,
+        sourceUpdatedAt: conversations.sourceUpdatedAt,
       })
       .from(conversations)
       .where(eq(conversations.userId, userId))
@@ -57,6 +59,8 @@ implements ConversationArchiveStateRepository {
         conversationId: conversationMessages.conversationId,
         sourceNodeId: conversationMessages.sourceNodeId,
         sourceFingerprint: conversationMessages.sourceFingerprint,
+        sourceCreatedAt: conversationMessages.sourceCreatedAt,
+        sourceUpdatedAt: conversationMessages.sourceUpdatedAt,
         isCurrentPath: conversationMessages.isCurrentPath,
         currentPathIndex: conversationMessages.currentPathIndex,
         turnIndex: conversationMessages.turnIndex,
@@ -78,6 +82,8 @@ implements ConversationArchiveStateRepository {
         id: row.id,
         sourceNodeId: row.sourceNodeId,
         sourceFingerprint: row.sourceFingerprint,
+        sourceCreatedAt: row.sourceCreatedAt?.toISOString() ?? null,
+        sourceUpdatedAt: row.sourceUpdatedAt?.toISOString() ?? null,
         isCurrentPath: row.isCurrentPath,
         currentPathIndex: row.currentPathIndex,
         turnIndex: row.turnIndex,
@@ -91,6 +97,8 @@ implements ConversationArchiveStateRepository {
         provider: row.provider as ConversationProvider,
         sourceConversationId: row.sourceConversationId,
         sourceFingerprint: row.sourceFingerprint,
+        sourceCreatedAt: row.sourceCreatedAt?.toISOString() ?? null,
+        sourceUpdatedAt: row.sourceUpdatedAt?.toISOString() ?? null,
         messages: messagesByConversation.get(row.id) ?? [],
       }),
     );
