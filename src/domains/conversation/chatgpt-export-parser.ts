@@ -212,7 +212,8 @@ function currentPath(mapping: JsonRecord, currentNode: string | null): Map<strin
   }
 
   reversed.reverse();
-  return new Map(reversed.map((nodeId, index) => [nodeId, index]));
+  const messageNodeIds = reversed.filter((nodeId) => Boolean(record(record(mapping[nodeId])?.message)));
+  return new Map(messageNodeIds.map((nodeId, index) => [nodeId, index]));
 }
 
 function providerMetadata(conversation: JsonRecord): JsonRecord {
