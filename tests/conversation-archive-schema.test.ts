@@ -45,6 +45,14 @@ const favoriteMigrationSql = readFileSync(
 const favoriteSnapshot = JSON.parse(readFileSync(
   new URL("../drizzle/meta/0043_snapshot.json", import.meta.url),
   "utf8",
+)) as { id: string; prevId: string; tables: Record<string, unknown> };
+const reapplyMigrationSql = readFileSync(
+  new URL("../drizzle/0044_conversation_import_reapply.sql", import.meta.url),
+  "utf8",
+);
+const reapplySnapshot = JSON.parse(readFileSync(
+  new URL("../drizzle/meta/0044_snapshot.json", import.meta.url),
+  "utf8",
 )) as { prevId: string; tables: Record<string, unknown> };
 
 test("Conversation Archive migrations form the checked-in journal tail", () => {
@@ -52,12 +60,13 @@ test("Conversation Archive migrations form the checked-in journal tail", () => {
   assert.equal(blobSnapshot.prevId, snapshot.id);
   assert.equal(exclusionSnapshot.prevId, blobSnapshot.id);
   assert.equal(favoriteSnapshot.prevId, exclusionSnapshot.id);
+  assert.equal(reapplySnapshot.prevId, favoriteSnapshot.id);
   const latest = journal.entries.at(-1);
   assert.deepEqual(latest, {
-    idx: 43,
+    idx: 44,
     version: "7",
-    when: 1789543560000,
-    tag: "0043_conversation_favorites",
+    when: 1789547700000,
+    tag: "0044_conversation_import_reapply",
     breakpoints: true,
   });
 });
@@ -162,4 +171,32 @@ test("Conversation favorite metadata and range sizes are database constrained", 
     favoriteMigrationSql,
     /"conversation_favorite_messages_favorite_user_fk" FOREIGN KEY \("favorite_id","user_id"\)/,
   );
+});
+
+
+test("Conversation reapply migration scopes executed-run idempotency by explicit execution key", () => {
+  assert.match(
+    reapplyMigrationSql,
+    /ADD COLUMN "execution_key" varchar\(64\) DEFAULT 'standard' NOT NULL/,
+  );
+  assert.match(
+    reapplyMigrationSql,
+    /DROP INDEX IF EXISTS "conversation_import_runs_source_parser_executed_uidx"/,
+  );
+  assert.match(
+    reapplyMigrationSql,
+    /"conversation_import_runs_execution_executed_uidx"[\s\S]*"source_id"[\s\S]*"parser_version"[\s\S]*"preview_fingerprint"[\s\S]*"execution_key"/,
+  );
+  assert.match(
+    reapplyMigrationSql,
+    /conversation_import_runs_execution_key_not_blank/,
+  );
+  const runTable = reapplySnapshot.tables["public.conversation_import_runs"] as {
+    columns?: Record<string, unknown>;
+    indexes?: Record<string, unknown>;
+    checkConstraints?: Record<string, unknown>;
+  };
+  assert.ok(runTable.columns?.execution_key);
+  assert.ok(runTable.indexes?.conversation_import_runs_execution_executed_uidx);
+  assert.ok(runTable.checkConstraints?.conversation_import_runs_execution_key_not_blank);
 });
