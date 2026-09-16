@@ -2,12 +2,14 @@ import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationExclusions,
   conversationImportBlobs,
   conversationImportRuns,
   conversationImportSources,
   users,
 } from "../../database/schema.js";
 import type { ConversationProvider } from "./conversation-types.js";
+import type { ConversationExclusionRule } from "./conversation-exclusions.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
  
@@ -76,6 +78,7 @@ export interface ConversationImportRepository {
     userId: string;
     sourceId: string;
   }): Promise<ConversationStoredBlob | null>;
+  listExclusions(userId: string): Promise<ConversationExclusionRule[]>;
 }
 
 function toSource(
@@ -280,6 +283,19 @@ implements ConversationImportRepository {
         storageKey: row.storageKey,
       },
     };
+  }
+
+  async listExclusions(userId: string): Promise<ConversationExclusionRule[]> {
+    const rows = await this.db
+      .select({
+        provider: conversationExclusions.provider,
+        scope: conversationExclusions.scope,
+        sourceConversationId: conversationExclusions.sourceConversationId,
+        sourceNodeId: conversationExclusions.sourceNodeId,
+      })
+      .from(conversationExclusions)
+      .where(eq(conversationExclusions.userId, userId));
+    return rows;
   }
 
   async readStoredBlob(input: {
