@@ -404,6 +404,17 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [ ] Web multi-select upload / batch review UI
 - [ ] production acceptance with at least two real Claude export files
 
+### PR K — Import history / source management
+
+- [x] list immutable Conversation import sources with provider / original filename / SHA-256 / raw bytes / received time
+- [x] report actual raw-source retention metadata, including stored encoding / bytes for PostgreSQL-backed sources
+- [x] summarize processing / executed / failed / superseded runs per source
+- [x] expose latest run in list view and full ordered run history in source detail
+- [x] keep the history surface read-only; no raw-source purge or canonical mutation
+- [x] expose authenticated Web API source list / detail endpoints
+- [ ] Web history / source-management UI
+- [ ] production readback against real archived import sources
+
 ## Acceptance invariants
 
 - importing the same source twice never duplicates a conversation/message;
