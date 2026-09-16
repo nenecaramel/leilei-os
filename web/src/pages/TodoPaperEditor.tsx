@@ -110,6 +110,7 @@ export const TodoPaperEditor = forwardRef<
   );
   const textareaRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const pendingCaretRef = useRef<{ rowId: string; offset: number } | null>(null);
+  const isComposingRef = useRef(false);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -214,6 +215,14 @@ export const TodoPaperEditor = forwardRef<
     event: KeyboardEvent<HTMLTextAreaElement>,
   ) => {
     if (event.key === "Enter") {
+      if (
+        isComposingRef.current ||
+        event.nativeEvent.isComposing ||
+        event.keyCode === 229
+      ) {
+        return;
+      }
+
       event.preventDefault();
       activateRowAt(index + 1);
       return;
@@ -276,8 +285,15 @@ export const TodoPaperEditor = forwardRef<
               value={row.text}
               aria-label={`Todo 第 ${index + 1} 行`}
               onInput={(event) => handleInput(row.id, event)}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                isComposingRef.current = false;
+              }}
               onKeyDown={(event) => handleKeyDown(index, event)}
               onBlur={() => {
+                isComposingRef.current = false;
                 setActiveRowId((current) =>
                   current === row.id ? null : current
                 );
