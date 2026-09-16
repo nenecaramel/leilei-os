@@ -21,7 +21,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+const bytea = customType<{ data: Buffer }>({
   dataType() {
     return "bytea";
   },
