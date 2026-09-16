@@ -588,18 +588,9 @@ test("Normalized editor output trims text, drops empty rows, and reports dirty c
       onDirtyChange: (dirty) => dirtyValues.push(dirty),
     });
 
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
 
     await act(async () => {
@@ -615,85 +606,6 @@ test("Normalized editor output trims text, drops empty rows, and reports dirty c
     await harness.cleanup();
   }
 });
-
-async function renderTodoPaperDialog(
-  harness: ReturnType<typeof installDom>,
-  options: {
-    failRequest?: boolean;
-    entries?: TodoEntry[];
-    paper?: TodoPaper | null;
-  } = {},
-) {
-  const requests: Array<{ path: string; init?: RequestInit }> = [];
-  const saved: unknown[] = [];
-  let closed = 0;
-  const triggerRef = { current: harness.dom.window.document.createElement("button") };
-
-  const paperDate = new Date(2026, 7, 7, 12, 0, 0);
-  const initialPaper = options.paper === undefined
-    ? {
-        author: "L" as const,
-        date: "2026-08-07",
-        revision: 1,
-        entries: options.entries ?? [
-          { id: "l-1", kind: "pending" as const, text: "First" },
-          { id: "l-2", kind: "record" as const, text: "Second" },
-        ],
-      }
-    : options.paper;
-
-  function DialogHarness() {
-    const [open, setOpen] = useState(true);
-    const [paper, setPaper] = useState(initialPaper);
-
-    const handleSaved = React.useCallback((nextPaper: TodoPaper) => {
-      saved.push(nextPaper.entries);
-      setPaper(nextPaper);
-    }, []);
-
-    const handleClosed = React.useCallback(() => {
-      closed += 1;
-      setOpen(false);
-    }, []);
-
-    return React.createElement(TodoPaperDialog, {
-      api: {
-        request: async <T>(path: string, init?: RequestInit) => {
-          requests.push({ path, init });
-          if (options.failRequest) throw new Error("request failed");
-          return {
-            success: true,
-            data: {
-              author: "L",
-              date: "2026-08-07",
-              revision: 2,
-              entries: JSON.parse(String(init?.body ?? "{}"))?.entries ?? [],
-            },
-          } as T;
-        },
-      },
-      author: "L",
-      date: paperDate,
-      open,
-      paper,
-      triggerRef,
-      onSaved: handleSaved,
-      onClosed: handleClosed,
-    });
-  }
-
-  await act(async () => {
-    harness.root.render(React.createElement(DialogHarness));
-  });
-
-  return {
-    requests,
-    saved,
-    get closed() {
-      return closed;
-    },
-  };
-}
 
 test("Todo paper coordinator uses only the server paper contract", () => {
   assert.doesNotMatch(todoPaperDialogSource, /@deprecated/);
@@ -755,18 +667,9 @@ test("Todo paper writes changed entries before closing and reports the saved pre
 
   try {
     const rendered = await renderTodoPaperDialog(harness);
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
 
     await act(async () => {
@@ -806,18 +709,9 @@ test("Todo paper keeps edits open and shows an alert when server save fails", as
 
   try {
     const rendered = await renderTodoPaperDialog(harness, { failRequest: true });
-    const firstLine =
-      harness.container.querySelector<HTMLButtonElement>(
-        "[aria-label=\"编辑 Todo 第 1 行\"]",
-      );
-    assert.ok(firstLine);
-
-    await act(async () => {
-      firstLine.click();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-
-    const first = harness.container.querySelector<HTMLTextAreaElement>("textarea");
+    const first = harness.container.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Todo 第 1 行"]',
+    );
     assert.ok(first);
 
     await act(async () => {
@@ -844,7 +738,6 @@ test("Todo paper keeps edits open and shows an alert when server save fails", as
     await harness.cleanup();
   }
 });
-
 
 test("Todo paper CSS defines the fixed ruled paper geometry", () => {
   assert.match(
