@@ -24,6 +24,7 @@ import {
 import { ChatGPTExportParser } from "../src/domains/conversation/chatgpt-export-parser.js";
 import { chatGptConversationFixture } from "./fixtures/chatgpt-conversation-export.js";
 import { claudeConversationFixture } from "./fixtures/claude-conversation-export.js";
+import type { ConversationExclusionRule } from "../src/domains/conversation/conversation-exclusions.js";
 
 async function *stream(buffer: Buffer): AsyncGenerator<Buffer> {
   for (let offset = 0; offset < buffer.length; offset += 17) {
@@ -36,6 +37,7 @@ class FakeImportRepository implements ConversationImportRepository {
   blob: ConversationStoredBlob | null = null;
   runCounter = 0;
   runs = new Map<string, ConversationStoredRun>();
+  exclusions: ConversationExclusionRule[] = [];
 
   async findUserById() {
     return { status: "active" as const };
@@ -126,6 +128,10 @@ class FakeImportRepository implements ConversationImportRepository {
     return run?.userId === input.userId ? run : null;
   }
 
+  async listExclusions() {
+    return this.exclusions;
+  }
+
   async readStoredBlob() {
     return this.blob;
   }
@@ -165,6 +171,9 @@ class FakeExecutor implements ConversationImportExecutor {
       },
       async readMergeState() {
         return executor.state;
+      },
+      async readExclusions() {
+        return repository.exclusions;
       },
       async applyConversation(input) {
         executor.applied.push(input.item.sourceConversationId);
@@ -377,4 +386,95 @@ test("Previewing an exact raw source after execution reuses the executed run", a
   assert.equal(secondPreview.already_executed, true);
   assert.equal(secondPreview.import_run_id, firstPreview.import_run_id);
   assert.equal(repository.runCounter, runsBefore);
+});
+
+
+test("Conversation-level exclusions skip canonical planning and survive in Preview metadata", async () => {
+  const repository = new FakeImportRepository();
+  repository.exclusions = [{
+    provider: "chatgpt",
+    scope: "conversation",
+    sourceConversationId: "conv-real-shape",
+    sourceNodeId: null,
+  }];
+  const service = new ConversationImportService(repository, new FakeStateRepository());
+  const raw = Buffer.from(JSON.stringify([chatGptConversationFixture]), "utf8");
+
+  const preview = await service.preview(stream(raw), "conversations.json", "user-id");
+
+  assert.equal(preview.summary.conversations.create, 0);
+  assert.equal(preview.summary.messages.create, 0);
+  assert.equal(preview.exclusions.conversations, 1);
+  assert.ok(preview.exclusions.messages > 0);
+});
+
+test("branch exclusions remove the source subtree from Preview and Execute planning", async () => {
+  const repository = new FakeImportRepository();
+  repository.exclusions = [{
+    provider: "chatgpt",
+    scope: "branch",
+    sourceConversationId: "conv-real-shape",
+    sourceNodeId: "assistant-alt",
+  }];
+  const executor = new FakeExecutor(repository);
+  const service = new ConversationImportService(
+    repository,
+    new FakeStateRepository(),
+    executor,
+  );
+  const raw = Buffer.from(JSON.stringify([chatGptConversationFixture]), "utf8");
+
+  const preview = await service.preview(stream(raw), "conversations.json", "user-id");
+  const fullCount = ChatGPTExportParser
+    .normalizeConversation(chatGptConversationFixture)
+    .conversation.messages.length;
+  assert.equal(preview.exclusions.branch_roots, 1);
+  assert.ok(preview.exclusions.messages >= 2);
+  assert.equal(
+    preview.summary.messages.create,
+    fullCount - preview.exclusions.messages,
+  );
+
+  const executed = await service.execute(
+    preview.import_run_id,
+    preview.preview_fingerprint,
+    "user-id",
+  );
+  assert.equal(executed.outcome, "executed");
+  assert.equal(executed.exclusions.branch_roots, 1);
+  assert.deepEqual(executor.applied, ["conv-real-shape"]);
+});
+
+test("changing exclusion rules after Preview makes Execute stale before canonical writes", async () => {
+  const repository = new FakeImportRepository();
+  const executor = new FakeExecutor(repository);
+  const service = new ConversationImportService(
+    repository,
+    new FakeStateRepository(),
+    executor,
+  );
+  const raw = Buffer.from(JSON.stringify([chatGptConversationFixture]), "utf8");
+  const preview = await service.preview(stream(raw), "conversations.json", "user-id");
+
+  repository.exclusions = [{
+    provider: "chatgpt",
+    scope: "branch",
+    sourceConversationId: "conv-real-shape",
+    sourceNodeId: "assistant-alt",
+  }];
+
+  await assert.rejects(
+    () => service.execute(
+      preview.import_run_id,
+      preview.preview_fingerprint,
+      "user-id",
+    ),
+    (error: unknown) => (
+      typeof error === "object"
+      && error !== null
+      && "code" in error
+      && (error as { code?: unknown }).code === "CONVERSATION_IMPORT_PREVIEW_STALE"
+    ),
+  );
+  assert.deepEqual(executor.applied, []);
 });
