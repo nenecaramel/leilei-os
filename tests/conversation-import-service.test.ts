@@ -35,7 +35,10 @@ async function *stream(buffer: Buffer): AsyncGenerator<Buffer> {
 class FakeImportRepository implements ConversationImportRepository {
   source: ConversationStoredSource | null = null;
   blob: ConversationStoredBlob | null = null;
+  sourceCounter = 0;
   runCounter = 0;
+  sourcesBySha = new Map<string, ConversationStoredSource>();
+  blobsBySource = new Map<string, ConversationStoredBlob>();
   runs = new Map<string, ConversationStoredRun>();
   exclusions: ConversationExclusionRule[] = [];
 
@@ -44,7 +47,7 @@ class FakeImportRepository implements ConversationImportRepository {
   }
 
   async findSourceBySha(_userId: string, rawSha256: string) {
-    return this.source?.rawSha256 === rawSha256 ? this.source : null;
+    return this.sourcesBySha.get(rawSha256) ?? null;
   }
 
   async createOrReuseSourceWithBlob(input: {
@@ -56,27 +59,36 @@ class FakeImportRepository implements ConversationImportRepository {
     encoding: "raw" | "gzip";
     data: Buffer;
   }) {
-    if (this.source?.rawSha256 === input.rawSha256) {
-      return { source: this.source, reused: true };
+    const existing = this.sourcesBySha.get(input.rawSha256);
+    if (existing) {
+      this.source = existing;
+      this.blob = this.blobsBySource.get(existing.id) ?? null;
+      return { source: existing, reused: true };
     }
-    this.source = {
-      id: "source-id",
+    this.sourceCounter += 1;
+    const sourceId = `10000000-0000-4000-8000-${String(this.sourceCounter).padStart(12, "0")}`;
+    const source: ConversationStoredSource = {
+      id: sourceId,
       userId: input.userId,
       provider: input.provider,
       originalFilename: input.originalFilename,
       rawSha256: input.rawSha256,
       rawBytes: input.rawBytes,
       storageKind: "postgres_bytea",
-      storageKey: "source-id",
+      storageKey: sourceId,
     };
-    this.blob = {
-      sourceId: "source-id",
+    const blob: ConversationStoredBlob = {
+      sourceId,
       encoding: input.encoding,
       originalBytes: input.rawBytes,
       storedBytes: input.data.length,
       data: input.data,
     };
-    return { source: this.source, reused: false };
+    this.sourcesBySha.set(input.rawSha256, source);
+    this.blobsBySource.set(sourceId, blob);
+    this.source = source;
+    this.blob = blob;
+    return { source, reused: false };
   }
 
   async createPreviewRun(input: {
@@ -88,8 +100,10 @@ class FakeImportRepository implements ConversationImportRepository {
     warningCount: number;
   }) {
     this.runCounter += 1;
-    if (!this.source) throw new Error("source missing");
-    const id = `run-${this.runCounter}`;
+    const source = [...this.sourcesBySha.values()]
+      .find((candidate) => candidate.id === input.sourceId);
+    if (!source) throw new Error("source missing");
+    const id = `20000000-0000-4000-8000-${String(this.runCounter).padStart(12, "0")}`;
     this.runs.set(id, {
       id,
       userId: input.userId,
@@ -100,7 +114,7 @@ class FakeImportRepository implements ConversationImportRepository {
       summary: input.summary,
       warningCount: input.warningCount,
       completedAt: null,
-      source: this.source,
+      source,
     });
     return { id };
   }
@@ -132,8 +146,10 @@ class FakeImportRepository implements ConversationImportRepository {
     return this.exclusions;
   }
 
-  async readStoredBlob() {
-    return this.blob;
+  async readStoredBlob(input: { userId: string; sourceId: string }) {
+    const source = [...this.sourcesBySha.values()]
+      .find((candidate) => candidate.id === input.sourceId && candidate.userId === input.userId);
+    return source ? this.blobsBySource.get(input.sourceId) ?? null : null;
   }
 }
 
@@ -174,6 +190,9 @@ class FakeExecutor implements ConversationImportExecutor {
       },
       async readExclusions() {
         return repository.exclusions;
+      },
+      async readStoredBlob(input) {
+        return repository.readStoredBlob(input);
       },
       async applyConversation(input) {
         executor.applied.push(input.item.sourceConversationId);
