@@ -34,7 +34,15 @@ function createPreviewHandler(
       );
       return;
     }
-    const filename = request.header("x-leilei-filename");
+    const encodedFilename = request.header("x-leilei-filename");
+    let filename: string | null = null;
+    if (encodedFilename) {
+      try {
+        filename = decodeURIComponent(encodedFilename);
+      } catch {
+        filename = null;
+      }
+    }
     if (!filename) {
       sendError(
         response,
