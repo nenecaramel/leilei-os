@@ -166,3 +166,28 @@ test("older provider snapshots are classified stale instead of reverting newer c
   );
   assert.equal(plan.summary.messages.stale, 1);
 });
+
+
+test("a stale conversation snapshot cannot update existing messages even when message timestamps are ambiguous", () => {
+  const before = imported();
+  const current = asCurrent(before);
+  const stored = current.conversations[0]!;
+  stored.sourceUpdatedAt = "2026-09-17T00:00:00.000Z";
+
+  const older = imported();
+  older.sourceUpdatedAt = "2026-09-16T00:00:00.000Z";
+  const target = older.messages.find((message) => message.sourceNodeId === "assistant-final")!;
+  target.displayText = "older body with the same message timestamp";
+  target.contentBlocks = target.contentBlocks.map((block) =>
+    block.ordinal === 0
+      ? { ...block, text: "older body with the same message timestamp" }
+      : block
+  );
+
+  const plan = buildConversationMergePlan([older], current, SHA, VERSION);
+  const item = plan.items[0]?.messages.find(
+    (message) => message.sourceNodeId === "assistant-final",
+  );
+  assert.equal(plan.summary.conversations.stale, 1);
+  assert.equal(item?.classification, "stale");
+});
