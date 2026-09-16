@@ -18,6 +18,10 @@ import {
 } from "./conversation-provider-registry.js";
 import type { ConversationImportRepository } from "./conversation-import-repository.js";
 import type { ConversationImportExecutor } from "./conversation-import-executor.js";
+import {
+  applyConversationExclusions,
+  type ConversationExclusionSummary,
+} from "./conversation-exclusions.js";
 
 export type ConversationImportExecuteResult = {
   outcome: "executed" | "replayed" | "already_executed";
@@ -29,6 +33,7 @@ export type ConversationImportExecuteResult = {
   summary: ConversationMergeSummary;
   warning_count: number;
   warning_codes: Record<string, number>;
+  exclusions: ConversationExclusionSummary;
 };
 
 export type ConversationImportPreview = {
@@ -45,9 +50,33 @@ export type ConversationImportPreview = {
   summary: ConversationMergeSummary;
   warning_count: number;
   warning_codes: Record<string, number>;
+  exclusions: ConversationExclusionSummary;
 };
 
 export class ConversationImportAuthorizationError extends Error {}
+
+function emptyExclusionSummary(): ConversationExclusionSummary {
+  return { conversations: 0, messages: 0, branch_roots: 0 };
+}
+
+function addExclusionSummary(
+  target: ConversationExclusionSummary,
+  addition: ConversationExclusionSummary,
+): void {
+  target.conversations += addition.conversations;
+  target.messages += addition.messages;
+  target.branch_roots += addition.branch_roots;
+}
+
+function importPartFingerprint(
+  exclusionFingerprint: string,
+  mergeFingerprint: string | null,
+): string {
+  return hashCanonical({
+    exclusionFingerprint,
+    mergeFingerprint,
+  });
+}
 
 function emptySummary(): ConversationMergeSummary {
   return {
@@ -225,6 +254,7 @@ export class ConversationImportService {
         }
 
         const current = await transaction.readMergeState(userId);
+        const exclusions = await transaction.readExclusions(userId);
         const currentByKey = new Map<string, CurrentConversationState>(
           current.conversations.map((conversation) => [
             stateKey(conversation.provider, conversation.sourceConversationId),
@@ -232,6 +262,7 @@ export class ConversationImportService {
           ]),
         );
         const summary = emptySummary();
+        const exclusionSummary = emptyExclusionSummary();
         const warningCodeCounts = new Map<string, number>();
         const previewParts: Array<{
           sourceConversationId: string;
@@ -263,9 +294,10 @@ export class ConversationImportService {
             }
 
             const normalized = detected.parser.normalizeConversation(value);
+            const rawConversation = normalized.conversation;
             const key = stateKey(
-              normalized.conversation.provider,
-              normalized.conversation.sourceConversationId,
+              rawConversation.provider,
+              rawConversation.sourceConversationId,
             );
             if (seenConversations.has(key)) {
               throw Object.assign(new Error("Duplicate conversation in import source."), {
@@ -275,18 +307,31 @@ export class ConversationImportService {
             seenConversations.add(key);
             conversationCount += 1;
 
+            const excluded = applyConversationExclusions(rawConversation, exclusions);
+            addExclusionSummary(exclusionSummary, excluded.summary);
+            warningCounts(warningCodeCounts, normalized.warnings);
+            if (!excluded.conversation) {
+              previewParts.push({
+                sourceConversationId: rawConversation.sourceConversationId,
+                fingerprint: importPartFingerprint(excluded.fingerprint, null),
+              });
+              continue;
+            }
+
             const existing = currentByKey.get(key);
             const plan = buildConversationMergePlan(
-              [normalized.conversation],
+              [excluded.conversation],
               { conversations: existing ? [existing] : [] },
               run.source.rawSha256,
               run.parserVersion,
             );
             addSummary(summary, plan.summary);
-            warningCounts(warningCodeCounts, normalized.warnings);
             previewParts.push({
-              sourceConversationId: normalized.conversation.sourceConversationId,
-              fingerprint: plan.previewFingerprint,
+              sourceConversationId: rawConversation.sourceConversationId,
+              fingerprint: importPartFingerprint(
+                excluded.fingerprint,
+                plan.previewFingerprint,
+              ),
             });
           }
         }
@@ -329,9 +374,10 @@ export class ConversationImportService {
               });
             }
             const normalized = detected.parser.normalizeConversation(value);
+            const rawConversation = normalized.conversation;
             const key = stateKey(
-              normalized.conversation.provider,
-              normalized.conversation.sourceConversationId,
+              rawConversation.provider,
+              rawConversation.sourceConversationId,
             );
             if (applySeenConversations.has(key)) {
               throw Object.assign(new Error("Duplicate conversation in stored import source."), {
@@ -339,9 +385,11 @@ export class ConversationImportService {
               });
             }
             applySeenConversations.add(key);
+            const excluded = applyConversationExclusions(rawConversation, exclusions);
+            if (!excluded.conversation) continue;
             const existing = currentByKey.get(key);
             const plan = buildConversationMergePlan(
-              [normalized.conversation],
+              [excluded.conversation],
               { conversations: existing ? [existing] : [] },
               run.source.rawSha256,
               run.parserVersion,
@@ -370,6 +418,7 @@ export class ConversationImportService {
           conversations_detected: conversationCount,
           merge: summary,
           warning_codes: warningCodes,
+          exclusions: exclusionSummary,
           executed: true,
         };
         await transaction.markRunExecuted({
@@ -389,6 +438,7 @@ export class ConversationImportService {
           summary,
           warning_count: warningCount,
           warning_codes: warningCodes,
+          exclusions: exclusionSummary,
         };
       });
     } finally {
@@ -407,6 +457,7 @@ export class ConversationImportService {
   ): ConversationImportExecuteResult {
     const merge = storedSummary.merge as ConversationMergeSummary | undefined;
     const warningCodes = storedSummary.warning_codes as Record<string, number> | undefined;
+    const exclusions = storedSummary.exclusions as ConversationExclusionSummary | undefined;
     return {
       outcome,
       import_run_id: runId,
@@ -419,6 +470,7 @@ export class ConversationImportService {
         ? Object.values(warningCodes).reduce((total, count) => total + count, 0)
         : fallbackWarningCount,
       warning_codes: warningCodes ?? {},
+      exclusions: exclusions ?? emptyExclusionSummary(),
     };
   }
 
@@ -427,6 +479,7 @@ export class ConversationImportService {
     userId: string,
   ): Promise<ConversationImportPreview> {
     const current = await this.stateRepository.readMergeState(userId);
+    const exclusions = await this.repository.listExclusions(userId);
     const currentByKey = new Map<string, CurrentConversationState>(
       current.conversations.map((conversation) => [
         stateKey(conversation.provider, conversation.sourceConversationId),
@@ -436,6 +489,7 @@ export class ConversationImportService {
 
     let providerInfo: ReturnType<typeof detectConversationProviderParser> | null = null;
     const summary = emptySummary();
+    const exclusionSummary = emptyExclusionSummary();
     const warningCodeCounts = new Map<string, number>();
     const previewParts: Array<{
       sourceConversationId: string;
@@ -459,9 +513,10 @@ export class ConversationImportService {
         }
 
         const result = providerInfo.parser.normalizeConversation(value);
+        const rawConversation = result.conversation;
         const key = stateKey(
-          result.conversation.provider,
-          result.conversation.sourceConversationId,
+          rawConversation.provider,
+          rawConversation.sourceConversationId,
         );
         if (seenConversations.has(key)) {
           throw Object.assign(new Error("Duplicate conversation in import source."), {
@@ -471,18 +526,31 @@ export class ConversationImportService {
         seenConversations.add(key);
         conversationCount += 1;
 
+        const excluded = applyConversationExclusions(rawConversation, exclusions);
+        addExclusionSummary(exclusionSummary, excluded.summary);
+        warningCounts(warningCodeCounts, result.warnings);
+        if (!excluded.conversation) {
+          previewParts.push({
+            sourceConversationId: rawConversation.sourceConversationId,
+            fingerprint: importPartFingerprint(excluded.fingerprint, null),
+          });
+          continue;
+        }
+
         const existing = currentByKey.get(key);
         const plan = buildConversationMergePlan(
-          [result.conversation],
+          [excluded.conversation],
           { conversations: existing ? [existing] : [] },
           upload.rawSha256,
           providerInfo.version,
         );
         addSummary(summary, plan.summary);
-        warningCounts(warningCodeCounts, result.warnings);
         previewParts.push({
-          sourceConversationId: result.conversation.sourceConversationId,
-          fingerprint: plan.previewFingerprint,
+          sourceConversationId: rawConversation.sourceConversationId,
+          fingerprint: importPartFingerprint(
+            excluded.fingerprint,
+            plan.previewFingerprint,
+          ),
         });
       }
     }
@@ -541,6 +609,7 @@ export class ConversationImportService {
       conversations_detected: conversationCount,
       merge: summary,
       warning_codes: warningCodes,
+      exclusions: exclusionSummary,
     };
     const run = executed ?? await this.repository.createPreviewRun({
       userId,
@@ -565,6 +634,7 @@ export class ConversationImportService {
       summary,
       warning_count: warningCount,
       warning_codes: warningCodes,
+      exclusions: exclusionSummary,
     };
   }
 }
