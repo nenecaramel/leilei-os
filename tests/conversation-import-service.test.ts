@@ -167,8 +167,10 @@ class FakeExecutor implements ConversationImportExecutor {
     const repository = this.repository;
     const executor = this;
     const transaction: ConversationImportExecutionTransaction = {
-      async lockSource(_userId, sourceId) {
-        return repository.source?.id === sourceId;
+      async lockSource(userId, sourceId) {
+        return [...repository.sourcesBySha.values()].some(
+          (source) => source.id === sourceId && source.userId === userId,
+        );
       },
       async lockRun(userId, runId) {
         const run = await repository.findRunById({ userId, runId });
