@@ -212,7 +212,10 @@ function currentPath(mapping: JsonRecord, currentNode: string | null): Map<strin
   }
 
   reversed.reverse();
-  const messageNodeIds = reversed.filter((nodeId) => Boolean(record(record(mapping[nodeId])?.message)));
+  const messageNodeIds = reversed.filter((nodeId) => {
+    const node = record(mapping[nodeId]);
+    return Boolean(node && record(node.message));
+  });
   return new Map(messageNodeIds.map((nodeId, index) => [nodeId, index]));
 }
 
