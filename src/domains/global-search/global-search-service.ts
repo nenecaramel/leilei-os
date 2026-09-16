@@ -48,8 +48,8 @@ export type GlobalSearchItem = {
   author: ContentAuthor | null;
   detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | null;
   detail_arguments: { id: string; scope: "active" | "archived" } | { id: string } | { date: string } | null;
-  conversation_id: string | null;
-  conversation_view: "default" | "all" | null;
+  conversation_id?: string | null;
+  conversation_view?: "default" | "all" | null;
 };
 
 export type GlobalSearchResult = {
