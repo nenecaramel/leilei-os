@@ -547,7 +547,7 @@ export class ConversationImportService {
         });
       }
 
-      const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}`;
+      const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}\u0000${run.executionKey}`;
       const firstRunId = seenSourceParser.get(dedupeKey) ?? null;
       if (firstRunId) {
         items.push(batchFilePreview({
@@ -699,7 +699,7 @@ export class ConversationImportService {
 
       for (const [inputIndex, run] of resolved.entries()) {
         const locked = lockedRuns.get(run.id)!;
-        const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}`;
+        const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}\u0000${run.executionKey}`;
         const firstRunId = seenSourceParser.get(dedupeKey) ?? null;
         if (firstRunId) {
           previewItems.push(batchFilePreview({
