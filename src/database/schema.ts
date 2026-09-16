@@ -868,8 +868,8 @@ export const conversationImportRuns = pgTable(
       foreignColumns: [conversationImportSources.id, conversationImportSources.userId],
       name: "conversation_import_runs_source_user_fk",
     }).onDelete("cascade").onUpdate("cascade"),
-    uniqueIndex("conversation_import_runs_source_parser_executed_uidx")
-      .on(table.sourceId, table.parserVersion)
+    uniqueIndex("conversation_import_runs_source_parser_preview_executed_uidx")
+      .on(table.sourceId, table.parserVersion, table.previewFingerprint)
       .where(sql`${table.status} = 'executed'`),
     index("conversation_import_runs_user_created_idx").on(table.userId, table.createdAt.desc(), table.id.desc()),
     check("conversation_import_runs_parser_not_blank", sql`char_length(btrim(${table.parserVersion})) > 0`),
