@@ -60,6 +60,7 @@ import type { ConversationArchiveReadApiDependencies } from "../web-api/conversa
 import type { ConversationPruningApiDependencies } from "../web-api/conversation-pruning-router.js";
 import type { ConversationFavoriteApiDependencies } from "../web-api/conversation-favorite-router.js";
 import type { ConversationExclusionManagementApiDependencies } from "../web-api/conversation-exclusion-management-router.js";
+import type { ConversationImportHistoryApiDependencies } from "../web-api/conversation-import-history-router.js";
 import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
@@ -89,6 +90,7 @@ export type AppDependencies = {
   webConversationPruningService?: ConversationPruningApiDependencies["conversationPruningService"];
   webConversationFavoriteService?: ConversationFavoriteApiDependencies["conversationFavoriteService"];
   webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
+  webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -318,6 +320,7 @@ export function createApp(
     const webConversationPruningService = dependencies.webConversationPruningService;
     const webConversationFavoriteService = dependencies.webConversationFavoriteService;
     const webConversationExclusionManagementService = dependencies.webConversationExclusionManagementService;
+    const webConversationImportHistoryService = dependencies.webConversationImportHistoryService;
 
     if (
       !webMemoryService ||
@@ -387,6 +390,7 @@ export function createApp(
         ...(webSharedPaperService ? { sharedPaper: { sharedPaperService: webSharedPaperService } } : {}),
         ...(webConversationFavoriteService ? { conversationFavorite: { conversationFavoriteService: webConversationFavoriteService } } : {}),
         ...(webConversationExclusionManagementService ? { conversationExclusionManagement: { conversationExclusionManagementService: webConversationExclusionManagementService } } : {}),
+        ...(webConversationImportHistoryService ? { conversationImportHistory: { conversationImportHistoryService: webConversationImportHistoryService } } : {}),
         ...(webConversationArchiveReadService ? { conversationRead: { conversationArchiveReadService: webConversationArchiveReadService } } : {}),
         ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
