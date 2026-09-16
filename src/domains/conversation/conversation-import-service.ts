@@ -639,6 +639,7 @@ export class ConversationImportService {
       const syntheticSequence = { value: 0 };
       const seenSourceParser = new Map<string, string>();
       const previewItems: ConversationImportBatchFilePreview[] = [];
+      const replayedBatchRuns = new Set<string>();
 
       for (const [inputIndex, run] of resolved.entries()) {
         const locked = lockedRuns.get(run.id)!;
@@ -655,6 +656,37 @@ export class ConversationImportService {
           continue;
         }
         seenSourceParser.set(dedupeKey, run.id);
+
+        const storedBatchFingerprint =
+          typeof locked.summary.batch_fingerprint === "string"
+            ? locked.summary.batch_fingerprint
+            : null;
+        const storedBatchPreviewFingerprint =
+          typeof locked.summary.batch_preview_fingerprint === "string"
+            ? locked.summary.batch_preview_fingerprint
+            : null;
+        if (
+          locked.status === "executed"
+          && storedBatchFingerprint === expectedBatchFingerprint
+          && storedBatchPreviewFingerprint
+        ) {
+          replayedBatchRuns.add(run.id);
+          previewItems.push({
+            ...batchFilePreview({
+              inputIndex,
+              run,
+              status: "pending",
+              duplicateOfRunId: null,
+              executedRunId: null,
+            }),
+            preview_fingerprint: storedBatchPreviewFingerprint,
+            summary: readStoredMergeSummary(locked.summary),
+            warning_count: locked.warningCount,
+            warning_codes: readStoredWarningCodes(locked.summary),
+            exclusions: readStoredExclusions(locked.summary),
+          });
+          continue;
+        }
 
         const executed = locked.status === "executed"
           ? { id: locked.id, summary: locked.summary }
