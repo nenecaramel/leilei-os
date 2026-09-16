@@ -1,0 +1,351 @@
+# Conversation Archive V1 Implementation Plan
+
+> Base: `main@d91f9605b54cc8d4d59fe883e4b8baae5bfb06d6`
+>
+> Source evidence for ChatGPT: the user's real 2026-09-16 official `conversations.json` export. Claude support remains adapter-only until a real user export is available.
+
+## Goal
+
+Add Conversation Archive as a first-class LeileiOS domain for preserving, browsing, searching, counting, and favoriting ChatGPT / Claude conversation history.
+
+The import contract must be safe for repeated manual exports:
+
+- provider-specific parsing;
+- provider-neutral canonical storage;
+- idempotent incremental merge;
+- new/changed records are merged, unchanged records are skipped;
+- records absent from a later export are never deleted by ordinary Import;
+- source branches and provider message identity are preserved;
+- visible-path statistics do not count hidden reasoning/tool nodes as ordinary chat messages.
+
+## Why this is a separate import pipeline
+
+Do not reuse System Data Restore.
+
+The existing restore path is a <=10 MiB create-only backup restore with create/duplicate/conflict semantics. Conversation exports are much larger and have different semantics: the real ChatGPT export used for this work is ~82 MiB, has a message graph rather than a flat list, and repeated Claude imports must update existing conversations/messages.
+
+Conversation Archive therefore gets its own import domain, API, preview model, and audit trail.
+
+## Canonical model
+
+### Conversation
+
+One provider conversation/window.
+
+Required identity:
+
+- internal `id`
+- `user_id`
+- `provider`
+- `source_conversation_id`
+
+Canonical fields:
+
+- title
+- source_created_at / source_updated_at
+- current_leaf_source_node_id
+- default_model, nullable
+- source_fingerprint
+- first_seen_import_id / last_seen_import_id
+- created_at / updated_at
+
+Unique identity: `(user_id, provider, source_conversation_id)`.
+
+### Message node
+
+Store provider graph nodes, not only visible chat bubbles.
+
+Required identity:
+
+- internal `id`
+- conversation_id
+- source_node_id
+- source_message_id, nullable
+- parent_source_node_id, nullable
+
+Canonical fields:
+
+- role: user / assistant / system / tool / reasoning / unknown
+- model, nullable
+- source_created_at / source_updated_at, nullable
+- is_current_path
+- current_path_index, nullable
+- turn_index, nullable
+- is_primary
+- display_text
+- source_fingerprint
+- first_seen_import_id / last_seen_import_id
+
+`is_primary` means the node is an ordinary visible conversation message for UI/statistics. Internal reasoning/thought/tool nodes remain preserved but do not inflate ordinary message/turn counts.
+
+### Content block
+
+A message can contain ordered typed blocks.
+
+Canonical kinds:
+
+- text
+- thinking
+- reasoning_recap
+- tool_use
+- tool_result
+- image
+- audio
+- video
+- file
+- unknown
+
+Keep `raw_type` and a structured payload for lossless handling of provider-specific shapes that LeileiOS does not yet understand.
+
+### Attachment
+
+Preserve attachment identity/metadata even when the original bytes are unavailable.
+
+Fields include source attachment id, filename, mime type, size, ordinal, provider metadata, and optional future blob reference.
+
+### Message version
+
+When a known source node/message arrives with a different canonical fingerprint:
+
+1. snapshot the previous canonical value;
+2. update the canonical row;
+3. retain the old snapshot as a version.
+
+Ordinary Import never silently discards a changed historical message.
+
+### Import source / import run
+
+Separate exact source-file identity from parser executions.
+
+`conversation_import_source`:
+
+- user
+- provider
+- original filename
+- raw SHA-256
+- raw byte size
+- compressed/raw storage reference
+- first received at
+
+`conversation_import_run`:
+
+- source id
+- parser version
+- status
+- preview fingerprint
+- counts/summary
+- started/completed timestamps
+
+Same file + same parser version is idempotent. Same source file may be reparsed by a newer parser version.
+
+## Raw source preservation
+
+Do not copy every provider field into canonical rows merely to preserve evidence.
+
+Keep canonical rows compact and preserve the original export separately.
+
+Initial storage contract is abstracted behind a raw-source store. The first implementation may use compressed PostgreSQL bytes because the project has no existing object store, but the metadata schema must not depend on that backend; it must be movable to object storage later without changing Conversation/Message identities.
+
+Raw upload must be streamed. Do not use the existing `express.raw()` import pattern for large conversation exports.
+
+## ChatGPT adapter
+
+Implement `ChatGPTExportParser` against the real export structure:
+
+`conversation -> mapping -> node -> message`
+
+Preserve:
+
+- conversation_id
+- title
+- create_time / update_time
+- current_node
+- default_model_slug
+- mapping node id
+- node parent
+- message id
+- author role
+- message create_time
+- message-level metadata.model_slug when present
+- content shape
+- attachment metadata
+
+The real export contains at least:
+
+- text
+- multimodal_text
+- reasoning_recap
+- thoughts
+
+and media-like multimodal blocks, so unknown typed blocks must be preserved rather than rejected.
+
+### Current visible path
+
+For ChatGPT, walk parent pointers backward from `current_node`, reverse the result, and mark exactly those nodes as current-path.
+
+Do not delete other mapping branches.
+
+A missing-message structural/root node may be retained only as graph metadata if needed; it must not become an ordinary visible message.
+
+## Claude adapter contract
+
+Create the provider interface now, but do not implement production Claude parsing from internet examples.
+
+When the user's real Claude export arrives, implement a dedicated adapter and fixture against that file.
+
+Expected normalized input can support flat `chat_messages[]` plus parent pointers, but no field is considered guaranteed until verified from the real export.
+
+Model remains nullable.
+
+## Incremental merge rules
+
+For each import:
+
+- new provider conversation -> create
+- known conversation with changed header fingerprint -> update
+- new source node/message -> create
+- known source node/message with same fingerprint -> unchanged
+- known source node/message with changed fingerprint -> version + update
+- canonical rows not present in the new export -> retain untouched
+- no ordinary import operation deletes conversations or messages
+
+If the same conversation occurs more than once in one multi-file batch, deterministic provider rules must resolve it or surface a preview warning/conflict; never silently pick an arbitrary copy.
+
+## Preview
+
+Before execution, show provider-aware counts:
+
+- conversations: new / updated / unchanged
+- messages: new / updated / unchanged
+- warnings: unknown content types, attachment metadata without bytes, source duplicates, malformed skipped records
+
+Preview produces a fingerprint over source SHA + parser version + current canonical fingerprints. Execute rejects a stale preview.
+
+Repeated exact import should resolve to no changes.
+
+## Statistics
+
+Timezone comes from LeileiOS user settings.
+
+Daily ordinary-message counts include only:
+
+- current-path
+- primary
+- user/assistant visible messages
+
+Daily turns are counted by current-path primary user messages.
+
+Reasoning/thought/tool nodes remain queryable in raw/detail mode but do not inflate the normal daily message/turn numbers.
+
+## Search
+
+Conversation's own search is message-level and returns direct message anchors.
+
+V1 filters:
+
+- provider
+- date range
+- conversation
+- user / assistant
+- favorites only (after Favorites lands)
+
+Search normal visible text by default. Internal reasoning/raw blocks require an explicit raw/internal mode later.
+
+Global Search integration is a later rollout after the dedicated Conversation search is accepted. Do not add `conversation` to Global Search defaults in the foundation PR.
+
+## Favorites
+
+A favorite is not a copied dead note.
+
+Store:
+
+- favorite metadata: title / note / tags
+- ordered links to one or more canonical message rows
+- snapshot of the selected text/content at favorite creation time
+
+This preserves both live provenance and the exact text that was favorited.
+
+## System Data / backup boundary
+
+Do not put the entire archive into the existing small generic `All` export in the first rollout. Conversation Archive is orders of magnitude larger and has raw source files.
+
+It gets a dedicated archive export/backup contract later. Database backups still protect canonical data.
+
+## Rollout / PR sequence
+
+### PR A — foundation
+
+- [ ] provider-neutral normalized types
+- [ ] parser adapter interface
+- [ ] ChatGPT conversation normalizer
+- [ ] current-path derivation
+- [ ] content-block normalization
+- [ ] representative fixtures derived from the real ChatGPT export
+- [ ] tests for branches, reasoning/thoughts, multimodal, attachments, per-message model, unknown blocks
+- [ ] no DB/API/UI change yet
+
+### PR B — persistence + merge
+
+- [ ] migration 0040 Conversation Archive core tables
+- [ ] repositories
+- [ ] source/run audit tables
+- [ ] additive merge planner
+- [ ] message versioning
+- [ ] transaction/idempotency tests
+
+### PR C — large-file import
+
+- [ ] streamed raw source ingest + SHA-256
+- [ ] compressed raw-source storage abstraction
+- [ ] top-level export streaming
+- [ ] Preview API
+- [ ] Execute API
+- [ ] stale-preview protection
+- [ ] multi-file import batch support
+- [ ] real-size regression/performance test
+
+### PR D — web archive
+
+- [ ] Conversations navigation entry/page
+- [ ] import picker + preview + execute
+- [ ] conversation list/detail
+- [ ] message anchors
+- [ ] day statistics/calendar summary
+
+### PR E — dedicated search
+
+- [ ] message-level full-text/substring search
+- [ ] provider/date/role/conversation filters
+- [ ] direct deep links to exact message
+
+### PR F — favorites
+
+- [ ] single/range favorites
+- [ ] title/note/tags
+- [ ] snapshot preservation
+- [ ] Favorites-only filter
+
+### PR G — Global Search
+
+- [ ] add conversation module
+- [ ] return message snippet + exact deep link
+- [ ] prevent Conversation volume from drowning the existing six modules
+
+### PR H — Claude
+
+- [ ] inspect the user's real Claude export
+- [ ] implement Claude adapter
+- [ ] add real-shape fixtures
+- [ ] verify repeated incremental Claude import
+
+## Acceptance invariants
+
+- importing the same source twice never duplicates a conversation/message;
+- a later export can add and update but cannot implicitly delete old archive data;
+- changed messages retain the previous canonical version;
+- branch nodes survive even when they are not on the current visible path;
+- normal daily counts exclude thoughts/reasoning/tool-only nodes;
+- model is never guessed;
+- unknown provider fields/types are preserved or warned, never silently flattened away;
+- one provider parser cannot depend on another provider's raw schema;
+- Claude production support is not claimed until verified against the user's real export.
