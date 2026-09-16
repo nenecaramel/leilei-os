@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, open, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, open, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { once } from "node:events";
@@ -223,8 +223,8 @@ async function extractZipEntry(
     await handle.close();
   }
 
-  if (entry.compressedSize === 0) {
-    await readFile(zipPath);
+  if (entry.compressedSize <= 0 || entry.uncompressedSize <= 0) {
+    throw new ConversationImportFileError("CONVERSATION_IMPORT_ZIP_UNSUPPORTED");
   }
 
   let written = 0;
@@ -448,9 +448,11 @@ export async function encodeRawConversationSource(
     };
   }
   const gzip = createGzip({ level: 6 });
-  createReadStream(upload.uploadPath).pipe(gzip);
+  const pump = pipeline(createReadStream(upload.uploadPath), gzip);
+  const data = await collectStream(gzip);
+  await pump;
   return {
     encoding: "gzip",
-    data: await collectStream(gzip),
+    data,
   };
 }
