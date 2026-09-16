@@ -126,6 +126,17 @@ export class ConversationImportService {
         code: "CONVERSATION_IMPORT_RUN_NOT_FOUND",
       });
     }
+    if (run.status === "executed") {
+      return this.resultFromStoredSummary(
+        "replayed",
+        run.id,
+        run.source,
+        run.parserVersion,
+        run.previewFingerprint ?? expectedPreviewFingerprint,
+        run.summary,
+        run.warningCount,
+      );
+    }
     if (
       !run.previewFingerprint
       || run.previewFingerprint !== expectedPreviewFingerprint
@@ -133,18 +144,6 @@ export class ConversationImportService {
       throw Object.assign(new Error("Conversation import preview is stale."), {
         code: "CONVERSATION_IMPORT_PREVIEW_STALE",
       });
-    }
-
-    if (run.status === "executed") {
-      return this.resultFromStoredSummary(
-        "replayed",
-        run.id,
-        run.source,
-        run.parserVersion,
-        run.previewFingerprint,
-        run.summary,
-        run.warningCount,
-      );
     }
     if (run.status !== "processing") {
       throw Object.assign(new Error("Conversation import run is not executable."), {
@@ -538,7 +537,7 @@ export class ConversationImportService {
       merge: summary,
       warning_codes: warningCodes,
     };
-    const run = await this.repository.createPreviewRun({
+    const run = executed ?? await this.repository.createPreviewRun({
       userId,
       sourceId: source.id,
       parserVersion: providerInfo.version,
