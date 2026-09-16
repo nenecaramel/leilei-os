@@ -362,7 +362,7 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [ ] production acceptance with imported real ChatGPT / Claude data
 - [x] list exclusion rules and remove one rule without claiming immediate canonical restore
 - [x] removing a rule makes matching content eligible on the next import; old Preview fingerprints become stale automatically
-- [ ] one-click restore-now from a preserved raw source
+- [ ] one-click restore-now UI from a preserved raw source (backend re-preview + safe reapply semantics implemented in PR L)
 - [ ] optional UI-only Hide action
 - [ ] dangerous raw-source purge / privacy erase flow
 
@@ -414,6 +414,18 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [x] expose authenticated Web API source list / detail endpoints
 - [ ] Web history / source-management UI
 - [ ] production readback against real archived import sources
+
+### PR L — preserved-source reapply
+
+- [x] add explicit execution keys so ordinary imports remain idempotent while user-requested reapply is distinguishable
+- [x] migrate executed-run uniqueness to source + parser + preview fingerprint + execution key
+- [x] re-preview an existing immutable raw source without re-uploading bytes
+- [x] force explicit reapply Preview to create a fresh processing run even if an older standard execution has the same fingerprint
+- [x] keep Execute atomic and Preview-bound; reapply never writes canonical data before explicit Execute
+- [x] preserve write-free replay of the same reapply run
+- [x] expose authenticated preserved-source re-preview API
+- [ ] wire one-click restore-now UI from exclusion/source history surfaces
+- [ ] production acceptance after 0044 migration
 
 ## Acceptance invariants
 
