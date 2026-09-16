@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { PageState } from "../components/StateSurface";
 import { PageHeader } from "./PageHeader";
+import { ConversationSearchPanel } from "./ConversationSearchPanel";
 import {
   createConversationArchiveApi,
   type ConversationDailyStat,
@@ -31,6 +32,7 @@ type DetailState =
       detail: ConversationDetail;
       messages: ConversationMessage[];
       totalMessages: number;
+      contextual: boolean;
     }
   | { status: "error" };
 
@@ -235,6 +237,11 @@ function ConversationListView({
         <p className="conversation-inline-status" role="status">{importMessage}</p>
       ) : null}
 
+      <ConversationSearchPanel
+        client={client}
+        conversations={list.status === "ready" ? list.items : []}
+      />
+
       <section className="conversation-section">
         <div className="conversation-section-heading">
           <div>
@@ -349,7 +356,9 @@ function ConversationDetailView({
   client: ReturnType<typeof createConversationArchiveApi>;
   conversationId: string;
 }) {
-  const [view, setView] = useState<"default" | "all">("default");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: "default" | "all" = searchParams.get("view") === "all" ? "all" : "default";
+  const anchorId = searchParams.get("anchor");
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -357,27 +366,55 @@ function ConversationDetailView({
     setState({ status: "loading" });
     try {
       const detail = await client.detail(conversationId);
-      const messages = await client.messages({
-        conversationId,
-        view,
-        limit: 200,
-        offset: 0,
-      });
-      setState({
-        status: "ready",
-        detail,
-        messages: messages.items,
-        totalMessages: messages.total,
-      });
+      if (anchorId) {
+        const context = await client.messageContext({
+          conversationId,
+          messageId: anchorId,
+          view,
+          radius: 20,
+        });
+        setState({
+          status: "ready",
+          detail,
+          messages: context.items,
+          totalMessages: context.total,
+          contextual: true,
+        });
+      } else {
+        const messages = await client.messages({
+          conversationId,
+          view,
+          limit: 200,
+          offset: 0,
+        });
+        setState({
+          status: "ready",
+          detail,
+          messages: messages.items,
+          totalMessages: messages.total,
+          contextual: false,
+        });
+      }
     } catch {
       setState({ status: "error" });
     }
-  }, [client, conversationId, view]);
+  }, [anchorId, client, conversationId, view]);
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    if (state.status !== "ready" || !anchorId) return;
+    const handle = window.requestAnimationFrame(() => {
+      document.getElementById(`message-${anchorId}`)?.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [anchorId, state]);
+
   const loadMore = async () => {
-    if (state.status !== "ready" || loadingMore) return;
+    if (state.status !== "ready" || state.contextual || loadingMore) return;
     setLoadingMore(true);
     try {
       const next = await client.messages({
@@ -390,6 +427,7 @@ function ConversationDetailView({
         ...state,
         messages: [...state.messages, ...next.items],
         totalMessages: next.total,
+        contextual: false,
       });
     } finally {
       setLoadingMore(false);
@@ -416,8 +454,20 @@ function ConversationDetailView({
         action={
           detail.provider === "chatgpt" ? (
             <div className="conversation-view-toggle">
-              <button className={view === "default" ? "active" : ""} type="button" onClick={() => setView("default")}>当前路径</button>
-              <button className={view === "all" ? "active" : ""} type="button" onClick={() => setView("all")}>全部分支</button>
+              <button
+                className={view === "default" ? "active" : ""}
+                type="button"
+                onClick={() => setSearchParams({})}
+              >
+                当前路径
+              </button>
+              <button
+                className={view === "all" ? "active" : ""}
+                type="button"
+                onClick={() => setSearchParams({ view: "all" })}
+              >
+                全部分支
+              </button>
             </div>
           ) : null
         }
@@ -433,10 +483,22 @@ function ConversationDetailView({
         </p>
       ) : null}
 
+      {state.contextual && anchorId ? (
+        <div className="conversation-context-banner">
+          <span>已定位到搜索结果，显示前后上下文。</span>
+          <button
+            type="button"
+            onClick={() => setSearchParams(view === "all" ? { view: "all" } : {})}
+          >
+            从头查看
+          </button>
+        </div>
+      ) : null}
+
       <div className="conversation-message-list">
         {state.messages.map((message) => (
           <article
-            className={`conversation-message conversation-message--${message.role}`}
+            className={`conversation-message conversation-message--${message.role}${message.id === anchorId ? " conversation-message--anchor" : ""}`}
             id={`message-${message.id}`}
             key={message.id}
           >
@@ -450,7 +512,7 @@ function ConversationDetailView({
         ))}
       </div>
 
-      {state.messages.length < state.totalMessages ? (
+      {!state.contextual && state.messages.length < state.totalMessages ? (
         <button className="secondary-button conversation-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
           {loadingMore ? "读取中…" : `继续加载（${state.messages.length}/${state.totalMessages}）`}
         </button>
