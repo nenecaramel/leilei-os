@@ -53,6 +53,7 @@ export function ConversationImportHistoryPanel({
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
+    setDetail(null);
     try {
       const result = await client.importSources({ limit: 20, offset: 0 });
       setState({ status: "ready", ...result });
@@ -68,6 +69,7 @@ export function ConversationImportHistoryPanel({
       setDetail(null);
       return;
     }
+    setDetail(null);
     setDetailLoadingId(sourceId);
     setMessage("");
     try {
