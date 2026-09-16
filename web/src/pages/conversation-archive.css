@@ -612,3 +612,149 @@
     margin-left: 0;
   }
 }
+
+
+.conversation-import-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.conversation-import-source-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(250, 248, 243, 0.84);
+  box-shadow: var(--shadow-soft);
+}
+
+.conversation-import-source-main {
+  min-width: 0;
+}
+
+.conversation-import-source-topline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conversation-import-source-topline time {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.conversation-import-source-card h3 {
+  margin: 13px 0 6px;
+  overflow: hidden;
+  font-family: "Newsreader", serif;
+  font-size: 20px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-import-source-card p,
+.conversation-import-source-card small {
+  color: var(--muted);
+}
+
+.conversation-import-source-card p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.conversation-import-source-card small {
+  display: block;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.conversation-import-source-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.conversation-import-source-actions .primary-button,
+.conversation-import-source-actions .secondary-button {
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.conversation-import-run-list {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 7px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.conversation-import-run {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.conversation-import-run > div {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+}
+
+.conversation-import-run strong {
+  font-size: 11px;
+}
+
+.conversation-import-run span,
+.conversation-import-run time,
+.conversation-import-run small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.conversation-import-run time {
+  white-space: nowrap;
+}
+
+.conversation-import-run small {
+  grid-column: 1 / -1;
+}
+
+.conversation-history-inline-action {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  color: var(--theme-strong);
+  background: transparent;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .conversation-import-source-card {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-import-source-actions {
+    width: 100%;
+  }
+
+  .conversation-import-source-actions button {
+    flex: 1;
+  }
+
+  .conversation-import-run {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-import-run time,
+  .conversation-import-run small {
+    grid-column: 1;
+  }
+}

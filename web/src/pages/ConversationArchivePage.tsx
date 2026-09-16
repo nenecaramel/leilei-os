@@ -4,6 +4,7 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import { PageState } from "../components/StateSurface";
 import { PageHeader } from "./PageHeader";
 import { ConversationSearchPanel } from "./ConversationSearchPanel";
+import { ConversationImportHistoryPanel } from "./ConversationImportHistoryPanel";
 import {
   createConversationArchiveApi,
   type ConversationDailyStat,
@@ -246,6 +247,15 @@ function ConversationListView({
       {importMessage ? (
         <p className="conversation-inline-status" role="status">{importMessage}</p>
       ) : null}
+
+      <ConversationImportHistoryPanel
+        client={client}
+        refreshKey={refreshKey}
+        onPreview={(result) => {
+          setPreview(result);
+          setImportMessage("");
+        }}
+      />
 
       <ConversationSearchPanel
         client={client}
