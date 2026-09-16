@@ -37,18 +37,27 @@ const exclusionMigrationSql = readFileSync(
 const exclusionSnapshot = JSON.parse(readFileSync(
   new URL("../drizzle/meta/0042_snapshot.json", import.meta.url),
   "utf8",
+)) as { id: string; prevId: string; tables: Record<string, unknown> };
+const favoriteMigrationSql = readFileSync(
+  new URL("../drizzle/0043_conversation_favorites.sql", import.meta.url),
+  "utf8",
+);
+const favoriteSnapshot = JSON.parse(readFileSync(
+  new URL("../drizzle/meta/0043_snapshot.json", import.meta.url),
+  "utf8",
 )) as { prevId: string; tables: Record<string, unknown> };
 
 test("Conversation Archive migrations form the checked-in journal tail", () => {
   assert.equal(snapshot.prevId, previousSnapshot.id);
   assert.equal(blobSnapshot.prevId, snapshot.id);
   assert.equal(exclusionSnapshot.prevId, blobSnapshot.id);
+  assert.equal(favoriteSnapshot.prevId, exclusionSnapshot.id);
   const latest = journal.entries.at(-1);
   assert.deepEqual(latest, {
-    idx: 42,
+    idx: 43,
     version: "7",
-    when: 1789541400000,
-    tag: "0042_conversation_exclusions",
+    when: 1789543560000,
+    tag: "0043_conversation_favorites",
     breakpoints: true,
   });
 });
@@ -121,4 +130,36 @@ test("Conversation exclusion rules are provider/source-addressed and distinguish
   );
   assert.match(exclusionMigrationSql, /"conversation_exclusions_scope_node_consistency"/);
   assert.ok(exclusionSnapshot.tables["public.conversation_exclusions"]);
+});
+
+
+test("Conversation favorites preserve canonical refs without cascading from canonical message deletion", () => {
+  assert.match(schemaSource, /export const conversationFavorites = pgTable/);
+  assert.match(schemaSource, /export const conversationFavoriteMessages = pgTable/);
+  assert.match(favoriteMigrationSql, /CREATE TABLE "conversation_favorites"/);
+  assert.match(favoriteMigrationSql, /CREATE TABLE "conversation_favorite_messages"/);
+  assert.match(favoriteMigrationSql, /"snapshot" jsonb NOT NULL/);
+  assert.match(favoriteMigrationSql, /"conversation_favorite_messages_user_message_idx"/);
+  assert.doesNotMatch(
+    favoriteMigrationSql,
+    /FOREIGN KEY \("message_id"\).*conversation_messages/,
+  );
+  assert.doesNotMatch(
+    favoriteMigrationSql,
+    /FOREIGN KEY \("conversation_id"\).*conversations/,
+  );
+  assert.ok(favoriteSnapshot.tables["public.conversation_favorites"]);
+  assert.ok(favoriteSnapshot.tables["public.conversation_favorite_messages"]);
+});
+
+test("Conversation favorite metadata and range sizes are database constrained", () => {
+  assert.match(favoriteMigrationSql, /"conversation_favorites_message_count_bounds"/);
+  assert.match(favoriteMigrationSql, /BETWEEN 1 AND 200/);
+  assert.match(favoriteMigrationSql, /"conversation_favorites_title_bounds"/);
+  assert.match(favoriteMigrationSql, /"conversation_favorites_note_bounds"/);
+  assert.match(favoriteMigrationSql, /"conversation_favorites_tags_array"/);
+  assert.match(
+    favoriteMigrationSql,
+    /"conversation_favorite_messages_favorite_user_fk" FOREIGN KEY \("favorite_id","user_id"\)/,
+  );
 });

@@ -35,6 +35,7 @@ export function createConversationArchiveReadApiRouter(
       from: request.query.from,
       to: request.query.to,
       timeZone: request.query.time_zone,
+      favoritesOnly: request.query.favorites_only,
       limit: request.query.limit,
       offset: request.query.offset,
     })

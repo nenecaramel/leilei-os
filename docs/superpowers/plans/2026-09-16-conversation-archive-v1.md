@@ -365,10 +365,15 @@ It gets a dedicated archive export/backup contract later. Database backups still
 
 ### PR G — favorites
 
-- [ ] single/range favorites
-- [ ] title/note/tags
-- [ ] snapshot preservation
-- [ ] Favorites-only filter
+- [x] single-message and contiguous visible-range favorites
+- [x] title / note / tags with partial metadata updates
+- [x] immutable per-message snapshots including visible state + content blocks + attachment metadata
+- [x] retain canonical conversation/message refs without foreign-key cascade, so favorites survive later pruning
+- [x] provider / conversation / tag list filters
+- [x] Favorites-only filter for dedicated Conversation message search
+- [x] CRUD Web API
+- [ ] production migration / backend acceptance
+- [ ] Web favorite selection and Favorites browse UI
 
 ### PR H — Global Search
 
@@ -396,5 +401,6 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - one provider parser cannot depend on another provider's raw schema;
 - a user-deleted conversation or branch remains excluded from later imports unless its exclusion rule is explicitly removed;
 - ordinary Archive pruning never deletes the immutable raw import source;
+- a favorite snapshot survives later canonical conversation/message pruning and keeps its captured text/content-block/attachment metadata;
 - exclusion-rule changes after Preview make Execute stale before canonical writes;
 - Claude production support is not claimed until verified against the user's real export.

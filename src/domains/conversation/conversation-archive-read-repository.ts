@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationFavoriteMessages,
   conversationMessages,
   conversations,
   users,
@@ -97,6 +98,7 @@ export interface ConversationArchiveReadRepository {
     from?: string;
     to?: string;
     timeZone?: string;
+    favoritesOnly?: boolean;
     limit: number;
     offset: number;
   }): Promise<{ items: ConversationArchiveSearchRecord[]; total: number }>;
@@ -397,6 +399,14 @@ implements ConversationArchiveReadRepository {
         : undefined,
       input.from && localDate ? gte(localDate, input.from) : undefined,
       input.to && localDate ? lte(localDate, input.to) : undefined,
+      input.favoritesOnly
+        ? sql`exists (
+            select 1
+            from ${conversationFavoriteMessages}
+            where ${conversationFavoriteMessages.userId} = ${input.userId}
+              and ${conversationFavoriteMessages.messageId} = ${conversationMessages.id}
+          )`
+        : undefined,
     );
 
     const baseJoin = and(

@@ -85,6 +85,16 @@ function snippet(text: string, query: string): string {
   return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 }
 
+function optionalBoolean(value: unknown, label: string): boolean | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (value === true || value === "true" || value === "1") return true;
+  if (value === false || value === "false" || value === "0") return false;
+  throw new ConversationArchiveReadError(
+    "CONVERSATION_INVALID_REQUEST",
+    `${label} is invalid.`,
+  );
+}
+
 function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
   if (value === undefined || value === null || value === "") return fallback;
   const parsed = typeof value === "number" ? value : Number(value);
@@ -230,6 +240,7 @@ export class ConversationArchiveReadService {
     from?: unknown;
     to?: unknown;
     timeZone?: unknown;
+    favoritesOnly?: unknown;
     limit?: unknown;
     offset?: unknown;
   }): Promise<{ items: ConversationArchiveSearchResult[]; total: number }> {
@@ -259,6 +270,7 @@ export class ConversationArchiveReadService {
       from,
       to,
       timeZone: zone,
+      favoritesOnly: optionalBoolean(input.favoritesOnly, "favoritesOnly"),
       limit: boundedInt(input.limit, 50, 1, 100),
       offset: boundedInt(input.offset, 0, 0, 1_000_000),
     });

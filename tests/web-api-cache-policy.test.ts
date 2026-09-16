@@ -39,6 +39,36 @@ async function withServer(callback: (baseUrl: string) => Promise<void>): Promise
     todo: { todoService: { async listDates() { return []; } } },
     export: { exportService: { async createExport() { return { schema_version: 2, exported_at: "2026-08-14T00:00:00.000Z", data: { memory: [] } }; } } },
     import: { importService: { async preview() { return { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), summary: {}, can_execute: false }; } } },
+    conversationFavorite: {
+      conversationFavoriteService: {
+        async list() { return { items: [], total: 0 }; },
+        async detail() {
+          return {
+            id: "44444444-4444-4444-8444-444444444444",
+            provider: "chatgpt",
+            sourceConversationId: "source",
+            conversationId: "11111111-1111-4111-8111-111111111111",
+            view: "default",
+            title: "Favorite",
+            note: null,
+            tags: [],
+            conversationTitleSnapshot: "Test",
+            startMessageId: "22222222-2222-4222-8222-222222222222",
+            endMessageId: "22222222-2222-4222-8222-222222222222",
+            startSourceNodeId: "node",
+            endSourceNodeId: "node",
+            messageCount: 1,
+            canonicalConversationExists: true,
+            createdAt: "2026-09-16T00:00:00.000Z",
+            updatedAt: "2026-09-16T00:00:00.000Z",
+            messages: [],
+          };
+        },
+        async create() { return this.detail(); },
+        async update() { return this.detail(); },
+        async delete() { return { deleted: true }; },
+      },
+    },
     conversationRead: {
       conversationArchiveReadService: {
         async list() { return { items: [], total: 0 }; },
@@ -149,6 +179,11 @@ test("authenticated Web API responses are private and uncached without affecting
       { path: "/api/v1/system/data", init: { headers } },
       { path: "/api/v1/system/export?scope=memory", init: { headers } },
       { path: "/api/v1/system/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream" }, body: new Uint8Array([123]) } },
+      { path: "/api/v1/conversations/favorites", init: { headers } },
+      { path: "/api/v1/conversations/favorites", init: { method: "POST", headers, body: JSON.stringify({ conversation_id: "11111111-1111-4111-8111-111111111111", start_message_id: "22222222-2222-4222-8222-222222222222" }) } },
+      { path: "/api/v1/conversations/favorites/44444444-4444-4444-8444-444444444444", init: { headers } },
+      { path: "/api/v1/conversations/favorites/44444444-4444-4444-8444-444444444444", init: { method: "PATCH", headers, body: JSON.stringify({ title: "Updated" }) } },
+      { path: "/api/v1/conversations/favorites/44444444-4444-4444-8444-444444444444", init: { method: "DELETE", headers } },
       { path: "/api/v1/conversations", init: { headers } },
       { path: "/api/v1/conversations/stats/daily?from=2026-09-01&to=2026-09-16&time_zone=Asia%2FShanghai", init: { headers } },
       { path: "/api/v1/conversations/11111111-1111-4111-8111-111111111111", init: { headers } },

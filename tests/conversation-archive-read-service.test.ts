@@ -117,6 +117,7 @@ test("Conversation daily stats require an explicit valid IANA timezone", async (
     from: "2026-09-01",
     to: "2026-09-16",
     timeZone: "Asia/Shanghai",
+    favoritesOnly: "true",
   });
   assert.equal(repository.lastStatsInput?.timeZone, "Asia/Shanghai");
 
@@ -204,6 +205,7 @@ test("Conversation search validates filters, forwards timezone, and returns a bo
   assert.equal(repository.lastSearchInput?.role, "assistant");
   assert.equal(repository.lastSearchInput?.conversationId, CONVERSATION_ID);
   assert.equal(repository.lastSearchInput?.timeZone, "Asia/Shanghai");
+  assert.equal(repository.lastSearchInput?.favoritesOnly, true);
   assert.equal(result.total, 1);
   assert.equal(result.items.length, 1);
   assert.ok(result.items[0]!.snippet.includes("needle"));
@@ -270,5 +272,29 @@ test("message context returns not-found when the requested anchor is outside the
     (error: unknown) =>
       error instanceof ConversationArchiveReadError
       && error.code === "CONVERSATION_NOT_FOUND",
+  );
+});
+
+
+test("Conversation search validates the Favorites-only boolean filter", async () => {
+  const repository = new FakeReadRepository();
+  const service = new ConversationArchiveReadService(repository);
+
+  await service.search({
+    userId: "user",
+    query: "needle",
+    favoritesOnly: "false",
+  });
+  assert.equal(repository.lastSearchInput?.favoritesOnly, false);
+
+  await assert.rejects(
+    () => service.search({
+      userId: "user",
+      query: "needle",
+      favoritesOnly: "maybe",
+    }),
+    (error: unknown) =>
+      error instanceof ConversationArchiveReadError
+      && error.code === "CONVERSATION_INVALID_REQUEST",
   );
 });
