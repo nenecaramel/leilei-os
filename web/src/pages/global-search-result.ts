@@ -25,11 +25,15 @@ export type GlobalSearchResult = {
   time_basis: string;
   updated_at: string;
   author: "L" | "G" | "C" | null;
-  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | null;
+  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | "read_conversation" | null;
   detail_arguments: {
     id: string;
     scope: "active" | "archived";
-  } | { id: string } | { date: string } | null;
+  } | { id: string } | { date: string } | {
+    conversation_id: string;
+    message_id: string;
+    view: "default" | "all";
+  } | null;
   conversation_id?: string | null;
   conversation_view?: "default" | "all" | null;
 };
