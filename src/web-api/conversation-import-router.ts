@@ -8,7 +8,10 @@ import { ConversationProviderParseError } from "../domains/conversation/provider
 import { ConversationMergePlanError } from "../domains/conversation/conversation-merge-planner.js";
 
 export type ConversationImportApiDependencies = {
-  conversationImportService: Pick<ConversationImportService, "preview" | "execute">;
+  conversationImportService: Pick<
+    ConversationImportService,
+    "preview" | "execute" | "previewBatch" | "executeBatch"
+  >;
 };
 
 export function createConversationImportApiRouter(
@@ -17,6 +20,8 @@ export function createConversationImportApiRouter(
   const router = Router();
   router.post("/import/preview", createPreviewHandler(dependencies));
   router.post("/import/execute", createExecuteHandler(dependencies));
+  router.post("/import/batch/preview", createBatchPreviewHandler(dependencies));
+  router.post("/import/batch/execute", createBatchExecuteHandler(dependencies));
   return router;
 }
 
@@ -66,6 +71,66 @@ function createPreviewHandler(
   };
 }
 
+function createBatchPreviewHandler(
+  dependencies: ConversationImportApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const runIds = readBatchRunIds(request.body);
+    if (!runIds) {
+      sendError(
+        response,
+        400,
+        "CONVERSATION_IMPORT_INVALID_REQUEST",
+        "Conversation import batch preview request is invalid.",
+      );
+      return;
+    }
+    try {
+      const result = await dependencies.conversationImportService.previewBatch(
+        runIds,
+        request.webUserId,
+      );
+      response.json({ success: true, data: result });
+    } catch (error) {
+      sendConversationImportError(response, error);
+    }
+  };
+}
+
+function createBatchExecuteHandler(
+  dependencies: ConversationImportApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const runIds = readBatchRunIds(request.body);
+    const body = request.body as Record<string, unknown> | undefined;
+    const expected = typeof body?.expected_batch_fingerprint === "string"
+      && /^[0-9a-f]{64}$/u.test(body.expected_batch_fingerprint)
+      ? body.expected_batch_fingerprint
+      : null;
+    if (!runIds || !expected) {
+      sendError(
+        response,
+        400,
+        "CONVERSATION_IMPORT_INVALID_REQUEST",
+        "Conversation import batch execution request is invalid.",
+      );
+      return;
+    }
+    try {
+      const result = await dependencies.conversationImportService.executeBatch(
+        runIds,
+        expected,
+        request.webUserId,
+      );
+      response.json({ success: true, data: result });
+    } catch (error) {
+      sendConversationImportError(response, error);
+    }
+  };
+}
+
 function createExecuteHandler(
   dependencies: ConversationImportApiDependencies,
 ): RequestHandler {
@@ -102,6 +167,23 @@ function createExecuteHandler(
   };
 }
 
+function readBatchRunIds(body: unknown): string[] | null {
+  if (!body || typeof body !== "object") return null;
+  const value = (body as Record<string, unknown>).import_run_ids;
+  if (
+    !Array.isArray(value)
+    || value.length < 1
+    || value.length > 20
+    || value.some((runId) => (
+      typeof runId !== "string"
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(runId)
+    ))
+  ) {
+    return null;
+  }
+  return value as string[];
+}
+
 function sendConversationImportError(response: Response, error: unknown): void {
   const code = error instanceof ConversationImportFileError
     || error instanceof ConversationMergePlanError
@@ -121,6 +203,7 @@ function sendConversationImportError(response: Response, error: unknown): void {
   }
   if (
     code === "CONVERSATION_IMPORT_PREVIEW_STALE"
+    || code === "CONVERSATION_IMPORT_BATCH_PREVIEW_STALE"
     || code === "CONVERSATION_IMPORT_RUN_NOT_EXECUTABLE"
   ) {
     sendError(response, 409, code, "Conversation import preview is stale or no longer executable.");
@@ -135,7 +218,8 @@ function sendConversationImportError(response: Response, error: unknown): void {
     return;
   }
   if (
-    code === "CONVERSATION_IMPORT_INVALID_FILE"
+    code === "CONVERSATION_IMPORT_INVALID_REQUEST"
+    || code === "CONVERSATION_IMPORT_INVALID_FILE"
     || code === "CONVERSATION_IMPORT_ZIP_UNSUPPORTED"
     || code === "CONVERSATION_IMPORT_NO_CONVERSATIONS_JSON"
     || code === "CONVERSATION_IMPORT_PROVIDER_UNKNOWN"
