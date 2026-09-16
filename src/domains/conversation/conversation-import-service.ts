@@ -16,7 +16,10 @@ import {
 import {
   detectConversationProviderParser,
 } from "./conversation-provider-registry.js";
-import type { ConversationImportRepository } from "./conversation-import-repository.js";
+import type {
+  ConversationImportRepository,
+  ConversationStoredRun,
+} from "./conversation-import-repository.js";
 import type { ConversationImportExecutor } from "./conversation-import-executor.js";
 import {
   applyConversationExclusions,
@@ -584,7 +587,7 @@ export class ConversationImportService {
       });
     }
 
-    const resolved = [];
+    const resolved: ConversationStoredRun[] = [];
     for (const runId of runIds) {
       const run = await this.repository.findRunById({ userId, runId });
       if (!run) {
