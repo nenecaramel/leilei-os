@@ -168,16 +168,30 @@ export class ConversationImportService {
       parts: previewParts,
     });
 
-    const stored = await encodeRawConversationSource(upload);
-    const { source, reused } = await this.repository.createOrReuseSourceWithBlob({
+    const existingSource = await this.repository.findSourceBySha(
       userId,
-      provider: providerInfo.provider,
-      originalFilename: upload.originalFilename,
-      rawSha256: upload.rawSha256,
-      rawBytes: upload.rawBytes,
-      encoding: stored.encoding,
-      data: stored.data,
-    });
+      upload.rawSha256,
+    );
+    if (existingSource && existingSource.provider !== providerInfo.provider) {
+      throw Object.assign(new Error("Stored source provider does not match."), {
+        code: "CONVERSATION_IMPORT_PROVIDER_MISMATCH",
+      });
+    }
+    const persisted = existingSource
+      ? { source: existingSource, reused: true }
+      : await (async () => {
+          const stored = await encodeRawConversationSource(upload);
+          return this.repository.createOrReuseSourceWithBlob({
+            userId,
+            provider: providerInfo.provider,
+            originalFilename: upload.originalFilename,
+            rawSha256: upload.rawSha256,
+            rawBytes: upload.rawBytes,
+            encoding: stored.encoding,
+            data: stored.data,
+          });
+        })();
+    const { source, reused } = persisted;
     const executed = await this.repository.findExecutedRun({
       userId,
       sourceId: source.id,
