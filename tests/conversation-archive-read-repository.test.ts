@@ -52,3 +52,14 @@ test("exact-message context uses the same provider/view visibility and stable or
   assert.match(repositorySource, /messageVisibility\(input\.provider, input\.view\)/);
   assert.match(repositorySource, /orderBy\(\.\.\.messageOrder\(input\.provider, input\.view\)\)/);
 });
+
+
+test("Favorites-only Conversation search uses an existence filter without multiplying search rows", () => {
+  const searchStart = repositorySource.indexOf("async searchMessages");
+  const searchEnd = repositorySource.indexOf("async findMessageOrdinal", searchStart);
+  const searchSource = repositorySource.slice(searchStart, searchEnd);
+  assert.match(searchSource, /conversationFavoriteMessages/);
+  assert.match(searchSource, /exists \(/);
+  assert.match(searchSource, /messageId/);
+  assert.doesNotMatch(searchSource, /innerJoin\(\s*conversationFavoriteMessages/);
+});
