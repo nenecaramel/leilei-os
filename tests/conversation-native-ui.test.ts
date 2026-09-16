@@ -10,6 +10,10 @@ const css = readFileSync(
   new URL("../web/src/pages/conversation-native-ui.css", import.meta.url),
   "utf8",
 );
+const navigationCss = readFileSync(
+  new URL("../web/src/layout/navigation-panel.css", import.meta.url),
+  "utf8",
+);
 
 test("Conversation Archive native UI keeps one primary archive surface with Favorites and Sources tabs", () => {
   assert.match(page, /surface, setSurface/);
@@ -48,4 +52,11 @@ test("Conversation detail is a continuous reading surface rather than independen
   assert.match(css, /\.conversation-message \+ \.conversation-message/);
   assert.match(css, /background:\s*#fafafa/);
   assert.doesNotMatch(css, /conversation-message[^}]*Newsreader/s);
+});
+
+
+test("desktop navigation owns its typography so route-level fonts cannot shift the sidebar", () => {
+  assert.match(navigationCss, /\.navigation-panel\s*\{[^}]*font-family:/s);
+  assert.match(navigationCss, /-apple-system/);
+  assert.match(navigationCss, /BlinkMacSystemFont/);
 });
