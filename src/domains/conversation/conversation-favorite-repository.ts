@@ -7,6 +7,7 @@ import {
   sql,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
+import { selectConversationFavoriteRange } from "./conversation-favorite-range.js";
 import {
   conversationAttachments,
   conversationContentBlocks,
@@ -213,21 +214,12 @@ implements ConversationFavoriteRepository {
         .orderBy(...order(conversation.provider, input.view))
         .for("share");
 
-      const startIndex = messages.findIndex((message) => message.id === input.startMessageId);
-      const endIndex = messages.findIndex((message) => message.id === input.endMessageId);
-      if (startIndex < 0 || endIndex < 0) {
-        throw Object.assign(new Error("Favorite range message was not found in this view."), {
-          code: "CONVERSATION_FAVORITE_RANGE_NOT_FOUND",
-        });
-      }
-      const lower = Math.min(startIndex, endIndex);
-      const upper = Math.max(startIndex, endIndex);
-      const selected = messages.slice(lower, upper + 1);
-      if (selected.length > 200) {
-        throw Object.assign(new Error("Favorite range is too large."), {
-          code: "CONVERSATION_FAVORITE_RANGE_TOO_LARGE",
-        });
-      }
+      const selected = selectConversationFavoriteRange(
+        messages,
+        input.startMessageId,
+        input.endMessageId,
+        200,
+      );
 
       const messageIds = selected.map((message) => message.id);
       const [blocks, attachments] = await Promise.all([
