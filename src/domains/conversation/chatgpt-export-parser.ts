@@ -253,15 +253,13 @@ function normalizeMessage(
   const isPrimary = (roleInfo.role === "user" || roleInfo.role === "assistant")
     && (rawType === "text" || rawType === "multimodal_text");
 
-  let assignedTurn = turnIndex;
+  let assignedTurn: number | null = null;
   let nextTurnIndex = turnIndex;
   if (currentPathIndex !== null && isPrimary && roleInfo.role === "user") {
     nextTurnIndex = (turnIndex ?? -1) + 1;
     assignedTurn = nextTurnIndex;
   } else if (currentPathIndex !== null && isPrimary && roleInfo.role === "assistant") {
     assignedTurn = turnIndex;
-  } else if (currentPathIndex === null) {
-    assignedTurn = null;
   }
 
   const metadata = record(rawMessage.metadata);
