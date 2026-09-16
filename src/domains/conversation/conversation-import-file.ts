@@ -79,7 +79,7 @@ async function writeUpload(
   }
 }
 
-async function readPrefix(path: string, length = 64): Promise<Buffer> {
+async function readPrefix(path: string, length = 4096): Promise<Buffer> {
   const handle = await open(path, "r");
   try {
     const buffer = Buffer.alloc(length);
@@ -229,13 +229,14 @@ async function extractZipEntry(
 
   let written = 0;
   const counter = new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      written += chunk.length;
+    transform(chunk, _encoding, callback) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      written += buffer.length;
       if (written > MAX_CONVERSATION_JSON_BYTES) {
         callback(new ConversationImportFileError("CONVERSATION_IMPORT_TOO_LARGE"));
         return;
       }
-      callback(null, chunk);
+      callback(null, buffer);
     },
   });
   const input = createReadStream(zipPath, {
