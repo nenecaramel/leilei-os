@@ -469,7 +469,11 @@ function ConversationListView({
                       <div className="conversation-card-meta">
                         <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
                         <span>
-                          {providerLabel(item.provider)} · {item.messageCount.toLocaleString()} 条
+                          {providerLabel(item.provider)} · {item.messageCount.toLocaleString()} 条 ·
+                          {" "}{item.turnCount.toLocaleString()} 轮
+                          {item.totalNodeCount > item.messageCount
+                            ? ` · ${item.totalNodeCount.toLocaleString()} nodes`
+                            : ""}
                           {item.defaultModel ? ` · ${item.defaultModel}` : ""}
                         </span>
                       </div>
