@@ -499,3 +499,126 @@ test("changing exclusion rules after Preview makes Execute stale before canonica
   );
   assert.deepEqual(executor.applied, []);
 });
+
+
+test("multi-file Preview accumulates disjoint sources and deduplicates exact raw sources", async () => {
+  const repository = new FakeImportRepository();
+  const service = new ConversationImportService(repository, new FakeStateRepository());
+
+  const firstRaw = Buffer.from(JSON.stringify([claudeConversationFixture]), "utf8");
+  const secondFixture = JSON.parse(JSON.stringify(claudeConversationFixture));
+  secondFixture.uuid = "claude-conversation-second";
+  secondFixture.name = "Claude fixture second";
+  const secondRaw = Buffer.from(JSON.stringify([secondFixture]), "utf8");
+
+  const first = await service.preview(stream(firstRaw), "conversations-000.json", "user-id");
+  const second = await service.preview(stream(secondRaw), "conversations-001.json", "user-id");
+  const duplicate = await service.preview(stream(firstRaw), "conversations-000-copy.json", "user-id");
+
+  const batch = await service.previewBatch(
+    [first.import_run_id, second.import_run_id, duplicate.import_run_id],
+    "user-id",
+  );
+
+  assert.deepEqual(batch.files, {
+    total: 3,
+    unique: 2,
+    duplicate: 1,
+    already_executed: 0,
+    pending: 2,
+  });
+  assert.equal(batch.summary.conversations.create, 2);
+  assert.equal(batch.items[0]?.status, "pending");
+  assert.equal(batch.items[1]?.status, "pending");
+  assert.equal(batch.items[2]?.status, "duplicate_in_batch");
+  assert.equal(batch.items[2]?.duplicate_of_import_run_id, first.import_run_id);
+  assert.equal(batch.items[2]?.source_id, first.source_id);
+});
+
+test("multi-file Preview plans a later export against earlier files in the same batch", async () => {
+  const repository = new FakeImportRepository();
+  const service = new ConversationImportService(repository, new FakeStateRepository());
+
+  const firstRaw = Buffer.from(JSON.stringify([claudeConversationFixture]), "utf8");
+  const updated = JSON.parse(JSON.stringify(claudeConversationFixture));
+  updated.updated_at = "2026-09-16T00:05:00.000000Z";
+  const assistant = updated.chat_messages.find(
+    (message: { uuid?: string }) => message.uuid === "assistant-main",
+  );
+  assert.ok(assistant);
+  assistant.text = "answer updated in later export";
+  assistant.updated_at = "2026-09-16T00:03:00.000000Z";
+  const visibleText = assistant.content.find(
+    (block: { type?: string }) => block.type === "text",
+  );
+  assert.ok(visibleText);
+  visibleText.text = "answer updated in later export";
+  const secondRaw = Buffer.from(JSON.stringify([updated]), "utf8");
+
+  const first = await service.preview(stream(firstRaw), "conversations-000.json", "user-id");
+  const second = await service.preview(stream(secondRaw), "conversations-001.json", "user-id");
+  const batch = await service.previewBatch(
+    [first.import_run_id, second.import_run_id],
+    "user-id",
+  );
+
+  assert.equal(batch.items[0]?.summary.conversations.create, 1);
+  assert.equal(batch.items[1]?.summary.conversations.create, 0);
+  assert.equal(batch.items[1]?.summary.conversations.update, 1);
+  assert.ok((batch.items[1]?.summary.messages.update ?? 0) >= 1);
+});
+
+test("multi-file Execute validates the whole batch before writes and replays idempotently", async () => {
+  const repository = new FakeImportRepository();
+  const executor = new FakeExecutor(repository);
+  const service = new ConversationImportService(
+    repository,
+    new FakeStateRepository(),
+    executor,
+  );
+
+  const firstRaw = Buffer.from(JSON.stringify([claudeConversationFixture]), "utf8");
+  const secondFixture = JSON.parse(JSON.stringify(claudeConversationFixture));
+  secondFixture.uuid = "claude-conversation-execute-second";
+  secondFixture.name = "Claude execute second";
+  const secondRaw = Buffer.from(JSON.stringify([secondFixture]), "utf8");
+
+  const first = await service.preview(stream(firstRaw), "conversations-000.json", "user-id");
+  const second = await service.preview(stream(secondRaw), "conversations-001.json", "user-id");
+  const runIds = [first.import_run_id, second.import_run_id];
+  const batch = await service.previewBatch(runIds, "user-id");
+
+  await assert.rejects(
+    () => service.executeBatch(runIds, "0".repeat(64), "user-id"),
+    (error: unknown) => (
+      typeof error === "object"
+      && error !== null
+      && "code" in error
+      && (error as { code?: unknown }).code === "CONVERSATION_IMPORT_BATCH_PREVIEW_STALE"
+    ),
+  );
+  assert.deepEqual(executor.applied, []);
+
+  const executed = await service.executeBatch(
+    runIds,
+    batch.batch_fingerprint,
+    "user-id",
+  );
+  assert.equal(executed.outcome, "executed");
+  assert.deepEqual(executor.applied, [
+    "claude-conversation-fixture",
+    "claude-conversation-execute-second",
+  ]);
+  assert.equal(repository.runs.get(first.import_run_id)?.status, "executed");
+  assert.equal(repository.runs.get(second.import_run_id)?.status, "executed");
+
+  const writesAfterFirstExecute = executor.applied.length;
+  const replay = await service.executeBatch(
+    runIds,
+    batch.batch_fingerprint,
+    "user-id",
+  );
+  assert.equal(replay.outcome, "already_executed");
+  assert.equal(executor.applied.length, writesAfterFirstExecute);
+  assert.ok(replay.items.every((item) => item.outcome === "already_executed"));
+});
