@@ -10,9 +10,7 @@ import {
 import type { ConversationProvider } from "./conversation-types.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
-type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) => unknown ? T : never;
-type DbExecutor = Database | Transaction;
-
+ 
 export type ConversationStoredSource = {
   id: string;
   userId: string;
@@ -80,7 +78,7 @@ function toSource(
 
 export class DrizzleConversationImportRepository
 implements ConversationImportRepository {
-  constructor(private readonly db: DbExecutor) {}
+  constructor(private readonly db: Database) {}
 
   async findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null> {
     const [row] = await this.db
@@ -115,9 +113,16 @@ implements ConversationImportRepository {
     encoding: "raw" | "gzip";
     data: Buffer;
   }): Promise<{ source: ConversationStoredSource; reused: boolean }> {
-    const run = async (executor: DbExecutor) => {
-      const existing = await new DrizzleConversationImportRepository(executor)
-        .findSourceBySha(input.userId, input.rawSha256);
+    return this.db.transaction(async (transaction) => {
+      const [existingRow] = await transaction
+        .select()
+        .from(conversationImportSources)
+        .where(and(
+          eq(conversationImportSources.userId, input.userId),
+          eq(conversationImportSources.rawSha256, input.rawSha256),
+        ))
+        .limit(1);
+      const existing = existingRow ? toSource(existingRow) : null;
       if (existing) {
         if (existing.provider !== input.provider) {
           throw Object.assign(new Error("Stored source provider does not match."), {
@@ -129,7 +134,7 @@ implements ConversationImportRepository {
 
       const sourceId = randomUUID();
       const storageKind = "postgres_bytea";
-      const [sourceRow] = await executor
+      const [sourceRow] = await transaction
         .insert(conversationImportSources)
         .values({
           id: sourceId,
@@ -144,7 +149,7 @@ implements ConversationImportRepository {
         .returning();
       if (!sourceRow) throw new Error("Conversation import source insert failed.");
 
-      await executor.insert(conversationImportBlobs).values({
+      await transaction.insert(conversationImportBlobs).values({
         sourceId,
         userId: input.userId,
         encoding: input.encoding,
@@ -153,15 +158,7 @@ implements ConversationImportRepository {
         data: input.data,
       });
       return { source: toSource(sourceRow), reused: false };
-    };
-
-    if ("transaction" in this.db && typeof this.db.transaction === "function") {
-      return this.db.transaction(
-        async (transaction) => run(transaction as Transaction),
-        { isolationLevel: "serializable" },
-      );
-    }
-    return run(this.db);
+    }, { isolationLevel: "serializable" });
   }
 
   async createPreviewRun(input: {
