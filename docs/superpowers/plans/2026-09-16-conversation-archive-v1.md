@@ -350,20 +350,33 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [x] automatic all-branch view when a ChatGPT search hit is outside current path
 - [ ] production acceptance against imported real ChatGPT / Claude data
 
-### PR F — favorites
+### PR F — pruning / exclusions
+
+- [x] whole-window canonical delete + persistent provider/source exclusion
+- [x] branch-root subtree delete + persistent source-node exclusion
+- [x] later imports apply exclusion rules before merge planning
+- [x] exclusion rules participate in Preview fingerprint / stale protection
+- [x] raw import source remains preserved by ordinary Archive deletion
+- [x] branch pruning repairs an authoritative current leaf when the removed subtree contained it
+- [x] Web controls for window delete and branch delete
+- [ ] production acceptance with imported real ChatGPT / Claude data
+- [ ] optional UI-only Hide action
+- [ ] dangerous raw-source purge / privacy erase flow
+
+### PR G — favorites
 
 - [ ] single/range favorites
 - [ ] title/note/tags
 - [ ] snapshot preservation
 - [ ] Favorites-only filter
 
-### PR G — Global Search
+### PR H — Global Search
 
 - [ ] add conversation module
 - [ ] return message snippet + exact deep link
 - [ ] prevent Conversation volume from drowning the existing six modules
 
-### PR H — Claude — pulled forward after the real export arrived
+### PR I — Claude — pulled forward after the real export arrived
 
 - [x] inspect the user's real Claude export
 - [x] implement Claude adapter
