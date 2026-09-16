@@ -752,7 +752,6 @@ export class ConversationImportService {
       for (const item of preview.items) {
         if (item.status === "duplicate_in_batch") continue;
         const run = resolved[item.input_index]!;
-        const locked = lockedRuns.get(run.id)!;
 
         if (item.status === "already_executed") {
           const executedRunId = item.executed_run_id!;
