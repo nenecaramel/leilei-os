@@ -228,6 +228,265 @@ test("real PostgreSQL Universe search is owner-scoped, active-only, and empty be
   }
 });
 
+test("real PostgreSQL Conversation Global Search is owner-scoped, visible-message-only, and deep-link aware", { skip: !RUN }, async () => {
+  const client = postgres(url!, { max: 1, prepare: false, ssl: false });
+  const db = drizzle(client, { schema });
+
+  try {
+    await assert.rejects(db.transaction(async (tx) => {
+      const owner = randomUUID();
+      const other = randomUUID();
+      const now = new Date("2026-09-16T08:00:00.000Z");
+      await tx.insert(schema.users).values([
+        { id: owner, email: `conversation-global-${owner}@example.invalid`, displayName: "Conversation owner", status: "active" },
+        { id: other, email: `conversation-global-${other}@example.invalid`, displayName: "Other owner", status: "active" },
+      ]);
+      await tx.insert(schema.userSettings).values([
+        { userId: owner, timezone: "Asia/Shanghai" },
+        { userId: other, timezone: "Asia/Shanghai" },
+      ]);
+
+      async function seedImport(userId: string, provider: "chatgpt" | "claude", shaChar: string) {
+        const sourceId = randomUUID();
+        const runId = randomUUID();
+        await tx.insert(schema.conversationImportSources).values({
+          id: sourceId,
+          userId,
+          provider,
+          originalFilename: `${provider}-conversations.json`,
+          rawSha256: shaChar.repeat(64),
+          rawBytes: 1,
+          createdAt: now,
+        });
+        await tx.insert(schema.conversationImportRuns).values({
+          id: runId,
+          userId,
+          sourceId,
+          parserVersion: "global-search-test",
+          status: "executed",
+          summary: {},
+          warningCount: 0,
+          createdAt: now,
+          completedAt: now,
+        });
+        return runId;
+      }
+
+      const chatgptRun = await seedImport(owner, "chatgpt", "a");
+      const claudeRun = await seedImport(owner, "claude", "b");
+      const otherRun = await seedImport(other, "chatgpt", "c");
+      const chatgptConversationId = randomUUID();
+      const claudeConversationId = randomUUID();
+      const otherConversationId = randomUUID();
+
+      await tx.insert(schema.conversations).values([
+        {
+          id: chatgptConversationId,
+          userId: owner,
+          provider: "chatgpt",
+          sourceConversationId: "chatgpt-owner",
+          title: "ChatGPT saved branches",
+          sourceCreatedAt: now,
+          sourceUpdatedAt: now,
+          currentLeafSourceNodeId: "current-node",
+          sourceFingerprint: "d".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: claudeConversationId,
+          userId: owner,
+          provider: "claude",
+          sourceConversationId: "claude-owner",
+          title: "Claude branches",
+          sourceCreatedAt: now,
+          sourceUpdatedAt: now,
+          currentLeafSourceNodeId: null,
+          sourceFingerprint: "e".repeat(64),
+          firstSeenImportId: claudeRun,
+          lastSeenImportId: claudeRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: otherConversationId,
+          userId: other,
+          provider: "chatgpt",
+          sourceConversationId: "chatgpt-other",
+          title: "Other private chat",
+          sourceCreatedAt: now,
+          sourceUpdatedAt: now,
+          currentLeafSourceNodeId: "other-node",
+          sourceFingerprint: "f".repeat(64),
+          firstSeenImportId: otherRun,
+          lastSeenImportId: otherRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+
+      const currentId = randomUUID();
+      const savedBranchId = randomUUID();
+      const claudeId = randomUUID();
+      await tx.insert(schema.conversationMessages).values([
+        {
+          id: currentId,
+          userId: owner,
+          conversationId: chatgptConversationId,
+          sourceNodeId: "current-node",
+          role: "user",
+          sourceCreatedAt: new Date("2026-09-16T06:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T06:00:00.000Z"),
+          isCurrentPath: true,
+          currentPathIndex: 0,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "global conversation needle current",
+          sourceFingerprint: "1".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: savedBranchId,
+          userId: owner,
+          conversationId: chatgptConversationId,
+          sourceNodeId: "saved-branch-node",
+          parentSourceNodeId: "current-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T07:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T07:00:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 1,
+          isPrimary: true,
+          displayText: "global conversation needle saved branch",
+          sourceFingerprint: "2".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: randomUUID(),
+          userId: owner,
+          conversationId: chatgptConversationId,
+          sourceNodeId: "system-node",
+          role: "system",
+          sourceCreatedAt: new Date("2026-09-16T07:30:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T07:30:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: null,
+          isPrimary: true,
+          displayText: "global conversation needle hidden system",
+          sourceFingerprint: "3".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: randomUUID(),
+          userId: owner,
+          conversationId: chatgptConversationId,
+          sourceNodeId: "secondary-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T07:45:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T07:45:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 2,
+          isPrimary: false,
+          displayText: "global conversation needle non-primary",
+          sourceFingerprint: "4".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: claudeId,
+          userId: owner,
+          conversationId: claudeConversationId,
+          sourceNodeId: "claude-branch-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T05:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T05:00:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "global conversation needle claude branch",
+          sourceFingerprint: "5".repeat(64),
+          firstSeenImportId: claudeRun,
+          lastSeenImportId: claudeRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: randomUUID(),
+          userId: other,
+          conversationId: otherConversationId,
+          sourceNodeId: "other-node",
+          role: "user",
+          sourceCreatedAt: new Date("2026-09-16T08:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T08:00:00.000Z"),
+          isCurrentPath: true,
+          currentPathIndex: 0,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "global conversation needle other secret",
+          sourceFingerprint: "6".repeat(64),
+          firstSeenImportId: otherRun,
+          lastSeenImportId: otherRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+
+      const service = new GlobalSearchService(new DrizzleGlobalSearchRepository(tx as never));
+      const found = await service.search({
+        userId: owner,
+        query: "global conversation needle",
+        modules: ["conversation"],
+        scope: "active",
+        date_from: "2026-09-16",
+        date_to: "2026-09-16",
+        limit: 25,
+      });
+
+      assert.equal(found.results.length, 3);
+      assert.deepEqual(new Set(found.results.map((result) => result.entity_id)), new Set([currentId, savedBranchId, claudeId]));
+      assert.ok(found.results.every((result) => result.entity_type === "conversation"));
+      assert.ok(found.results.every((result) => result.detail_tool === null && result.detail_arguments === null));
+      assert.ok(found.results.every((result) => result.time_basis === "message_time"));
+      assert.equal(found.results.find((result) => result.entity_id === currentId)?.conversation_view, "default");
+      assert.equal(found.results.find((result) => result.entity_id === savedBranchId)?.conversation_view, "all");
+      assert.equal(found.results.find((result) => result.entity_id === claudeId)?.conversation_view, "default");
+      assert.equal(found.results.find((result) => result.entity_id === savedBranchId)?.conversation_id, chatgptConversationId);
+      assert.equal(found.results.find((result) => result.entity_id === claudeId)?.conversation_id, claudeConversationId);
+      assert.equal(found.results.some((result) => result.snippet.includes("other secret")), false);
+
+      const archived = await service.search({
+        userId: owner,
+        query: "global conversation needle",
+        modules: ["conversation"],
+        scope: "archived",
+        limit: 25,
+      });
+      assert.deepEqual(archived.results, []);
+
+      throw new Rollback();
+    }), Rollback);
+  } finally {
+    await client.end();
+  }
+});
+
 test("real PostgreSQL pagination preserves sub-millisecond rows", { skip: !RUN }, async () => {
   const client = postgres(url!, { max: 1, prepare: false, ssl: false });
   const db = drizzle(client, { schema });
