@@ -26,6 +26,7 @@ import { createSentinelApiRouter, type SentinelApiDependencies } from "./sentine
 import { createSharedPaperApiRouter, type SharedPaperApiDependencies } from "./shared-paper-router.js";
 import { createConversationImportApiRouter, type ConversationImportApiDependencies } from "./conversation-import-router.js";
 import { createConversationArchiveReadApiRouter, type ConversationArchiveReadApiDependencies } from "./conversation-archive-read-router.js";
+import { createConversationPruningApiRouter, type ConversationPruningApiDependencies } from "./conversation-pruning-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
@@ -43,6 +44,7 @@ export type WebApiRouterDependencies = {
   sharedPaper?: SharedPaperApiDependencies;
   conversationImport?: ConversationImportApiDependencies;
   conversationRead?: ConversationArchiveReadApiDependencies;
+  conversationPruning?: ConversationPruningApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -101,6 +103,7 @@ export function createWebApiRouter(
   if (dependencies.sentinel) router.use("/sentinel", createSentinelApiRouter(dependencies.sentinel));
   if (dependencies.sharedPaper) router.use("/shared-papers", createSharedPaperApiRouter(dependencies.sharedPaper));
   if (dependencies.conversationRead) router.use("/conversations", createConversationArchiveReadApiRouter(dependencies.conversationRead));
+  if (dependencies.conversationPruning) router.use("/conversations", createConversationPruningApiRouter(dependencies.conversationPruning));
   if (dependencies.conversationImport) router.use("/conversations", createConversationImportApiRouter(dependencies.conversationImport));
 
   return router;
