@@ -28,6 +28,7 @@ import { createConversationImportApiRouter, type ConversationImportApiDependenci
 import { createConversationArchiveReadApiRouter, type ConversationArchiveReadApiDependencies } from "./conversation-archive-read-router.js";
 import { createConversationPruningApiRouter, type ConversationPruningApiDependencies } from "./conversation-pruning-router.js";
 import { createConversationFavoriteApiRouter, type ConversationFavoriteApiDependencies } from "./conversation-favorite-router.js";
+import { createConversationExclusionManagementApiRouter, type ConversationExclusionManagementApiDependencies } from "./conversation-exclusion-management-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
@@ -47,6 +48,7 @@ export type WebApiRouterDependencies = {
   conversationRead?: ConversationArchiveReadApiDependencies;
   conversationPruning?: ConversationPruningApiDependencies;
   conversationFavorite?: ConversationFavoriteApiDependencies;
+  conversationExclusionManagement?: ConversationExclusionManagementApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -105,6 +107,7 @@ export function createWebApiRouter(
   if (dependencies.sentinel) router.use("/sentinel", createSentinelApiRouter(dependencies.sentinel));
   if (dependencies.sharedPaper) router.use("/shared-papers", createSharedPaperApiRouter(dependencies.sharedPaper));
   if (dependencies.conversationFavorite) router.use("/conversations", createConversationFavoriteApiRouter(dependencies.conversationFavorite));
+  if (dependencies.conversationExclusionManagement) router.use("/conversations", createConversationExclusionManagementApiRouter(dependencies.conversationExclusionManagement));
   if (dependencies.conversationRead) router.use("/conversations", createConversationArchiveReadApiRouter(dependencies.conversationRead));
   if (dependencies.conversationPruning) router.use("/conversations", createConversationPruningApiRouter(dependencies.conversationPruning));
   if (dependencies.conversationImport) router.use("/conversations", createConversationImportApiRouter(dependencies.conversationImport));

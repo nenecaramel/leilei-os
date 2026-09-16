@@ -69,6 +69,28 @@ async function withServer(callback: (baseUrl: string) => Promise<void>): Promise
         async delete() { return { deleted: true }; },
       },
     },
+    conversationExclusionManagement: {
+      conversationExclusionManagementService: {
+        async list() { return { items: [], total: 0 }; },
+        async remove() {
+          return {
+            removed: true,
+            exclusion: {
+              id: "55555555-5555-4555-8555-555555555555",
+              provider: "chatgpt",
+              scope: "branch",
+              sourceConversationId: "source",
+              sourceNodeId: "node",
+              canonicalConversationExists: true,
+              canonicalNodeExists: false,
+              createdAt: "2026-09-16T00:00:00.000Z",
+            },
+            canonicalRestored: false,
+            eligibleOnNextImport: true,
+          };
+        },
+      },
+    },
     conversationRead: {
       conversationArchiveReadService: {
         async list() { return { items: [], total: 0 }; },
@@ -179,6 +201,8 @@ test("authenticated Web API responses are private and uncached without affecting
       { path: "/api/v1/system/data", init: { headers } },
       { path: "/api/v1/system/export?scope=memory", init: { headers } },
       { path: "/api/v1/system/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream" }, body: new Uint8Array([123]) } },
+      { path: "/api/v1/conversations/exclusions", init: { headers } },
+      { path: "/api/v1/conversations/exclusions/55555555-5555-4555-8555-555555555555", init: { method: "DELETE", headers } },
       { path: "/api/v1/conversations/favorites", init: { headers } },
       { path: "/api/v1/conversations/favorites", init: { method: "POST", headers, body: JSON.stringify({ conversation_id: "11111111-1111-4111-8111-111111111111", start_message_id: "22222222-2222-4222-8222-222222222222" }) } },
       { path: "/api/v1/conversations/favorites/44444444-4444-4444-8444-444444444444", init: { headers } },
