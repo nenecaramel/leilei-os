@@ -2368,6 +2368,7 @@ body:has(.home-prototype) {
 .todo-paper-editor {
   display: grid;
   align-content: start;
+  cursor: text;
 }
 
 .todo-paper-row {
@@ -2391,11 +2392,15 @@ body:has(.home-prototype) {
   resize: none;
   border: 0;
   border-radius: 0;
+  color: inherit;
   background: transparent;
+  caret-color: #171717;
   font: inherit;
   line-height: 30px;
   overflow: hidden;
   box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .todo-paper-row textarea:focus {
@@ -2406,24 +2411,9 @@ body:has(.home-prototype) {
   box-shadow: none;
 }
 
-.todo-paper-status[data-kind="completed"] + textarea,
-.todo-paper-status[data-kind="completed"] + .todo-paper-line-view {
+.todo-paper-status[data-kind="completed"] + textarea {
   color: #8f8f8f;
   text-decoration: line-through;
-}
-
-.todo-paper-line-view {
-  width: 100%;
-  min-height: 30px;
-  margin: 0;
-  padding: 0 4px 0 0;
-  overflow: hidden;
-  border: 0;
-  color: inherit;
-  background: transparent;
-  line-height: 30px;
-  text-align: left;
-  white-space: pre-wrap;
 }
 
 .todo-paper-row[data-creation="true"] {
