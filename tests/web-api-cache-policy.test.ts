@@ -61,6 +61,22 @@ async function withServer(callback: (baseUrl: string) => Promise<void>): Promise
             warning_codes: {},
           };
         },
+        async execute() {
+          return {
+            outcome: "executed",
+            import_run_id: "11111111-1111-4111-8111-111111111111",
+            source_id: "source",
+            provider: "chatgpt",
+            parser_version: "chatgpt-v1",
+            preview_fingerprint: "b".repeat(64),
+            summary: {
+              conversations: { create: 0, update: 0, unchanged: 0, stale: 0 },
+              messages: { create: 0, update: 0, unchanged: 0, stale: 0, path_changed: 0 },
+            },
+            warning_count: 0,
+            warning_codes: {},
+          };
+        },
       },
     },
   } as never));
@@ -86,6 +102,7 @@ test("authenticated Web API responses are private and uncached without affecting
       { path: "/api/v1/system/export?scope=memory", init: { headers } },
       { path: "/api/v1/system/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream" }, body: new Uint8Array([123]) } },
       { path: "/api/v1/conversations/import/preview", init: { method: "POST", headers: { ...headers, "content-type": "application/octet-stream", "x-leilei-filename": "conversations.json" }, body: new Uint8Array([91, 93]) } },
+      { path: "/api/v1/conversations/import/execute", init: { method: "POST", headers, body: JSON.stringify({ import_run_id: "11111111-1111-4111-8111-111111111111", expected_preview_fingerprint: "b".repeat(64) }) } },
       { path: "/api/v1/toy/commands", init: { method: "POST", headers, body: JSON.stringify({ action: "stop" }) } },
     ];
     for (const request of requests) {

@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { once } from "node:events";
 import { StringDecoder } from "node:string_decoder";
-import { createGzip, createInflateRaw } from "node:zlib";
+import { createGunzip, createGzip, createInflateRaw } from "node:zlib";
 import { pipeline } from "node:stream/promises";
-import { Transform } from "node:stream";
+import { Readable, Transform } from "node:stream";
 
 export const MAX_CONVERSATION_UPLOAD_BYTES = 256 * 1024 * 1024;
 export const MAX_CONVERSATION_JSON_BYTES = 512 * 1024 * 1024;
@@ -281,6 +281,29 @@ async function prepareJsonPaths(
     paths.push(path);
   }
   return paths;
+}
+
+export async function stageStoredConversationSource(input: {
+  data: Buffer;
+  encoding: "raw" | "gzip";
+  originalFilename: string;
+  expectedSha256: string;
+  expectedBytes: number;
+}): Promise<StagedConversationUpload> {
+  const source = input.encoding === "gzip"
+    ? Readable.from([input.data]).pipe(createGunzip())
+    : Readable.from([input.data]);
+  const staged = await stageConversationUpload(source, input.originalFilename);
+  if (
+    staged.rawSha256 !== input.expectedSha256
+    || staged.rawBytes !== input.expectedBytes
+  ) {
+    await staged.cleanup();
+    throw Object.assign(new Error("Stored Conversation source failed integrity verification."), {
+      code: "CONVERSATION_IMPORT_SOURCE_CORRUPT",
+    });
+  }
+  return staged;
 }
 
 export async function stageConversationUpload(
