@@ -122,7 +122,7 @@ implements ConversationPruningRepository {
     messageId: string;
   }): Promise<ConversationPruneBranchResult | null> {
     return this.db.transaction(
-      async (transaction) => this.pruneBranchInTransaction(transaction, input),
+      async (transaction) => this.pruneBranchInTransaction(transaction as Transaction, input),
       { isolationLevel: "serializable" },
     );
   }
