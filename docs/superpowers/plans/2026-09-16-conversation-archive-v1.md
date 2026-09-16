@@ -380,9 +380,9 @@ It gets a dedicated archive export/backup contract later. Database backups still
 
 ### PR H — Global Search
 
-- [ ] add conversation module
-- [ ] return message snippet + exact deep link
-- [ ] prevent Conversation volume from drowning the existing six modules
+- [x] add Conversation as an explicit opt-in seventh module while preserving the existing six-module default
+- [x] return canonical message snippet + conversation/message deep-link metadata
+- [x] prevent Conversation volume from changing existing default search results by keeping it opt-in
 
 ### PR I — Claude — pulled forward after the real export arrived
 
