@@ -24,6 +24,7 @@ import { createUniverseApiRouter, type UniverseApiDependencies } from "./univers
 import { createBridgeApiRouter, type BridgeApiDependencies } from "./bridge-router.js";
 import { createSentinelApiRouter, type SentinelApiDependencies } from "./sentinel-router.js";
 import { createSharedPaperApiRouter, type SharedPaperApiDependencies } from "./shared-paper-router.js";
+import { createConversationImportApiRouter, type ConversationImportApiDependencies } from "./conversation-import-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
@@ -39,6 +40,7 @@ export type WebApiRouterDependencies = {
   bridge?: BridgeApiDependencies;
   sentinel?: SentinelApiDependencies;
   sharedPaper?: SharedPaperApiDependencies;
+  conversationImport?: ConversationImportApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -96,6 +98,7 @@ export function createWebApiRouter(
   if (dependencies.bridge) router.use("/bridge", createBridgeApiRouter(dependencies.bridge));
   if (dependencies.sentinel) router.use("/sentinel", createSentinelApiRouter(dependencies.sentinel));
   if (dependencies.sharedPaper) router.use("/shared-papers", createSharedPaperApiRouter(dependencies.sharedPaper));
+  if (dependencies.conversationImport) router.use("/conversations", createConversationImportApiRouter(dependencies.conversationImport));
 
   return router;
 }
