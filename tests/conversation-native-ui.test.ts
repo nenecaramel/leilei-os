@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const page = readFileSync(
+  new URL("../web/src/pages/ConversationArchivePage.tsx", import.meta.url),
+  "utf8",
+);
+const css = readFileSync(
+  new URL("../web/src/pages/conversation-native-ui.css", import.meta.url),
+  "utf8",
+);
+
+test("Conversation Archive native UI keeps one primary archive surface with Favorites and Sources tabs", () => {
+  assert.match(page, /surface, setSurface/);
+  assert.match(page, />Conversations</);
+  assert.match(page, />Favorites</);
+  assert.match(page, />Sources</);
+  assert.match(page, /surface === "archive"/);
+  assert.match(page, /surface === "favorites"/);
+  assert.match(page, /surface === "sources"/);
+});
+
+test("Conversation native UI aligns with accepted LeileiOS white grouped-list language", () => {
+  assert.match(css, /body:has\(\.conversation-page\)/);
+  assert.match(css, /background:\s*#ffffff/);
+  assert.match(css, /width:\s*min\(860px,/);
+  assert.match(css, /border-radius:\s*14px/);
+  assert.match(css, /BlinkMacSystemFont/);
+  assert.match(css, /conversation-list,/);
+  assert.match(css, /conversation-message-list/);
+});
+
+test("Conversation UI redesign keeps import search Favorites Sources and pruning functionality wired", () => {
+  assert.match(page, /client\.previewBatch/);
+  assert.match(page, /client\.executeBatch/);
+  assert.match(page, /ConversationSearchPanel/);
+  assert.match(page, /ConversationFavoritesPanel/);
+  assert.match(page, /ConversationImportHistoryPanel/);
+  assert.match(page, /deleteConversation/);
+  assert.match(page, /deleteBranch/);
+  assert.match(page, /createFavorite/);
+});
+
+test("Conversation detail is a continuous reading surface rather than independent cream cards", () => {
+  assert.match(css, /\.conversation-message-list\s*\{/);
+  assert.match(css, /\.conversation-message \{/);
+  assert.match(css, /\.conversation-message \+ \.conversation-message/);
+  assert.match(css, /background:\s*#fafafa/);
+  assert.doesNotMatch(css, /conversation-message[^}]*Newsreader/s);
+});
