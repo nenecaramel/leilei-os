@@ -28,6 +28,7 @@ test("Global Search shared result helpers provide neutral labels, compact dates,
   assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.memory, "Memory");
   assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.diary, "Diary");
   assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.task, "Task");
+  assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.conversation, "Conversations");
   assert.match(helpers.formatGlobalSearchBusinessDate(active.business_time), /^\d{2}\/\d{2}$/);
   assert.match(
     helpers.createGlobalSearchResultDetailLocation(active, "/search?q=mobile"),
@@ -59,7 +60,7 @@ test("Global Search full page uses the accepted five-domain mobile presentation"
   assert.match(pageSource, /GlobalSearchPageHeader/);
   assert.doesNotMatch(pageSource, /匹配方式/);
   assert.doesNotMatch(pageSource, /exact_phrase|精确短语/);
-  assert.match(pageSource, /搜索 Memory、Diary、Task、Todo、Universe 与 Shared Paper 中保存的内容/);
+  assert.match(pageSource, /默认搜索 Memory、Diary、Task、Todo、Universe 与 Shared Paper；Conversations 可在模块筛选中开启/);
   assert.match(pageSource, /没有找到匹配内容/);
   assert.match(pageSource, /SEARCH_MODULES\.map/);
   assert.match(pageSource, /global-search-result-button/);
