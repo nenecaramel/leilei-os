@@ -401,7 +401,7 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [x] bind Execute to a whole-batch fingerprint and revalidate every pending source before canonical writes
 - [x] apply the validated batch in one serializable transaction with exact-request replay safety
 - [x] expose backend batch Preview / Execute APIs
-- [ ] Web multi-select upload / batch review UI
+- [x] Web multi-select upload / batch review UI; single-file flow unchanged, 2–20 files use ordered batch Preview + explicit atomic Execute
 - [ ] production acceptance with at least two real Claude export files
 
 ### PR K — Import history / source management
