@@ -854,6 +854,7 @@ export const conversationImportRuns = pgTable(
       .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
     sourceId: uuid("source_id").notNull(),
     parserVersion: varchar("parser_version", { length: 64 }).notNull(),
+    executionKey: varchar("execution_key", { length: 64 }).default("standard").notNull(),
     status: varchar("status", { length: 32 }).$type<ConversationImportRunStatus>().default("processing").notNull(),
     previewFingerprint: varchar("preview_fingerprint", { length: 64 }),
     summary: jsonb("summary").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
@@ -868,11 +869,12 @@ export const conversationImportRuns = pgTable(
       foreignColumns: [conversationImportSources.id, conversationImportSources.userId],
       name: "conversation_import_runs_source_user_fk",
     }).onDelete("cascade").onUpdate("cascade"),
-    uniqueIndex("conversation_import_runs_source_parser_preview_executed_uidx")
-      .on(table.sourceId, table.parserVersion, table.previewFingerprint)
+    uniqueIndex("conversation_import_runs_execution_executed_uidx")
+      .on(table.sourceId, table.parserVersion, table.previewFingerprint, table.executionKey)
       .where(sql`${table.status} = 'executed'`),
     index("conversation_import_runs_user_created_idx").on(table.userId, table.createdAt.desc(), table.id.desc()),
     check("conversation_import_runs_parser_not_blank", sql`char_length(btrim(${table.parserVersion})) > 0`),
+    check("conversation_import_runs_execution_key_not_blank", sql`char_length(btrim(${table.executionKey})) > 0`),
     check("conversation_import_runs_status_allowed", sql`${table.status} IN ('processing', 'executed', 'failed')`),
     check(
       "conversation_import_runs_preview_format",
