@@ -448,12 +448,24 @@ export async function encodeRawConversationSource(
       data: await collectStream(createReadStream(upload.uploadPath)),
     };
   }
+  const input = createReadStream(upload.uploadPath);
   const gzip = createGzip({ level: 6 });
-  const pump = pipeline(createReadStream(upload.uploadPath), gzip);
-  const data = await collectStream(gzip);
-  await pump;
-  return {
-    encoding: "gzip",
-    data,
-  };
+  const pump = pipeline(input, gzip);
+  try {
+    const data = await collectStream(gzip);
+    await pump;
+    return {
+      encoding: "gzip",
+      data,
+    };
+  } catch (error) {
+    input.destroy();
+    gzip.destroy();
+    try {
+      await pump;
+    } catch {
+      // Preserve the primary storage error.
+    }
+    throw error;
+  }
 }
