@@ -37,6 +37,7 @@ export type ConversationStoredRun = {
   userId: string;
   sourceId: string;
   parserVersion: string;
+  executionKey: string;
   status: "processing" | "executed" | "failed";
   previewFingerprint: string | null;
   summary: Record<string, unknown>;
@@ -62,6 +63,7 @@ export interface ConversationImportRepository {
     userId: string;
     sourceId: string;
     parserVersion: string;
+    executionKey: string;
     previewFingerprint: string;
     summary: Record<string, unknown>;
     warningCount: number;
@@ -71,6 +73,7 @@ export interface ConversationImportRepository {
     sourceId: string;
     parserVersion: string;
     previewFingerprint: string;
+    executionKey: string;
   }): Promise<{ id: string; summary: Record<string, unknown> } | null>;
   findRunById(input: {
     userId: string;
@@ -212,6 +215,7 @@ implements ConversationImportRepository {
         userId: input.userId,
         sourceId: input.sourceId,
         parserVersion: input.parserVersion,
+        executionKey: input.executionKey,
         status: "processing",
         previewFingerprint: input.previewFingerprint,
         summary: input.summary,
@@ -227,6 +231,7 @@ implements ConversationImportRepository {
     sourceId: string;
     parserVersion: string;
     previewFingerprint: string;
+    executionKey: string;
   }): Promise<{ id: string; summary: Record<string, unknown> } | null> {
     const [row] = await this.db
       .select({
@@ -239,6 +244,7 @@ implements ConversationImportRepository {
         eq(conversationImportRuns.sourceId, input.sourceId),
         eq(conversationImportRuns.parserVersion, input.parserVersion),
         eq(conversationImportRuns.previewFingerprint, input.previewFingerprint),
+        eq(conversationImportRuns.executionKey, input.executionKey),
         eq(conversationImportRuns.status, "executed"),
       ))
       .limit(1);
@@ -255,6 +261,7 @@ implements ConversationImportRepository {
         userId: conversationImportRuns.userId,
         sourceId: conversationImportRuns.sourceId,
         parserVersion: conversationImportRuns.parserVersion,
+        executionKey: conversationImportRuns.executionKey,
         status: conversationImportRuns.status,
         previewFingerprint: conversationImportRuns.previewFingerprint,
         summary: conversationImportRuns.summary,
@@ -286,6 +293,7 @@ implements ConversationImportRepository {
       userId: row.userId,
       sourceId: row.sourceId,
       parserVersion: row.parserVersion,
+      executionKey: row.executionKey,
       status: row.status,
       previewFingerprint: row.previewFingerprint,
       summary: row.summary,
