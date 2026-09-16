@@ -1,0 +1,378 @@
+.conversation-file-input {
+  display: none;
+}
+
+.conversation-import-button {
+  margin-top: 0;
+}
+
+.conversation-import-preview,
+.conversation-muted-card,
+.conversation-day-card,
+.conversation-card,
+.conversation-message,
+.conversation-branch-note,
+.conversation-inline-status {
+  border: 1px solid var(--line);
+  background: rgba(250, 248, 243, 0.84);
+  box-shadow: var(--shadow-soft);
+}
+
+.conversation-import-preview {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 34px;
+  padding: 24px;
+  border-radius: 20px;
+}
+
+.conversation-import-preview h2,
+.conversation-section-heading h2 {
+  margin: 0;
+  font-family: "Newsreader", serif;
+  font-size: 28px;
+  font-weight: 500;
+}
+
+.conversation-import-preview p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.conversation-import-preview .conversation-import-note {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.conversation-import-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.conversation-import-actions .primary-button,
+.conversation-import-actions .secondary-button {
+  margin-top: 0;
+}
+
+.conversation-inline-status {
+  margin: -14px 0 32px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.conversation-section {
+  margin-top: 44px;
+}
+
+.conversation-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.conversation-section-heading > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.conversation-muted-card {
+  padding: 24px;
+  border-radius: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.conversation-day-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.conversation-day-card {
+  min-width: 0;
+  padding: 18px;
+  border-radius: 18px;
+}
+
+.conversation-day-card > time,
+.conversation-day-card > strong,
+.conversation-day-card > span,
+.conversation-day-card small {
+  display: block;
+}
+
+.conversation-day-card > time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.conversation-day-card > strong {
+  margin-top: 10px;
+  font-family: "Newsreader", serif;
+  font-size: 27px;
+  font-weight: 500;
+}
+
+.conversation-day-card > span {
+  margin-top: 3px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.conversation-day-card > div {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.conversation-day-card small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.conversation-provider-filter,
+.conversation-view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.conversation-provider-filter button,
+.conversation-view-toggle button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+}
+
+.conversation-provider-filter button.active,
+.conversation-view-toggle button.active {
+  color: var(--theme-strong);
+  background: var(--theme-soft);
+  font-weight: 700;
+}
+
+.conversation-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.conversation-card {
+  display: block;
+  min-width: 0;
+  padding: 22px;
+  border-radius: 20px;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 170ms ease,
+    border-color 170ms ease,
+    box-shadow 170ms ease;
+}
+
+.conversation-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--theme-rgb), 0.22);
+  box-shadow: var(--shadow-card);
+}
+
+.conversation-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.conversation-card-topline time {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-provider {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.conversation-provider--chatgpt {
+  color: #3f6252;
+  background: #e0ebe5;
+}
+
+.conversation-provider--claude {
+  color: #775741;
+  background: #eee3d8;
+}
+
+.conversation-card h3 {
+  margin: 20px 0 8px;
+  overflow: hidden;
+  font-family: "Newsreader", serif;
+  font-size: 22px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.conversation-card small {
+  display: block;
+  margin-top: 12px;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-list-total {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.conversation-detail-back {
+  margin-bottom: 24px;
+}
+
+.conversation-detail-back a {
+  color: var(--theme-strong);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.conversation-branch-note {
+  margin: -10px 0 30px;
+  padding: 13px 15px;
+  border-radius: 12px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.conversation-message-list {
+  display: grid;
+  gap: 12px;
+}
+
+.conversation-message {
+  padding: 20px 22px;
+  border-radius: 18px;
+}
+
+.conversation-message--user {
+  margin-left: min(8vw, 86px);
+  background: rgba(var(--theme-rgb), 0.06);
+}
+
+.conversation-message--assistant {
+  margin-right: min(6vw, 64px);
+}
+
+.conversation-message-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.conversation-message-meta strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.conversation-message-meta time {
+  margin-left: auto;
+}
+
+.conversation-message-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.68;
+}
+
+.conversation-load-more {
+  display: flex;
+  margin: 24px auto 0;
+}
+
+@media (max-width: 900px) {
+  .conversation-day-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .conversation-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .conversation-import-preview,
+  .conversation-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .conversation-import-actions {
+    width: 100%;
+  }
+
+  .conversation-import-actions button {
+    flex: 1;
+  }
+
+  .conversation-day-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-provider-filter {
+    width: 100%;
+  }
+
+  .conversation-provider-filter button {
+    flex: 1;
+  }
+
+  .conversation-message--user,
+  .conversation-message--assistant {
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .conversation-message-meta {
+    flex-wrap: wrap;
+  }
+
+  .conversation-message-meta time {
+    width: 100%;
+    margin-left: 0;
+  }
+}
