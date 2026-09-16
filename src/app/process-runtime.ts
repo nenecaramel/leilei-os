@@ -42,6 +42,8 @@ import { DrizzleConversationImportRepository } from "../domains/conversation/con
 import { DrizzleConversationArchiveStateRepository } from "../domains/conversation/conversation-state-repository.js";
 import { ConversationImportService } from "../domains/conversation/conversation-import-service.js";
 import { DrizzleConversationImportExecutor } from "../domains/conversation/conversation-import-executor.js";
+import { DrizzleConversationArchiveReadRepository } from "../domains/conversation/conversation-archive-read-repository.js";
+import { ConversationArchiveReadService } from "../domains/conversation/conversation-archive-read-service.js";
 import {
   createSentinelScheduler as buildSentinelScheduler,
   type SentinelScheduler,
@@ -119,6 +121,9 @@ export function createProcessRuntime(
     new DrizzleConversationArchiveStateRepository(db),
     new DrizzleConversationImportExecutor(db),
   );
+  const conversationArchiveReadService = new ConversationArchiveReadService(
+    new DrizzleConversationArchiveReadRepository(db),
+  );
   const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
     buildSentinelScheduler({ repository })))(sentinelRepository);
 
@@ -189,6 +194,7 @@ export function createProcessRuntime(
       webSentinelService: sentinelService,
       webSharedPaperService: sharedPaperService,
       webConversationImportService: conversationImportService,
+      webConversationArchiveReadService: conversationArchiveReadService,
       healthSyncService: healthService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
