@@ -214,19 +214,6 @@ implements ConversationImportExecutionTransaction {
     const freshAuthoritativePath =
       item.classification !== "stale"
       && normalized.currentLeafSourceNodeId !== null;
-    if (freshAuthoritativePath && item.currentId) {
-      await this.tx
-        .update(conversationMessages)
-        .set({
-          isCurrentPath: false,
-          currentPathIndex: null,
-          turnIndex: null,
-        })
-        .where(and(
-          eq(conversationMessages.userId, userId),
-          eq(conversationMessages.conversationId, conversationId),
-        ));
-    }
 
     const existingSourceNodeIds = item.messages
       .filter((message) => message.currentId !== null)
@@ -264,6 +251,20 @@ implements ConversationImportExecutionTransaction {
       }
     }
 
+    if (freshAuthoritativePath && item.currentId) {
+      await this.tx
+        .update(conversationMessages)
+        .set({
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: null,
+        })
+        .where(and(
+          eq(conversationMessages.userId, userId),
+          eq(conversationMessages.conversationId, conversationId),
+        ));
+    }
+
     const writable = item.messages.filter(
       (message) => message.classification === "create" || message.classification === "update",
     );
@@ -275,11 +276,10 @@ implements ConversationImportExecutionTransaction {
     for (const batch of chunks(writable, MESSAGE_BATCH)) {
       const values = batch.map((planned) => {
         const message = planned.message;
-        const id = planned.classification === "create" ? randomUUID() : randomUUID();
+        const id = randomUUID();
         if (planned.classification === "create") {
           messageIds.set(message.sourceNodeId, id);
         }
-        const keepImportedPath = freshAuthoritativePath && item.classification !== "stale";
         return {
           id,
           userId,
@@ -292,9 +292,7 @@ implements ConversationImportExecutionTransaction {
           model: message.model,
           sourceCreatedAt: dateOrNull(message.sourceCreatedAt),
           sourceUpdatedAt: dateOrNull(message.sourceUpdatedAt),
-          isCurrentPath: planned.classification === "create" && keepImportedPath
-            ? false
-            : false,
+          isCurrentPath: false,
           currentPathIndex: null,
           turnIndex: null,
           isPrimary: message.isPrimary,
@@ -379,16 +377,16 @@ implements ConversationImportExecutionTransaction {
         .filter((planned) => planned.message.isCurrentPath)
         .map((planned) => ({
           id: messageIds.get(planned.sourceNodeId),
-          isCurrentPath: true,
+          isCurrentPath: true as const,
           currentPathIndex: planned.message.currentPathIndex,
           turnIndex: planned.message.turnIndex,
         }))
         .filter((row): row is {
           id: string;
           isCurrentPath: true;
-          currentPathIndex: number | null;
+          currentPathIndex: number;
           turnIndex: number | null;
-        } => Boolean(row.id));
+        } => Boolean(row.id) && row.currentPathIndex !== null);
 
       for (const batch of chunks(pathRows, MESSAGE_BATCH)) {
         if (batch.length === 0) continue;
@@ -419,7 +417,7 @@ implements ConversationImportExecutionTransaction {
     importRunId: string,
     messageIds: string[],
   ): Promise<void> {
-    const messages = [];
+    const messages: Array<typeof conversationMessages.$inferSelect> = [];
     for (const idChunk of chunks(messageIds, 2_000)) {
       messages.push(...await this.tx
         .select()
@@ -430,8 +428,8 @@ implements ConversationImportExecutionTransaction {
         )));
     }
 
-    const blocks = [];
-    const attachments = [];
+    const blocks: Array<typeof conversationContentBlocks.$inferSelect> = [];
+    const attachments: Array<typeof conversationAttachments.$inferSelect> = [];
     for (const idChunk of chunks(messageIds, 2_000)) {
       blocks.push(...await this.tx
         .select()
@@ -449,13 +447,13 @@ implements ConversationImportExecutionTransaction {
         )));
     }
 
-    const blocksByMessage = new Map<string, typeof blocks>();
+    const blocksByMessage = new Map<string, Array<typeof conversationContentBlocks.$inferSelect>>();
     for (const block of blocks) {
       const list = blocksByMessage.get(block.messageId) ?? [];
       list.push(block);
       blocksByMessage.set(block.messageId, list);
     }
-    const attachmentsByMessage = new Map<string, typeof attachments>();
+    const attachmentsByMessage = new Map<string, Array<typeof conversationAttachments.$inferSelect>>();
     for (const attachment of attachments) {
       const list = attachmentsByMessage.get(attachment.messageId) ?? [];
       list.push(attachment);
