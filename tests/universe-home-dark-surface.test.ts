@@ -19,6 +19,11 @@ const mainTsx = readFileSync(
   "utf8",
 );
 
+const desktopGeometryCss = readFileSync(
+  new URL("../web/src/native-mobile-desktop-geometry.css", import.meta.url),
+  "utf8",
+);
+
 const PAGE_SCOPE = String.raw`\.universe-page:has\(\.universe-mobile-map\)`;
 const BODY_SCOPE = String.raw`body:has\(\.universe-page\)`;
 const READY_BODY_SCOPE = String.raw`body:has\(\.universe-mobile-map\):not\(:has\(\.universe-standalone-detail, \.universe-standalone-editor, \.universe-standalone-connection\)\)`;
@@ -85,4 +90,16 @@ test("Universe map keeps soft color while slightly raising labels and topology r
 
 test("All transient Universe status text sits eight pixels lower while staying viewport-centered", () => {
   assert.match(productionFixCss, new RegExp(`${PAGE_SCOPE} \\.universe-header-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-notice,[\\s\\S]*?${PAGE_SCOPE} \\.universe-map-mode-hint\\s*\\{[^}]*top:\\s*calc\\(70px [+] env\\(safe-area-inset-top, 0px\\)\\) !important;[^}]*left:\\s*50vw !important;[^}]*transform:\\s*translateX\\(-50%\\) !important;`, "s"));
+});
+
+
+test("Desktop transient Universe status text centers inside the Universe content area", () => {
+  assert.match(
+    desktopGeometryCss,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-header-notice,[\s\S]*?\.universe-page:has\(\.universe-mobile-map\) \.universe-notice,[\s\S]*?\.universe-page:has\(\.universe-mobile-map\) \.universe-map-mode-hint\s*\{[^}]*right:\s*0 !important;[^}]*left:\s*280px !important;[^}]*width:\s*auto !important;[^}]*transform:\s*none !important;[^}]*text-align:\s*center !important;/s,
+  );
+  assert.match(
+    desktopGeometryCss,
+    /\.universe-page:has\(\.universe-mobile-map\) \.universe-map-mode-hint\s*\{[^}]*justify-content:\s*center !important;/s,
+  );
 });

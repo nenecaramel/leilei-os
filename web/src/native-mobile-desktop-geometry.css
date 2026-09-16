@@ -107,6 +107,25 @@
     min-width: 0;
   }
 
+  /*
+   * Mobile-authored transient Universe status layers use viewport coordinates.
+   * On desktop, reserve the 280px navigation column and center those layers
+   * across the actual Universe canvas instead of the whole browser viewport.
+   */
+  .universe-page:has(.universe-mobile-map) .universe-header-notice,
+  .universe-page:has(.universe-mobile-map) .universe-notice,
+  .universe-page:has(.universe-mobile-map) .universe-map-mode-hint {
+    right: 0 !important;
+    left: 280px !important;
+    width: auto !important;
+    transform: none !important;
+    text-align: center !important;
+  }
+
+  .universe-page:has(.universe-mobile-map) .universe-map-mode-hint {
+    justify-content: center !important;
+  }
+
   /* Loading/error/import keep the dark route but use the same desktop page
    * frame as Memory / Diary / Task / Search so the title never jumps. */
   .main-content > .page.universe-page:has(.universe-cosmos-loading),
