@@ -118,7 +118,7 @@ function tags(value: unknown): string[] {
         "Conversation favorite tags are invalid.",
       );
     }
-    const key = normalized.toLocaleLowerCase("und");
+    const key = normalized.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     output.push(normalized);
