@@ -57,6 +57,7 @@ import type { SentinelApiDependencies } from "../web-api/sentinel-router.js";
 import type { SharedPaperApiDependencies } from "../web-api/shared-paper-router.js";
 import type { ConversationImportApiDependencies } from "../web-api/conversation-import-router.js";
 import type { ConversationArchiveReadApiDependencies } from "../web-api/conversation-archive-read-router.js";
+import type { ConversationPruningApiDependencies } from "../web-api/conversation-pruning-router.js";
 import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
@@ -83,6 +84,7 @@ export type AppDependencies = {
   webSharedPaperService?: SharedPaperApiDependencies["sharedPaperService"];
   webConversationImportService?: ConversationImportApiDependencies["conversationImportService"];
   webConversationArchiveReadService?: ConversationArchiveReadApiDependencies["conversationArchiveReadService"];
+  webConversationPruningService?: ConversationPruningApiDependencies["conversationPruningService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -309,6 +311,7 @@ export function createApp(
     const webSharedPaperService = dependencies.webSharedPaperService;
     const webConversationImportService = dependencies.webConversationImportService;
     const webConversationArchiveReadService = dependencies.webConversationArchiveReadService;
+    const webConversationPruningService = dependencies.webConversationPruningService;
 
     if (
       !webMemoryService ||
@@ -377,6 +380,7 @@ export function createApp(
         ...(webSentinelService ? { sentinel: { sentinelService: webSentinelService } } : {}),
         ...(webSharedPaperService ? { sharedPaper: { sharedPaperService: webSharedPaperService } } : {}),
         ...(webConversationArchiveReadService ? { conversationRead: { conversationArchiveReadService: webConversationArchiveReadService } } : {}),
+        ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
       }),
     );
