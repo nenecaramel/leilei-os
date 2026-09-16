@@ -375,8 +375,8 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [x] provider / conversation / tag list filters
 - [x] Favorites-only filter for dedicated Conversation message search
 - [x] CRUD Web API
-- [ ] production migration / backend acceptance
-- [ ] Web favorite selection and Favorites browse UI
+- [x] production migration / backend rollout (`0043_conversation_favorites` is already below production head `0044`)
+- [x] Web favorite selection and Favorites browse UI: single message / contiguous range, snapshot browse, metadata edit, delete
 
 ### PR H — Global Search
 
