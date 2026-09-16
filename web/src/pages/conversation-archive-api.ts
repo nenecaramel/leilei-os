@@ -147,7 +147,7 @@ export function createConversationArchiveApi(api: WebApiClient) {
           method: "POST",
           headers: {
             "Content-Type": "application/octet-stream",
-            "X-Leilei-Filename": file.name,
+            "X-Leilei-Filename": encodeURIComponent(file.name),
           },
           body: file,
         },
