@@ -68,6 +68,11 @@ export interface ConversationImportExecutionTransaction {
     summary: Record<string, unknown>;
     warningCount: number;
   }): Promise<void>;
+  markRunSuperseded(input: {
+    userId: string;
+    runId: string;
+    executedRunId: string;
+  }): Promise<void>;
 }
 
 export interface ConversationImportExecutor {
@@ -507,6 +512,32 @@ implements ConversationImportExecutionTransaction {
     for (const batch of chunks(versions, MESSAGE_BATCH)) {
       if (batch.length > 0) await this.tx.insert(conversationMessageVersions).values(batch);
     }
+  }
+
+  async markRunSuperseded(input: {
+    userId: string;
+    runId: string;
+    executedRunId: string;
+  }): Promise<void> {
+    const [row] = await this.tx
+      .update(conversationImportRuns)
+      .set({
+        status: "failed",
+        summary: {
+          superseded_by_executed_run_id: input.executedRunId,
+          reason: "same_source_parser_already_executed",
+        },
+        completedAt: new Date(),
+      })
+      .where(and(
+        eq(conversationImportRuns.userId, input.userId),
+        eq(conversationImportRuns.id, input.runId),
+        eq(conversationImportRuns.status, "processing"),
+      ))
+      .returning({ id: conversationImportRuns.id });
+    if (!row) throw Object.assign(new Error("Conversation import run is not executable."), {
+      code: "CONVERSATION_IMPORT_RUN_NOT_EXECUTABLE",
+    });
   }
 
   async markRunExecuted(input: {
