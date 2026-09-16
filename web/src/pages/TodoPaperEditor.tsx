@@ -141,7 +141,7 @@ export const TodoPaperEditor = forwardRef<
 
   useEffect(() => {
     setRows(createInitialRows(author, initialEntries));
-  }, [author, initialSnapshot, initialEntries]);
+  }, [author, initialSnapshot]);
 
   useEffect(() => {
     const currentSnapshot = JSON.stringify(normalizeRows(rows));
