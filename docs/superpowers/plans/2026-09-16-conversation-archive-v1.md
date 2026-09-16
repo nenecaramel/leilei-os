@@ -392,6 +392,18 @@ It gets a dedicated archive export/backup contract later. Database backups still
 - [x] preserve branching without inventing a current leaf
 - [ ] verify repeated incremental Claude import through the production import pipeline
 
+### PR J — multi-file import
+
+- [x] orchestrate multiple archived source/run pairs without changing the lossless single-file upload path
+- [x] deduplicate identical raw source + parser inputs inside one batch
+- [x] plan files cumulatively in selection order so later exports see earlier batch changes
+- [x] aggregate per-file create / update / unchanged / stale Preview summaries
+- [x] bind Execute to a whole-batch fingerprint and revalidate every pending source before canonical writes
+- [x] apply the validated batch in one serializable transaction with exact-request replay safety
+- [x] expose backend batch Preview / Execute APIs
+- [ ] Web multi-select upload / batch review UI
+- [ ] production acceptance with at least two real Claude export files
+
 ## Acceptance invariants
 
 - importing the same source twice never duplicates a conversation/message;

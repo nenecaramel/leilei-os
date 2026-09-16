@@ -22,6 +22,17 @@ import {
   applyConversationExclusions,
   type ConversationExclusionSummary,
 } from "./conversation-exclusions.js";
+import {
+  aggregateConversationImportBatch,
+  conversationImportStateKey,
+  emptyConversationImportExclusions,
+  emptyConversationImportSummary,
+  scanConversationImportSource,
+  type ConversationImportBatchExecuteItem,
+  type ConversationImportBatchExecuteResult,
+  type ConversationImportBatchFilePreview,
+  type ConversationImportBatchPreview,
+} from "./conversation-import-batch.js";
 
 export type ConversationImportExecuteResult = {
   outcome: "executed" | "replayed" | "already_executed";
@@ -446,6 +457,427 @@ export class ConversationImportService {
     }
   }
 
+  async previewBatch(
+    runIds: readonly string[],
+    userId: string,
+  ): Promise<ConversationImportBatchPreview> {
+    const user = await this.repository.findUserById(userId);
+    if (!user || user.status !== "active") {
+      throw new ConversationImportAuthorizationError();
+    }
+    assertConversationImportBatchRunIds(runIds);
+
+    const current = await this.stateRepository.readMergeState(userId);
+    const currentByKey = new Map<string, CurrentConversationState>(
+      current.conversations.map((conversation) => [
+        conversationImportStateKey(
+          conversation.provider,
+          conversation.sourceConversationId,
+        ),
+        conversation,
+      ]),
+    );
+    const exclusions = await this.repository.listExclusions(userId);
+    const syntheticSequence = { value: 0 };
+    const seenSourceParser = new Map<string, string>();
+    const items: ConversationImportBatchFilePreview[] = [];
+
+    for (const [inputIndex, runId] of runIds.entries()) {
+      const run = await this.repository.findRunById({ userId, runId });
+      if (!run) {
+        throw Object.assign(new Error("Conversation import run was not found."), {
+          code: "CONVERSATION_IMPORT_RUN_NOT_FOUND",
+        });
+      }
+      if (run.status === "failed") {
+        throw Object.assign(new Error("Conversation import run is not executable."), {
+          code: "CONVERSATION_IMPORT_RUN_NOT_EXECUTABLE",
+        });
+      }
+
+      const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}`;
+      const firstRunId = seenSourceParser.get(dedupeKey) ?? null;
+      if (firstRunId) {
+        items.push(batchFilePreview({
+          inputIndex,
+          run,
+          status: "duplicate_in_batch",
+          duplicateOfRunId: firstRunId,
+          executedRunId: null,
+        }));
+        continue;
+      }
+      seenSourceParser.set(dedupeKey, run.id);
+
+      const executed = run.status === "executed"
+        ? { id: run.id, summary: run.summary }
+        : await this.repository.findExecutedRun({
+            userId,
+            sourceId: run.sourceId,
+            parserVersion: run.parserVersion,
+          });
+      if (executed) {
+        items.push(batchFilePreview({
+          inputIndex,
+          run,
+          status: "already_executed",
+          duplicateOfRunId: null,
+          executedRunId: executed.id,
+        }));
+        continue;
+      }
+
+      const blob = await this.repository.readStoredBlob({
+        userId,
+        sourceId: run.sourceId,
+      });
+      if (!blob) {
+        throw Object.assign(new Error("Conversation import raw source is unavailable."), {
+          code: "CONVERSATION_IMPORT_SOURCE_MISSING",
+        });
+      }
+      const scan = await scanConversationImportSource({
+        source: run.source,
+        parserVersion: run.parserVersion,
+        blob,
+        currentByKey,
+        exclusions,
+        syntheticSequence,
+      });
+      items.push({
+        ...batchFilePreview({
+          inputIndex,
+          run,
+          status: "pending",
+          duplicateOfRunId: null,
+          executedRunId: null,
+        }),
+        preview_fingerprint: scan.previewFingerprint,
+        summary: scan.summary,
+        warning_count: scan.warningCount,
+        warning_codes: scan.warningCodes,
+        exclusions: scan.exclusions,
+      });
+    }
+
+    return aggregateConversationImportBatch(items);
+  }
+
+  async executeBatch(
+    runIds: readonly string[],
+    expectedBatchFingerprint: string,
+    userId: string,
+  ): Promise<ConversationImportBatchExecuteResult> {
+    const user = await this.repository.findUserById(userId);
+    if (!user || user.status !== "active") {
+      throw new ConversationImportAuthorizationError();
+    }
+    assertConversationImportBatchRunIds(runIds);
+    if (!/^[0-9a-f]{64}$/u.test(expectedBatchFingerprint)) {
+      throw Object.assign(new Error("Conversation import batch preview fingerprint is invalid."), {
+        code: "CONVERSATION_IMPORT_INVALID_REQUEST",
+      });
+    }
+    if (!this.executor) {
+      throw Object.assign(new Error("Conversation import execution is not configured."), {
+        code: "CONVERSATION_IMPORT_UNAVAILABLE",
+      });
+    }
+
+    const resolved = [];
+    for (const runId of runIds) {
+      const run = await this.repository.findRunById({ userId, runId });
+      if (!run) {
+        throw Object.assign(new Error("Conversation import run was not found."), {
+          code: "CONVERSATION_IMPORT_RUN_NOT_FOUND",
+        });
+      }
+      resolved.push(run);
+    }
+
+    return this.executor.serializable(async (transaction) => {
+      const lockedRuns = new Map<string, Awaited<ReturnType<typeof transaction.lockRun>>>();
+      for (const run of resolved) {
+        if (!lockedRuns.has(run.id)) {
+          const locked = await transaction.lockRun(userId, run.id);
+          if (!locked) {
+            throw Object.assign(new Error("Conversation import run was not found."), {
+              code: "CONVERSATION_IMPORT_RUN_NOT_FOUND",
+            });
+          }
+          if (locked.status === "failed") {
+            throw Object.assign(new Error("Conversation import run is not executable."), {
+              code: "CONVERSATION_IMPORT_RUN_NOT_EXECUTABLE",
+            });
+          }
+          lockedRuns.set(run.id, locked);
+        }
+      }
+
+      const lockedSources = new Set<string>();
+      for (const run of resolved) {
+        if (lockedSources.has(run.sourceId)) continue;
+        if (!await transaction.lockSource(userId, run.sourceId)) {
+          throw Object.assign(new Error("Conversation import source was not found."), {
+            code: "CONVERSATION_IMPORT_SOURCE_MISSING",
+          });
+        }
+        lockedSources.add(run.sourceId);
+      }
+
+      const current = await transaction.readMergeState(userId);
+      const currentByKey = new Map<string, CurrentConversationState>(
+        current.conversations.map((conversation) => [
+          conversationImportStateKey(
+            conversation.provider,
+            conversation.sourceConversationId,
+          ),
+          conversation,
+        ]),
+      );
+      const exclusions = await transaction.readExclusions(userId);
+      const syntheticSequence = { value: 0 };
+      const seenSourceParser = new Map<string, string>();
+      const previewItems: ConversationImportBatchFilePreview[] = [];
+      const replayedBatchRuns = new Set<string>();
+
+      for (const [inputIndex, run] of resolved.entries()) {
+        const locked = lockedRuns.get(run.id)!;
+        const dedupeKey = `${run.sourceId}\u0000${run.parserVersion}`;
+        const firstRunId = seenSourceParser.get(dedupeKey) ?? null;
+        if (firstRunId) {
+          previewItems.push(batchFilePreview({
+            inputIndex,
+            run,
+            status: "duplicate_in_batch",
+            duplicateOfRunId: firstRunId,
+            executedRunId: null,
+          }));
+          continue;
+        }
+        seenSourceParser.set(dedupeKey, run.id);
+
+        const storedBatchFingerprint =
+          typeof locked.summary.batch_fingerprint === "string"
+            ? locked.summary.batch_fingerprint
+            : null;
+        const storedBatchPreviewFingerprint =
+          typeof locked.summary.batch_preview_fingerprint === "string"
+            ? locked.summary.batch_preview_fingerprint
+            : null;
+        if (
+          locked.status === "executed"
+          && storedBatchFingerprint === expectedBatchFingerprint
+          && storedBatchPreviewFingerprint
+        ) {
+          replayedBatchRuns.add(run.id);
+          previewItems.push({
+            ...batchFilePreview({
+              inputIndex,
+              run,
+              status: "pending",
+              duplicateOfRunId: null,
+              executedRunId: null,
+            }),
+            preview_fingerprint: storedBatchPreviewFingerprint,
+            summary: readStoredMergeSummary(locked.summary),
+            warning_count: locked.warningCount,
+            warning_codes: readStoredWarningCodes(locked.summary),
+            exclusions: readStoredExclusions(locked.summary),
+          });
+          continue;
+        }
+
+        const executed = locked.status === "executed"
+          ? { id: locked.id, summary: locked.summary }
+          : await transaction.findExecutedRun({
+              userId,
+              sourceId: run.sourceId,
+              parserVersion: run.parserVersion,
+            });
+        if (executed) {
+          previewItems.push(batchFilePreview({
+            inputIndex,
+            run,
+            status: "already_executed",
+            duplicateOfRunId: null,
+            executedRunId: executed.id,
+          }));
+          continue;
+        }
+
+        const blob = await transaction.readStoredBlob({
+          userId,
+          sourceId: run.sourceId,
+        });
+        if (!blob) {
+          throw Object.assign(new Error("Conversation import raw source is unavailable."), {
+            code: "CONVERSATION_IMPORT_SOURCE_MISSING",
+          });
+        }
+        const scan = await scanConversationImportSource({
+          source: run.source,
+          parserVersion: run.parserVersion,
+          blob,
+          currentByKey,
+          exclusions,
+          syntheticSequence,
+        });
+        previewItems.push({
+          ...batchFilePreview({
+            inputIndex,
+            run,
+            status: "pending",
+            duplicateOfRunId: null,
+            executedRunId: null,
+          }),
+          preview_fingerprint: scan.previewFingerprint,
+          summary: scan.summary,
+          warning_count: scan.warningCount,
+          warning_codes: scan.warningCodes,
+          exclusions: scan.exclusions,
+        });
+      }
+
+      const preview = aggregateConversationImportBatch(previewItems);
+      if (preview.batch_fingerprint !== expectedBatchFingerprint) {
+        throw Object.assign(new Error("Conversation import batch preview is stale."), {
+          code: "CONVERSATION_IMPORT_BATCH_PREVIEW_STALE",
+        });
+      }
+
+      const executedByRunId = new Map<string, string>();
+      const outputItems: ConversationImportBatchExecuteItem[] = [];
+
+      for (const item of preview.items) {
+        if (item.status === "duplicate_in_batch") continue;
+        const run = resolved[item.input_index]!;
+
+        if (item.status === "already_executed") {
+          const executedRunId = item.executed_run_id!;
+          executedByRunId.set(run.id, executedRunId);
+          outputItems.push({
+            input_index: item.input_index,
+            import_run_id: run.id,
+            source_id: run.sourceId,
+            outcome: "already_executed",
+            executed_run_id: executedRunId,
+          });
+          continue;
+        }
+
+        if (replayedBatchRuns.has(run.id)) {
+          executedByRunId.set(run.id, run.id);
+          outputItems.push({
+            input_index: item.input_index,
+            import_run_id: run.id,
+            source_id: run.sourceId,
+            outcome: "already_executed",
+            executed_run_id: run.id,
+          });
+          continue;
+        }
+
+        const actual = await transaction.readMergeState(userId);
+        const actualByKey = new Map<string, CurrentConversationState>(
+          actual.conversations.map((conversation) => [
+            conversationImportStateKey(
+              conversation.provider,
+              conversation.sourceConversationId,
+            ),
+            conversation,
+          ]),
+        );
+        const blob = await transaction.readStoredBlob({
+          userId,
+          sourceId: run.sourceId,
+        });
+        if (!blob) {
+          throw Object.assign(new Error("Conversation import raw source is unavailable."), {
+            code: "CONVERSATION_IMPORT_SOURCE_MISSING",
+          });
+        }
+        const applied = await scanConversationImportSource({
+          source: run.source,
+          parserVersion: run.parserVersion,
+          blob,
+          currentByKey: actualByKey,
+          exclusions,
+          syntheticSequence: { value: 0 },
+          onPlan: async (planItem) => {
+            await transaction.applyConversation({
+              userId,
+              importRunId: run.id,
+              item: planItem,
+            });
+          },
+        });
+        if (applied.previewFingerprint !== item.preview_fingerprint) {
+          throw Object.assign(new Error("Conversation import batch preview changed before apply."), {
+            code: "CONVERSATION_IMPORT_BATCH_PREVIEW_STALE",
+          });
+        }
+
+        await transaction.markRunExecuted({
+          userId,
+          runId: run.id,
+          summary: {
+            provider: run.source.provider,
+            parser_version: run.parserVersion,
+            conversations_detected: applied.conversationCount,
+            merge: applied.summary,
+            warning_codes: applied.warningCodes,
+            exclusions: applied.exclusions,
+            executed: true,
+            batch_fingerprint: preview.batch_fingerprint,
+            batch_preview_fingerprint: item.preview_fingerprint,
+          },
+          warningCount: applied.warningCount,
+        });
+        executedByRunId.set(run.id, run.id);
+        outputItems.push({
+          input_index: item.input_index,
+          import_run_id: run.id,
+          source_id: run.sourceId,
+          outcome: "executed",
+          executed_run_id: run.id,
+        });
+      }
+
+      for (const item of preview.items) {
+        if (item.status !== "duplicate_in_batch") continue;
+        const run = resolved[item.input_index]!;
+        const duplicateOf = item.duplicate_of_import_run_id!;
+        const executedRunId = executedByRunId.get(duplicateOf)
+          ?? preview.items.find((candidate) => (
+            candidate.import_run_id === duplicateOf
+            && candidate.executed_run_id !== null
+          ))?.executed_run_id
+          ?? duplicateOf;
+        outputItems.push({
+          input_index: item.input_index,
+          import_run_id: run.id,
+          source_id: run.sourceId,
+          outcome: "duplicate_in_batch",
+          executed_run_id: executedRunId,
+        });
+      }
+
+      outputItems.sort((left, right) => left.input_index - right.input_index);
+      const wroteCanonicalData = outputItems.some((item) => item.outcome === "executed");
+      return {
+        outcome: wroteCanonicalData ? "executed" as const : "already_executed" as const,
+        batch_fingerprint: preview.batch_fingerprint,
+        files: preview.files,
+        summary: preview.summary,
+        warning_count: preview.warning_count,
+        warning_codes: preview.warning_codes,
+        exclusions: preview.exclusions,
+        items: outputItems,
+      };
+    });
+  }
+
   private resultFromStoredSummary(
     outcome: "replayed" | "already_executed",
     runId: string,
@@ -638,3 +1070,89 @@ export class ConversationImportService {
     };
   }
 }
+
+function assertConversationImportBatchRunIds(runIds: readonly string[]): void {
+  if (
+    !Array.isArray(runIds)
+    || runIds.length < 1
+    || runIds.length > 20
+    || runIds.some((runId) => (
+      typeof runId !== "string"
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(runId)
+    ))
+  ) {
+    throw Object.assign(new Error("Conversation import batch run ids are invalid."), {
+      code: "CONVERSATION_IMPORT_INVALID_REQUEST",
+    });
+  }
+}
+
+function readStoredMergeSummary(
+  summary: Record<string, unknown>,
+): ConversationMergeSummary {
+  const merge = summary.merge as ConversationMergeSummary | undefined;
+  return merge ?? emptyConversationImportSummary();
+}
+
+function readStoredWarningCodes(
+  summary: Record<string, unknown>,
+): Record<string, number> {
+  const value = summary.warning_codes;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    ),
+  );
+}
+
+function readStoredExclusions(
+  summary: Record<string, unknown>,
+): ConversationExclusionSummary {
+  const value = summary.exclusions as Partial<ConversationExclusionSummary> | undefined;
+  return {
+    conversations: typeof value?.conversations === "number" ? value.conversations : 0,
+    messages: typeof value?.messages === "number" ? value.messages : 0,
+    branch_roots: typeof value?.branch_roots === "number" ? value.branch_roots : 0,
+  };
+}
+
+function batchFilePreview(input: {
+  inputIndex: number;
+  run: {
+    id: string;
+    sourceId: string;
+    parserVersion: string;
+    source: {
+      id: string;
+      provider: "chatgpt" | "claude";
+      originalFilename: string;
+      rawSha256: string;
+      rawBytes: number;
+    };
+  };
+  status: ConversationImportBatchFilePreview["status"];
+  duplicateOfRunId: string | null;
+  executedRunId: string | null;
+}): ConversationImportBatchFilePreview {
+  return {
+    input_index: input.inputIndex,
+    import_run_id: input.run.id,
+    source_id: input.run.sourceId,
+    provider: input.run.source.provider,
+    parser_version: input.run.parserVersion,
+    filename: input.run.source.originalFilename,
+    raw_sha256: input.run.source.rawSha256,
+    raw_bytes: input.run.source.rawBytes,
+    status: input.status,
+    duplicate_of_import_run_id: input.duplicateOfRunId,
+    executed_run_id: input.executedRunId,
+    preview_fingerprint: null,
+    summary: emptyConversationImportSummary(),
+    warning_count: 0,
+    warning_codes: {},
+    exclusions: emptyConversationImportExclusions(),
+  };
+}
+
+

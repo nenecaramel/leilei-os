@@ -5,6 +5,7 @@ import {
   conversationAttachments,
   conversationContentBlocks,
   conversationExclusions,
+  conversationImportBlobs,
   conversationImportRuns,
   conversationImportSources,
   conversationMessages,
@@ -17,6 +18,7 @@ import type {
 } from "./conversation-merge-planner.js";
 import { DrizzleConversationArchiveStateRepository } from "./conversation-state-repository.js";
 import type { ConversationExclusionRule } from "./conversation-exclusions.js";
+import type { ConversationStoredBlob } from "./conversation-import-repository.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (tx: infer T) => unknown ? T : never;
@@ -60,6 +62,10 @@ export interface ConversationImportExecutionTransaction {
   }): Promise<{ id: string; summary: Record<string, unknown> } | null>;
   readMergeState(userId: string): Promise<ConversationMergeCurrentState>;
   readExclusions(userId: string): Promise<ConversationExclusionRule[]>;
+  readStoredBlob(input: {
+    userId: string;
+    sourceId: string;
+  }): Promise<ConversationStoredBlob | null>;
   applyConversation(input: {
     userId: string;
     importRunId: string;
@@ -175,6 +181,27 @@ implements ConversationImportExecutionTransaction {
       })
       .from(conversationExclusions)
       .where(eq(conversationExclusions.userId, userId));
+  }
+
+  async readStoredBlob(input: {
+    userId: string;
+    sourceId: string;
+  }): Promise<ConversationStoredBlob | null> {
+    const [row] = await this.tx
+      .select({
+        sourceId: conversationImportBlobs.sourceId,
+        encoding: conversationImportBlobs.encoding,
+        originalBytes: conversationImportBlobs.originalBytes,
+        storedBytes: conversationImportBlobs.storedBytes,
+        data: conversationImportBlobs.data,
+      })
+      .from(conversationImportBlobs)
+      .where(and(
+        eq(conversationImportBlobs.userId, input.userId),
+        eq(conversationImportBlobs.sourceId, input.sourceId),
+      ))
+      .limit(1);
+    return row ?? null;
   }
 
   async applyConversation(input: {

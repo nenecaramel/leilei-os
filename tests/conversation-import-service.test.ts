@@ -35,7 +35,10 @@ async function *stream(buffer: Buffer): AsyncGenerator<Buffer> {
 class FakeImportRepository implements ConversationImportRepository {
   source: ConversationStoredSource | null = null;
   blob: ConversationStoredBlob | null = null;
+  sourceCounter = 0;
   runCounter = 0;
+  sourcesBySha = new Map<string, ConversationStoredSource>();
+  blobsBySource = new Map<string, ConversationStoredBlob>();
   runs = new Map<string, ConversationStoredRun>();
   exclusions: ConversationExclusionRule[] = [];
 
@@ -44,7 +47,7 @@ class FakeImportRepository implements ConversationImportRepository {
   }
 
   async findSourceBySha(_userId: string, rawSha256: string) {
-    return this.source?.rawSha256 === rawSha256 ? this.source : null;
+    return this.sourcesBySha.get(rawSha256) ?? null;
   }
 
   async createOrReuseSourceWithBlob(input: {
@@ -56,27 +59,36 @@ class FakeImportRepository implements ConversationImportRepository {
     encoding: "raw" | "gzip";
     data: Buffer;
   }) {
-    if (this.source?.rawSha256 === input.rawSha256) {
-      return { source: this.source, reused: true };
+    const existing = this.sourcesBySha.get(input.rawSha256);
+    if (existing) {
+      this.source = existing;
+      this.blob = this.blobsBySource.get(existing.id) ?? null;
+      return { source: existing, reused: true };
     }
-    this.source = {
-      id: "source-id",
+    this.sourceCounter += 1;
+    const sourceId = `10000000-0000-4000-8000-${String(this.sourceCounter).padStart(12, "0")}`;
+    const source: ConversationStoredSource = {
+      id: sourceId,
       userId: input.userId,
       provider: input.provider,
       originalFilename: input.originalFilename,
       rawSha256: input.rawSha256,
       rawBytes: input.rawBytes,
       storageKind: "postgres_bytea",
-      storageKey: "source-id",
+      storageKey: sourceId,
     };
-    this.blob = {
-      sourceId: "source-id",
+    const blob: ConversationStoredBlob = {
+      sourceId,
       encoding: input.encoding,
       originalBytes: input.rawBytes,
       storedBytes: input.data.length,
       data: input.data,
     };
-    return { source: this.source, reused: false };
+    this.sourcesBySha.set(input.rawSha256, source);
+    this.blobsBySource.set(sourceId, blob);
+    this.source = source;
+    this.blob = blob;
+    return { source, reused: false };
   }
 
   async createPreviewRun(input: {
@@ -88,8 +100,10 @@ class FakeImportRepository implements ConversationImportRepository {
     warningCount: number;
   }) {
     this.runCounter += 1;
-    if (!this.source) throw new Error("source missing");
-    const id = `run-${this.runCounter}`;
+    const source = [...this.sourcesBySha.values()]
+      .find((candidate) => candidate.id === input.sourceId);
+    if (!source) throw new Error("source missing");
+    const id = `20000000-0000-4000-8000-${String(this.runCounter).padStart(12, "0")}`;
     this.runs.set(id, {
       id,
       userId: input.userId,
@@ -100,7 +114,7 @@ class FakeImportRepository implements ConversationImportRepository {
       summary: input.summary,
       warningCount: input.warningCount,
       completedAt: null,
-      source: this.source,
+      source,
     });
     return { id };
   }
@@ -132,8 +146,10 @@ class FakeImportRepository implements ConversationImportRepository {
     return this.exclusions;
   }
 
-  async readStoredBlob() {
-    return this.blob;
+  async readStoredBlob(input: { userId: string; sourceId: string }) {
+    const source = [...this.sourcesBySha.values()]
+      .find((candidate) => candidate.id === input.sourceId && candidate.userId === input.userId);
+    return source ? this.blobsBySource.get(input.sourceId) ?? null : null;
   }
 }
 
@@ -151,8 +167,10 @@ class FakeExecutor implements ConversationImportExecutor {
     const repository = this.repository;
     const executor = this;
     const transaction: ConversationImportExecutionTransaction = {
-      async lockSource(_userId, sourceId) {
-        return repository.source?.id === sourceId;
+      async lockSource(userId, sourceId) {
+        return [...repository.sourcesBySha.values()].some(
+          (source) => source.id === sourceId && source.userId === userId,
+        );
       },
       async lockRun(userId, runId) {
         const run = await repository.findRunById({ userId, runId });
@@ -174,6 +192,9 @@ class FakeExecutor implements ConversationImportExecutor {
       },
       async readExclusions() {
         return repository.exclusions;
+      },
+      async readStoredBlob(input) {
+        return repository.readStoredBlob(input);
       },
       async applyConversation(input) {
         executor.applied.push(input.item.sourceConversationId);
@@ -477,4 +498,127 @@ test("changing exclusion rules after Preview makes Execute stale before canonica
     ),
   );
   assert.deepEqual(executor.applied, []);
+});
+
+
+test("multi-file Preview accumulates disjoint sources and deduplicates exact raw sources", async () => {
+  const repository = new FakeImportRepository();
+  const service = new ConversationImportService(repository, new FakeStateRepository());
+
+  const firstRaw = Buffer.from(JSON.stringify([claudeConversationFixture]), "utf8");
+  const secondFixture = JSON.parse(JSON.stringify(claudeConversationFixture));
+  secondFixture.uuid = "claude-conversation-second";
+  secondFixture.name = "Claude fixture second";
+  const secondRaw = Buffer.from(JSON.stringify([secondFixture]), "utf8");
+
+  const first = await service.preview(stream(firstRaw), "conversations-000.json", "user-id");
+  const second = await service.preview(stream(secondRaw), "conversations-001.json", "user-id");
+  const duplicate = await service.preview(stream(firstRaw), "conversations-000-copy.json", "user-id");
+
+  const batch = await service.previewBatch(
+    [first.import_run_id, second.import_run_id, duplicate.import_run_id],
+    "user-id",
+  );
+
+  assert.deepEqual(batch.files, {
+    total: 3,
+    unique: 2,
+    duplicate: 1,
+    already_executed: 0,
+    pending: 2,
+  });
+  assert.equal(batch.summary.conversations.create, 2);
+  assert.equal(batch.items[0]?.status, "pending");
+  assert.equal(batch.items[1]?.status, "pending");
+  assert.equal(batch.items[2]?.status, "duplicate_in_batch");
+  assert.equal(batch.items[2]?.duplicate_of_import_run_id, first.import_run_id);
+  assert.equal(batch.items[2]?.source_id, first.source_id);
+});
+
+test("multi-file Preview plans a later export against earlier files in the same batch", async () => {
+  const repository = new FakeImportRepository();
+  const service = new ConversationImportService(repository, new FakeStateRepository());
+
+  const firstRaw = Buffer.from(JSON.stringify([claudeConversationFixture]), "utf8");
+  const updated = JSON.parse(JSON.stringify(claudeConversationFixture));
+  updated.updated_at = "2026-09-16T00:05:00.000000Z";
+  const assistant = updated.chat_messages.find(
+    (message: { uuid?: string }) => message.uuid === "assistant-main",
+  );
+  assert.ok(assistant);
+  assistant.text = "answer updated in later export";
+  assistant.updated_at = "2026-09-16T00:03:00.000000Z";
+  const visibleText = assistant.content.find(
+    (block: { type?: string }) => block.type === "text",
+  );
+  assert.ok(visibleText);
+  visibleText.text = "answer updated in later export";
+  const secondRaw = Buffer.from(JSON.stringify([updated]), "utf8");
+
+  const first = await service.preview(stream(firstRaw), "conversations-000.json", "user-id");
+  const second = await service.preview(stream(secondRaw), "conversations-001.json", "user-id");
+  const batch = await service.previewBatch(
+    [first.import_run_id, second.import_run_id],
+    "user-id",
+  );
+
+  assert.equal(batch.items[0]?.summary.conversations.create, 1);
+  assert.equal(batch.items[1]?.summary.conversations.create, 0);
+  assert.equal(batch.items[1]?.summary.conversations.update, 1);
+  assert.ok((batch.items[1]?.summary.messages.update ?? 0) >= 1);
+});
+
+test("multi-file Execute validates the whole batch before writes and replays idempotently", async () => {
+  const repository = new FakeImportRepository();
+  const executor = new FakeExecutor(repository);
+  const service = new ConversationImportService(
+    repository,
+    new FakeStateRepository(),
+    executor,
+  );
+
+  const firstRaw = Buffer.from(JSON.stringify([claudeConversationFixture]), "utf8");
+  const secondFixture = JSON.parse(JSON.stringify(claudeConversationFixture));
+  secondFixture.uuid = "claude-conversation-execute-second";
+  secondFixture.name = "Claude execute second";
+  const secondRaw = Buffer.from(JSON.stringify([secondFixture]), "utf8");
+
+  const first = await service.preview(stream(firstRaw), "conversations-000.json", "user-id");
+  const second = await service.preview(stream(secondRaw), "conversations-001.json", "user-id");
+  const runIds = [first.import_run_id, second.import_run_id];
+  const batch = await service.previewBatch(runIds, "user-id");
+
+  await assert.rejects(
+    () => service.executeBatch(runIds, "0".repeat(64), "user-id"),
+    (error: unknown) => (
+      typeof error === "object"
+      && error !== null
+      && "code" in error
+      && (error as { code?: unknown }).code === "CONVERSATION_IMPORT_BATCH_PREVIEW_STALE"
+    ),
+  );
+  assert.deepEqual(executor.applied, []);
+
+  const executed = await service.executeBatch(
+    runIds,
+    batch.batch_fingerprint,
+    "user-id",
+  );
+  assert.equal(executed.outcome, "executed");
+  assert.deepEqual(executor.applied, [
+    "claude-conversation-fixture",
+    "claude-conversation-execute-second",
+  ]);
+  assert.equal(repository.runs.get(first.import_run_id)?.status, "executed");
+  assert.equal(repository.runs.get(second.import_run_id)?.status, "executed");
+
+  const writesAfterFirstExecute = executor.applied.length;
+  const replay = await service.executeBatch(
+    runIds,
+    batch.batch_fingerprint,
+    "user-id",
+  );
+  assert.equal(replay.outcome, "already_executed");
+  assert.equal(executor.applied.length, writesAfterFirstExecute);
+  assert.ok(replay.items.every((item) => item.outcome === "already_executed"));
 });
