@@ -173,6 +173,65 @@ export type ConversationImportSourceHistoryDetail =
     runs: ConversationImportHistoryRun[];
   };
 
+export type ConversationImportBatchFileStatus =
+  | "pending"
+  | "already_executed"
+  | "duplicate_in_batch";
+
+export type ConversationImportBatchCounts = {
+  total: number;
+  unique: number;
+  duplicate: number;
+  already_executed: number;
+  pending: number;
+};
+
+export type ConversationImportBatchFilePreview = {
+  input_index: number;
+  import_run_id: string;
+  source_id: string;
+  provider: ConversationProvider;
+  parser_version: string;
+  filename: string;
+  raw_sha256: string;
+  raw_bytes: number;
+  status: ConversationImportBatchFileStatus;
+  duplicate_of_import_run_id: string | null;
+  executed_run_id: string | null;
+  preview_fingerprint: string | null;
+  summary: ConversationImportSummary;
+  warning_count: number;
+  warning_codes: Record<string, number>;
+  exclusions: ConversationExclusionSummary;
+};
+
+export type ConversationImportBatchPreview = {
+  batch_fingerprint: string;
+  files: ConversationImportBatchCounts;
+  summary: ConversationImportSummary;
+  warning_count: number;
+  warning_codes: Record<string, number>;
+  exclusions: ConversationExclusionSummary;
+  items: ConversationImportBatchFilePreview[];
+};
+
+export type ConversationImportBatchExecuteResult = {
+  outcome: "executed" | "already_executed";
+  batch_fingerprint: string;
+  files: ConversationImportBatchCounts;
+  summary: ConversationImportSummary;
+  warning_count: number;
+  warning_codes: Record<string, number>;
+  exclusions: ConversationExclusionSummary;
+  items: Array<{
+    input_index: number;
+    import_run_id: string;
+    source_id: string;
+    outcome: "executed" | "already_executed" | "duplicate_in_batch";
+    executed_run_id: string;
+  }>;
+};
+
 type Envelope<T> = { success: true; data: T };
 
 export function createConversationArchiveApi(api: WebApiClient) {
@@ -306,6 +365,36 @@ export function createConversationArchiveApi(api: WebApiClient) {
             "X-Leilei-Filename": encodeURIComponent(file.name),
           },
           body: file,
+        },
+      );
+      return result.data;
+    },
+
+    async previewBatch(importRunIds: string[]): Promise<ConversationImportBatchPreview> {
+      const result = await api.request<Envelope<ConversationImportBatchPreview>>(
+        "/conversations/import/batch/preview",
+        {
+          method: "POST",
+          body: JSON.stringify({ import_run_ids: importRunIds }),
+        },
+      );
+      return result.data;
+    },
+
+    async executeBatch(
+      preview: ConversationImportBatchPreview,
+    ): Promise<ConversationImportBatchExecuteResult> {
+      const result = await api.request<Envelope<ConversationImportBatchExecuteResult>>(
+        "/conversations/import/batch/execute",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            import_run_ids: preview.items
+              .slice()
+              .sort((left, right) => left.input_index - right.input_index)
+              .map((item) => item.import_run_id),
+            expected_batch_fingerprint: preview.batch_fingerprint,
+          }),
         },
       );
       return result.data;
