@@ -4,6 +4,7 @@ import test from "node:test";
 
 const createAppSource = readFileSync("src/app/create-app.ts", "utf8");
 const indexSource = readFileSync("src/app/index.ts", "utf8");
+const processRuntimeSource = readFileSync("src/app/process-runtime.ts", "utf8");
 
 test("process runtime owns one injectable database resource", async () => {
   const { createProcessRuntime } = await import("../src/app/process-runtime.js");
@@ -209,4 +210,14 @@ test("successful listen emits service_started before starting retention work", (
   assert.notEqual(serviceStarted, -1);
   assert.notEqual(startBackgroundWork, -1);
   assert.ok(serviceStarted < startBackgroundWork);
+});
+
+
+test("process runtime wires the canonical Conversation read service into MCP sessions", () => {
+  const factoryCall = processRuntimeSource.slice(
+    processRuntimeSource.indexOf("createProductionMcpSessionServerFactory({"),
+    processRuntimeSource.indexOf("return {", processRuntimeSource.indexOf("createProductionMcpSessionServerFactory({")),
+  );
+  assert.match(factoryCall, /conversationArchiveReadService/);
+  assert.match(processRuntimeSource, /new ConversationArchiveReadService\([\s\S]*DrizzleConversationArchiveReadRepository/);
 });
