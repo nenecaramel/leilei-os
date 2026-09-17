@@ -377,10 +377,6 @@ function ConversationListView({
       {surface === "archive" ? (
         <section className="conversation-section conversation-archive-section">
           <div className="conversation-section-heading conversation-list-heading">
-            <div>
-              <p className="eyebrow">Archive</p>
-              <h2>对话窗口</h2>
-            </div>
             <div className="conversation-provider-filter" aria-label="Provider filter">
               <button className={!provider ? "active" : ""} type="button" onClick={() => setProvider(undefined)}>全部</button>
               <button className={provider === "chatgpt" ? "active" : ""} type="button" onClick={() => setProvider("chatgpt")}>ChatGPT</button>
@@ -407,15 +403,20 @@ function ConversationListView({
                     <div className="memory-month-card conversation-list">
                       {group.items.map((item) => (
                         <Link
-                          className="conversation-card"
+                          className="memory-row conversation-card"
                           to={`/conversations/${item.id}`}
                           key={item.id}
                           aria-label={item.title?.trim() || "Untitled conversation"}
                         >
+                          <span className="memory-row-title conversation-card-title">
+                            {item.title?.trim() || "Untitled conversation"}
+                          </span>
                           <div className="conversation-card-meta">
                             <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
                             <span>
                               {providerLabel(item.provider)}
+                              {` · ${item.messageCount.toLocaleString()} 条 · ${item.turnCount.toLocaleString()} 轮`}
+                              {item.totalNodeCount > item.messageCount ? ` · ${item.totalNodeCount.toLocaleString()} nodes` : ""}
                               {item.defaultModel ? ` · ${item.defaultModel}` : ""}
                             </span>
                           </div>
@@ -771,7 +772,7 @@ function ConversationDetailView({
   if (state.status === "loading") {
     return (
       <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
-        <PageState state="loading" message="正在读取对话…" />
+        <p className="conversation-detail-loading" role="status" aria-live="polite">正在读取…</p>
       </div>
     );
   }

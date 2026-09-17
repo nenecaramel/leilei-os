@@ -66,6 +66,8 @@
 .conversation-section-heading h2 { margin: 0; color: #171717; font-size: 14px; font-weight: 500; line-height: 1.3; }
 .conversation-section-heading > span { color: #8a8a8a; font-size: 11px; line-height: 1.3; }
 
+.conversation-list-heading { justify-content: flex-end; }
+
 .conversation-list,
 .conversation-search-results,
 .conversation-favorite-list,
@@ -95,11 +97,8 @@
   text-align: left;
   text-decoration: none;
 }
-.conversation-card + .conversation-card::before,
 .conversation-search-result + .conversation-search-result::before,
-.conversation-favorite-card + .conversation-favorite-card::before,
-.conversation-import-source-card + .conversation-import-source-card::before,
-.conversation-message + .conversation-message::before {
+.conversation-import-source-card + .conversation-import-source-card::before {
   position: absolute;
   z-index: 1;
   top: 0;
@@ -112,6 +111,7 @@
 }
 .conversation-card:hover,
 .conversation-search-result:hover { background: #f7f7f7; box-shadow: none; transform: none; }
+.conversation-card-title { min-width: 0; overflow: hidden; color: #171717; font-size: 14px; font-weight: 500; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-card-meta {
   display: flex;
   min-width: 0;
@@ -183,8 +183,7 @@
 
 /* Favorites and source history use the same information-card/list language. */
 .conversation-favorite-card,
-.conversation-import-source-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 16px; padding: 12px 13px; border: 0; border-radius: 0; background: transparent; }
-.conversation-import-source-card { grid-template-columns: minmax(0, 1fr); }
+.conversation-import-source-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 16px; min-height: 60px; padding: 11px 13px; border: 0; border-radius: 0; background: transparent; }
 .conversation-import-source-card h3 { margin: 7px 0 4px; min-width: 0; color: #171717; font-size: 13px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; }
 .conversation-favorite-card p,
 .conversation-import-source-card p { margin: 0; color: #818181; font-size: 10px; line-height: 1.45; }
@@ -202,7 +201,7 @@
 .conversation-favorite-window a:hover { color: #171717; }
 .conversation-favorite-actions,
 .conversation-import-source-actions { display: flex; align-items: flex-start; gap: 5px; }
-.conversation-import-source-actions { margin-top: 8px; justify-content: flex-start; }
+.conversation-import-source-actions { align-self: start; margin-top: 0; justify-content: flex-end; }
 .conversation-favorite-actions .secondary-button,
 .conversation-import-source-actions .secondary-button,
 .conversation-import-source-actions .primary-button,
@@ -228,7 +227,7 @@
 
 /* Source runs have one equal-height, vertically centered row. */
 .conversation-import-run-list { display: block; }
-.conversation-import-run { display: flex; min-height: 42px; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 7px 0; border: 0; border-radius: 0; background: transparent; }
+.conversation-import-run { display: grid; grid-template-columns: minmax(0, auto) minmax(0, auto) minmax(0, 1fr) minmax(0, auto) minmax(0, auto); min-height: 42px; min-width: 0; align-items: center; gap: 8px 12px; padding: 7px 0; border: 0; border-radius: 0; background: transparent; }
 .conversation-import-run + .conversation-import-run { border-top: 1px solid rgba(0, 0, 0, .07); }
 .conversation-import-run > strong,
 .conversation-import-run > span,
@@ -237,7 +236,8 @@
 .conversation-import-run > .conversation-history-inline-action { margin: 0; align-self: center; }
 .conversation-import-run > span,
 .conversation-import-run > small { min-width: 0; color: #929292; font-size: 9px; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
-.conversation-import-run > time { min-width: 0; color: #929292; font-size: 9px; overflow-wrap: anywhere; white-space: normal; }
+.conversation-import-run > time { min-width: max-content; justify-self: end; color: #929292; font-size: 9px; white-space: nowrap; }
+.conversation-import-run > .conversation-history-inline-action { margin-left: 0; justify-self: end; }
 .conversation-import-run > strong { font-size: 10px; font-weight: 500; }
 .conversation-history-inline-action { min-height: 0; padding: 1px 0; border: 0; border-radius: 0; color: #626262; background: transparent; box-shadow: none; font-size: 9px; font-weight: 500; line-height: 1.35; white-space: nowrap; }
 .conversation-history-inline-action:hover { color: #171717; background: transparent; }
@@ -265,14 +265,25 @@
 .conversation-favorite-range-banner { margin: 0 0 12px; padding: 12px 13px; border: 1px solid rgba(0, 0, 0, .09); border-radius: 12px; color: #737373; background: #fafafa; font-size: 12px; line-height: 1.45; }
 .conversation-history-inline-action { margin-left: 8px; }
 
+.conversation-detail-loading {
+  display: grid;
+  min-height: min(56dvh, 520px);
+  margin: 0;
+  place-items: center;
+  color: #777;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
 
 /* Detail stays a single continuous reading surface. */
-.conversation-detail-back { margin: 0 0 8px; }
+.conversation-detail-back { margin: 0 0 24px; }
 .conversation-detail-back a { color: #777; font-size: 11px; text-decoration: none; }
 .conversation-detail-back a:hover { color: #171717; }
-.conversation-detail-page .page-header { padding-bottom: 12px; border-bottom: 1px solid rgba(0, 0, 0, .08); }
+.conversation-detail-page .page-header { padding-bottom: 0; }
 .conversation-detail-page .page-header h1 { max-width: 620px; }
-.conversation-detail-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.conversation-detail-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
 .conversation-favorite-range-toggle { margin: 0; }
 .conversation-danger-button,
 .conversation-message-prune { border-color: transparent; color: #7b7b7b; background: transparent; }
@@ -283,13 +294,14 @@
 .conversation-message-prune:focus-visible { outline: 2px solid rgba(0, 0, 0, .16); outline-offset: 2px; }
 .conversation-context-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; }
 .conversation-context-banner button { border: 0; color: #555; background: transparent; font-size: 10px; font-weight: 500; }
-.conversation-message-list { position: relative; display: block; margin-top: 10px; }
-.conversation-message { position: relative; display: block; margin: 0; padding: 14px 15px 16px; border: 0; border-radius: 0; background: #fff; }
-.conversation-message--user { background: #fafafa; }
-.conversation-message-meta { display: flex; min-width: 0; align-items: center; gap: 7px; color: #999; font-size: 9px; line-height: 1.2; }
-.conversation-message-meta strong { color: #555; font-size: 10px; font-weight: 500; }
+.conversation-message-list { position: relative; display: grid; gap: 12px; margin-top: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.conversation-message { position: relative; display: block; margin: 0; padding: 20px 22px; border: 1px solid rgba(0, 0, 0, .11); border-radius: 18px; background: #fff; box-shadow: 0 10px 28px rgba(0, 0, 0, .055); }
+.conversation-message--user { margin-left: min(8vw, 86px); background: #fafafa; }
+.conversation-message--assistant { margin-right: min(6vw, 64px); }
+.conversation-message-meta { display: flex; min-width: 0; align-items: baseline; gap: 10px; margin-bottom: 10px; color: #999; font-size: 10px; line-height: 1.2; }
+.conversation-message-meta strong { color: #555; font-size: 11px; font-weight: 500; }
 .conversation-message-meta time { margin-left: auto; white-space: nowrap; }
-.conversation-message-text { margin-top: 8px; color: #242424; font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; white-space: pre-wrap; }
+.conversation-message-text { color: #242424; font-size: 14px; line-height: 1.68; overflow-wrap: anywhere; white-space: pre-wrap; }
 .conversation-message-favorite,
 .conversation-message-prune { padding: 2px 4px; border: 0; border-radius: 5px; font-size: 9px; font-weight: 500; }
 .conversation-message-favorite:hover,
