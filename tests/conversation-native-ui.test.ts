@@ -75,7 +75,7 @@ test("Conversation surfaces keep shared tab, provider, destructive, and loading 
   assert.match(css, /\.conversation-import-run\s*\{[^}]*min-height:\s*42px[^}]*align-items:\s*center/s);
   assert.match(css, /\.conversation-import-run > (?:strong|span|small|time|\.conversation-history-inline-action)/);
   assert.match(importHistoryPanel, /className="system-state-copy"/);
-  assert.match(favoritesPanel, /className="conversation-message-favorite active"/);
+  assert.match(favoritesPanel, /className="conversation-message-favorite active/);
   assert.match(importHistoryPanel, /className="secondary-button"/);
   assert.match(batchPreview, /className="secondary-button"/);
 });
@@ -139,13 +139,15 @@ test("Conversation rows use the approved Memory inset-card geometry", () => {
   assert.match(css, /left:\s*13px/);
   assert.match(css, /border-radius:\s*14px/);
   assert.match(page, /className="memory-row conversation-card"/);
-  assert.match(favoritesPanel, /<article className="memory-row"/);
+  assert.match(favoritesPanel, /<article className="memory-row conversation-favorite-row"/);
 });
 
-test("Conversation and Favorites controls do not push the first month card downward", () => {
+test("Conversation controls stay overlaid while Favorites count aligns with its first month label", () => {
   assert.match(css, /\.conversation-archive-section,[\s\S]*?\.conversation-favorites\s*\{[^}]*position:\s*relative/s);
   assert.match(css, /\.conversation-list-heading\s*\{[^}]*position:\s*absolute[^}]*top:\s*0[^}]*right:\s*0/s);
-  assert.match(favoritesPanel, /conversation-section-heading conversation-list-heading/);
+  assert.doesNotMatch(favoritesPanel, /conversation-section-heading conversation-list-heading/);
+  assert.match(favoritesPanel, /conversation-favorites-month-heading/);
+  assert.match(favoritesPanel, /memory-month-label conversation-favorites-total/);
 });
 
 test("Conversation archive and Favorites use the shared month grouping and loading primitives", () => {
