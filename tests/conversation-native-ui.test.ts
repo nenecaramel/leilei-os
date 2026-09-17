@@ -158,6 +158,7 @@ test("Sources uses the shared heading/state language and header import affordanc
   assert.doesNotMatch(importHistoryPanel, /份 source/);
   assert.match(importHistoryPanel, /conversation-import-source-main[\s\S]*conversation-import-source-actions/);
   assert.match(importHistoryPanel, /className="system-section conversation-import-history-loading"/);
+  assert.match(importHistoryPanel, /detailLoadingId === source\.sourceId[\s\S]*className="system-section conversation-import-runs-loading"/);
   assert.match(importHistoryPanel, /conversation-import-run-parser[\s\S]*conversation-history-inline-action[\s\S]*run\.id/);
   assert.match(css, /conversation-import-run \+ \.conversation-import-run/);
   assert.match(css, /overflow-wrap:\s*anywhere/);

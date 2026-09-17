@@ -241,6 +241,12 @@ export function ConversationImportHistoryPanel({
                   </div>
                 </div>
 
+                {detailLoadingId === source.sourceId ? (
+                  <div className="system-section conversation-import-runs-loading">
+                    <p className="system-state-copy" role="status" aria-live="polite">正在读取 runs…</p>
+                  </div>
+                ) : null}
+
                 {expanded && detail ? (
                   <div className="conversation-import-run-list">
                     {detail.runs.map((run) => (
