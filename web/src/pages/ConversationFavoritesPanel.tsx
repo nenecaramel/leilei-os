@@ -37,6 +37,13 @@ function canonicalFavoriteLink(detail: ConversationFavoriteDetail): string | nul
   return `/conversations/${detail.conversationId}?${params}`;
 }
 
+function favoriteExcerpt(detail: ConversationFavoriteDetail | null): string {
+  if (!detail?.messages.length) return "原文暂时无法读取。";
+  return detail.messages
+    .map((message) => message.displayText || "（无可见文本）")
+    .join("\n\n");
+}
+
 export function ConversationFavoritesPanel({ client }: { client: Client }) {
   const [state, setState] = useState<FavoriteListState>({ status: "loading" });
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -99,7 +106,7 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
       {status ? <p className="conversation-inline-status" role="status">{status}</p> : null}
 
       {state.status === "loading" ? (
-        <div className="conversation-muted-card">正在读取收藏…</div>
+        <p className="system-state-copy" role="status" aria-live="polite">正在读取收藏…</p>
       ) : state.status === "error" ? (
         <div className="conversation-muted-card">
           收藏暂时不可用。
@@ -113,7 +120,7 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
         <div className="conversation-favorite-list">
           {state.rows.map(({ item, detail }) => {
             const link = detail ? canonicalFavoriteLink(detail) : null;
-            const messages = detail?.messages ?? [];
+            const firstMessage = detail?.messages[0] ?? null;
             return (
               <article className="conversation-favorite-card conversation-favorite-card--quote" key={item.id}>
                 <div className="conversation-favorite-main">
@@ -121,29 +128,18 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
                     <span className={`conversation-provider conversation-provider--${item.provider}`}>
                       {item.provider === "chatgpt" ? "ChatGPT" : "Claude"}
                     </span>
-                    <span>{item.messageCount > 1 ? `${item.messageCount} 条连续消息` : "1 条消息"}</span>
+                    <span className="conversation-favorite-kind">原消息</span>
                   </div>
 
-                  {messages.length ? (
-                    messages.map((message) => (
-                      <div className="conversation-favorite-quote" key={`${item.id}:${message.ordinal}:${message.messageId}`}>
-                        <p className="conversation-favorite-original">
-                          {message.displayText || "（无可见文本）"}
-                        </p>
-                        <div className="conversation-favorite-source">
-                          <time>{formatDateTime(message.sourceCreatedAt)}</time>
-                          <span>{message.role === "user" ? "You" : item.provider === "chatgpt" ? "ChatGPT" : "Claude"}</span>
-                          {messages.length > 1 ? <span>第 {message.ordinal + 1} 条</span> : null}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="conversation-favorite-original">原文暂时无法读取。</p>
-                  )}
+                  <p className="conversation-favorite-original">{favoriteExcerpt(detail)}</p>
 
-                  <div className="conversation-favorite-source">
-                    <span>窗口：{item.conversationTitleSnapshot?.trim() || "Untitled conversation"}</span>
-                    {link ? <Link to={link}>定位原文</Link> : <span>原窗口已删除，snapshot 仍保留</span>}
+                  <div className="conversation-favorite-footer">
+                    <time>{formatDateTime(firstMessage?.sourceCreatedAt ?? null)}</time>
+                    <span className="conversation-favorite-window">
+                      窗口：{item.conversationTitleSnapshot?.trim() || "Untitled conversation"} · {link
+                        ? <Link to={link}>定位原文</Link>
+                        : <span>原窗口已删除</span>}
+                    </span>
                   </div>
                 </div>
 
@@ -154,7 +150,7 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
                     disabled={removingId !== null}
                     onClick={() => void remove(item.id)}
                   >
-                    {removingId === item.id ? "处理中…" : "已收藏"}
+                    {removingId === item.id ? "处理中…" : "取消收藏"}
                   </button>
                 </div>
               </article>
