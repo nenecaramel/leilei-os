@@ -6,7 +6,6 @@ import type {
   ConversationSearchResult,
   createConversationArchiveApi,
 } from "./conversation-archive-api";
-import "./conversation-search-controls.css";
 
 type SearchState =
   | { status: "idle" }

@@ -23,7 +23,10 @@ test("Conversation import history reports actual raw-source retention state", ()
 test("Conversation import history distinguishes superseded failed runs", () => {
   assert.match(source, /superseded_by_executed_run_id/);
   assert.match(source, /row\.status === "failed" && supersededByImportRunId/);
-  assert.match(source, /status: "superseded"/);
+  assert.match(
+    source,
+    /status:\s*row\.status === "failed" && supersededByImportRunId\s*\?\s*"superseded"\s*:\s*row\.status/,
+  );
 });
 
 test("Conversation import history is read-only and preserves immutable raw sources", () => {

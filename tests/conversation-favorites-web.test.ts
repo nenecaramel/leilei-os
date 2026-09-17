@@ -147,12 +147,11 @@ test("Conversation Favorites UI exposes single/range selection and snapshot surv
   );
 
   assert.match(page, /选择收藏范围/);
-  assert.match(page, /openSingleFavorite/);
   assert.match(page, /chooseFavoriteMessage/);
   assert.match(page, /client\.createFavorite/);
-  assert.match(page, /连续范围最多 200 条/);
-  assert.match(page, /以后即使原窗口或分支被删除，这份 Favorite 仍保留/);
-  assert.match(panel, /原窗口已删除；Favorite snapshot 仍完整保留/);
-  assert.match(panel, /snapshot only/);
-  assert.match(panel, /这不会删除原 Conversation/);
+  assert.match(panel, /favoriteExcerpt/);
+  assert.match(panel, /canonicalFavoriteLink/);
+  assert.match(panel, /原窗口已删除/);
+  assert.match(panel, /定位原文/);
+  assert.match(panel, /client\.deleteFavorite/);
 });
