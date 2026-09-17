@@ -673,7 +673,9 @@ function ConversationDetailView({
     }
   };
 
-  const captureScrollRestore = (message: ConversationMessage): PendingScrollRestore | null => {
+  const captureScrollRestore = async (
+    message: ConversationMessage,
+  ): Promise<PendingScrollRestore | null> => {
     if (state.status !== "ready") return null;
 
     const deletedSourceNodeIds = new Set<string>([message.sourceNodeId]);
@@ -701,10 +703,29 @@ function ConversationDetailView({
 
     const element = document.getElementById(`message-${viewportAnchor.id}`);
     if (!element) return null;
+
+    let loadedPages = Math.max(1, Math.ceil(state.messages.length / MESSAGE_PAGE_SIZE));
+    if (state.contextual) {
+      try {
+        const context = await client.messageContext({
+          conversationId,
+          messageId: viewportAnchor.id,
+          view,
+          radius: 0,
+        });
+        loadedPages = Math.max(
+          loadedPages,
+          Math.ceil((context.anchorIndex + 1) / MESSAGE_PAGE_SIZE),
+        );
+      } catch {
+        // Fall back to the rendered slice. Deletion itself must not depend on this read.
+      }
+    }
+
     return {
       anchorMessageId: viewportAnchor.id,
       viewportOffset: element.getBoundingClientRect().top,
-      loadedPages: Math.max(1, Math.ceil(state.messages.length / MESSAGE_PAGE_SIZE)),
+      loadedPages,
     };
   };
 
@@ -728,7 +749,7 @@ function ConversationDetailView({
     )) return;
     setPruningMessageId(message.id);
     setPruneStatus("");
-    const pendingRestore = captureScrollRestore(message);
+    const pendingRestore = await captureScrollRestore(message);
     try {
       const result = await client.deleteBranch({
         conversationId,
