@@ -42,6 +42,36 @@ function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
+function sanitizePostgresText(value: string): string {
+  return value.replaceAll("\u0000", "\uFFFD");
+}
+
+function sanitizePostgresNullableText(value: string | null): string | null {
+  return value === null ? null : sanitizePostgresText(value);
+}
+
+function sanitizePostgresJson(value: unknown): unknown {
+  if (typeof value === "string") return sanitizePostgresText(value);
+  if (Array.isArray(value)) return value.map((entry) => sanitizePostgresJson(entry));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        sanitizePostgresText(key),
+        sanitizePostgresJson(entry),
+      ]),
+    );
+  }
+  return value;
+}
+
+function sanitizePostgresJsonRecord(
+  value: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  return value === null
+    ? null
+    : sanitizePostgresJson(value) as Record<string, unknown>;
+}
+
 export type LockedConversationImportRun = {
   id: string;
   sourceId: string;
@@ -228,12 +258,12 @@ implements ConversationImportExecutionTransaction {
         userId,
         provider: normalized.provider,
         sourceConversationId: normalized.sourceConversationId,
-        title: normalized.title,
+        title: sanitizePostgresNullableText(normalized.title),
         sourceCreatedAt: dateOrNull(normalized.sourceCreatedAt),
         sourceUpdatedAt: dateOrNull(normalized.sourceUpdatedAt),
         currentLeafSourceNodeId: normalized.currentLeafSourceNodeId,
-        defaultModel: normalized.defaultModel,
-        providerMetadata: normalized.providerMetadata,
+        defaultModel: sanitizePostgresNullableText(normalized.defaultModel),
+        providerMetadata: sanitizePostgresJsonRecord(normalized.providerMetadata),
         sourceFingerprint: item.importedFingerprint,
         firstSeenImportId: importRunId,
         lastSeenImportId: importRunId,
@@ -242,12 +272,12 @@ implements ConversationImportExecutionTransaction {
       if (!conversationId) throw new Error("Conversation merge state is missing the canonical id.");
       const update = item.classification === "update"
         ? {
-            title: normalized.title,
+            title: sanitizePostgresNullableText(normalized.title),
             sourceCreatedAt: dateOrNull(normalized.sourceCreatedAt),
             sourceUpdatedAt: dateOrNull(normalized.sourceUpdatedAt),
             currentLeafSourceNodeId: normalized.currentLeafSourceNodeId,
-            defaultModel: normalized.defaultModel,
-            providerMetadata: normalized.providerMetadata,
+            defaultModel: sanitizePostgresNullableText(normalized.defaultModel),
+            providerMetadata: sanitizePostgresJsonRecord(normalized.providerMetadata),
             sourceFingerprint: item.importedFingerprint,
             lastSeenImportId: importRunId,
             updatedAt: new Date(),
@@ -343,15 +373,15 @@ implements ConversationImportExecutionTransaction {
           sourceMessageId: message.sourceMessageId,
           parentSourceNodeId: message.parentSourceNodeId,
           role: message.role,
-          rawRole: message.rawRole,
-          model: message.model,
+          rawRole: sanitizePostgresNullableText(message.rawRole),
+          model: sanitizePostgresNullableText(message.model),
           sourceCreatedAt: dateOrNull(message.sourceCreatedAt),
           sourceUpdatedAt: dateOrNull(message.sourceUpdatedAt),
           isCurrentPath: false,
           currentPathIndex: null,
           turnIndex: null,
           isPrimary: message.isPrimary,
-          displayText: message.displayText,
+          displayText: sanitizePostgresText(message.displayText),
           sourceFingerprint: planned.importedFingerprint,
           firstSeenImportId: importRunId,
           lastSeenImportId: importRunId,
@@ -401,9 +431,9 @@ implements ConversationImportExecutionTransaction {
         messageId,
         ordinal: block.ordinal,
         kind: block.kind,
-        rawType: block.rawType,
-        text: block.text,
-        payload: block.payload,
+        rawType: sanitizePostgresText(block.rawType),
+        text: sanitizePostgresNullableText(block.text),
+        payload: sanitizePostgresJsonRecord(block.payload),
       }));
     });
     for (const batch of chunks(blocks, CHILD_BATCH)) {
@@ -416,11 +446,11 @@ implements ConversationImportExecutionTransaction {
         userId,
         messageId,
         ordinal: attachment.ordinal,
-        sourceAttachmentId: attachment.sourceAttachmentId,
-        name: attachment.name,
-        mimeType: attachment.mimeType,
+        sourceAttachmentId: sanitizePostgresNullableText(attachment.sourceAttachmentId),
+        name: sanitizePostgresNullableText(attachment.name),
+        mimeType: sanitizePostgresNullableText(attachment.mimeType),
         sizeBytes: attachment.sizeBytes,
-        payload: attachment.payload,
+        payload: sanitizePostgresJsonRecord(attachment.payload),
       }));
     });
     for (const batch of chunks(attachments, CHILD_BATCH)) {
