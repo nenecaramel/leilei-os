@@ -7,19 +7,24 @@ const panel = readFileSync(
   "utf8",
 );
 
-test("Favorites aligns the total count with the first month label", () => {
+test("Favorites aligns the total count with the first month label without copying its typography", () => {
   assert.doesNotMatch(panel, /conversation-section-heading conversation-list-heading/);
   assert.match(panel, /className="conversation-favorites-month-heading"/);
   assert.match(panel, /alignItems:\s*"baseline"/);
   assert.match(panel, /justifyContent:\s*"space-between"/);
   assert.match(panel, /className="memory-month-label">\{group\.label\}<\/h2>/);
   assert.match(panel, /index === 0 \? \(/);
-  assert.match(panel, /className="memory-month-label conversation-favorites-total"/);
+  assert.match(panel, /className="conversation-favorites-total"/);
+  assert.doesNotMatch(panel, /className="memory-month-label conversation-favorites-total"/);
+  assert.match(panel, /fontSize:\s*11/);
+  assert.match(panel, /fontWeight:\s*400/);
+  assert.match(panel, /color:\s*"#8a8a8a"/);
+  assert.match(panel, /lineHeight:\s*1\.3/);
   assert.match(panel, /共 \{state\.total\.toLocaleString\(\)\} 条/);
   assert.match(panel, /className="memory-month-card conversation-favorite-list"/);
 });
 
-test("Favorite rows use the same title/meta hierarchy as Memory", () => {
+test("Favorite rows use the same title\/meta hierarchy as Memory", () => {
   assert.match(panel, /<article className="memory-row conversation-favorite-row"/);
   assert.match(panel, /className="memory-row-title"/);
   assert.match(panel, /className="memory-row-meta"/);
