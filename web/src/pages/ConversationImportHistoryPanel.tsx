@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
+  ConversationImportHistoryRun,
   ConversationImportPreview,
   ConversationImportSourceHistoryDetail,
   ConversationImportSourceHistoryItem,
@@ -36,24 +37,30 @@ function statusLabel(status: string): string {
   return "失败";
 }
 
+function canConfirmImport(run: ConversationImportHistoryRun): boolean {
+  return run.status === "processing" && Boolean(run.previewFingerprint?.trim());
+}
+
 export function ConversationImportHistoryPanel({
   client,
   refreshKey,
   onPreview,
+  onImportExecuted,
 }: {
   client: Client;
   refreshKey: number;
   onPreview: (preview: ConversationImportPreview) => void;
+  onImportExecuted: () => void;
 }) {
   const [state, setState] = useState<HistoryState>({ status: "loading" });
   const [detail, setDetail] = useState<ConversationImportSourceHistoryDetail | null>(null);
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
   const [reapplyId, setReapplyId] = useState<string | null>(null);
+  const [executingRunId, setExecutingRunId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
-    setDetail(null);
     try {
       const result = await client.importSources({ limit: 20, offset: 0 });
       setState({ status: "ready", ...result });
@@ -93,6 +100,49 @@ export function ConversationImportHistoryPanel({
       setMessage("无法从这份保留的原始导出重新生成 Preview。");
     } finally {
       setReapplyId(null);
+    }
+  };
+
+  const confirmImport = async (
+    source: ConversationImportSourceHistoryItem,
+    run: ConversationImportHistoryRun,
+  ) => {
+    if (!canConfirmImport(run) || executingRunId) return;
+    const previewFingerprint = run.previewFingerprint!;
+    setExecutingRunId(run.id);
+    setMessage("");
+    try {
+      const result = await client.execute({
+        import_run_id: run.id,
+        preview_fingerprint: previewFingerprint,
+      } as ConversationImportPreview);
+      try {
+        setDetail(await client.importSource(source.sourceId));
+        setMessage(
+          result.outcome === "executed"
+            ? "导入完成；run history 已刷新。"
+            : "这份导出已经处理过，没有重复写入；run history 已刷新。",
+        );
+      } catch {
+        setMessage("导入已完成，但 run history 暂时刷新失败；父级列表会继续刷新。");
+      }
+      onImportExecuted();
+    } catch {
+      try {
+        const refreshed = await client.importSource(source.sourceId);
+        setDetail(refreshed);
+        const refreshedRun = refreshed.runs.find((item) => item.id === run.id);
+        if (refreshedRun?.status === "executed" || refreshedRun?.status === "superseded") {
+          setMessage("导入请求结果已通过 run history 确认；列表已刷新。");
+          onImportExecuted();
+        } else {
+          setMessage("确认导入没有完成。请根据当前 run 状态重新 Preview 后再确认。");
+        }
+      } catch {
+        setMessage("暂时无法确认本次导入结果。请先刷新 Import history，避免重复点击确认导入。");
+      }
+    } finally {
+      setExecutingRunId(null);
     }
   };
 
@@ -195,6 +245,16 @@ export function ConversationImportHistoryPanel({
                             ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
                             : ""}
                         </small>
+                        {canConfirmImport(run) ? (
+                          <button
+                            className="conversation-history-inline-action"
+                            type="button"
+                            disabled={executingRunId !== null}
+                            onClick={() => void confirmImport(source, run)}
+                          >
+                            {executingRunId === run.id ? "确认中…" : "确认导入"}
+                          </button>
+                        ) : null}
                       </div>
                     ))}
                   </div>
