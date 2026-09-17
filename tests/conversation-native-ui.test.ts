@@ -142,10 +142,10 @@ test("Conversation rows use the approved Memory inset-card geometry", () => {
   assert.match(favoritesPanel, /<article className="memory-row"/);
 });
 
-test("Conversation controls do not push the first month card downward and Favorites has no extra control row", () => {
+test("Conversation and Favorites controls do not push the first month card downward", () => {
   assert.match(css, /\.conversation-archive-section,[\s\S]*?\.conversation-favorites\s*\{[^}]*position:\s*relative/s);
   assert.match(css, /\.conversation-list-heading\s*\{[^}]*position:\s*absolute[^}]*top:\s*0[^}]*right:\s*0/s);
-  assert.doesNotMatch(favoritesPanel, /conversation-section-heading conversation-list-heading/);
+  assert.match(favoritesPanel, /conversation-section-heading conversation-list-heading/);
 });
 
 test("Conversation archive and Favorites use the shared month grouping and loading primitives", () => {
