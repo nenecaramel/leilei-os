@@ -113,21 +113,23 @@ export function ConversationSearchPanel({
 
   return (
     <section className="conversation-search-section" aria-label="Conversation message search">
-      <div className="conversation-search-toolbar">
-        <button
-          className={`conversation-search-filter-toggle${filtersOpen || activeFilterCount ? " active" : ""}`}
-          type="button"
-          aria-expanded={filtersOpen}
-          onClick={() => setFiltersOpen((value) => !value)}
-        >
-          {state.status === "ready"
-            ? `共 ${state.total.toLocaleString()} 条命中`
-            : `筛选${activeFilterCount ? ` · ${activeFilterCount}` : ""}`}
-        </button>
-        {activeFilterCount ? (
-          <button className="conversation-search-clear" type="button" onClick={clearFilters}>清除</button>
-        ) : null}
-      </div>
+      {state.status === "ready" || activeFilterCount ? (
+        <div className="conversation-search-toolbar">
+          <button
+            className={`conversation-search-filter-toggle${filtersOpen || activeFilterCount ? " active" : ""}`}
+            type="button"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((value) => !value)}
+          >
+            {state.status === "ready"
+              ? `共 ${state.total.toLocaleString()} 条命中`
+              : `${activeFilterCount} 个条件`}
+          </button>
+          {activeFilterCount ? (
+            <button className="conversation-search-clear" type="button" onClick={clearFilters}>清除</button>
+          ) : null}
+        </div>
+      ) : null}
 
       {filtersOpen ? (
         <div className="conversation-search-filters" aria-label="搜索筛选">
