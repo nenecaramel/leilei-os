@@ -7,8 +7,9 @@ const panel = readFileSync(
   "utf8",
 );
 
-test("Favorites is only a Memory-style month list with no extra count row", () => {
-  assert.doesNotMatch(panel, /conversation-section-heading conversation-list-heading/);
+test("Favorites keeps the total count row above the Memory-style month list", () => {
+  assert.match(panel, /conversation-section-heading conversation-list-heading/);
+  assert.match(panel, /共 \{state\.total\.toLocaleString\(\)\} 条/);
   assert.match(panel, /className="memory-months"/);
   assert.match(panel, /className="memory-month-section"/);
   assert.match(panel, /className="memory-month-label"/);
