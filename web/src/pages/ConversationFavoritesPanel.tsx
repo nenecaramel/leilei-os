@@ -19,14 +19,19 @@ type FavoriteListState =
   | { status: "ready"; rows: FavoriteRow[]; total: number }
   | { status: "error" };
 
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
 function formatDateTime(value: string | null): string {
   if (!value) return "时间未知";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hour = pad2(date.getHours());
+  const minute = pad2(date.getMinutes());
+  return `${month}/${day} ${hour}:${minute}`;
 }
 
 function canonicalFavoriteLink(detail: ConversationFavoriteDetail): string | null {
