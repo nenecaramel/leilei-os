@@ -74,7 +74,7 @@ test("Conversation surfaces keep shared tab, provider, destructive, and loading 
   assert.doesNotMatch(css, /\.conversation-danger-button[^}]*color:\s*#(?:a14d46|974a44)/);
   assert.match(css, /\.conversation-import-run\s*\{[^}]*min-height:\s*42px[^}]*align-items:\s*center/s);
   assert.match(css, /\.conversation-import-run > (?:strong|span|small|time|\.conversation-history-inline-action)/);
-  assert.match(importHistoryPanel, /className="system-state-copy"/);
+  assert.match(page, /className="system-state-copy"/);
   assert.match(favoritesPanel, /className="conversation-message-favorite active"/);
   assert.match(importHistoryPanel, /className="secondary-button"/);
   assert.match(batchPreview, /className="secondary-button"/);
@@ -91,7 +91,6 @@ test("Conversation pages reuse shared page geometry without route-level shell ov
   assert.match(css, /border-radius:\s*14px/);
   assert.match(css, /conversation-list,/);
   assert.match(css, /conversation-message-list/);
-  assert.match(page, /className="conversation-detail-loading"/);
 });
 
 test("Conversation UI redesign keeps import search Favorites Sources and pruning functionality wired", () => {
@@ -105,14 +104,12 @@ test("Conversation UI redesign keeps import search Favorites Sources and pruning
   assert.match(page, /createFavorite/);
 });
 
-test("Conversation detail restores the historical paper-like message surface", () => {
+test("Conversation detail is a continuous reading surface rather than independent cream cards", () => {
   assert.match(css, /\.conversation-message-list\s*\{/);
   assert.match(css, /\.conversation-message \{/);
-  assert.match(css, /\.conversation-message-list\s*\{[^}]*display:\s*grid[^}]*gap:\s*12px/s);
-  assert.match(css, /\.conversation-message\s*\{[^}]*padding:\s*20px 22px[^}]*border-radius:\s*18px/s);
-  assert.match(css, /\.conversation-message--user\s*\{[^}]*margin-left:\s*min\(8vw, 86px\)/s);
-  assert.match(css, /\.conversation-message--assistant\s*\{[^}]*margin-right:\s*min\(6vw, 64px\)/s);
-  assert.doesNotMatch(css, /\.conversation-detail-page \.page-header\s*\{[^}]*border-bottom:/s);
+  assert.match(css, /\.conversation-message \+ \.conversation-message/);
+  assert.match(css, /background:\s*#fafafa/);
+  assert.doesNotMatch(css, /conversation-message[^}]*Newsreader/s);
 });
 
 test("desktop navigation owns its typography so route-level fonts cannot shift the sidebar", () => {
@@ -135,54 +132,10 @@ test("Conversation list reuses the native module header and search chrome", () =
 test("Conversation rows use the approved Memory inset-card geometry", () => {
   assert.match(css, /\.conversation-card\s*\{[^}]*min-height:\s*60px/s);
   assert.match(css, /\.conversation-card\s*\{[^}]*padding:\s*11px 13px/s);
+  assert.match(css, /\.conversation-card \+ \.conversation-card::before/);
   assert.match(css, /right:\s*13px/);
   assert.match(css, /left:\s*13px/);
   assert.match(css, /border-radius:\s*14px/);
-  assert.match(page, /className="memory-row conversation-card"/);
-  assert.match(favoritesPanel, /className="memory-row conversation-favorite-card/);
-});
-
-test("Conversation archive and Favorites use the shared month grouping and loading primitives", () => {
-  assert.match(page, /memory-month-section/);
-  assert.match(page, /memory-month-label/);
-  assert.match(page, /memory-month-card/);
-  assert.match(favoritesPanel, /memory-month-section/);
-  assert.match(favoritesPanel, /memory-month-label/);
-  assert.match(favoritesPanel, /memory-month-card/);
-  assert.match(page, /memory-month-skeleton/);
-  assert.match(favoritesPanel, /memory-month-skeleton/);
-});
-
-test("Sources uses the shared heading/state language and header import affordance", () => {
-  assert.match(page, /PlusIcon/);
-  assert.match(page, /aria-label="导入 Conversation export"/);
-  assert.doesNotMatch(page, /conversation-source-import/);
-  assert.match(importHistoryPanel, /memory-month-label/);
-  assert.match(importHistoryPanel, /共 \{state\.total\.toLocaleString\(\)\} 份/);
-  assert.doesNotMatch(importHistoryPanel, /份 source/);
-  assert.match(importHistoryPanel, /conversation-import-source-main[\s\S]*<\/div>[\s\S]*conversation-import-source-actions/);
-  assert.match(importHistoryPanel, /className="system-section conversation-import-history-loading"/);
-  assert.doesNotMatch(importHistoryPanel, /conversation-import-runs-loading/);
-  assert.match(importHistoryPanel, /detailLoadingId === source\.sourceId[\s\S]*读取中…/);
-  assert.match(importHistoryPanel, /conversation-import-run-parser[\s\S]*run\.id[\s\S]*<time>/);
-  assert.match(css, /conversation-import-run \+ \.conversation-import-run/);
-  assert.match(css, /\.conversation-import-run\s*\{[^}]*display:\s*grid/s);
-  assert.match(css, /\.conversation-import-run > time\s*\{[^}]*justify-self:\s*end/s);
-  assert.match(css, /\.conversation-import-source-card\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
-  assert.match(css, /\.conversation-import-source-actions\s*\{[^}]*margin-top:\s*0/);
-  assert.match(css, /overflow-wrap:\s*anywhere/);
-});
-
-test("Conversation lists restore content rows without standalone page headings", () => {
-  assert.doesNotMatch(page, /<h2>对话窗口<\/h2>/);
-  assert.doesNotMatch(favoritesPanel, /<h2>收藏<\/h2>/);
-  assert.match(page, /memory-row-title/);
-  assert.match(page, /item\.messageCount/);
-  assert.match(page, /item\.turnCount/);
-  assert.match(favoritesPanel, /conversation-favorite-original/);
-  assert.doesNotMatch(page, /conversation-list-total/);
-  assert.match(css, /.conversation-surface-tabs\s*\{[^}]*min-height:\s*38px/s);
-  assert.match(css, /.conversation-surface-tabs button,[\s\S]*?min-height:\s*32px/s);
 });
 
 test("Conversation advanced search filters stay secondary until requested", () => {
