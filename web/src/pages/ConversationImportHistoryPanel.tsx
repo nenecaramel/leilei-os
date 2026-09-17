@@ -6,6 +6,7 @@ import type {
   ConversationImportSourceHistoryItem,
 } from "./conversation-archive-api";
 import { createConversationArchiveApi } from "./conversation-archive-api";
+import "./conversation-layout-refinement.css";
 
 type Client = ReturnType<typeof createConversationArchiveApi>;
 
@@ -203,12 +204,6 @@ export function ConversationImportHistoryPanel({
                     {bytes(source.rawBytes)} · {source.runCount} 次 Preview/Execute
                     {source.supersededRunCount ? ` · ${source.supersededRunCount} 次被替代` : ""}
                   </p>
-                  <small title={source.rawSha256}>
-                    SHA-256 {source.rawSha256.slice(0, 12)}… ·
-                    {" "}{source.rawSource.retained
-                      ? `raw 已保留 · ${source.rawSource.encoding ?? "unknown"} · ${bytes(source.rawSource.storedBytes)}`
-                      : "raw 不可用"}
-                  </small>
                   {latest ? (
                     <small>
                       最近：{statusLabel(latest.status)} ·
@@ -258,7 +253,6 @@ export function ConversationImportHistoryPanel({
                             ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
                             : ""}
                         </small>
-                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
                         {canConfirmImport(run) ? (
                           <button
                             className="conversation-history-inline-action"
@@ -269,6 +263,7 @@ export function ConversationImportHistoryPanel({
                             {executingRunId === run.id ? "确认中…" : "确认导入"}
                           </button>
                         ) : null}
+                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
                       </div>
                     ))}
                   </div>
