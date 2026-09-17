@@ -1,5 +1,12 @@
 .navigation-panel {
   --navigation-panel-item-padding: 16px;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "PingFang SC",
+    "Helvetica Neue",
+    sans-serif;
   --navigation-panel-bg: #FFFFFE;
   --navigation-panel-ink: #171717;
   --navigation-panel-muted: #8e8e93;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
+import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
 import { PageState } from "../components/StateSurface";
 import { PageHeader } from "./PageHeader";
 import { ConversationSearchPanel } from "./ConversationSearchPanel";
@@ -18,6 +19,7 @@ import {
   type ConversationProvider,
 } from "./conversation-archive-api";
 import "./conversation-archive.css";
+import "./conversation-native-ui.css";
 
 type ListState =
   | { status: "loading" }
@@ -47,6 +49,16 @@ function formatDateTime(value: string | null): string {
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
     timeStyle: "short",
+  }).format(date);
+}
+
+function formatRowDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
   }).format(date);
 }
 
@@ -110,6 +122,9 @@ function ConversationListView({
   client: ReturnType<typeof createConversationArchiveApi>;
 }) {
   const [provider, setProvider] = useState<ConversationProvider | undefined>();
+  const [surface, setSurface] = useState<"archive" | "favorites" | "sources">("archive");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [stats, setStats] = useState<StatsState>({ status: "loading" });
   const [preview, setPreview] = useState<ConversationImportPreview | null>(null);
@@ -235,31 +250,80 @@ function ConversationListView({
 
   return (
     <div className="page conversation-page">
-      <PageHeader
-        eyebrow="Conversation Archive"
-        title="Conversations"
-        description="保存 ChatGPT / Claude 的原始对话档案，按窗口与日期浏览。"
-        action={
-          <>
-            <input
-              ref={fileInputRef}
-              className="conversation-file-input"
-              type="file"
-              accept=".json,.zip,application/json,application/zip"
-              multiple
-              onChange={(event) => void onFiles(event.target.files)}
-            />
-            <button
-              className="secondary-button conversation-import-button"
-              type="button"
-              disabled={importing}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {importing ? "处理中…" : "导入对话"}
-            </button>
-          </>
-        }
+      <input
+        ref={fileInputRef}
+        className="conversation-file-input"
+        type="file"
+        accept=".json,.zip,application/json,application/zip"
+        multiple
+        onChange={(event) => void onFiles(event.target.files)}
       />
+
+      <header
+        className="memory-page-header conversation-page-header"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setSearchOpen(false);
+        }}
+      >
+        <div className="memory-page-heading">
+          <div className="memory-page-title">Conversations</div>
+          <div className="memory-page-count">
+            {list.status === "ready"
+              ? `${list.total.toLocaleString()}个窗口`
+              : "读取中…"}
+          </div>
+        </div>
+
+        <div className="memory-page-tools conversation-page-tools">
+          <ModuleSearchButton
+            label="搜索对话"
+            expanded={searchOpen}
+            onClick={() => setSearchOpen((value) => !value)}
+          />
+        </div>
+
+        {searchOpen ? (
+          <ModuleSearchField
+            ariaLabel="搜索 Conversation Archive"
+            placeholder="搜索你或 AI 说过的话"
+            value={searchQuery}
+            onChange={setSearchQuery}
+            className="conversation-page-search"
+          />
+        ) : null}
+      </header>
+
+      {searchOpen ? (
+        <ConversationSearchPanel
+          client={client}
+          conversations={list.status === "ready" ? list.items : []}
+          query={searchQuery}
+        />
+      ) : null}
+
+      <nav className="conversation-surface-tabs" aria-label="Conversation Archive sections">
+        <button
+          className={surface === "archive" ? "active" : ""}
+          type="button"
+          onClick={() => setSurface("archive")}
+        >
+          Conversations
+        </button>
+        <button
+          className={surface === "favorites" ? "active" : ""}
+          type="button"
+          onClick={() => setSurface("favorites")}
+        >
+          Favorites
+        </button>
+        <button
+          className={surface === "sources" ? "active" : ""}
+          type="button"
+          onClick={() => setSurface("sources")}
+        >
+          Sources
+        </button>
+      </nav>
 
       {preview ? (
         <section className="conversation-import-preview" aria-live="polite">
@@ -322,92 +386,106 @@ function ConversationListView({
         <p className="conversation-inline-status" role="status">{importMessage}</p>
       ) : null}
 
-      <ConversationFavoritesPanel client={client} />
+      {surface === "favorites" ? (
+        <ConversationFavoritesPanel client={client} />
+      ) : null}
 
-      <ConversationImportHistoryPanel
-        client={client}
-        refreshKey={refreshKey}
-        onPreview={(result) => {
-          setBatchPreview(null);
-          setPreview(result);
-          setImportMessage("");
-        }}
-      />
-
-      <ConversationSearchPanel
-        client={client}
-        conversations={list.status === "ready" ? list.items : []}
-      />
-
-      <section className="conversation-section">
-        <div className="conversation-section-heading">
-          <div>
-            <p className="eyebrow">Recent 30 days</p>
-            <h2>每天聊了多少</h2>
-          </div>
-          <span>{browserTimeZone()}</span>
-        </div>
-        {stats.status === "loading" ? (
-          <div className="conversation-muted-card">正在读取日统计…</div>
-        ) : stats.status === "error" ? (
-          <div className="conversation-muted-card">日统计暂时不可用。</div>
-        ) : stats.items.length === 0 ? (
-          <div className="conversation-muted-card">导入后，这里会按日期显示消息数和轮数。</div>
-        ) : (
-          <DailyStats items={stats.items} />
-        )}
-      </section>
-
-      <section className="conversation-section">
-        <div className="conversation-section-heading conversation-list-heading">
-          <div>
-            <p className="eyebrow">Archive</p>
-            <h2>对话窗口</h2>
-          </div>
-          <div className="conversation-provider-filter" aria-label="Provider filter">
-            <button className={!provider ? "active" : ""} type="button" onClick={() => setProvider(undefined)}>全部</button>
-            <button className={provider === "chatgpt" ? "active" : ""} type="button" onClick={() => setProvider("chatgpt")}>ChatGPT</button>
-            <button className={provider === "claude" ? "active" : ""} type="button" onClick={() => setProvider("claude")}>Claude</button>
-          </div>
-        </div>
-
-        {list.status === "loading" ? (
-          <PageState state="loading" message="正在读取 Conversation Archive…" />
-        ) : list.status === "error" ? (
-          <PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => setRefreshKey((value) => value + 1)} />
-        ) : list.items.length === 0 ? (
-          <PageState
-            state="empty"
-            message="还没有导入对话。"
-            description="可以直接选择 ChatGPT conversations.json 或 Claude conversations ZIP。"
-          />
-        ) : (
-          <>
-            <div className="conversation-list">
-              {list.items.map((item) => (
-                <Link className="conversation-card" to={`/conversations/${item.id}`} key={item.id}>
-                  <div className="conversation-card-topline">
-                    <span className={`conversation-provider conversation-provider--${item.provider}`}>
-                      {providerLabel(item.provider)}
-                    </span>
-                    <time>{formatDateTime(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</time>
-                  </div>
-                  <h3>{item.title?.trim() || "Untitled conversation"}</h3>
-                  <p>
-                    {item.messageCount.toLocaleString()} 条消息 ·
-                    {" "}{item.turnCount.toLocaleString()} 轮
-                    {item.totalNodeCount > item.messageCount
-                      ? ` · ${item.totalNodeCount.toLocaleString()} nodes`
-                      : ""}
-                  </p>
-                  {item.defaultModel ? <small>{item.defaultModel}</small> : null}
-                </Link>
-              ))}
+      {surface === "sources" ? (
+        <>
+          <section className="conversation-source-import" aria-label="导入 Conversation export">
+            <div className="conversation-source-import-row">
+              <span>ChatGPT / Claude export</span>
+              <button
+                type="button"
+                disabled={importing}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {importing ? "处理中…" : "选择文件"}
+              </button>
             </div>
-            <p className="conversation-list-total">共 {list.total.toLocaleString()} 个窗口</p>
-          </>
-        )}
-      </section>
+          </section>
+          <ConversationImportHistoryPanel
+            client={client}
+            refreshKey={refreshKey}
+            onPreview={(result) => {
+              setBatchPreview(null);
+              setPreview(result);
+              setImportMessage("");
+            }}
+          />
+        </>
+      ) : null}
+
+      {surface === "archive" ? (
+        <>
+          <section className="conversation-section conversation-stats-section">
+            <div className="conversation-section-heading">
+              <div>
+                <p className="eyebrow">Recent 30 days</p>
+                <h2>最近 30 天</h2>
+              </div>
+              <span>{browserTimeZone()}</span>
+            </div>
+            {stats.status === "loading" ? (
+              <div className="conversation-muted-card">正在读取日统计…</div>
+            ) : stats.status === "error" ? (
+              <div className="conversation-muted-card">日统计暂时不可用。</div>
+            ) : stats.items.length === 0 ? (
+              <div className="conversation-muted-card">导入后，这里会按日期显示消息数和轮数。</div>
+            ) : (
+              <DailyStats items={stats.items} />
+            )}
+          </section>
+
+          <section className="conversation-section conversation-archive-section">
+            <div className="conversation-section-heading conversation-list-heading">
+              <div>
+                <p className="eyebrow">Archive</p>
+                <h2>对话窗口</h2>
+              </div>
+              <div className="conversation-provider-filter" aria-label="Provider filter">
+                <button className={!provider ? "active" : ""} type="button" onClick={() => setProvider(undefined)}>全部</button>
+                <button className={provider === "chatgpt" ? "active" : ""} type="button" onClick={() => setProvider("chatgpt")}>ChatGPT</button>
+                <button className={provider === "claude" ? "active" : ""} type="button" onClick={() => setProvider("claude")}>Claude</button>
+              </div>
+            </div>
+
+            {list.status === "loading" ? (
+              <PageState state="loading" message="正在读取 Conversation Archive…" />
+            ) : list.status === "error" ? (
+              <PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => setRefreshKey((value) => value + 1)} />
+            ) : list.items.length === 0 ? (
+              <PageState
+                state="empty"
+                message="还没有导入对话。"
+                description="可以在 Sources 里导入 ChatGPT conversations.json 或 Claude conversations ZIP。"
+              />
+            ) : (
+              <>
+                <div className="conversation-list">
+                  {list.items.map((item) => (
+                    <Link className="conversation-card" to={`/conversations/${item.id}`} key={item.id}>
+                      <h3>{item.title?.trim() || "Untitled conversation"}</h3>
+                      <div className="conversation-card-meta">
+                        <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
+                        <span>
+                          {providerLabel(item.provider)} · {item.messageCount.toLocaleString()} 条 ·
+                          {" "}{item.turnCount.toLocaleString()} 轮
+                          {item.totalNodeCount > item.messageCount
+                            ? ` · ${item.totalNodeCount.toLocaleString()} nodes`
+                            : ""}
+                          {item.defaultModel ? ` · ${item.defaultModel}` : ""}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+                <p className="conversation-list-total">共 {list.total.toLocaleString()} 个窗口</p>
+              </>
+            )}
+          </section>
+        </>
+      ) : null}
     </div>
   );
 }
