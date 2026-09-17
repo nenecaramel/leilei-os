@@ -43,6 +43,19 @@ test("Conversation Execute batches messages and child blocks instead of per-mess
   assert.match(executorSource, /sql\.join\(rows/);
 });
 
+test("Conversation Execute sanitizes PostgreSQL NUL bytes only at the persistence boundary", () => {
+  assert.match(executorSource, /function sanitizePostgresText/);
+  assert.match(executorSource, /replaceAll\("\\u0000", "\\uFFFD"\)/);
+  assert.match(executorSource, /title: sanitizePostgresNullableText\(normalized\.title\)/);
+  assert.match(executorSource, /providerMetadata: sanitizePostgresJsonRecord\(normalized\.providerMetadata\)/);
+  assert.match(executorSource, /displayText: sanitizePostgresText\(message\.displayText\)/);
+  assert.match(executorSource, /text: sanitizePostgresNullableText\(block\.text\)/);
+  assert.match(executorSource, /payload: sanitizePostgresJsonRecord\(block\.payload\)/);
+  assert.match(executorSource, /payload: sanitizePostgresJsonRecord\(attachment\.payload\)/);
+  assert.match(executorSource, /sourceFingerprint: planned\.importedFingerprint/);
+  assert.doesNotMatch(serviceSource, /sanitizePostgres/);
+});
+
 test("full preview fingerprint validation precedes the first canonical apply pass", () => {
   const fingerprintCheck = serviceSource.indexOf(
     "recomputedFingerprint !== expectedPreviewFingerprint",
