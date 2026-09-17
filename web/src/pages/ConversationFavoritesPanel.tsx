@@ -114,10 +114,6 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
 
   return (
     <section className="conversation-section conversation-favorites">
-      <div className="conversation-section-heading conversation-list-heading">
-        {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 条</span> : null}
-      </div>
-
       {status ? <p className="conversation-inline-status" role="status">{status}</p> : null}
 
       {state.status === "loading" ? (
@@ -141,30 +137,25 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
                   const link = detail ? canonicalFavoriteLink(detail) : null;
                   const firstMessage = detail?.messages[0] ?? null;
                   return (
-                    <article className="memory-row conversation-favorite-card conversation-favorite-card--quote" key={item.id}>
-                      <div className="conversation-favorite-main">
-                        <p className="conversation-favorite-original">{favoriteExcerpt(detail)}</p>
-
-                        <div className="conversation-favorite-footer">
-                          <time>{formatDateTime(firstMessage?.sourceCreatedAt ?? null)}</time>
-                          <span className="conversation-favorite-window">
-                            窗口：{item.conversationTitleSnapshot?.trim() || "Untitled conversation"} · {link
-                              ? <Link to={link}>定位原文</Link>
-                              : <span>原窗口已删除</span>}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="conversation-favorite-actions">
-                        <button
-                          className="conversation-message-favorite active"
-                          type="button"
-                          disabled={removingId !== null}
-                          onClick={() => void remove(item.id)}
-                        >
-                          {removingId === item.id ? "处理中…" : "取消收藏"}
-                        </button>
-                      </div>
+                    <article className="memory-row" key={item.id}>
+                      <span className="memory-row-title">{favoriteExcerpt(detail)}</span>
+                      <span className="memory-row-meta">
+                        <span><time>{formatDateTime(firstMessage?.sourceCreatedAt ?? null)}</time></span>
+                        <span className="conversation-favorite-window">
+                          窗口：{item.conversationTitleSnapshot?.trim() || "Untitled conversation"} · {link
+                            ? <Link to={link}>定位原文</Link>
+                            : <span>原窗口已删除</span>}
+                          {" · "}
+                          <button
+                            className="conversation-message-favorite active"
+                            type="button"
+                            disabled={removingId !== null}
+                            onClick={() => void remove(item.id)}
+                          >
+                            {removingId === item.id ? "处理中…" : "取消收藏"}
+                          </button>
+                        </span>
+                      </span>
                     </article>
                   );
                 })}
