@@ -124,7 +124,7 @@ test("preserved-source restore UI requests Preview only and leaves Execute expli
   }]);
 });
 
-test("history confirmation executes the saved run id and fingerprint directly", async () => {
+test("history confirmation reuses Execute with the saved run id and fingerprint", async () => {
   const calls: Array<{ path: string; init?: RequestInit }> = [];
   const api: WebApiClient = {
     async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -148,10 +148,10 @@ test("history confirmation executes the saved run id and fingerprint directly", 
   };
   const client = createConversationArchiveApi(api);
 
-  const result = await client.executeImportRun({
-    importRunId: RUN_ID,
-    previewFingerprint: PREVIEW_FINGERPRINT,
-  });
+  const result = await client.execute({
+    import_run_id: RUN_ID,
+    preview_fingerprint: PREVIEW_FINGERPRINT,
+  } as ConversationImportPreview);
 
   assert.equal(result.outcome, "executed");
   assert.deepEqual(calls, [{
@@ -181,7 +181,7 @@ test("Conversation import history panel keeps re-Preview separate and gates dire
   assert.match(historyText, /raw 已保留/);
   assert.match(historyText, /run\.status === "processing"/);
   assert.match(historyText, /run\.previewFingerprint/);
-  assert.match(historyText, /client\.executeImportRun/);
+  assert.match(historyText, /client\.execute/);
   assert.match(historyText, /确认导入/);
   assert.match(historyText, /onImportExecuted/);
   assert.match(pageText, /onImportExecuted=\{\(\) => setRefreshKey\(\(value\) => value \+ 1\)\}/);
