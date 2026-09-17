@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
+import { PlusIcon } from "../components/icons";
 import { PageState } from "../components/StateSurface";
 import { PageHeader } from "./PageHeader";
 import { ConversationSearchPanel } from "./ConversationSearchPanel";
@@ -18,6 +19,7 @@ import {
   type ConversationMessage,
   type ConversationProvider,
 } from "./conversation-archive-api";
+import { groupConversationsByMonth } from "./conversation-presentation";
 import "./conversations.css";
 
 type ListState =
@@ -77,6 +79,20 @@ function shortBytes(value: number): string {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function ConversationMonthLoading({ label }: { label: string }) {
+  return (
+    <section className="memory-months" aria-label={label} aria-busy="true">
+      <span className="visually-hidden" role="status" aria-live="polite">正在读取…</span>
+      {[0, 1].map((index) => (
+        <div className="memory-month-skeleton" aria-hidden="true" key={index}>
+          <span className="memory-month-skeleton-label" />
+          <div className="memory-month-skeleton-card"><span /><span /></div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export function ConversationArchivePageContent({ api }: { api: WebApiClient }) {
   const client = useMemo(() => createConversationArchiveApi(api), [api]);
   const { conversationId } = useParams<{ conversationId?: string }>();
@@ -115,6 +131,13 @@ function ConversationListView({
   }, [client, provider, refreshKey]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const conversationGroups = useMemo(
+    () => list.status === "ready"
+      ? groupConversationsByMonth(list.items, (item) => item.sourceUpdatedAt ?? item.sourceCreatedAt)
+      : [],
+    [list],
+  );
 
   const onFiles = async (fileList: FileList | null) => {
     const files = fileList ? Array.from(fileList) : [];
@@ -226,6 +249,14 @@ function ConversationListView({
         </div>
 
         <div className="memory-page-tools">
+          <button
+            type="button"
+            aria-label="导入 Conversation export"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <PlusIcon className="memory-page-search-icon" />
+          </button>
           <ModuleSearchButton
             label="搜索对话"
             expanded={searchOpen}
@@ -330,18 +361,6 @@ function ConversationListView({
 
       {surface === "sources" ? (
         <>
-          <section className="conversation-source-import" aria-label="导入 Conversation export">
-            <div className="conversation-source-import-row">
-              <span>ChatGPT / Claude export</span>
-              <button
-                type="button"
-                disabled={importing}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {importing ? "处理中…" : "选择文件"}
-              </button>
-            </div>
-          </section>
           <ConversationImportHistoryPanel
             client={client}
             refreshKey={refreshKey}
@@ -370,7 +389,7 @@ function ConversationListView({
           </div>
 
           {list.status === "loading" ? (
-            <p className="system-state-copy" role="status" aria-live="polite">正在读取 Conversation Archive…</p>
+            <ConversationMonthLoading label="Conversation 加载中" />
           ) : list.status === "error" ? (
             <PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => setRefreshKey((value) => value + 1)} />
           ) : list.items.length === 0 ? (
@@ -381,23 +400,31 @@ function ConversationListView({
             />
           ) : (
             <>
-              <div className="conversation-list">
-                {list.items.map((item) => (
-                  <Link className="conversation-card" to={`/conversations/${item.id}`} key={item.id}>
-                    <h3>{item.title?.trim() || "Untitled conversation"}</h3>
-                    <div className="conversation-card-meta">
-                      <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
-                      <span>
-                        {providerLabel(item.provider)} · {item.messageCount.toLocaleString()} 条 ·
-                        {" "}{item.turnCount.toLocaleString()} 轮
-                        {item.totalNodeCount > item.messageCount ? ` · ${item.totalNodeCount.toLocaleString()} nodes` : ""}
-                        {item.defaultModel ? ` · ${item.defaultModel}` : ""}
-                      </span>
+              <section className="memory-months" aria-label="Conversation 列表">
+                {conversationGroups.map((group) => (
+                  <section className="memory-month-section" key={group.key}>
+                    <h2 className="memory-month-label">{group.label}</h2>
+                    <div className="memory-month-card conversation-list">
+                      {group.items.map((item) => (
+                        <Link
+                          className="conversation-card"
+                          to={`/conversations/${item.id}`}
+                          key={item.id}
+                          aria-label={item.title?.trim() || "Untitled conversation"}
+                        >
+                          <div className="conversation-card-meta">
+                            <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
+                            <span>
+                              {providerLabel(item.provider)}
+                              {item.defaultModel ? ` · ${item.defaultModel}` : ""}
+                            </span>
+                          </div>
+                        </Link>
+                      ))}
                     </div>
-                  </Link>
+                  </section>
                 ))}
-              </div>
-              <p className="conversation-list-total">共 {list.total.toLocaleString()} 个窗口</p>
+              </section>
             </>
           )}
         </section>

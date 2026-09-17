@@ -74,7 +74,7 @@ test("Conversation surfaces keep shared tab, provider, destructive, and loading 
   assert.doesNotMatch(css, /\.conversation-danger-button[^}]*color:\s*#(?:a14d46|974a44)/);
   assert.match(css, /\.conversation-import-run\s*\{[^}]*min-height:\s*42px[^}]*align-items:\s*center/s);
   assert.match(css, /\.conversation-import-run > (?:strong|span|small|time|\.conversation-history-inline-action)/);
-  assert.match(page, /className="system-state-copy"/);
+  assert.match(importHistoryPanel, /className="system-state-copy"/);
   assert.match(favoritesPanel, /className="conversation-message-favorite active"/);
   assert.match(importHistoryPanel, /className="secondary-button"/);
   assert.match(batchPreview, /className="secondary-button"/);
@@ -136,6 +136,36 @@ test("Conversation rows use the approved Memory inset-card geometry", () => {
   assert.match(css, /right:\s*13px/);
   assert.match(css, /left:\s*13px/);
   assert.match(css, /border-radius:\s*14px/);
+});
+
+test("Conversation archive and Favorites use the shared month grouping and loading primitives", () => {
+  assert.match(page, /memory-month-section/);
+  assert.match(page, /memory-month-label/);
+  assert.match(page, /memory-month-card/);
+  assert.match(favoritesPanel, /memory-month-section/);
+  assert.match(favoritesPanel, /memory-month-label/);
+  assert.match(favoritesPanel, /memory-month-card/);
+  assert.match(page, /memory-month-skeleton/);
+  assert.match(favoritesPanel, /memory-month-skeleton/);
+});
+
+test("Sources uses the shared heading/state language and header import affordance", () => {
+  assert.match(page, /PlusIcon/);
+  assert.match(page, /aria-label="导入 Conversation export"/);
+  assert.doesNotMatch(page, /conversation-source-import/);
+  assert.match(importHistoryPanel, /memory-month-label/);
+  assert.match(importHistoryPanel, /共 \{state\.total\.toLocaleString\(\)\} 份/);
+  assert.doesNotMatch(importHistoryPanel, /份 source/);
+  assert.match(importHistoryPanel, /conversation-import-source-main[\s\S]*conversation-import-source-actions/);
+  assert.match(css, /conversation-import-run \+ \.conversation-import-run/);
+  assert.match(css, /overflow-wrap:\s*anywhere/);
+});
+
+test("Conversation cards omit the old card title/count chrome and tabs stay compact", () => {
+  assert.doesNotMatch(page, /<h3>\{item\.title/);
+  assert.doesNotMatch(page, /conversation-list-total/);
+  assert.match(css, /.conversation-surface-tabs\s*\{[^}]*min-height:\s*38px/s);
+  assert.match(css, /.conversation-surface-tabs button,[\s\S]*?min-height:\s*32px/s);
 });
 
 test("Conversation advanced search filters stay secondary until requested", () => {

@@ -164,10 +164,9 @@ export function ConversationImportHistoryPanel({
     <section className="conversation-section conversation-import-history">
       <div className="conversation-section-heading">
         <div>
-          <p className="eyebrow">Import history</p>
-          <h2>原始导入记录</h2>
+          <p className="memory-month-label">原始导入记录</p>
         </div>
-        {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 份 source</span> : null}
+        {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 份</span> : null}
       </div>
 
       {message ? <p className="conversation-inline-status" role="status">{message}</p> : null}
@@ -215,29 +214,29 @@ export function ConversationImportHistoryPanel({
                       {" "}{dateTime(latest.completedAt ?? latest.createdAt)}
                     </small>
                   ) : null}
-                </div>
-                <div className="conversation-import-source-actions">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={detailLoadingId === source.sourceId}
-                    onClick={() => void toggleDetail(source.sourceId)}
-                  >
-                    {detailLoadingId === source.sourceId
-                      ? "读取中…"
-                      : expanded ? "收起 runs" : "查看 runs"}
-                  </button>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
-                    title={source.rawSource.retained
-                      ? "只生成新的 Preview；仍需再次确认导入"
-                      : "原始 source 已不在 storage 中"}
-                    onClick={() => void reapply(source)}
-                  >
-                    {reapplyId === source.sourceId ? "生成中…" : "重新 Preview"}
-                  </button>
+                  <div className="conversation-import-source-actions">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={detailLoadingId === source.sourceId}
+                      onClick={() => void toggleDetail(source.sourceId)}
+                    >
+                      {detailLoadingId === source.sourceId
+                        ? "读取中…"
+                        : expanded ? "收起 runs" : "查看 runs"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
+                      title={source.rawSource.retained
+                        ? "只生成新的 Preview；仍需再次确认导入"
+                        : "原始 source 已不在 storage 中"}
+                      onClick={() => void reapply(source)}
+                    >
+                      {reapplyId === source.sourceId ? "生成中…" : "重新 Preview"}
+                    </button>
+                  </div>
                 </div>
 
                 {expanded && detail ? (

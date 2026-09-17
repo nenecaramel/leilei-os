@@ -64,6 +64,12 @@ export const SearchIcon = (props: IconProps) => (
   </IconBase>
 );
 
+export const PlusIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <path d="M12 5v14M5 12h14" />
+  </IconBase>
+);
+
 export const ArchiveIcon = (props: IconProps) => (
   <IconBase {...props}>
     <path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" />
