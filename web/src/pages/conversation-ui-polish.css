@@ -1,45 +1,180 @@
-/* Conversation UI polish — keep the accepted desktop hierarchy at every width. */
+/* Conversation UI consistency fixes. Keep this layer small and metric-neutral. */
 
-/* The Conversation route must not restyle the app shell/sidebar typography. */
+/* Do not let the Conversation route restyle shared shell typography. */
 body:has(.conversation-page) {
-  font-family: "DM Sans", system-ui, sans-serif !important;
+  font-family: inherit;
+}
+
+.conversation-page-header,
+.conversation-page-header .memory-page-title {
+  font-family: inherit;
 }
 
 .conversation-page-header .memory-page-title {
-  font-family: "DM Sans", system-ui, sans-serif;
-  font-weight: 600;
+  font-weight: 500;
 }
 
-/* Active tabs must not change text metrics and make neighbors jump. */
+/* Restore the normal desktop shell behind the route. */
+@media (min-width: 761px) {
+  html:has(.conversation-page),
+  body:has(.conversation-page),
+  #root:has(.conversation-page),
+  .app-shell:has(.conversation-page),
+  .main-content:has(.conversation-page) {
+    background: var(--desktop-bg);
+  }
+}
+
+/* Top-level tabs are three equal text actions, not a segmented control. */
+.conversation-surface-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 44px;
+  gap: 0;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .conversation-surface-tabs button,
 .conversation-surface-tabs button.active {
-  font-weight: 500 !important;
+  width: 100%;
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 500;
+  text-align: center;
 }
 
-/* Keep pending import confirmation compact and aligned below its timestamp. */
-.conversation-import-run {
+.conversation-surface-tabs button:hover,
+.conversation-surface-tabs button:active,
+.conversation-surface-tabs button.active {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Provider identity is informational, so every provider badge uses one gray treatment. */
+.conversation-provider--chatgpt,
+.conversation-provider--claude {
+  color: #666666;
+  background: #f1f1f1;
+}
+
+/* Destructive actions stay visually quiet and gray. */
+.conversation-danger-button,
+.conversation-message-prune {
+  border-color: transparent;
+  color: #7b7b7b;
+  background: transparent;
+}
+
+.conversation-danger-button:hover,
+.conversation-message-prune:hover {
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #555555;
+  background: #f3f3f3;
+}
+
+.conversation-danger-button:focus-visible,
+.conversation-message-prune:focus-visible {
+  outline: 2px solid rgba(0, 0, 0, 0.16);
+  outline-offset: 2px;
+}
+
+/* Favorites use the same compact information-card language as the rest of the route. */
+.conversation-favorite-card--quote {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
 }
 
-.conversation-import-run > time {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
+.conversation-favorite-kind {
+  color: #8a8a8a;
+  font-size: 10px;
+  line-height: 1.3;
 }
 
+.conversation-favorite-original {
+  display: -webkit-box;
+  margin: 7px 0 0;
+  overflow: hidden;
+  color: #252525;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.conversation-favorite-footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 7px;
+  color: #929292;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.conversation-favorite-footer time {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.conversation-favorite-window {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-favorite-window a {
+  color: #666666;
+  text-decoration: none;
+}
+
+.conversation-favorite-window a:hover {
+  color: #171717;
+}
+
+/* Expanded source runs are one vertically centered row. */
+.conversation-import-run {
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto) auto auto;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 7px 0;
+}
+
+.conversation-import-run > strong,
+.conversation-import-run > span,
+.conversation-import-run > small,
+.conversation-import-run > time,
+.conversation-import-run > .conversation-history-inline-action {
+  margin: 0;
+  align-self: center;
+}
+
+.conversation-import-run > span,
 .conversation-import-run > small {
-  grid-column: 1;
-  grid-row: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-import-run > time {
+  white-space: nowrap;
 }
 
 .conversation-import-run > .conversation-history-inline-action {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: start;
-  justify-self: end;
   min-height: 0;
-  margin: 0;
   padding: 1px 0;
   border: 0;
   border-radius: 0;
@@ -49,6 +184,7 @@ body:has(.conversation-page) {
   font-size: 9px;
   font-weight: 500;
   line-height: 1.35;
+  white-space: nowrap;
 }
 
 .conversation-import-run > .conversation-history-inline-action:hover {
@@ -56,140 +192,123 @@ body:has(.conversation-page) {
   background: transparent;
 }
 
-/* Favorites are original material, not editable metadata cards. */
-.conversation-favorite-card--quote {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-}
-
-.conversation-favorite-original {
-  margin: 8px 0 0 !important;
-  color: #242424 !important;
-  font-size: 13px !important;
-  line-height: 1.62 !important;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.conversation-favorite-source {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px 9px;
-  margin-top: 7px;
-  color: #929292;
-  font-size: 9px;
-}
-
-.conversation-favorite-source a {
-  color: #666666;
-  text-decoration: none;
-}
-
-.conversation-favorite-source a:hover {
-  color: #171717;
-}
-
-/* Detail loading/error should remain on the same white Conversation surface. */
+/* Detail loading/error stays on the same reading surface. */
 .conversation-detail-page.conversation-detail-state {
   min-height: calc(100dvh - (44px + env(safe-area-inset-top, 0px)));
   background: #ffffff;
 }
 
-/* Narrow screens keep the desktop composition; only geometry tightens. */
+/* Narrow screens preserve desktop composition; only available width shrinks. */
 @media (max-width: 760px) {
   .conversation-day-card {
-    grid-template-columns: 92px minmax(0, 1fr) auto !important;
-    gap: 12px !important;
+    grid-template-columns: 92px minmax(0, 1fr) auto;
+    gap: 12px;
   }
 
   .conversation-day-card > span {
-    grid-column: auto !important;
-    justify-self: end !important;
+    grid-column: auto;
+    justify-self: end;
   }
 
   .conversation-day-card > div {
-    grid-column: 2 / -1 !important;
+    grid-column: 2 / -1;
   }
 
   .conversation-search-filters {
-    grid-template-columns: 0.8fr 0.8fr 1.4fr 1fr 1fr !important;
+    grid-template-columns: 0.8fr 0.8fr 1.4fr 1fr 1fr;
     overflow-x: auto;
-    padding: 0 9px !important;
+    padding: 0 13px;
   }
 
   .conversation-search-filters > select,
   .conversation-search-filters > label,
   .conversation-search-filters > select:last-of-type,
   .conversation-search-filters > :nth-child(odd),
-  .conversation-search-filters > :nth-last-child(-n + 1),
-  .conversation-search-filters > select:nth-child(3) {
-    grid-column: auto !important;
-    border-right: 1px solid rgba(0, 0, 0, 0.07) !important;
-    border-bottom: 0 !important;
+  .conversation-search-filters > :last-child,
+  .conversation-search-filters > :nth-child(3) {
+    grid-column: auto;
+    min-height: 60px;
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 0;
+  }
+
+  .conversation-search-filters > :last-child {
+    border-right: 0;
+  }
+
+  .conversation-search-filters select {
+    height: 60px;
+    min-height: 60px;
   }
 
   .conversation-favorite-card,
   .conversation-favorite-card--quote,
   .conversation-import-source-card {
-    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .conversation-favorite-actions,
   .conversation-import-source-actions {
-    width: auto !important;
-    justify-content: flex-end !important;
+    width: auto;
+    justify-content: flex-end;
   }
 
+  .conversation-favorite-editor,
   .conversation-favorite-detail,
   .conversation-import-run-list {
-    grid-column: 1 / -1 !important;
+    grid-column: 1 / -1;
   }
 
-  .conversation-import-preview {
-    grid-template-columns: minmax(0, 1fr) auto !important;
+  .conversation-import-preview,
+  .conversation-favorite-composer {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .conversation-import-actions {
-    width: auto !important;
+    width: auto;
   }
 
   .conversation-import-actions button {
-    flex: 0 0 auto !important;
+    flex: 0 0 auto;
   }
 
   .conversation-batch-file {
-    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .conversation-detail-page .page-header {
-    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .conversation-detail-actions {
-    width: auto !important;
-    justify-content: flex-end !important;
+    width: auto;
+    justify-content: flex-end;
   }
 
   .conversation-message-meta {
-    flex-wrap: nowrap !important;
+    flex-wrap: nowrap;
   }
 
   .conversation-message-meta time {
-    width: auto !important;
-    margin-left: auto !important;
-    order: initial !important;
+    width: auto;
+    margin-left: auto;
+    order: initial;
   }
 
   .conversation-message-text {
-    font-size: 14px !important;
-    line-height: 1.75 !important;
+    font-size: 14px;
+    line-height: 1.75;
+  }
+
+  .conversation-import-run {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, auto) auto auto;
   }
 }
 
 @media (max-width: 520px) {
   .conversation-page,
   .conversation-detail-page {
-    width: calc(100% - 22px) !important;
+    width: calc(100% - 22px);
   }
 
   .conversation-detail-actions {
@@ -197,7 +316,7 @@ body:has(.conversation-page) {
   }
 
   .conversation-detail-page .page-header {
-    column-gap: 8px !important;
+    column-gap: 8px;
   }
 
   .conversation-favorite-card,
