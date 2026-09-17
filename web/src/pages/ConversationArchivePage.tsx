@@ -407,6 +407,7 @@ function ConversationListView({
           <ConversationImportHistoryPanel
             client={client}
             refreshKey={refreshKey}
+            onImportExecuted={() => setRefreshKey((value) => value + 1)}
             onPreview={(result) => {
               setBatchPreview(null);
               setPreview(result);
