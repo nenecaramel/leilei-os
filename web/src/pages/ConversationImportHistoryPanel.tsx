@@ -173,7 +173,7 @@ export function ConversationImportHistoryPanel({
       {message ? <p className="conversation-inline-status" role="status">{message}</p> : null}
 
       {state.status === "loading" ? (
-        <div className="conversation-muted-card">正在读取导入记录…</div>
+        <p className="system-state-copy" role="status" aria-live="polite">正在读取导入记录…</p>
       ) : state.status === "error" ? (
         <div className="conversation-muted-card">
           导入记录暂时不可用。
@@ -228,7 +228,7 @@ export function ConversationImportHistoryPanel({
                       : expanded ? "收起 runs" : "查看 runs"}
                   </button>
                   <button
-                    className="primary-button"
+                    className="secondary-button"
                     type="button"
                     disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
                     title={source.rawSource.retained
@@ -244,14 +244,11 @@ export function ConversationImportHistoryPanel({
                   <div className="conversation-import-run-list">
                     {detail.runs.map((run) => (
                       <div className="conversation-import-run" key={run.id}>
-                        <div>
-                          <strong>{statusLabel(run.status)}</strong>
-                          <span>
-                            {run.executionMode === "reapply" ? "显式 reapply" : "标准导入"}
-                            {" · "}{run.parserVersion}
-                          </span>
-                        </div>
-                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
+                        <strong>{statusLabel(run.status)}</strong>
+                        <span className="conversation-import-run-parser">
+                          {run.executionMode === "reapply" ? "显式 reapply" : "标准导入"}
+                          {" · "}{run.parserVersion}
+                        </span>
                         <small>
                           {run.warningCount ? `${run.warningCount} warnings · ` : ""}
                           run {run.id.slice(0, 8)}
@@ -259,6 +256,7 @@ export function ConversationImportHistoryPanel({
                             ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
                             : ""}
                         </small>
+                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
                         {canConfirmImport(run) ? (
                           <button
                             className="conversation-history-inline-action"
