@@ -137,7 +137,10 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
               >
                 <h2 className="memory-month-label">{group.label}</h2>
                 {index === 0 ? (
-                  <span className="memory-month-label conversation-favorites-total" style={{ textAlign: "right" }}>
+                  <span
+                    className="conversation-favorites-total"
+                    style={{ textAlign: "right", color: "#8a8a8a", fontSize: 11, fontWeight: 400, lineHeight: 1.3 }}
+                  >
                     共 {state.total.toLocaleString()} 条
                   </span>
                 ) : null}
