@@ -43,6 +43,14 @@ type DetailState =
     }
   | { status: "error" };
 
+type PendingScrollRestore = {
+  anchorMessageId: string;
+  viewportOffset: number;
+  loadedPages: number;
+};
+
+const MESSAGE_PAGE_SIZE = 200;
+
 function formatDateTime(value: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -401,7 +409,7 @@ function ConversationListView({
               <span>{browserTimeZone()}</span>
             </div>
             {stats.status === "loading" ? (
-              <div className="conversation-muted-card">正在读取日统计…</div>
+              <p className="system-state-copy" role="status" aria-live="polite">正在读取日统计…</p>
             ) : stats.status === "error" ? (
               <div className="conversation-muted-card">日统计暂时不可用。</div>
             ) : stats.items.length === 0 ? (
@@ -425,7 +433,7 @@ function ConversationListView({
             </div>
 
             {list.status === "loading" ? (
-              <PageState state="loading" message="正在读取 Conversation Archive…" />
+              <p className="system-state-copy" role="status" aria-live="polite">正在读取 Conversation Archive…</p>
             ) : list.status === "error" ? (
               <PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => setRefreshKey((value) => value + 1)} />
             ) : list.items.length === 0 ? (
@@ -517,7 +525,7 @@ function ConversationDetailView({
   const [favoriteItems, setFavoriteItems] = useState<ConversationFavoriteListItem[]>([]);
   const [favoriteBusyId, setFavoriteBusyId] = useState<string | null>(null);
   const [favoriteErrorIds, setFavoriteErrorIds] = useState<Set<string>>(() => new Set());
-  const pendingScrollRestoreRef = useRef<number | null>(null);
+  const pendingScrollRestoreRef = useRef<PendingScrollRestore | null>(null);
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -538,19 +546,49 @@ function ConversationDetailView({
           contextual: true,
         });
       } else {
-        const messages = await client.messages({
-          conversationId,
-          view,
-          limit: 200,
-          offset: 0,
-        });
-        setState({
-          status: "ready",
-          detail,
-          messages: messages.items,
-          totalMessages: messages.total,
-          contextual: false,
-        });
+        const pendingRestore = pendingScrollRestoreRef.current;
+        if (pendingRestore) {
+          const restoredMessages: ConversationMessage[] = [];
+          let totalMessages = 0;
+          let loadedPages = 0;
+          let foundAnchor = false;
+
+          while (loadedPages < pendingRestore.loadedPages && !foundAnchor) {
+            const page = await client.messages({
+              conversationId,
+              view,
+              limit: MESSAGE_PAGE_SIZE,
+              offset: restoredMessages.length,
+            });
+            totalMessages = page.total;
+            restoredMessages.push(...page.items);
+            loadedPages += 1;
+            foundAnchor = restoredMessages.some((item) => item.id === pendingRestore.anchorMessageId);
+            if (page.items.length === 0 || restoredMessages.length >= page.total) break;
+          }
+
+          setState({
+            status: "ready",
+            detail,
+            messages: restoredMessages,
+            totalMessages,
+            contextual: false,
+          });
+        } else {
+          const messages = await client.messages({
+            conversationId,
+            view,
+            limit: MESSAGE_PAGE_SIZE,
+            offset: 0,
+          });
+          setState({
+            status: "ready",
+            detail,
+            messages: messages.items,
+            totalMessages: messages.total,
+            contextual: false,
+          });
+        }
       }
     } catch {
       setState({ status: "error" });
@@ -577,7 +615,7 @@ function ConversationDetailView({
   }, [conversationId, view]);
 
   useEffect(() => {
-    if (state.status !== "ready" || !anchorId) return;
+    if (state.status !== "ready" || !anchorId || pendingScrollRestoreRef.current) return;
     const handle = window.requestAnimationFrame(() => {
       document.getElementById(`message-${anchorId}`)?.scrollIntoView({
         block: "center",
@@ -588,12 +626,19 @@ function ConversationDetailView({
   }, [anchorId, state]);
 
   useEffect(() => {
-    if (state.status !== "ready" || pendingScrollRestoreRef.current === null) return;
-    const scrollY = pendingScrollRestoreRef.current;
-    pendingScrollRestoreRef.current = null;
+    if (state.status !== "ready") return;
+    const pending = pendingScrollRestoreRef.current;
+    if (!pending) return;
+    const element = document.getElementById(`message-${pending.anchorMessageId}`);
+    if (!element) {
+      pendingScrollRestoreRef.current = null;
+      return;
+    }
     const first = window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
+        const delta = element.getBoundingClientRect().top - pending.viewportOffset;
+        window.scrollBy({ top: delta, left: 0, behavior: "auto" });
+        pendingScrollRestoreRef.current = null;
       });
     });
     return () => window.cancelAnimationFrame(first);
@@ -614,7 +659,7 @@ function ConversationDetailView({
       const next = await client.messages({
         conversationId,
         view,
-        limit: 200,
+        limit: MESSAGE_PAGE_SIZE,
         offset: state.messages.length,
       });
       setState({
@@ -626,6 +671,41 @@ function ConversationDetailView({
     } finally {
       setLoadingMore(false);
     }
+  };
+
+  const captureScrollRestore = (message: ConversationMessage): PendingScrollRestore | null => {
+    if (state.status !== "ready") return null;
+
+    const deletedSourceNodeIds = new Set<string>([message.sourceNodeId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const item of state.messages) {
+        if (
+          item.parentSourceNodeId
+          && deletedSourceNodeIds.has(item.parentSourceNodeId)
+          && !deletedSourceNodeIds.has(item.sourceNodeId)
+        ) {
+          deletedSourceNodeIds.add(item.sourceNodeId);
+          changed = true;
+        }
+      }
+    }
+
+    const survivors = state.messages.filter((item) => !deletedSourceNodeIds.has(item.sourceNodeId));
+    const viewportAnchor = survivors.find((item) => {
+      const element = document.getElementById(`message-${item.id}`);
+      return Boolean(element && element.getBoundingClientRect().bottom > 0);
+    }) ?? survivors.at(-1);
+    if (!viewportAnchor) return null;
+
+    const element = document.getElementById(`message-${viewportAnchor.id}`);
+    if (!element) return null;
+    return {
+      anchorMessageId: viewportAnchor.id,
+      viewportOffset: element.getBoundingClientRect().top,
+      loadedPages: Math.max(1, Math.ceil(state.messages.length / MESSAGE_PAGE_SIZE)),
+    };
   };
 
   const deleteWindow = async () => {
@@ -648,6 +728,7 @@ function ConversationDetailView({
     )) return;
     setPruningMessageId(message.id);
     setPruneStatus("");
+    const pendingRestore = captureScrollRestore(message);
     try {
       const result = await client.deleteBranch({
         conversationId,
@@ -656,7 +737,7 @@ function ConversationDetailView({
       setPruneStatus(
         `已删除这个分支的 ${result.deletedMessages} 个保存节点；后续导入不会加回来。`,
       );
-      pendingScrollRestoreRef.current = window.scrollY;
+      pendingScrollRestoreRef.current = pendingRestore;
       setState({ status: "loading" });
       if (anchorId) {
         setSearchParams(detailViewParams(view), { replace: true });
@@ -664,6 +745,7 @@ function ConversationDetailView({
         await load();
       }
     } catch {
+      pendingScrollRestoreRef.current = null;
       setPruneStatus("这个分支无法删除；如果它包含整个窗口，请直接删除窗口。");
     } finally {
       setPruningMessageId(null);
@@ -853,7 +935,7 @@ function ConversationDetailView({
                       : favoriteError
                         ? "重试"
                         : singleFavorite
-                          ? "已收藏"
+                          ? "取消收藏"
                           : "收藏"}
                 </button>
                 {(detail.provider === "claude" || view === "all") ? (
