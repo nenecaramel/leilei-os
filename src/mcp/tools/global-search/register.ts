@@ -1,38 +1,40 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { GlobalSearchError, type GlobalSearchInput, type GlobalSearchResult } from "../../../domains/global-search/global-search-service.js";
+import {
+  DEFAULT_GLOBAL_SEARCH_MODULES,
+  GlobalSearchError,
+  GLOBAL_SEARCH_MODULES,
+  type GlobalSearchInput,
+  type GlobalSearchResult,
+} from "../../../domains/global-search/global-search-service.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
-import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { compactMcpText, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
-const MAX_CURSOR_ENCODED_LENGTH = 2800;
-const DEFAULT_GLOBAL_SEARCH_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
-const GLOBAL_SEARCH_MODULES = [...DEFAULT_GLOBAL_SEARCH_MODULES, "conversation"] as const;
+const MAX_QUERY_CODE_POINTS = 200;
+const MAX_CURSOR_ENCODED_LENGTH = 1_024;
+
 const globalSearchModuleSchema = z.enum(GLOBAL_SEARCH_MODULES);
 
 const inputSchema = z.object({
-  query: z
-    .string()
-    .max(400)
-    .refine((value) => {
-      const normalized = value.normalize("NFC").trim();
-      return normalized.length > 0 && [...normalized].length <= 200;
-    }, "Query must contain 1 to 200 Unicode code points after NFC normalization and trimming."),
-  modules: z.array(globalSearchModuleSchema).min(1).max(7).default([...DEFAULT_GLOBAL_SEARCH_MODULES]).optional()
-    .describe("Domains to search. Defaults to Memory, Diary, Task, Todo, Universe, and Shared Paper. Conversation Archive is opt-in because it can contain a very large message corpus."),
-  scope: z.enum(["active", "archived", "all"]).default("active").optional()
-    .describe("Lifecycle scope. Defaults to active; use all for explicit historical/all-record requests."),
-  mode: z.enum(["phrase", "normal"]).default("normal").optional()
-    .describe("Search mode. Defaults to normal; use phrase only when exact phrase matching is intended."),
-  date_from: z.string().max(10).optional(),
-  date_to: z.string().max(10).optional(),
-  limit: z.number().int().min(1).max(25).default(10).optional()
-    .describe("Maximum results per page. Defaults to 10."),
-  cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).optional(),
+  query: z.string().trim().min(1).refine(
+    (value) => [...value].length <= MAX_QUERY_CODE_POINTS,
+    { message: `query must be at most ${MAX_QUERY_CODE_POINTS} Unicode code points` },
+  ).describe("Search phrase across the selected LeileiOS modules."),
+  modules: z.array(globalSearchModuleSchema).min(1).max(7)
+    .default([...DEFAULT_GLOBAL_SEARCH_MODULES])
+    .optional()
+    .describe("Modules to search. Defaults to Memory, Diary, Task, Todo, Universe, and Shared Paper. Add conversation explicitly when searching archived ChatGPT/Claude messages."),
+  scope: z.enum(["active", "archived", "all"]).default("active").optional(),
+  mode: z.enum(["normal", "phrase"]).default("normal").optional(),
+  date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  limit: z.number().int().min(1).max(25).default(10).optional(),
+  cursor: z.string().min(1).max(MAX_CURSOR_ENCODED_LENGTH).optional(),
 }).strict();
 
-const detailArgumentsSchema = z.union([
+const globalSearchDetailArgumentsSchema = z.union([
   z.object({ id: z.string().uuid(), scope: z.enum(["active", "archived"]) }).strict(),
-  z.object({ id: z.string().min(1).max(256) }).strict(),
+  z.object({ id: z.string().min(1) }).strict(),
   z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict(),
   z.object({
     conversation_id: z.string().uuid(),
@@ -43,20 +45,20 @@ const detailArgumentsSchema = z.union([
 
 const globalSearchResultSchema = z.object({
   entity_type: globalSearchModuleSchema,
-  entity_id: z.string().min(1).max(256),
+  entity_id: z.string().min(1),
   stable_name: z.string(),
-  snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
-  matched_field: z.enum(["key", "title", "content", "description", "tags", "mood", "text"]),
-  match_reason: z.enum(["exact_stable_name", "exact_phrase", "stable_name_prefix", "field_match"]),
+  snippet: z.string(),
+  matched_field: z.string(),
+  match_reason: z.enum(["exact_stable_name", "exact_phrase", "field_match"]),
   lifecycle_status: z.enum(["active", "archived"]),
   business_time: z.string().datetime(),
-  time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at", "todo_date", "message_time"]),
+  time_basis: z.string(),
   updated_at: z.string().datetime(),
-  author: z.enum(["L", "G", "C"]).nullable(),
+  author: z.enum(["L", "G", "C"]).nullable().optional(),
   detail_tool: z.enum(["get_memory", "get_diary", "get_task", "read_todo_day", "get_universe_node", "get_shared_paper", "read_conversation"]).nullable(),
-  detail_arguments: detailArgumentsSchema.nullable(),
-  conversation_id: z.string().uuid().nullable().optional(),
-  conversation_view: z.enum(["default", "all"]).nullable().optional(),
+  detail_arguments: globalSearchDetailArgumentsSchema.nullable(),
+  conversation_id: z.string().uuid().optional(),
+  conversation_view: z.enum(["default", "all"]).optional(),
 }).strict().superRefine((result, context) => {
   if (result.entity_type === "conversation") {
     if (result.detail_tool !== "read_conversation") {
@@ -76,17 +78,22 @@ const globalSearchResultSchema = z.object({
     }
     return;
   }
-  if (result.conversation_id != null || result.conversation_view != null) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["conversation_id"], message: "Non-Conversation results cannot carry Conversation deep-link metadata." });
+
+  if (result.conversation_id !== undefined || result.conversation_view !== undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["conversation_id"], message: "Only Conversation results may include Conversation deep-link metadata." });
   }
-  if (result.detail_tool === null) {
-    if (result.detail_arguments !== null) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Null detail_tool requires null detail_arguments." });
-    }
+
+  if (result.detail_tool === null || result.detail_arguments === null) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Non-Conversation results require an MCP detail pointer." });
     return;
   }
-  if (result.detail_arguments === null) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "A detail tool requires detail_arguments." });
+
+  if (result.entity_type === "todo") {
+    if (result.detail_tool !== "read_todo_day") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Todo results must use read_todo_day." });
+    }
+    if ("date" in result.detail_arguments) return;
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Todo detail_arguments must contain a date." });
     return;
   }
 
@@ -94,17 +101,8 @@ const globalSearchResultSchema = z.object({
     if (result.detail_tool !== "get_universe_node") {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Universe results must use get_universe_node." });
     }
-    if ("id" in result.detail_arguments && !("scope" in result.detail_arguments)
-      && result.detail_arguments.id.trim().length > 0
-      && result.detail_arguments.id.length <= 256) return;
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Universe detail_arguments must contain only a canonical node id." });
-    return;
-  }
-
-  if (result.entity_type === "todo") {
-    if (result.detail_tool !== "read_todo_day" || !("date" in result.detail_arguments)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Todo results must use read_todo_day with a date." });
-    }
+    if ("id" in result.detail_arguments && !("scope" in result.detail_arguments)) return;
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Universe detail_arguments must contain only an id." });
     return;
   }
 
@@ -148,7 +146,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search only for cross-domain discovery when the target domain is unknown or genuinely spans LeileiOS domains. Defaults remain Memory, Diary, Task, Todo, Universe, and Shared Paper; Conversation Archive is supported but opt-in via modules=['conversation', ...] so its large message corpus does not change default six-domain search. When the domain is known, prefer that domain's dedicated browse/search tool; use search_conversations for past ChatGPT/Claude messages. Conversation results point to read_conversation with the exact canonical message and saved view. Use scope=all only for explicit historical/all-record intent. No results means nothing was found: never invent an answer.",
+    description: "Use global_search only for cross-domain discovery when the target domain is unknown or genuinely spans LeileiOS domains. It does not replace domain-specific detail or mutation tools. Defaults remain Memory, Diary, Task, Todo, Universe, and Shared Paper; Conversation Archive is supported but opt-in via modules=['conversation', ...] so its large message corpus does not change default six-domain search. When the domain is known, prefer that domain's dedicated browse/search/detail tool; use search_conversations for past ChatGPT/Claude messages. Conversation results point to read_conversation with the exact canonical message and saved view. Use scope=all only for explicit historical/all-record intent. No results means nothing was found: never invent an answer.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -189,19 +187,24 @@ export function registerGlobalSearchTool(server: McpServer, dependencies: Global
 }
 
 function globalSearchContent(data: GlobalSearchResult): string {
-  const lines = [`Found ${data.metadata.count} records.`];
-  for (const result of data.results) {
-    const pointer = result.detail_tool && result.detail_arguments
-      ? formatMcpDetailPointer(result.detail_tool, Object.fromEntries(Object.entries(result.detail_arguments).map(([key, value]) => [key, String(value)])))
-      : "no-detail-pointer";
-    lines.push(`${result.entity_type} ${quoteMcpText(result.stable_name)} [id=${result.entity_id}; ${pointer}] — ${quoteMcpText(result.snippet)}`);
+  if (data.results.length === 0) {
+    return "No matching LeileiOS records were found.";
   }
-  return joinMcpContentLines(lines);
+
+  return joinMcpContentLines(data.results.map((result) => {
+    const detail = result.detail_tool && result.detail_arguments
+      ? ` [detail_tool=${result.detail_tool}; detail_arguments=${compactMcpText(JSON.stringify(result.detail_arguments), 400)}]`
+      : "";
+    const conversation = result.entity_type === "conversation" && result.conversation_id && result.conversation_view
+      ? ` [conversation_id=${result.conversation_id}; view=${result.conversation_view}]`
+      : "";
+    return `${result.entity_type} ${quoteMcpText(result.stable_name)} — ${quoteMcpText(result.snippet)}${detail}${conversation}`;
+  }));
 }
 
 export class GlobalSearchAuthenticationError extends Error {
   constructor() {
-    super("Global search authentication is required.");
+    super("Global Search authentication is required.");
     this.name = "GlobalSearchAuthenticationError";
   }
 }
