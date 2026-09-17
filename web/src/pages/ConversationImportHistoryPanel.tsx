@@ -163,114 +163,128 @@ export function ConversationImportHistoryPanel({
 
   return (
     <section className="conversation-section conversation-import-history">
-      <div className="conversation-section-heading">
-        <p className="memory-month-label">原始导入记录</p>
-        {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 份</span> : null}
-      </div>
-
       {message ? <p className="conversation-inline-status" role="status">{message}</p> : null}
 
-      {state.status === "loading" ? (
-        <div className="system-section conversation-import-history-loading">
-          <p className="system-state-copy" role="status" aria-live="polite">正在读取导入记录…</p>
-        </div>
-      ) : state.status === "error" ? (
-        <div className="conversation-muted-card">
-          导入记录暂时不可用。
-          <button className="conversation-history-inline-action" type="button" onClick={() => void load()}>
-            重试
-          </button>
-        </div>
-      ) : state.items.length === 0 ? (
-        <div className="conversation-muted-card">还没有保存过 Conversation import source。</div>
-      ) : (
-        <div className="conversation-import-history-list">
-          {state.items.map((source) => {
-            const latest = source.latestRun;
-            const expanded = detail?.sourceId === source.sourceId;
-            return (
-              <article className="conversation-import-source-card" key={source.sourceId}>
-                <div className="conversation-import-source-main">
-                  <div className="conversation-import-source-topline">
-                    <span className={`conversation-provider conversation-provider--${source.provider}`}>
-                      {source.provider === "chatgpt" ? "ChatGPT" : "Claude"}
-                    </span>
-                    <time>{dateTime(source.receivedAt)}</time>
-                  </div>
-                  <h3>{source.filename}</h3>
-                  <p>
-                    {bytes(source.rawBytes)} · {source.runCount} 次 Preview/Execute
-                    {source.supersededRunCount ? ` · ${source.supersededRunCount} 次被替代` : ""}
-                  </p>
-                  {latest ? (
-                    <small>
-                      最近：{statusLabel(latest.status)} ·
-                      {" "}{latest.executionMode === "reapply" ? "显式 reapply" : "标准导入"} ·
-                      {" "}{dateTime(latest.completedAt ?? latest.createdAt)}
-                    </small>
-                  ) : null}
-                </div>
+      <section className="memory-months" aria-label="Sources 列表">
+        <section className="memory-month-section">
+          <div
+            className="conversation-import-history-heading"
+            style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}
+          >
+            <h2 className="memory-month-label">原始导入记录</h2>
+            {state.status === "ready" ? (
+              <span
+                className="conversation-import-history-total"
+                style={{ textAlign: "right", color: "#8a8a8a", fontSize: 11, fontWeight: 400, lineHeight: 1.3 }}
+              >
+                共 {state.total.toLocaleString()} 份
+              </span>
+            ) : null}
+          </div>
 
-                <div className="conversation-import-source-actions">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={detailLoadingId === source.sourceId}
-                    onClick={() => void toggleDetail(source.sourceId)}
-                  >
-                    {detailLoadingId === source.sourceId
-                      ? "读取中…"
-                      : expanded ? "收起 runs" : "查看 runs"}
-                  </button>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
-                    title={source.rawSource.retained
-                      ? "只生成新的 Preview；仍需再次确认导入"
-                      : "原始 source 已不在 storage 中"}
-                    onClick={() => void reapply(source)}
-                  >
-                    {reapplyId === source.sourceId ? "生成中…" : "重新 Preview"}
-                  </button>
-                </div>
-
-                {expanded && detail ? (
-                  <div className="conversation-import-run-list">
-                    {detail.runs.map((run) => (
-                      <div className="conversation-import-run" key={run.id}>
-                        <strong>{statusLabel(run.status)}</strong>
-                        <span className="conversation-import-run-parser">
-                          {run.executionMode === "reapply" ? "显式 reapply" : "标准导入"}
-                          {" · "}{run.parserVersion}
+          {state.status === "loading" ? (
+            <div className="system-section conversation-import-history-loading">
+              <p className="system-state-copy" role="status" aria-live="polite">正在读取导入记录…</p>
+            </div>
+          ) : state.status === "error" ? (
+            <div className="conversation-muted-card">
+              导入记录暂时不可用。
+              <button className="conversation-history-inline-action" type="button" onClick={() => void load()}>
+                重试
+              </button>
+            </div>
+          ) : state.items.length === 0 ? (
+            <div className="conversation-muted-card">还没有保存过 Conversation import source。</div>
+          ) : (
+            <div className="memory-month-card conversation-import-history-list">
+              {state.items.map((source) => {
+                const latest = source.latestRun;
+                const expanded = detail?.sourceId === source.sourceId;
+                return (
+                  <article className="conversation-import-source-card" key={source.sourceId}>
+                    <div className="conversation-import-source-main">
+                      <div className="conversation-import-source-topline">
+                        <span className={`conversation-provider conversation-provider--${source.provider}`}>
+                          {source.provider === "chatgpt" ? "ChatGPT" : "Claude"}
                         </span>
-                        <small>
-                          {run.warningCount ? `${run.warningCount} warnings · ` : ""}
-                          run {run.id.slice(0, 8)}
-                          {run.supersededByImportRunId
-                            ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
-                            : ""}
-                        </small>
-                        {canConfirmImport(run) ? (
-                          <button
-                            className="conversation-history-inline-action"
-                            type="button"
-                            disabled={executingRunId !== null || reapplyId !== null}
-                            onClick={() => void confirmImport(source, run)}
-                          >
-                            {executingRunId === run.id ? "确认中…" : "确认导入"}
-                          </button>
-                        ) : null}
-                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
+                        <time>{dateTime(source.receivedAt)}</time>
                       </div>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      )}
+                      <h3>{source.filename}</h3>
+                      <p>
+                        {bytes(source.rawBytes)} · {source.runCount} 次 Preview/Execute
+                        {source.supersededRunCount ? ` · ${source.supersededRunCount} 次被替代` : ""}
+                      </p>
+                      {latest ? (
+                        <small>
+                          最近：{statusLabel(latest.status)} ·
+                          {" "}{latest.executionMode === "reapply" ? "显式 reapply" : "标准导入"} ·
+                          {" "}{dateTime(latest.completedAt ?? latest.createdAt)}
+                        </small>
+                      ) : null}
+                    </div>
+
+                    <div className="conversation-import-source-actions">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={detailLoadingId === source.sourceId}
+                        onClick={() => void toggleDetail(source.sourceId)}
+                      >
+                        {detailLoadingId === source.sourceId
+                          ? "读取中…"
+                          : expanded ? "收起 runs" : "查看 runs"}
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
+                        title={source.rawSource.retained
+                          ? "只生成新的 Preview；仍需再次确认导入"
+                          : "原始 source 已不在 storage 中"}
+                        onClick={() => void reapply(source)}
+                      >
+                        {reapplyId === source.sourceId ? "生成中…" : "重新 Preview"}
+                      </button>
+                    </div>
+
+                    {expanded && detail ? (
+                      <div className="conversation-import-run-list">
+                        {detail.runs.map((run) => (
+                          <div className="conversation-import-run" key={run.id}>
+                            <strong>{statusLabel(run.status)}</strong>
+                            <span className="conversation-import-run-parser">
+                              {run.executionMode === "reapply" ? "显式 reapply" : "标准导入"}
+                              {" · "}{run.parserVersion}
+                            </span>
+                            <small>
+                              {run.warningCount ? `${run.warningCount} warnings · ` : ""}
+                              run {run.id.slice(0, 8)}
+                              {run.supersededByImportRunId
+                                ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
+                                : ""}
+                            </small>
+                            {canConfirmImport(run) ? (
+                              <button
+                                className="conversation-history-inline-action"
+                                type="button"
+                                disabled={executingRunId !== null || reapplyId !== null}
+                                onClick={() => void confirmImport(source, run)}
+                              >
+                                {executingRunId === run.id ? "确认中…" : "确认导入"}
+                              </button>
+                            ) : null}
+                            <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </section>
     </section>
   );
 }
