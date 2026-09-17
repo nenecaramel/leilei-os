@@ -408,10 +408,10 @@ function ConversationListView({
                           key={item.id}
                           aria-label={item.title?.trim() || "Untitled conversation"}
                         >
-                          <span className="memory-row-title conversation-card-title">
+                          <span className="memory-row-title">
                             {item.title?.trim() || "Untitled conversation"}
                           </span>
-                          <div className="conversation-card-meta">
+                          <span className="memory-row-meta">
                             <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
                             <span>
                               {providerLabel(item.provider)}
@@ -419,7 +419,7 @@ function ConversationListView({
                               {item.totalNodeCount > item.messageCount ? ` · ${item.totalNodeCount.toLocaleString()} nodes` : ""}
                               {item.defaultModel ? ` · ${item.defaultModel}` : ""}
                             </span>
-                          </div>
+                          </span>
                         </Link>
                       ))}
                     </div>
