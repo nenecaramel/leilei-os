@@ -4,6 +4,7 @@ import type {
   ConversationArchiveMessage,
   ConversationArchiveReadRepository,
   ConversationArchiveListItem,
+  ConversationArchiveMessagePayload,
   ConversationArchiveSearchRecord,
   ConversationDailyStat,
 } from "./conversation-archive-read-repository.js";
@@ -13,6 +14,21 @@ export type ConversationArchiveSearchResult = Omit<
   "displayText"
 > & {
   snippet: string;
+};
+
+export type ConversationModelMessage = ConversationArchiveMessage & ConversationArchiveMessagePayload;
+
+export type ConversationModelView = {
+  conversation: ConversationArchiveDetail;
+  representation: "canonical_model_view";
+  view: "default" | "all";
+  pathBasis: "current_path" | "branch_inclusive";
+  items: ConversationModelMessage[];
+  total: number;
+  offset: number;
+  anchorIndex: number | null;
+  hasMore: boolean;
+  nextOffset: number | null;
 };
 
 export type ConversationMessageContext = {
@@ -342,6 +358,108 @@ export class ConversationArchiveReadService {
       total: ordinal.total,
       offset,
       anchorIndex: ordinal.index - offset,
+    };
+  }
+
+  async modelView(input: {
+    userId: string;
+    conversationId: unknown;
+    messageId?: unknown;
+    view?: unknown;
+    context?: unknown;
+    limit?: unknown;
+    offset?: unknown;
+  }): Promise<ConversationModelView> {
+    await this.requireActive(input.userId);
+    const conversationId = uuid(input.conversationId);
+    const detail = await this.repository.getConversation({
+      userId: input.userId,
+      conversationId,
+    });
+    if (!detail) {
+      throw new ConversationArchiveReadError(
+        "CONVERSATION_NOT_FOUND",
+        "Conversation was not found.",
+      );
+    }
+
+    const view = input.view === undefined || input.view === "" || input.view === "default"
+      ? "default"
+      : input.view === "all"
+        ? "all"
+        : null;
+    if (!view) {
+      throw new ConversationArchiveReadError(
+        "CONVERSATION_INVALID_REQUEST",
+        "Conversation message view is invalid.",
+      );
+    }
+
+    let page: { items: ConversationArchiveMessage[]; total: number };
+    let offset: number;
+    let anchorIndex: number | null = null;
+
+    if (input.messageId !== undefined && input.messageId !== null && input.messageId !== "") {
+      const messageId = uuid(input.messageId);
+      const context = boundedInt(input.context, 20, 0, 100);
+      const ordinal = await this.repository.findMessageOrdinal({
+        userId: input.userId,
+        conversationId,
+        provider: detail.provider,
+        view,
+        messageId,
+      });
+      if (!ordinal) {
+        throw new ConversationArchiveReadError(
+          "CONVERSATION_NOT_FOUND",
+          "Conversation message was not found.",
+        );
+      }
+      offset = Math.max(0, ordinal.index - context);
+      page = await this.repository.listMessages({
+        userId: input.userId,
+        conversationId,
+        provider: detail.provider,
+        view,
+        limit: context * 2 + 1,
+        offset,
+      });
+      anchorIndex = ordinal.index - offset;
+    } else {
+      offset = boundedInt(input.offset, 0, 0, 1_000_000);
+      page = await this.repository.listMessages({
+        userId: input.userId,
+        conversationId,
+        provider: detail.provider,
+        view,
+        limit: boundedInt(input.limit, 40, 1, 100),
+        offset,
+      });
+    }
+
+    const payloads = await this.repository.readMessagePayloads({
+      userId: input.userId,
+      messageIds: page.items.map((item) => item.id),
+    });
+    const items = page.items.map((item) => ({
+      ...item,
+      ...(payloads[item.id] ?? { contentBlocks: [], attachments: [] }),
+    }));
+    const consumed = offset + items.length;
+
+    return {
+      conversation: detail,
+      representation: "canonical_model_view",
+      view,
+      pathBasis: detail.provider === "chatgpt" && view === "default"
+        ? "current_path"
+        : "branch_inclusive",
+      items,
+      total: page.total,
+      offset,
+      anchorIndex,
+      hasMore: consumed < page.total,
+      nextOffset: consumed < page.total ? consumed : null,
     };
   }
 

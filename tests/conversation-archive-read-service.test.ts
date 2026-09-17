@@ -54,6 +54,22 @@ class FakeReadRepository implements ConversationArchiveReadRepository {
     return { items: [], total: 0 };
   }
 
+  async readMessagePayloads(input: Parameters<ConversationArchiveReadRepository["readMessagePayloads"]>[0]) {
+    return Object.fromEntries(input.messageIds.map((messageId) => [
+      messageId,
+      {
+        contentBlocks: [{
+          ordinal: 0,
+          kind: "text" as const,
+          rawType: "text",
+          text: "canonical block text",
+          payload: null,
+        }],
+        attachments: [],
+      },
+    ]));
+  }
+
   async searchMessages(input: Parameters<ConversationArchiveReadRepository["searchMessages"]>[0]): Promise<{ items: ConversationArchiveSearchRecord[]; total: number }> {
     this.lastSearchInput = input;
     return {
@@ -297,4 +313,68 @@ test("Conversation search validates the Favorites-only boolean filter", async ()
       error instanceof ConversationArchiveReadError
       && error.code === "CONVERSATION_INVALID_REQUEST",
   );
+});
+
+
+test("Conversation model view hydrates canonical blocks and keeps exact anchor metadata", async () => {
+  const repository = new FakeReadRepository();
+  const anchorMessageId = "22222222-2222-4222-8222-222222222222";
+  repository.ordinal = { index: 3, total: 10 };
+  repository.listMessages = async (input) => {
+    repository.lastMessagesInput = input;
+    return {
+      items: [{
+        id: anchorMessageId,
+        sourceNodeId: "node",
+        sourceMessageId: "source-message",
+        parentSourceNodeId: "parent",
+        role: "assistant",
+        rawRole: "assistant",
+        model: "gpt-5-6",
+        sourceCreatedAt: "2026-09-02T00:00:00.000Z",
+        sourceUpdatedAt: null,
+        isCurrentPath: true,
+        currentPathIndex: 3,
+        turnIndex: 1,
+        isPrimary: true,
+        displayText: "canonical block text",
+      }],
+      total: 10,
+    };
+  };
+  const service = new ConversationArchiveReadService(repository);
+
+  const view = await service.modelView({
+    userId: "user",
+    conversationId: CONVERSATION_ID,
+    messageId: anchorMessageId,
+    context: 2,
+  });
+
+  assert.equal(view.representation, "canonical_model_view");
+  assert.equal(view.pathBasis, "current_path");
+  assert.equal(view.anchorIndex, 2);
+  assert.equal(view.offset, 1);
+  assert.equal(view.items[0]?.contentBlocks[0]?.text, "canonical block text");
+  assert.equal(view.nextOffset, 2);
+});
+
+test("Claude canonical model view is explicitly branch-inclusive", async () => {
+  const repository = new FakeReadRepository();
+  repository.detailValue = {
+    ...repository.detailValue!,
+    provider: "claude",
+    defaultModel: null,
+    currentLeafSourceNodeId: null,
+  };
+  const service = new ConversationArchiveReadService(repository);
+
+  const view = await service.modelView({
+    userId: "user",
+    conversationId: CONVERSATION_ID,
+    limit: 10,
+  });
+
+  assert.equal(view.view, "default");
+  assert.equal(view.pathBasis, "branch_inclusive");
 });

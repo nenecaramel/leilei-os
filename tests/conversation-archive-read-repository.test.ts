@@ -63,3 +63,18 @@ test("Favorites-only Conversation search uses an existence filter without multip
   assert.match(searchSource, /messageId/);
   assert.doesNotMatch(searchSource, /innerJoin\(\s*conversationFavoriteMessages/);
 });
+
+
+test("canonical model payload hydration reads blocks and attachments only from current canonical message ids", () => {
+  const start = repositorySource.indexOf("async readMessagePayloads");
+  const end = repositorySource.indexOf("async searchMessages", start);
+  const source = repositorySource.slice(start, end);
+  assert.ok(start >= 0);
+  assert.match(source, /conversationContentBlocks/);
+  assert.match(source, /conversationAttachments/);
+  assert.match(source, /eq\(conversationContentBlocks\.userId, input\.userId\)/);
+  assert.match(source, /eq\(conversationAttachments\.userId, input\.userId\)/);
+  assert.match(source, /inArray\(conversationContentBlocks\.messageId, input\.messageIds\)/);
+  assert.match(source, /inArray\(conversationAttachments\.messageId, input\.messageIds\)/);
+  assert.doesNotMatch(source, /conversationImportSources|rawBlob|rawBytes/);
+});

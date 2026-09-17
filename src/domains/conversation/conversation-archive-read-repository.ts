@@ -1,12 +1,14 @@
 import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationAttachments,
+  conversationContentBlocks,
   conversationFavoriteMessages,
   conversationMessages,
   conversations,
   users,
 } from "../../database/schema.js";
-import type { ConversationProvider } from "./conversation-types.js";
+import type { ConversationContentKind, ConversationProvider } from "./conversation-types.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -43,6 +45,28 @@ export type ConversationArchiveMessage = {
   turnIndex: number | null;
   isPrimary: boolean;
   displayText: string;
+};
+
+export type ConversationArchiveContentBlock = {
+  ordinal: number;
+  kind: ConversationContentKind;
+  rawType: string;
+  text: string | null;
+  payload: Record<string, unknown> | null;
+};
+
+export type ConversationArchiveAttachment = {
+  ordinal: number;
+  sourceAttachmentId: string | null;
+  name: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  payload: Record<string, unknown>;
+};
+
+export type ConversationArchiveMessagePayload = {
+  contentBlocks: ConversationArchiveContentBlock[];
+  attachments: ConversationArchiveAttachment[];
 };
 
 export type ConversationArchiveSearchRecord = {
@@ -89,6 +113,10 @@ export interface ConversationArchiveReadRepository {
     limit: number;
     offset: number;
   }): Promise<{ items: ConversationArchiveMessage[]; total: number }>;
+  readMessagePayloads(input: {
+    userId: string;
+    messageIds: string[];
+  }): Promise<Record<string, ConversationArchiveMessagePayload>>;
   searchMessages(input: {
     userId: string;
     query: string;
@@ -370,6 +398,80 @@ implements ConversationArchiveReadRepository {
         sourceUpdatedAt: toIso(row.sourceUpdatedAt),
       })),
     };
+  }
+
+  async readMessagePayloads(input: {
+    userId: string;
+    messageIds: string[];
+  }): Promise<Record<string, ConversationArchiveMessagePayload>> {
+    if (input.messageIds.length === 0) return {};
+
+    const [blocks, attachments] = await Promise.all([
+      this.db
+        .select({
+          messageId: conversationContentBlocks.messageId,
+          ordinal: conversationContentBlocks.ordinal,
+          kind: conversationContentBlocks.kind,
+          rawType: conversationContentBlocks.rawType,
+          text: conversationContentBlocks.text,
+          payload: conversationContentBlocks.payload,
+        })
+        .from(conversationContentBlocks)
+        .where(and(
+          eq(conversationContentBlocks.userId, input.userId),
+          inArray(conversationContentBlocks.messageId, input.messageIds),
+        ))
+        .orderBy(
+          asc(conversationContentBlocks.messageId),
+          asc(conversationContentBlocks.ordinal),
+        ),
+      this.db
+        .select({
+          messageId: conversationAttachments.messageId,
+          ordinal: conversationAttachments.ordinal,
+          sourceAttachmentId: conversationAttachments.sourceAttachmentId,
+          name: conversationAttachments.name,
+          mimeType: conversationAttachments.mimeType,
+          sizeBytes: conversationAttachments.sizeBytes,
+          payload: conversationAttachments.payload,
+        })
+        .from(conversationAttachments)
+        .where(and(
+          eq(conversationAttachments.userId, input.userId),
+          inArray(conversationAttachments.messageId, input.messageIds),
+        ))
+        .orderBy(
+          asc(conversationAttachments.messageId),
+          asc(conversationAttachments.ordinal),
+        ),
+    ]);
+
+    const result: Record<string, ConversationArchiveMessagePayload> = {};
+    for (const messageId of input.messageIds) {
+      result[messageId] = { contentBlocks: [], attachments: [] };
+    }
+    for (const block of blocks) {
+      result[block.messageId] ??= { contentBlocks: [], attachments: [] };
+      result[block.messageId]!.contentBlocks.push({
+        ordinal: block.ordinal,
+        kind: block.kind as ConversationContentKind,
+        rawType: block.rawType,
+        text: block.text,
+        payload: block.payload,
+      });
+    }
+    for (const attachment of attachments) {
+      result[attachment.messageId] ??= { contentBlocks: [], attachments: [] };
+      result[attachment.messageId]!.attachments.push({
+        ordinal: attachment.ordinal,
+        sourceAttachmentId: attachment.sourceAttachmentId,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        payload: attachment.payload,
+      });
+    }
+    return result;
   }
 
   async searchMessages(input: {

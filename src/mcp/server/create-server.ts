@@ -85,6 +85,7 @@ import {
   type ToyCommandToolDependencies,
 } from "../tools/toy-command/register.js";
 import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
+import { ConversationArchiveAuthenticationError, registerConversationArchiveTools, type ConversationArchiveMcpToolDependencies } from "../tools/conversation-archive/register.js";
 import {
   registerSearchNotionTool,
   SearchNotionAuthenticationError,
@@ -368,6 +369,14 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
   getAuthenticatedUserId: () => { throw new GlobalSearchAuthenticationError(); },
 };
 
+const productionConversationArchiveDependencies: ConversationArchiveMcpToolDependencies = {
+  conversationArchiveReadService: {
+    search: (input) => missingDatabaseService(),
+    modelView: (input) => missingDatabaseService(),
+  },
+  getAuthenticatedUserId: () => { throw new ConversationArchiveAuthenticationError(); },
+};
+
 const productionUniverseService: SearchUniverseToolDependencies["globalSearchService"] &
   GetUniverseNodeToolDependencies["universeService"] & ListUniverseNodesToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
   CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] &
@@ -505,6 +514,7 @@ export type McpServerDependencies = {
   getTask?: GetTaskToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
   globalSearch?: GlobalSearchToolDependencies;
+  conversationArchiveTools?: ConversationArchiveMcpToolDependencies;
   todoTools?: TodoToolsDependencies;
   sharedPaperTools?: SharedPaperToolDependencies;
   notionTools?: NotionToolsDependencies;
@@ -713,6 +723,13 @@ export function createMcpServer(
     ...productionGlobalSearchDependencies,
     getAuthenticatedUserId: () => {
       if (!authenticatedUserId) throw new GlobalSearchAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerConversationArchiveTools(server, dependencies.conversationArchiveTools ?? {
+    ...productionConversationArchiveDependencies,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new ConversationArchiveAuthenticationError();
       return authenticatedUserId;
     },
   });

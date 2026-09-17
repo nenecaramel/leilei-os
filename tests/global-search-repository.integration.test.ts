@@ -462,7 +462,14 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
       assert.equal(found.results.length, 3);
       assert.deepEqual(new Set(found.results.map((result) => result.entity_id)), new Set([currentId, savedBranchId, claudeId]));
       assert.ok(found.results.every((result) => result.entity_type === "conversation"));
-      assert.ok(found.results.every((result) => result.detail_tool === null && result.detail_arguments === null));
+      assert.ok(found.results.every((result) => result.detail_tool === "read_conversation"));
+      assert.ok(found.results.every((result) =>
+        result.detail_arguments !== null
+        && "conversation_id" in result.detail_arguments
+        && result.detail_arguments.conversation_id === result.conversation_id
+        && result.detail_arguments.message_id === result.entity_id
+        && result.detail_arguments.view === result.conversation_view
+      ));
       assert.ok(found.results.every((result) => result.time_basis === "message_time"));
       assert.equal(found.results.find((result) => result.entity_id === currentId)?.conversation_view, "default");
       assert.equal(found.results.find((result) => result.entity_id === savedBranchId)?.conversation_view, "all");
