@@ -6,7 +6,6 @@ export type ConversationMonthGroup<T> = {
 
 type DatedItem<T> = {
   item: T;
-  value: string | null | undefined;
   time: number | null;
 };
 
@@ -28,7 +27,7 @@ export function groupConversationsByMonth<T>(
       const time = date && !Number.isNaN(date.getTime())
         ? date.getTime()
         : null;
-      return { item, value, time };
+      return { item, time };
     })
     .sort((left, right) => {
       if (left.time === null && right.time === null) return 0;
