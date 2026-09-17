@@ -1,17 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import {
-  DEFAULT_GLOBAL_SEARCH_MODULES,
-  GlobalSearchError,
-  GLOBAL_SEARCH_MODULES,
-  type GlobalSearchInput,
-  type GlobalSearchResult,
-} from "../../../domains/global-search/global-search-service.js";
+import { GlobalSearchError, type GlobalSearchInput, type GlobalSearchResult } from "../../../domains/global-search/global-search-service.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { compactMcpText, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 
 const MAX_QUERY_CODE_POINTS = 200;
-const MAX_CURSOR_ENCODED_LENGTH = 1_024;
+const MAX_CURSOR_ENCODED_LENGTH = 2_800;
+const DEFAULT_GLOBAL_SEARCH_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+const GLOBAL_SEARCH_MODULES = [...DEFAULT_GLOBAL_SEARCH_MODULES, "conversation"] as const;
 
 const globalSearchModuleSchema = z.enum(GLOBAL_SEARCH_MODULES);
 
@@ -34,7 +30,7 @@ const inputSchema = z.object({
 
 const globalSearchDetailArgumentsSchema = z.union([
   z.object({ id: z.string().uuid(), scope: z.enum(["active", "archived"]) }).strict(),
-  z.object({ id: z.string().min(1) }).strict(),
+  z.object({ id: z.string().min(1).max(256) }).strict(),
   z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict(),
   z.object({
     conversation_id: z.string().uuid(),
@@ -45,20 +41,20 @@ const globalSearchDetailArgumentsSchema = z.union([
 
 const globalSearchResultSchema = z.object({
   entity_type: globalSearchModuleSchema,
-  entity_id: z.string().min(1),
+  entity_id: z.string().min(1).max(256),
   stable_name: z.string(),
-  snippet: z.string(),
-  matched_field: z.string(),
-  match_reason: z.enum(["exact_stable_name", "exact_phrase", "field_match"]),
+  snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
+  matched_field: z.enum(["key", "title", "content", "description", "tags", "mood", "text"]),
+  match_reason: z.enum(["exact_stable_name", "exact_phrase", "stable_name_prefix", "field_match"]),
   lifecycle_status: z.enum(["active", "archived"]),
   business_time: z.string().datetime(),
-  time_basis: z.string(),
+  time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at", "todo_date", "message_time"]),
   updated_at: z.string().datetime(),
-  author: z.enum(["L", "G", "C"]).nullable().optional(),
+  author: z.enum(["L", "G", "C"]).nullable(),
   detail_tool: z.enum(["get_memory", "get_diary", "get_task", "read_todo_day", "get_universe_node", "get_shared_paper", "read_conversation"]).nullable(),
   detail_arguments: globalSearchDetailArgumentsSchema.nullable(),
-  conversation_id: z.string().uuid().optional(),
-  conversation_view: z.enum(["default", "all"]).optional(),
+  conversation_id: z.string().uuid().nullable().optional(),
+  conversation_view: z.enum(["default", "all"]).nullable().optional(),
 }).strict().superRefine((result, context) => {
   if (result.entity_type === "conversation") {
     if (result.detail_tool !== "read_conversation") {
@@ -79,7 +75,7 @@ const globalSearchResultSchema = z.object({
     return;
   }
 
-  if (result.conversation_id !== undefined || result.conversation_view !== undefined) {
+  if (result.conversation_id != null || result.conversation_view != null) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["conversation_id"], message: "Only Conversation results may include Conversation deep-link metadata." });
   }
 
@@ -101,7 +97,9 @@ const globalSearchResultSchema = z.object({
     if (result.detail_tool !== "get_universe_node") {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Universe results must use get_universe_node." });
     }
-    if ("id" in result.detail_arguments && !("scope" in result.detail_arguments)) return;
+    if ("id" in result.detail_arguments && !("scope" in result.detail_arguments)
+      && result.detail_arguments.id.trim().length > 0
+      && result.detail_arguments.id.length <= 256) return;
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Universe detail_arguments must contain only an id." });
     return;
   }
