@@ -228,7 +228,7 @@
 
 /* Source runs have one equal-height, vertically centered row. */
 .conversation-import-run-list { display: block; }
-.conversation-import-run { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, auto) minmax(0, auto); min-height: 42px; align-items: center; gap: 8px 12px; padding: 7px 0; border: 0; border-radius: 0; background: transparent; }
+.conversation-import-run { display: flex; min-height: 42px; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 7px 0; border: 0; border-radius: 0; background: transparent; }
 .conversation-import-run + .conversation-import-run { border-top: 1px solid rgba(0, 0, 0, .07); }
 .conversation-import-run > strong,
 .conversation-import-run > span,

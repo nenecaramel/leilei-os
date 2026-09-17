@@ -172,7 +172,9 @@ export function ConversationImportHistoryPanel({
       {message ? <p className="conversation-inline-status" role="status">{message}</p> : null}
 
       {state.status === "loading" ? (
-        <p className="system-state-copy" role="status" aria-live="polite">正在读取导入记录…</p>
+        <div className="system-section conversation-import-history-loading">
+          <p className="system-state-copy" role="status" aria-live="polite">正在读取导入记录…</p>
+        </div>
       ) : state.status === "error" ? (
         <div className="conversation-muted-card">
           导入记录暂时不可用。
@@ -248,14 +250,6 @@ export function ConversationImportHistoryPanel({
                           {run.executionMode === "reapply" ? "显式 reapply" : "标准导入"}
                           {" · "}{run.parserVersion}
                         </span>
-                        <small>
-                          {run.warningCount ? `${run.warningCount} warnings · ` : ""}
-                          run {run.id.slice(0, 8)}
-                          {run.supersededByImportRunId
-                            ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
-                            : ""}
-                        </small>
-                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
                         {canConfirmImport(run) ? (
                           <button
                             className="conversation-history-inline-action"
@@ -266,6 +260,14 @@ export function ConversationImportHistoryPanel({
                             {executingRunId === run.id ? "确认中…" : "确认导入"}
                           </button>
                         ) : null}
+                        <small>
+                          {run.warningCount ? `${run.warningCount} warnings · ` : ""}
+                          run {run.id.slice(0, 8)}
+                          {run.supersededByImportRunId
+                            ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
+                            : ""}
+                        </small>
+                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
                       </div>
                     ))}
                   </div>
