@@ -1,28 +1,40 @@
 /* Targeted Conversation follow-up geometry; loaded with the Conversation bundle. */
 
-/* Lift the provider filter clear of the first month card while keeping it on the month-label row. */
+/* Keep the provider filter on the month-label row, but make it shorter so it clears the card. */
 .conversation-page .conversation-list-heading {
   top: -8px;
 }
-
-/* Sources should start on the same vertical rhythm as Conversations/Favorites. */
-.conversation-page .conversation-import-history {
-  margin-top: 0;
+.conversation-page .conversation-provider-filter {
+  padding-block: 1px;
+}
+.conversation-page .conversation-provider-filter button {
+  min-height: 24px;
+  padding: 2px 9px;
 }
 
-/* Search/Favorites deep-link target: visible but neutral, not warning-yellow. */
+/* Lift Sources title/count and the card together to match the other two surfaces. */
+.conversation-page .conversation-import-history {
+  margin-top: -12px;
+}
+
+/* Deep-link target keeps only a slim neutral left marker. */
 .conversation-detail-page .conversation-message--anchor {
   border-color: transparent;
-  background: #f5f5f5;
+  background: transparent;
   box-shadow: inset 3px 0 0 #bdbdbd;
 }
 
-/* Every import run is one identical-height row. Action is immediately left of the far-right date. */
+/* Expanded run details consume the region evenly; each row is vertically centered. */
+.conversation-page .conversation-import-run-list {
+  padding-top: 0;
+  padding-bottom: 0;
+}
 .conversation-page .conversation-import-run {
   box-sizing: border-box;
   grid-template-columns: minmax(0, auto) minmax(0, auto) minmax(0, 1fr) minmax(0, auto) minmax(0, auto);
   height: 42px;
   min-height: 42px;
+  align-items: center;
   padding: 0;
 }
 .conversation-page .conversation-import-run > strong { grid-column: 1; }
@@ -37,6 +49,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.conversation-page .conversation-import-run > strong,
+.conversation-page .conversation-import-run > .conversation-import-run-parser,
+.conversation-page .conversation-import-run > small,
+.conversation-page .conversation-import-run > .conversation-history-inline-action,
+.conversation-page .conversation-import-run > time {
+  align-self: center;
+  line-height: 1.2;
 }
 .conversation-page .conversation-import-run > .conversation-history-inline-action {
   grid-column: 4;
