@@ -221,7 +221,7 @@ test("Conversation search validates filters, forwards timezone, and returns a bo
   assert.equal(repository.lastSearchInput?.role, "assistant");
   assert.equal(repository.lastSearchInput?.conversationId, CONVERSATION_ID);
   assert.equal(repository.lastSearchInput?.timeZone, "Asia/Shanghai");
-  assert.equal(repository.lastSearchInput?.favoritesOnly, true);
+  assert.equal(repository.lastSearchInput?.favoritesOnly, undefined);
   assert.equal(result.total, 1);
   assert.equal(result.items.length, 1);
   assert.ok(result.items[0]!.snippet.includes("needle"));

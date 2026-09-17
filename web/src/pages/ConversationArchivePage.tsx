@@ -10,7 +10,6 @@ import { ConversationImportHistoryPanel } from "./ConversationImportHistoryPanel
 import { ConversationFavoritesPanel } from "./ConversationFavoritesPanel";
 import {
   createConversationArchiveApi,
-  type ConversationDailyStat,
   type ConversationDetail,
   type ConversationFavoriteListItem,
   type ConversationImportBatchPreview,
@@ -19,17 +18,11 @@ import {
   type ConversationMessage,
   type ConversationProvider,
 } from "./conversation-archive-api";
-import "./conversation-archive.css";
-import "./conversation-native-ui.css";
+import "./conversations.css";
 
 type ListState =
   | { status: "loading" }
   | { status: "ready"; items: ConversationListItem[]; total: number }
-  | { status: "error" };
-
-type StatsState =
-  | { status: "loading" }
-  | { status: "ready"; items: ConversationDailyStat[] }
   | { status: "error" };
 
 type DetailState =
@@ -71,23 +64,6 @@ function formatRowDate(value: string | null): string {
   }).format(date);
 }
 
-function browserTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-}
-
-function dateInZone(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
-  const month = parts.find((part) => part.type === "month")?.value ?? "01";
-  const day = parts.find((part) => part.type === "day")?.value ?? "01";
-  return `${year}-${month}-${day}`;
-}
-
 function providerLabel(provider: ConversationProvider): string {
   return provider === "chatgpt" ? "ChatGPT" : "Claude";
 }
@@ -121,7 +97,6 @@ function ConversationListView({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [list, setList] = useState<ListState>({ status: "loading" });
-  const [stats, setStats] = useState<StatsState>({ status: "loading" });
   const [preview, setPreview] = useState<ConversationImportPreview | null>(null);
   const [batchPreview, setBatchPreview] = useState<ConversationImportBatchPreview | null>(null);
   const [importing, setImporting] = useState(false);
@@ -139,24 +114,7 @@ function ConversationListView({
     }
   }, [client, provider, refreshKey]);
 
-  const loadStats = useCallback(async () => {
-    setStats({ status: "loading" });
-    const timeZone = browserTimeZone();
-    const now = new Date();
-    const from = dateInZone(new Date(now.getTime() - 29 * 86_400_000), timeZone);
-    const to = dateInZone(now, timeZone);
-    try {
-      setStats({
-        status: "ready",
-        items: await client.dailyStats({ from, to, timeZone }),
-      });
-    } catch {
-      setStats({ status: "error" });
-    }
-  }, [client, refreshKey]);
-
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { void loadStats(); }, [loadStats]);
 
   const onFiles = async (fileList: FileList | null) => {
     const files = fileList ? Array.from(fileList) : [];
@@ -244,7 +202,7 @@ function ConversationListView({
   };
 
   return (
-    <div className="page conversation-page">
+    <div className="page memory-page conversation-page">
       <input
         ref={fileInputRef}
         className="conversation-file-input"
@@ -255,7 +213,7 @@ function ConversationListView({
       />
 
       <header
-        className="memory-page-header conversation-page-header"
+        className="memory-page-header"
         onKeyDown={(event) => {
           if (event.key === "Escape") setSearchOpen(false);
         }}
@@ -267,7 +225,7 @@ function ConversationListView({
           </div>
         </div>
 
-        <div className="memory-page-tools conversation-page-tools">
+        <div className="memory-page-tools">
           <ModuleSearchButton
             label="搜索对话"
             expanded={searchOpen}
@@ -281,7 +239,6 @@ function ConversationListView({
             placeholder="搜索你或 AI 说过的话"
             value={searchQuery}
             onChange={setSearchQuery}
-            className="conversation-page-search"
           />
         ) : null}
       </header>
@@ -399,107 +356,52 @@ function ConversationListView({
       ) : null}
 
       {surface === "archive" ? (
-        <>
-          <section className="conversation-section conversation-stats-section">
-            <div className="conversation-section-heading">
-              <div>
-                <p className="eyebrow">Recent 30 days</p>
-                <h2>最近 30 天</h2>
-              </div>
-              <span>{browserTimeZone()}</span>
-            </div>
-            {stats.status === "loading" ? (
-              <p className="system-state-copy" role="status" aria-live="polite">正在读取日统计…</p>
-            ) : stats.status === "error" ? (
-              <div className="conversation-muted-card">日统计暂时不可用。</div>
-            ) : stats.items.length === 0 ? (
-              <div className="conversation-muted-card">导入后，这里会按日期显示消息数和轮数。</div>
-            ) : (
-              <DailyStats items={stats.items} />
-            )}
-          </section>
-
-          <section className="conversation-section conversation-archive-section">
-            <div className="conversation-section-heading conversation-list-heading">
-              <div>
-                <p className="eyebrow">Archive</p>
-                <h2>对话窗口</h2>
-              </div>
-              <div className="conversation-provider-filter" aria-label="Provider filter">
-                <button className={!provider ? "active" : ""} type="button" onClick={() => setProvider(undefined)}>全部</button>
-                <button className={provider === "chatgpt" ? "active" : ""} type="button" onClick={() => setProvider("chatgpt")}>ChatGPT</button>
-                <button className={provider === "claude" ? "active" : ""} type="button" onClick={() => setProvider("claude")}>Claude</button>
-              </div>
-            </div>
-
-            {list.status === "loading" ? (
-              <p className="system-state-copy" role="status" aria-live="polite">正在读取 Conversation Archive…</p>
-            ) : list.status === "error" ? (
-              <PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => setRefreshKey((value) => value + 1)} />
-            ) : list.items.length === 0 ? (
-              <PageState
-                state="empty"
-                message="还没有导入对话。"
-                description="可以在 Sources 里导入 ChatGPT conversations.json 或 Claude conversations ZIP。"
-              />
-            ) : (
-              <>
-                <div className="conversation-list">
-                  {list.items.map((item) => (
-                    <Link className="conversation-card" to={`/conversations/${item.id}`} key={item.id}>
-                      <h3>{item.title?.trim() || "Untitled conversation"}</h3>
-                      <div className="conversation-card-meta">
-                        <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
-                        <span>
-                          {providerLabel(item.provider)} · {item.messageCount.toLocaleString()} 条 ·
-                          {" "}{item.turnCount.toLocaleString()} 轮
-                          {item.totalNodeCount > item.messageCount ? ` · ${item.totalNodeCount.toLocaleString()} nodes` : ""}
-                          {item.defaultModel ? ` · ${item.defaultModel}` : ""}
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-                <p className="conversation-list-total">共 {list.total.toLocaleString()} 个窗口</p>
-              </>
-            )}
-          </section>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function DailyStats({ items }: { items: ConversationDailyStat[] }) {
-  const grouped = new Map<string, ConversationDailyStat[]>();
-  for (const item of items) {
-    grouped.set(item.date, [...(grouped.get(item.date) ?? []), item]);
-  }
-  const dates = [...grouped.keys()].sort((left, right) => right.localeCompare(left));
-
-  return (
-    <div className="conversation-day-grid">
-      {dates.map((date) => {
-        const rows = grouped.get(date) ?? [];
-        const messages = rows.reduce((sum, row) => sum + row.messages, 0);
-        const turns = rows.reduce((sum, row) => sum + row.turns, 0);
-        const windows = rows.reduce((sum, row) => sum + row.conversations, 0);
-        return (
-          <article className="conversation-day-card" key={date}>
-            <time>{date}</time>
-            <strong>{messages.toLocaleString()} 条</strong>
-            <span>{turns.toLocaleString()} 轮 · {windows.toLocaleString()} 个窗口</span>
+        <section className="conversation-section conversation-archive-section">
+          <div className="conversation-section-heading conversation-list-heading">
             <div>
-              {rows.map((row) => (
-                <small key={row.provider}>
-                  {providerLabel(row.provider)} {row.messages} 条 / {row.turns} 轮
-                  {row.pathBasis === "branch_inclusive" ? " · 含分支" : ""}
-                </small>
-              ))}
+              <p className="eyebrow">Archive</p>
+              <h2>对话窗口</h2>
             </div>
-          </article>
-        );
-      })}
+            <div className="conversation-provider-filter" aria-label="Provider filter">
+              <button className={!provider ? "active" : ""} type="button" onClick={() => setProvider(undefined)}>全部</button>
+              <button className={provider === "chatgpt" ? "active" : ""} type="button" onClick={() => setProvider("chatgpt")}>ChatGPT</button>
+              <button className={provider === "claude" ? "active" : ""} type="button" onClick={() => setProvider("claude")}>Claude</button>
+            </div>
+          </div>
+
+          {list.status === "loading" ? (
+            <p className="system-state-copy" role="status" aria-live="polite">正在读取 Conversation Archive…</p>
+          ) : list.status === "error" ? (
+            <PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => setRefreshKey((value) => value + 1)} />
+          ) : list.items.length === 0 ? (
+            <PageState
+              state="empty"
+              message="还没有导入对话。"
+              description="可以在 Sources 里导入 ChatGPT conversations.json 或 Claude conversations ZIP。"
+            />
+          ) : (
+            <>
+              <div className="conversation-list">
+                {list.items.map((item) => (
+                  <Link className="conversation-card" to={`/conversations/${item.id}`} key={item.id}>
+                    <h3>{item.title?.trim() || "Untitled conversation"}</h3>
+                    <div className="conversation-card-meta">
+                      <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
+                      <span>
+                        {providerLabel(item.provider)} · {item.messageCount.toLocaleString()} 条 ·
+                        {" "}{item.turnCount.toLocaleString()} 轮
+                        {item.totalNodeCount > item.messageCount ? ` · ${item.totalNodeCount.toLocaleString()} nodes` : ""}
+                        {item.defaultModel ? ` · ${item.defaultModel}` : ""}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+              <p className="conversation-list-total">共 {list.total.toLocaleString()} 个窗口</p>
+            </>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -841,14 +743,14 @@ function ConversationDetailView({
 
   if (state.status === "loading") {
     return (
-      <div className="page conversation-page conversation-detail-page conversation-detail-state">
+      <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
         <PageState state="loading" message="正在读取对话…" />
       </div>
     );
   }
   if (state.status === "error") {
     return (
-      <div className="page conversation-page conversation-detail-page conversation-detail-state">
+      <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
         <PageState state="error" message="这段对话暂时无法读取。" onRetry={() => void load()} />
       </div>
     );
@@ -856,7 +758,7 @@ function ConversationDetailView({
 
   const { detail } = state;
   return (
-    <div className="page conversation-page conversation-detail-page">
+    <div className="page memory-page conversation-page conversation-detail-page">
       <div className="conversation-detail-back">
         <Link to="/conversations">← 返回 Conversations</Link>
       </div>

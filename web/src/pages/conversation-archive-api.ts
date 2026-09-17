@@ -53,16 +53,6 @@ export type ConversationMessageContext = {
   anchorIndex: number;
 };
 
-export type ConversationDailyStat = {
-  date: string;
-  provider: ConversationProvider;
-  conversations: number;
-  messages: number;
-  userMessages: number;
-  assistantMessages: number;
-  turns: number;
-  pathBasis: "current_path" | "branch_inclusive";
-};
 export type MergeCounts = {
   create: number;
   update: number;
@@ -311,22 +301,6 @@ export function createConversationArchiveApi(api: WebApiClient) {
       const suffix = params.size ? `?${params}` : "";
       const result = await api.request<Envelope<{ items: ConversationMessage[]; total: number }>>(
         `/conversations/${encodeURIComponent(input.conversationId)}/messages${suffix}`,
-      );
-      return result.data;
-    },
-
-    async dailyStats(input: {
-      from: string;
-      to: string;
-      timeZone: string;
-    }): Promise<ConversationDailyStat[]> {
-      const params = new URLSearchParams({
-        from: input.from,
-        to: input.to,
-        time_zone: input.timeZone,
-      });
-      const result = await api.request<Envelope<ConversationDailyStat[]>>(
-        `/conversations/stats/daily?${params}`,
       );
       return result.data;
     },

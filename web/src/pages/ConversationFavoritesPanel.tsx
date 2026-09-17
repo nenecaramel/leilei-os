@@ -124,13 +124,6 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
             return (
               <article className="conversation-favorite-card conversation-favorite-card--quote" key={item.id}>
                 <div className="conversation-favorite-main">
-                  <div className="conversation-favorite-topline">
-                    <span className={`conversation-provider conversation-provider--${item.provider}`}>
-                      {item.provider === "chatgpt" ? "ChatGPT" : "Claude"}
-                    </span>
-                    <span className="conversation-favorite-kind">原消息</span>
-                  </div>
-
                   <p className="conversation-favorite-original">{favoriteExcerpt(detail)}</p>
 
                   <div className="conversation-favorite-footer">
