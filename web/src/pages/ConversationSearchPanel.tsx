@@ -171,15 +171,15 @@ export function ConversationSearchPanel({
             {state.items.map((result) => (
               <Link className="conversation-search-result" to={resultLocation(result)} key={result.messageId}>
                 <div className="conversation-search-result-meta">
+                  <span>{providerLabel(result.provider)}</span>
                   <strong>{result.role === "user" ? "You" : providerLabel(result.provider)}</strong>
                   <span>{result.conversationTitle?.trim() || "Untitled conversation"}</span>
                   <time>{formatDateTime(result.sourceCreatedAt)}</time>
                 </div>
                 <p>{result.snippet}</p>
-                <small>
-                  {providerLabel(result.provider)}
-                  {result.provider === "chatgpt" && !result.isCurrentPath ? " · 保存分支" : ""}
-                </small>
+                {result.provider === "chatgpt" && !result.isCurrentPath ? (
+                  <small>保存分支中的消息</small>
+                ) : null}
               </Link>
             ))}
           </div>
