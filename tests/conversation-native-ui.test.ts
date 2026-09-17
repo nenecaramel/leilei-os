@@ -80,12 +80,15 @@ test("Conversation surfaces keep shared tab, provider, destructive, and loading 
   assert.match(batchPreview, /className="secondary-button"/);
 });
 
-test("Conversation native UI aligns with accepted LeileiOS white grouped-list language", () => {
-  assert.match(css, /body:has\(\.conversation-page\)/);
-  assert.match(css, /background:\s*#ffffff/);
-  assert.match(css, /width:\s*min\(860px,/);
+test("Conversation pages reuse shared page geometry without route-level shell overrides", () => {
+  assert.match(page, /className="page memory-page conversation-page"/);
+  assert.match(page, /className="page memory-page conversation-page conversation-detail-page/);
+  assert.doesNotMatch(css, /html:has\(\.conversation-page\)|body:has\(\.conversation-page\)|#root:has\(\.conversation-page\)|\.app-shell:has\(\.conversation-page\)|\.main-content:has\(\.conversation-page\)/);
+  assert.doesNotMatch(css, /\.conversation-page\s*\{[^}]*\b(?:width|min-height|margin|padding|font-family|color|background)\s*:/s);
+  assert.doesNotMatch(css, /\.conversation-detail-page\s*\{[^}]*\bwidth\s*:/s);
+  assert.doesNotMatch(css, /font-family\s*:/);
+  assert.doesNotMatch(css, /@media\s*\(max-width/);
   assert.match(css, /border-radius:\s*14px/);
-  assert.match(css, /BlinkMacSystemFont/);
   assert.match(css, /conversation-list,/);
   assert.match(css, /conversation-message-list/);
 });
@@ -116,17 +119,14 @@ test("desktop navigation owns its typography so route-level fonts cannot shift t
 });
 
 test("Conversation list reuses the native module header and search chrome", () => {
-  assert.match(page, /className="memory-page-header conversation-page-header"/);
+  assert.match(page, /className="memory-page-header"/);
   assert.match(page, /className="memory-page-title">Conversations/);
   assert.match(page, /className="memory-page-count"/);
   assert.match(page, /<ModuleSearchButton/);
   assert.match(page, /<ModuleSearchField/);
-  assert.match(css, /conversation-page-header \.memory-page-title/);
-  assert.match(css, /font-size:\s*18px/);
-  assert.match(css, /conversation-page-header \.memory-page-count/);
-  assert.match(css, /font-size:\s*12px/);
-  assert.match(css, /width:\s*44px/);
-  assert.match(css, /min-height:\s*42px/);
+  assert.doesNotMatch(css, /conversation-page-header/);
+  assert.doesNotMatch(css, /conversation-page-tools/);
+  assert.doesNotMatch(css, /conversation-page-search/);
 });
 
 test("Conversation rows use the approved Memory inset-card geometry", () => {

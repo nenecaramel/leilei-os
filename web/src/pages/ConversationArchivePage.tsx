@@ -202,7 +202,7 @@ function ConversationListView({
   };
 
   return (
-    <div className="page conversation-page">
+    <div className="page memory-page conversation-page">
       <input
         ref={fileInputRef}
         className="conversation-file-input"
@@ -213,7 +213,7 @@ function ConversationListView({
       />
 
       <header
-        className="memory-page-header conversation-page-header"
+        className="memory-page-header"
         onKeyDown={(event) => {
           if (event.key === "Escape") setSearchOpen(false);
         }}
@@ -225,7 +225,7 @@ function ConversationListView({
           </div>
         </div>
 
-        <div className="memory-page-tools conversation-page-tools">
+        <div className="memory-page-tools">
           <ModuleSearchButton
             label="搜索对话"
             expanded={searchOpen}
@@ -239,7 +239,6 @@ function ConversationListView({
             placeholder="搜索你或 AI 说过的话"
             value={searchQuery}
             onChange={setSearchQuery}
-            className="conversation-page-search"
           />
         ) : null}
       </header>
@@ -744,14 +743,14 @@ function ConversationDetailView({
 
   if (state.status === "loading") {
     return (
-      <div className="page conversation-page conversation-detail-page conversation-detail-state">
+      <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
         <PageState state="loading" message="正在读取对话…" />
       </div>
     );
   }
   if (state.status === "error") {
     return (
-      <div className="page conversation-page conversation-detail-page conversation-detail-state">
+      <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
         <PageState state="error" message="这段对话暂时无法读取。" onRetry={() => void load()} />
       </div>
     );
@@ -759,7 +758,7 @@ function ConversationDetailView({
 
   const { detail } = state;
   return (
-    <div className="page conversation-page conversation-detail-page">
+    <div className="page memory-page conversation-page conversation-detail-page">
       <div className="conversation-detail-back">
         <Link to="/conversations">← 返回 Conversations</Link>
       </div>
