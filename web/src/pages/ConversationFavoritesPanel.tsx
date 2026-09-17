@@ -114,6 +114,10 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
 
   return (
     <section className="conversation-section conversation-favorites">
+      <div className="conversation-section-heading conversation-list-heading">
+        {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 条</span> : null}
+      </div>
+
       {status ? <p className="conversation-inline-status" role="status">{status}</p> : null}
 
       {state.status === "loading" ? (
