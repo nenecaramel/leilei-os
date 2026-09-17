@@ -164,9 +164,7 @@ export function ConversationImportHistoryPanel({
   return (
     <section className="conversation-section conversation-import-history">
       <div className="conversation-section-heading">
-        <div>
-          <p className="memory-month-label">原始导入记录</p>
-        </div>
+        <p className="memory-month-label">原始导入记录</p>
         {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 份</span> : null}
       </div>
 
