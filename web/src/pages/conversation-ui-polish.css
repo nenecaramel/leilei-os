@@ -1,0 +1,208 @@
+/* Conversation UI polish — keep the accepted desktop hierarchy at every width. */
+
+/* The Conversation route must not restyle the app shell/sidebar typography. */
+body:has(.conversation-page) {
+  font-family: "DM Sans", system-ui, sans-serif !important;
+}
+
+.conversation-page-header .memory-page-title {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-weight: 600;
+}
+
+/* Active tabs must not change text metrics and make neighbors jump. */
+.conversation-surface-tabs button,
+.conversation-surface-tabs button.active {
+  font-weight: 500 !important;
+}
+
+/* Keep pending import confirmation compact and aligned below its timestamp. */
+.conversation-import-run {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.conversation-import-run > time {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.conversation-import-run > small {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.conversation-import-run > .conversation-history-inline-action {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
+  justify-self: end;
+  min-height: 0;
+  margin: 0;
+  padding: 1px 0;
+  border: 0;
+  border-radius: 0;
+  color: #626262;
+  background: transparent;
+  box-shadow: none;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.conversation-import-run > .conversation-history-inline-action:hover {
+  color: #171717;
+  background: transparent;
+}
+
+/* Favorites are original material, not editable metadata cards. */
+.conversation-favorite-card--quote {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.conversation-favorite-original {
+  margin: 8px 0 0 !important;
+  color: #242424 !important;
+  font-size: 13px !important;
+  line-height: 1.62 !important;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conversation-favorite-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  margin-top: 7px;
+  color: #929292;
+  font-size: 9px;
+}
+
+.conversation-favorite-source a {
+  color: #666666;
+  text-decoration: none;
+}
+
+.conversation-favorite-source a:hover {
+  color: #171717;
+}
+
+/* Detail loading/error should remain on the same white Conversation surface. */
+.conversation-detail-page.conversation-detail-state {
+  min-height: calc(100dvh - (44px + env(safe-area-inset-top, 0px)));
+  background: #ffffff;
+}
+
+/* Narrow screens keep the desktop composition; only geometry tightens. */
+@media (max-width: 760px) {
+  .conversation-day-card {
+    grid-template-columns: 92px minmax(0, 1fr) auto !important;
+    gap: 12px !important;
+  }
+
+  .conversation-day-card > span {
+    grid-column: auto !important;
+    justify-self: end !important;
+  }
+
+  .conversation-day-card > div {
+    grid-column: 2 / -1 !important;
+  }
+
+  .conversation-search-filters {
+    grid-template-columns: 0.8fr 0.8fr 1.4fr 1fr 1fr !important;
+    overflow-x: auto;
+    padding: 0 9px !important;
+  }
+
+  .conversation-search-filters > select,
+  .conversation-search-filters > label,
+  .conversation-search-filters > select:last-of-type,
+  .conversation-search-filters > :nth-child(odd),
+  .conversation-search-filters > :nth-last-child(-n + 1),
+  .conversation-search-filters > select:nth-child(3) {
+    grid-column: auto !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.07) !important;
+    border-bottom: 0 !important;
+  }
+
+  .conversation-favorite-card,
+  .conversation-favorite-card--quote,
+  .conversation-import-source-card {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .conversation-favorite-actions,
+  .conversation-import-source-actions {
+    width: auto !important;
+    justify-content: flex-end !important;
+  }
+
+  .conversation-favorite-detail,
+  .conversation-import-run-list {
+    grid-column: 1 / -1 !important;
+  }
+
+  .conversation-import-preview {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .conversation-import-actions {
+    width: auto !important;
+  }
+
+  .conversation-import-actions button {
+    flex: 0 0 auto !important;
+  }
+
+  .conversation-batch-file {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .conversation-detail-page .page-header {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .conversation-detail-actions {
+    width: auto !important;
+    justify-content: flex-end !important;
+  }
+
+  .conversation-message-meta {
+    flex-wrap: nowrap !important;
+  }
+
+  .conversation-message-meta time {
+    width: auto !important;
+    margin-left: auto !important;
+    order: initial !important;
+  }
+
+  .conversation-message-text {
+    font-size: 14px !important;
+    line-height: 1.75 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .conversation-page,
+  .conversation-detail-page {
+    width: calc(100% - 22px) !important;
+  }
+
+  .conversation-detail-actions {
+    gap: 4px;
+  }
+
+  .conversation-detail-page .page-header {
+    column-gap: 8px !important;
+  }
+
+  .conversation-favorite-card,
+  .conversation-favorite-card--quote,
+  .conversation-import-source-card {
+    gap: 8px 10px;
+  }
+}
