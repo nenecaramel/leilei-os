@@ -6,6 +6,7 @@ import type {
   ConversationSearchResult,
   createConversationArchiveApi,
 } from "./conversation-archive-api";
+import "./conversation-search-controls.css";
 
 type SearchState =
   | { status: "idle" }
@@ -125,7 +126,6 @@ export function ConversationSearchPanel({
         {activeFilterCount ? (
           <button className="conversation-search-clear" type="button" onClick={clearFilters}>清除</button>
         ) : null}
-        <span>搜正文，不只搜标题</span>
       </div>
 
       {filtersOpen ? (
