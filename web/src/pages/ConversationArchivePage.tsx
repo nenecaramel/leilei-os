@@ -134,7 +134,7 @@ function ConversationListView({
 
   const conversationGroups = useMemo(
     () => list.status === "ready"
-      ? groupConversationsByMonth(list.items, (item) => item.sourceUpdatedAt ?? item.sourceCreatedAt)
+      ? groupConversationsByMonth(list.items, (item) => item.sourceCreatedAt ?? item.sourceUpdatedAt)
       : [],
     [list],
   );
@@ -412,7 +412,7 @@ function ConversationListView({
                             {item.title?.trim() || "Untitled conversation"}
                           </span>
                           <span className="memory-row-meta">
-                            <span>{formatRowDate(item.sourceUpdatedAt ?? item.sourceCreatedAt)}</span>
+                            <span>{formatRowDate(item.sourceCreatedAt ?? item.sourceUpdatedAt)}</span>
                             <span>
                               {providerLabel(item.provider)}
                               {` · ${item.messageCount.toLocaleString()} 条 · ${item.turnCount.toLocaleString()} 轮`}

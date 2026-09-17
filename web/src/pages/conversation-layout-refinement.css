@@ -12,13 +12,6 @@
   padding: 2px 9px;
 }
 
-/* Sources use the same title-to-card rhythm as Conversations and Favorites. */
-.conversation-page .conversation-import-history .conversation-section-heading {
-  min-height: 0;
-  align-items: baseline;
-  margin: 0 0 6px;
-}
-
 /* Deep-link target keeps only a slim neutral left marker. */
 .conversation-detail-page .conversation-message--anchor {
   border-color: transparent;
