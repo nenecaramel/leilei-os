@@ -120,7 +120,9 @@ export function ConversationSearchPanel({
           aria-expanded={filtersOpen}
           onClick={() => setFiltersOpen((value) => !value)}
         >
-          筛选{activeFilterCount ? ` · ${activeFilterCount}` : ""}
+          {state.status === "ready"
+            ? `共 ${state.total.toLocaleString()} 条命中`
+            : `筛选${activeFilterCount ? ` · ${activeFilterCount}` : ""}`}
         </button>
         {activeFilterCount ? (
           <button className="conversation-search-clear" type="button" onClick={clearFilters}>清除</button>
@@ -165,28 +167,22 @@ export function ConversationSearchPanel({
       ) : state.status === "ready" && state.items.length === 0 ? (
         <div className="conversation-search-state">没有找到匹配的消息。</div>
       ) : state.status === "ready" ? (
-        <>
-          <div className="conversation-search-results">
-            {state.items.map((result) => (
-              <Link className="conversation-search-result" to={resultLocation(result)} key={result.messageId}>
-                <div className="conversation-search-result-meta">
-                  <span>{providerLabel(result.provider)}</span>
-                  <strong>{result.role === "user" ? "You" : providerLabel(result.provider)}</strong>
-                  <span>{result.conversationTitle?.trim() || "Untitled conversation"}</span>
-                  <time>{formatDateTime(result.sourceCreatedAt)}</time>
-                </div>
-                <p>{result.snippet}</p>
-                {result.provider === "chatgpt" && !result.isCurrentPath ? (
-                  <small>保存分支中的消息</small>
-                ) : null}
-              </Link>
-            ))}
-          </div>
-          <p className="conversation-list-total">
-            共 {state.total.toLocaleString()} 条命中
-            {state.total > state.items.length ? " · 当前显示前 " + state.items.length + " 条" : ""}
-          </p>
-        </>
+        <div className="conversation-search-results">
+          {state.items.map((result) => (
+            <Link className="conversation-search-result" to={resultLocation(result)} key={result.messageId}>
+              <div className="conversation-search-result-meta">
+                <span>{providerLabel(result.provider)}</span>
+                <strong>{result.role === "user" ? "You" : providerLabel(result.provider)}</strong>
+                <span>{result.conversationTitle?.trim() || "Untitled conversation"}</span>
+                <time>{formatDateTime(result.sourceCreatedAt)}</time>
+              </div>
+              <p>{result.snippet}</p>
+              {result.provider === "chatgpt" && !result.isCurrentPath ? (
+                <small>保存分支中的消息</small>
+              ) : null}
+            </Link>
+          ))}
+        </div>
       ) : null}
     </section>
   );
