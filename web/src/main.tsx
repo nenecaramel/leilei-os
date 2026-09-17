@@ -33,6 +33,7 @@ import "./pages/universe-home-dark.css?native-mobile-desktop";
 import "./pages/universe-home-dark-production-fixes.css?native-mobile-desktop";
 import "./pages/universe-state-polish.css?native-mobile-desktop";
 import "./native-mobile-desktop-geometry.css";
+import "./pages/conversation-ui-polish.css";
 
 installUniverseSourcePickerAutoReveal();
 
