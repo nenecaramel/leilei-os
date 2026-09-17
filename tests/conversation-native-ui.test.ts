@@ -6,6 +6,14 @@ const page = readFileSync(
   new URL("../web/src/pages/ConversationArchivePage.tsx", import.meta.url),
   "utf8",
 );
+const searchPanel = readFileSync(
+  new URL("../web/src/pages/ConversationSearchPanel.tsx", import.meta.url),
+  "utf8",
+);
+const searchCss = readFileSync(
+  new URL("../web/src/pages/conversation-search-controls.css", import.meta.url),
+  "utf8",
+);
 const css = readFileSync(
   new URL("../web/src/pages/conversation-native-ui.css", import.meta.url),
   "utf8",
@@ -54,13 +62,11 @@ test("Conversation detail is a continuous reading surface rather than independen
   assert.doesNotMatch(css, /conversation-message[^}]*Newsreader/s);
 });
 
-
 test("desktop navigation owns its typography so route-level fonts cannot shift the sidebar", () => {
   assert.match(navigationCss, /\.navigation-panel\s*\{[^}]*font-family:/s);
   assert.match(navigationCss, /-apple-system/);
   assert.match(navigationCss, /BlinkMacSystemFont/);
 });
-
 
 test("Conversation list reuses the native module header and search chrome", () => {
   assert.match(page, /className="memory-page-header conversation-page-header"/);
@@ -83,4 +89,19 @@ test("Conversation rows use the approved Memory inset-card geometry", () => {
   assert.match(css, /right:\s*13px/);
   assert.match(css, /left:\s*13px/);
   assert.match(css, /border-radius:\s*14px/);
+});
+
+test("Conversation advanced search filters stay secondary until requested", () => {
+  assert.match(searchPanel, /className="conversation-search-toolbar"/);
+  assert.match(searchPanel, /conversation-search-filter-toggle/);
+  assert.match(searchPanel, /aria-expanded=\{filtersOpen\}/);
+  assert.match(searchPanel, /filtersOpen \? \(/);
+  assert.match(searchPanel, /className="conversation-search-filters"/);
+  assert.match(searchPanel, /conversation-search-clear/);
+  assert.match(searchPanel, /conversation-search-controls\.css/);
+
+  assert.match(searchCss, /\.conversation-search-toolbar\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s);
+  assert.match(searchCss, /\.conversation-search-filter-toggle[^\{]*\{[^}]*font-size:\s*12px;[^}]*color:\s*#8a8a8a;/s);
+  assert.match(searchCss, /\.conversation-search-clear[^\{]*\{[^}]*font-size:\s*12px;/s);
+  assert.match(searchCss, /\.conversation-search-filters\s*\{[^}]*margin-top:\s*10px;/s);
 });

@@ -6,6 +6,7 @@ import type {
   ConversationSearchResult,
   createConversationArchiveApi,
 } from "./conversation-archive-api";
+import "./conversation-search-controls.css";
 
 type SearchState =
   | { status: "idle" }
@@ -54,9 +55,19 @@ export function ConversationSearchPanel({
   const [conversationId, setConversationId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [state, setState] = useState<SearchState>({ status: "idle" });
 
   const searchTicket = useRef(0);
+  const activeFilterCount = [provider, role, conversationId, from, to].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setProvider("");
+    setRole("");
+    setConversationId("");
+    setFrom("");
+    setTo("");
+  };
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -103,34 +114,50 @@ export function ConversationSearchPanel({
 
   return (
     <section className="conversation-search-section" aria-label="Conversation message search">
-      <div className="conversation-search-filters" aria-label="搜索筛选">
-        <select value={provider} aria-label="Provider" onChange={(event) => setProvider(event.target.value as ConversationProvider | "")}>
-          <option value="">全部平台</option>
-          <option value="chatgpt">ChatGPT</option>
-          <option value="claude">Claude</option>
-        </select>
-        <select value={role} aria-label="Role" onChange={(event) => setRole(event.target.value as "user" | "assistant" | "")}>
-          <option value="">我 + AI</option>
-          <option value="user">只搜我说的</option>
-          <option value="assistant">只搜 AI 说的</option>
-        </select>
-        <select value={conversationId} aria-label="Conversation" onChange={(event) => setConversationId(event.target.value)}>
-          <option value="">全部窗口</option>
-          {conversations.map((conversation) => (
-            <option value={conversation.id} key={conversation.id}>
-              {providerLabel(conversation.provider)} · {conversation.title?.trim() || "Untitled"}
-            </option>
-          ))}
-        </select>
-        <label>
-          <span>从</span>
-          <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-        </label>
-        <label>
-          <span>到</span>
-          <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-        </label>
+      <div className="conversation-search-toolbar">
+        <button
+          className={`conversation-search-filter-toggle${filtersOpen || activeFilterCount ? " active" : ""}`}
+          type="button"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((value) => !value)}
+        >
+          筛选{activeFilterCount ? ` · ${activeFilterCount}` : ""}
+        </button>
+        {activeFilterCount ? (
+          <button className="conversation-search-clear" type="button" onClick={clearFilters}>清除</button>
+        ) : null}
       </div>
+
+      {filtersOpen ? (
+        <div className="conversation-search-filters" aria-label="搜索筛选">
+          <select value={provider} aria-label="Provider" onChange={(event) => setProvider(event.target.value as ConversationProvider | "")}>
+            <option value="">全部平台</option>
+            <option value="chatgpt">ChatGPT</option>
+            <option value="claude">Claude</option>
+          </select>
+          <select value={role} aria-label="Role" onChange={(event) => setRole(event.target.value as "user" | "assistant" | "")}>
+            <option value="">我 + AI</option>
+            <option value="user">只搜我说的</option>
+            <option value="assistant">只搜 AI 说的</option>
+          </select>
+          <select value={conversationId} aria-label="Conversation" onChange={(event) => setConversationId(event.target.value)}>
+            <option value="">全部窗口</option>
+            {conversations.map((conversation) => (
+              <option value={conversation.id} key={conversation.id}>
+                {providerLabel(conversation.provider)} · {conversation.title?.trim() || "Untitled"}
+              </option>
+            ))}
+          </select>
+          <label>
+            <span>从</span>
+            <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+          </label>
+          <label>
+            <span>到</span>
+            <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+          </label>
+        </div>
+      ) : null}
 
       {state.status === "loading" ? (
         <div className="conversation-search-state" role="status">正在搜索…</div>
