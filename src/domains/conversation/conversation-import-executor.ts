@@ -42,6 +42,10 @@ function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
+export function sanitizePostgresText(value: string): string {
+  return value.split(String.fromCharCode(0)).join("");
+}
+
 export type LockedConversationImportRun = {
   id: string;
   sourceId: string;
@@ -351,7 +355,7 @@ implements ConversationImportExecutionTransaction {
           currentPathIndex: null,
           turnIndex: null,
           isPrimary: message.isPrimary,
-          displayText: message.displayText,
+          displayText: sanitizePostgresText(message.displayText),
           sourceFingerprint: planned.importedFingerprint,
           firstSeenImportId: importRunId,
           lastSeenImportId: importRunId,
@@ -402,7 +406,7 @@ implements ConversationImportExecutionTransaction {
         ordinal: block.ordinal,
         kind: block.kind,
         rawType: block.rawType,
-        text: block.text,
+        text: block.text === null ? null : sanitizePostgresText(block.text),
         payload: block.payload,
       }));
     });
