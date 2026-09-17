@@ -59,11 +59,11 @@ test("Conversation archive no longer requests or renders the removed Recent 30 d
   assert.doesNotMatch(page, /dailyStats|ConversationDailyStat|Recent 30 days|日统计/);
 });
 
-test("Favorite cards lead with the message and keep provider and 原消息 labels out of the card", () => {
+test("Favorite rows lead with the message and keep provider and 原消息 labels out of the card", () => {
   assert.doesNotMatch(favoritesPanel, /conversation-provider/);
   assert.doesNotMatch(favoritesPanel, />原消息</);
-  assert.match(favoritesPanel, /conversation-favorite-original/);
-  assert.match(favoritesPanel, /conversation-favorite-footer/);
+  assert.match(favoritesPanel, /className="memory-row-title"/);
+  assert.match(favoritesPanel, /className="memory-row-meta"/);
 });
 
 test("Conversation surfaces keep shared tab, provider, destructive, and loading contracts", () => {
@@ -139,12 +139,13 @@ test("Conversation rows use the approved Memory inset-card geometry", () => {
   assert.match(css, /left:\s*13px/);
   assert.match(css, /border-radius:\s*14px/);
   assert.match(page, /className="memory-row conversation-card"/);
-  assert.match(favoritesPanel, /className="memory-row conversation-favorite-card/);
+  assert.match(favoritesPanel, /<article className="memory-row"/);
 });
 
-test("Conversation and Favorites controls do not push the first month card downward", () => {
+test("Conversation controls do not push the first month card downward and Favorites has no extra control row", () => {
   assert.match(css, /\.conversation-archive-section,[\s\S]*?\.conversation-favorites\s*\{[^}]*position:\s*relative/s);
   assert.match(css, /\.conversation-list-heading\s*\{[^}]*position:\s*absolute[^}]*top:\s*0[^}]*right:\s*0/s);
+  assert.doesNotMatch(favoritesPanel, /conversation-section-heading conversation-list-heading/);
 });
 
 test("Conversation archive and Favorites use the shared month grouping and loading primitives", () => {
@@ -185,7 +186,7 @@ test("Conversation lists restore content rows without standalone page headings",
   assert.match(page, /memory-row-title/);
   assert.match(page, /item\.messageCount/);
   assert.match(page, /item\.turnCount/);
-  assert.match(favoritesPanel, /conversation-favorite-original/);
+  assert.match(favoritesPanel, /favoriteExcerpt\(detail\)/);
   assert.doesNotMatch(page, /conversation-list-total/);
   assert.match(css, /.conversation-surface-tabs\s*\{[^}]*min-height:\s*38px/s);
   assert.match(css, /.conversation-surface-tabs button,[\s\S]*?min-height:\s*32px/s);
