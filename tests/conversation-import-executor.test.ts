@@ -43,6 +43,28 @@ test("Conversation Execute batches messages and child blocks instead of per-mess
   assert.match(executorSource, /sql\.join\(rows/);
 });
 
+test("Conversation Execute strips PostgreSQL-incompatible NUL only at text persistence", async () => {
+  const executorModule = await import("../src/domains/conversation/conversation-import-executor.js");
+  const sanitizer = (executorModule as unknown as Record<string, unknown>).sanitizePostgresText;
+  assert.equal(typeof sanitizer, "function");
+  if (typeof sanitizer !== "function") return;
+  const sanitizePostgresText = sanitizer as (value: string) => string;
+
+  assert.equal(
+    sanitizePostgresText("before\u0000middle\u0000after"),
+    "beforemiddleafter",
+  );
+  assert.equal(sanitizePostgresText("保留\nemoji🙂"), "保留\nemoji🙂");
+  assert.match(
+    executorSource,
+    /displayText:\s*sanitizePostgresText\(message\.displayText\)/u,
+  );
+  assert.match(
+    executorSource,
+    /text:\s*block\.text === null\s*\?\s*null\s*:\s*sanitizePostgresText\(block\.text\)/u,
+  );
+});
+
 test("full preview fingerprint validation precedes the first canonical apply pass", () => {
   const fingerprintCheck = serviceSource.indexOf(
     "recomputedFingerprint !== expectedPreviewFingerprint",
