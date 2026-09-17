@@ -105,14 +105,14 @@ test("Conversation UI redesign keeps import search Favorites Sources and pruning
   assert.match(page, /createFavorite/);
 });
 
-test("Conversation detail restores the historical paper-like message surface", () => {
-  assert.match(css, /\.conversation-message-list\s*\{/);
-  assert.match(css, /\.conversation-message \{/);
-  assert.match(css, /\.conversation-message-list\s*\{[^}]*display:\s*grid[^}]*gap:\s*12px/s);
-  assert.match(css, /\.conversation-message\s*\{[^}]*padding:\s*20px 22px[^}]*border-radius:\s*18px/s);
-  assert.match(css, /\.conversation-message--user\s*\{[^}]*margin-left:\s*min\(8vw, 86px\)/s);
-  assert.match(css, /\.conversation-message--assistant\s*\{[^}]*margin-right:\s*min\(6vw, 64px\)/s);
-  assert.doesNotMatch(css, /\.conversation-detail-page \.page-header\s*\{[^}]*border-bottom:/s);
+test("Conversation detail restores the earlier compact continuous reading surface", () => {
+  assert.match(css, /\.conversation-detail-page \.page-header\s*\{[^}]*border-bottom:\s*1px solid/s);
+  assert.match(css, /\.conversation-detail-page \.page-header h1\s*\{[^}]*font-size:\s*18px/s);
+  assert.match(css, /\.conversation-message-list\s*\{[^}]*display:\s*block[^}]*overflow:\s*hidden[^}]*border:\s*1px solid/s);
+  assert.match(css, /\.conversation-message\s*\{[^}]*padding:\s*14px 15px 16px[^}]*border-radius:\s*0/s);
+  assert.match(css, /\.conversation-message--user\s*\{[^}]*background:\s*#fafafa/s);
+  assert.doesNotMatch(css, /\.conversation-message--user\s*\{[^}]*margin-left:/s);
+  assert.doesNotMatch(css, /\.conversation-message--assistant\s*\{[^}]*margin-right:/s);
 });
 
 test("desktop navigation owns its typography so route-level fonts cannot shift the sidebar", () => {
@@ -142,6 +142,11 @@ test("Conversation rows use the approved Memory inset-card geometry", () => {
   assert.match(favoritesPanel, /className="memory-row conversation-favorite-card/);
 });
 
+test("Conversation and Favorites controls do not push the first month card downward", () => {
+  assert.match(css, /\.conversation-archive-section,[\s\S]*?\.conversation-favorites\s*\{[^}]*position:\s*relative/s);
+  assert.match(css, /\.conversation-list-heading\s*\{[^}]*position:\s*absolute[^}]*top:\s*0[^}]*right:\s*0/s);
+});
+
 test("Conversation archive and Favorites use the shared month grouping and loading primitives", () => {
   assert.match(page, /memory-month-section/);
   assert.match(page, /memory-month-label/);
@@ -153,7 +158,7 @@ test("Conversation archive and Favorites use the shared month grouping and loadi
   assert.match(favoritesPanel, /memory-month-skeleton/);
 });
 
-test("Sources uses the shared heading/state language and header import affordance", () => {
+test("Sources uses full card width below top-right actions", () => {
   assert.match(page, /PlusIcon/);
   assert.match(page, /aria-label="导入 Conversation export"/);
   assert.doesNotMatch(page, /conversation-source-import/);
@@ -168,8 +173,9 @@ test("Sources uses the shared heading/state language and header import affordanc
   assert.match(css, /conversation-import-run \+ \.conversation-import-run/);
   assert.match(css, /\.conversation-import-run\s*\{[^}]*display:\s*grid/s);
   assert.match(css, /\.conversation-import-run > time\s*\{[^}]*justify-self:\s*end/s);
-  assert.match(css, /\.conversation-import-source-card\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
-  assert.match(css, /\.conversation-import-source-actions\s*\{[^}]*margin-top:\s*0/);
+  assert.match(css, /\.conversation-import-source-card\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+  assert.match(css, /\.conversation-import-source-main\s*\{[^}]*width:\s*100%/s);
+  assert.match(css, /\.conversation-import-source-actions\s*\{[^}]*position:\s*absolute[^}]*top:\s*11px[^}]*right:\s*13px/s);
   assert.match(css, /overflow-wrap:\s*anywhere/);
 });
 
