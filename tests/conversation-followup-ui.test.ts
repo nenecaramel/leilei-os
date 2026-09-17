@@ -14,6 +14,14 @@ const refinement = readFileSync(
   new URL("../web/src/pages/conversation-layout-refinement.css", import.meta.url),
   "utf8",
 );
+const archive = readFileSync(
+  new URL("../web/src/pages/ConversationArchivePage.tsx", import.meta.url),
+  "utf8",
+);
+const importHistory = readFileSync(
+  new URL("../web/src/pages/ConversationImportHistoryPanel.tsx", import.meta.url),
+  "utf8",
+);
 
 test("Favorites shows compact MM/DD HH:mm timestamps", () => {
   assert.match(favorites, /pad2\(date\.getMonth\(\) \+ 1\)/);
@@ -28,7 +36,26 @@ test("Conversation search never shows a standalone 筛选 label below the search
   assert.match(search, /共 \$\{state\.total\.toLocaleString\(\)\} 条命中/);
 });
 
-test("Sources title and card align to the same top rhythm as Conversations and Favorites", () => {
-  assert.doesNotMatch(refinement, /\.conversation-page \.conversation-import-history\s*\{[^}]*margin-top:\s*-\d+/s);
-  assert.match(refinement, /\.conversation-page \.conversation-import-history \.conversation-section-heading\s*\{[^}]*min-height:\s*0[^}]*align-items:\s*baseline[^}]*margin:\s*0 0 6px/s);
+test("Sources uses the same month wrapper, heading rhythm, and card shell as the sibling surfaces", () => {
+  assert.match(importHistory, /<section className="memory-months" aria-label="Sources 列表">/);
+  assert.match(importHistory, /<section className="memory-month-section">/);
+  assert.match(importHistory, /<h2 className="memory-month-label">原始导入记录<\/h2>/);
+  assert.match(importHistory, /className="memory-month-card conversation-import-history-list"/);
+  assert.doesNotMatch(importHistory, /className="conversation-section-heading"/);
+  assert.doesNotMatch(refinement, /conversation-import-history \.conversation-section-heading/);
+});
+
+test("Conversation list groups and displays by the source conversation creation time", () => {
+  assert.match(
+    archive,
+    /groupConversationsByMonth\(list\.items, \(item\) => item\.sourceCreatedAt \?\? item\.sourceUpdatedAt\)/,
+  );
+  assert.match(
+    archive,
+    /formatRowDate\(item\.sourceCreatedAt \?\? item\.sourceUpdatedAt\)/,
+  );
+  assert.doesNotMatch(
+    archive,
+    /formatRowDate\(item\.sourceUpdatedAt \?\? item\.sourceCreatedAt\)/,
+  );
 });
