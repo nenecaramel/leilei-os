@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ConversationImportHistoryRun,
   ConversationImportPreview,
@@ -58,6 +58,7 @@ export function ConversationImportHistoryPanel({
   const [reapplyId, setReapplyId] = useState<string | null>(null);
   const [executingRunId, setExecutingRunId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const expandedSourceIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -71,17 +72,30 @@ export function ConversationImportHistoryPanel({
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    const sourceId = expandedSourceIdRef.current;
+    if (!sourceId) return;
+    let cancelled = false;
+    void client.importSource(sourceId).then((refreshed) => {
+      if (!cancelled && expandedSourceIdRef.current === sourceId) setDetail(refreshed);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [client, refreshKey]);
+
   const toggleDetail = async (sourceId: string) => {
     if (detail?.sourceId === sourceId) {
+      expandedSourceIdRef.current = null;
       setDetail(null);
       return;
     }
+    expandedSourceIdRef.current = sourceId;
     setDetail(null);
     setDetailLoadingId(sourceId);
     setMessage("");
     try {
       setDetail(await client.importSource(sourceId));
     } catch {
+      if (expandedSourceIdRef.current === sourceId) expandedSourceIdRef.current = null;
       setMessage("这份导入源的 run history 暂时无法读取。");
     } finally {
       setDetailLoadingId(null);
@@ -89,7 +103,7 @@ export function ConversationImportHistoryPanel({
   };
 
   const reapply = async (source: ConversationImportSourceHistoryItem) => {
-    if (!source.rawSource.retained || reapplyId) return;
+    if (!source.rawSource.retained || reapplyId || executingRunId) return;
     setReapplyId(source.sourceId);
     setMessage("");
     try {
@@ -107,7 +121,7 @@ export function ConversationImportHistoryPanel({
     source: ConversationImportSourceHistoryItem,
     run: ConversationImportHistoryRun,
   ) => {
-    if (!canConfirmImport(run) || executingRunId) return;
+    if (!canConfirmImport(run) || executingRunId || reapplyId) return;
     const previewFingerprint = run.previewFingerprint!;
     setExecutingRunId(run.id);
     setMessage("");
@@ -216,7 +230,7 @@ export function ConversationImportHistoryPanel({
                   <button
                     className="primary-button"
                     type="button"
-                    disabled={!source.rawSource.retained || reapplyId !== null}
+                    disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
                     title={source.rawSource.retained
                       ? "只生成新的 Preview；仍需再次确认导入"
                       : "原始 source 已不在 storage 中"}
@@ -249,7 +263,7 @@ export function ConversationImportHistoryPanel({
                           <button
                             className="conversation-history-inline-action"
                             type="button"
-                            disabled={executingRunId !== null}
+                            disabled={executingRunId !== null || reapplyId !== null}
                             onClick={() => void confirmImport(source, run)}
                           >
                             {executingRunId === run.id ? "确认中…" : "确认导入"}
