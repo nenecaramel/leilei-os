@@ -164,16 +164,17 @@ export function ConversationImportHistoryPanel({
     <section className="conversation-section conversation-import-history">
       <div className="conversation-section-heading">
         <div>
-          <p className="eyebrow">Import history</p>
-          <h2>原始导入记录</h2>
+          <p className="memory-month-label">原始导入记录</p>
         </div>
-        {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 份 source</span> : null}
+        {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 份</span> : null}
       </div>
 
       {message ? <p className="conversation-inline-status" role="status">{message}</p> : null}
 
       {state.status === "loading" ? (
-        <p className="system-state-copy" role="status" aria-live="polite">正在读取导入记录…</p>
+        <div className="system-section conversation-import-history-loading">
+          <p className="system-state-copy" role="status" aria-live="polite">正在读取导入记录…</p>
+        </div>
       ) : state.status === "error" ? (
         <div className="conversation-muted-card">
           导入记录暂时不可用。
@@ -216,6 +217,7 @@ export function ConversationImportHistoryPanel({
                     </small>
                   ) : null}
                 </div>
+
                 <div className="conversation-import-source-actions">
                   <button
                     className="secondary-button"
