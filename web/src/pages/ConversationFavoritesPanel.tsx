@@ -114,11 +114,7 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
 
   return (
     <section className="conversation-section conversation-favorites">
-      <div className="conversation-section-heading">
-        <div>
-          <p className="eyebrow">Favorites</p>
-          <h2>收藏</h2>
-        </div>
+      <div className="conversation-section-heading conversation-list-heading">
         {state.status === "ready" ? <span>共 {state.total.toLocaleString()} 条</span> : null}
       </div>
 
@@ -145,7 +141,7 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
                   const link = detail ? canonicalFavoriteLink(detail) : null;
                   const firstMessage = detail?.messages[0] ?? null;
                   return (
-                    <article className="conversation-favorite-card conversation-favorite-card--quote" key={item.id}>
+                    <article className="memory-row conversation-favorite-card conversation-favorite-card--quote" key={item.id}>
                       <div className="conversation-favorite-main">
                         <p className="conversation-favorite-original">{favoriteExcerpt(detail)}</p>
 

@@ -216,36 +216,31 @@ export function ConversationImportHistoryPanel({
                       {" "}{dateTime(latest.completedAt ?? latest.createdAt)}
                     </small>
                   ) : null}
-                  <div className="conversation-import-source-actions">
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={detailLoadingId === source.sourceId}
-                      onClick={() => void toggleDetail(source.sourceId)}
-                    >
-                      {detailLoadingId === source.sourceId
-                        ? "读取中…"
-                        : expanded ? "收起 runs" : "查看 runs"}
-                    </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
-                      title={source.rawSource.retained
-                        ? "只生成新的 Preview；仍需再次确认导入"
-                        : "原始 source 已不在 storage 中"}
-                      onClick={() => void reapply(source)}
-                    >
-                      {reapplyId === source.sourceId ? "生成中…" : "重新 Preview"}
-                    </button>
-                  </div>
                 </div>
 
-                {detailLoadingId === source.sourceId ? (
-                  <div className="system-section conversation-import-runs-loading">
-                    <p className="system-state-copy" role="status" aria-live="polite">正在读取 runs…</p>
-                  </div>
-                ) : null}
+                <div className="conversation-import-source-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={detailLoadingId === source.sourceId}
+                    onClick={() => void toggleDetail(source.sourceId)}
+                  >
+                    {detailLoadingId === source.sourceId
+                      ? "读取中…"
+                      : expanded ? "收起 runs" : "查看 runs"}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
+                    title={source.rawSource.retained
+                      ? "只生成新的 Preview；仍需再次确认导入"
+                      : "原始 source 已不在 storage 中"}
+                    onClick={() => void reapply(source)}
+                  >
+                    {reapplyId === source.sourceId ? "生成中…" : "重新 Preview"}
+                  </button>
+                </div>
 
                 {expanded && detail ? (
                   <div className="conversation-import-run-list">
@@ -256,6 +251,14 @@ export function ConversationImportHistoryPanel({
                           {run.executionMode === "reapply" ? "显式 reapply" : "标准导入"}
                           {" · "}{run.parserVersion}
                         </span>
+                        <small>
+                          {run.warningCount ? `${run.warningCount} warnings · ` : ""}
+                          run {run.id.slice(0, 8)}
+                          {run.supersededByImportRunId
+                            ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
+                            : ""}
+                        </small>
+                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
                         {canConfirmImport(run) ? (
                           <button
                             className="conversation-history-inline-action"
@@ -266,14 +269,6 @@ export function ConversationImportHistoryPanel({
                             {executingRunId === run.id ? "确认中…" : "确认导入"}
                           </button>
                         ) : null}
-                        <small>
-                          {run.warningCount ? `${run.warningCount} warnings · ` : ""}
-                          run {run.id.slice(0, 8)}
-                          {run.supersededByImportRunId
-                            ? ` · superseded by ${run.supersededByImportRunId.slice(0, 8)}`
-                            : ""}
-                        </small>
-                        <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
                       </div>
                     ))}
                   </div>
