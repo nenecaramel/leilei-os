@@ -10,6 +10,10 @@ const searchPanel = readFileSync(
   new URL("../web/src/pages/ConversationSearchPanel.tsx", import.meta.url),
   "utf8",
 );
+const searchCss = readFileSync(
+  new URL("../web/src/pages/conversation-search-controls.css", import.meta.url),
+  "utf8",
+);
 const css = readFileSync(
   new URL("../web/src/pages/conversation-native-ui.css", import.meta.url),
   "utf8",
@@ -94,9 +98,10 @@ test("Conversation advanced search filters stay secondary until requested", () =
   assert.match(searchPanel, /filtersOpen \? \(/);
   assert.match(searchPanel, /className="conversation-search-filters"/);
   assert.match(searchPanel, /conversation-search-clear/);
+  assert.match(searchPanel, /conversation-search-controls\.css/);
 
-  assert.match(css, /\.conversation-search-toolbar\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s);
-  assert.match(css, /\.conversation-search-filter-toggle[^\{]*\{[^}]*font-size:\s*12px;[^}]*color:\s*var\(--conversation-muted\);/s);
-  assert.match(css, /\.conversation-search-clear[^\{]*\{[^}]*font-size:\s*12px;/s);
-  assert.match(css, /\.conversation-search-filters\s*\{[^}]*margin-top:\s*10px;/s);
+  assert.match(searchCss, /\.conversation-search-toolbar\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s);
+  assert.match(searchCss, /\.conversation-search-filter-toggle[^\{]*\{[^}]*font-size:\s*12px;[^}]*color:\s*#8a8a8a;/s);
+  assert.match(searchCss, /\.conversation-search-clear[^\{]*\{[^}]*font-size:\s*12px;/s);
+  assert.match(searchCss, /\.conversation-search-filters\s*\{[^}]*margin-top:\s*10px;/s);
 });
