@@ -48,3 +48,14 @@
   gap: 10px;
   margin-top: 14px;
 }
+
+
+/* Keep header tools visually active while list data is loading. */
+.shared-paper-page-tools button:disabled {
+  opacity: 1;
+  color: inherit;
+}
+
+.shared-paper-page-tools button:disabled svg {
+  opacity: 1;
+}

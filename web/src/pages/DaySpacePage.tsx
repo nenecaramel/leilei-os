@@ -290,10 +290,10 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
         <div className="memory-page-tools">
           <ModuleSearchButton label="搜索 Todo" expanded={todoSearchOpen} onClick={() => setTodoSearchOpen((value) => !value)} />
         </div>
-        {todoSearchOpen ? <ModuleSearchField ariaLabel="搜索 Todo 内容" placeholder="搜索 Todo 内容" value={todoSearchDraft} onChange={setTodoSearchDraft} /> : null}
+        {todoSearchOpen ? <ModuleSearchField ariaLabel="搜索 Todo 内容" placeholder="Search todos..." value={todoSearchDraft} onChange={setTodoSearchDraft} /> : null}
       </header>
       {todoSearchOpen ? <div className="day-space-search-panel">
-        <ModuleSearchStateMessage state={todoSearchState} emptyText="没有匹配的 Todo" errorText="Todo 暂时无法搜索。" onRetry={() => setTodoSearchRetry((value) => value + 1)} />
+        <ModuleSearchStateMessage state={todoSearchState} emptyText="没有匹配的 Todo" errorText="Unable to read todos." retryLabel="Retry" onRetry={() => setTodoSearchRetry((value) => value + 1)} />
         {todoSearchState === "ready" ? <div className="day-space-search-results" aria-label="Todo 搜索结果">
           {todoSearchResults.map((entry) => <button type="button" key={`${entry.date}:${entry.author}:${entry.entry_id}`} onClick={() => navigate(`/day-space?date=${encodeURIComponent(entry.date)}&author=${entry.author}`)}>
             <span>{entry.date} · {entry.author} · {entry.kind}</span><strong>{entry.snippet}</strong>
@@ -303,7 +303,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       <div className="day-space-date-area">
         <div className="day-space-date-nav" aria-label="Day Space 日期导航">
           <button type="button" aria-label="前一天" disabled={!selectedDate} onClick={() => selectedDate && go(shiftBusinessDate(selectedDate, -1))}>‹</button>
-          <button type="button" className="day-space-date-button" aria-expanded={pickerOpen} disabled={!selectedDate} onClick={() => setPickerOpen((value) => !value)}>{selectedDate ? formatDaySpaceNavigationDate(selectedDate) : "正在读取"}</button>
+          <button type="button" className="day-space-date-button" aria-expanded={pickerOpen} disabled={!selectedDate} onClick={() => setPickerOpen((value) => !value)}>{selectedDate ? formatDaySpaceNavigationDate(selectedDate) : "Reading..."}</button>
           <button type="button" aria-label="后一天" disabled={!selectedDate} onClick={() => selectedDate && go(shiftBusinessDate(selectedDate, 1))}>›</button>
         </div>
         {pickerOpen && selectedDate ? <DaySpaceDatePicker selectedDate={selectedDate} todayDate={today} onSelect={go} onClose={() => setPickerOpen(false)} /> : null}
@@ -311,7 +311,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       {discoveryIncomplete && selectedDate ? <div className="day-space-warning" role="status">最新日期发现不完整，当前日期仍可查看。</div> : null}
       {selectedDate && moduleWarning && !bothModulesFailed ? <div className="day-space-warning" role="alert">部分 Day Space 内容暂时无法读取。{todoState.status === "error" ? <button type="button" onClick={() => retryTodo(selectedDate)}>重试 Todo</button> : null}{diaryState.status === "error" ? <button type="button" onClick={() => retryDiary(selectedDate)}>重试 Diary</button> : null}</div> : null}
       <div ref={stageMeasureRef} className="day-space-stage-measure">
-        {discoveryStatus === "loading" && !selectedDate ? <ModuleState state="loading" message="正在读取 Day Space…" className="day-space-stage-state" /> : discoveryStatus === "error" ? <ModuleState state="error" message="Day Space 暂时无法读取。" retryLabel="重试" onRetry={() => setDiscoveryRetry((value) => value + 1)} className="day-space-stage-state" /> : completeEmpty ? <ModuleState state="empty" message="这一天还没有内容" className="day-space-stage-state" /> : bothModulesFailed ? <ModuleState state="error" message="当天内容暂时无法读取。" retryLabel="重试" onRetry={() => selectedDate && loadDate(selectedDate)} className="day-space-stage-state" /> : moduleWarning && papers.length === 0 ? null : papers.length === 0 ? <ModuleState state="loading" message="正在读取当天内容…" className="day-space-stage-state" /> : (
+        {discoveryStatus === "loading" && !selectedDate ? <ModuleState state="loading" message="Reading..." className="day-space-stage-state" /> : discoveryStatus === "error" ? <ModuleState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => setDiscoveryRetry((value) => value + 1)} className="day-space-stage-state" /> : completeEmpty ? <ModuleState state="empty" message="这一天还没有内容" className="day-space-stage-state" /> : bothModulesFailed ? <ModuleState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => selectedDate && loadDate(selectedDate)} className="day-space-stage-state" /> : moduleWarning && papers.length === 0 ? null : papers.length === 0 ? <ModuleState state="loading" message="Reading..." className="day-space-stage-state" /> : (
           <section className="day-space-stage" aria-label={`${selectedDate} 的内容`} style={{ height: `${layout?.stageHeight ?? 0}px` }}>
             {papers.map((paper) => {
               const item = layoutById.get(paper.id); if (!item) return null;

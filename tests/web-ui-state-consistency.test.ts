@@ -9,18 +9,18 @@ const styles = () => readFileSync(resolve(webRoot, "styles.css"), "utf8");
 
 test("records use the frozen true/filtered/error copy contract", () => {
   const records = [
-    ["MemoryPage.tsx", "记忆"],
-    ["DiaryPage.tsx", "日记"],
-    ["TaskPage.tsx", "任务"],
+    ["MemoryPage.tsx", "记忆", "Unable to read memories."],
+    ["DiaryPage.tsx", "日记", "Unable to read diary entries."],
+    ["TaskPage.tsx", "任务", "Unable to read tasks."],
   ] as const;
-  for (const [file, label] of records) {
+  for (const [file, label, errorCopy] of records) {
     const source = page(file);
     assert.match(source, new RegExp(`还没有${label}`));
     assert.match(source, new RegExp(`没有符合条件的${label}`));
     assert.match(source, /清除条件/);
-    assert.match(source, new RegExp(`暂时无法读取${label}`));
-    assert.match(source, /请稍后重试。/);
-    assert.match(source, /重新加载/);
+    assert.ok(source.includes(errorCopy));
+    assert.match(source, /retryLabel="Retry"/);
+    assert.doesNotMatch(source, /title="暂时无法读取/);
   }
 });
 
@@ -28,7 +28,7 @@ test("records archive and paper contracts stay local and warning-free", () => {
   for (const file of ["MemoryPage.tsx", "DiaryPage.tsx", "TaskPage.tsx"]) {
     const source = page(file);
     assert.match(source, /还没有归档/);
-    assert.match(source, /暂时无法读取归档/);
+    assert.match(source, /Unable to read archived/);
     assert.doesNotMatch(source, /永久删除后无法恢复，确认继续吗？/);
   }
   assert.match(page("MemoryPage.tsx"), /<PaperDetailDialog/);
@@ -73,9 +73,9 @@ test("Memory archive true-empty uses the centered mobile empty-state geometry", 
 
 test("module state families retain their exact retry and clear labels", () => {
   assert.match(page("GlobalSearchPage.tsx"), /没有找到匹配内容/);
-  assert.match(page("GlobalSearchPage.tsx"), /搜索暂时失败/);
+  assert.match(page("GlobalSearchPage.tsx"), /Unable to read search results\./);
   assert.match(page("DaySpacePage.tsx"), /部分 Day Space 内容暂时无法读取/);
-  assert.match(page("UniversePage.tsx"), /Universe 暂时无法读取，请稍后重试。/);
+  assert.match(page("UniversePage.tsx"), /Unable to read Universe\./);
   assert.match(page("SystemConnectionsPageContent.tsx"), /Unable to read connection status/);
   assert.match(page("SystemActivityPageContent.tsx"), /Unable to read activity/);
   assert.match(page("SystemDataPageContent.tsx"), /Unable to read data summary/);
@@ -155,9 +155,10 @@ test("Shared Paper detail and history states reuse the Paper body anchor", () =>
   );
 });
 
-test("Task Archive read failure is an alert state", () => {
+test("Task Archive read failure uses the shared retryable state", () => {
   const source = page("TaskPage.tsx");
-  const start = source.indexOf('title="暂时无法读取归档任务"');
+  const start = source.indexOf('errorText="Unable to read archived tasks."');
   assert.ok(start >= 0);
-  assert.match(source.slice(start - 80, start + 260), /role="alert"/);
+  assert.match(source.slice(start - 160, start + 260), /state="error"/);
+  assert.match(source.slice(start - 160, start + 260), /retryLabel="Retry"/);
 });

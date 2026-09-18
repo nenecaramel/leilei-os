@@ -506,7 +506,7 @@ test("Day Space keeps both retained modules visible when both refreshes fail", a
   assert.match(page.container.textContent ?? "", /部分 Day Space 内容暂时无法读取/);
   assert.match(page.container.textContent ?? "", /重试 Todo/);
   assert.match(page.container.textContent ?? "", /重试 Diary/);
-  assert.doesNotMatch(page.container.textContent ?? "", /当天内容暂时无法读取/);
+  assert.doesNotMatch(page.container.textContent ?? "", /Unable to read Day Space\./);
   assert.equal(todoLoads, 2);
   assert.equal(diaryLoads, 2);
   await page.cleanup();
@@ -538,7 +538,7 @@ test("Day Space keeps one retained module visible when both modules fail", async
   assert.match(page.container.textContent ?? "", /部分 Day Space 内容暂时无法读取/);
   assert.match(page.container.textContent ?? "", /重试 Todo/);
   assert.match(page.container.textContent ?? "", /重试 Diary/);
-  assert.doesNotMatch(page.container.textContent ?? "", /当天内容暂时无法读取/);
+  assert.doesNotMatch(page.container.textContent ?? "", /Unable to read Day Space\./);
   await page.cleanup();
 });
 
@@ -553,9 +553,9 @@ test("Day Space shows full failure only when both modules have no retained value
   };
   const page = await render(api);
   await page.settle();
-  assert.match(page.container.textContent ?? "", /当天内容暂时无法读取/);
+  assert.match(page.container.textContent ?? "", /Unable to read Day Space\./);
   assert.doesNotMatch(page.container.textContent ?? "", /部分 Day Space 内容暂时无法读取/);
-  assert.doesNotMatch(page.container.textContent ?? "", /正在读取当天内容/);
+  assert.doesNotMatch(page.container.textContent ?? "", /Reading\.\.\./);
   await page.cleanup();
 });
 
@@ -572,8 +572,8 @@ test("Day Space does not claim complete empty or loading when one failed source 
   await page.settle();
   assert.match(page.container.textContent ?? "", /部分 Day Space 内容暂时无法读取/);
   assert.doesNotMatch(page.container.textContent ?? "", /这一天还没有内容/);
-  assert.doesNotMatch(page.container.textContent ?? "", /正在读取当天内容/);
-  assert.doesNotMatch(page.container.textContent ?? "", /当天内容暂时无法读取/);
+  assert.doesNotMatch(page.container.textContent ?? "", /Reading\.\.\./);
+  assert.doesNotMatch(page.container.textContent ?? "", /Unable to read Day Space\./);
   await page.cleanup();
 });
 
@@ -590,11 +590,11 @@ test("Day Space loading and empty states use the shared module state surface", (
 
   assert.match(
     daySpaceSource,
-    /<ModuleState state="loading" message="正在读取 Day Space…" className="day-space-stage-state" \/>/,
+    /<ModuleState state="loading" message="Reading\.\.\." className="day-space-stage-state" \/>/,
   );
   assert.match(
     daySpaceSource,
-    /<ModuleState state="loading" message="正在读取当天内容…" className="day-space-stage-state" \/>/,
+    /<ModuleState state="loading" message="Reading\.\.\." className="day-space-stage-state" \/>/,
   );
   assert.match(
     daySpaceSource,
@@ -604,7 +604,7 @@ test("Day Space loading and empty states use the shared module state surface", (
   const stageStart = daySpaceSource.indexOf(
     '<div ref={stageMeasureRef} className="day-space-stage-measure">',
   );
-  const discoveryLoading = daySpaceSource.indexOf("正在读取 Day Space…");
+  const discoveryLoading = daySpaceSource.indexOf('<ModuleState state="loading" message="Reading..."', stageStart);
   assert.ok(stageStart >= 0);
   assert.ok(discoveryLoading > stageStart);
 

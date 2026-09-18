@@ -331,3 +331,9 @@
 .conversation-page .page-state,
 .conversation-page .placeholder-panel,
 .conversation-page .memory-message { min-height: 120px; padding: 24px 13px; border: 1px solid rgba(0, 0, 0, .11); border-radius: 14px; background: #fff; box-shadow: none; }
+
+
+.conversation-import-icon {
+  width: 23px;
+  height: 23px;
+}

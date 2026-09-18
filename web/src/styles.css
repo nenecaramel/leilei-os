@@ -2490,7 +2490,7 @@ body:has(.home-prototype) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .today-panel:nth-child(-n + 3),
+  .today-panel,
   .calendar-preview {
     grid-column: 1 / -1;
   }
@@ -7519,3 +7519,55 @@ body:has(.system-page) {
   line-height: 1.5;
 }
 /* global-state-system-2026-09-15:end */
+
+
+/* UI convergence: inline failures use System typography without shifting Home cards. */
+.state-surface--inline[role="alert"] {
+  display: grid;
+  min-height: 0;
+  justify-items: center;
+  gap: 10px;
+}
+
+.home-page-heading {
+  display: flex;
+  height: 22px;
+  margin-bottom: 6px;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.home-page-heading .home-page-title {
+  margin: 0;
+}
+
+.home-inline-unavailable {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 0;
+  transform: translateY(-6px);
+  font-family: var(--state-font);
+  text-align: left;
+}
+
+.calendar-section-heading .home-inline-unavailable {
+  transform: translateY(-3px);
+}
+
+.home-inline-unavailable span {
+  color: var(--state-primary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.home-inline-unavailable button {
+  all: unset;
+  color: var(--state-action);
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+}

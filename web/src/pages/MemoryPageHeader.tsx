@@ -167,7 +167,7 @@ export function MemoryPageHeader({
         </button>
       </div>
 
-      {searchOpen ? <ModuleSearchField ariaLabel="搜索记忆" placeholder="搜索 Key 或内容" value={searchDraft} onChange={onSearchChange} /> : null}
+      {searchOpen ? <ModuleSearchField ariaLabel="搜索记忆" placeholder="Search memories..." value={searchDraft} onChange={onSearchChange} /> : null}
     </header>
   );
 }

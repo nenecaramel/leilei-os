@@ -290,7 +290,7 @@ export function GlobalSearchPageHeader({
           aria-label="搜索 Leilei OS"
           maxLength={200}
           autoComplete="off"
-          placeholder="搜索保存的内容"
+          placeholder="Search all records..."
           value={queryInput}
           onChange={(event) =>
             onQueryInputChange(event.target.value)

@@ -1015,7 +1015,7 @@ import {
             {actionError && !isDetailMode && !showCreate ? <section className="memory-action-notice" role="status">{actionError}</section> : null}
             {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task 列表" onOpen={(id, trigger) => { paperTriggerRef.current = trigger; void handleReadTask(id); }} onReopen={(task) => void handleReopenTask(task)} /> : filters.q ? <ModuleSearchStateMessage state="empty" placement="module" emptyText="没有符合条件的任务" errorText="" action={<button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button>} /> : <section className="memory-empty-state"><p>{hasFilters ? "没有符合条件的任务" : "还没有任务"}</p>{hasFilters ? <button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button> : null}</section> : null}
             {state.status === "loading" ? filters.q ? <ModuleSearchStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="正在搜索…" /> : <MobileTaskLoading label="Task 加载中" /> : null}
-            {state.status === "error" ? filters.q ? <ModuleSearchStateMessage state="error" placement="module" emptyText="" errorText="暂时无法读取任务" retryLabel="重新加载" onRetry={() => setReloadKey((v) => v + 1)} /> : <TaskMessage title="暂时无法读取任务" description="请稍后重试。" role="alert" action={<button className="secondary-button" onClick={() => setReloadKey((v) => v + 1)}>重新加载</button>} /> : null}
+            {state.status === "error" ? <ModuleSearchStateMessage state="error" placement="module" emptyText="" errorText="Unable to read tasks." retryLabel="Retry" onRetry={() => setReloadKey((v) => v + 1)} /> : null}
           </> : null}
           {showCreate ? <PaperDetailDialog id="task-create-paper" open label="创建 Task" dateLabel={<TaskDeadlineEditor value={dueTime} withoutDueTime={withoutDueTime} disabled={creating} onValueChange={(v) => { setDueTime(v); setActionError(""); }} onWithoutDueTimeChange={(v) => { setWithoutDueTime(v); setActionError(""); }} />} signature="" triggerRef={paperTriggerRef}
             onRequestClose={() => { if (!confirmAndDiscardDraft()) return false; setShowCreate(false); setActionError(""); return true; }}
@@ -1086,7 +1086,7 @@ import {
             <h2>创建任务</h2>
             <input
               ref={createTitleInput}
-              placeholder="任务标题"
+              placeholder="Title"
               value={title}
               disabled={creating}
               onChange={(event) => {
@@ -1095,7 +1095,7 @@ import {
               }}
             />
             <textarea
-              placeholder="任务说明"
+              placeholder="Content"
               value={description}
               disabled={creating}
               onChange={(event) => {
@@ -1469,23 +1469,16 @@ import {
 
             {state.status === "loading" && (filters.q ? <ModuleSearchStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="正在搜索…" /> : <TaskLoading />)}
 
-            {state.status === "error" && (
-              filters.q ? <ModuleSearchStateMessage state="error" placement="module" emptyText="" errorText="暂时无法读取任务" retryLabel="重新加载" onRetry={() => setReloadKey((value) => value + 1)} /> : <TaskMessage
-                title="暂时无法读取任务"
-                description="请稍后重试。"
-                role="alert"
-                action={
-                  <button
-                    className="secondary-button"
-                    onClick={() =>
-                      setReloadKey((value) => value + 1)
-                    }
-                  >
-                    重新加载
-                  </button>
-                }
+            {state.status === "error" ? (
+              <ModuleSearchStateMessage
+                state="error"
+                placement="module"
+                emptyText=""
+                errorText="Unable to read tasks."
+                retryLabel="Retry"
+                onRetry={() => setReloadKey((value) => value + 1)}
               />
-            )}
+            ) : null}
           </>
         )}
       </div>
@@ -1516,7 +1509,7 @@ function MobileArchivedTaskList({ state, busy, onBack, onOpen, onRetry }: { stat
   return <><header className="memory-page-header memory-archive-header task-archive-header"><div className="memory-page-heading"><div className="memory-page-title">Archive</div><div className="memory-page-count">{count}项任务</div></div><button type="button" className="memory-archive-back" onClick={onBack}>Return</button></header>
     {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task Archive 列表" onOpen={onOpen} /> : <section className="memory-empty-state"><p>还没有归档任务</p></section> : null}
     {state.status === "loading" ? <MobileTaskLoading label="Task Archive 加载中" /> : null}
-    {state.status === "error" ? <TaskMessage title="暂时无法读取归档任务" description="请稍后重试。" role="alert" action={<button className="secondary-button" onClick={onRetry}>重新加载</button>} /> : null}</>;
+    {state.status === "error" ? <ModuleSearchStateMessage state="error" placement="module" emptyText="" errorText="Unable to read archived tasks." retryLabel="Retry" onRetry={onRetry} /> : null}</>;
 }
 function MobileArchivedTaskDetail(props: { state: DetailLoadState; task: TaskEntry | null; triggerRef: RefObject<HTMLElement | null>; errorMessage: string | null; restoring: boolean; confirmingDelete: boolean; deleting: boolean; onRestore(): void; onRequestDelete(): void; onConfirmDelete(): void; onCancelDelete(): void; onRetry(): void; onRequestClose(): boolean }) {
   if (props.state === "loading") return <PaperDetailDialog id="task-archive-detail-paper" open label="正在读取归档 Task" dateLabel="" signature="—" triggerRef={props.triggerRef} onRequestClose={props.onRequestClose}><div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取归档任务…</p></div></PaperDetailDialog>;

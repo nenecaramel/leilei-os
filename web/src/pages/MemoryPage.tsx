@@ -649,7 +649,7 @@ export function MemoryPageContent({
 
   async function handleCreate() {
     if (createInvalid) {
-      setActionError(author === null ? "请选择作者" : "Key 和 Content 都不能为空。");
+      setActionError(author === null ? "请选择作者" : "Title and Content are required.");
       return;
     }
     if (author === null) {
@@ -694,7 +694,7 @@ export function MemoryPageContent({
 
   async function handleUpdate(id: string) {
     if (!editingKey.trim() || !editingContent.trim()) {
-      setActionError("Key 和 Content 都不能为空。");
+      setActionError("Title and Content are required.");
       return;
     }
     if (editingAuthor == null) {
@@ -1257,32 +1257,16 @@ export function MemoryPageContent({
                 )
               )}
 
-              {state.status === "error" && (
-                filters.q ? (
-                  <ModuleSearchStateMessage
-                    state="error"
-                    placement="module"
-                    emptyText=""
-                    errorText="暂时无法读取记忆"
-                    retryLabel="重新加载"
-                    onRetry={() => setReloadKey((value) => value + 1)}
-                  />
-                ) : (
-                  <MemoryMessage
-                    title="暂时无法读取记忆"
-                    description="请稍后重试。"
-                    role="alert"
-                    action={
-                      <button
-                        className="secondary-button"
-                        onClick={() => setReloadKey((value) => value + 1)}
-                      >
-                        重新加载
-                      </button>
-                    }
-                  />
-                )
-              )}
+              {state.status === "error" ? (
+                <ModuleSearchStateMessage
+                  state="error"
+                  placement="module"
+                  emptyText=""
+                  errorText="Unable to read memories."
+                  retryLabel="Retry"
+                  onRetry={() => setReloadKey((value) => value + 1)}
+                />
+              ) : null}
             </>
           ) : null}
 
@@ -1421,11 +1405,13 @@ function ArchivedMemoryList({
     );
   } else if (state.status === "error") {
     body = (
-      <MemoryMessage
-        title="暂时无法读取归档记忆"
-        description="请稍后重试。"
-        role="alert"
-        action={<button className="secondary-button" onClick={onRetry}>重新加载</button>}
+      <ModuleSearchStateMessage
+        state="error"
+        placement="module"
+        emptyText=""
+        errorText="Unable to read archived memories."
+        retryLabel="Retry"
+        onRetry={onRetry}
       />
     );
   } else if (state.result.memories.length === 0) {

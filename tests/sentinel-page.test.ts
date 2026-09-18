@@ -78,7 +78,7 @@ test("Sentinel loading reuses the standard System state card without moving the 
   try {
     root.render(React.createElement(SentinelPageContent, { api }));
     await waitForCondition(
-      () => container.textContent?.includes("Reading Sentinel…") === true,
+      () => container.textContent?.includes("Reading...") === true,
       "Sentinel loading state",
     );
     assert.ok(container.querySelector(".system-page.sentinel-page"));
@@ -87,7 +87,7 @@ test("Sentinel loading reuses the standard System state card without moving the 
     assert.equal(container.querySelector(".page-header h1")?.textContent, "Sentinel");
     const loadingCard = container.querySelector("section.system-section");
     assert.ok(loadingCard);
-    assert.equal(loadingCard.querySelector('.system-state-copy[role="status"]')?.textContent, "Reading Sentinel…");
+    assert.equal(loadingCard.querySelector('.system-state-copy[role="status"]')?.textContent, "Reading...");
   } finally {
     root.unmount();
     await waitForPaint();

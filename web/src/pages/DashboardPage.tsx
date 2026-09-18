@@ -104,10 +104,12 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
 
   return (
     <div className="page home-prototype">
-      <h1 className="home-page-title">Todo</h1>
+      <div className="home-page-heading">
+        <h1 className="home-page-title">Todo</h1>
+        {loadState === "error" ? <div className="home-inline-unavailable" role="alert"><span>Unable to read Todo.</span><button type="button" onClick={() => void loadDay(dateKey)}>Retry</button></div> : null}
+      </div>
       <main className="home-prototype-content">
         {migrationNotice ? <div className="home-todo-notice" role="status">{migrationNotice}</div> : null}
-        {loadState === "error" ? <div className="home-module-state" role="alert">Todo 暂时无法读取。 <button type="button" onClick={() => void loadDay(dateKey)}>重试</button></div> : null}
         <TodayPanel author="L" notes={loadState === "ready" ? papers.L?.entries ?? [] : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
         <TodayPanel author="G" notes={loadState === "ready" ? papers.G?.entries ?? [] : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
         <TodayPanel author="C" notes={loadState === "ready" ? papers.C?.entries ?? [] : []} triggerRef={cTriggerRef} onOpen={() => setDialogAuthor("C")} />

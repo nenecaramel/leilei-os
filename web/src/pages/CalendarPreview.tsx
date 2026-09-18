@@ -69,8 +69,8 @@ export function CalendarPreview({
     <section className="home-section home-preview-section calendar-preview" aria-labelledby="calendar-preview-title">
       <div className="home-section-heading calendar-section-heading">
         <h2 id="calendar-preview-title">Calendar</h2>
+        {status === "error" ? <div className="home-inline-unavailable" role="alert"><span>Unable to read Calendar.</span>{onRetry ? <button type="button" onClick={() => void onRetry()}>Retry</button> : null}</div> : null}
       </div>
-      {status === "error" ? <div className="home-module-state" role="alert">Calendar 暂时无法读取。 {onRetry ? <button type="button" onClick={() => void onRetry()}>重试</button> : null}</div> : null}
       <div className="calendar-frame">
         <div className="calendar-preview-header">
           <button className="calendar-month-button" type="button" aria-label="上一个月" disabled={status === "loading"} onClick={() => shiftMonth(-1)}>‹</button>

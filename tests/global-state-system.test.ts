@@ -28,9 +28,9 @@ test("global state typography and geometry use one explicit visual contract", ()
 });
 
 test("major custom surfaces now participate in the shared state system", () => {
-  assert.match(universeSource, /<PageState[\s\S]*message="正在读取 Universe…"/);
-  assert.match(daySpaceSource, /<ModuleState state="loading" message="正在读取 Day Space…"/);
-  assert.match(quickSearchSource, /<StateSurface[\s\S]*message="搜索暂时失败"[\s\S]*onRetry=/);
+  assert.match(universeSource, /<PageState[\s\S]*message="Reading\.\.\."/);
+  assert.match(daySpaceSource, /<ModuleState state="loading" message="Reading\.\.\."/);
+  assert.match(quickSearchSource, /<StateSurface[\s\S]*message="Unable to read search results\."[\s\S]*onRetry=/);
 });
 
 test("legacy compact surfaces inherit the same state hierarchy", () => {

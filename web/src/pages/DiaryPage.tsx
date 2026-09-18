@@ -1235,38 +1235,18 @@ export function DiaryPageContent({
               ) : null}
 
               {state.status === "error" ? (
-                filters.q ? (
-                  <ModuleSearchStateMessage
-                    state="error"
-                    placement="module"
-                    emptyText=""
-                    errorText="暂时无法读取日记"
-                    retryLabel="重新加载"
-                    onRetry={() => {
-                      listAvailableRef.current = false;
-                      loadedListUrlRef.current = "";
-                      setReloadKey((value) => value + 1);
-                    }}
-                  />
-                ) : (
-                  <DiaryMessage
-                    title="暂时无法读取日记"
-                    description="请稍后重试。"
-                    role="alert"
-                    action={
-                      <button
-                        className="secondary-button"
-                        onClick={() => {
-                          listAvailableRef.current = false;
-                          loadedListUrlRef.current = "";
-                          setReloadKey((value) => value + 1);
-                        }}
-                      >
-                        重新加载
-                      </button>
-                    }
-                  />
-                )
+                <ModuleSearchStateMessage
+                  state="error"
+                  placement="module"
+                  emptyText=""
+                  errorText="Unable to read diary entries."
+                  retryLabel="Retry"
+                  onRetry={() => {
+                    listAvailableRef.current = false;
+                    loadedListUrlRef.current = "";
+                    setReloadKey((value) => value + 1);
+                  }}
+                />
               ) : null}
             </>
           ) : null}
@@ -1697,15 +1677,13 @@ function MobileArchivedDiaryList({
     body = <MobileDiaryLoading label="已归档 Diary 加载中" />;
   } else if (state.status === "error") {
     body = (
-      <DiaryMessage
-        title="暂时无法读取归档日记"
-        description="请稍后重试。"
-        role="alert"
-        action={
-          <button className="secondary-button" onClick={onRetry}>
-            重新加载
-          </button>
-        }
+      <ModuleSearchStateMessage
+        state="error"
+        placement="module"
+        emptyText=""
+        errorText="Unable to read archived diary entries."
+        retryLabel="Retry"
+        onRetry={onRetry}
       />
     );
   } else if (state.diaries.length === 0) {

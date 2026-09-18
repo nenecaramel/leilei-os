@@ -11,7 +11,7 @@ export const TaskPaperEditor = forwardRef<TaskPaperEditorHandle, { title: string
   useLayoutEffect(() => { if (bodyRef.current) resizePaperTextarea(bodyRef.current); }, [props.description]);
   return <div className="memory-paper-editor task-paper-editor">
     <input ref={titleRef} className="memory-paper-key task-paper-title-editor" type="text" aria-label="任务标题" placeholder="Title" autoComplete="off" spellCheck={false} value={props.title} disabled={props.disabled} maxLength={200} onChange={(e) => props.onTitleChange(e.target.value)} />
-    <textarea ref={bodyRef} className="memory-paper-content-editor task-paper-description-editor" aria-label="任务正文" placeholder="Description" value={props.description} disabled={props.disabled} maxLength={5000} rows={8} onChange={(e) => props.onDescriptionChange(e.target.value)} />
+    <textarea ref={bodyRef} className="memory-paper-content-editor task-paper-description-editor" aria-label="任务正文" placeholder="Content" value={props.description} disabled={props.disabled} maxLength={5000} rows={8} onChange={(e) => props.onDescriptionChange(e.target.value)} />
   </div>;
 });
 export function TaskDeadlineEditor(props: { value: string; withoutDueTime: boolean; disabled: boolean; onValueChange(v: string): void; onWithoutDueTimeChange(v: boolean): void }) {

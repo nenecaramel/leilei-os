@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { StateSurface } from "../components/StateSurface";
 import type {
   ConversationListItem,
   ConversationProvider,
@@ -56,6 +57,7 @@ export function ConversationSearchPanel({
   const [to, setTo] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [state, setState] = useState<SearchState>({ status: "idle" });
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const searchTicket = useRef(0);
   const activeFilterCount = [provider, role, conversationId, from, to].filter(Boolean).length;
@@ -109,6 +111,7 @@ export function ConversationSearchPanel({
     query,
     role,
     to,
+    retryNonce,
   ]);
 
   return (
@@ -165,7 +168,14 @@ export function ConversationSearchPanel({
       {state.status === "loading" ? (
         <div className="conversation-search-state" role="status">正在搜索…</div>
       ) : state.status === "error" ? (
-        <div className="conversation-search-state">搜索暂时不可用。</div>
+        <StateSurface
+          state="error"
+          message="Unable to read conversations."
+          retryLabel="Retry"
+          onRetry={() => setRetryNonce((value) => value + 1)}
+          placement="inline"
+          className="conversation-search-state"
+        />
       ) : state.status === "ready" && state.items.length === 0 ? (
         <div className="conversation-search-state">没有找到匹配的消息。</div>
       ) : state.status === "ready" ? (

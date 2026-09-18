@@ -203,7 +203,7 @@ test("Conversation archive and Favorites use the shared month grouping and loadi
 });
 
 test("Sources uses full card width below top-right actions", () => {
-  assert.match(page, /PlusIcon/);
+  assert.match(page, /<PlusIcon className="conversation-import-icon" \/>/);
   assert.match(page, /aria-label="导入 Conversation export"/);
   assert.doesNotMatch(page, /conversation-source-import/);
   assert.match(importHistoryPanel, /memory-month-label/);
@@ -274,4 +274,9 @@ test("Conversation advanced search filters stay secondary until requested", () =
   assert.match(css, /\.conversation-search-filter-toggle[^\{]*\{[^}]*font-size:\s*12px;[^}]*color:\s*#8a8a8a;/s);
   assert.match(css, /\.conversation-search-clear[^\{]*\{[^}]*font-size:\s*12px;/s);
   assert.match(css, /\.conversation-search-filters\s*\{[^}]*margin-top:\s*10px;/s);
+});
+
+
+test("Conversation import glyph is slightly larger without changing the header tool slot", () => {
+  assert.match(css, /\.conversation-import-icon\s*\{[^}]*width:\s*23px[^}]*height:\s*23px/s);
 });

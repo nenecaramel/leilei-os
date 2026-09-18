@@ -220,6 +220,6 @@ test("Quick Search uses shared inline states and offers retry after request fail
   assert.match(source, /import \{ StateSurface \} from "\.\.\/components\/StateSurface"/);
   assert.match(source, /state="loading"[\s\S]*message="正在搜索…"[\s\S]*placement="inline"/);
   assert.match(source, /state="empty"[\s\S]*message="没有找到匹配内容"[\s\S]*placement="inline"/);
-  assert.match(source, /message="搜索暂时失败"[\s\S]*retryLabel="重试"[\s\S]*setRetryNonce/);
+  assert.match(source, /message="Unable to read search results\."[\s\S]*retryLabel="Retry"[\s\S]*setRetryNonce/);
   assert.match(source, /\[api, open, queryInput, retryNonce\]/);
 });

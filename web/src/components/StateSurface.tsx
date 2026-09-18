@@ -18,7 +18,7 @@ export function StateSurface({
   state,
   message,
   description,
-  retryLabel = "重试",
+  retryLabel = "Retry",
   onRetry,
   action,
   placement = "module",
