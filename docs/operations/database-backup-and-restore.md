@@ -27,7 +27,7 @@ Confirmed:
 - The migration runner records the accepted migration head in
   `public.leilei_schema_migrations` and validates the legacy
   `drizzle.__drizzle_migrations` ledger during bootstrap.
-- The current verified production migration head on `main` is `0033_health_v2_daily_summaries`.
+- Historical verified-production snapshot (recorded 2026-09-06): `0033_health_v2_daily_summaries`. This is not a claim about the current production migration head; obtain that value from approved live release verification.
 
 Railway platform backups/PITR are not assumed to be available. Persistent
 volume storage is not itself a verified backup.
@@ -181,10 +181,10 @@ PR #174 (`0024_brainy_wildside`) was merged on 2026-08-20 after its destructive
 database gate passed. It is historical recovery/release evidence, not a current
 merge or deployment gate.
 
-The current verified production migration head is
-`0033_health_v2_daily_summaries`. Future destructive migrations must satisfy the
-general destructive migration gate above with fresh, exact-head recovery
-evidence.
+The historical verified-production snapshot recorded on 2026-09-06 was
+`0033_health_v2_daily_summaries`; it is not the current production migration
+head. Future destructive migrations must satisfy the general destructive
+migration gate above with fresh, exact-head recovery evidence.
 
 ## Production incident recovery
 

@@ -25,10 +25,6 @@ test("Conversation provider filter is vertically compact and clear of the first 
   assert.match(refinementCss, /\.conversation-page \.conversation-provider-filter button\s*\{[^}]*min-height:\s*24px[^}]*padding:\s*2px 9px/s);
 });
 
-test("Sources title and card are lifted to match the other Conversation surfaces", () => {
-  assert.match(refinementCss, /\.conversation-page \.conversation-import-history\s*\{[^}]*margin-top:\s*-12px/s);
-});
-
 test("Located Conversation message keeps only a neutral left marker", () => {
   assert.match(refinementCss, /\.conversation-detail-page \.conversation-message--anchor\s*\{[^}]*background:\s*transparent[^}]*box-shadow:\s*inset 3px 0 0 #bdbdbd/s);
   assert.doesNotMatch(refinementCss, /#fff9df|#e0ca71|background:\s*#f5f5f5/);

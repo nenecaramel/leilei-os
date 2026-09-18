@@ -66,6 +66,28 @@ test("Favorite rows lead with the message and keep provider and 原消息 labels
   assert.match(favoritesPanel, /className="memory-row-meta"/);
 });
 
+test("Conversation stylesheet excludes retired Favorites and count/search structures", () => {
+  for (const retiredSelector of [
+    "conversation-danger-button",
+    "conversation-favorite-actions",
+    "conversation-favorite-card",
+    "conversation-favorite-composer",
+    "conversation-favorite-detail",
+    "conversation-favorite-detail-heading",
+    "conversation-favorite-editor",
+    "conversation-favorite-footer",
+    "conversation-favorite-main",
+    "conversation-favorite-message",
+    "conversation-favorite-message-list",
+    "conversation-favorite-original",
+    "conversation-favorite-tags",
+    "conversation-list-total",
+    "conversation-search-form",
+  ]) {
+    assert.doesNotMatch(css, new RegExp(`\\.${retiredSelector}\\b`), retiredSelector);
+  }
+});
+
 test("Conversation surfaces keep shared tab, provider, destructive, and loading contracts", () => {
   assert.match(css, /\.conversation-surface-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.conversation-surface-tabs\s*\{[^}]*background:\s*transparent/s);
@@ -162,7 +184,7 @@ test("Conversation controls stay overlaid while Favorites count aligns with its 
   assert.match(css, /\.conversation-list-heading\s*\{[^}]*position:\s*absolute[^}]*top:\s*0[^}]*right:\s*0/s);
   assert.doesNotMatch(favoritesPanel, /conversation-section-heading conversation-list-heading/);
   assert.match(favoritesPanel, /conversation-favorites-month-heading/);
-  assert.match(favoritesPanel, /memory-month-label conversation-favorites-total/);
+  assert.match(favoritesPanel, /className="conversation-favorites-total"/);
 });
 
 test("Conversation archive and Favorites use the shared month grouping and loading primitives", () => {

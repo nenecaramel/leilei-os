@@ -10,7 +10,7 @@ Leilei OS is an authenticated personal workspace composed of:
 - MCP Apps UI resources for interactive model-facing surfaces; and
 - a PWA runtime for the Web application.
 
-ChatGPT is one MCP client and conversation surface. Leilei OS does not call the OpenAI API and does not store ChatGPT conversation history.
+ChatGPT is one MCP client and conversation surface. Leilei OS does not call the OpenAI API. Conversation Archive persists only user-initiated ChatGPT or Claude exports; it does not automatically capture host conversations.
 
 ## Runtime boundaries
 
@@ -52,7 +52,7 @@ The adapter is configuration-dependent; repository support for it does not by it
 
 ## Web application
 
-The Web application contains authenticated Dashboard and Day Space views plus Memory, Diary, Task, Todo, Shared Paper, Universe, Global Search, and System routes. Durable data is read and written through `/api/v1`; the server remains authoritative.
+The Web application contains authenticated Dashboard and Day Space views plus Memory, Diary, Task, Todo, Shared Paper, Conversation Archive, Universe, Global Search, and System routes. Durable data is read and written through `/api/v1`; the server remains authoritative.
 
 The PWA build emits the manifest and service worker from `web/`. Vercel serves the built SPA from `web/dist` with history fallback. The production branch is `main`.
 
@@ -68,7 +68,7 @@ MCP schemas are Zod-validated. Safe error mappings distinguish invalid input, mi
 
 `render_thinking_block` renders model-supplied external working text in an MCP Apps card. It does not expose native hidden chain of thought. Thinking-block content is not persisted by default and does not become authoritative long-term state merely by being rendered.
 
-The standard MCP Apps resource is `ui://widget/leileios-thinking-block-v2.html`. ChatGPT's `openai/outputTemplate` compatibility path points to `ui://widget/leileios-thinking-block-v1.html`. Both identifiers resolve to the same current HTML and browser runtime; the v1 identifier exists only as a host-compatibility alias.
+The standard MCP Apps resource is `ui://widget/leileios-thinking-block-v3.html`. ChatGPT's `openai/outputTemplate` compatibility path points to `ui://widget/leileios-thinking-block-chatgpt-v3.html`. Both identifiers resolve to the same current HTML and browser runtime; the older v2 and v1 identifiers remain only as legacy host-compatibility aliases.
 
 The browser client uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` lifecycle for standard MCP Apps hosts while retaining the OpenAI host globals path as a compatibility fallback. The generated Thinking Block browser bundle is produced by `scripts/build-thinking-block-browser.mjs` during the root build.
 
@@ -99,7 +99,7 @@ PostgreSQL holds durable user, content, Todo, Universe, audit, integration, Sent
 The checked-in Drizzle migration chain currently ends at:
 
 ```text
-0036_shared_paper_edit_targets
+0044_conversation_import_reapply
 ```
 
 The canonical checked-in source for that value is `drizzle/meta/_journal.json`.

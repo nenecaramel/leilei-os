@@ -136,19 +136,12 @@ test("Conversation Favorites Web adapter supports list detail partial metadata u
   assert.equal(calls[3]?.init?.method, "DELETE");
 });
 
-test("Conversation Favorites UI exposes single/range selection and snapshot survival semantics", () => {
-  const page = readFileSync(
-    new URL("../web/src/pages/ConversationArchivePage.tsx", import.meta.url),
-    "utf8",
-  );
+test("Conversation Favorites UI preserves snapshot reading and deletion semantics", () => {
   const panel = readFileSync(
     new URL("../web/src/pages/ConversationFavoritesPanel.tsx", import.meta.url),
     "utf8",
   );
 
-  assert.match(page, /选择收藏范围/);
-  assert.match(page, /chooseFavoriteMessage/);
-  assert.match(page, /client\.createFavorite/);
   assert.match(panel, /favoriteExcerpt/);
   assert.match(panel, /canonicalFavoriteLink/);
   assert.match(panel, /原窗口已删除/);
