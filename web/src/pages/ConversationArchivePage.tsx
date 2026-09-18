@@ -115,6 +115,7 @@ function ConversationListView({
 }: {
   client: ReturnType<typeof createConversationArchiveApi>;
 }) {
+  const navigate = useNavigate();
   const [provider, setProvider] = useState<ConversationProvider | undefined>();
   const [surface, setSurface] = useState<"archive" | "favorites" | "sources">("archive");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -261,8 +262,8 @@ function ConversationListView({
             expanded={searchOpen}
             onClick={() => setSearchOpen((value) => !value)}
           />
-          <Link className="conversation-lifecycle-icon" to="/conversations/archive" aria-label="查看归档" title="Archive"><ArchiveIcon /></Link>
-          <Link className="conversation-lifecycle-icon" to="/conversations/deleted" aria-label="查看已删除" title="Deleted"><TrashIcon /></Link>
+          <button type="button" aria-label="查看归档" title="Archive" onClick={() => navigate("/conversations/archive")}><ArchiveIcon /></button>
+          <button type="button" aria-label="查看已删除" title="Deleted" onClick={() => navigate("/conversations/deleted")}><TrashIcon /></button>
           <button
             type="button"
             aria-label="导入 Conversation export"
@@ -793,14 +794,23 @@ function ConversationDetailView({
             <button className="memory-archive-back" type="button" onClick={() => void client.restoreConversation(conversationId).then(() => navigate("/conversations/archive"))}>Restore</button>
           ) : null}
           {scope === "deleted" ? (
+            <>
             <button className="memory-archive-back" type="button" onClick={() => {
-              if (!window.confirm("永久从 Conversation Archive 删除？后续重新导入不会恢复；原始 export 仍会保留。")) return;
+              if (!window.confirm("永久删除并阻止后续重新导入；原始 export 仍保留。确定继续吗？")) return;
               if (branchId) {
                 void client.permanentlyDeleteBranch({ conversationId, branchId }).then(() => navigate("/conversations/deleted"));
               } else {
                 void client.permanentlyDeleteConversation(conversationId).then(() => navigate("/conversations/deleted"));
               }
             }}>Permanently Delete</button>
+            <button className="memory-archive-back" type="button" onClick={() => {
+              if (branchId) {
+                void client.restoreBranch({ conversationId, branchId }).then(() => navigate("/conversations/deleted"));
+              } else {
+                void client.restoreDeletedConversation(conversationId).then(() => navigate("/conversations/deleted"));
+              }
+            }}>Restore</button>
+            </>
           ) : (
             <button
               className="memory-archive-back conversation-detail-delete"
@@ -869,7 +879,7 @@ function ConversationDetailView({
                   <button
                     className="conversation-message-prune"
                     type="button"
-                    aria-label="从这条消息开始删除整个分支并在后续导入中排除"
+                    aria-label="从这条消息开始把整个分支移到 Deleted"
                     title="删除此分支；原始 export 仍保留"
                     disabled={pruningMessageId !== null}
                     onClick={() => void deleteBranch(message)}

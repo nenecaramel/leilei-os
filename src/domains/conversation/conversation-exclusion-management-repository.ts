@@ -19,6 +19,10 @@ export type ConversationExclusionListItem = {
   sourceNodeId: string | null;
   canonicalConversationExists: boolean;
   canonicalNodeExists: boolean | null;
+  title: string | null;
+  sourceCreatedAt: string | null;
+  rootRole: "user" | "assistant" | "system" | "tool" | "reasoning" | "unknown" | null;
+  rootSnippet: string | null;
   createdAt: string;
 };
 
@@ -91,6 +95,10 @@ implements ConversationExclusionManagementRepository {
             else null
           end
         `,
+        title: conversations.title,
+        sourceCreatedAt: conversations.sourceCreatedAt,
+        rootRole: conversationMessages.role,
+        rootSnippet: conversationMessages.displayText,
         createdAt: conversationExclusions.createdAt,
       })
       .from(conversationExclusions)
@@ -121,6 +129,8 @@ implements ConversationExclusionManagementRepository {
         ...row,
         provider: row.provider as ConversationProvider,
         scope: row.scope as ConversationExclusionScope,
+        sourceCreatedAt: row.sourceCreatedAt ? toIso(row.sourceCreatedAt) : null,
+        rootRole: row.rootRole as ConversationExclusionListItem["rootRole"],
         createdAt: toIso(row.createdAt),
       })),
     };
@@ -136,6 +146,10 @@ implements ConversationExclusionManagementRepository {
         sourceNodeId: conversationExclusions.sourceNodeId,
         canonicalConversationExists: sql<boolean>`${conversations.id} is not null`,
         canonicalNodeExists: sql<boolean | null>`case when ${conversationExclusions.scope} = 'branch' then ${conversationMessages.id} is not null else null end`,
+        title: conversations.title,
+        sourceCreatedAt: conversations.sourceCreatedAt,
+        rootRole: conversationMessages.role,
+        rootSnippet: conversationMessages.displayText,
         createdAt: conversationExclusions.createdAt,
       })
       .from(conversationExclusions)
@@ -155,6 +169,8 @@ implements ConversationExclusionManagementRepository {
       ...row,
       provider: row.provider as ConversationProvider,
       scope: row.scope as ConversationExclusionScope,
+      sourceCreatedAt: row.sourceCreatedAt ? toIso(row.sourceCreatedAt) : null,
+      rootRole: row.rootRole as ConversationExclusionListItem["rootRole"],
       createdAt: toIso(row.createdAt),
     } : null;
   }
@@ -225,6 +241,10 @@ implements ConversationExclusionManagementRepository {
         sourceNodeId: rule.sourceNodeId,
         canonicalConversationExists: Boolean(conversation),
         canonicalNodeExists,
+        title: null,
+        sourceCreatedAt: null,
+        rootRole: null,
+        rootSnippet: null,
         createdAt: toIso(rule.createdAt),
       };
     }, { isolationLevel: "serializable" });

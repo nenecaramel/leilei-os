@@ -145,3 +145,15 @@ test("Conversation lifecycle actions keep archive, recoverable delete, and perma
   assert.equal(deletedRestored, true);
   assert.equal(permanentlyDeleted, true);
 });
+
+test("Conversation deleted-branch pagination accepts the same string query values as Express", async () => {
+  const repository = new FakePruningRepository();
+  let received: { limit: number; offset: number } | undefined;
+  repository.listDeletedBranches = async (input) => {
+    received = { limit: input.limit, offset: input.offset };
+    return { items: [], total: 0 };
+  };
+  const service = new ConversationPruningService(repository);
+  await service.listDeletedBranches({ userId: "user", limit: "25", offset: "5" });
+  assert.deepEqual(received, { limit: 25, offset: 5 });
+});

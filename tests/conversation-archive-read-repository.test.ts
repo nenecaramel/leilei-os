@@ -33,6 +33,14 @@ test("Conversation read queries remain user scoped", () => {
   assert.match(repositorySource, /eq\(conversationMessages\.userId, input\.userId\)/);
 });
 
+test("Conversation lifecycle lists order by lifecycle timestamps instead of source timestamps", () => {
+  const start = repositorySource.indexOf("async listConversations");
+  const end = repositorySource.indexOf("async getConversation", start);
+  const source = repositorySource.slice(start, end);
+  assert.match(source, /input\.scope === "archived"[\s\S]*desc\(conversations\.archivedAt\)/);
+  assert.match(source, /input\.scope === "deleted"[\s\S]*desc\(conversations\.deletedAt\)/);
+});
+
 
 test("Conversation dedicated search scans canonical primary user/assistant text across saved branches", () => {
   assert.match(

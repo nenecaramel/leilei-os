@@ -32,6 +32,18 @@ function uuid(value: unknown, label: string): string {
   return value;
 }
 
+function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new ConversationPruningError(
+      "CONVERSATION_PRUNE_INVALID_REQUEST",
+      "Conversation pagination is invalid.",
+    );
+  }
+  return parsed;
+}
+
 export class ConversationPruningService {
   constructor(private readonly repository: ConversationPruningRepository) {}
 
@@ -155,8 +167,8 @@ export class ConversationPruningService {
   async listDeletedBranches(input: { userId: string; limit?: unknown; offset?: unknown }) {
     await this.requireActive(input.userId);
     if (!this.repository.listDeletedBranches) throw new ConversationPruningError("CONVERSATION_PRUNE_ACTION_NOT_AVAILABLE", "Deleted branches are unavailable.");
-    const limit = typeof input.limit === "number" && Number.isInteger(input.limit) && input.limit > 0 && input.limit <= 100 ? input.limit : 50;
-    const offset = typeof input.offset === "number" && Number.isInteger(input.offset) && input.offset >= 0 ? input.offset : 0;
+    const limit = boundedInt(input.limit, 50, 1, 100);
+    const offset = boundedInt(input.offset, 0, 0, 100_000);
     return this.repository.listDeletedBranches({ userId: input.userId, limit, offset });
   }
 

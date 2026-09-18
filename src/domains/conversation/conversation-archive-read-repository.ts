@@ -335,8 +335,11 @@ implements ConversationArchiveReadRepository {
       .where(where)
       .groupBy(conversations.id)
       .orderBy(
-        desc(sql`coalesce(${conversations.sourceUpdatedAt}, ${conversations.sourceCreatedAt}, ${conversations.updatedAt})`),
-        desc(conversations.id),
+        ...(input.scope === "archived"
+          ? [desc(conversations.archivedAt), desc(conversations.id)]
+          : input.scope === "deleted"
+            ? [desc(conversations.deletedAt), desc(conversations.id)]
+            : [desc(sql`coalesce(${conversations.sourceUpdatedAt}, ${conversations.sourceCreatedAt}, ${conversations.updatedAt})`), desc(conversations.id)]),
       )
       .limit(input.limit)
       .offset(input.offset);

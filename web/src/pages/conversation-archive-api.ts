@@ -116,6 +116,25 @@ export type ConversationDeletedBranch = {
   createdAt: string;
   deletedMessages: number;
   canonicalConversationExists: boolean;
+  title: string | null;
+  rootRole: ConversationMessage["role"] | null;
+  rootSourceCreatedAt: string | null;
+  rootSnippet: string | null;
+};
+
+export type ConversationLegacyExclusion = {
+  id: string;
+  provider: ConversationProvider;
+  scope: "conversation" | "branch";
+  sourceConversationId: string;
+  sourceNodeId: string | null;
+  canonicalConversationExists: boolean;
+  canonicalNodeExists: boolean | null;
+  title: string | null;
+  sourceCreatedAt: string | null;
+  rootRole: ConversationMessage["role"] | null;
+  rootSnippet: string | null;
+  createdAt: string;
 };
 
 export type ConversationImportExecute = {
@@ -443,6 +462,15 @@ export function createConversationArchiveApi(api: WebApiClient) {
       if (input.offset !== undefined) params.set("offset", String(input.offset));
       const suffix = params.size ? `?${params}` : "";
       const result = await api.request<Envelope<{ conversations: { items: ConversationListItem[]; total: number }; branches: { items: ConversationDeletedBranch[]; total: number } }>>(`/conversations/deleted${suffix}`);
+      return result.data;
+    },
+
+    async listExclusions(input: { limit?: number; offset?: number } = {}): Promise<{ items: ConversationLegacyExclusion[]; total: number }> {
+      const params = new URLSearchParams();
+      if (input.limit !== undefined) params.set("limit", String(input.limit));
+      if (input.offset !== undefined) params.set("offset", String(input.offset));
+      const suffix = params.size ? `?${params}` : "";
+      const result = await api.request<Envelope<{ items: ConversationLegacyExclusion[]; total: number }>>(`/conversations/exclusions${suffix}`);
       return result.data;
     },
 

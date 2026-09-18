@@ -21,6 +21,10 @@ function item(): ConversationExclusionListItem {
     sourceNodeId: "source-node",
     canonicalConversationExists: true,
     canonicalNodeExists: false,
+    title: "A conversation",
+    sourceCreatedAt: "2026-09-15T00:00:00.000Z",
+    rootRole: "user",
+    rootSnippet: "A retained canonical anchor",
     createdAt: "2026-09-16T00:00:00.000Z",
   };
 }
