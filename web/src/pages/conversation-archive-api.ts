@@ -137,6 +137,15 @@ export type ConversationLegacyExclusion = {
   createdAt: string;
 };
 
+export type ConversationRestoreCandidate = {
+  sourceId: string;
+  filename: string;
+  title: string | null;
+  rootRole: ConversationMessage["role"] | null;
+  rootSourceCreatedAt: string | null;
+  rootSnippet: string | null;
+};
+
 export type ConversationImportExecute = {
   outcome: "executed" | "replayed" | "already_executed";
   import_run_id: string;
@@ -471,6 +480,13 @@ export function createConversationArchiveApi(api: WebApiClient) {
       if (input.offset !== undefined) params.set("offset", String(input.offset));
       const suffix = params.size ? `?${params}` : "";
       const result = await api.request<Envelope<{ items: ConversationLegacyExclusion[]; total: number }>>(`/conversations/exclusions${suffix}`);
+      return result.data;
+    },
+
+    async restoreCandidates(exclusionId: string): Promise<{ items: ConversationRestoreCandidate[]; total: number }> {
+      const result = await api.request<Envelope<{ items: ConversationRestoreCandidate[]; total: number }>>(
+        `/conversations/exclusions/${encodeURIComponent(exclusionId)}/restore-candidates`,
+      );
       return result.data;
     },
 

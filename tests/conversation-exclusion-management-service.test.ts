@@ -196,3 +196,36 @@ test("legacy restore uses only the selected exclusion and retained source", asyn
     },
   });
 });
+
+test("legacy recovery resolves retained-source candidates from the selected exclusion", async () => {
+  const repository = new FakeRepository();
+  let candidateInput: unknown;
+  const importService = {
+    async findRestoreCandidates(input: unknown) {
+      candidateInput = input;
+      return [{
+        sourceId: "33333333-3333-4333-8333-333333333333",
+        filename: "retained.json",
+        title: "Verified title",
+        rootRole: "user",
+        rootSourceCreatedAt: "2026-09-15T00:00:00.000Z",
+        rootSnippet: "Verified root",
+      }];
+    },
+  } as unknown as ConversationImportService;
+  const service = new ConversationExclusionManagementService(repository, importService);
+
+  const result = await service.restoreCandidates({ userId: "user", exclusionId: EXCLUSION_ID });
+
+  assert.deepEqual(candidateInput, {
+    userId: "user",
+    exclusion: {
+      provider: "chatgpt",
+      scope: "branch",
+      sourceConversationId: "source-conversation",
+      sourceNodeId: "source-node",
+    },
+  });
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0]?.title, "Verified title");
+});

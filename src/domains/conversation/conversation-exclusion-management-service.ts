@@ -160,6 +160,33 @@ export class ConversationExclusionManagementService {
     return { restored: true, sourceId };
   }
 
+  async restoreCandidates(input: {
+    userId: string;
+    exclusionId: unknown;
+  }): Promise<{ items: Awaited<ReturnType<ConversationImportService["findRestoreCandidates"]>>; total: number }> {
+    await this.requireActive(input.userId);
+    if (!this.importService || !this.repository.getExclusion) {
+      throw new ConversationExclusionManagementError("CONVERSATION_EXCLUSION_UNAVAILABLE", "Conversation restore is unavailable.");
+    }
+    const exclusion = await this.repository.getExclusion({
+      userId: input.userId,
+      exclusionId: uuid(input.exclusionId, "exclusionId"),
+    });
+    if (!exclusion) {
+      throw new ConversationExclusionManagementError("CONVERSATION_EXCLUSION_NOT_FOUND", "Conversation exclusion was not found.");
+    }
+    const items = await this.importService.findRestoreCandidates({
+      userId: input.userId,
+      exclusion: {
+        provider: exclusion.provider,
+        scope: exclusion.scope,
+        sourceConversationId: exclusion.sourceConversationId,
+        sourceNodeId: exclusion.sourceNodeId,
+      },
+    });
+    return { items, total: items.length };
+  }
+
   private async requireActive(userId: string): Promise<void> {
     if (await this.repository.findUserStatus(userId) !== "active") {
       throw new ConversationExclusionManagementError(

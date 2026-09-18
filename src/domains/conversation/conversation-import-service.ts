@@ -69,6 +69,15 @@ export type ConversationImportPreview = {
   exclusions: ConversationExclusionSummary;
 };
 
+export type ConversationRestoreCandidate = {
+  sourceId: string;
+  filename: string;
+  title: string | null;
+  rootRole: NormalizedConversation["messages"][number]["role"] | null;
+  rootSourceCreatedAt: string | null;
+  rootSnippet: string | null;
+};
+
 export class ConversationImportAuthorizationError extends Error {}
 
 function emptyExclusionSummary(): ConversationExclusionSummary {
@@ -215,6 +224,65 @@ export class ConversationImportService {
     } finally {
       await staged.cleanup();
     }
+  }
+
+  async findRestoreCandidates(input: {
+    userId: string;
+    exclusion: ConversationExclusionRule;
+  }): Promise<ConversationRestoreCandidate[]> {
+    const user = await this.repository.findUserById(input.userId);
+    if (!user || user.status !== "active") throw new ConversationImportAuthorizationError();
+    if (!this.repository.listSourcesForProvider) return [];
+
+    const sources = await this.repository.listSourcesForProvider({
+      userId: input.userId,
+      provider: input.exclusion.provider,
+    });
+    const candidates: ConversationRestoreCandidate[] = [];
+
+    for (const source of sources) {
+      const blob = await this.repository.readStoredBlob({ userId: input.userId, sourceId: source.id });
+      if (!blob) continue;
+      const staged = await stageStoredConversationSource({
+        data: blob.data,
+        encoding: blob.encoding,
+        originalFilename: source.originalFilename,
+        expectedSha256: source.rawSha256,
+        expectedBytes: source.rawBytes,
+      });
+      try {
+        let match: NormalizedConversation | null = null;
+        for (const jsonPath of staged.jsonPaths) {
+          for await (const value of readTopLevelConversationObjects(jsonPath)) {
+            const detected = detectConversationProviderParser(value);
+            if (detected.provider !== input.exclusion.provider) continue;
+            const normalized = detected.parser.normalizeConversation(value).conversation;
+            if (matchesRestoreTarget(normalized, input.exclusion)) {
+              match = normalized;
+              break;
+            }
+          }
+          if (match) break;
+        }
+        if (!match) continue;
+        const root = input.exclusion.scope === "branch" && input.exclusion.sourceNodeId
+          ? match.messages.find((message) => message.sourceNodeId === input.exclusion.sourceNodeId) ?? null
+          : match.messages[0] ?? null;
+        candidates.push({
+          sourceId: source.id,
+          filename: source.originalFilename,
+          title: match.title,
+          rootRole: root?.role ?? null,
+          rootSourceCreatedAt: root?.sourceCreatedAt ?? null,
+          rootSnippet: root?.displayText ?? null,
+        });
+      } catch {
+        // A malformed retained source is never a recovery candidate.
+      } finally {
+        await staged.cleanup();
+      }
+    }
+    return candidates;
   }
 
   async execute(

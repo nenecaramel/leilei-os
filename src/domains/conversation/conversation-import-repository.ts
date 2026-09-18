@@ -50,6 +50,10 @@ export interface ConversationImportRepository {
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   findSourceBySha(userId: string, rawSha256: string): Promise<ConversationStoredSource | null>;
   findSourceById(userId: string, sourceId: string): Promise<ConversationStoredSource | null>;
+  listSourcesForProvider?(input: {
+    userId: string;
+    provider: ConversationProvider;
+  }): Promise<ConversationStoredSource[]>;
   createOrReuseSourceWithBlob(input: {
     userId: string;
     provider: ConversationProvider;
@@ -142,6 +146,20 @@ implements ConversationImportRepository {
       ))
       .limit(1);
     return row ? toSource(row) : null;
+  }
+
+  async listSourcesForProvider(input: {
+    userId: string;
+    provider: ConversationProvider;
+  }): Promise<ConversationStoredSource[]> {
+    const rows = await this.db
+      .select()
+      .from(conversationImportSources)
+      .where(and(
+        eq(conversationImportSources.userId, input.userId),
+        eq(conversationImportSources.provider, input.provider),
+      ));
+    return rows.map(toSource);
   }
 
   async createOrReuseSourceWithBlob(input: {

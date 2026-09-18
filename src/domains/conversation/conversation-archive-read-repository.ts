@@ -218,11 +218,15 @@ function lifecyclePredicate(
   return sql`${conversations.archivedAt} IS NULL AND ${conversations.deletedAt} IS NULL`;
 }
 
-function branchVisibilityPredicate(userId: string) {
+function branchVisibilityPredicateFor(
+  userId: string,
+  conversationId: unknown,
+  sourceNodeId: unknown,
+) {
   return sql`not exists (
     select 1 from ${conversationDeletedBranches} deleted_branch
     where deleted_branch.user_id = ${userId}
-      and deleted_branch.conversation_id = ${conversationMessages.conversationId}
+      and deleted_branch.conversation_id = ${conversationId}
       and exists (
         with recursive branch_nodes(source_node_id) as (
           select deleted_branch.source_node_id
@@ -233,27 +237,67 @@ function branchVisibilityPredicate(userId: string) {
           where descendant.conversation_id = deleted_branch.conversation_id
         )
         select 1 from branch_nodes
-        where branch_nodes.source_node_id = ${conversationMessages.sourceNodeId}
+        where branch_nodes.source_node_id = ${sourceNodeId}
       )
   )`;
 }
 
-function branchSelectionPredicate(userId: string, branchId: string) {
+function branchVisibilityPredicate(userId: string) {
+  return branchVisibilityPredicateFor(
+    userId,
+    conversationMessages.conversationId,
+    conversationMessages.sourceNodeId,
+  );
+}
+
+function branchSelectionPredicateFor(
+  userId: string,
+  branchId: string,
+  conversationId: unknown,
+  sourceNodeId: unknown,
+) {
   return sql`exists (
     with recursive branch_nodes(source_node_id) as (
       select deleted_branch.source_node_id
       from ${conversationDeletedBranches} deleted_branch
       where deleted_branch.id = ${branchId}
         and deleted_branch.user_id = ${userId}
-        and deleted_branch.conversation_id = ${conversationMessages.conversationId}
+        and deleted_branch.conversation_id = ${conversationId}
       union all
       select descendant.source_node_id
       from conversation_messages descendant
       join branch_nodes parent on descendant.parent_source_node_id = parent.source_node_id
-      where descendant.conversation_id = ${conversationMessages.conversationId}
+      where descendant.conversation_id = ${conversationId}
     )
     select 1 from branch_nodes
-    where branch_nodes.source_node_id = ${conversationMessages.sourceNodeId}
+    where branch_nodes.source_node_id = ${sourceNodeId}
+  )`;
+}
+
+function branchSelectionPredicate(userId: string, branchId: string) {
+  return branchSelectionPredicateFor(
+    userId,
+    branchId,
+    conversationMessages.conversationId,
+    conversationMessages.sourceNodeId,
+  );
+}
+
+function visibleCurrentLeafSourceNodeId(userId: string, branchId?: string) {
+  const sourceNodeId = sql.raw("visible_node.source_node_id");
+  const conversationId = sql.raw("visible_node.conversation_id");
+  const visible = branchId
+    ? branchSelectionPredicateFor(userId, branchId, conversationId, sourceNodeId)
+    : branchVisibilityPredicateFor(userId, conversationId, sourceNodeId);
+  return sql<string | null>`(
+    select visible_node.source_node_id
+    from conversation_messages visible_node
+    where visible_node.user_id = ${userId}
+      and visible_node.conversation_id = ${conversations.id}
+      and visible_node.is_current_path = true
+      and ${visible}
+    order by visible_node.current_path_index desc nulls last, visible_node.id desc
+    limit 1
   )`;
 }
 
@@ -297,7 +341,7 @@ implements ConversationArchiveReadRepository {
         sourceCreatedAt: conversations.sourceCreatedAt,
         sourceUpdatedAt: conversations.sourceUpdatedAt,
         defaultModel: conversations.defaultModel,
-        currentLeafSourceNodeId: conversations.currentLeafSourceNodeId,
+        currentLeafSourceNodeId: visibleCurrentLeafSourceNodeId(input.userId),
         messageCount: sql<number>`
           count(*) filter (
             where ${conversationMessages.isPrimary} = true
@@ -320,7 +364,9 @@ implements ConversationArchiveReadRepository {
               and ${branchVisibilityPredicate(input.userId)}
           )::int
         `,
-        totalNodeCount: sql<number>`count(${conversationMessages.id})::int`,
+        totalNodeCount: sql<number>`
+          count(*) filter (where ${branchVisibilityPredicate(input.userId)})::int
+        `,
         archivedAt: conversations.archivedAt,
         deletedAt: conversations.deletedAt,
       })
@@ -375,7 +421,7 @@ implements ConversationArchiveReadRepository {
         sourceCreatedAt: conversations.sourceCreatedAt,
         sourceUpdatedAt: conversations.sourceUpdatedAt,
         defaultModel: conversations.defaultModel,
-        currentLeafSourceNodeId: conversations.currentLeafSourceNodeId,
+        currentLeafSourceNodeId: visibleCurrentLeafSourceNodeId(input.userId, input.branchId),
         providerMetadata: conversations.providerMetadata,
         messageCount: sql<number>`
           count(*) filter (
@@ -399,7 +445,11 @@ implements ConversationArchiveReadRepository {
               and ${input.branchId ? branchSelectionPredicate(input.userId, input.branchId) : branchVisibilityPredicate(input.userId)}
           )::int
         `,
-        totalNodeCount: sql<number>`count(${conversationMessages.id})::int`,
+        totalNodeCount: sql<number>`
+          count(*) filter (
+            where ${input.branchId ? branchSelectionPredicate(input.userId, input.branchId) : branchVisibilityPredicate(input.userId)}
+          )::int
+        `,
         archivedAt: conversations.archivedAt,
         deletedAt: conversations.deletedAt,
       })

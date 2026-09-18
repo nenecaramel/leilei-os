@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { ConversationImportService } from "../src/domains/conversation/conversation-import-service.js";
 import type {
@@ -544,6 +545,23 @@ test("branch exclusions remove the source subtree from Preview and Execute plann
   assert.equal(executed.outcome, "executed");
   assert.equal(executed.exclusions.branch_roots, 1);
   assert.deepEqual(executor.applied, ["conv-real-shape"]);
+});
+
+test("legacy restore candidates scan retained sources with the provider registry rather than a UI source page", () => {
+  const source = readFileSync(
+    new URL("../src/domains/conversation/conversation-import-service.ts", import.meta.url),
+    "utf8",
+  );
+  const start = source.indexOf("async findRestoreCandidates");
+  const end = source.indexOf("async execute", start);
+  const method = source.slice(start, end);
+  assert.ok(start >= 0);
+  assert.match(method, /listSourcesForProvider/);
+  assert.match(method, /readStoredBlob/);
+  assert.match(method, /detectConversationProviderParser/);
+  assert.match(method, /normalizeConversation/);
+  assert.match(method, /matchesRestoreTarget/);
+  assert.doesNotMatch(method, /limit:\s*100/);
 });
 
 test("changing exclusion rules after Preview makes Execute stale before canonical writes", async () => {

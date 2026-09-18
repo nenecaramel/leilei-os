@@ -240,20 +240,21 @@ test("Conversation lists restore content rows without standalone page headings",
 });
 
 test("Conversation lifecycle uses lifecycle time and totals, with recoverable detail actions", () => {
-  assert.match(lifecyclePage, /item\.deletedAt \?\? item\.sourceCreatedAt/);
-  assert.match(lifecyclePage, /item\.archivedAt \?\? item\.sourceCreatedAt/);
-  assert.match(lifecyclePage, /state\.total\.toLocaleString\(\)\}个窗口/);
-  assert.match(lifecyclePage, /result\.conversations\.total \+ result\.branches\.total/);
+  assert.match(lifecyclePage, /time: item\.deletedAt/);
+  assert.match(lifecyclePage, /time: item\.archivedAt/);
+  assert.match(lifecyclePage, /state\.total\.toLocaleString\(\)\}项/);
+  assert.match(lifecyclePage, /result\.conversations\.total \+ result\.branches\.total \+ exclusions\.total/);
   assert.match(lifecyclePage, /branch\.title/);
   assert.match(lifecyclePage, /"Branch"/);
   assert.doesNotMatch(lifecyclePage, /branch\.sourceNodeId/);
   assert.match(page, /Permanently Delete[\s\S]*Restore[\s\S]*Return/);
-  assert.match(page, /永久删除并阻止后续重新导入；原始 export 仍保留/);
+  assert.match(page, /永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留/);
   assert.doesNotMatch(page, /删除整个分支并在后续导入中排除/);
   assert.doesNotMatch(css, /\.conversation-lifecycle-icon\b/);
-  assert.match(lifecyclePage, /client\.listExclusions/);
+  assert.match(lifecyclePage, /client\.restoreCandidates/);
   assert.match(lifecyclePage, /client\.restoreExclusion/);
-  assert.match(lifecyclePage, /disabled=\{!sourceId \|\| busy === exclusion\.id\}/);
+  assert.doesNotMatch(lifecyclePage, /client\.importSources\(\{ limit: 100/);
+  assert.match(lifecyclePage, /永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留/);
 });
 
 test("Conversation advanced search filters stay secondary until requested", () => {
