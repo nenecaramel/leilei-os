@@ -268,6 +268,7 @@ test("all MCP read contracts and existing write boundaries stay registered", asy
     "read_conversation",
     "list_conversation_exclusions",
     "inspect_conversation_restore_candidates",
+    "inspect_conversation_restore_path",
   ]) {
     const tool = tools.tools.find((candidate) => candidate.name === name);
     assert.ok(tool, `${name} should be registered`);

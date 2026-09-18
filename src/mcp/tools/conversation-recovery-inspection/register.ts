@@ -73,10 +73,46 @@ const inspectOutputSchema = z.object({
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
+const pathInputSchema = z.object({
+  exclusion_id: z.string().uuid(),
+  source_id: z.string().uuid(),
+  limit: z.number().int().min(1).max(100).default(40).optional(),
+  offset: z.number().int().min(0).max(100_000).default(0).optional(),
+}).strict();
+
+const evidenceMessageSchema = z.object({
+  source_node_id: z.string(),
+  parent_source_node_id: z.string().nullable(),
+  role: roleSchema,
+  source_created_at: z.string().datetime().nullable(),
+  display_text: z.string(),
+  depth: z.number().int().min(0),
+}).strict();
+
+const pathOutputSchema = z.object({
+  success: z.boolean(),
+  data: z.object({
+    exclusion_id: z.string().uuid(),
+    source_id: z.string().uuid(),
+    filename: z.string(),
+    title: z.string().nullable(),
+    root_source_node_id: z.string().nullable(),
+    messages: z.array(evidenceMessageSchema),
+    metadata: z.object({
+      total: z.number().int().min(0),
+      offset: z.number().int().min(0),
+      returned: z.number().int().min(0),
+      has_more: z.boolean(),
+      next_offset: z.number().int().min(0).nullable(),
+    }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
+
 export type ConversationRecoveryInspectionToolDependencies = {
   conversationExclusionManagementService: Pick<
     ConversationExclusionManagementService,
-    "list" | "restoreCandidates"
+    "list" | "restoreCandidates" | "restoreEvidence"
   >;
   getAuthenticatedUserId: () => string;
 };
@@ -185,9 +221,66 @@ export function registerConversationRecoveryInspectionTools(
       return safeInspectionError(error, "inspect");
     }
   });
+
+  server.registerTool("inspect_conversation_restore_path", {
+    title: "Inspect Conversation Restore Path",
+    description: "Read-only retained-source branch evidence for one already-verified Conversation exclusion and source. Returns the exclusion root and connected raw descendants with source-node ids, parent-node ids, roles, timestamps, text, and depth so recovery fingerprints and ancestry can be verified before restore. This tool never restores, deletes, reimports, or removes an exclusion.",
+    inputSchema: pathInputSchema,
+    outputSchema: pathOutputSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ exclusion_id, source_id, limit = 40, offset = 0 }) => {
+    try {
+      const userId = dependencies.getAuthenticatedUserId();
+      const result = await dependencies.conversationExclusionManagementService.restoreEvidence({
+        userId,
+        exclusionId: exclusion_id,
+        sourceId: source_id,
+        limit,
+        offset,
+      });
+      const messages = result.messages.map((message) => ({
+        source_node_id: message.sourceNodeId,
+        parent_source_node_id: message.parentSourceNodeId,
+        role: message.role,
+        source_created_at: message.sourceCreatedAt,
+        display_text: message.displayText,
+        depth: message.depth,
+      }));
+      const consumed = result.offset + messages.length;
+      const data = {
+        exclusion_id,
+        source_id: result.sourceId,
+        filename: result.filename,
+        title: result.title,
+        root_source_node_id: result.rootSourceNodeId,
+        messages,
+        metadata: {
+          total: result.total,
+          offset: result.offset,
+          returned: messages.length,
+          has_more: consumed < result.total,
+          next_offset: consumed < result.total ? consumed : null,
+        },
+      };
+      return {
+        content: [{
+          type: "text",
+          text: joinMcpContentLines([
+            `Restore-path evidence for exclusion ${exclusion_id} from ${quoteMcpText(result.filename)}: ${messages.length} of ${result.total} message(s).`,
+            ...messages.map((message) =>
+              `depth=${message.depth}; node=${message.source_node_id}; parent=${message.parent_source_node_id ?? "null"}; role=${message.role}; time=${message.source_created_at ?? "Unavailable"}; text=${quoteMcpText(message.display_text)}`
+            ),
+          ]),
+        }],
+        structuredContent: { success: true as const, data },
+      };
+    } catch (error) {
+      return safeInspectionError(error, "path");
+    }
+  });
 }
 
-function safeInspectionError(error: unknown, operation: "list" | "inspect") {
+function safeInspectionError(error: unknown, operation: "list" | "inspect" | "path") {
   if (error instanceof ConversationArchiveAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",

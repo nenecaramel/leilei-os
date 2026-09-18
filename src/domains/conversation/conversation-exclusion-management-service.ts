@@ -187,6 +187,51 @@ export class ConversationExclusionManagementService {
     return { items, total: items.length };
   }
 
+
+  async restoreEvidence(input: {
+    userId: string;
+    exclusionId: unknown;
+    sourceId: unknown;
+    limit?: unknown;
+    offset?: unknown;
+  }): Promise<NonNullable<Awaited<ReturnType<ConversationImportService["inspectRestoreEvidence"]>>>> {
+    await this.requireActive(input.userId);
+    if (!this.importService || !this.repository.getExclusion) {
+      throw new ConversationExclusionManagementError(
+        "CONVERSATION_EXCLUSION_UNAVAILABLE",
+        "Conversation recovery inspection is unavailable.",
+      );
+    }
+    const exclusionId = uuid(input.exclusionId, "exclusionId");
+    const sourceId = uuid(input.sourceId, "sourceId");
+    const exclusion = await this.repository.getExclusion({ userId: input.userId, exclusionId });
+    if (!exclusion) {
+      throw new ConversationExclusionManagementError(
+        "CONVERSATION_EXCLUSION_NOT_FOUND",
+        "Conversation exclusion was not found.",
+      );
+    }
+    const evidence = await this.importService.inspectRestoreEvidence({
+      userId: input.userId,
+      sourceId,
+      exclusion: {
+        provider: exclusion.provider,
+        scope: exclusion.scope,
+        sourceConversationId: exclusion.sourceConversationId,
+        sourceNodeId: exclusion.sourceNodeId,
+      },
+      limit: boundedInt(input.limit, 40, 1, 100),
+      offset: boundedInt(input.offset, 0, 0, 100_000),
+    });
+    if (!evidence) {
+      throw new ConversationExclusionManagementError(
+        "CONVERSATION_EXCLUSION_INVALID_REQUEST",
+        "The retained source does not contain the selected exclusion target.",
+      );
+    }
+    return evidence;
+  }
+
   private async requireActive(userId: string): Promise<void> {
     if (await this.repository.findUserStatus(userId) !== "active") {
       throw new ConversationExclusionManagementError(

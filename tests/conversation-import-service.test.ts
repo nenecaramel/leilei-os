@@ -601,6 +601,50 @@ test("legacy restore candidate resolution finds only retained raw sources contai
   assert.deepEqual(missing, []);
 });
 
+
+test("restore evidence returns the exact retained branch root and connected descendants", async () => {
+  const repository = new FakeImportRepository();
+  const service = new ConversationImportService(repository, new FakeStateRepository());
+  const raw = Buffer.from(JSON.stringify([chatGptConversationFixture]));
+  const preview = await service.preview(stream(raw), "conversations.json", "user-id");
+
+  const evidence = await service.inspectRestoreEvidence({
+    userId: "user-id",
+    sourceId: preview.source_id,
+    exclusion: {
+      provider: "chatgpt",
+      scope: "branch",
+      sourceConversationId: "conv-real-shape",
+      sourceNodeId: "assistant-alt",
+    },
+    limit: 40,
+    offset: 0,
+  });
+
+  assert.ok(evidence);
+  assert.equal(evidence.rootSourceNodeId, "assistant-alt");
+  assert.equal(evidence.messages[0]?.sourceNodeId, "assistant-alt");
+  const child = evidence.messages.find((message) => message.sourceNodeId === "user-media");
+  assert.ok(child);
+  assert.equal(child.parentSourceNodeId, "assistant-alt");
+  assert.equal(child.depth, 1);
+  assert.equal(evidence.messages.some((message) => message.sourceNodeId === "assistant-final"), false);
+
+  const mismatch = await service.inspectRestoreEvidence({
+    userId: "user-id",
+    sourceId: preview.source_id,
+    exclusion: {
+      provider: "chatgpt",
+      scope: "branch",
+      sourceConversationId: "conv-real-shape",
+      sourceNodeId: "missing-node",
+    },
+    limit: 40,
+    offset: 0,
+  });
+  assert.equal(mismatch, null);
+});
+
 test("changing exclusion rules after Preview makes Execute stale before canonical writes", async () => {
   const repository = new FakeImportRepository();
   const executor = new FakeExecutor(repository);

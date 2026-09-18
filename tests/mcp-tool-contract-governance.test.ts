@@ -69,6 +69,7 @@ test("stable MCP defaults are explicit in tools/list", async () => {
     search_conversations: 20,
     read_conversation: 40,
     list_conversation_exclusions: 50,
+    inspect_conversation_restore_path: 40,
     list_shared_paper_edits: 50,
   };
   for (const [name, expected] of Object.entries(expectedLimits)) {
