@@ -16,7 +16,7 @@ The current codebase includes:
 - **PWA Web runtime** — Vite PWA assets, service-worker registration, update prompts, and online/update status UI.
 - **MCP Apps surfaces** — a Thinking Block card and the Message Bridge interactive resource.
 
-The checked-in database migration chain currently ends at `0037_diary_comments` in [`drizzle/meta/_journal.json`](drizzle/meta/_journal.json). Review the migration chain before any production database change.
+The checked-in database migration chain currently ends at `0044_conversation_import_reapply` in [`drizzle/meta/_journal.json`](drizzle/meta/_journal.json). Review the migration chain before any production database change.
 
 ## Web, API, and MCP architecture
 
