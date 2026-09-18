@@ -8,7 +8,7 @@ import "./conversations.css";
 
 type Client = ReturnType<typeof createConversationArchiveApi>;
 type ReadyState = { status: "ready"; conversations: ConversationListItem[]; total: number; branches: ConversationDeletedBranch[]; exclusions: ConversationLegacyExclusion[]; candidatesByExclusion: Record<string, ConversationRestoreCandidate[]> };
-type LifecycleItem = { kind: "conversation"; item: ConversationListItem; time: string | null } | { kind: "branch"; item: ConversationDeletedBranch; time: string } | { kind: "legacy"; item: ConversationLegacyExclusion; time: string };
+type LifecycleItem = { kind: "conversation"; item: ConversationListItem; time: string | null } | { kind: "branch"; item: ConversationDeletedBranch; time: string | null } | { kind: "legacy"; item: ConversationLegacyExclusion; time: string | null };
 const permanentDeleteCopy = "永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留。";
 
 function shortTime(value: string | null): string { return value ? new Date(value).toLocaleString() : "Unavailable"; }
@@ -48,10 +48,10 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
   if (state.status === "error") return <div className="page memory-page conversation-page conversation-lifecycle-page"><PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => void load()} /></div>;
 
   const items: LifecycleItem[] = deleted ? [
-    ...state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.deletedAt })),
-    ...state.branches.map((item) => ({ kind: "branch" as const, item, time: item.deletedAt })),
-    ...state.exclusions.map((item) => ({ kind: "legacy" as const, item, time: item.createdAt })),
-  ] : state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.archivedAt }));
+    ...state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.deletedAt ?? null })),
+    ...state.branches.map((item) => ({ kind: "branch" as const, item, time: item.deletedAt ?? null })),
+    ...state.exclusions.map((item) => ({ kind: "legacy" as const, item, time: item.createdAt ?? null })),
+  ] : state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.archivedAt ?? null }));
   const groups = groupConversationsByMonth(items, (item) => item.time);
 
   return <div className="page memory-page conversation-page conversation-lifecycle-page">
@@ -60,7 +60,7 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
     <section className="memory-months" aria-label={deleted ? "Deleted conversations" : "Archived conversations"}>{groups.map((group) => <section className="memory-month-section" key={group.key}><h2 className="memory-month-label">{group.label}</h2><div className="memory-month-card conversation-list">{group.items.map((entry) => {
       if (entry.kind === "conversation") {
         const item = entry.item; const pending = permanentDeleteId === `conversation:${item.id}`;
-        return <div className="memory-row conversation-card" key={`conversation:${item.id}`}><Link to={`/conversations/${item.id}?scope=${deleted ? "deleted" : "archived"}`} className="conversation-lifecycle-link"><span className="memory-row-title">{item.title?.trim() || "Untitled conversation"}</span><span className="memory-row-meta"><span>{item.provider}</span><span>{shortTime(deleted ? item.deletedAt : item.archivedAt)}</span></span></Link><span className="conversation-lifecycle-actions"><button type="button" disabled={busy === item.id} onClick={() => void restoreConversation(item.id)}>{busy === item.id ? "处理中…" : "Restore"}</button>{deleted && (pending ? <><span>{permanentDeleteCopy}</span><button type="button" disabled={busy === item.id} onClick={() => void permanentlyDeleteConversation(item.id)}>Confirm permanently delete</button><button type="button" onClick={() => setPermanentDeleteId(null)}>Cancel</button></> : <button type="button" disabled={busy === item.id} onClick={() => setPermanentDeleteId(`conversation:${item.id}`)}>Permanently delete</button>)}</span></div>;
+        return <div className="memory-row conversation-card" key={`conversation:${item.id}`}><Link to={`/conversations/${item.id}?scope=${deleted ? "deleted" : "archived"}`} className="conversation-lifecycle-link"><span className="memory-row-title">{item.title?.trim() || "Untitled conversation"}</span><span className="memory-row-meta"><span>{item.provider}</span><span>{shortTime((deleted ? item.deletedAt : item.archivedAt) ?? null)}</span></span></Link><span className="conversation-lifecycle-actions"><button type="button" disabled={busy === item.id} onClick={() => void restoreConversation(item.id)}>{busy === item.id ? "处理中…" : "Restore"}</button>{deleted && (pending ? <><span>{permanentDeleteCopy}</span><button type="button" disabled={busy === item.id} onClick={() => void permanentlyDeleteConversation(item.id)}>Confirm permanently delete</button><button type="button" onClick={() => setPermanentDeleteId(null)}>Cancel</button></> : <button type="button" disabled={busy === item.id} onClick={() => setPermanentDeleteId(`conversation:${item.id}`)}>Permanently delete</button>)}</span></div>;
       }
       if (entry.kind === "branch") {
         const branch = entry.item; const pending = permanentDeleteId === `branch:${branch.id}`;

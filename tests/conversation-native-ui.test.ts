@@ -240,8 +240,9 @@ test("Conversation lists restore content rows without standalone page headings",
 });
 
 test("Conversation lifecycle uses lifecycle time and totals, with recoverable detail actions", () => {
-  assert.match(lifecyclePage, /time: item\.deletedAt/);
-  assert.match(lifecyclePage, /time: item\.archivedAt/);
+  assert.match(lifecyclePage, /time: item\.deletedAt \?\? null/);
+  assert.match(lifecyclePage, /time: item\.archivedAt \?\? null/);
+  assert.match(lifecyclePage, /shortTime\(\(deleted \? item\.deletedAt : item\.archivedAt\) \?\? null\)/);
   assert.match(lifecyclePage, /state\.total\.toLocaleString\(\)\}项/);
   assert.match(lifecyclePage, /result\.conversations\.total \+ result\.branches\.total \+ exclusions\.total/);
   assert.match(lifecyclePage, /branch\.title/);
