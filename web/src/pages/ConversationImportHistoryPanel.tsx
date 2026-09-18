@@ -211,12 +211,11 @@ export function ConversationImportHistoryPanel({
                       </div>
                       <div className="conversation-import-source-titleline">
                         <h3>{source.filename}</h3>
-                        <span>{source.runCount} 次 Preview/Execute</span>
+                        <span>
+                          {bytes(source.rawBytes)} · {source.runCount} 次 Preview/Execute
+                          {source.supersededRunCount ? ` · ${source.supersededRunCount} 次被替代` : ""}
+                        </span>
                       </div>
-                      <p>
-                        {bytes(source.rawBytes)}
-                        {source.supersededRunCount ? ` · ${source.supersededRunCount} 次被替代` : ""}
-                      </p>
                       {latest ? (
                         <small>
                           最近：{statusLabel(latest.status)} ·
