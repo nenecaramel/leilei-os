@@ -282,7 +282,7 @@ test("all MCP read contracts and existing write boundaries stay registered", asy
     assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
   }
 
-  for (const name of ["write_diary", "create_task", "toy_set", "toy_stop"]) {
+  for (const name of ["write_diary", "create_task", "toy_set", "toy_stop", "restore_conversation_exclusion"]) {
     assert.ok(
       tools.tools.some((tool) => tool.name === name),
       `${name} should remain registered`,
