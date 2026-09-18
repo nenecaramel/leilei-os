@@ -209,9 +209,12 @@ export function ConversationImportHistoryPanel({
                         </span>
                         <time>{dateTime(source.receivedAt)}</time>
                       </div>
-                      <h3>{source.filename}</h3>
+                      <div className="conversation-import-source-titleline">
+                        <h3>{source.filename}</h3>
+                        <span>{source.runCount} 次 Preview/Execute</span>
+                      </div>
                       <p>
-                        {bytes(source.rawBytes)} · {source.runCount} 次 Preview/Execute
+                        {bytes(source.rawBytes)}
                         {source.supersededRunCount ? ` · ${source.supersededRunCount} 次被替代` : ""}
                       </p>
                       {latest ? (
@@ -225,7 +228,7 @@ export function ConversationImportHistoryPanel({
 
                     <div className="conversation-import-source-actions">
                       <button
-                        className="secondary-button"
+                        className="conversation-message-favorite active conversation-import-source-action"
                         type="button"
                         disabled={detailLoadingId === source.sourceId}
                         onClick={() => void toggleDetail(source.sourceId)}
@@ -235,7 +238,7 @@ export function ConversationImportHistoryPanel({
                           : expanded ? "收起 runs" : "查看 runs"}
                       </button>
                       <button
-                        className="secondary-button"
+                        className="conversation-message-favorite active conversation-import-source-action"
                         type="button"
                         disabled={!source.rawSource.retained || reapplyId !== null || executingRunId !== null}
                         title={source.rawSource.retained
