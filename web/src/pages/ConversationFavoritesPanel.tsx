@@ -124,10 +124,10 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
       {state.status === "loading" ? (
         <FavoritesMonthLoading />
       ) : state.status === "error" ? (
-        <div className="conversation-muted-card">
-          收藏暂时不可用。
-          <button className="conversation-history-inline-action" type="button" onClick={() => void load()}>
-            重试
+        <div className="system-state-message" role="alert">
+          <p>Unable to read favorites.</p>
+          <button className="secondary-button" type="button" onClick={() => void load()}>
+            Retry
           </button>
         </div>
       ) : state.rows.length === 0 ? (

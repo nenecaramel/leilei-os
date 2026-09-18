@@ -78,8 +78,8 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
     }
   }
 
-  if (state.status === "loading") return <div className="page memory-page conversation-page conversation-lifecycle-page"><p className="conversation-detail-loading" role="status">正在读取…</p></div>;
-  if (state.status === "error") return <div className="page memory-page conversation-page conversation-lifecycle-page"><PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => void load()} /></div>;
+  if (state.status === "loading") return <div className="page memory-page conversation-page conversation-lifecycle-page"><p className="conversation-detail-loading system-state-copy" role="status">Reading...</p></div>;
+  if (state.status === "error") return <div className="page memory-page conversation-page conversation-lifecycle-page"><PageState state="error" message={deleted ? "Unable to read deleted conversations." : "Unable to read conversation archive."} retryLabel="Retry" onRetry={() => void load()} /></div>;
 
   const items: LifecycleItem[] = deleted ? [
     ...state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.deletedAt ?? null })),

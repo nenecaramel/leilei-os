@@ -684,8 +684,8 @@ export function GlobalSearchPageContent({ api }: Props) {
           state="error"
           placement="module"
           emptyText=""
-          errorText="搜索暂时失败"
-          retryLabel="重试"
+          errorText="Unable to read search results."
+          retryLabel="Retry"
           onRetry={() => requestSearch(filters)}
         />
       ) : null}

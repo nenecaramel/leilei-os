@@ -253,7 +253,7 @@ export function QuickSearchPanel({
           aria-label="快速搜索 Leilei OS"
           maxLength={200}
           autoComplete="off"
-          placeholder="搜索保存的内容"
+          placeholder="Search all records..."
           value={queryInput}
           onChange={(event) =>
             setQueryInput(event.target.value)
@@ -291,8 +291,8 @@ export function QuickSearchPanel({
       {!queryError && state === "error" ? (
         <StateSurface
           state="error"
-          message="搜索暂时失败"
-          retryLabel="重试"
+          message="Unable to read search results."
+          retryLabel="Retry"
           onRetry={() => setRetryNonce((value) => value + 1)}
           placement="inline"
           className="quick-search-state"

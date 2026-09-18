@@ -192,31 +192,51 @@ export function SentinelPageContent({
         <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." />
 
         <section className="system-section sentinel-status-card" aria-label="Sentinel status">
-          <p className="system-state-copy" role="status" aria-live="polite">Reading Sentinel…</p>
+          <p className="system-state-copy" role="status" aria-live="polite">Reading...</p>
         </section>
 
         <ChatGPTMessageBridgeCard api={api} />
 
         <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
           <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
-          <p className="system-state-copy">Reading wake policy…</p>
+          <p className="system-state-copy">Reading...</p>
         </section>
 
         <section className="system-section sentinel-controls-card" aria-label="Sentinel controls">
           <h2 className="system-product-name">First Wake / Controls</h2>
-          <p className="system-state-copy">Reading Sentinel controls…</p>
+          <p className="system-state-copy">Reading...</p>
         </section>
 
         <section className="system-section sentinel-activity-card" aria-labelledby="sentinel-activity-title">
           <h2 className="system-product-name" id="sentinel-activity-title">Wake Activity</h2>
-          <p className="system-state-copy">Reading wake activity…</p>
+          <p className="system-state-copy">Reading...</p>
         </section>
       </div>
     );
   }
 
   if (state.status === "error") {
-    return <div className="page system-page sentinel-page"><PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." /><div className="system-state-message" role="alert"><p>Sentinel is temporarily unavailable.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div></div>;
+    return (
+      <div className="page system-page sentinel-page">
+        <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." />
+        <section className="system-section sentinel-status-card" aria-label="Sentinel status">
+          <div className="system-state-message" role="alert"><p>Unable to read Sentinel.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div>
+        </section>
+        <ChatGPTMessageBridgeCard api={api} />
+        <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
+          <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
+          <div className="system-state-message" role="alert"><p>Unable to read wake policy.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div>
+        </section>
+        <section className="system-section sentinel-controls-card" aria-label="Sentinel controls">
+          <h2 className="system-product-name">First Wake / Controls</h2>
+          <div className="system-state-message" role="alert"><p>Unable to read Sentinel controls.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div>
+        </section>
+        <section className="system-section sentinel-activity-card" aria-labelledby="sentinel-activity-title">
+          <h2 className="system-product-name" id="sentinel-activity-title">Wake Activity</h2>
+          <div className="system-state-message" role="alert"><p>Unable to read wake activity.</p><button className="secondary-button" type="button" onClick={() => void load()}>Retry</button></div>
+        </section>
+      </div>
+    );
   }
 
   if (state.status === "uninitialized") {

@@ -199,7 +199,7 @@ export function DiaryPageHeader({
         </button>
       </div>
 
-      {searchOpen ? <ModuleSearchField className="diary-page-search" ariaLabel="搜索日记内容" placeholder="搜索标题或正文" value={searchDraft} onChange={onSearchChange} /> : null}
+      {searchOpen ? <ModuleSearchField className="diary-page-search" ariaLabel="搜索日记内容" placeholder="Search diary entries..." value={searchDraft} onChange={onSearchChange} /> : null}
 
       {filterError ? (
         <p className="diary-filter-error" role="alert">{filterError}</p>

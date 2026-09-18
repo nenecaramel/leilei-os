@@ -270,14 +270,14 @@ function ConversationListView({
             disabled={importing}
             onClick={() => fileInputRef.current?.click()}
           >
-            <PlusIcon className="memory-page-search-icon" />
+            <PlusIcon className="conversation-import-icon" />
           </button>
         </div>
 
         {searchOpen ? (
           <ModuleSearchField
             ariaLabel="搜索 Conversation Archive"
-            placeholder="搜索你或 AI 说过的话"
+            placeholder="Search conversations..."
             value={searchQuery}
             onChange={setSearchQuery}
           />
@@ -397,7 +397,7 @@ function ConversationListView({
           {list.status === "loading" ? (
             <ConversationMonthLoading label="Conversation 加载中" />
           ) : list.status === "error" ? (
-            <PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => setRefreshKey((value) => value + 1)} />
+            <PageState state="error" message="Unable to read conversations." retryLabel="Retry" onRetry={() => setRefreshKey((value) => value + 1)} />
           ) : list.items.length === 0 ? (
             <PageState
               state="empty"
@@ -765,14 +765,14 @@ function ConversationDetailView({
   if (state.status === "loading") {
     return (
       <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
-        <p className="conversation-detail-loading" role="status" aria-live="polite">正在读取…</p>
+        <p className="conversation-detail-loading system-state-copy" role="status" aria-live="polite">Reading...</p>
       </div>
     );
   }
   if (state.status === "error") {
     return (
       <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
-        <PageState state="error" message="这段对话暂时无法读取。" onRetry={() => void load()} />
+        <PageState state="error" message="Unable to read conversation." retryLabel="Retry" onRetry={() => void load()} />
       </div>
     );
   }

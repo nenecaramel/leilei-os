@@ -380,7 +380,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
           <button type="button" aria-label="查看归档" disabled={list.status === "loading"} onClick={(event) => openArchive(event.currentTarget)}><ArchiveIcon /></button>
           <button type="button" aria-label="新增 Shared Paper" disabled={list.status === "loading"} onClick={(event) => { triggerRef.current = event.currentTarget; setCreateOpen(true); setError(""); }}><PenIcon className="memory-page-create-icon" /></button>
         </div>
-        {searchOpen ? <ModuleSearchField ariaLabel="搜索 Shared Paper" placeholder="搜索标题或正文" value={query} onChange={setQuery} /> : null}
+        {searchOpen ? <ModuleSearchField ariaLabel="搜索 Shared Paper" placeholder="Search shared papers..." value={query} onChange={setQuery} /> : null}
       </header> : <header className="memory-page-header memory-archive-header shared-paper-archive-header">
         <div className="memory-page-heading"><div className="memory-page-title">Archive</div><div className="memory-page-count">{papers.length}张纸</div></div>
         <button type="button" className="memory-archive-back" onClick={returnFromArchive}>Return</button>
@@ -393,7 +393,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
           <SharedPaperListLoading label={scope === "archived" ? "Shared Paper Archive 加载中" : "Shared Paper 加载中"} />
         )
       ) : null}
-      {list.status === "error" ? <ModuleStateMessage state="error" placement="module" emptyText="" errorText="暂时无法读取 Shared Paper" retryLabel="重新加载" onRetry={() => setSearchRetry((value) => value + 1)} /> : null}
+      {list.status === "error" ? <ModuleStateMessage state="error" placement="module" emptyText="" errorText={scope === "archived" ? "Unable to read archived shared papers." : "Unable to read shared papers."} retryLabel="Retry" onRetry={() => setSearchRetry((value) => value + 1)} /> : null}
       {list.status === "ready" && papers.length === 0 ? (
         query ? (
           <ModuleStateMessage state="empty" placement="module" emptyText="没有符合条件的 Shared Paper" errorText="" />

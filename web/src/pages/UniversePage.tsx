@@ -258,7 +258,7 @@ export function UniversePageContent({ api }: { api: WebApiClient }) {
     );
   }
   if (state.status === "error") {
-    return <UniverseFrame><UniverseStatus message={state.message} onRetry={() => setReload((value) => value + 1)} /></UniverseFrame>;
+    return <UniverseFrame><UniverseStatus onRetry={() => setReload((value) => value + 1)} /></UniverseFrame>;
   }
 
   const { snapshot } = state;
@@ -413,18 +413,18 @@ function UniverseLoadingState() {
   return (
     <PageState
       state="loading"
-      message="正在读取 Universe…"
+      message="Reading..."
       className="universe-cosmos universe-cosmos-loading"
     />
   );
 }
 
-function UniverseStatus({ message, onRetry }: { message: string; onRetry?: () => void }) {
+function UniverseStatus({ onRetry }: { onRetry?: () => void }) {
   return (
     <PageState
       state="error"
-      message={message}
-      retryLabel="重新加载"
+      message="Unable to read Universe."
+      retryLabel="Retry"
       onRetry={onRetry}
       className="universe-cosmos universe-cosmos-state"
     />

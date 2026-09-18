@@ -53,7 +53,7 @@ export function TaskPageHeader(props: Props) {
         <button type="button" aria-label="查看归档" disabled={props.busy} onClick={(e) => props.onOpenArchive(e.currentTarget)}><ArchiveIcon /></button>
         <button type="button" aria-label="新增任务" disabled={props.busy} onClick={(e) => props.onCreate(e.currentTarget)}><PenIcon className="memory-page-create-icon" /></button>
       </div>
-      {searchOpen ? <ModuleSearchField className="task-page-search" ariaLabel="搜索任务内容" placeholder="搜索标题或正文" value={props.searchDraft} onChange={props.onSearchChange} /> : null}
+      {searchOpen ? <ModuleSearchField className="task-page-search" ariaLabel="搜索任务内容" placeholder="Search tasks..." value={props.searchDraft} onChange={props.onSearchChange} /> : null}
     </header>
   );
 }

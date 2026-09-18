@@ -184,14 +184,16 @@ export function ConversationImportHistoryPanel({
 
           {state.status === "loading" ? (
             <div className="system-section conversation-import-history-loading">
-              <p className="system-state-copy" role="status" aria-live="polite">正在读取导入记录…</p>
+              <p className="system-state-copy" role="status" aria-live="polite">Reading...</p>
             </div>
           ) : state.status === "error" ? (
-            <div className="conversation-muted-card">
-              导入记录暂时不可用。
-              <button className="conversation-history-inline-action" type="button" onClick={() => void load()}>
-                重试
-              </button>
+            <div className="system-section conversation-import-history-loading">
+              <div className="system-state-message" role="alert">
+                <p>Unable to read sources.</p>
+                <button className="secondary-button" type="button" onClick={() => void load()}>
+                  Retry
+                </button>
+              </div>
             </div>
           ) : state.items.length === 0 ? (
             <div className="conversation-muted-card">还没有保存过 Conversation import source。</div>
