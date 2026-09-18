@@ -941,6 +941,8 @@ export const conversations = pgTable(
     lastSeenImportId: uuid("last_seen_import_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     unique("conversations_id_user_unique").on(table.id, table.userId),
@@ -960,6 +962,34 @@ export const conversations = pgTable(
     check("conversations_source_id_not_blank", sql`char_length(btrim(${table.sourceConversationId})) > 0`),
     check("conversations_fingerprint_format", sql`${table.sourceFingerprint} ~ '^[0-9a-f]{64}$'`),
     check("conversations_provider_metadata_object", sql`jsonb_typeof(${table.providerMetadata}) = 'object'`),
+    check("conversations_lifecycle_exclusive", sql`NOT (${table.archivedAt} IS NOT NULL AND ${table.deletedAt} IS NOT NULL)`),
+  ],
+);
+
+export const conversationDeletedBranches = pgTable(
+  "conversation_deleted_branches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    provider: varchar("provider", { length: 32 }).$type<ConversationProvider>().notNull(),
+    sourceConversationId: text("source_conversation_id").notNull(),
+    sourceNodeId: text("source_node_id").notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("conversation_deleted_branches_id_user_unique").on(table.id, table.userId),
+    uniqueIndex("conversation_deleted_branches_unit_uidx").on(table.userId, table.conversationId, table.sourceNodeId),
+    index("conversation_deleted_branches_user_deleted_idx").on(table.userId, table.deletedAt.desc(), table.id.desc()),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "conversation_deleted_branches_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    check("conversation_deleted_branches_provider_allowed", sql`${table.provider} IN ('chatgpt', 'claude')`),
+    check("conversation_deleted_branches_source_conversation_not_blank", sql`char_length(btrim(${table.sourceConversationId})) > 0`),
+    check("conversation_deleted_branches_source_node_not_blank", sql`char_length(btrim(${table.sourceNodeId})) > 0`),
   ],
 );
 

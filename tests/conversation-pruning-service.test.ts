@@ -120,3 +120,28 @@ test("Conversation pruning validates ids, active user status, and not-found resu
       && error.code === "CONVERSATION_PRUNE_NOT_FOUND",
   );
 });
+
+test("Conversation lifecycle actions keep archive, recoverable delete, and permanent delete explicit", async () => {
+  const repository = new FakePruningRepository();
+  let archived = false;
+  let restored = false;
+  let deletedRestored = false;
+  let permanentlyDeleted = false;
+  repository.archiveConversation = async () => (archived = true);
+  repository.restoreConversation = async () => (restored = true);
+  repository.restoreDeletedConversation = async () => (deletedRestored = true);
+  repository.permanentDeleteConversation = async () => {
+    permanentlyDeleted = true;
+    return repository.conversationResult;
+  };
+  const service = new ConversationPruningService(repository);
+
+  assert.deepEqual(await service.archiveConversation({ userId: "user", conversationId: CONVERSATION_ID }), { archived: true });
+  assert.deepEqual(await service.restoreConversation({ userId: "user", conversationId: CONVERSATION_ID }), { restored: true });
+  assert.deepEqual(await service.restoreDeletedConversation({ userId: "user", conversationId: CONVERSATION_ID }), { restored: true });
+  assert.deepEqual(await service.permanentlyDeleteConversation({ userId: "user", conversationId: CONVERSATION_ID }), { deleted: true, rawSourcePreserved: true });
+  assert.equal(archived, true);
+  assert.equal(restored, true);
+  assert.equal(deletedRestored, true);
+  assert.equal(permanentlyDeleted, true);
+});

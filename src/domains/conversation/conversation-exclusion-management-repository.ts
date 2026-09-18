@@ -31,6 +31,7 @@ export interface ConversationExclusionManagementRepository {
     limit: number;
     offset: number;
   }): Promise<{ items: ConversationExclusionListItem[]; total: number }>;
+  getExclusion(input: { userId: string; exclusionId: string }): Promise<ConversationExclusionListItem | null>;
   deleteExclusion(input: {
     userId: string;
     exclusionId: string;
@@ -123,6 +124,39 @@ implements ConversationExclusionManagementRepository {
         createdAt: toIso(row.createdAt),
       })),
     };
+  }
+
+  async getExclusion(input: { userId: string; exclusionId: string }): Promise<ConversationExclusionListItem | null> {
+    const [row] = await this.db
+      .select({
+        id: conversationExclusions.id,
+        provider: conversationExclusions.provider,
+        scope: conversationExclusions.scope,
+        sourceConversationId: conversationExclusions.sourceConversationId,
+        sourceNodeId: conversationExclusions.sourceNodeId,
+        canonicalConversationExists: sql<boolean>`${conversations.id} is not null`,
+        canonicalNodeExists: sql<boolean | null>`case when ${conversationExclusions.scope} = 'branch' then ${conversationMessages.id} is not null else null end`,
+        createdAt: conversationExclusions.createdAt,
+      })
+      .from(conversationExclusions)
+      .leftJoin(conversations, and(
+        eq(conversations.userId, input.userId),
+        eq(conversations.provider, conversationExclusions.provider),
+        eq(conversations.sourceConversationId, conversationExclusions.sourceConversationId),
+      ))
+      .leftJoin(conversationMessages, and(
+        eq(conversationMessages.userId, input.userId),
+        eq(conversationMessages.conversationId, conversations.id),
+        eq(conversationMessages.sourceNodeId, conversationExclusions.sourceNodeId),
+      ))
+      .where(and(eq(conversationExclusions.userId, input.userId), eq(conversationExclusions.id, input.exclusionId)))
+      .limit(1);
+    return row ? {
+      ...row,
+      provider: row.provider as ConversationProvider,
+      scope: row.scope as ConversationExclusionScope,
+      createdAt: toIso(row.createdAt),
+    } : null;
   }
 
   async deleteExclusion(input: {

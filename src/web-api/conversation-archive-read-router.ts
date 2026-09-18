@@ -22,6 +22,7 @@ export function createConversationArchiveReadApiRouter(
       provider: request.query.provider,
       limit: request.query.limit,
       offset: request.query.offset,
+      scope: request.query.scope,
     })
   ));
 
@@ -36,6 +37,7 @@ export function createConversationArchiveReadApiRouter(
       to: request.query.to,
       timeZone: request.query.time_zone,
       favoritesOnly: request.query.favorites_only,
+      scope: request.query.scope,
       limit: request.query.limit,
       offset: request.query.offset,
     })
@@ -55,6 +57,8 @@ export function createConversationArchiveReadApiRouter(
       userId: requireUser(request.webUserId),
       conversationId: request.params.conversationId,
       messageId: request.params.messageId,
+      scope: request.query.scope,
+      branchId: request.query.branch_id,
       view: request.query.view,
       radius: request.query.radius,
     })
@@ -67,6 +71,8 @@ export function createConversationArchiveReadApiRouter(
       view: request.query.view,
       limit: request.query.limit,
       offset: request.query.offset,
+      scope: request.query.scope,
+      branchId: request.query.branch_id,
     })
   ));
 
@@ -74,6 +80,8 @@ export function createConversationArchiveReadApiRouter(
     dependencies.conversationArchiveReadService.detail({
       userId: requireUser(request.webUserId),
       conversationId: request.params.conversationId,
+      scope: request.query.scope,
+      branchId: request.query.branch_id,
     })
   ));
 

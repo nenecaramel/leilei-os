@@ -30,6 +30,7 @@ import { createConversationPruningApiRouter, type ConversationPruningApiDependen
 import { createConversationFavoriteApiRouter, type ConversationFavoriteApiDependencies } from "./conversation-favorite-router.js";
 import { createConversationExclusionManagementApiRouter, type ConversationExclusionManagementApiDependencies } from "./conversation-exclusion-management-router.js";
 import { createConversationImportHistoryApiRouter, type ConversationImportHistoryApiDependencies } from "./conversation-import-history-router.js";
+import { createConversationLifecycleApiRouter, type ConversationLifecycleApiDependencies } from "./conversation-lifecycle-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
@@ -51,6 +52,7 @@ export type WebApiRouterDependencies = {
   conversationFavorite?: ConversationFavoriteApiDependencies;
   conversationExclusionManagement?: ConversationExclusionManagementApiDependencies;
   conversationImportHistory?: ConversationImportHistoryApiDependencies;
+  conversationLifecycle?: ConversationLifecycleApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -111,6 +113,7 @@ export function createWebApiRouter(
   if (dependencies.conversationFavorite) router.use("/conversations", createConversationFavoriteApiRouter(dependencies.conversationFavorite));
   if (dependencies.conversationExclusionManagement) router.use("/conversations", createConversationExclusionManagementApiRouter(dependencies.conversationExclusionManagement));
   if (dependencies.conversationImportHistory) router.use("/conversations", createConversationImportHistoryApiRouter(dependencies.conversationImportHistory));
+  if (dependencies.conversationLifecycle) router.use("/conversations", createConversationLifecycleApiRouter(dependencies.conversationLifecycle));
   if (dependencies.conversationRead) router.use("/conversations", createConversationArchiveReadApiRouter(dependencies.conversationRead));
   if (dependencies.conversationPruning) router.use("/conversations", createConversationPruningApiRouter(dependencies.conversationPruning));
   if (dependencies.conversationImport) router.use("/conversations", createConversationImportApiRouter(dependencies.conversationImport));

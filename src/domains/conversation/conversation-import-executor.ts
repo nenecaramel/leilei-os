@@ -69,6 +69,7 @@ export interface ConversationImportExecutionTransaction {
   }): Promise<{ id: string; summary: Record<string, unknown> } | null>;
   readMergeState(userId: string): Promise<ConversationMergeCurrentState>;
   readExclusions(userId: string): Promise<ConversationExclusionRule[]>;
+  deleteExclusion?(userId: string, exclusionId: string): Promise<boolean>;
   readStoredBlob(input: {
     userId: string;
     sourceId: string;
@@ -193,6 +194,17 @@ implements ConversationImportExecutionTransaction {
       })
       .from(conversationExclusions)
       .where(eq(conversationExclusions.userId, userId));
+  }
+
+  async deleteExclusion(userId: string, exclusionId: string): Promise<boolean> {
+    const rows = await this.tx
+      .delete(conversationExclusions)
+      .where(and(
+        eq(conversationExclusions.userId, userId),
+        eq(conversationExclusions.id, exclusionId),
+      ))
+      .returning({ id: conversationExclusions.id });
+    return rows.length > 0;
   }
 
   async readStoredBlob(input: {

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationDeletedBranches,
   conversationAttachments,
   conversationContentBlocks,
   conversationFavoriteMessages,
@@ -24,6 +25,8 @@ export type ConversationArchiveListItem = {
   messageCount: number;
   turnCount: number;
   totalNodeCount: number;
+  archivedAt: string | null;
+  deletedAt: string | null;
 };
 
 export type ConversationArchiveDetail = ConversationArchiveListItem & {
@@ -100,10 +103,13 @@ export interface ConversationArchiveReadRepository {
     provider?: ConversationProvider;
     limit: number;
     offset: number;
+    scope?: "active" | "archived" | "deleted";
   }): Promise<{ items: ConversationArchiveListItem[]; total: number }>;
   getConversation(input: {
     userId: string;
     conversationId: string;
+    scope?: "active" | "archived" | "deleted";
+    branchId?: string;
   }): Promise<ConversationArchiveDetail | null>;
   listMessages(input: {
     userId: string;
@@ -112,6 +118,8 @@ export interface ConversationArchiveReadRepository {
     view: "default" | "all";
     limit: number;
     offset: number;
+    scope?: "active" | "archived" | "deleted";
+    branchId?: string;
   }): Promise<{ items: ConversationArchiveMessage[]; total: number }>;
   readMessagePayloads(input: {
     userId: string;
@@ -129,6 +137,7 @@ export interface ConversationArchiveReadRepository {
     favoritesOnly?: boolean;
     limit: number;
     offset: number;
+    scope?: "active" | "archived" | "deleted";
   }): Promise<{ items: ConversationArchiveSearchRecord[]; total: number }>;
   findMessageOrdinal(input: {
     userId: string;
@@ -136,6 +145,7 @@ export interface ConversationArchiveReadRepository {
     provider: ConversationProvider;
     view: "default" | "all";
     messageId: string;
+    branchId?: string;
   }): Promise<{ index: number; total: number } | null>;
   dailyStats(input: {
     userId: string;
@@ -189,6 +199,64 @@ function toIso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
+function lifecyclePredicate(
+  scope: "active" | "archived" | "deleted" | undefined,
+  userId?: string,
+  conversationId?: unknown,
+  branchId?: string,
+) {
+  if (scope === "deleted" && userId && conversationId && branchId) {
+    return sql`${conversations.deletedAt} IS NULL AND exists (
+      select 1 from ${conversationDeletedBranches} deleted_branch
+      where deleted_branch.id = ${branchId}
+        and deleted_branch.user_id = ${userId}
+        and deleted_branch.conversation_id = ${conversationId}
+    )`;
+  }
+  if (scope === "archived") return sql`${conversations.archivedAt} IS NOT NULL AND ${conversations.deletedAt} IS NULL`;
+  if (scope === "deleted") return sql`${conversations.deletedAt} IS NOT NULL`;
+  return sql`${conversations.archivedAt} IS NULL AND ${conversations.deletedAt} IS NULL`;
+}
+
+function branchVisibilityPredicate(userId: string) {
+  return sql`not exists (
+    select 1 from ${conversationDeletedBranches} deleted_branch
+    where deleted_branch.user_id = ${userId}
+      and deleted_branch.conversation_id = ${conversationMessages.conversationId}
+      and exists (
+        with recursive branch_nodes(source_node_id) as (
+          select deleted_branch.source_node_id
+          union all
+          select descendant.source_node_id
+          from conversation_messages descendant
+          join branch_nodes parent on descendant.parent_source_node_id = parent.source_node_id
+          where descendant.conversation_id = deleted_branch.conversation_id
+        )
+        select 1 from branch_nodes
+        where branch_nodes.source_node_id = ${conversationMessages.sourceNodeId}
+      )
+  )`;
+}
+
+function branchSelectionPredicate(userId: string, branchId: string) {
+  return sql`exists (
+    with recursive branch_nodes(source_node_id) as (
+      select deleted_branch.source_node_id
+      from ${conversationDeletedBranches} deleted_branch
+      where deleted_branch.id = ${branchId}
+        and deleted_branch.user_id = ${userId}
+        and deleted_branch.conversation_id = ${conversationMessages.conversationId}
+      union all
+      select descendant.source_node_id
+      from conversation_messages descendant
+      join branch_nodes parent on descendant.parent_source_node_id = parent.source_node_id
+      where descendant.conversation_id = ${conversationMessages.conversationId}
+    )
+    select 1 from branch_nodes
+    where branch_nodes.source_node_id = ${conversationMessages.sourceNodeId}
+  )`;
+}
+
 export class DrizzleConversationArchiveReadRepository
 implements ConversationArchiveReadRepository {
   constructor(private readonly db: Database) {}
@@ -207,13 +275,13 @@ implements ConversationArchiveReadRepository {
     provider?: ConversationProvider;
     limit: number;
     offset: number;
+    scope?: "active" | "archived" | "deleted";
   }): Promise<{ items: ConversationArchiveListItem[]; total: number }> {
-    const where = input.provider
-      ? and(
-          eq(conversations.userId, input.userId),
-          eq(conversations.provider, input.provider),
-        )
-      : eq(conversations.userId, input.userId);
+    const where = and(
+      eq(conversations.userId, input.userId),
+      input.provider ? eq(conversations.provider, input.provider) : undefined,
+      lifecyclePredicate(input.scope),
+    );
 
     const [countRow] = await this.db
       .select({ total: sql<number>`count(*)::int` })
@@ -238,6 +306,7 @@ implements ConversationArchiveReadRepository {
                 (${conversations.provider} = 'chatgpt' and ${conversationMessages.isCurrentPath} = true)
                 or ${conversations.provider} = 'claude'
               )
+              and ${branchVisibilityPredicate(input.userId)}
           )::int
         `,
         turnCount: sql<number>`
@@ -248,9 +317,12 @@ implements ConversationArchiveReadRepository {
                 (${conversations.provider} = 'chatgpt' and ${conversationMessages.isCurrentPath} = true)
                 or ${conversations.provider} = 'claude'
               )
+              and ${branchVisibilityPredicate(input.userId)}
           )::int
         `,
         totalNodeCount: sql<number>`count(${conversationMessages.id})::int`,
+        archivedAt: conversations.archivedAt,
+        deletedAt: conversations.deletedAt,
       })
       .from(conversations)
       .leftJoin(
@@ -279,6 +351,8 @@ implements ConversationArchiveReadRepository {
         messageCount: row.messageCount ?? 0,
         turnCount: row.turnCount ?? 0,
         totalNodeCount: row.totalNodeCount ?? 0,
+        archivedAt: toIso(row.archivedAt),
+        deletedAt: toIso(row.deletedAt),
       })),
     };
   }
@@ -286,6 +360,8 @@ implements ConversationArchiveReadRepository {
   async getConversation(input: {
     userId: string;
     conversationId: string;
+    scope?: "active" | "archived" | "deleted";
+    branchId?: string;
   }): Promise<ConversationArchiveDetail | null> {
     const [row] = await this.db
       .select({
@@ -306,6 +382,7 @@ implements ConversationArchiveReadRepository {
                 (${conversations.provider} = 'chatgpt' and ${conversationMessages.isCurrentPath} = true)
                 or ${conversations.provider} = 'claude'
               )
+              and ${input.branchId ? branchSelectionPredicate(input.userId, input.branchId) : branchVisibilityPredicate(input.userId)}
           )::int
         `,
         turnCount: sql<number>`
@@ -316,9 +393,12 @@ implements ConversationArchiveReadRepository {
                 (${conversations.provider} = 'chatgpt' and ${conversationMessages.isCurrentPath} = true)
                 or ${conversations.provider} = 'claude'
               )
+              and ${input.branchId ? branchSelectionPredicate(input.userId, input.branchId) : branchVisibilityPredicate(input.userId)}
           )::int
         `,
         totalNodeCount: sql<number>`count(${conversationMessages.id})::int`,
+        archivedAt: conversations.archivedAt,
+        deletedAt: conversations.deletedAt,
       })
       .from(conversations)
       .leftJoin(
@@ -331,6 +411,7 @@ implements ConversationArchiveReadRepository {
       .where(and(
         eq(conversations.userId, input.userId),
         eq(conversations.id, input.conversationId),
+        lifecyclePredicate(input.scope, input.userId, conversations.id, input.branchId),
       ))
       .groupBy(conversations.id)
       .limit(1);
@@ -343,6 +424,8 @@ implements ConversationArchiveReadRepository {
       messageCount: row.messageCount ?? 0,
       turnCount: row.turnCount ?? 0,
       totalNodeCount: row.totalNodeCount ?? 0,
+      archivedAt: toIso(row.archivedAt),
+      deletedAt: toIso(row.deletedAt),
     } : null;
   }
 
@@ -353,12 +436,15 @@ implements ConversationArchiveReadRepository {
     view: "default" | "all";
     limit: number;
     offset: number;
+    scope?: "active" | "archived" | "deleted";
+    branchId?: string;
   }): Promise<{ items: ConversationArchiveMessage[]; total: number }> {
     const visibility = messageVisibility(input.provider, input.view);
     const where = and(
       eq(conversationMessages.userId, input.userId),
       eq(conversationMessages.conversationId, input.conversationId),
       visibility,
+      input.branchId ? branchSelectionPredicate(input.userId, input.branchId) : branchVisibilityPredicate(input.userId),
     );
 
     const [countRow] = await this.db
@@ -486,6 +572,7 @@ implements ConversationArchiveReadRepository {
     favoritesOnly?: boolean;
     limit: number;
     offset: number;
+    scope?: "active" | "archived" | "deleted";
   }): Promise<{ items: ConversationArchiveSearchRecord[]; total: number }> {
     const localDate = input.timeZone
       ? sql<string>`timezone(${input.timeZone}, ${conversationMessages.sourceCreatedAt})::date`
@@ -510,6 +597,8 @@ implements ConversationArchiveReadRepository {
               and ${conversationFavoriteMessages.messageId} = ${conversationMessages.id}
           )`
         : undefined,
+      lifecyclePredicate(input.scope),
+      branchVisibilityPredicate(input.userId),
     );
 
     const baseJoin = and(
@@ -562,6 +651,7 @@ implements ConversationArchiveReadRepository {
     provider: ConversationProvider;
     view: "default" | "all";
     messageId: string;
+    branchId?: string;
   }): Promise<{ index: number; total: number } | null> {
     const rows = await this.db
       .select({ id: conversationMessages.id })
@@ -570,6 +660,7 @@ implements ConversationArchiveReadRepository {
         eq(conversationMessages.userId, input.userId),
         eq(conversationMessages.conversationId, input.conversationId),
         messageVisibility(input.provider, input.view),
+        input.branchId ? branchSelectionPredicate(input.userId, input.branchId) : branchVisibilityPredicate(input.userId),
       ))
       .orderBy(...messageOrder(input.provider, input.view));
 

@@ -140,6 +140,7 @@ export function createProcessRuntime(
   );
   const conversationExclusionManagementService = new ConversationExclusionManagementService(
     new DrizzleConversationExclusionManagementRepository(db),
+    conversationImportService,
   );
   const conversationImportHistoryService = new ConversationImportHistoryService(
     new DrizzleConversationImportHistoryRepository(db),
@@ -217,6 +218,10 @@ export function createProcessRuntime(
       webConversationImportService: conversationImportService,
       webConversationArchiveReadService: conversationArchiveReadService,
       webConversationPruningService: conversationPruningService,
+      webConversationLifecycle: {
+        conversationPruningService,
+        conversationArchiveReadService,
+      },
       webConversationFavoriteService: conversationFavoriteService,
       webConversationExclusionManagementService: conversationExclusionManagementService,
       webConversationImportHistoryService: conversationImportHistoryService,

@@ -58,6 +58,7 @@ import type { SharedPaperApiDependencies } from "../web-api/shared-paper-router.
 import type { ConversationImportApiDependencies } from "../web-api/conversation-import-router.js";
 import type { ConversationArchiveReadApiDependencies } from "../web-api/conversation-archive-read-router.js";
 import type { ConversationPruningApiDependencies } from "../web-api/conversation-pruning-router.js";
+import type { ConversationLifecycleApiDependencies } from "../web-api/conversation-lifecycle-router.js";
 import type { ConversationFavoriteApiDependencies } from "../web-api/conversation-favorite-router.js";
 import type { ConversationExclusionManagementApiDependencies } from "../web-api/conversation-exclusion-management-router.js";
 import type { ConversationImportHistoryApiDependencies } from "../web-api/conversation-import-history-router.js";
@@ -88,6 +89,7 @@ export type AppDependencies = {
   webConversationImportService?: ConversationImportApiDependencies["conversationImportService"];
   webConversationArchiveReadService?: ConversationArchiveReadApiDependencies["conversationArchiveReadService"];
   webConversationPruningService?: ConversationPruningApiDependencies["conversationPruningService"];
+  webConversationLifecycle?: ConversationLifecycleApiDependencies;
   webConversationFavoriteService?: ConversationFavoriteApiDependencies["conversationFavoriteService"];
   webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
   webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
@@ -393,6 +395,7 @@ export function createApp(
         ...(webConversationImportHistoryService ? { conversationImportHistory: { conversationImportHistoryService: webConversationImportHistoryService } } : {}),
         ...(webConversationArchiveReadService ? { conversationRead: { conversationArchiveReadService: webConversationArchiveReadService } } : {}),
         ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
+        ...(dependencies.webConversationLifecycle ? { conversationLifecycle: dependencies.webConversationLifecycle } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
       }),
     );
