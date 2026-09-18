@@ -11,6 +11,8 @@ import type {
 const USER_ID = "00000000-0000-4000-8000-000000000901";
 const CONVERSATION_ID = "00000000-0000-4000-8000-000000000902";
 const MESSAGE_ID = "00000000-0000-4000-8000-000000000903";
+const EXCLUSION_ID = "00000000-0000-4000-8000-000000000904";
+const SOURCE_ID = "00000000-0000-4000-8000-000000000905";
 
 class ConversationReads {
   searchCalls: Array<Record<string, unknown>> = [];
@@ -103,6 +105,48 @@ class ConversationReads {
       anchorIndex: 0,
       hasMore: false,
       nextOffset: null,
+    };
+  }
+}
+
+
+class RecoveryReads {
+  listCalls: Array<Record<string, unknown>> = [];
+  candidateCalls: Array<Record<string, unknown>> = [];
+
+  async list(input: Record<string, unknown>) {
+    this.listCalls.push(input);
+    return {
+      total: 1,
+      items: [{
+        id: EXCLUSION_ID,
+        provider: "claude" as const,
+        scope: "branch" as const,
+        sourceConversationId: "source-conversation",
+        sourceNodeId: "source-node",
+        canonicalConversationExists: true,
+        canonicalNodeExists: false,
+        title: "Deleted branch",
+        sourceCreatedAt: "2026-09-12T00:00:00.000Z",
+        rootRole: null,
+        rootSnippet: null,
+        createdAt: "2026-09-18T00:00:00.000Z",
+      }],
+    };
+  }
+
+  async restoreCandidates(input: Record<string, unknown>) {
+    this.candidateCalls.push(input);
+    return {
+      total: 1,
+      items: [{
+        sourceId: SOURCE_ID,
+        filename: "claude-export.json",
+        title: "Deleted branch",
+        rootRole: "user" as const,
+        rootSourceCreatedAt: "2026-09-12T00:01:00.000Z",
+        rootSnippet: "verified retained root",
+      }],
     };
   }
 }
@@ -234,6 +278,88 @@ test("read_conversation returns canonical structured blocks and a model-readable
   assert.equal(fixture.reads.readCalls[0]?.userId, USER_ID);
   assert.equal(fixture.reads.readCalls[0]?.conversationId, CONVERSATION_ID);
   assert.equal(fixture.reads.readCalls[0]?.messageId, MESSAGE_ID);
+});
+
+
+test("Conversation recovery inspection MCP tools are read-only and user-scoped", async (t) => {
+  const recovery = new RecoveryReads();
+  const server = createMcpServer({
+    conversationRecoveryInspection: {
+      conversationExclusionManagementService: recovery as never,
+      getAuthenticatedUserId: () => USER_ID,
+    },
+  });
+  const client = new Client(
+    { name: "conversation-recovery-inspection-test", version: "1" },
+    { capabilities: {} },
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const inventory = await client.listTools();
+  for (const name of ["list_conversation_exclusions", "inspect_conversation_restore_candidates"]) {
+    const tool = inventory.tools.find((candidate) => candidate.name === name);
+    assert.ok(tool, `${name} should be registered`);
+    assert.deepEqual(tool.annotations, {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
+  }
+
+  const listed = await client.callTool({
+    name: "list_conversation_exclusions",
+    arguments: { provider: "claude", scope: "branch", limit: 20, offset: 0 },
+  });
+  assert.equal(listed.isError, undefined);
+  const listData = (listed.structuredContent as { data: { items: Array<Record<string, unknown>> } }).data;
+  assert.equal(listData.items[0]?.exclusion_id, EXCLUSION_ID);
+  assert.equal(recovery.listCalls[0]?.userId, USER_ID);
+
+  const inspected = await client.callTool({
+    name: "inspect_conversation_restore_candidates",
+    arguments: { exclusion_id: EXCLUSION_ID },
+  });
+  assert.equal(inspected.isError, undefined);
+  const inspectData = (inspected.structuredContent as { data: { candidates: Array<Record<string, unknown>>; unique_match: boolean } }).data;
+  assert.equal(inspectData.candidates[0]?.source_id, SOURCE_ID);
+  assert.equal(inspectData.unique_match, true);
+  assert.deepEqual(recovery.candidateCalls[0], { userId: USER_ID, exclusionId: EXCLUSION_ID });
+});
+
+test("Conversation recovery inspection schemas reject client-supplied identity", async (t) => {
+  const recovery = new RecoveryReads();
+  const server = createMcpServer({
+    conversationRecoveryInspection: {
+      conversationExclusionManagementService: recovery as never,
+      getAuthenticatedUserId: () => USER_ID,
+    },
+  });
+  const client = new Client(
+    { name: "conversation-recovery-identity-test", version: "1" },
+    { capabilities: {} },
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const result = await client.callTool({
+    name: "list_conversation_exclusions",
+    arguments: { user_id: "attacker" },
+  });
+  assert.equal(result.isError, true);
+  assert.equal(recovery.listCalls.length, 0);
 });
 
 test("Conversation MCP schemas reject client-supplied identity before service calls", async (t) => {

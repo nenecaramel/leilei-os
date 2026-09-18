@@ -1,0 +1,213 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import {
+  ConversationExclusionManagementError,
+  type ConversationExclusionManagementService,
+} from "../../../domains/conversation/conversation-exclusion-management-service.js";
+import { ConversationArchiveAuthenticationError } from "../conversation-archive/register.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+
+const providerSchema = z.enum(["chatgpt", "claude"]);
+const scopeSchema = z.enum(["conversation", "branch"]);
+const roleSchema = z.enum(["user", "assistant", "system", "tool", "reasoning", "unknown"]);
+
+const listInputSchema = z.object({
+  provider: providerSchema.optional(),
+  scope: scopeSchema.optional(),
+  limit: z.number().int().min(1).max(100).default(50).optional(),
+  offset: z.number().int().min(0).max(100_000).default(0).optional(),
+}).strict();
+
+const exclusionSchema = z.object({
+  exclusion_id: z.string().uuid(),
+  provider: providerSchema,
+  scope: scopeSchema,
+  source_conversation_id: z.string(),
+  source_node_id: z.string().nullable(),
+  canonical_conversation_exists: z.boolean(),
+  canonical_node_exists: z.boolean().nullable(),
+  title: z.string().nullable(),
+  source_created_at: z.string().datetime().nullable(),
+  root_role: roleSchema.nullable(),
+  root_snippet: z.string().nullable(),
+  created_at: z.string().datetime(),
+}).strict();
+
+const listOutputSchema = z.object({
+  success: z.boolean(),
+  data: z.object({
+    items: z.array(exclusionSchema),
+    metadata: z.object({
+      count: z.number().int().min(0),
+      total: z.number().int().min(0),
+      limit: z.number().int().min(1).max(100),
+      offset: z.number().int().min(0),
+      has_more: z.boolean(),
+    }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
+
+const inspectInputSchema = z.object({
+  exclusion_id: z.string().uuid(),
+}).strict();
+
+const candidateSchema = z.object({
+  source_id: z.string().uuid(),
+  filename: z.string(),
+  title: z.string().nullable(),
+  root_role: roleSchema.nullable(),
+  root_source_created_at: z.string().datetime().nullable(),
+  root_snippet: z.string().nullable(),
+}).strict();
+
+const inspectOutputSchema = z.object({
+  success: z.boolean(),
+  data: z.object({
+    exclusion_id: z.string().uuid(),
+    candidates: z.array(candidateSchema),
+    total: z.number().int().min(0),
+    unique_match: z.boolean(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
+
+export type ConversationRecoveryInspectionToolDependencies = {
+  conversationExclusionManagementService: Pick<
+    ConversationExclusionManagementService,
+    "list" | "restoreCandidates"
+  >;
+  getAuthenticatedUserId: () => string;
+};
+
+export function registerConversationRecoveryInspectionTools(
+  server: McpServer,
+  dependencies: ConversationRecoveryInspectionToolDependencies,
+): void {
+  server.registerTool("list_conversation_exclusions", {
+    title: "List Conversation Exclusions",
+    description: "Read-only inspection of the authenticated user's durable Conversation exclusion rules. Use this for recovery diagnosis before any restore action. Results are user-scoped and never modify canonical conversations, exclusions, or retained raw imports.",
+    inputSchema: listInputSchema,
+    outputSchema: listOutputSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ provider, scope, limit = 50, offset = 0 }) => {
+    try {
+      const userId = dependencies.getAuthenticatedUserId();
+      const result = await dependencies.conversationExclusionManagementService.list({
+        userId,
+        provider,
+        scope,
+        limit,
+        offset,
+      });
+      const items = result.items.map((item) => ({
+        exclusion_id: item.id,
+        provider: item.provider,
+        scope: item.scope,
+        source_conversation_id: item.sourceConversationId,
+        source_node_id: item.sourceNodeId,
+        canonical_conversation_exists: item.canonicalConversationExists,
+        canonical_node_exists: item.canonicalNodeExists,
+        title: item.title,
+        source_created_at: item.sourceCreatedAt,
+        root_role: item.rootRole,
+        root_snippet: item.rootSnippet,
+        created_at: item.createdAt,
+      }));
+      const data = {
+        items,
+        metadata: {
+          count: items.length,
+          total: result.total,
+          limit,
+          offset,
+          has_more: offset + items.length < result.total,
+        },
+      };
+      return {
+        content: [{
+          type: "text",
+          text: joinMcpContentLines([
+            `Found ${result.total} Conversation exclusions; returning ${items.length}.`,
+            ...items.map((item) =>
+              `${item.provider} ${item.scope} [exclusion_id=${item.exclusion_id}; source_conversation_id=${item.source_conversation_id}; source_node_id=${item.source_node_id ?? "null"}] ${quoteMcpText(item.title ?? "Untitled conversation")}`
+            ),
+          ]),
+        }],
+        structuredContent: { success: true as const, data },
+      };
+    } catch (error) {
+      return safeInspectionError(error, "list");
+    }
+  });
+
+  server.registerTool("inspect_conversation_restore_candidates", {
+    title: "Inspect Conversation Restore Candidates",
+    description: "Read-only exact recovery inspection for one user-scoped Conversation exclusion. Resolves only retained raw import sources that actually contain the exclusion target using the existing provider parser and recovery resolver. This tool never restores, deletes, reimports, or removes an exclusion.",
+    inputSchema: inspectInputSchema,
+    outputSchema: inspectOutputSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ exclusion_id }) => {
+    try {
+      const userId = dependencies.getAuthenticatedUserId();
+      const result = await dependencies.conversationExclusionManagementService.restoreCandidates({
+        userId,
+        exclusionId: exclusion_id,
+      });
+      const candidates = result.items.map((candidate) => ({
+        source_id: candidate.sourceId,
+        filename: candidate.filename,
+        title: candidate.title,
+        root_role: candidate.rootRole,
+        root_source_created_at: candidate.rootSourceCreatedAt,
+        root_snippet: candidate.rootSnippet,
+      }));
+      const data = {
+        exclusion_id,
+        candidates,
+        total: result.total,
+        unique_match: result.total === 1,
+      };
+      return {
+        content: [{
+          type: "text",
+          text: joinMcpContentLines([
+            `Resolved ${result.total} verified retained-source candidate(s) for exclusion ${exclusion_id}.`,
+            ...candidates.map((candidate) =>
+              `source_id=${candidate.source_id}; file=${quoteMcpText(candidate.filename)}; title=${quoteMcpText(candidate.title ?? "Unavailable")}; root_role=${candidate.root_role ?? "Unavailable"}; root_time=${candidate.root_source_created_at ?? "Unavailable"}; root_snippet=${quoteMcpText(candidate.root_snippet ?? "Unavailable")}`
+            ),
+          ]),
+        }],
+        structuredContent: { success: true as const, data },
+      };
+    } catch (error) {
+      return safeInspectionError(error, "inspect");
+    }
+  });
+}
+
+function safeInspectionError(error: unknown, operation: "list" | "inspect") {
+  if (error instanceof ConversationArchiveAuthenticationError) {
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to inspect Conversation recovery state.",
+    );
+  }
+  if (error instanceof ConversationExclusionManagementError) {
+    const message = error.code === "CONVERSATION_EXCLUSION_NOT_FOUND"
+      ? "Conversation exclusion was not found for the authenticated user."
+      : error.code === "CONVERSATION_EXCLUSION_UNAVAILABLE"
+        ? "Conversation recovery inspection is unavailable for the authenticated user."
+        : "The Conversation recovery inspection request is invalid.";
+    return createMcpToolError(error.code, message);
+  }
+  console.error(
+    `${operation}_conversation_recovery_inspection failed`,
+    error instanceof Error ? error.name : "UnknownError",
+  );
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Conversation recovery inspection is temporarily unavailable.",
+  );
+}
