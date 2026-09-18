@@ -111,6 +111,9 @@ test("Conversation detail reuses the Memory/Diary archive header while keeping t
   assert.match(page, /className="memory-page-count"/);
   assert.match(page, /className="memory-archive-back conversation-detail-delete"/);
   assert.match(page, />\s*Return\s*<\/button>/);
+  assert.match(css, /\.conversation-detail-header-actions\s*\{[^}]*gap:\s*10px/s);
+  assert.match(css, /\.conversation-detail-header-actions > \.memory-archive-back\s*\{[^}]*flex:\s*0 0 auto/s);
+  assert.match(css, /\.conversation-detail-delete\s*\{[^}]*width:\s*max-content/s);
   assert.doesNotMatch(page, /← 返回 Conversations|选择收藏范围|favoriteRange/);
   assert.doesNotMatch(css, /\.conversation-detail-page \.page-header|border-bottom:\s*1px solid rgba\(0, 0, 0, \.08\)/);
   assert.match(css, /\.conversation-message-list\s*\{[^}]*display:\s*block[^}]*overflow:\s*hidden[^}]*border:\s*1px solid/s);
