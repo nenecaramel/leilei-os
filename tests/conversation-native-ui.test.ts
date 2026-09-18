@@ -254,6 +254,9 @@ test("Conversation lifecycle uses lifecycle time and totals, with recoverable de
   assert.doesNotMatch(css, /\.conversation-lifecycle-icon\b/);
   assert.match(lifecyclePage, /client\.restoreCandidates/);
   assert.match(lifecyclePage, /client\.restoreExclusion/);
+  assert.match(lifecyclePage, /restoreLegacyExclusion/);
+  assert.match(lifecyclePage, /candidateStatusByExclusion/);
+  assert.doesNotMatch(lifecyclePage, /Promise\.all\(exclusions\.items\.map[\s\S]*restoreCandidates/);
   assert.doesNotMatch(lifecyclePage, /client\.importSources\(\{ limit: 100/);
   assert.match(lifecyclePage, /永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留/);
 });

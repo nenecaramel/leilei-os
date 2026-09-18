@@ -23,6 +23,7 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
   const [busy, setBusy] = useState<string | null>(null);
   const [restoreSourceByExclusion, setRestoreSourceByExclusion] = useState<Record<string, string>>({});
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
+  const [candidateStatusByExclusion, setCandidateStatusByExclusion] = useState<Record<string, "idle" | "loading" | "ready" | "error">>({});
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -33,8 +34,9 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
         return;
       }
       const [result, exclusions] = await Promise.all([client.listDeleted({ limit: 100, offset: 0 }), client.listExclusions({ limit: 100, offset: 0 })]);
-      const candidates = await Promise.all(exclusions.items.map(async (exclusion) => [exclusion.id, (await client.restoreCandidates(exclusion.id)).items] as const));
-      setState({ status: "ready", conversations: result.conversations.items, total: result.conversations.total + result.branches.total + exclusions.total, branches: result.branches.items, exclusions: exclusions.items, candidatesByExclusion: Object.fromEntries(candidates) });
+      setCandidateStatusByExclusion({});
+      setRestoreSourceByExclusion({});
+      setState({ status: "ready", conversations: result.conversations.items, total: result.conversations.total + result.branches.total + exclusions.total, branches: result.branches.items, exclusions: exclusions.items, candidatesByExclusion: {} });
     } catch { setState({ status: "error" }); }
   }, [client, deleted]);
   useEffect(() => { void load(); }, [load]);
@@ -43,6 +45,38 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
   async function permanentlyDeleteConversation(id: string) { setBusy(id); try { await client.permanentlyDeleteConversation(id); await load(); } finally { setBusy(null); setPermanentDeleteId(null); } }
   async function restoreBranch(branch: ConversationDeletedBranch) { setBusy(branch.id); try { await client.restoreBranch({ conversationId: branch.conversationId, branchId: branch.id }); await load(); } finally { setBusy(null); } }
   async function permanentlyDeleteBranch(branch: ConversationDeletedBranch) { setBusy(branch.id); try { await client.permanentlyDeleteBranch({ conversationId: branch.conversationId, branchId: branch.id }); await load(); } finally { setBusy(null); setPermanentDeleteId(null); } }
+
+  async function restoreLegacyExclusion(exclusionId: string) {
+    setBusy(exclusionId);
+    try {
+      let candidates = state.status === "ready" ? state.candidatesByExclusion[exclusionId] : undefined;
+      if (!candidates) {
+        setCandidateStatusByExclusion((current) => ({ ...current, [exclusionId]: "loading" }));
+        try {
+          const result = await client.restoreCandidates(exclusionId);
+          candidates = result.items;
+          setState((current) => current.status === "ready"
+            ? { ...current, candidatesByExclusion: { ...current.candidatesByExclusion, [exclusionId]: result.items } }
+            : current);
+          setCandidateStatusByExclusion((current) => ({ ...current, [exclusionId]: "ready" }));
+          if (result.items.length === 1 && result.items[0]) {
+            setRestoreSourceByExclusion((current) => ({ ...current, [exclusionId]: result.items[0]!.sourceId }));
+          }
+        } catch {
+          setCandidateStatusByExclusion((current) => ({ ...current, [exclusionId]: "error" }));
+          return;
+        }
+      }
+
+      if (candidates.length === 0) return;
+      const selectedSourceId = restoreSourceByExclusion[exclusionId] ?? (candidates.length === 1 ? candidates[0]?.sourceId ?? "" : "");
+      if (!selectedSourceId) return;
+      await client.restoreExclusion({ exclusionId, sourceId: selectedSourceId });
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
 
   if (state.status === "loading") return <div className="page memory-page conversation-page conversation-lifecycle-page"><p className="conversation-detail-loading" role="status">正在读取…</p></div>;
   if (state.status === "error") return <div className="page memory-page conversation-page conversation-lifecycle-page"><PageState state="error" message="Conversation Archive 暂时无法读取。" onRetry={() => void load()} /></div>;
@@ -66,8 +100,8 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
         const branch = entry.item; const pending = permanentDeleteId === `branch:${branch.id}`;
         return <div className="memory-row conversation-card" key={`branch:${branch.id}`}><Link to={`/conversations/${branch.conversationId}?scope=deleted&branch=${branch.id}`} className="conversation-lifecycle-link"><span className="memory-row-title">{branch.title?.trim() || "Untitled conversation"}</span><span className="memory-row-meta"><span>Branch · {branch.provider}</span><span>{shortTime(branch.deletedAt)}</span><span>{branch.rootRole ? `${branch.rootRole} · ${shortTime(branch.rootSourceCreatedAt)}` : "Unavailable"}</span><span>{shortSnippet(branch.rootSnippet)}</span></span></Link><span className="conversation-lifecycle-actions"><button type="button" disabled={busy === branch.id} onClick={() => void restoreBranch(branch)}>Restore</button>{pending ? <><span>{permanentDeleteCopy}</span><button type="button" disabled={busy === branch.id} onClick={() => void permanentlyDeleteBranch(branch)}>Confirm permanently delete</button><button type="button" onClick={() => setPermanentDeleteId(null)}>Cancel</button></> : <button type="button" disabled={busy === branch.id} onClick={() => setPermanentDeleteId(`branch:${branch.id}`)}>Permanently delete</button>}</span></div>;
       }
-      const exclusion = entry.item; const candidates = state.candidatesByExclusion[exclusion.id] ?? []; const sourceId = restoreSourceByExclusion[exclusion.id] ?? (candidates.length === 1 ? candidates[0]?.sourceId ?? "" : ""); const candidate = candidates.find((value) => value.sourceId === sourceId) ?? candidates[0] ?? null;
-      return <div className="memory-row conversation-card" key={`legacy:${exclusion.id}`}><div className="conversation-lifecycle-link"><span className="memory-row-title">{exclusion.title?.trim() || candidate?.title?.trim() || "Unavailable"}</span><span className="memory-row-meta"><span>{exclusion.scope === "branch" ? "Branch" : "Conversation"} · {exclusion.provider}</span><span>{shortTime(exclusion.createdAt)}</span><span>{(exclusion.rootRole ?? candidate?.rootRole) ? `${exclusion.rootRole ?? candidate?.rootRole} · ${shortTime(exclusion.sourceCreatedAt ?? candidate?.rootSourceCreatedAt ?? null)}` : "Unavailable"}</span><span>{shortSnippet(exclusion.rootSnippet ?? candidate?.rootSnippet ?? null)}</span></span></div><span className="conversation-lifecycle-actions">{candidates.length > 1 ? <select aria-label="选择用于恢复的已验证原始 export" value={sourceId} onChange={(event) => setRestoreSourceByExclusion((values) => ({ ...values, [exclusion.id]: event.target.value }))}><option value="">选择已验证原始 export</option>{candidates.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.filename}</option>)}</select> : null}{candidates.length === 0 ? <span>Unavailable</span> : <button type="button" disabled={!sourceId || busy === exclusion.id} onClick={() => { setBusy(exclusion.id); void client.restoreExclusion({ exclusionId: exclusion.id, sourceId }).then(load).finally(() => setBusy(null)); }}>Restore</button>}</span></div>;
+      const exclusion = entry.item; const candidates = state.candidatesByExclusion[exclusion.id]; const candidateStatus = candidateStatusByExclusion[exclusion.id] ?? "idle"; const sourceId = restoreSourceByExclusion[exclusion.id] ?? (candidates?.length === 1 ? candidates[0]?.sourceId ?? "" : ""); const candidate = candidates?.find((value) => value.sourceId === sourceId) ?? candidates?.[0] ?? null;
+      return <div className="memory-row conversation-card" key={`legacy:${exclusion.id}`}><div className="conversation-lifecycle-link"><span className="memory-row-title">{exclusion.title?.trim() || candidate?.title?.trim() || "Unavailable"}</span><span className="memory-row-meta"><span>{exclusion.scope === "branch" ? "Branch" : "Conversation"} · {exclusion.provider}</span><span>{shortTime(exclusion.createdAt)}</span><span>{(exclusion.rootRole ?? candidate?.rootRole) ? `${exclusion.rootRole ?? candidate?.rootRole} · ${shortTime(exclusion.sourceCreatedAt ?? candidate?.rootSourceCreatedAt ?? null)}` : "Unavailable"}</span><span>{shortSnippet(exclusion.rootSnippet ?? candidate?.rootSnippet ?? null)}</span></span></div><span className="conversation-lifecycle-actions">{candidateStatus === "ready" && (candidates?.length ?? 0) > 1 ? <select aria-label="选择用于恢复的已验证原始 export" value={sourceId} onChange={(event) => setRestoreSourceByExclusion((values) => ({ ...values, [exclusion.id]: event.target.value }))}><option value="">选择已验证原始 export</option>{candidates?.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.filename}</option>)}</select> : null}{candidateStatus === "ready" && candidates?.length === 0 ? <span>Unavailable</span> : <button type="button" disabled={busy === exclusion.id || (candidateStatus === "ready" && (candidates?.length ?? 0) > 1 && !sourceId)} onClick={() => void restoreLegacyExclusion(exclusion.id)}>{candidateStatus === "loading" ? "Locating…" : candidateStatus === "error" ? "Retry" : "Restore"}</button>}</span></div>;
     })}</div></section>)}</section>
   </div>;
 }
