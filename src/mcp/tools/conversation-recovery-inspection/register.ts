@@ -220,6 +220,7 @@ export function registerConversationRecoveryInspectionTools(
     } catch (error) {
       return safeInspectionError(error, "inspect");
     }
+  });
 
   server.registerTool("inspect_conversation_restore_path", {
     title: "Inspect Conversation Restore Path",
