@@ -812,9 +812,21 @@ function ConversationDetailView({
               <div className="conversation-message-meta">
                 <strong>{message.role === "user" ? "You" : providerLabel(detail.provider)}</strong>
                 <span>{message.model ?? ""}</span>
-                <time>{formatDateTime(message.sourceCreatedAt)}</time>
+                <time className="conversation-message-time">{formatDateTime(message.sourceCreatedAt)}</time>
+                {(detail.provider === "claude" || view === "all") ? (
+                  <button
+                    className="conversation-message-prune"
+                    type="button"
+                    aria-label="从这条消息开始删除整个分支并在后续导入中排除"
+                    title="删除此分支；原始 export 仍保留"
+                    disabled={pruningMessageId !== null}
+                    onClick={() => void deleteBranch(message)}
+                  >
+                    {pruningMessageId === message.id ? "删除中…" : "删此分支"}
+                  </button>
+                ) : null}
                 <button
-                  className={`conversation-message-favorite${singleFavorite ? " active" : ""}`}
+                  className="conversation-message-favorite active"
                   type="button"
                   disabled={favoriteBusyId !== null}
                   aria-label={singleFavorite ? "取消收藏这条消息" : "收藏这条消息"}
@@ -828,18 +840,6 @@ function ConversationDetailView({
                         ? "取消收藏"
                         : "收藏"}
                 </button>
-                {(detail.provider === "claude" || view === "all") ? (
-                  <button
-                    className="conversation-message-prune"
-                    type="button"
-                    aria-label="从这条消息开始删除整个分支并在后续导入中排除"
-                    title="删除此分支；原始 export 仍保留"
-                    disabled={pruningMessageId !== null}
-                    onClick={() => void deleteBranch(message)}
-                  >
-                    {pruningMessageId === message.id ? "删除中…" : "删此分支"}
-                  </button>
-                ) : null}
               </div>
               <div className="conversation-message-text">{message.displayText || "（无可见文本）"}</div>
             </article>
