@@ -259,8 +259,7 @@
 .conversation-inline-status,
 .conversation-muted-card,
 .conversation-branch-note,
-.conversation-context-banner,
-.conversation-favorite-range-banner { margin: 0 0 12px; padding: 12px 13px; border: 1px solid rgba(0, 0, 0, .09); border-radius: 12px; color: #737373; background: #fafafa; font-size: 12px; line-height: 1.45; }
+.conversation-context-banner { margin: 0 0 12px; padding: 12px 13px; border: 1px solid rgba(0, 0, 0, .09); border-radius: 12px; color: #737373; background: #fafafa; font-size: 12px; line-height: 1.45; }
 .conversation-history-inline-action { margin-left: 8px; }
 
 .conversation-detail-loading {
@@ -274,41 +273,23 @@
   text-align: center;
 }
 
-/* Detail rolls back only to the earlier compact continuous reading surface. */
-.conversation-detail-back { margin: 0 0 8px; }
-.conversation-detail-back a { color: #777; font-size: 11px; text-decoration: none; }
-.conversation-detail-back a:hover { color: #171717; }
-.conversation-detail-page .page-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 14px;
-  padding: 0 0 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, .08);
+/* Detail header reuses the Memory/Diary archive header contract. */
+.conversation-detail-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
 }
-.conversation-detail-page .page-header > div { min-width: 0; padding-top: 2px; }
-.conversation-detail-page .page-header .eyebrow { display: none; }
-.conversation-detail-page .page-header h1 {
-  max-width: 620px;
-  margin: 0;
-  overflow: hidden;
-  color: #171717;
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: -.03em;
-  line-height: 1.2;
-  text-overflow: ellipsis;
+.conversation-detail-delete {
+  width: auto;
+  min-width: 44px;
+  white-space: nowrap;
 }
-.conversation-detail-page .page-header > div > p:last-child {
-  max-width: 620px;
-  margin: 3px 0 0;
-  color: #8a8a8a;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.3;
+.conversation-detail-view-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 10px;
 }
-.conversation-detail-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
-.conversation-favorite-range-toggle { margin: 0; }
 .conversation-danger-button,
 .conversation-message-prune { border-color: transparent; color: #7b7b7b; background: transparent; }
 .conversation-danger-button { min-height: 35px; padding: 6px 10px; border-radius: 10px; font-size: 11px; font-weight: 500; }
