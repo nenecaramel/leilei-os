@@ -86,6 +86,7 @@ import {
 } from "../tools/toy-command/register.js";
 import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
 import { ConversationArchiveAuthenticationError, registerConversationArchiveTools, type ConversationArchiveMcpToolDependencies } from "../tools/conversation-archive/register.js";
+import { registerConversationRecoveryInspectionTools, type ConversationRecoveryInspectionToolDependencies } from "../tools/conversation-recovery-inspection/register.js";
 import {
   registerSearchNotionTool,
   SearchNotionAuthenticationError,
@@ -377,6 +378,14 @@ const productionConversationArchiveDependencies: ConversationArchiveMcpToolDepen
   getAuthenticatedUserId: () => { throw new ConversationArchiveAuthenticationError(); },
 };
 
+const productionConversationRecoveryInspectionDependencies: ConversationRecoveryInspectionToolDependencies = {
+  conversationExclusionManagementService: {
+    list: (input) => missingDatabaseService(),
+    restoreCandidates: (input) => missingDatabaseService(),
+  },
+  getAuthenticatedUserId: () => { throw new ConversationArchiveAuthenticationError(); },
+};
+
 const productionUniverseService: SearchUniverseToolDependencies["globalSearchService"] &
   GetUniverseNodeToolDependencies["universeService"] & ListUniverseNodesToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
   CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] &
@@ -515,6 +524,7 @@ export type McpServerDependencies = {
   toyCommand?: ToyCommandToolDependencies;
   globalSearch?: GlobalSearchToolDependencies;
   conversationArchiveTools?: ConversationArchiveMcpToolDependencies;
+  conversationRecoveryInspection?: ConversationRecoveryInspectionToolDependencies;
   todoTools?: TodoToolsDependencies;
   sharedPaperTools?: SharedPaperToolDependencies;
   notionTools?: NotionToolsDependencies;
@@ -728,6 +738,13 @@ export function createMcpServer(
   });
   registerConversationArchiveTools(server, dependencies.conversationArchiveTools ?? {
     ...productionConversationArchiveDependencies,
+    getAuthenticatedUserId: () => {
+      if (!authenticatedUserId) throw new ConversationArchiveAuthenticationError();
+      return authenticatedUserId;
+    },
+  });
+  registerConversationRecoveryInspectionTools(server, dependencies.conversationRecoveryInspection ?? {
+    ...productionConversationRecoveryInspectionDependencies,
     getAuthenticatedUserId: () => {
       if (!authenticatedUserId) throw new ConversationArchiveAuthenticationError();
       return authenticatedUserId;
