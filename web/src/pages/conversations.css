@@ -278,10 +278,13 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0;
+  gap: 10px;
+}
+.conversation-detail-header-actions > .memory-archive-back {
+  flex: 0 0 auto;
 }
 .conversation-detail-delete {
-  width: auto;
+  width: max-content;
   min-width: 44px;
   white-space: nowrap;
 }
