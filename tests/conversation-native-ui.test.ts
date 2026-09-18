@@ -183,7 +183,8 @@ test("Sources uses full card width below top-right actions", () => {
   assert.match(importHistoryPanel, /共 \{state\.total\.toLocaleString\(\)\} 份/);
   assert.doesNotMatch(importHistoryPanel, /份 source/);
   assert.match(importHistoryPanel, /conversation-import-source-main[\s\S]*<\/div>[\s\S]*conversation-import-source-actions/);
-  assert.match(importHistoryPanel, /conversation-import-source-titleline[\s\S]*<h3>\{source\.filename\}<\/h3>[\s\S]*\{source\.runCount\} 次 Preview\/Execute/);
+  assert.match(importHistoryPanel, /conversation-import-source-titleline[\s\S]*<h3>\{source\.filename\}<\/h3>[\s\S]*\{bytes\(source\.rawBytes\)\} · \{source\.runCount\} 次 Preview\/Execute/);
+  assert.doesNotMatch(importHistoryPanel, /<p>\s*\{bytes\(source\.rawBytes\)\}/);
   assert.match(importHistoryPanel, /className="conversation-message-favorite active conversation-import-source-action"/);
   assert.match(css, /\.conversation-import-source-titleline > span\s*\{[^}]*margin-left:\s*auto[^}]*white-space:\s*nowrap/s);
   assert.match(importHistoryPanel, /className="system-section conversation-import-history-loading"/);
