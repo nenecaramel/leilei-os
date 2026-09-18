@@ -758,7 +758,7 @@ function ConversationDetailView({
             title="删除窗口；原始 export 仍保留"
             onClick={() => void deleteWindow()}
           >
-            delete
+            Delete
           </button>
           <button
             className="memory-archive-back"
