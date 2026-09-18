@@ -124,7 +124,7 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
       {state.status === "loading" ? (
         <FavoritesMonthLoading />
       ) : state.status === "error" ? (
-        <div className="system-state-message" role="alert">
+        <div className="system-state-message conversation-tab-state" role="alert">
           <p>Unable to read favorites.</p>
           <button className="secondary-button" type="button" onClick={() => void load()}>
             Retry

@@ -1239,7 +1239,7 @@ export function MemoryPageContent({
                     placement="module"
                     emptyText=""
                     errorText=""
-                    loadingText="正在搜索…"
+                    loadingText="Searching..."
                   />
                 ) : (
                   <section className="memory-months" aria-label="Memory 加载中" aria-busy="true">

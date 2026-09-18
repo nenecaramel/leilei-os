@@ -1014,7 +1014,7 @@ import {
             {desktopPage ? <p className="desktop-page-description">管理待办事项、截止时间与完成状态。</p> : null}
             {actionError && !isDetailMode && !showCreate ? <section className="memory-action-notice" role="status">{actionError}</section> : null}
             {state.status === "ready" ? state.tasks.length ? <MobileTaskRows tasks={state.tasks} busy={busy} label="Task 列表" onOpen={(id, trigger) => { paperTriggerRef.current = trigger; void handleReadTask(id); }} onReopen={(task) => void handleReopenTask(task)} /> : filters.q ? <ModuleSearchStateMessage state="empty" placement="module" emptyText="没有符合条件的任务" errorText="" action={<button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button>} /> : <section className="memory-empty-state"><p>{hasFilters ? "没有符合条件的任务" : "还没有任务"}</p>{hasFilters ? <button className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button> : null}</section> : null}
-            {state.status === "loading" ? filters.q ? <ModuleSearchStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="正在搜索…" /> : <MobileTaskLoading label="Task 加载中" /> : null}
+            {state.status === "loading" ? filters.q ? <ModuleSearchStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="Searching..." /> : <MobileTaskLoading label="Task 加载中" /> : null}
             {state.status === "error" ? <ModuleSearchStateMessage state="error" placement="module" emptyText="" errorText="Unable to read tasks." retryLabel="Retry" onRetry={() => setReloadKey((v) => v + 1)} /> : null}
           </> : null}
           {showCreate ? <PaperDetailDialog id="task-create-paper" open label="创建 Task" dateLabel={<TaskDeadlineEditor value={dueTime} withoutDueTime={withoutDueTime} disabled={creating} onValueChange={(v) => { setDueTime(v); setActionError(""); }} onWithoutDueTimeChange={(v) => { setWithoutDueTime(v); setActionError(""); }} />} signature="" triggerRef={paperTriggerRef}
@@ -1467,7 +1467,7 @@ import {
                 />
               )}
 
-            {state.status === "loading" && (filters.q ? <ModuleSearchStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="正在搜索…" /> : <TaskLoading />)}
+            {state.status === "loading" && (filters.q ? <ModuleSearchStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="Searching..." /> : <TaskLoading />)}
 
             {state.status === "error" ? (
               <ModuleSearchStateMessage

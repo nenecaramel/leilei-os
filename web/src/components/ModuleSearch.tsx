@@ -55,7 +55,7 @@ export function ModuleStateMessage({
   state,
   emptyText,
   errorText,
-  loadingText = "正在搜索…",
+  loadingText = "Searching...",
   retryLabel = "Retry",
   onRetry,
   action,

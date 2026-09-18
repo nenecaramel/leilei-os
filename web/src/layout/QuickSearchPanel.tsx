@@ -273,7 +273,7 @@ export function QuickSearchPanel({
       {!queryError && state === "loading" ? (
         <StateSurface
           state="loading"
-          message="正在搜索…"
+          message="Searching..."
           placement="inline"
           className="quick-search-state"
         />

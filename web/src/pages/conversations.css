@@ -327,13 +327,51 @@
 .conversation-message-favorite.active { color: #444; background: #eee; }
 .conversation-message--anchor { border-color: transparent; background: #fff9df; box-shadow: inset 3px 0 0 #e0ca71; }
 .conversation-page .conversation-load-more { width: 100%; margin-top: 10px; }
-.conversation-page .state-surface,
-.conversation-page .page-state,
 .conversation-page .placeholder-panel,
 .conversation-page .memory-message { min-height: 120px; padding: 24px 13px; border: 1px solid rgba(0, 0, 0, .11); border-radius: 14px; background: #fff; box-shadow: none; }
 
+.conversation-page .state-surface {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 
-.conversation-import-icon {
-  width: 23px;
-  height: 23px;
+.conversation-archive-section > .state-surface,
+.conversation-favorites > .conversation-tab-state {
+  min-height: min(56dvh, 520px);
+  margin: 0;
+  padding: 0;
+  place-content: center;
+}
+
+.conversation-tab-source-state {
+  display: grid;
+  min-height: calc(min(56dvh, 520px) - 28px);
+  place-items: center;
+}
+
+.conversation-tab-source-state .conversation-import-history-loading {
+  width: 100%;
+  margin: 0;
+}
+
+.conversation-lifecycle-page > .state-surface,
+.conversation-detail-state > .state-surface,
+.conversation-lifecycle-page > .conversation-detail-loading,
+.conversation-detail-state > .conversation-detail-loading {
+  min-height: calc(100dvh - 160px);
+  margin: 0;
+  padding: 0;
+  place-content: center;
+}
+
+.conversation-page .memory-page-search-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.conversation-page .conversation-import-icon {
+  width: 25px;
+  height: 25px;
 }
