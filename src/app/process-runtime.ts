@@ -186,6 +186,7 @@ export function createProcessRuntime(
     toyCommandService,
     globalSearchService,
     conversationArchiveReadService,
+    conversationExclusionManagementService,
     todoService,
     universeService,
     healthService,
