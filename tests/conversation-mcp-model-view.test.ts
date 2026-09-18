@@ -113,6 +113,7 @@ class ConversationReads {
 class RecoveryReads {
   listCalls: Array<Record<string, unknown>> = [];
   candidateCalls: Array<Record<string, unknown>> = [];
+  evidenceCalls: Array<Record<string, unknown>> = [];
 
   async list(input: Record<string, unknown>) {
     this.listCalls.push(input);
@@ -147,6 +148,44 @@ class RecoveryReads {
         rootSourceCreatedAt: "2026-09-12T00:01:00.000Z",
         rootSnippet: "verified retained root",
       }],
+    };
+  }
+
+  async restoreEvidence(input: Record<string, unknown>) {
+    this.evidenceCalls.push(input);
+    return {
+      sourceId: SOURCE_ID,
+      filename: "claude-export.json",
+      title: "Deleted branch",
+      rootSourceNodeId: "source-node",
+      total: 3,
+      offset: Number(input.offset ?? 0),
+      messages: [
+        {
+          sourceNodeId: "source-node",
+          parentSourceNodeId: "before-root",
+          role: "user" as const,
+          sourceCreatedAt: "2026-09-12T00:01:00.000Z",
+          displayText: "verified retained root",
+          depth: 0,
+        },
+        {
+          sourceNodeId: "child-1",
+          parentSourceNodeId: "source-node",
+          role: "assistant" as const,
+          sourceCreatedAt: "2026-09-12T00:01:01.000Z",
+          displayText: "verified child",
+          depth: 1,
+        },
+        {
+          sourceNodeId: "child-2",
+          parentSourceNodeId: "child-1",
+          role: "user" as const,
+          sourceCreatedAt: "2026-09-12T00:01:02.000Z",
+          displayText: "verified grandchild",
+          depth: 2,
+        },
+      ],
     };
   }
 }
@@ -302,7 +341,7 @@ test("Conversation recovery inspection MCP tools are read-only and user-scoped",
   });
 
   const inventory = await client.listTools();
-  for (const name of ["list_conversation_exclusions", "inspect_conversation_restore_candidates"]) {
+  for (const name of ["list_conversation_exclusions", "inspect_conversation_restore_candidates", "inspect_conversation_restore_path"]) {
     const tool = inventory.tools.find((candidate) => candidate.name === name);
     assert.ok(tool, `${name} should be registered`);
     assert.deepEqual(tool.annotations, {
@@ -332,6 +371,30 @@ test("Conversation recovery inspection MCP tools are read-only and user-scoped",
   assert.equal(inspectData.candidates[0]?.source_id, SOURCE_ID);
   assert.equal(inspectData.unique_match, true);
   assert.deepEqual(recovery.candidateCalls[0], { userId: USER_ID, exclusionId: EXCLUSION_ID });
+
+  const path = await client.callTool({
+    name: "inspect_conversation_restore_path",
+    arguments: { exclusion_id: EXCLUSION_ID, source_id: SOURCE_ID, limit: 40, offset: 0 },
+  });
+  assert.equal(path.isError, undefined);
+  const pathData = (path.structuredContent as {
+    data: {
+      root_source_node_id: string | null;
+      messages: Array<Record<string, unknown>>;
+      metadata: { total: number; returned: number; has_more: boolean };
+    };
+  }).data;
+  assert.equal(pathData.root_source_node_id, "source-node");
+  assert.equal(pathData.messages[1]?.parent_source_node_id, "source-node");
+  assert.equal(pathData.messages[2]?.depth, 2);
+  assert.deepEqual(pathData.metadata, { total: 3, offset: 0, returned: 3, has_more: false, next_offset: null });
+  assert.deepEqual(recovery.evidenceCalls[0], {
+    userId: USER_ID,
+    exclusionId: EXCLUSION_ID,
+    sourceId: SOURCE_ID,
+    limit: 40,
+    offset: 0,
+  });
 });
 
 test("Conversation recovery inspection schemas reject client-supplied identity", async (t) => {
