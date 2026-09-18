@@ -57,6 +57,12 @@ class FakeImportRepository implements ConversationImportRepository {
     ) ?? null;
   }
 
+  async listSourcesForProvider(input: { userId: string; provider: "chatgpt" | "claude" }) {
+    return [...this.sourcesBySha.values()].filter((source) =>
+      source.userId === input.userId && source.provider === input.provider,
+    );
+  }
+
   async createOrReuseSourceWithBlob(input: {
     userId: string;
     provider: "chatgpt" | "claude";
@@ -562,6 +568,37 @@ test("legacy restore candidates scan retained sources with the provider registry
   assert.match(method, /normalizeConversation/);
   assert.match(method, /matchesRestoreTarget/);
   assert.doesNotMatch(method, /limit:\s*100/);
+});
+
+test("legacy restore candidate resolution finds only retained raw sources containing the exact exclusion target", async () => {
+  const repository = new FakeImportRepository();
+  const service = new ConversationImportService(repository, new FakeStateRepository());
+  const raw = Buffer.from(JSON.stringify([chatGptConversationFixture]));
+  const preview = await service.preview(stream(raw), "conversations.json", "user-id");
+
+  const candidates = await service.findRestoreCandidates({
+    userId: "user-id",
+    exclusion: {
+      provider: "chatgpt",
+      scope: "branch",
+      sourceConversationId: "conv-real-shape",
+      sourceNodeId: "assistant-final",
+    },
+  });
+  assert.deepEqual(candidates.map((candidate) => candidate.sourceId), [preview.source_id]);
+  assert.equal(candidates[0]?.title, chatGptConversationFixture.title);
+  assert.equal(candidates[0]?.rootRole, "assistant");
+
+  const missing = await service.findRestoreCandidates({
+    userId: "user-id",
+    exclusion: {
+      provider: "chatgpt",
+      scope: "branch",
+      sourceConversationId: "conv-real-shape",
+      sourceNodeId: "missing-node",
+    },
+  });
+  assert.deepEqual(missing, []);
 });
 
 test("changing exclusion rules after Preview makes Execute stale before canonical writes", async () => {
