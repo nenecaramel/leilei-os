@@ -2,7 +2,7 @@
   "name": "leilei-os-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Authenticated Leilei OS Web workspace for Memory, Diary, Task, Todo, Shared Paper, Universe, Search, and System data.",
+  "description": "Authenticated Leilei OS Web workspace for Memory, Diary, Task, Todo, Shared Paper, Conversations, Universe, Search, and System data.",
   "type": "module",
   "engines": {
     "node": "24.x"

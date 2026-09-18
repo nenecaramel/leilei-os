@@ -7,6 +7,7 @@ Leilei OS is an authenticated personal workspace built around a React Web app, a
 The current codebase includes:
 
 - **Memory, Diary, Task, Todo, and Shared Paper** — durable personal records, filtering/search, lifecycle actions, canonical Diary comments, revision-aware Shared Paper editing, and server-side ownership.
+- **Conversation Archive** — user-initiated ChatGPT/Claude export imports, durable conversation reading/search, Favorites, Sources, and explicit import history.
 - **Dashboard and Day Space** — authenticated date-scoped views backed by the real API.
 - **Universe** — nodes, weighted galaxy memberships, relations, revisions, provenance, backup/import/export, search, and explicit MCP writes.
 - **Global Search** — authenticated cross-module search and deep links.
@@ -59,7 +60,7 @@ The v5 resource identifier is the current cache/version boundary for the Bridge 
 
 `render_thinking_block` renders model-supplied external working text in a LeileiOS MCP Apps card. It does not expose native hidden chain of thought and is not persisted by default. The tool is intended for selective use when an explicit visual thinking card is useful.
 
-The canonical standard MCP Apps resource is `ui://widget/leileios-thinking-block-v2.html`. ChatGPT's `openai/outputTemplate` compatibility pointer uses `ui://widget/leileios-thinking-block-v1.html`; both URIs serve the same current HTML/runtime, and v1 is retained only as a compatibility alias rather than restoring the old browser client.
+The canonical standard MCP Apps resource is `ui://widget/leileios-thinking-block-v3.html`. ChatGPT's `openai/outputTemplate` compatibility pointer uses `ui://widget/leileios-thinking-block-chatgpt-v3.html`; both URIs serve the same current HTML/runtime. The older v2 and v1 URIs remain registered only as legacy aliases rather than restoring an older browser client.
 
 The Thinking Block integration includes adapted MCP Apps card behavior from [`sibylsea-hub/gpt-thinking-block-mcp`](https://github.com/sibylsea-hub/gpt-thinking-block-mcp), retained with its MIT attribution.
 
@@ -71,7 +72,8 @@ Notion tools use server-side authorization and do not expose the configured PAT 
 
 Requirements:
 
-- Node.js 20 or newer
+- Node.js 20 or newer for the root API/MCP package
+- Node.js 24.x for the `web/` package
 - pnpm 11.9.0 for the root service
 - npm for the Web package
 - PostgreSQL for persistent features and migration checks

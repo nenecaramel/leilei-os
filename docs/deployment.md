@@ -30,7 +30,7 @@ The pre-deploy runner performs database-readiness checks and applies pending che
 The current checked-in migration head is:
 
 ```text
-0037_diary_comments
+0044_conversation_import_reapply
 ```
 
 The authoritative checked-in record is `drizzle/meta/_journal.json`.
@@ -58,16 +58,16 @@ After an MCP surface or resource change reaches production, refresh/reconnect th
 The current canonical standard MCP Apps resource URI is:
 
 ```text
-ui://widget/leileios-thinking-block-v2.html
+ui://widget/leileios-thinking-block-v3.html
 ```
 
 ChatGPT's `openai/outputTemplate` compatibility pointer uses:
 
 ```text
-ui://widget/leileios-thinking-block-v1.html
+ui://widget/leileios-thinking-block-chatgpt-v3.html
 ```
 
-Both identifiers serve the same current HTML and generated browser runtime. The v1 identifier is a compatibility alias only; it does not restore the previous browser client. The committed/generated bundle is built from `src/mcp/tools/render-thinking-block/browser-runtime.ts` by `scripts/build-thinking-block-browser.mjs`.
+Both identifiers serve the same current HTML and generated browser runtime. The older v2 and v1 identifiers remain legacy aliases only; they do not restore a previous browser client. The committed/generated bundle is built from `src/mcp/tools/render-thinking-block/browser-runtime.ts` by `scripts/build-thinking-block-browser.mjs`.
 
 Material standard MCP Apps UI/runtime changes should advance the canonical resource URI rather than relying on hosts to invalidate an existing resource. Any ChatGPT compatibility pointer change must be treated separately and verified on ChatGPT Web/Mobile without regressing other MCP Apps hosts.
 
