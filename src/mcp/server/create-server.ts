@@ -383,6 +383,7 @@ const productionConversationRecoveryInspectionDependencies: ConversationRecovery
     list: (input) => missingDatabaseService(),
     restoreCandidates: (input) => missingDatabaseService(),
     restoreEvidence: (input) => missingDatabaseService(),
+    restore: (input) => missingDatabaseService(),
   },
   getAuthenticatedUserId: () => { throw new ConversationArchiveAuthenticationError(); },
 };

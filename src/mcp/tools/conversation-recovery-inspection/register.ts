@@ -109,10 +109,25 @@ const pathOutputSchema = z.object({
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
+const restoreInputSchema = z.object({
+  exclusion_id: z.string().uuid(),
+  source_id: z.string().uuid(),
+}).strict();
+
+const restoreOutputSchema = z.object({
+  success: z.boolean(),
+  data: z.object({
+    exclusion_id: z.string().uuid(),
+    source_id: z.string().uuid(),
+    restored: z.literal(true),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
+
 export type ConversationRecoveryInspectionToolDependencies = {
   conversationExclusionManagementService: Pick<
     ConversationExclusionManagementService,
-    "list" | "restoreCandidates" | "restoreEvidence"
+    "list" | "restoreCandidates" | "restoreEvidence" | "restore"
   >;
   getAuthenticatedUserId: () => string;
 };
@@ -278,25 +293,62 @@ export function registerConversationRecoveryInspectionTools(
       return safeInspectionError(error, "path");
     }
   });
+
+  server.registerTool("restore_conversation_exclusion", {
+    title: "Restore Conversation Exclusion",
+    description: "Restore exactly one already-verified legacy Conversation exclusion from one retained raw source. This calls the existing atomic legacy restore pipeline for the authenticated user: the selected canonical content is restored and only the selected exclusion is removed on success. Use inspect_conversation_restore_candidates and inspect_conversation_restore_path first. Do not retry blindly after an uncertain result; read back the exclusion state first.",
+    inputSchema: restoreInputSchema,
+    outputSchema: restoreOutputSchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ exclusion_id, source_id }) => {
+    try {
+      const userId = dependencies.getAuthenticatedUserId();
+      const result = await dependencies.conversationExclusionManagementService.restore({
+        userId,
+        exclusionId: exclusion_id,
+        sourceId: source_id,
+      });
+      const data = {
+        exclusion_id,
+        source_id: result.sourceId,
+        restored: true as const,
+      };
+      return {
+        content: [{
+          type: "text",
+          text: `Restored Conversation exclusion ${exclusion_id} from retained source ${result.sourceId}.`,
+        }],
+        structuredContent: { success: true as const, data },
+      };
+    } catch (error) {
+      return safeInspectionError(error, "restore");
+    }
+  });
 }
 
-function safeInspectionError(error: unknown, operation: "list" | "inspect" | "path") {
+function safeInspectionError(error: unknown, operation: "list" | "inspect" | "path" | "restore") {
   if (error instanceof ConversationArchiveAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",
-      "Authentication is required to inspect Conversation recovery state.",
+      operation === "restore"
+        ? "Authentication is required to restore a Conversation exclusion."
+        : "Authentication is required to inspect Conversation recovery state.",
     );
   }
   if (error instanceof ConversationExclusionManagementError) {
     const message = error.code === "CONVERSATION_EXCLUSION_NOT_FOUND"
       ? "Conversation exclusion was not found for the authenticated user."
       : error.code === "CONVERSATION_EXCLUSION_UNAVAILABLE"
-        ? "Conversation recovery inspection is unavailable for the authenticated user."
-        : "The Conversation recovery inspection request is invalid.";
+        ? operation === "restore"
+          ? "Conversation restore is unavailable for the authenticated user."
+          : "Conversation recovery inspection is unavailable for the authenticated user."
+        : operation === "restore"
+          ? "The Conversation restore request is invalid."
+          : "The Conversation recovery inspection request is invalid.";
     return createMcpToolError(error.code, message);
   }
   console.error(
-    `${operation}_conversation_recovery_inspection failed`,
+    `${operation}_conversation_recovery failed`,
     error instanceof Error ? error.name : "UnknownError",
   );
   return createMcpToolError(
