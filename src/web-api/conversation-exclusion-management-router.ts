@@ -7,7 +7,7 @@ import {
 export type ConversationExclusionManagementApiDependencies = {
   conversationExclusionManagementService: Pick<
     ConversationExclusionManagementService,
-    "list" | "remove"
+    "list" | "remove" | "restore" | "restoreCandidates"
   >;
 };
 
@@ -30,6 +30,21 @@ export function createConversationExclusionManagementApiRouter(
     dependencies.conversationExclusionManagementService.remove({
       userId: requireUser(request.webUserId),
       exclusionId: request.params.exclusionId,
+    })
+  ));
+
+  router.get("/exclusions/:exclusionId/restore-candidates", handler(async (request) =>
+    dependencies.conversationExclusionManagementService.restoreCandidates({
+      userId: requireUser(request.webUserId),
+      exclusionId: request.params.exclusionId,
+    })
+  ));
+
+  router.post("/exclusions/:exclusionId/restore", handler(async (request) =>
+    dependencies.conversationExclusionManagementService.restore({
+      userId: requireUser(request.webUserId),
+      exclusionId: request.params.exclusionId,
+      sourceId: request.body?.source_id,
     })
   ));
 

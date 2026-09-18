@@ -76,6 +76,12 @@ export const ArchiveIcon = (props: IconProps) => (
   </IconBase>
 );
 
+export const TrashIcon = (props: IconProps) => (
+  <IconBase {...props}>
+    <path d="M5 7h14l-1 14H6L5 7ZM9 7V4h6v3M3 7h18M10 11v6M14 11v6" />
+  </IconBase>
+);
+
 export const PenIcon = (props: IconProps) => (
   <IconBase {...props}>
     <g transform="translate(24 0) scale(-1 1)">

@@ -13,6 +13,8 @@ export type ConversationListItem = {
   messageCount: number;
   turnCount: number;
   totalNodeCount: number;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
 };
 export type ConversationDetail = ConversationListItem & {
   providerMetadata: Record<string, unknown>;
@@ -90,6 +92,7 @@ export type ConversationPruneConversationResult = {
   sourceConversationId: string;
   deletedMessages: number;
   rawSourcePreserved: true;
+  deletedAt?: string;
 };
 
 export type ConversationPruneBranchResult = {
@@ -100,6 +103,47 @@ export type ConversationPruneBranchResult = {
   remainingMessages: number;
   currentLeafSourceNodeId: string | null;
   rawSourcePreserved: true;
+  deletedAt?: string;
+};
+
+export type ConversationDeletedBranch = {
+  id: string;
+  conversationId: string;
+  provider: ConversationProvider;
+  sourceConversationId: string;
+  sourceNodeId: string;
+  deletedAt: string;
+  createdAt: string;
+  deletedMessages: number;
+  canonicalConversationExists: boolean;
+  title: string | null;
+  rootRole: ConversationMessage["role"] | null;
+  rootSourceCreatedAt: string | null;
+  rootSnippet: string | null;
+};
+
+export type ConversationLegacyExclusion = {
+  id: string;
+  provider: ConversationProvider;
+  scope: "conversation" | "branch";
+  sourceConversationId: string;
+  sourceNodeId: string | null;
+  canonicalConversationExists: boolean;
+  canonicalNodeExists: boolean | null;
+  title: string | null;
+  sourceCreatedAt: string | null;
+  rootRole: ConversationMessage["role"] | null;
+  rootSnippet: string | null;
+  createdAt: string;
+};
+
+export type ConversationRestoreCandidate = {
+  sourceId: string;
+  filename: string;
+  title: string | null;
+  rootRole: ConversationMessage["role"] | null;
+  rootSourceCreatedAt: string | null;
+  rootSnippet: string | null;
 };
 
 export type ConversationImportExecute = {
@@ -269,11 +313,13 @@ export function createConversationArchiveApi(api: WebApiClient) {
       provider?: ConversationProvider;
       limit?: number;
       offset?: number;
+      scope?: "active" | "archived" | "deleted";
     } = {}): Promise<{ items: ConversationListItem[]; total: number }> {
       const params = new URLSearchParams();
       if (input.provider) params.set("provider", input.provider);
       if (input.limit !== undefined) params.set("limit", String(input.limit));
       if (input.offset !== undefined) params.set("offset", String(input.offset));
+      if (input.scope && input.scope !== "active") params.set("scope", input.scope);
       const suffix = params.size ? `?${params}` : "";
       const result = await api.request<Envelope<{ items: ConversationListItem[]; total: number }>>(
         `/conversations${suffix}`,
@@ -281,9 +327,13 @@ export function createConversationArchiveApi(api: WebApiClient) {
       return result.data;
     },
 
-    async detail(id: string): Promise<ConversationDetail> {
+    async detail(id: string, scope: "active" | "archived" | "deleted" = "active", branchId?: string): Promise<ConversationDetail> {
+      const params = new URLSearchParams();
+      if (scope !== "active") params.set("scope", scope);
+      if (branchId) params.set("branch_id", branchId);
+      const suffix = params.size ? `?${params}` : "";
       const result = await api.request<Envelope<ConversationDetail>>(
-        `/conversations/${encodeURIComponent(id)}`,
+        `/conversations/${encodeURIComponent(id)}${suffix}`,
       );
       return result.data;
     },
@@ -293,11 +343,15 @@ export function createConversationArchiveApi(api: WebApiClient) {
       view?: "default" | "all";
       limit?: number;
       offset?: number;
+      scope?: "active" | "archived" | "deleted";
+      branchId?: string;
     }): Promise<{ items: ConversationMessage[]; total: number }> {
       const params = new URLSearchParams();
       if (input.view && input.view !== "default") params.set("view", input.view);
       if (input.limit !== undefined) params.set("limit", String(input.limit));
       if (input.offset !== undefined) params.set("offset", String(input.offset));
+      if (input.scope && input.scope !== "active") params.set("scope", input.scope);
+      if (input.branchId) params.set("branch_id", input.branchId);
       const suffix = params.size ? `?${params}` : "";
       const result = await api.request<Envelope<{ items: ConversationMessage[]; total: number }>>(
         `/conversations/${encodeURIComponent(input.conversationId)}/messages${suffix}`,
@@ -315,6 +369,7 @@ export function createConversationArchiveApi(api: WebApiClient) {
       timeZone?: string;
       limit?: number;
       offset?: number;
+      scope?: "active" | "archived" | "deleted";
     }): Promise<{ items: ConversationSearchResult[]; total: number }> {
       const params = new URLSearchParams({ q: input.query });
       if (input.provider) params.set("provider", input.provider);
@@ -325,6 +380,7 @@ export function createConversationArchiveApi(api: WebApiClient) {
       if (input.timeZone) params.set("time_zone", input.timeZone);
       if (input.limit !== undefined) params.set("limit", String(input.limit));
       if (input.offset !== undefined) params.set("offset", String(input.offset));
+      if (input.scope && input.scope !== "active") params.set("scope", input.scope);
       const result = await api.request<Envelope<{ items: ConversationSearchResult[]; total: number }>>(
         `/conversations/search?${params}`,
       );
@@ -336,10 +392,14 @@ export function createConversationArchiveApi(api: WebApiClient) {
       messageId: string;
       view?: "default" | "all";
       radius?: number;
+      scope?: "active" | "archived" | "deleted";
+      branchId?: string;
     }): Promise<ConversationMessageContext> {
       const params = new URLSearchParams();
       if (input.view && input.view !== "default") params.set("view", input.view);
       if (input.radius !== undefined) params.set("radius", String(input.radius));
+      if (input.scope && input.scope !== "active") params.set("scope", input.scope);
+      if (input.branchId) params.set("branch_id", input.branchId);
       const suffix = params.size ? `?${params}` : "";
       const result = await api.request<Envelope<ConversationMessageContext>>(
         `/conversations/${encodeURIComponent(input.conversationId)}/messages/${encodeURIComponent(input.messageId)}/context${suffix}`,
@@ -364,6 +424,86 @@ export function createConversationArchiveApi(api: WebApiClient) {
       const result = await api.request<Envelope<ConversationPruneBranchResult>>(
         `/conversations/${encodeURIComponent(input.conversationId)}/branches/${encodeURIComponent(input.messageId)}`,
         { method: "DELETE" },
+      );
+      return result.data;
+    },
+
+    async archiveConversation(conversationId: string): Promise<{ archived: true }> {
+      const result = await api.request<Envelope<{ archived: true }>>(
+        `/conversations/${encodeURIComponent(conversationId)}/archive`, { method: "POST" },
+      );
+      return result.data;
+    },
+
+    async restoreConversation(conversationId: string): Promise<{ restored: true }> {
+      const result = await api.request<Envelope<{ restored: true }>>(
+        `/conversations/${encodeURIComponent(conversationId)}/restore`, { method: "POST" },
+      );
+      return result.data;
+    },
+
+    async restoreDeletedConversation(conversationId: string): Promise<{ restored: true }> {
+      const result = await api.request<Envelope<{ restored: true }>>(
+        `/conversations/${encodeURIComponent(conversationId)}/restore-deleted`, { method: "POST" },
+      );
+      return result.data;
+    },
+
+    async permanentlyDeleteConversation(conversationId: string): Promise<{ deleted: true; rawSourcePreserved: true }> {
+      const result = await api.request<Envelope<{ deleted: true; rawSourcePreserved: true }>>(
+        `/conversations/${encodeURIComponent(conversationId)}/permanent-delete`, { method: "POST" },
+      );
+      return result.data;
+    },
+
+    async listArchive(input: { limit?: number; offset?: number } = {}): Promise<{ items: ConversationListItem[]; total: number }> {
+      const params = new URLSearchParams();
+      if (input.limit !== undefined) params.set("limit", String(input.limit));
+      if (input.offset !== undefined) params.set("offset", String(input.offset));
+      const suffix = params.size ? `?${params}` : "";
+      const result = await api.request<Envelope<{ items: ConversationListItem[]; total: number }>>(`/conversations/archive${suffix}`);
+      return result.data;
+    },
+
+    async listDeleted(input: { limit?: number; offset?: number } = {}): Promise<{ conversations: { items: ConversationListItem[]; total: number }; branches: { items: ConversationDeletedBranch[]; total: number } }> {
+      const params = new URLSearchParams();
+      if (input.limit !== undefined) params.set("limit", String(input.limit));
+      if (input.offset !== undefined) params.set("offset", String(input.offset));
+      const suffix = params.size ? `?${params}` : "";
+      const result = await api.request<Envelope<{ conversations: { items: ConversationListItem[]; total: number }; branches: { items: ConversationDeletedBranch[]; total: number } }>>(`/conversations/deleted${suffix}`);
+      return result.data;
+    },
+
+    async listExclusions(input: { limit?: number; offset?: number } = {}): Promise<{ items: ConversationLegacyExclusion[]; total: number }> {
+      const params = new URLSearchParams();
+      if (input.limit !== undefined) params.set("limit", String(input.limit));
+      if (input.offset !== undefined) params.set("offset", String(input.offset));
+      const suffix = params.size ? `?${params}` : "";
+      const result = await api.request<Envelope<{ items: ConversationLegacyExclusion[]; total: number }>>(`/conversations/exclusions${suffix}`);
+      return result.data;
+    },
+
+    async restoreCandidates(exclusionId: string): Promise<{ items: ConversationRestoreCandidate[]; total: number }> {
+      const result = await api.request<Envelope<{ items: ConversationRestoreCandidate[]; total: number }>>(
+        `/conversations/exclusions/${encodeURIComponent(exclusionId)}/restore-candidates`,
+      );
+      return result.data;
+    },
+
+    async restoreBranch(input: { conversationId: string; branchId: string }): Promise<{ restored: true }> {
+      const result = await api.request<Envelope<{ restored: true }>>(`/conversations/${encodeURIComponent(input.conversationId)}/branches/${encodeURIComponent(input.branchId)}/restore`, { method: "POST" });
+      return result.data;
+    },
+
+    async permanentlyDeleteBranch(input: { conversationId: string; branchId: string }): Promise<{ deleted: true; rawSourcePreserved: true }> {
+      const result = await api.request<Envelope<{ deleted: true; rawSourcePreserved: true }>>(`/conversations/${encodeURIComponent(input.conversationId)}/branches/${encodeURIComponent(input.branchId)}/permanent-delete`, { method: "POST" });
+      return result.data;
+    },
+
+    async restoreExclusion(input: { exclusionId: string; sourceId: string }): Promise<{ restored: true; sourceId: string }> {
+      const result = await api.request<Envelope<{ restored: true; sourceId: string }>>(
+        `/conversations/exclusions/${encodeURIComponent(input.exclusionId)}/restore`,
+        { method: "POST", body: JSON.stringify({ source_id: input.sourceId }) },
       );
       return result.data;
     },

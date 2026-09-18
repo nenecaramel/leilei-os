@@ -33,6 +33,22 @@ test("Conversation read queries remain user scoped", () => {
   assert.match(repositorySource, /eq\(conversationMessages\.userId, input\.userId\)/);
 });
 
+test("Conversation lifecycle lists order by lifecycle timestamps instead of source timestamps", () => {
+  const start = repositorySource.indexOf("async listConversations");
+  const end = repositorySource.indexOf("async getConversation", start);
+  const source = repositorySource.slice(start, end);
+  assert.match(source, /input\.scope === "archived"[\s\S]*desc\(conversations\.archivedAt\)/);
+  assert.match(source, /input\.scope === "deleted"[\s\S]*desc\(conversations\.deletedAt\)/);
+});
+
+test("Conversation read projections derive a logical visible current leaf and scope-consistent node totals", () => {
+  assert.match(repositorySource, /function visibleCurrentLeafSourceNodeId/);
+  assert.match(repositorySource, /currentLeafSourceNodeId: visibleCurrentLeafSourceNodeId\(input\.userId\)/);
+  assert.match(repositorySource, /totalNodeCount:[\s\S]*branchVisibilityPredicate\(input\.userId\)/);
+  assert.match(repositorySource, /totalNodeCount:[\s\S]*branchSelectionPredicate\(input\.userId, input\.branchId\)/);
+  assert.doesNotMatch(repositorySource, /totalNodeCount: sql<number>`count\(\$\{conversationMessages\.id\}\)::int`/);
+});
+
 
 test("Conversation dedicated search scans canonical primary user/assistant text across saved branches", () => {
   assert.match(

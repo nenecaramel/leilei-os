@@ -316,6 +316,13 @@
       "when": 1789547700000,
       "tag": "0044_conversation_import_reapply",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1789756800000,
+      "tag": "0045_conversation_lifecycle",
+      "breakpoints": true
     }
   ]
 }

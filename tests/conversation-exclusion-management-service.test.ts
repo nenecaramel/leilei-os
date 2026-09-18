@@ -8,6 +8,7 @@ import type {
   ConversationExclusionListItem,
   ConversationExclusionManagementRepository,
 } from "../src/domains/conversation/conversation-exclusion-management-repository.js";
+import type { ConversationImportService } from "../src/domains/conversation/conversation-import-service.js";
 
 const EXCLUSION_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -20,6 +21,10 @@ function item(): ConversationExclusionListItem {
     sourceNodeId: "source-node",
     canonicalConversationExists: true,
     canonicalNodeExists: false,
+    title: "A conversation",
+    sourceCreatedAt: "2026-09-15T00:00:00.000Z",
+    rootRole: "user",
+    rootSnippet: "A retained canonical anchor",
     createdAt: "2026-09-16T00:00:00.000Z",
   };
 }
@@ -40,6 +45,10 @@ class FakeRepository implements ConversationExclusionManagementRepository {
   }
 
   async deleteExclusion() {
+    return this.value;
+  }
+
+  async getExclusion() {
     return this.value;
   }
 }
@@ -117,4 +126,106 @@ test("Conversation exclusion management rejects malformed ids and filters", asyn
       error instanceof ConversationExclusionManagementError
       && error.code === "CONVERSATION_EXCLUSION_INVALID_REQUEST",
   );
+});
+
+test("legacy restore uses only the selected exclusion and retained source", async () => {
+  const repository = new FakeRepository();
+  let previewInput: unknown;
+  let executeInput: unknown;
+  const importService = {
+    async previewStoredSource(sourceId: string, userId: string, options: unknown) {
+      previewInput = { sourceId, userId, options };
+      return {
+        import_run_id: "22222222-2222-4222-8222-222222222222",
+        preview_fingerprint: "f".repeat(64),
+      };
+    },
+    async execute(runId: string, fingerprint: string, userId: string, options: unknown) {
+      executeInput = { runId, fingerprint, userId, options };
+      return {};
+    },
+  } as unknown as ConversationImportService;
+  const service = new ConversationExclusionManagementService(repository, importService);
+
+  const result = await service.restore({
+    userId: "user",
+    exclusionId: EXCLUSION_ID,
+    sourceId: "33333333-3333-4333-8333-333333333333",
+  });
+
+  assert.deepEqual(result, {
+    restored: true,
+    sourceId: "33333333-3333-4333-8333-333333333333",
+  });
+  assert.deepEqual(previewInput, {
+    sourceId: "33333333-3333-4333-8333-333333333333",
+    userId: "user",
+    options: {
+      ignoreExclusion: {
+        provider: "chatgpt",
+        scope: "branch",
+        sourceConversationId: "source-conversation",
+        sourceNodeId: "source-node",
+      },
+      requireExclusion: {
+        provider: "chatgpt",
+        scope: "branch",
+        sourceConversationId: "source-conversation",
+        sourceNodeId: "source-node",
+      },
+    },
+  });
+  assert.deepEqual(executeInput, {
+    runId: "22222222-2222-4222-8222-222222222222",
+    fingerprint: "f".repeat(64),
+    userId: "user",
+    options: {
+      ignoreExclusion: {
+        provider: "chatgpt",
+        scope: "branch",
+        sourceConversationId: "source-conversation",
+        sourceNodeId: "source-node",
+      },
+      requireExclusion: {
+        provider: "chatgpt",
+        scope: "branch",
+        sourceConversationId: "source-conversation",
+        sourceNodeId: "source-node",
+      },
+      exclusionIdToRemove: EXCLUSION_ID,
+    },
+  });
+});
+
+test("legacy recovery resolves retained-source candidates from the selected exclusion", async () => {
+  const repository = new FakeRepository();
+  let candidateInput: unknown;
+  const importService = {
+    async findRestoreCandidates(input: unknown) {
+      candidateInput = input;
+      return [{
+        sourceId: "33333333-3333-4333-8333-333333333333",
+        filename: "retained.json",
+        title: "Verified title",
+        rootRole: "user",
+        rootSourceCreatedAt: "2026-09-15T00:00:00.000Z",
+        rootSnippet: "Verified root",
+      }];
+    },
+  } as unknown as ConversationImportService;
+  const service = new ConversationExclusionManagementService(repository, importService);
+
+  const result = await service.restoreCandidates({ userId: "user", exclusionId: EXCLUSION_ID });
+
+  assert.deepEqual(candidateInput, {
+    userId: "user",
+    exclusion: {
+      provider: "chatgpt",
+      scope: "branch",
+      sourceConversationId: "source-conversation",
+      sourceNodeId: "source-node",
+    },
+  });
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0]?.title, "Verified title");
 });

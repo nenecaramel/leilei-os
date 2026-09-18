@@ -6,6 +6,7 @@ import type {
   ConversationExclusionScope,
   ConversationProvider,
 } from "../../database/schema.js";
+import type { ConversationImportService } from "./conversation-import-service.js";
 
 export class ConversationExclusionManagementError extends Error {
   constructor(
@@ -66,6 +67,7 @@ function boundedInt(value: unknown, fallback: number, min: number, max: number):
 export class ConversationExclusionManagementService {
   constructor(
     private readonly repository: ConversationExclusionManagementRepository,
+    private readonly importService?: ConversationImportService,
   ) {}
 
   async list(input: {
@@ -111,6 +113,78 @@ export class ConversationExclusionManagementService {
       canonicalRestored: false,
       eligibleOnNextImport: true,
     };
+  }
+
+  async restore(input: {
+    userId: string;
+    exclusionId: unknown;
+    sourceId: unknown;
+  }): Promise<{ restored: true; sourceId: string }> {
+    await this.requireActive(input.userId);
+    if (!this.importService || !this.repository.getExclusion) {
+      throw new ConversationExclusionManagementError("CONVERSATION_EXCLUSION_UNAVAILABLE", "Conversation restore is unavailable.");
+    }
+    const exclusionId = uuid(input.exclusionId, "exclusionId");
+    const sourceId = uuid(input.sourceId, "sourceId");
+    const exclusion = await this.repository.getExclusion({ userId: input.userId, exclusionId });
+    if (!exclusion) throw new ConversationExclusionManagementError("CONVERSATION_EXCLUSION_NOT_FOUND", "Conversation exclusion was not found.");
+    const preview = await this.importService.previewStoredSource(sourceId, input.userId, {
+      ignoreExclusion: {
+        provider: exclusion.provider,
+        scope: exclusion.scope,
+        sourceConversationId: exclusion.sourceConversationId,
+        sourceNodeId: exclusion.sourceNodeId,
+      },
+      requireExclusion: {
+        provider: exclusion.provider,
+        scope: exclusion.scope,
+        sourceConversationId: exclusion.sourceConversationId,
+        sourceNodeId: exclusion.sourceNodeId,
+      },
+    });
+    await this.importService.execute(preview.import_run_id, preview.preview_fingerprint, input.userId, {
+      ignoreExclusion: {
+        provider: exclusion.provider,
+        scope: exclusion.scope,
+        sourceConversationId: exclusion.sourceConversationId,
+        sourceNodeId: exclusion.sourceNodeId,
+      },
+      requireExclusion: {
+        provider: exclusion.provider,
+        scope: exclusion.scope,
+        sourceConversationId: exclusion.sourceConversationId,
+        sourceNodeId: exclusion.sourceNodeId,
+      },
+      exclusionIdToRemove: exclusionId,
+    });
+    return { restored: true, sourceId };
+  }
+
+  async restoreCandidates(input: {
+    userId: string;
+    exclusionId: unknown;
+  }): Promise<{ items: Awaited<ReturnType<ConversationImportService["findRestoreCandidates"]>>; total: number }> {
+    await this.requireActive(input.userId);
+    if (!this.importService || !this.repository.getExclusion) {
+      throw new ConversationExclusionManagementError("CONVERSATION_EXCLUSION_UNAVAILABLE", "Conversation restore is unavailable.");
+    }
+    const exclusion = await this.repository.getExclusion({
+      userId: input.userId,
+      exclusionId: uuid(input.exclusionId, "exclusionId"),
+    });
+    if (!exclusion) {
+      throw new ConversationExclusionManagementError("CONVERSATION_EXCLUSION_NOT_FOUND", "Conversation exclusion was not found.");
+    }
+    const items = await this.importService.findRestoreCandidates({
+      userId: input.userId,
+      exclusion: {
+        provider: exclusion.provider,
+        scope: exclusion.scope,
+        sourceConversationId: exclusion.sourceConversationId,
+        sourceNodeId: exclusion.sourceNodeId,
+      },
+    });
+    return { items, total: items.length };
   }
 
   private async requireActive(userId: string): Promise<void> {

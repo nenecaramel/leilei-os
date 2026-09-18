@@ -5,7 +5,7 @@ import {
   type ConversationMergeSummary,
   type CurrentConversationState,
 } from "./conversation-merge-planner.js";
-import type { ConversationProviderWarning } from "./conversation-types.js";
+import type { ConversationProviderWarning, NormalizedConversation } from "./conversation-types.js";
 import type { ConversationArchiveStateRepository } from "./conversation-state-repository.js";
 import {
   encodeRawConversationSource,
@@ -25,6 +25,7 @@ import type { ConversationImportExecutor } from "./conversation-import-executor.
 import {
   applyConversationExclusions,
   type ConversationExclusionSummary,
+  type ConversationExclusionRule,
 } from "./conversation-exclusions.js";
 import {
   aggregateConversationImportBatch,
@@ -66,6 +67,15 @@ export type ConversationImportPreview = {
   warning_count: number;
   warning_codes: Record<string, number>;
   exclusions: ConversationExclusionSummary;
+};
+
+export type ConversationRestoreCandidate = {
+  sourceId: string;
+  filename: string;
+  title: string | null;
+  rootRole: NormalizedConversation["messages"][number]["role"] | null;
+  rootSourceCreatedAt: string | null;
+  rootSnippet: string | null;
 };
 
 export class ConversationImportAuthorizationError extends Error {}
@@ -124,6 +134,21 @@ function stateKey(provider: string, sourceConversationId: string): string {
   return `${provider}\u0000${sourceConversationId}`;
 }
 
+function matchesRestoreTarget(
+  conversation: NormalizedConversation,
+  target: ConversationExclusionRule,
+): boolean {
+  if (
+    conversation.provider !== target.provider
+    || conversation.sourceConversationId !== target.sourceConversationId
+  ) return false;
+  if (target.scope === "conversation") return true;
+  return Boolean(
+    target.sourceNodeId
+    && conversation.messages.some((message) => message.sourceNodeId === target.sourceNodeId),
+  );
+}
+
 export class ConversationImportService {
   constructor(
     private readonly repository: ConversationImportRepository,
@@ -152,6 +177,10 @@ export class ConversationImportService {
   async previewStoredSource(
     sourceId: string,
     userId: string,
+    options: {
+      ignoreExclusion?: ConversationExclusionRule;
+      requireExclusion?: ConversationExclusionRule;
+    } = {},
   ): Promise<ConversationImportPreview> {
     const user = await this.repository.findUserById(userId);
     if (!user || user.status !== "active") {
@@ -189,16 +218,82 @@ export class ConversationImportService {
       return await this.previewStaged(staged, userId, {
         executionKey: `reapply:${randomUUID()}`,
         forceNewRun: true,
+        ignoreExclusion: options.ignoreExclusion,
+        requireExclusion: options.requireExclusion,
       });
     } finally {
       await staged.cleanup();
     }
   }
 
+  async findRestoreCandidates(input: {
+    userId: string;
+    exclusion: ConversationExclusionRule;
+  }): Promise<ConversationRestoreCandidate[]> {
+    const user = await this.repository.findUserById(input.userId);
+    if (!user || user.status !== "active") throw new ConversationImportAuthorizationError();
+    if (!this.repository.listSourcesForProvider) return [];
+
+    const sources = await this.repository.listSourcesForProvider({
+      userId: input.userId,
+      provider: input.exclusion.provider,
+    });
+    const candidates: ConversationRestoreCandidate[] = [];
+
+    for (const source of sources) {
+      const blob = await this.repository.readStoredBlob({ userId: input.userId, sourceId: source.id });
+      if (!blob) continue;
+      const staged = await stageStoredConversationSource({
+        data: blob.data,
+        encoding: blob.encoding,
+        originalFilename: source.originalFilename,
+        expectedSha256: source.rawSha256,
+        expectedBytes: source.rawBytes,
+      });
+      try {
+        let match: NormalizedConversation | null = null;
+        for (const jsonPath of staged.jsonPaths) {
+          for await (const value of readTopLevelConversationObjects(jsonPath)) {
+            const detected = detectConversationProviderParser(value);
+            if (detected.provider !== input.exclusion.provider) continue;
+            const normalized = detected.parser.normalizeConversation(value).conversation;
+            if (matchesRestoreTarget(normalized, input.exclusion)) {
+              match = normalized;
+              break;
+            }
+          }
+          if (match) break;
+        }
+        if (!match) continue;
+        const root = input.exclusion.scope === "branch" && input.exclusion.sourceNodeId
+          ? match.messages.find((message) => message.sourceNodeId === input.exclusion.sourceNodeId) ?? null
+          : match.messages[0] ?? null;
+        candidates.push({
+          sourceId: source.id,
+          filename: source.originalFilename,
+          title: match.title,
+          rootRole: root?.role ?? null,
+          rootSourceCreatedAt: root?.sourceCreatedAt ?? null,
+          rootSnippet: root?.displayText ?? null,
+        });
+      } catch {
+        // A malformed retained source is never a recovery candidate.
+      } finally {
+        await staged.cleanup();
+      }
+    }
+    return candidates;
+  }
+
   async execute(
     runId: string,
     expectedPreviewFingerprint: string,
     userId: string,
+    options: {
+      ignoreExclusion?: ConversationExclusionRule;
+      requireExclusion?: ConversationExclusionRule;
+      exclusionIdToRemove?: string;
+    } = {},
   ): Promise<ConversationImportExecuteResult> {
     const user = await this.repository.findUserById(userId);
     if (!user || user.status !== "active") {
@@ -317,7 +412,20 @@ export class ConversationImportService {
         }
 
         const current = await transaction.readMergeState(userId);
-        const exclusions = await transaction.readExclusions(userId);
+        if (options.exclusionIdToRemove) {
+          if (!transaction.deleteExclusion || !await transaction.deleteExclusion(userId, options.exclusionIdToRemove)) {
+            throw Object.assign(new Error("Conversation exclusion was not found."), {
+              code: "CONVERSATION_EXCLUSION_NOT_FOUND",
+            });
+          }
+        }
+        const exclusions = (await transaction.readExclusions(userId)).filter((rule) =>
+          !options.ignoreExclusion
+          || rule.provider !== options.ignoreExclusion.provider
+          || rule.scope !== options.ignoreExclusion.scope
+          || rule.sourceConversationId !== options.ignoreExclusion.sourceConversationId
+          || rule.sourceNodeId !== options.ignoreExclusion.sourceNodeId,
+        );
         const currentByKey = new Map<string, CurrentConversationState>(
           current.conversations.map((conversation) => [
             stateKey(conversation.provider, conversation.sourceConversationId),
@@ -334,6 +442,7 @@ export class ConversationImportService {
         const seenConversations = new Set<string>();
         let providerInfo: ReturnType<typeof detectConversationProviderParser> | null = null;
         let conversationCount = 0;
+        let restoreTargetFound = false;
 
         for (const jsonPath of staged.jsonPaths) {
           for await (const value of readTopLevelConversationObjects(jsonPath)) {
@@ -358,6 +467,9 @@ export class ConversationImportService {
 
             const normalized = detected.parser.normalizeConversation(value);
             const rawConversation = normalized.conversation;
+            if (options.requireExclusion && matchesRestoreTarget(rawConversation, options.requireExclusion)) {
+              restoreTargetFound = true;
+            }
             const key = stateKey(
               rawConversation.provider,
               rawConversation.sourceConversationId,
@@ -402,6 +514,11 @@ export class ConversationImportService {
         if (!providerInfo || conversationCount === 0) {
           throw Object.assign(new Error("Conversation export contains no conversations."), {
             code: "CONVERSATION_IMPORT_EMPTY",
+          });
+        }
+        if (options.requireExclusion && !restoreTargetFound) {
+          throw Object.assign(new Error("Conversation restore target was not found in the retained source."), {
+            code: "CONVERSATION_IMPORT_RESTORE_TARGET_NOT_FOUND",
           });
         }
 
@@ -972,11 +1089,19 @@ export class ConversationImportService {
     options: {
       executionKey?: string;
       forceNewRun?: boolean;
+      ignoreExclusion?: ConversationExclusionRule;
+      requireExclusion?: ConversationExclusionRule;
     } = {},
   ): Promise<ConversationImportPreview> {
     const executionKey = options.executionKey ?? "standard";
     const current = await this.stateRepository.readMergeState(userId);
-    const exclusions = await this.repository.listExclusions(userId);
+    const exclusions = (await this.repository.listExclusions(userId)).filter((rule) =>
+      !options.ignoreExclusion
+      || rule.provider !== options.ignoreExclusion.provider
+      || rule.scope !== options.ignoreExclusion.scope
+      || rule.sourceConversationId !== options.ignoreExclusion.sourceConversationId
+      || rule.sourceNodeId !== options.ignoreExclusion.sourceNodeId,
+    );
     const currentByKey = new Map<string, CurrentConversationState>(
       current.conversations.map((conversation) => [
         stateKey(conversation.provider, conversation.sourceConversationId),
@@ -994,6 +1119,7 @@ export class ConversationImportService {
     }> = [];
     const seenConversations = new Set<string>();
     let conversationCount = 0;
+    let restoreTargetFound = false;
 
     for (const jsonPath of upload.jsonPaths) {
       for await (const value of readTopLevelConversationObjects(jsonPath)) {
@@ -1011,6 +1137,9 @@ export class ConversationImportService {
 
         const result = providerInfo.parser.normalizeConversation(value);
         const rawConversation = result.conversation;
+        if (options.requireExclusion && matchesRestoreTarget(rawConversation, options.requireExclusion)) {
+          restoreTargetFound = true;
+        }
         const key = stateKey(
           rawConversation.provider,
           rawConversation.sourceConversationId,
@@ -1055,6 +1184,11 @@ export class ConversationImportService {
     if (!providerInfo || conversationCount === 0) {
       throw Object.assign(new Error("Conversation export contains no conversations."), {
         code: "CONVERSATION_IMPORT_EMPTY",
+      });
+    }
+    if (options.requireExclusion && !restoreTargetFound) {
+      throw Object.assign(new Error("Conversation restore target was not found in the retained source."), {
+        code: "CONVERSATION_IMPORT_RESTORE_TARGET_NOT_FOUND",
       });
     }
 
@@ -1224,5 +1358,3 @@ function batchFilePreview(input: {
     exclusions: emptyConversationImportExclusions(),
   };
 }
-
-

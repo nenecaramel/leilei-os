@@ -54,6 +54,14 @@ const reapplySnapshot = JSON.parse(readFileSync(
   new URL("../drizzle/meta/0044_snapshot.json", import.meta.url),
   "utf8",
 )) as { prevId: string; tables: Record<string, unknown> };
+const lifecycleMigrationSql = readFileSync(
+  new URL("../drizzle/0045_conversation_lifecycle.sql", import.meta.url),
+  "utf8",
+);
+const lifecycleSnapshot = JSON.parse(readFileSync(
+  new URL("../drizzle/meta/0045_snapshot.json", import.meta.url),
+  "utf8",
+)) as { prevId: string; tables: Record<string, unknown> };
 
 test("Conversation Archive migrations form the checked-in journal tail", () => {
   assert.equal(snapshot.prevId, previousSnapshot.id);
@@ -61,14 +69,26 @@ test("Conversation Archive migrations form the checked-in journal tail", () => {
   assert.equal(exclusionSnapshot.prevId, blobSnapshot.id);
   assert.equal(favoriteSnapshot.prevId, exclusionSnapshot.id);
   assert.equal(reapplySnapshot.prevId, favoriteSnapshot.id);
+  assert.equal(lifecycleSnapshot.prevId, reapplySnapshot.id);
   const latest = journal.entries.at(-1);
   assert.deepEqual(latest, {
-    idx: 44,
+    idx: 45,
     version: "7",
-    when: 1789547700000,
-    tag: "0044_conversation_import_reapply",
+    when: 1789756800000,
+    tag: "0045_conversation_lifecycle",
     breakpoints: true,
   });
+});
+
+test("Conversation lifecycle columns and deleted-branch tombstones are additive and user scoped", () => {
+  assert.match(schemaSource, /archivedAt: timestamp\("archived_at"/);
+  assert.match(schemaSource, /deletedAt: timestamp\("deleted_at"/);
+  assert.match(schemaSource, /export const conversationDeletedBranches = pgTable/);
+  assert.match(lifecycleMigrationSql, /ADD COLUMN "archived_at"/);
+  assert.match(lifecycleMigrationSql, /ADD COLUMN "deleted_at"/);
+  assert.match(lifecycleMigrationSql, /CREATE TABLE "conversation_deleted_branches"/);
+  assert.match(lifecycleMigrationSql, /ON DELETE cascade/);
+  assert.ok(lifecycleSnapshot.tables["public.conversation_deleted_branches"]);
 });
 
 test("Conversation Archive schema and migration contain the seven core persistence tables", () => {

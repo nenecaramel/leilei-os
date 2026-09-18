@@ -171,6 +171,17 @@ function uuid(value: unknown): string {
   return value;
 }
 
+function lifecycleScope(value: unknown): "active" | "archived" | "deleted" {
+  if (value === undefined || value === null || value === "" || value === "active") return "active";
+  if (value === "archived" || value === "deleted") return value;
+  throw new ConversationArchiveReadError("CONVERSATION_INVALID_REQUEST", "Conversation lifecycle scope is invalid.");
+}
+
+function optionalBranchId(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return uuid(value);
+}
+
 export class ConversationArchiveReadService {
   constructor(private readonly repository: ConversationArchiveReadRepository) {}
 
@@ -179,6 +190,7 @@ export class ConversationArchiveReadService {
     provider?: unknown;
     limit?: unknown;
     offset?: unknown;
+    scope?: unknown;
   }): Promise<{ items: ConversationArchiveListItem[]; total: number }> {
     await this.requireActive(input.userId);
     return this.repository.listConversations({
@@ -186,17 +198,27 @@ export class ConversationArchiveReadService {
       provider: provider(input.provider),
       limit: boundedInt(input.limit, 50, 1, 100),
       offset: boundedInt(input.offset, 0, 0, 100_000),
+      scope: lifecycleScope(input.scope),
     });
   }
 
   async detail(input: {
     userId: string;
     conversationId: unknown;
+    scope?: unknown;
+    branchId?: unknown;
   }): Promise<ConversationArchiveDetail> {
     await this.requireActive(input.userId);
+    const scope = lifecycleScope(input.scope);
+    const branchId = optionalBranchId(input.branchId);
+    if (branchId && scope !== "deleted") {
+      throw new ConversationArchiveReadError("CONVERSATION_INVALID_REQUEST", "Branch scope is invalid.");
+    }
     const result = await this.repository.getConversation({
       userId: input.userId,
       conversationId: uuid(input.conversationId),
+      scope,
+      branchId,
     });
     if (!result) {
       throw new ConversationArchiveReadError(
@@ -213,12 +235,21 @@ export class ConversationArchiveReadService {
     view?: unknown;
     limit?: unknown;
     offset?: unknown;
+    scope?: unknown;
+    branchId?: unknown;
   }): Promise<{ items: ConversationArchiveMessage[]; total: number }> {
     await this.requireActive(input.userId);
     const conversationId = uuid(input.conversationId);
+    const scope = lifecycleScope(input.scope);
+    const branchId = optionalBranchId(input.branchId);
+    if (branchId && scope !== "deleted") {
+      throw new ConversationArchiveReadError("CONVERSATION_INVALID_REQUEST", "Branch scope is invalid.");
+    }
     const detail = await this.repository.getConversation({
       userId: input.userId,
       conversationId,
+      scope,
+      branchId,
     });
     if (!detail) {
       throw new ConversationArchiveReadError(
@@ -244,6 +275,8 @@ export class ConversationArchiveReadService {
       view,
       limit: boundedInt(input.limit, 200, 1, 500),
       offset: boundedInt(input.offset, 0, 0, 1_000_000),
+      scope,
+      branchId,
     });
   }
 
@@ -259,6 +292,7 @@ export class ConversationArchiveReadService {
     favoritesOnly?: unknown;
     limit?: unknown;
     offset?: unknown;
+    scope?: unknown;
   }): Promise<{ items: ConversationArchiveSearchResult[]; total: number }> {
     await this.requireActive(input.userId);
     const query = searchQuery(input.query);
@@ -289,6 +323,7 @@ export class ConversationArchiveReadService {
       favoritesOnly: optionalBoolean(input.favoritesOnly, "favoritesOnly"),
       limit: boundedInt(input.limit, 50, 1, 100),
       offset: boundedInt(input.offset, 0, 0, 1_000_000),
+      scope: lifecycleScope(input.scope),
     });
     return {
       total: result.total,
@@ -305,13 +340,22 @@ export class ConversationArchiveReadService {
     messageId: unknown;
     view?: unknown;
     radius?: unknown;
+    scope?: unknown;
+    branchId?: unknown;
   }): Promise<ConversationMessageContext> {
     await this.requireActive(input.userId);
     const conversationId = uuid(input.conversationId);
     const messageId = uuid(input.messageId);
+    const scope = lifecycleScope(input.scope);
+    const branchId = optionalBranchId(input.branchId);
+    if (branchId && scope !== "deleted") {
+      throw new ConversationArchiveReadError("CONVERSATION_INVALID_REQUEST", "Branch scope is invalid.");
+    }
     const detail = await this.repository.getConversation({
       userId: input.userId,
       conversationId,
+      scope,
+      branchId,
     });
     if (!detail) {
       throw new ConversationArchiveReadError(
@@ -337,6 +381,7 @@ export class ConversationArchiveReadService {
       provider: detail.provider,
       view,
       messageId,
+      branchId,
     });
     if (!ordinal) {
       throw new ConversationArchiveReadError(
@@ -352,6 +397,8 @@ export class ConversationArchiveReadService {
       view,
       limit: radius * 2 + 1,
       offset,
+      scope,
+      branchId,
     });
     return {
       items: result.items,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
-import { PlusIcon } from "../components/icons";
+import { ArchiveIcon, PlusIcon, TrashIcon } from "../components/icons";
 import { PageState } from "../components/StateSurface";
 import { ConversationSearchPanel } from "./ConversationSearchPanel";
 import { ConversationBatchImportPreview } from "./ConversationBatchImportPreview";
@@ -69,8 +69,16 @@ function providerLabel(provider: ConversationProvider): string {
   return provider === "chatgpt" ? "ChatGPT" : "Claude";
 }
 
-function detailViewParams(view: "default" | "all"): Record<string, string> {
-  return view === "all" ? { view: "all" } : {};
+function detailViewParams(
+  view: "default" | "all",
+  scope: "active" | "archived" | "deleted" = "active",
+  branchId?: string | null,
+): Record<string, string> {
+  return {
+    ...(view === "all" ? { view: "all" } : {}),
+    ...(scope !== "active" ? { scope } : {}),
+    ...(branchId ? { branch: branchId } : {}),
+  };
 }
 
 function shortBytes(value: number): string {
@@ -107,6 +115,7 @@ function ConversationListView({
 }: {
   client: ReturnType<typeof createConversationArchiveApi>;
 }) {
+  const navigate = useNavigate();
   const [provider, setProvider] = useState<ConversationProvider | undefined>();
   const [surface, setSurface] = useState<"archive" | "favorites" | "sources">("archive");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -248,6 +257,13 @@ function ConversationListView({
         </div>
 
         <div className="memory-page-tools">
+          <ModuleSearchButton
+            label="搜索对话"
+            expanded={searchOpen}
+            onClick={() => setSearchOpen((value) => !value)}
+          />
+          <button type="button" aria-label="查看归档" title="Archive" onClick={() => navigate("/conversations/archive")}><ArchiveIcon /></button>
+          <button type="button" aria-label="查看已删除" title="Deleted" onClick={() => navigate("/conversations/deleted")}><TrashIcon /></button>
           <button
             type="button"
             aria-label="导入 Conversation export"
@@ -256,11 +272,6 @@ function ConversationListView({
           >
             <PlusIcon className="memory-page-search-icon" />
           </button>
-          <ModuleSearchButton
-            label="搜索对话"
-            expanded={searchOpen}
-            onClick={() => setSearchOpen((value) => !value)}
-          />
         </div>
 
         {searchOpen ? (
@@ -443,11 +454,16 @@ function ConversationDetailView({
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const view: "default" | "all" = searchParams.get("view") === "all" ? "all" : "default";
+  const scope: "active" | "archived" | "deleted" = searchParams.get("scope") === "archived"
+    ? "archived"
+    : searchParams.get("scope") === "deleted" ? "deleted" : "active";
+  const branchId = searchParams.get("branch");
   const anchorId = searchParams.get("anchor");
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
   const [pruningMessageId, setPruningMessageId] = useState<string | null>(null);
   const [pruneStatus, setPruneStatus] = useState("");
+  const [confirmPermanentDelete, setConfirmPermanentDelete] = useState(false);
   const [favoriteItems, setFavoriteItems] = useState<ConversationFavoriteListItem[]>([]);
   const [favoriteBusyId, setFavoriteBusyId] = useState<string | null>(null);
   const [favoriteErrorIds, setFavoriteErrorIds] = useState<Set<string>>(() => new Set());
@@ -456,13 +472,15 @@ function ConversationDetailView({
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const detail = await client.detail(conversationId);
+      const detail = await client.detail(conversationId, scope, branchId ?? undefined);
       if (anchorId) {
         const context = await client.messageContext({
-          conversationId,
-          messageId: anchorId,
-          view,
-          radius: 20,
+            conversationId,
+            messageId: anchorId,
+            view,
+            radius: 20,
+            scope,
+            branchId: branchId ?? undefined,
         });
         setState({
           status: "ready",
@@ -485,6 +503,8 @@ function ConversationDetailView({
               view,
               limit: MESSAGE_PAGE_SIZE,
               offset: restoredMessages.length,
+              scope,
+              branchId: branchId ?? undefined,
             });
             totalMessages = page.total;
             restoredMessages.push(...page.items);
@@ -506,6 +526,8 @@ function ConversationDetailView({
             view,
             limit: MESSAGE_PAGE_SIZE,
             offset: 0,
+              scope,
+              branchId: branchId ?? undefined,
           });
           setState({
             status: "ready",
@@ -519,7 +541,7 @@ function ConversationDetailView({
     } catch {
       setState({ status: "error" });
     }
-  }, [anchorId, client, conversationId, view]);
+  }, [anchorId, branchId, client, conversationId, scope, view]);
 
   const loadFavorites = useCallback(async () => {
     try {
@@ -584,6 +606,8 @@ function ConversationDetailView({
         view,
         limit: MESSAGE_PAGE_SIZE,
         offset: state.messages.length,
+        scope,
+        branchId: branchId ?? undefined,
       });
       setState({
         ...state,
@@ -635,6 +659,8 @@ function ConversationDetailView({
           messageId: viewportAnchor.id,
           view,
           radius: 0,
+          scope,
+          branchId: branchId ?? undefined,
         });
         loadedPages = Math.max(
           loadedPages,
@@ -654,21 +680,32 @@ function ConversationDetailView({
 
   const deleteWindow = async () => {
     if (!window.confirm(
-      "从 Conversation Archive 删除整个窗口，并记住以后导入也跳过它？\n\n原始 export 文件仍会保留。",
+      "把整个 Conversation 移到 Deleted？之后可以恢复。\n\n原始 export 文件仍会保留。",
     )) return;
     setPruneStatus("");
     try {
       const result = await client.deleteConversation(conversationId);
-      setPruneStatus(`已删除 ${result.deletedMessages} 个保存节点。`);
+      setPruneStatus(`已移到 Deleted（${result.deletedMessages} 个保存节点可恢复）。`);
       navigate("/conversations", { replace: true });
     } catch {
       setPruneStatus("窗口删除失败。");
     }
   };
 
+  const archiveWindow = async () => {
+    if (!window.confirm("归档这个 Conversation？之后可在 Archive 中恢复。")) return;
+    setPruneStatus("");
+    try {
+      await client.archiveConversation(conversationId);
+      navigate("/conversations", { replace: true });
+    } catch {
+      setPruneStatus("窗口归档失败。");
+    }
+  };
+
   const deleteBranch = async (message: ConversationMessage) => {
     if (!window.confirm(
-      "从这条消息开始删除整个分支，并记住以后导入也跳过这个分支？\n\n原始 export 文件仍会保留。",
+      "把这个分支移到 Deleted？之后可以恢复。\n\n原始 export 文件仍会保留。",
     )) return;
     setPruningMessageId(message.id);
     setPruneStatus("");
@@ -679,12 +716,12 @@ function ConversationDetailView({
         messageId: message.id,
       });
       setPruneStatus(
-        `已删除这个分支的 ${result.deletedMessages} 个保存节点；后续导入不会加回来。`,
+        `已把这个分支移到 Deleted（${result.deletedMessages} 个保存节点可恢复）。`,
       );
       pendingScrollRestoreRef.current = pendingRestore;
       setState({ status: "loading" });
       if (anchorId) {
-        setSearchParams(detailViewParams(view), { replace: true });
+        setSearchParams(detailViewParams(view, scope, branchId), { replace: true });
       } else {
         await load();
       }
@@ -751,19 +788,48 @@ function ConversationDetailView({
           </div>
         </div>
         <div className="conversation-detail-header-actions">
-          <button
-            className="memory-archive-back conversation-detail-delete"
-            type="button"
-            aria-label="删除整个对话窗口并在后续导入中排除"
-            title="删除窗口；原始 export 仍保留"
-            onClick={() => void deleteWindow()}
-          >
-            Delete
-          </button>
+          {scope === "active" ? (
+            <button className="memory-archive-back" type="button" onClick={() => void archiveWindow()}>Archive</button>
+          ) : null}
+          {scope === "archived" ? (
+            <button className="memory-archive-back" type="button" onClick={() => void client.restoreConversation(conversationId).then(() => navigate("/conversations/archive"))}>Restore</button>
+          ) : null}
+          {scope === "deleted" ? (
+            <>
+            {confirmPermanentDelete ? <>
+              <span>{"永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留。"}</span>
+              <button className="memory-archive-back" type="button" onClick={() => {
+                if (branchId) {
+                  void client.permanentlyDeleteBranch({ conversationId, branchId }).then(() => navigate("/conversations/deleted"));
+                } else {
+                  void client.permanentlyDeleteConversation(conversationId).then(() => navigate("/conversations/deleted"));
+                }
+              }}>Confirm Permanently Delete</button>
+              <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(false)}>Cancel</button>
+            </> : <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(true)}>Permanently Delete</button>}
+            <button className="memory-archive-back" type="button" onClick={() => {
+              if (branchId) {
+                void client.restoreBranch({ conversationId, branchId }).then(() => navigate("/conversations/deleted"));
+              } else {
+                void client.restoreDeletedConversation(conversationId).then(() => navigate("/conversations/deleted"));
+              }
+            }}>Restore</button>
+            </>
+          ) : (
+            <button
+              className="memory-archive-back conversation-detail-delete"
+              type="button"
+              aria-label="把整个对话窗口移到 Deleted"
+              title="移到 Deleted；原始 export 仍保留"
+              onClick={() => void deleteWindow()}
+            >
+              Delete
+            </button>
+          )}
           <button
             className="memory-archive-back"
             type="button"
-            onClick={() => navigate("/conversations")}
+            onClick={() => navigate(scope === "archived" ? "/conversations/archive" : scope === "deleted" ? "/conversations/deleted" : "/conversations")}
           >
             Return
           </button>
@@ -773,8 +839,8 @@ function ConversationDetailView({
       {detail.provider === "chatgpt" ? (
         <div className="conversation-detail-view-row">
           <div className="conversation-view-toggle">
-            <button className={view === "default" ? "active" : ""} type="button" onClick={() => setSearchParams({})}>当前路径</button>
-            <button className={view === "all" ? "active" : ""} type="button" onClick={() => setSearchParams({ view: "all" })}>全部分支</button>
+            <button className={view === "default" ? "active" : ""} type="button" onClick={() => setSearchParams(detailViewParams("default", scope, branchId))}>当前路径</button>
+            <button className={view === "all" ? "active" : ""} type="button" onClick={() => setSearchParams(detailViewParams("all", scope, branchId))}>全部分支</button>
           </div>
         </div>
       ) : null}
@@ -794,7 +860,7 @@ function ConversationDetailView({
       {state.contextual && anchorId ? (
         <div className="conversation-context-banner">
           <span>已定位到搜索结果，显示前后上下文。</span>
-          <button type="button" onClick={() => setSearchParams(view === "all" ? { view: "all" } : {})}>从头查看</button>
+          <button type="button" onClick={() => setSearchParams(detailViewParams(view, scope, branchId))}>从头查看</button>
         </div>
       ) : null}
 
@@ -813,11 +879,11 @@ function ConversationDetailView({
                 <strong>{message.role === "user" ? "You" : providerLabel(detail.provider)}</strong>
                 <span>{message.model ?? ""}</span>
                 <time className="conversation-message-time">{formatDateTime(message.sourceCreatedAt)}</time>
-                {(detail.provider === "claude" || view === "all") ? (
+                {scope === "active" && (detail.provider === "claude" || view === "all") ? (
                   <button
                     className="conversation-message-prune"
                     type="button"
-                    aria-label="从这条消息开始删除整个分支并在后续导入中排除"
+                    aria-label="从这条消息开始把整个分支移到 Deleted"
                     title="删除此分支；原始 export 仍保留"
                     disabled={pruningMessageId !== null}
                     onClick={() => void deleteBranch(message)}

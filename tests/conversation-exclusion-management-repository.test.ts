@@ -18,6 +18,9 @@ test("exclusion listing reports whether canonical conversation/node currently ex
   assert.match(source, /canonicalNodeExists/);
   assert.match(source, /leftJoin\([\s\S]*conversations/);
   assert.match(source, /leftJoin\([\s\S]*conversationMessages/);
+  assert.match(source, /title: conversations\.title/);
+  assert.match(source, /rootRole: conversationMessages\.role/);
+  assert.match(source, /rootSnippet: conversationMessages\.displayText/);
 });
 
 test("exclusion removal locks and deletes only the selected rule in a serializable transaction", () => {
