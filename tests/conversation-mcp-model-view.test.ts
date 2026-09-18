@@ -114,6 +114,7 @@ class RecoveryReads {
   listCalls: Array<Record<string, unknown>> = [];
   candidateCalls: Array<Record<string, unknown>> = [];
   evidenceCalls: Array<Record<string, unknown>> = [];
+  restoreCalls: Array<Record<string, unknown>> = [];
 
   async list(input: Record<string, unknown>) {
     this.listCalls.push(input);
@@ -187,6 +188,11 @@ class RecoveryReads {
         },
       ],
     };
+  }
+
+  async restore(input: Record<string, unknown>) {
+    this.restoreCalls.push(input);
+    return { restored: true as const, sourceId: SOURCE_ID };
   }
 }
 
@@ -320,7 +326,7 @@ test("read_conversation returns canonical structured blocks and a model-readable
 });
 
 
-test("Conversation recovery inspection MCP tools are read-only and user-scoped", async (t) => {
+test("Conversation recovery MCP tools expose read-only inspection plus an exact user-scoped restore mutation", async (t) => {
   const recovery = new RecoveryReads();
   const server = createMcpServer({
     conversationRecoveryInspection: {
@@ -352,6 +358,16 @@ test("Conversation recovery inspection MCP tools are read-only and user-scoped",
     });
     assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
   }
+
+  const restoreTool = inventory.tools.find((candidate) => candidate.name === "restore_conversation_exclusion");
+  assert.ok(restoreTool, "restore_conversation_exclusion should be registered");
+  assert.deepEqual(restoreTool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  });
+  assert.equal("user_id" in (restoreTool.inputSchema.properties ?? {}), false);
 
   const listed = await client.callTool({
     name: "list_conversation_exclusions",
@@ -395,6 +411,25 @@ test("Conversation recovery inspection MCP tools are read-only and user-scoped",
     limit: 40,
     offset: 0,
   });
+
+  const restored = await client.callTool({
+    name: "restore_conversation_exclusion",
+    arguments: { exclusion_id: EXCLUSION_ID, source_id: SOURCE_ID },
+  });
+  assert.equal(restored.isError, undefined);
+  assert.deepEqual(restored.structuredContent, {
+    success: true,
+    data: {
+      exclusion_id: EXCLUSION_ID,
+      source_id: SOURCE_ID,
+      restored: true,
+    },
+  });
+  assert.deepEqual(recovery.restoreCalls[0], {
+    userId: USER_ID,
+    exclusionId: EXCLUSION_ID,
+    sourceId: SOURCE_ID,
+  });
 });
 
 test("Conversation recovery inspection schemas reject client-supplied identity", async (t) => {
@@ -423,6 +458,17 @@ test("Conversation recovery inspection schemas reject client-supplied identity",
   });
   assert.equal(result.isError, true);
   assert.equal(recovery.listCalls.length, 0);
+
+  const restore = await client.callTool({
+    name: "restore_conversation_exclusion",
+    arguments: {
+      exclusion_id: EXCLUSION_ID,
+      source_id: SOURCE_ID,
+      user_id: "attacker",
+    },
+  });
+  assert.equal(restore.isError, true);
+  assert.equal(recovery.restoreCalls.length, 0);
 });
 
 test("Conversation MCP schemas reject client-supplied identity before service calls", async (t) => {
