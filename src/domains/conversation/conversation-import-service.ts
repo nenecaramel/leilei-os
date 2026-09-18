@@ -78,7 +78,60 @@ export type ConversationRestoreCandidate = {
   rootSnippet: string | null;
 };
 
+export type ConversationRestoreEvidenceMessage = {
+  sourceNodeId: string;
+  parentSourceNodeId: string | null;
+  role: NormalizedConversation["messages"][number]["role"];
+  sourceCreatedAt: string | null;
+  displayText: string;
+  depth: number;
+};
+
+export type ConversationRestoreEvidence = {
+  sourceId: string;
+  filename: string;
+  title: string | null;
+  rootSourceNodeId: string | null;
+  total: number;
+  offset: number;
+  messages: ConversationRestoreEvidenceMessage[];
+};
+
 export class ConversationImportAuthorizationError extends Error {}
+
+function collectRestoreBranchEvidence(
+  conversation: NormalizedConversation,
+  rootSourceNodeId: string,
+): ConversationRestoreEvidenceMessage[] {
+  const byNode = new Map(conversation.messages.map((message) => [message.sourceNodeId, message]));
+  if (!byNode.has(rootSourceNodeId)) return [];
+
+  const depthByNode = new Map<string, number>([[rootSourceNodeId, 0]]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const message of conversation.messages) {
+      if (depthByNode.has(message.sourceNodeId)) continue;
+      const parent = message.parentSourceNodeId;
+      if (!parent) continue;
+      const parentDepth = depthByNode.get(parent);
+      if (parentDepth === undefined) continue;
+      depthByNode.set(message.sourceNodeId, parentDepth + 1);
+      changed = true;
+    }
+  }
+
+  return conversation.messages
+    .filter((message) => depthByNode.has(message.sourceNodeId))
+    .map((message) => ({
+      sourceNodeId: message.sourceNodeId,
+      parentSourceNodeId: message.parentSourceNodeId,
+      role: message.role,
+      sourceCreatedAt: message.sourceCreatedAt,
+      displayText: message.displayText,
+      depth: depthByNode.get(message.sourceNodeId) ?? 0,
+    }));
+}
 
 function emptyExclusionSummary(): ConversationExclusionSummary {
   return { conversations: 0, messages: 0, branch_roots: 0 };
@@ -283,6 +336,76 @@ export class ConversationImportService {
       }
     }
     return candidates;
+  }
+
+
+  async inspectRestoreEvidence(input: {
+    userId: string;
+    sourceId: string;
+    exclusion: ConversationExclusionRule;
+    limit: number;
+    offset: number;
+  }): Promise<ConversationRestoreEvidence | null> {
+    const user = await this.repository.findUserById(input.userId);
+    if (!user || user.status !== "active") throw new ConversationImportAuthorizationError();
+
+    const source = await this.repository.findSourceById(input.userId, input.sourceId);
+    if (!source || source.provider !== input.exclusion.provider) return null;
+    const blob = await this.repository.readStoredBlob({ userId: input.userId, sourceId: source.id });
+    if (!blob) return null;
+
+    const staged = await stageStoredConversationSource({
+      data: blob.data,
+      encoding: blob.encoding,
+      originalFilename: source.originalFilename,
+      expectedSha256: source.rawSha256,
+      expectedBytes: source.rawBytes,
+    });
+
+    try {
+      let match: NormalizedConversation | null = null;
+      for (const jsonPath of staged.jsonPaths) {
+        for await (const value of readTopLevelConversationObjects(jsonPath)) {
+          const detected = detectConversationProviderParser(value);
+          if (detected.provider !== input.exclusion.provider) continue;
+          const normalized = detected.parser.normalizeConversation(value).conversation;
+          if (matchesRestoreTarget(normalized, input.exclusion)) {
+            match = normalized;
+            break;
+          }
+        }
+        if (match) break;
+      }
+      if (!match) return null;
+
+      const rootSourceNodeId = input.exclusion.scope === "branch"
+        ? input.exclusion.sourceNodeId
+        : null;
+      const evidence = rootSourceNodeId
+        ? collectRestoreBranchEvidence(match, rootSourceNodeId)
+        : match.messages.map((message) => ({
+            sourceNodeId: message.sourceNodeId,
+            parentSourceNodeId: message.parentSourceNodeId,
+            role: message.role,
+            sourceCreatedAt: message.sourceCreatedAt,
+            displayText: message.displayText,
+            depth: 0,
+          }));
+
+      return {
+        sourceId: source.id,
+        filename: source.originalFilename,
+        title: match.title,
+        rootSourceNodeId,
+        total: evidence.length,
+        offset: input.offset,
+        messages: evidence.slice(input.offset, input.offset + input.limit),
+      };
+    } catch {
+      return null;
+    } finally {
+      await staged.cleanup();
+    }
   }
 
   async execute(
