@@ -194,7 +194,7 @@ export class ConversationExclusionManagementService {
     sourceId: unknown;
     limit?: unknown;
     offset?: unknown;
-  }): Promise<Awaited<ReturnType<ConversationImportService["inspectRestoreEvidence"]>>> {
+  }): Promise<NonNullable<Awaited<ReturnType<ConversationImportService["inspectRestoreEvidence"]>>>> {
     await this.requireActive(input.userId);
     if (!this.importService || !this.repository.getExclusion) {
       throw new ConversationExclusionManagementError(
