@@ -7529,12 +7529,16 @@ body:has(.system-page) {
   gap: 10px;
 }
 
+.home-page-heading,
+.calendar-section-heading {
+  position: relative;
+}
+
 .home-page-heading {
   display: flex;
   height: 22px;
   margin-bottom: 6px;
   align-items: flex-start;
-  gap: 10px;
 }
 
 .home-page-heading .home-page-title {
@@ -7542,17 +7546,16 @@ body:has(.system-page) {
 }
 
 .home-inline-unavailable {
+  position: absolute;
+  top: -4px;
+  left: 50%;
   display: grid;
   align-content: start;
-  justify-items: start;
+  justify-items: center;
   gap: 0;
-  transform: translateY(-6px);
+  transform: translateX(-50%);
   font-family: var(--state-font);
-  text-align: left;
-}
-
-.calendar-section-heading .home-inline-unavailable {
-  transform: translateY(-3px);
+  text-align: center;
 }
 
 .home-inline-unavailable span {
@@ -7570,4 +7573,21 @@ body:has(.system-page) {
   font-weight: 500;
   line-height: 1.4;
   cursor: pointer;
+}
+
+
+/* UI convergence round 2: center Day Space search states on the content axis. */
+.day-space-search-panel .module-search-state,
+.day-space-search-panel .state-surface {
+  width: 100%;
+  margin-right: auto;
+  margin-left: auto;
+  justify-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Keep Universe loading on the same headline row as the unavailable copy. */
+.universe-cosmos-loading .state-surface__message {
+  transform: translateY(-13px);
 }

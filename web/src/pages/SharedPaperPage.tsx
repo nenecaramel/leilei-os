@@ -388,7 +388,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
 
       {list.status === "loading" ? (
         query ? (
-          <ModuleStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="正在搜索…" />
+          <ModuleStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="Searching..." />
         ) : (
           <SharedPaperListLoading label={scope === "archived" ? "Shared Paper Archive 加载中" : "Shared Paper 加载中"} />
         )

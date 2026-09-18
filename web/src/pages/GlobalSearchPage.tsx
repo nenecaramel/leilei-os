@@ -523,7 +523,7 @@ export function GlobalSearchPageContent({ api }: Props) {
       state === "idle"
         ? "输入关键词后开始搜索。"
         : state === "loading"
-          ? "正在搜索…"
+          ? "Searching..."
           : state === "empty"
             ? "没有找到匹配记录。"
             : state === "error"
@@ -653,7 +653,7 @@ export function GlobalSearchPageContent({ api }: Props) {
           placement="module"
           emptyText=""
           errorText=""
-          loadingText="正在搜索…"
+          loadingText="Searching..."
         />
       ) : null}
 

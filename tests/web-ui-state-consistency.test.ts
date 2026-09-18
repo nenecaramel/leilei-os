@@ -162,3 +162,33 @@ test("Task Archive read failure uses the shared retryable state", () => {
   assert.match(source.slice(start - 160, start + 260), /state="error"/);
   assert.match(source.slice(start - 160, start + 260), /retryLabel="Retry"/);
 });
+
+
+test("UI convergence round two keeps search progress English and Diary tags semantic copy aligned", () => {
+  const moduleSearch = readFileSync(resolve(webRoot, "components", "ModuleSearch.tsx"), "utf8");
+  const quickSearch = readFileSync(resolve(webRoot, "layout", "QuickSearchPanel.tsx"), "utf8");
+  const diaryEditor = page("DiaryPaperEditor.tsx");
+  for (const source of [
+    moduleSearch,
+    quickSearch,
+    page("MemoryPage.tsx"),
+    page("DiaryPage.tsx"),
+    page("TaskPage.tsx"),
+    page("SharedPaperPage.tsx"),
+    page("ConversationSearchPanel.tsx"),
+    page("GlobalSearchPage.tsx"),
+  ]) {
+    assert.doesNotMatch(source, /正在搜索…/);
+  }
+  assert.match(moduleSearch, /loadingText = "Searching\.\.\."/);
+  assert.match(quickSearch, /message="Searching\.\.\."/);
+  assert.match(diaryEditor, /placeholder="tags"/);
+});
+
+test("empty Conversation states lose the legacy card frame and center on one shared state axis", () => {
+  const css = readFileSync(resolve(webRoot, "pages", "conversations.css"), "utf8");
+  assert.doesNotMatch(css, /\.conversation-page \.state-surface,\s*\n\.conversation-page \.page-state,/);
+  assert.match(css, /\.conversation-archive-section > \.state-surface,[\s\S]*?min-height:\s*min\(56dvh, 520px\)/);
+  assert.match(css, /\.conversation-lifecycle-page > \.state-surface,[\s\S]*?min-height:\s*calc\(100dvh - 160px\)/);
+  assert.match(css, /\.conversation-tab-source-state[\s\S]*?place-items:\s*center/);
+});

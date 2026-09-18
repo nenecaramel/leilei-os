@@ -130,10 +130,10 @@ export function DiaryPaperMetadataEditor({
         type="text"
         className="diary-paper-tags"
         aria-label="日记标签"
-        placeholder="标签"
+        placeholder="tags"
         value={tagsValue}
         style={{
-          width: `${Math.max(4, Math.min(16, Array.from(tagsValue || "标签").length + 2))}ch`,
+          width: `${Math.max(4, Math.min(16, Array.from(tagsValue || "tags").length + 2))}ch`,
         }}
         disabled={disabled}
         autoComplete="off"

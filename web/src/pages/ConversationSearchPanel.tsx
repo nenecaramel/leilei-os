@@ -166,7 +166,7 @@ export function ConversationSearchPanel({
       ) : null}
 
       {state.status === "loading" ? (
-        <div className="conversation-search-state" role="status">正在搜索…</div>
+        <div className="conversation-search-state" role="status">Searching...</div>
       ) : state.status === "error" ? (
         <StateSurface
           state="error"
