@@ -105,9 +105,14 @@ test("Conversation UI redesign keeps import search Favorites Sources and pruning
   assert.match(page, /createFavorite/);
 });
 
-test("Conversation detail restores the earlier compact continuous reading surface", () => {
-  assert.match(css, /\.conversation-detail-page \.page-header\s*\{[^}]*border-bottom:\s*1px solid/s);
-  assert.match(css, /\.conversation-detail-page \.page-header h1\s*\{[^}]*font-size:\s*18px/s);
+test("Conversation detail reuses the Memory/Diary archive header while keeping the compact reading surface", () => {
+  assert.match(page, /className="memory-page-header memory-archive-header conversation-detail-header"/);
+  assert.match(page, /className="memory-page-title">\{detail\.title/);
+  assert.match(page, /className="memory-page-count"/);
+  assert.match(page, /className="memory-archive-back conversation-detail-delete"/);
+  assert.match(page, />\s*Return\s*<\/button>/);
+  assert.doesNotMatch(page, /← 返回 Conversations|选择收藏范围|favoriteRange/);
+  assert.doesNotMatch(css, /\.conversation-detail-page \.page-header|border-bottom:\s*1px solid rgba\(0, 0, 0, \.08\)/);
   assert.match(css, /\.conversation-message-list\s*\{[^}]*display:\s*block[^}]*overflow:\s*hidden[^}]*border:\s*1px solid/s);
   assert.match(css, /\.conversation-message\s*\{[^}]*padding:\s*14px 15px 16px[^}]*border-radius:\s*0/s);
   assert.match(css, /\.conversation-message--user\s*\{[^}]*background:\s*#fafafa/s);
