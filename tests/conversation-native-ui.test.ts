@@ -76,7 +76,7 @@ test("Conversation surfaces keep shared tab, provider, destructive, and loading 
   assert.match(css, /\.conversation-import-run > (?:strong|span|small|time|\.conversation-history-inline-action)/);
   assert.match(importHistoryPanel, /className="system-state-copy"/);
   assert.match(favoritesPanel, /className="conversation-message-favorite active/);
-  assert.match(importHistoryPanel, /className="secondary-button"/);
+  assert.match(importHistoryPanel, /className="conversation-message-favorite active conversation-import-source-action"/);
   assert.match(batchPreview, /className="secondary-button"/);
 });
 
@@ -121,6 +121,12 @@ test("Conversation detail reuses the Memory/Diary archive header while keeping t
   assert.match(css, /\.conversation-message--user\s*\{[^}]*background:\s*#fafafa/s);
   assert.doesNotMatch(css, /\.conversation-message--user\s*\{[^}]*margin-left:/s);
   assert.doesNotMatch(css, /\.conversation-message--assistant\s*\{[^}]*margin-right:/s);
+  assert.match(
+    page,
+    /<time className="conversation-message-time">[\s\S]*conversation-message-prune[\s\S]*className="conversation-message-favorite active"/,
+  );
+  assert.match(css, /\.conversation-message-meta time\s*\{[^}]*font-size:\s*9\.5px/s);
+  assert.match(css, /\.conversation-message-favorite,[\s\S]*?\.conversation-message-prune\s*\{[^}]*font-size:\s*10px/s);
 });
 
 test("desktop navigation owns its typography so route-level fonts cannot shift the sidebar", () => {
@@ -177,6 +183,9 @@ test("Sources uses full card width below top-right actions", () => {
   assert.match(importHistoryPanel, /共 \{state\.total\.toLocaleString\(\)\} 份/);
   assert.doesNotMatch(importHistoryPanel, /份 source/);
   assert.match(importHistoryPanel, /conversation-import-source-main[\s\S]*<\/div>[\s\S]*conversation-import-source-actions/);
+  assert.match(importHistoryPanel, /conversation-import-source-titleline[\s\S]*<h3>\{source\.filename\}<\/h3>[\s\S]*\{source\.runCount\} 次 Preview\/Execute/);
+  assert.match(importHistoryPanel, /className="conversation-message-favorite active conversation-import-source-action"/);
+  assert.match(css, /\.conversation-import-source-titleline > span\s*\{[^}]*margin-left:\s*auto[^}]*white-space:\s*nowrap/s);
   assert.match(importHistoryPanel, /className="system-section conversation-import-history-loading"/);
   assert.doesNotMatch(importHistoryPanel, /conversation-import-runs-loading/);
   assert.match(importHistoryPanel, /detailLoadingId === source\.sourceId[\s\S]*读取中…/);
