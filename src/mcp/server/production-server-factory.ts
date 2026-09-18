@@ -15,6 +15,7 @@ import type { SafeLogger } from "../../observability/logger.js";
 import type { HealthService } from "../../domains/health-v2/health-service.js";
 import type { SharedPaperService } from "../../domains/shared-paper/shared-paper-service.js";
 import type { ConversationArchiveReadService } from "../../domains/conversation/conversation-archive-read-service.js";
+import type { ConversationExclusionManagementService } from "../../domains/conversation/conversation-exclusion-management-service.js";
 import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
 import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
 import { registerBridgeProcessingTools } from "../tools/bridge-processing/register.js";
@@ -48,6 +49,7 @@ export function createProductionMcpSessionServerFactory(input: {
   healthService: HealthService;
   sharedPaperService?: SharedPaperService;
   conversationArchiveReadService?: ConversationArchiveReadService;
+  conversationExclusionManagementService?: ConversationExclusionManagementService;
   bridgeService?: BridgeService;
   bridgeAmbiguityAcceptanceEnabled?: boolean;
   logger?: SafeLogger;
@@ -116,6 +118,12 @@ export function createProductionMcpSessionServerFactory(input: {
       ...(input.conversationArchiveReadService ? {
         conversationArchiveTools: {
           conversationArchiveReadService: input.conversationArchiveReadService,
+          getAuthenticatedUserId,
+        },
+      } : {}),
+      ...(input.conversationExclusionManagementService ? {
+        conversationRecoveryInspection: {
+          conversationExclusionManagementService: input.conversationExclusionManagementService,
           getAuthenticatedUserId,
         },
       } : {}),
