@@ -235,7 +235,9 @@ export function SentinelPageContent({
       <div className="page system-page sentinel-page">
         <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." />
 
-        <SentinelStateCard label="Sentinel status" state="loading" message="Reading..." />
+        <section className="system-section sentinel-status-card" aria-label="Sentinel status">
+          <SentinelCardState state="loading" message="Reading..." />
+        </section>
 
         <ChatGPTMessageBridgeCard api={api} />
 
@@ -250,12 +252,9 @@ export function SentinelPageContent({
     return (
       <div className="page system-page sentinel-page">
         <PageHeader eyebrow="System" title="Sentinel" description="Control autonomous wakes and message ChatGPT / Claude." />
-        <SentinelStateCard
-          label="Sentinel status"
-          state="error"
-          message="Unable to read Sentinel."
-          onRetry={() => void load()}
-        />
+        <section className="system-section sentinel-status-card" aria-label="Sentinel status">
+          <SentinelCardState state="error" message="Unable to read Sentinel." onRetry={() => void load()} />
+        </section>
         <ChatGPTMessageBridgeCard api={api} />
         <SentinelStateCard
           label="Wake policy"
