@@ -24,7 +24,7 @@ test("global state typography and geometry use one explicit visual contract", ()
   assert.match(styles, /\.state-surface__action,[\s\S]*?font-size:\s*11px[\s\S]*?font-weight:\s*500/s);
   assert.match(styles, /\.state-surface--module\s*\{[^}]*margin:\s*64px auto 0/s);
   assert.match(styles, /\.state-surface--paper\s*\{[^}]*margin:\s*96px auto 0/s);
-  assert.match(styles, /\.state-surface--page\s*\{[^}]*place-content:\s*center/s);\n  assert.match(styles, /\.state-surface--page \.state-surface__action-row\s*\{[^}]*min-height:\s*1\.4em/s);
+  assert.match(styles, /\.state-surface--page\s*\{[^}]*position:\s*fixed[^}]*top:\s*50dvh[^}]*transform:\s*translateY\(-50%\)[^}]*place-content:\s*center/s);\n  assert.match(styles, /\.state-surface--page \.state-surface__action-row\s*\{[^}]*min-height:\s*1\.4em/s);
 });
 
 test("major custom surfaces now participate in the shared state system", () => {
