@@ -83,9 +83,9 @@ test("module state families retain their exact retry and clear labels", () => {
 
 test("mobile Paper read states use the frozen signature placeholder", () => {
   const cases = [
-    ["MemoryPage.tsx", ["正在读取 Memory", "无法读取 Memory", "正在读取归档 Memory", "无法读取归档 Memory"]],
-    ["DiaryPage.tsx", ["正在读取 Diary", "无法读取 Diary", "正在读取已归档 Diary", "无法读取已归档 Diary"]],
-    ["TaskPage.tsx", ["正在读取 Task", "无法读取 Task", "正在读取归档 Task", "无法读取归档 Task"]],
+    ["MemoryPage.tsx", ["Reading Memory", "无法读取 Memory", "Reading archived Memory", "无法读取归档 Memory"]],
+    ["DiaryPage.tsx", ["Reading Diary", "无法读取 Diary", "Reading archived Diary", "无法读取已归档 Diary"]],
+    ["TaskPage.tsx", ["Reading Task", "无法读取 Task", "Reading archived Task", "无法读取归档 Task"]],
   ] as const;
 
   for (const [file, labels] of cases) {
@@ -152,6 +152,12 @@ test("Shared Paper detail and history states reuse the Paper body anchor", () =>
   assert.match(
     css,
     /\.paper-detail-state\s*\{[\s\S]*?width:\s*min\(100%,\s*280px\)[\s\S]*?margin:\s*96px auto 0/,
+  );
+  assert.match(sharedPaper, /loadingText="Reading\.\.\."/);
+  assert.match(sharedPaper, /paper-detail-state--loading/);
+  assert.match(
+    css,
+    /\.paper-detail-state--loading\s*\{[\s\S]*?position:\s*absolute[\s\S]*?inset:\s*0[\s\S]*?margin:\s*0[\s\S]*?place-content:\s*center/,
   );
 });
 
