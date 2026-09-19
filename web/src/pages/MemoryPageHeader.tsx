@@ -1,15 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArchiveIcon,
   DashboardIcon,
   PenIcon,
 } from "../components/icons.js";
 import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
-import {
-  PopoverOption,
-  PopoverSearchInput,
-  PopoverShell,
-} from "../components/FilterPopover";
 
 type MemoryPageHeaderProps = {
   count: number;
@@ -43,19 +38,10 @@ export function MemoryPageHeader({
 }: MemoryPageHeaderProps) {
   const [openMenu, setOpenMenu] = useState<"category" | "tag" | null>(null);
   const [searchOpen, setSearchOpen] = useState(Boolean(searchDraft));
-  const [tagQuery, setTagQuery] = useState("");
 
   useEffect(() => {
     if (searchDraft) setSearchOpen(true);
   }, [searchDraft]);
-
-  const matchingTags = useMemo(() => {
-    const query = tagQuery.normalize("NFC").trim().toLocaleLowerCase();
-    if (!query) return tags;
-    return tags.filter((item) =>
-      item.normalize("NFC").toLocaleLowerCase().includes(query),
-    );
-  }, [tagQuery, tags]);
 
   return (
     <header
@@ -83,79 +69,74 @@ export function MemoryPageHeader({
             <DashboardIcon className="memory-page-category-icon" />
           </button>
           {openMenu === "category" ? (
-            <PopoverShell role="menu" ariaLabel="Memory 分类">
-              <PopoverOption
-                checked={category === ""}
+            <div className="memory-page-popover" role="menu" aria-label="Memory 分类">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={category === ""}
                 onClick={() => {
                   onCategoryChange("");
                   setOpenMenu(null);
                 }}
               >
                 全部分类
-              </PopoverOption>
+              </button>
               {categories.map((item) => (
-                <PopoverOption
+                <button
                   key={item.value}
-                  checked={category === item.value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={category === item.value}
                   onClick={() => {
                     onCategoryChange(item.value);
                     setOpenMenu(null);
                   }}
                 >
                   {item.label}
-                </PopoverOption>
+                </button>
               ))}
-            </PopoverShell>
+            </div>
           ) : null}
         </div>
 
         <div className="memory-page-tool-wrap">
           <button
             type="button"
-            aria-label="搜索标签"
+            aria-label="筛选标签"
             aria-expanded={openMenu === "tag"}
-            aria-pressed={Boolean(tag)}
             disabled={busy}
-            onClick={() => {
-              setTagQuery("");
-              setOpenMenu((value) => value === "tag" ? null : "tag");
-            }}
+            onClick={() => setOpenMenu((value) => value === "tag" ? null : "tag")}
           >
             <span className="memory-page-tag-icon" aria-hidden="true">#</span>
           </button>
           {openMenu === "tag" ? (
-            <PopoverShell variant="search" ariaLabel="Memory 标签搜索">
-              <PopoverSearchInput
-                aria-label="搜索 Memory 标签"
-                placeholder="标签"
-                maxLength={50}
-                value={tagQuery}
-                onChange={(event) => setTagQuery(event.target.value)}
-              />
-              <div className="filter-popover-results">
-                <PopoverOption
-                  checked={tag === ""}
+            <div className="memory-page-popover" role="menu" aria-label="Memory 标签">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={tag === ""}
+                onClick={() => {
+                  onTagChange("");
+                  setOpenMenu(null);
+                }}
+              >
+                全部标签
+              </button>
+              {tags.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={tag === item}
                   onClick={() => {
-                    onTagChange("");
+                    onTagChange(item);
                     setOpenMenu(null);
                   }}
                 >
-                  全部标签
-                </PopoverOption>
-                {matchingTags.map((item) => (
-                  <PopoverOption
-                    key={item}
-                    checked={tag === item}
-                    onClick={() => {
-                      onTagChange(item);
-                      setOpenMenu(null);
-                    }}
-                  >
-                    #{item}
-                  </PopoverOption>
-                ))}
-              </div>
-            </PopoverShell>
+                  #{item}
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
 
