@@ -1,121 +1,334 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { PageState } from "../components/StateSurface";
-import { createConversationArchiveApi, type ConversationDeletedBranch, type ConversationLegacyExclusion, type ConversationListItem, type ConversationRestoreCandidate } from "./conversation-archive-api";
+import {
+  createConversationArchiveApi,
+  type ConversationDeletedBranch,
+  type ConversationListItem,
+  type ConversationProvider,
+} from "./conversation-archive-api";
 import { groupConversationsByMonth } from "./conversation-presentation";
+import { PaperDetailDialog } from "./PaperDetailDialog";
 import "./conversations.css";
 
 type Client = ReturnType<typeof createConversationArchiveApi>;
-type ReadyState = { status: "ready"; conversations: ConversationListItem[]; total: number; branches: ConversationDeletedBranch[]; exclusions: ConversationLegacyExclusion[]; candidatesByExclusion: Record<string, ConversationRestoreCandidate[]> };
-type LifecycleItem = { kind: "conversation"; item: ConversationListItem; time: string | null } | { kind: "branch"; item: ConversationDeletedBranch; time: string | null } | { kind: "legacy"; item: ConversationLegacyExclusion; time: string | null };
-const permanentDeleteCopy = "永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留。";
 
-function shortTime(value: string | null): string { return value ? new Date(value).toLocaleString() : "Unavailable"; }
-function shortSnippet(value: string | null): string { return !value ? "Unavailable" : value.length > 160 ? `${value.slice(0, 160)}…` : value; }
+type ConversationArchiveItem = {
+  kind: "conversation";
+  source: "archived" | "deleted";
+  item: ConversationListItem;
+  removalTime: string | null;
+};
+
+type BranchArchiveItem = {
+  kind: "branch";
+  item: ConversationDeletedBranch;
+  removalTime: string | null;
+};
+
+type ArchiveItem = ConversationArchiveItem | BranchArchiveItem;
+
+type ReadyState = {
+  status: "ready";
+  items: ArchiveItem[];
+  total: number;
+};
+
+function providerLabel(provider: ConversationProvider): string {
+  return provider === "chatgpt" ? "ChatGPT" : "Claude";
+}
+
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function formatRowDateTime(value: string | null): string {
+  if (!value) return "时间未知";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatPaperDateTime(value: string | null): string {
+  if (!value) return "时间未知";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function title(value: string | null): string {
+  return value?.trim() || "Untitled conversation";
+}
+
+function branchText(value: string | null): string {
+  return value?.trim() || "（无可见文本）";
+}
+
+function itemKey(entry: ArchiveItem): string {
+  return entry.kind === "conversation"
+    ? `conversation:${entry.source}:${entry.item.id}`
+    : `branch:${entry.item.id}`;
+}
 
 export function ConversationLifecyclePageContent({ api }: { api: WebApiClient }) {
   const client = useMemo(() => createConversationArchiveApi(api), [api]);
-  const location = useLocation();
   const navigate = useNavigate();
-  const deleted = location.pathname.endsWith("/deleted");
-  const [state, setState] = useState<{ status: "loading" } | ReadyState | { status: "error" }>({ status: "loading" });
-  const [busy, setBusy] = useState<string | null>(null);
-  const [restoreSourceByExclusion, setRestoreSourceByExclusion] = useState<Record<string, string>>({});
-  const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
-  const [candidateStatusByExclusion, setCandidateStatusByExclusion] = useState<Record<string, "idle" | "loading" | "ready" | "error">>({});
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const [state, setState] = useState<{ status: "loading" } | ReadyState | { status: "error" }>({
+    status: "loading",
+  });
+  const [selected, setSelected] = useState<ArchiveItem | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      if (!deleted) {
-        const result = await client.listArchive({ limit: 100, offset: 0 });
-        setState({ status: "ready", conversations: result.items, total: result.total, branches: [], exclusions: [], candidatesByExclusion: {} });
-        return;
-      }
-      const [result, exclusions] = await Promise.all([client.listDeleted({ limit: 100, offset: 0 }), client.listExclusions({ limit: 100, offset: 0 })]);
-      setCandidateStatusByExclusion({});
-      setRestoreSourceByExclusion({});
-      setState({ status: "ready", conversations: result.conversations.items, total: result.conversations.total + result.branches.total + exclusions.total, branches: result.branches.items, exclusions: exclusions.items, candidatesByExclusion: {} });
-    } catch { setState({ status: "error" }); }
-  }, [client, deleted]);
-  useEffect(() => { void load(); }, [load]);
+      const [archived, deleted] = await Promise.all([
+        client.listArchive({ limit: 100, offset: 0 }),
+        client.listDeleted({ limit: 100, offset: 0 }),
+      ]);
+      const items: ArchiveItem[] = [
+        ...archived.items.map((item) => ({
+          kind: "conversation" as const,
+          source: "archived" as const,
+          item,
+          removalTime: item.archivedAt ?? null,
+        })),
+        ...deleted.conversations.items.map((item) => ({
+          kind: "conversation" as const,
+          source: "deleted" as const,
+          item,
+          removalTime: item.deletedAt ?? null,
+        })),
+        ...deleted.branches.items.map((item) => ({
+          kind: "branch" as const,
+          item,
+          removalTime: item.deletedAt ?? null,
+        })),
+      ];
+      setState({
+        status: "ready",
+        items,
+        total: archived.total + deleted.conversations.total + deleted.branches.total,
+      });
+    } catch {
+      setState({ status: "error" });
+    }
+  }, [client]);
 
-  async function restoreConversation(id: string) { setBusy(id); try { if (deleted) await client.restoreDeletedConversation(id); else await client.restoreConversation(id); await load(); } finally { setBusy(null); } }
-  async function permanentlyDeleteConversation(id: string) { setBusy(id); try { await client.permanentlyDeleteConversation(id); await load(); } finally { setBusy(null); setPermanentDeleteId(null); } }
-  async function restoreBranch(branch: ConversationDeletedBranch) { setBusy(branch.id); try { await client.restoreBranch({ conversationId: branch.conversationId, branchId: branch.id }); await load(); } finally { setBusy(null); } }
-  async function permanentlyDeleteBranch(branch: ConversationDeletedBranch) { setBusy(branch.id); try { await client.permanentlyDeleteBranch({ conversationId: branch.conversationId, branchId: branch.id }); await load(); } finally { setBusy(null); setPermanentDeleteId(null); } }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  async function restoreLegacyExclusion(exclusionId: string) {
-    setBusy(exclusionId);
+  const count = state.status === "ready" ? state.total : 0;
+  const groups = state.status === "ready"
+    ? groupConversationsByMonth(state.items, (entry) => entry.removalTime)
+    : [];
+
+  function openDetail(entry: ArchiveItem, trigger: HTMLElement) {
+    triggerRef.current = trigger;
+    setActionError("");
+    setConfirmingDelete(false);
+    setSelected(entry);
+  }
+
+  function closeDetail(): boolean {
+    if (busyKey) return false;
+    setSelected(null);
+    setConfirmingDelete(false);
+    setActionError("");
+    return true;
+  }
+
+  async function restoreSelected() {
+    if (!selected) return;
+    const key = itemKey(selected);
+    setBusyKey(key);
+    setActionError("");
     try {
-      let candidates = state.status === "ready" ? state.candidatesByExclusion[exclusionId] : undefined;
-      if (!candidates) {
-        setCandidateStatusByExclusion((current) => ({ ...current, [exclusionId]: "loading" }));
-        try {
-          const result = await client.restoreCandidates(exclusionId);
-          candidates = result.items;
-          setState((current) => current.status === "ready"
-            ? { ...current, candidatesByExclusion: { ...current.candidatesByExclusion, [exclusionId]: result.items } }
-            : current);
-          setCandidateStatusByExclusion((current) => ({ ...current, [exclusionId]: "ready" }));
-          if (result.items.length === 1 && result.items[0]) {
-            setRestoreSourceByExclusion((current) => ({ ...current, [exclusionId]: result.items[0]!.sourceId }));
-          }
-        } catch {
-          setCandidateStatusByExclusion((current) => ({ ...current, [exclusionId]: "error" }));
-          return;
-        }
+      if (selected.kind === "branch") {
+        await client.restoreBranch({
+          conversationId: selected.item.conversationId,
+          branchId: selected.item.id,
+        });
+      } else if (selected.source === "deleted") {
+        await client.restoreDeletedConversation(selected.item.id);
+      } else {
+        await client.restoreConversation(selected.item.id);
       }
-
-      if (candidates.length === 0) return;
-      const selectedSourceId = restoreSourceByExclusion[exclusionId] ?? (candidates.length === 1 ? candidates[0]?.sourceId ?? "" : "");
-      if (!selectedSourceId) return;
-      await client.restoreExclusion({ exclusionId, sourceId: selectedSourceId });
+      setSelected(null);
+      setConfirmingDelete(false);
       await load();
+    } catch {
+      setActionError("恢复失败。");
     } finally {
-      setBusy(null);
+      setBusyKey(null);
     }
   }
 
-  const count = state.status === "ready" ? state.total : 0;
-
-  if (state.status === "loading" || state.status === "error") {
-    return <div className="page memory-page conversation-page conversation-lifecycle-page">
-      <header className="memory-page-header memory-archive-header">
-        <div className="memory-page-heading">
-          <div className="memory-page-title">{deleted ? "Deleted" : "Archive"}</div>
-          <div className="memory-page-count">{count.toLocaleString()}项</div>
-        </div>
-        <button className="memory-archive-back" type="button" onClick={() => navigate("/conversations")}>Return</button>
-      </header>
-      {state.status === "loading"
-        ? <PageState state="loading" message="Reading..." />
-        : <PageState state="error" message={deleted ? "Unable to read deleted conversations." : "Unable to read conversation archive."} retryLabel="Retry" onRetry={() => void load()} />}
-    </div>;
+  async function permanentlyDeleteSelected() {
+    if (!selected) return;
+    const key = itemKey(selected);
+    setBusyKey(key);
+    setActionError("");
+    try {
+      if (selected.kind === "branch") {
+        await client.permanentlyDeleteBranch({
+          conversationId: selected.item.conversationId,
+          branchId: selected.item.id,
+        });
+      } else {
+        await client.permanentlyDeleteConversation(selected.item.id);
+      }
+      setSelected(null);
+      setConfirmingDelete(false);
+      await load();
+    } catch {
+      setActionError("永久删除失败。");
+    } finally {
+      setBusyKey(null);
+    }
   }
 
-  const items: LifecycleItem[] = deleted ? [
-    ...state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.deletedAt ?? null })),
-    ...state.branches.map((item) => ({ kind: "branch" as const, item, time: item.deletedAt ?? null })),
-    ...state.exclusions.map((item) => ({ kind: "legacy" as const, item, time: item.createdAt ?? null })),
-  ] : state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.archivedAt ?? null }));
-  const groups = groupConversationsByMonth(items, (item) => item.time);
+  return (
+    <div className="page memory-page conversation-page conversation-lifecycle-page">
+      <header className="memory-page-header memory-archive-header">
+        <div className="memory-page-heading">
+          <div className="memory-page-title">Archive</div>
+          <div className="memory-page-count">{count.toLocaleString()}项</div>
+        </div>
+        <button className="memory-archive-back" type="button" onClick={() => navigate("/conversations")}>
+          Return
+        </button>
+      </header>
 
-  return <div className="page memory-page conversation-page conversation-lifecycle-page">
-    <header className="memory-page-header memory-archive-header"><div className="memory-page-heading"><div className="memory-page-title">{deleted ? "Deleted" : "Archive"}</div><div className="memory-page-count">{count.toLocaleString()}项</div></div><button className="memory-archive-back" type="button" onClick={() => navigate("/conversations")}>Return</button></header>
-    {groups.length === 0 ? <PageState state="empty" message={deleted ? "没有已删除的对话。" : "没有已归档的对话。"} /> : null}
-    <section className="memory-months" aria-label={deleted ? "Deleted conversations" : "Archived conversations"}>{groups.map((group) => <section className="memory-month-section" key={group.key}><h2 className="memory-month-label">{group.label}</h2><div className="memory-month-card conversation-list">{group.items.map((entry) => {
-      if (entry.kind === "conversation") {
-        const item = entry.item; const pending = permanentDeleteId === `conversation:${item.id}`;
-        return <div className="memory-row conversation-card" key={`conversation:${item.id}`}><Link to={`/conversations/${item.id}?scope=${deleted ? "deleted" : "archived"}`} className="conversation-lifecycle-link"><span className="memory-row-title">{item.title?.trim() || "Untitled conversation"}</span><span className="memory-row-meta"><span>{item.provider}</span><span>{shortTime((deleted ? item.deletedAt : item.archivedAt) ?? null)}</span></span></Link><span className="conversation-lifecycle-actions"><button type="button" disabled={busy === item.id} onClick={() => void restoreConversation(item.id)}>{busy === item.id ? "处理中…" : "Restore"}</button>{deleted && (pending ? <><span>{permanentDeleteCopy}</span><button type="button" disabled={busy === item.id} onClick={() => void permanentlyDeleteConversation(item.id)}>Confirm permanently delete</button><button type="button" onClick={() => setPermanentDeleteId(null)}>Cancel</button></> : <button type="button" disabled={busy === item.id} onClick={() => setPermanentDeleteId(`conversation:${item.id}`)}>Permanently delete</button>)}</span></div>;
-      }
-      if (entry.kind === "branch") {
-        const branch = entry.item; const pending = permanentDeleteId === `branch:${branch.id}`;
-        return <div className="memory-row conversation-card" key={`branch:${branch.id}`}><Link to={`/conversations/${branch.conversationId}?scope=deleted&branch=${branch.id}`} className="conversation-lifecycle-link"><span className="memory-row-title">{branch.title?.trim() || "Untitled conversation"}</span><span className="memory-row-meta"><span>Branch · {branch.provider}</span><span>{shortTime(branch.deletedAt)}</span><span>{branch.rootRole ? `${branch.rootRole} · ${shortTime(branch.rootSourceCreatedAt)}` : "Unavailable"}</span><span>{shortSnippet(branch.rootSnippet)}</span></span></Link><span className="conversation-lifecycle-actions"><button type="button" disabled={busy === branch.id} onClick={() => void restoreBranch(branch)}>Restore</button>{pending ? <><span>{permanentDeleteCopy}</span><button type="button" disabled={busy === branch.id} onClick={() => void permanentlyDeleteBranch(branch)}>Confirm permanently delete</button><button type="button" onClick={() => setPermanentDeleteId(null)}>Cancel</button></> : <button type="button" disabled={busy === branch.id} onClick={() => setPermanentDeleteId(`branch:${branch.id}`)}>Permanently delete</button>}</span></div>;
-      }
-      const exclusion = entry.item; const candidates = state.candidatesByExclusion[exclusion.id]; const candidateStatus = candidateStatusByExclusion[exclusion.id] ?? "idle"; const sourceId = restoreSourceByExclusion[exclusion.id] ?? (candidates?.length === 1 ? candidates[0]?.sourceId ?? "" : ""); const candidate = candidates?.find((value) => value.sourceId === sourceId) ?? candidates?.[0] ?? null;
-      return <div className="memory-row conversation-card" key={`legacy:${exclusion.id}`}><div className="conversation-lifecycle-link"><span className="memory-row-title">{exclusion.title?.trim() || candidate?.title?.trim() || "Unavailable"}</span><span className="memory-row-meta"><span>{exclusion.scope === "branch" ? "Branch" : "Conversation"} · {exclusion.provider}</span><span>{shortTime(exclusion.createdAt)}</span><span>{(exclusion.rootRole ?? candidate?.rootRole) ? `${exclusion.rootRole ?? candidate?.rootRole} · ${shortTime(exclusion.sourceCreatedAt ?? candidate?.rootSourceCreatedAt ?? null)}` : "Unavailable"}</span><span>{shortSnippet(exclusion.rootSnippet ?? candidate?.rootSnippet ?? null)}</span></span></div><span className="conversation-lifecycle-actions">{candidateStatus === "ready" && (candidates?.length ?? 0) > 1 ? <select aria-label="选择用于恢复的已验证原始 export" value={sourceId} onChange={(event) => setRestoreSourceByExclusion((values) => ({ ...values, [exclusion.id]: event.target.value }))}><option value="">选择已验证原始 export</option>{candidates?.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.filename}</option>)}</select> : null}{candidateStatus === "ready" && candidates?.length === 0 ? <span>Unavailable</span> : <button type="button" disabled={busy === exclusion.id || (candidateStatus === "ready" && (candidates?.length ?? 0) > 1 && !sourceId)} onClick={() => void restoreLegacyExclusion(exclusion.id)}>{candidateStatus === "loading" ? "Locating…" : candidateStatus === "error" ? "Retry" : "Restore"}</button>}</span></div>;
-    })}</div></section>)}</section>
-  </div>;
+      {state.status === "loading" ? <PageState state="loading" message="Reading..." /> : null}
+      {state.status === "error" ? (
+        <PageState
+          state="error"
+          message="Unable to read conversation archive."
+          retryLabel="Retry"
+          onRetry={() => void load()}
+        />
+      ) : null}
+      {state.status === "ready" && groups.length === 0 ? (
+        <PageState state="empty" message="还没有归档 Conversation 或 Branch。" />
+      ) : null}
+
+      {state.status === "ready" && groups.length > 0 ? (
+        <section className="memory-months" aria-label="Conversation Archive">
+          {groups.map((group) => (
+            <section className="memory-month-section" key={group.key}>
+              <h2 className="memory-month-label">{group.label}</h2>
+              <div className="memory-month-card conversation-list">
+                {group.items.map((entry) => {
+                  if (entry.kind === "conversation") {
+                    return (
+                      <button
+                        type="button"
+                        className="memory-row conversation-card"
+                        key={itemKey(entry)}
+                        onClick={(event) => openDetail(entry, event.currentTarget)}
+                      >
+                        <span className="memory-row-title">{title(entry.item.title)}</span>
+                        <span className="memory-row-meta">
+                          <span>{formatRowDateTime(entry.item.sourceCreatedAt)}</span>
+                          <span>Conversation</span>
+                        </span>
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <button
+                      type="button"
+                      className="memory-row conversation-card"
+                      key={itemKey(entry)}
+                      onClick={(event) => openDetail(entry, event.currentTarget)}
+                    >
+                      <span className="memory-row-title">{branchText(entry.item.rootSnippet)}</span>
+                      <span className="memory-row-meta">
+                        <span>{formatRowDateTime(entry.item.rootSourceCreatedAt)}</span>
+                        <span>{title(entry.item.title)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </section>
+      ) : null}
+
+      {selected ? (
+        <PaperDetailDialog
+          id="conversation-archive-detail-paper"
+          open
+          label={selected.kind === "conversation"
+            ? `Archived Conversation ${title(selected.item.title)}`
+            : `Archived Branch ${title(selected.item.title)}`}
+          dateLabel={`${formatPaperDateTime(selected.removalTime)} · ${providerLabel(selected.item.provider)}`}
+          signature=""
+          triggerRef={triggerRef}
+          errorMessage={actionError || null}
+          onRequestClose={closeDetail}
+          topRight={
+            confirmingDelete ? (
+              <>
+                <button
+                  className="memory-paper-control"
+                  disabled={Boolean(busyKey)}
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  取消
+                </button>
+                <span>·</span>
+                <button
+                  className="memory-paper-control"
+                  disabled={Boolean(busyKey)}
+                  onClick={() => void permanentlyDeleteSelected()}
+                >
+                  {busyKey ? "删除中…" : "确认永久删除"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="memory-paper-control"
+                  disabled={Boolean(busyKey)}
+                  onClick={() => void restoreSelected()}
+                >
+                  {busyKey ? "恢复中…" : "恢复"}
+                </button>
+                <span>·</span>
+                <button
+                  className="memory-paper-control"
+                  disabled={Boolean(busyKey)}
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  删除
+                </button>
+              </>
+            )
+          }
+          bottomLeft={selected.kind === "conversation" ? "Conversation" : "Branch"}
+        >
+          <h2 className="memory-paper-title">{title(selected.item.title)}</h2>
+          {selected.kind === "conversation" ? (
+            <p className="memory-paper-content">{formatPaperDateTime(selected.item.sourceCreatedAt)}</p>
+          ) : (
+            <>
+              <p className="memory-paper-content">{branchText(selected.item.rootSnippet)}</p>
+              <p className="conversation-lifecycle-source-time">
+                {formatPaperDateTime(selected.item.rootSourceCreatedAt)}
+              </p>
+            </>
+          )}
+        </PaperDetailDialog>
+      ) : null}
+    </div>
+  );
 }
