@@ -295,7 +295,7 @@ implements ConversationPruningRepository {
       }).from(conversations).where(and(
         eq(conversations.userId, input.userId),
         eq(conversations.id, input.conversationId),
-        sql`${conversations.deletedAt} IS NOT NULL`,
+        sql`(${conversations.deletedAt} IS NOT NULL OR ${conversations.archivedAt} IS NOT NULL)`,
       )).for("update").limit(1);
       if (!conversation) return null;
       const rows = await transaction.select({ id: conversationMessages.id }).from(conversationMessages).where(and(
