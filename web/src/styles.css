@@ -125,8 +125,9 @@ a {
 /* App shell */
 
 .app-shell {
+  --app-sidebar-width: 264px;
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
   min-height: 100dvh;
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
@@ -2463,6 +2464,7 @@ body:has(.home-prototype) {
 
 @media (max-width: 760px) {
   .app-shell {
+    --app-sidebar-width: 0px;
     display: block;
     min-height: 100dvh;
     padding: 0;
@@ -7265,8 +7267,8 @@ body:has(.system-page) {
 .state-surface--page {
   position: fixed;
   top: 50dvh;
-  left: 0;
-  width: 100vw;
+  left: var(--app-sidebar-width);
+  width: calc(100vw - var(--app-sidebar-width));
   min-height: 0;
   margin: 0;
   transform: translateY(-50%);
