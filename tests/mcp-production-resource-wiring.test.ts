@@ -132,3 +132,21 @@ test("production factory can hide recovery-only Conversation tools from public w
     assert.equal(publicNames.includes(name), true, `${name} remains a public Conversation product tool`);
   }
 });
+
+test("production factory defaults Conversation recovery tools to public-enabled while retaining them internally", async () => {
+  const createSessionServer = createProductionMcpSessionServerFactory({
+    activeUserRepository: { findUserById: async () => ({ status: "active" }) },
+    memoryService: {} as never, diaryService: {} as never, taskService: {} as never,
+    toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
+    universeService: {} as never, healthService: {} as never,
+    conversationArchiveReadService: {} as never,
+    conversationPruningService: {} as never,
+    conversationExclusionManagementService: {} as never,
+  });
+  const publicNames = await listTools(createSessionServer("user-1", "public"), "mcp-public-recovery-default");
+  const internalNames = await listTools(createSessionServer("user-1", "internal"), "mcp-internal-recovery-default");
+  for (const name of ["list_conversation_exclusions", "inspect_conversation_restore_candidates", "inspect_conversation_restore_path", "restore_conversation_exclusion"]) {
+    assert.equal(publicNames.includes(name), true, `${name} must remain public by default`);
+    assert.equal(internalNames.includes(name), true, `${name} must remain internal by default`);
+  }
+});

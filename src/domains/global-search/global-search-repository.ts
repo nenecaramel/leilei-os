@@ -303,6 +303,25 @@ function conversationQuery(
       and ${lifecycle(lifecycleStatus, input.scope)}
       and m.is_primary = true
       and m.role in ('user', 'assistant')
+      and not exists (
+        select 1
+        from conversation_deleted_branches deleted_branch
+        where deleted_branch.user_id = m.user_id
+          and deleted_branch.conversation_id = m.conversation_id
+          and exists (
+            with recursive branch_nodes(source_node_id) as (
+              select deleted_branch.source_node_id
+              union all
+              select descendant.source_node_id
+              from conversation_messages descendant
+              join branch_nodes parent on descendant.parent_source_node_id = parent.source_node_id
+              where descendant.conversation_id = deleted_branch.conversation_id
+            )
+            select 1
+            from branch_nodes
+            where branch_nodes.source_node_id = m.source_node_id
+          )
+      )
       and ${text} like ${pattern} escape '\\'
       and ${dates(businessDate, input)}`, input);
 }

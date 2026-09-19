@@ -278,6 +278,7 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
       const chatgptConversationId = randomUUID();
       const claudeConversationId = randomUUID();
       const archivedConversationId = randomUUID();
+      const deletedConversationId = randomUUID();
       const otherConversationId = randomUUID();
 
       await tx.insert(schema.conversations).values([
@@ -328,6 +329,22 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
           updatedAt: now,
         },
         {
+          id: deletedConversationId,
+          userId: owner,
+          provider: "chatgpt",
+          sourceConversationId: "chatgpt-deleted",
+          title: "Whole deleted conversation",
+          sourceCreatedAt: now,
+          sourceUpdatedAt: now,
+          currentLeafSourceNodeId: "deleted-window-node",
+          sourceFingerprint: "b".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          deletedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
           id: otherConversationId,
           userId: other,
           provider: "chatgpt",
@@ -348,6 +365,11 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
       const savedBranchId = randomUUID();
       const claudeId = randomUUID();
       const archivedId = randomUUID();
+      const activeDeletedRootId = randomUUID();
+      const activeDeletedChildId = randomUUID();
+      const archivedDeletedRootId = randomUUID();
+      const archivedDeletedChildId = randomUUID();
+      const wholeDeletedMessageId = randomUUID();
       await tx.insert(schema.conversationMessages).values([
         {
           id: currentId,
@@ -465,6 +487,105 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
           updatedAt: now,
         },
         {
+          id: activeDeletedRootId,
+          userId: owner,
+          conversationId: chatgptConversationId,
+          sourceNodeId: "deleted-active-root",
+          parentSourceNodeId: "current-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T03:30:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:30:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 3,
+          isPrimary: true,
+          displayText: "deleted active branch unique token",
+          sourceFingerprint: "8".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: activeDeletedChildId,
+          userId: owner,
+          conversationId: chatgptConversationId,
+          sourceNodeId: "deleted-active-child",
+          parentSourceNodeId: "deleted-active-root",
+          role: "user",
+          sourceCreatedAt: new Date("2026-09-16T03:31:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:31:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 4,
+          isPrimary: true,
+          displayText: "deleted active descendant unique token",
+          sourceFingerprint: "9".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: archivedDeletedRootId,
+          userId: owner,
+          conversationId: archivedConversationId,
+          sourceNodeId: "deleted-archived-root",
+          parentSourceNodeId: "archived-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T03:32:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:32:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 1,
+          isPrimary: true,
+          displayText: "deleted archived branch unique token",
+          sourceFingerprint: "a".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: archivedDeletedChildId,
+          userId: owner,
+          conversationId: archivedConversationId,
+          sourceNodeId: "deleted-archived-child",
+          parentSourceNodeId: "deleted-archived-root",
+          role: "user",
+          sourceCreatedAt: new Date("2026-09-16T03:33:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:33:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 2,
+          isPrimary: true,
+          displayText: "deleted archived descendant unique token",
+          sourceFingerprint: "b".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: wholeDeletedMessageId,
+          userId: owner,
+          conversationId: deletedConversationId,
+          sourceNodeId: "deleted-window-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T03:34:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:34:00.000Z"),
+          isCurrentPath: true,
+          currentPathIndex: 0,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "whole deleted conversation unique token",
+          sourceFingerprint: "c".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
           id: randomUUID(),
           userId: other,
           conversationId: otherConversationId,
@@ -482,6 +603,17 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
           lastSeenImportId: otherRun,
           createdAt: now,
           updatedAt: now,
+        },
+      ]);
+
+      await tx.insert(schema.conversationDeletedBranches).values([
+        {
+          id: randomUUID(), userId: owner, conversationId: chatgptConversationId,
+          provider: "chatgpt", sourceConversationId: "chatgpt-owner", sourceNodeId: "deleted-active-root", deletedAt: now, createdAt: now,
+        },
+        {
+          id: randomUUID(), userId: owner, conversationId: archivedConversationId,
+          provider: "chatgpt", sourceConversationId: "chatgpt-archived", sourceNodeId: "deleted-archived-root", deletedAt: now, createdAt: now,
         },
       ]);
 
@@ -534,6 +666,19 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
         limit: 25,
       });
       assert.equal(all.results.length, 4);
+
+      for (const [query, scope] of [
+        ["deleted active branch unique token", "active"],
+        ["deleted active descendant unique token", "active"],
+        ["deleted archived branch unique token", "archived"],
+        ["deleted archived descendant unique token", "archived"],
+        ["deleted active branch unique token", "all"],
+        ["deleted archived branch unique token", "all"],
+        ["whole deleted conversation unique token", "all"],
+      ] as const) {
+        const hidden = await service.search({ userId: owner, query, modules: ["conversation"], scope, limit: 25 });
+        assert.deepEqual(hidden.results, [], `${query} must be excluded from canonical visible Conversation search`);
+      }
 
       throw new Rollback();
     }), Rollback);

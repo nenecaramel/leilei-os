@@ -18,6 +18,7 @@ class ConversationReads {
   listCalls: Array<Record<string, unknown>> = [];
   searchCalls: Array<Record<string, unknown>> = [];
   readCalls: Array<Record<string, unknown>> = [];
+  nextOffset: number | null = null;
 
   async search(input: Record<string, unknown>): Promise<{
     items: ConversationArchiveSearchResult[];
@@ -117,8 +118,8 @@ class ConversationReads {
       total: 1,
       offset: 0,
       anchorIndex: 0,
-      hasMore: false,
-      nextOffset: null,
+      hasMore: this.nextOffset !== null,
+      nextOffset: this.nextOffset,
     };
   }
 }
@@ -517,6 +518,39 @@ test("Conversation MCP schemas reject client-supplied identity before service ca
   assert.equal(fixture.reads.searchCalls.length, 0);
 });
 
+test("Conversation product tools reject both user identity spellings before calling services", async (t) => {
+  const fixture = await connect();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const cases: Array<{ name: string; arguments: Record<string, unknown> }> = [
+    { name: "list_conversations", arguments: {} },
+    { name: "search_conversations", arguments: { query: "needle" } },
+    { name: "read_conversation", arguments: { conversation_id: CONVERSATION_ID } },
+    { name: "list_deleted_conversation_branches", arguments: {} },
+    { name: "archive_conversation", arguments: { conversation_id: CONVERSATION_ID } },
+    { name: "delete_conversation_item", arguments: { target: { kind: "conversation", conversation_id: CONVERSATION_ID } } },
+    { name: "restore_conversation_item", arguments: { target: { kind: "conversation", conversation_id: CONVERSATION_ID, scope: "archived" } } },
+    { name: "permanently_delete_conversation_item", arguments: { target: { kind: "conversation", conversation_id: CONVERSATION_ID, scope: "deleted" } } },
+  ];
+
+  for (const field of ["user_id", "userId"] as const) {
+    for (const entry of cases) {
+      const rejected = await fixture.client.callTool({
+        name: entry.name,
+        arguments: { ...entry.arguments, [field]: "attacker" },
+      });
+      assert.equal(rejected.isError, true, `${entry.name} must reject ${field}`);
+    }
+  }
+  assert.equal(fixture.reads.listCalls.length, 0);
+  assert.equal(fixture.reads.searchCalls.length, 0);
+  assert.equal(fixture.reads.readCalls.length, 0);
+  assert.equal(fixture.pruning.calls.length, 0);
+});
+
 test("Conversation product surface exposes browse, lifecycle, and compact reads without client identity", async (t) => {
   const fixture = await connect();
   t.after(async () => {
@@ -553,6 +587,50 @@ test("Conversation product surface exposes browse, lifecycle, and compact reads 
   assert.equal("content_blocks" in (data.messages[0] ?? {}), false);
   assert.equal("attachments" in (data.messages[0] ?? {}), false);
   assert.equal("provider_metadata" in data.conversation, false);
+
+  const readTool = inventory.tools.find((candidate) => candidate.name === "read_conversation");
+  assert.match(readTool?.description ?? "", /mode defaults to compact/i);
+  assert.match(readTool?.description ?? "", /without canonical payloads or attachments/i);
+  assert.match(readTool?.description ?? "", /mode=full/i);
+});
+
+test("read_conversation continuation preserves the complete selected lifecycle state", async (t) => {
+  const fixture = await connect();
+  fixture.reads.nextOffset = 40;
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const cases = [
+    { arguments: { conversation_id: CONVERSATION_ID, view: "all", scope: "archived", mode: "compact" }, expected: "conversation_id=" + CONVERSATION_ID + ", view=all, scope=archived, mode=compact, offset=40" },
+    { arguments: { conversation_id: CONVERSATION_ID, view: "default", scope: "deleted", mode: "compact" }, expected: "conversation_id=" + CONVERSATION_ID + ", view=default, scope=deleted, mode=compact, offset=40" },
+    { arguments: { conversation_id: CONVERSATION_ID, view: "all", scope: "deleted", branch_id: EXCLUSION_ID, mode: "compact" }, expected: "conversation_id=" + CONVERSATION_ID + ", view=all, scope=deleted, mode=compact, branch_id=" + EXCLUSION_ID + ", offset=40" },
+    { arguments: { conversation_id: CONVERSATION_ID, view: "all", scope: "archived", mode: "full" }, expected: "conversation_id=" + CONVERSATION_ID + ", view=all, scope=archived, mode=full, offset=40" },
+  ] as const;
+
+  for (const entry of cases) {
+    const response = await fixture.client.callTool({ name: "read_conversation", arguments: entry.arguments });
+    const text = (response.content as Array<{ type: string; text?: string }>)[0]?.text ?? "";
+    assert.match(text, new RegExp(entry.expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+test("new Conversation browse and lifecycle tools advertise structured output contracts", async (t) => {
+  const fixture = await connect();
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+  const inventory = await fixture.client.listTools();
+  for (const name of [
+    "list_conversations",
+    "list_deleted_conversation_branches",
+    "archive_conversation",
+    "delete_conversation_item",
+    "restore_conversation_item",
+    "permanently_delete_conversation_item",
+  ]) {
+    const tool = inventory.tools.find((candidate) => candidate.name === name);
+    assert.ok(tool, `${name} should be registered`);
+    assert.equal(tool.outputSchema?.type, "object", `${name} must advertise an object output schema`);
+    assert.ok(tool.outputSchema?.properties?.success, `${name} must expose success`);
+    assert.ok(tool.outputSchema?.properties?.data, `${name} must expose data`);
+  }
 });
 
 test("Conversation lifecycle tools use the exact authenticated target identities", async (t) => {
