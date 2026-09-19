@@ -523,7 +523,7 @@ body:has(.universe-page),
 .universe-cosmos-loading,
 .universe-cosmos-state {
   display: grid;
-  width: 100%;
+  width: calc(100vw - var(--app-sidebar-width));
   min-height: 0;
   flex: 1 1 auto;
   place-items: center;
@@ -599,7 +599,7 @@ body:has(.universe-page),
 .universe-page .universe-cosmos.universe-cosmos-loading,
 .universe-page .universe-cosmos.universe-cosmos-state {
   display: grid !important;
-  width: 100%;
+  width: calc(100vw - var(--app-sidebar-width));
   min-height: 0 !important;
   flex: 1 1 auto !important;
   margin: 0 !important;
