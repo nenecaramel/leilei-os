@@ -180,6 +180,19 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
           conversationId: selected.item.conversationId,
           branchId: selected.item.id,
         });
+      } else if (selected.source === "archived") {
+        await client.restoreConversation(selected.item.id);
+        try {
+          await client.deleteConversation(selected.item.id);
+        } catch (error) {
+          try {
+            await client.archiveConversation(selected.item.id);
+          } catch {
+            // Keep the original error; a reload below will reflect the actual lifecycle state.
+          }
+          throw error;
+        }
+        await client.permanentlyDeleteConversation(selected.item.id);
       } else {
         await client.permanentlyDeleteConversation(selected.item.id);
       }
@@ -188,6 +201,11 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
       await load();
     } catch {
       setActionError("永久删除失败。");
+      if (selected.kind === "conversation" && selected.source === "archived") {
+        setSelected(null);
+        setConfirmingDelete(false);
+        await load();
+      }
     } finally {
       setBusyKey(null);
     }
