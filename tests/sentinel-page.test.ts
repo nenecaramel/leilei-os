@@ -87,7 +87,10 @@ test("Sentinel loading reuses the standard System state card without moving the 
     assert.equal(container.querySelector(".page-header h1")?.textContent, "Sentinel");
     const loadingCard = container.querySelector("section.system-section");
     assert.ok(loadingCard);
-    assert.equal(loadingCard.querySelector('.system-state-copy[role="status"]')?.textContent, "Reading...");
+    const loadingState = loadingCard.querySelector(".sentinel-card-state");
+    assert.ok(loadingState);
+    assert.equal(loadingState.querySelector("p")?.textContent, "Reading...");
+    assert.ok(loadingState.querySelector(".sentinel-card-state__action-row"));
   } finally {
     root.unmount();
     await waitForPaint();
@@ -659,4 +662,12 @@ test("Sentinel host-facing copy names ChatGPT and Claude together", () => {
     bridgeSource,
     /connected ChatGPT conversation|Sent to ChatGPT"/,
   );
+});
+
+
+test("Sentinel loading and unavailable cards share the same first-row state structure", () => {
+  assert.match(sentinelSource, /function SentinelCardState/);
+  assert.match(sentinelSource, /<SentinelCardState state="loading" message="Reading\.\.\." \/>/);
+  assert.match(sentinelSource, /<SentinelCardState state="error" message="Unable to read wake policy\." onRetry=/);
+  assert.match(stylesSource, /\.sentinel-card-state__action-row\s*\{[^}]*min-height:\s*1\.4em[^}]*place-items:\s*center/s);
 });

@@ -78,8 +78,8 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
     }
   }
 
-  if (state.status === "loading") return <div className="page memory-page conversation-page conversation-lifecycle-page"><PageState state="loading" message="Reading..." /></div>;
-  if (state.status === "error") return <div className="page memory-page conversation-page conversation-lifecycle-page"><PageState state="error" message={deleted ? "Unable to read deleted conversations." : "Unable to read conversation archive."} retryLabel="Retry" onRetry={() => void load()} /></div>;
+  if (state.status === "loading") return <div className="page memory-page conversation-page conversation-lifecycle-page conversation-state-page"><PageState state="loading" message="Reading..." /></div>;
+  if (state.status === "error") return <div className="page memory-page conversation-page conversation-lifecycle-page conversation-state-page"><PageState state="error" message={deleted ? "Unable to read deleted conversations." : "Unable to read conversation archive."} retryLabel="Retry" onRetry={() => void load()} /></div>;
 
   const items: LifecycleItem[] = deleted ? [
     ...state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.deletedAt ?? null })),
@@ -88,7 +88,7 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
   ] : state.conversations.map((item) => ({ kind: "conversation" as const, item, time: item.archivedAt ?? null }));
   const groups = groupConversationsByMonth(items, (item) => item.time);
 
-  return <div className="page memory-page conversation-page conversation-lifecycle-page">
+  return <div className="page memory-page conversation-page conversation-lifecycle-page conversation-state-page">
     <header className="memory-page-header memory-archive-header"><div className="memory-page-heading"><div className="memory-page-title">{deleted ? "Deleted" : "Archive"}</div><div className="memory-page-count">{state.total.toLocaleString()}项</div></div><button className="memory-archive-back" type="button" onClick={() => navigate("/conversations")}>Return</button></header>
     {groups.length === 0 ? <PageState state="empty" message={deleted ? "没有已删除的对话。" : "没有已归档的对话。"} /> : null}
     <section className="memory-months" aria-label={deleted ? "Deleted conversations" : "Archived conversations"}>{groups.map((group) => <section className="memory-month-section" key={group.key}><h2 className="memory-month-label">{group.label}</h2><div className="memory-month-card conversation-list">{group.items.map((entry) => {
