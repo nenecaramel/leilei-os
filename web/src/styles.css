@@ -7304,7 +7304,7 @@ body:has(.system-page) {
   padding: 0;
 }
 
-.paper-detail-state--loading {
+.paper-detail-state.paper-detail-state--loading {
   position: absolute;
   inset: 0;
   width: 100%;
