@@ -493,9 +493,10 @@ test("direct detail load renders a detail placeholder first and skips the list r
   try {
     assert.ok(
       page.container.querySelector(
-        "#task-detail-paper[aria-label=\"正在读取 Task\"]",
+        "#task-detail-paper[aria-label=\"Reading Task\"]",
       ),
     );
+    assert.match(page.container.textContent ?? "", /Reading\.\.\./);
     assertNoListView(page.container);
     assert.deepEqual(
       requests.map((request) => request.path),
@@ -901,7 +902,7 @@ test("popstate switches between list and detail without rendering the wrong view
     assert.equal(listSignal?.aborted, true);
     assert.ok(
       page.container.querySelector(
-        "#task-detail-paper[aria-label=\"正在读取 Task\"]",
+        "#task-detail-paper[aria-label=\"Reading Task\"]",
       ),
     );
     assertNoListView(page.container);

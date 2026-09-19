@@ -1508,13 +1508,13 @@ function MobileDiaryDetail({
       <PaperDetailDialog
         id="diary-detail-paper"
         open
-        label="正在读取 Diary"
+        label="Reading Diary"
         dateLabel=""
         signature="—"
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
-        <div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取日记…</p></div>
+        <div className="paper-detail-state paper-detail-state--loading" role="status" aria-live="polite"><p>Reading...</p></div>
       </PaperDetailDialog>
     );
   }
@@ -1764,7 +1764,7 @@ function MobileArchivedDiaryDetail({
       <PaperDetailDialog
         id="diary-archive-detail-paper"
         open
-        label="正在读取已归档 Diary"
+        label="Reading archived Diary"
         dateLabel=""
         signature="—"
         triggerRef={triggerRef}
@@ -1774,7 +1774,7 @@ function MobileArchivedDiaryDetail({
           return true;
         }}
       >
-        <div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取归档日记…</p></div>
+        <div className="paper-detail-state paper-detail-state--loading" role="status" aria-live="polite"><p>Reading...</p></div>
       </PaperDetailDialog>
     );
   }

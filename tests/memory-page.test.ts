@@ -664,7 +664,7 @@ test("Memory archived detail refresh requests only archived detail", async () =>
   try {
     assert.match(
       page.container.textContent ?? "",
-      /正在读取归档记忆/,
+      /Reading\.\.\./,
     );
     assertNoList(page.container);
     assert.deepEqual(
@@ -1128,7 +1128,7 @@ test("Memory detail refresh starts in detail loading and skips list request", as
     api,
   );
   try {
-    assert.match(page.container.textContent ?? "", /正在读取记忆/);
+    assert.match(page.container.textContent ?? "", /Reading\.\.\./);
     assertNoList(page.container);
     assert.equal(hasMemoryListHeading(page.container), false);
     assert.deepEqual(requests.map(({ path }) => path), ["/memory/memory-1"]);
@@ -1335,7 +1335,7 @@ test("Memory popstate switches list and detail modes without stale requests", as
     });
 
     assert.equal(listSignal?.aborted, true);
-    assert.match(page.container.textContent ?? "", /正在读取记忆/);
+    assert.match(page.container.textContent ?? "", /Reading\.\.\./);
     assertNoList(page.container);
     assert.equal(requests.at(-1)?.path, "/memory/memory-1");
     const detailSignal = requests.at(-1)?.init?.signal;
