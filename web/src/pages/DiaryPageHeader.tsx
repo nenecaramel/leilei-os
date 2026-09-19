@@ -48,7 +48,8 @@ export function DiaryPageHeader({
   onCreate,
 }: DiaryPageHeaderProps) {
   const [openTool, setOpenTool] = useState<OpenTool>(null);
-  const [searchOpen, setSearchOpen] = useState(Boolean(searchDraft));\n  const [customDateOpen, setCustomDateOpen] = useState(Boolean(dateFrom || dateTo));
+  const [searchOpen, setSearchOpen] = useState(Boolean(searchDraft));
+  const [customDateOpen, setCustomDateOpen] = useState(Boolean(dateFrom || dateTo));
 
   useEffect(() => {
     if (searchDraft) setSearchOpen(true);

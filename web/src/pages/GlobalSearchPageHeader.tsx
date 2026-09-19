@@ -47,7 +47,8 @@ export function GlobalSearchPageHeader({
   onDateRangeChange,
   onClearDateRange,
 }: GlobalSearchPageHeaderProps) {
-  const [openMenu, setOpenMenu] = useState<OpenMenu>(null);\n  const [customDateOpen, setCustomDateOpen] = useState(Boolean(draftFilters.dateFrom || draftFilters.dateTo));
+  const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const [customDateOpen, setCustomDateOpen] = useState(Boolean(draftFilters.dateFrom || draftFilters.dateTo));
 
   const toggleModule = (module: SearchModule) => {
     const selected = draftFilters.modules.includes(module);
