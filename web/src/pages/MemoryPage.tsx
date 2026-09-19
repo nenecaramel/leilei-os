@@ -1492,7 +1492,7 @@ function ArchivedMemoryDetail({
       <PaperDetailDialog
         id="memory-archive-detail-paper"
         open
-        label="正在读取归档 Memory"
+        label="Reading archived Memory"
         dateLabel=""
         signature="—"
         triggerRef={triggerRef}
@@ -1501,7 +1501,7 @@ function ArchivedMemoryDetail({
           return true;
         }}
       >
-        <div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取归档记忆…</p></div>
+        <div className="paper-detail-state paper-detail-state--loading" role="status" aria-live="polite"><p>Reading...</p></div>
       </PaperDetailDialog>
     );
   }
@@ -1635,13 +1635,13 @@ function MemoryDetail({
       <PaperDetailDialog
         id="memory-detail-paper"
         open
-        label="正在读取 Memory"
+        label="Reading Memory"
         dateLabel=""
         signature="—"
         triggerRef={triggerRef}
         onRequestClose={onRequestClose}
       >
-        <div className="paper-detail-state" role="status" aria-live="polite"><p>正在读取记忆…</p></div>
+        <div className="paper-detail-state paper-detail-state--loading" role="status" aria-live="polite"><p>Reading...</p></div>
       </PaperDetailDialog>
     );
   }
