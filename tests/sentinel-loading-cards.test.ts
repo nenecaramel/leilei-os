@@ -49,8 +49,12 @@ test("Sentinel loading renders all data states as titleless cards", async () => 
     root.render(React.createElement(SentinelPageContent, { api }));
     await waitForPaint();
 
+    const primary = container.querySelector('section.sentinel-status-card[aria-label="Sentinel status"]');
+    assert.ok(primary);
+    assert.ok(primary?.querySelector(".sentinel-card-state"));
+    assert.equal(primary?.querySelector("h2"), null);
+
     const labels = [
-      "Sentinel status",
       "Wake policy",
       "Sentinel controls",
       "Wake activity",
