@@ -4567,10 +4567,15 @@ body:has(.home-prototype) {
   min-width: 176px;
 }
 
+.global-search-scope-popover {
+  width: 160px;
+  min-width: 160px;
+}
+
 .global-search-popover > button {
   display: flex;
   width: 100%;
-  min-height: 40px;
+  min-height: 36px;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
@@ -5122,7 +5127,8 @@ body:has(.home-prototype) {
   }
 
   .global-search-scope-popover {
-    min-width: 136px;
+    width: 160px;
+    min-width: 160px;
   }
 
   .global-search-module-option[aria-checked="true"] {

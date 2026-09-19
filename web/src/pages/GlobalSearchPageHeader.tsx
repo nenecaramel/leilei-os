@@ -143,7 +143,7 @@ export function GlobalSearchPageHeader({
           ) : null}
         </div>
 
-        <div className="memory-page-tool-wrap task-time-tool-wrap">
+        <div className="memory-page-tool-wrap">
           <button
             type="button"
             aria-label="筛选日期"
@@ -231,9 +231,9 @@ export function GlobalSearchPageHeader({
               aria-label="Global Search 范围"
             >
               {([
+                ["all", "全部范围"],
                 ["active", "当前"],
                 ["archived", "已归档"],
-                ["all", "全部"],
               ] as const).map(([scope, label]) => (
                 <button
                   key={scope}
