@@ -124,15 +124,16 @@ class ConversationReads {
 }
 
 class ConversationPruning {
-  async listDeletedBranches() { return { total: 0, items: [] }; }
-  async archiveConversation() { return { archived: true as const }; }
-  async deleteConversation() { return { provider: "chatgpt" as const, sourceConversationId: "provider", deletedMessages: 1, rawSourcePreserved: true as const }; }
-  async deleteBranch() { return { provider: "chatgpt" as const, sourceConversationId: "provider", sourceNodeId: "node", deletedMessages: 1, remainingMessages: 1, currentLeafSourceNodeId: "leaf", rawSourcePreserved: true as const }; }
-  async restoreConversation() { return { restored: true as const }; }
-  async restoreDeletedConversation() { return { restored: true as const }; }
-  async restoreBranch() { return { restored: true as const }; }
-  async permanentlyDeleteConversation() { return { deleted: true as const, rawSourcePreserved: true as const }; }
-  async permanentlyDeleteBranch() { return { deleted: true as const, rawSourcePreserved: true as const }; }
+  calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  async listDeletedBranches(input: Record<string, unknown>) { this.calls.push({ name: "list", input }); return { total: 0, items: [] }; }
+  async archiveConversation(input: Record<string, unknown>) { this.calls.push({ name: "archive", input }); return { archived: true as const }; }
+  async deleteConversation(input: Record<string, unknown>) { this.calls.push({ name: "deleteConversation", input }); return { provider: "chatgpt" as const, sourceConversationId: "provider", deletedMessages: 1, rawSourcePreserved: true as const }; }
+  async deleteBranch(input: Record<string, unknown>) { this.calls.push({ name: "deleteBranch", input }); return { provider: "chatgpt" as const, sourceConversationId: "provider", sourceNodeId: "node", deletedMessages: 1, remainingMessages: 1, currentLeafSourceNodeId: "leaf", rawSourcePreserved: true as const }; }
+  async restoreConversation(input: Record<string, unknown>) { this.calls.push({ name: "restoreArchived", input }); return { restored: true as const }; }
+  async restoreDeletedConversation(input: Record<string, unknown>) { this.calls.push({ name: "restoreDeleted", input }); return { restored: true as const }; }
+  async restoreBranch(input: Record<string, unknown>) { this.calls.push({ name: "restoreBranch", input }); return { restored: true as const }; }
+  async permanentlyDeleteConversation(input: Record<string, unknown>) { this.calls.push({ name: "permanentConversation", input }); return { deleted: true as const, rawSourcePreserved: true as const }; }
+  async permanentlyDeleteBranch(input: Record<string, unknown>) { this.calls.push({ name: "permanentBranch", input }); return { deleted: true as const, rawSourcePreserved: true as const }; }
 }
 
 
@@ -552,4 +553,22 @@ test("Conversation product surface exposes browse, lifecycle, and compact reads 
   assert.equal("content_blocks" in (data.messages[0] ?? {}), false);
   assert.equal("attachments" in (data.messages[0] ?? {}), false);
   assert.equal("provider_metadata" in data.conversation, false);
+});
+
+test("Conversation lifecycle tools use the exact authenticated target identities", async (t) => {
+  const fixture = await connect();
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+  await fixture.client.callTool({ name: "archive_conversation", arguments: { conversation_id: CONVERSATION_ID } });
+  await fixture.client.callTool({ name: "delete_conversation_item", arguments: { target: { kind: "branch", conversation_id: CONVERSATION_ID, message_id: MESSAGE_ID } } });
+  await fixture.client.callTool({ name: "restore_conversation_item", arguments: { target: { kind: "conversation", conversation_id: CONVERSATION_ID, scope: "deleted" } } });
+  await fixture.client.callTool({ name: "permanently_delete_conversation_item", arguments: { target: { kind: "branch", conversation_id: CONVERSATION_ID, branch_id: EXCLUSION_ID } } });
+  assert.deepEqual(fixture.pruning.calls, [
+    { name: "archive", input: { userId: USER_ID, conversationId: CONVERSATION_ID } },
+    { name: "deleteBranch", input: { userId: USER_ID, conversationId: CONVERSATION_ID, messageId: MESSAGE_ID } },
+    { name: "restoreDeleted", input: { userId: USER_ID, conversationId: CONVERSATION_ID } },
+    { name: "permanentBranch", input: { userId: USER_ID, conversationId: CONVERSATION_ID, branchId: EXCLUSION_ID } },
+  ]);
+  const rejected = await fixture.client.callTool({ name: "archive_conversation", arguments: { conversation_id: CONVERSATION_ID, user_id: "attacker" } });
+  assert.equal(rejected.isError, true);
+  assert.equal(fixture.pruning.calls.length, 4);
 });
