@@ -7263,12 +7263,15 @@ body:has(.system-page) {
 }
 
 .state-surface--page {
-  width: 100%;
-  min-height: min(56dvh, 520px);
-  flex: 1 1 auto;
+  position: fixed;
+  top: 50dvh;
+  left: 0;
+  width: 100vw;
+  min-height: 0;
+  margin: 0;
+  transform: translateY(-50%);
   place-content: center;
   align-content: center;
-  margin: 0;
 }
 
 .state-surface--page .state-surface__action-row {

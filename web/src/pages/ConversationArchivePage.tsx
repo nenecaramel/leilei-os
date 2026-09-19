@@ -764,14 +764,14 @@ function ConversationDetailView({
 
   if (state.status === "loading") {
     return (
-      <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state conversation-state-page">
+      <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
         <PageState state="loading" message="Reading..." />
       </div>
     );
   }
   if (state.status === "error") {
     return (
-      <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state conversation-state-page">
+      <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
         <PageState state="error" message="Unable to read conversation." retryLabel="Retry" onRetry={() => void load()} />
       </div>
     );

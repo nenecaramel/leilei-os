@@ -195,8 +195,8 @@ test("empty Conversation states use the shared PageState anchor without page-spe
   assert.doesNotMatch(css, /conversation-tab-source-state/);
   assert.doesNotMatch(css, /100dvh - 160px/);
   assert.match(favorites, /<PageState state="error" message="Unable to read favorites\."/);
-  assert.match(lifecycle, /conversation-state-page[^\n]*<PageState state="loading" message="Reading\.\.\." \/>/);
-  assert.match(archive, /conversation-state-page[^\n]*<PageState state="loading" message="Reading\.\.\." \/>/);
+  assert.match(lifecycle, /<PageState state="loading" message="Reading\.\.\." \/>/);
+  assert.match(archive, /<PageState state="loading" message="Reading\.\.\." \/>/);
   assert.match(sources, /className="system-section conversation-import-history-loading"/);
   assert.doesNotMatch(sources, /conversation-tab-source-state/);
 });
@@ -210,9 +210,10 @@ test("record list and archive read failures can opt into the shared page anchor"
 });
 
 
-test("Conversation state-only shells center PageState against the viewport without fixed content offsets", () => {
-  const css = readFileSync(resolve(webRoot, "pages", "conversations.css"), "utf8");
-  assert.match(css, /\.conversation-state-page\s*\{[^}]*display:\s*grid[^}]*min-height:\s*100dvh[^}]*place-items:\s*center/s);
-  assert.match(css, /\.conversation-state-page > \.state-surface--page\s*\{[^}]*min-height:\s*0[^}]*flex:\s*none/s);
-  assert.doesNotMatch(css, /100dvh - 160px/);
+test("all blank-page states use one shared viewport-centered PageState primitive", () => {
+  const styles = readFileSync(resolve(webRoot, "styles.css"), "utf8");
+  const conversationCss = readFileSync(resolve(webRoot, "pages", "conversations.css"), "utf8");
+  assert.match(styles, /\.state-surface--page\s*\{[^}]*position:\s*fixed[^}]*top:\s*50dvh[^}]*transform:\s*translateY\(-50%\)/s);
+  assert.doesNotMatch(conversationCss, /conversation-state-page/);
+  assert.doesNotMatch(conversationCss, /100dvh - 160px/);
 });
