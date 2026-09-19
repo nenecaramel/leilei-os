@@ -246,9 +246,6 @@ export function GlobalSearchPageHeader({
                   }}
                 >
                   <span>{label}</span>
-                  <span className="global-search-menu-check" aria-hidden="true">
-                    {draftFilters.scope === scope ? "✓" : ""}
-                  </span>
                 </button>
               ))}
             </div>
