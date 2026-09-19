@@ -18,7 +18,12 @@ import {
   type ConversationMessage,
   type ConversationProvider,
 } from "./conversation-archive-api";
-import { groupConversationsByMonth } from "./conversation-presentation";
+import {
+  conversationProviderLabel,
+  formatConversationBytes,
+  formatConversationDateTime,
+  groupConversationsByMonth,
+} from "./conversation-presentation";
 import "./conversations.css";
 
 type ListState =
@@ -45,16 +50,6 @@ type PendingScrollRestore = {
 
 const MESSAGE_PAGE_SIZE = 200;
 
-function formatDateTime(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
 function formatRowDate(value: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -63,10 +58,6 @@ function formatRowDate(value: string | null): string {
     month: "numeric",
     day: "numeric",
   }).format(date);
-}
-
-function providerLabel(provider: ConversationProvider): string {
-  return provider === "chatgpt" ? "ChatGPT" : "Claude";
 }
 
 function detailViewParams(
@@ -79,11 +70,6 @@ function detailViewParams(
     ...(scope !== "active" ? { scope } : {}),
     ...(branchId ? { branch: branchId } : {}),
   };
-}
-
-function shortBytes(value: number): string {
-  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function ConversationMonthLoading({ label }: { label: string }) {
@@ -321,7 +307,7 @@ function ConversationListView({
             <p className="eyebrow">Import Preview</p>
             <h2>{preview.filename}</h2>
             <p>
-              {providerLabel(preview.provider)} · {shortBytes(preview.raw_bytes)} ·
+              {conversationProviderLabel(preview.provider)} · {formatConversationBytes(preview.raw_bytes)} ·
               {" "}{preview.summary.conversations.create} 新窗口 ·
               {" "}{preview.summary.conversations.update} 更新 ·
               {" "}{preview.summary.messages.create} 新消息
@@ -423,7 +409,7 @@ function ConversationListView({
                           <span className="memory-row-meta">
                             <span>{formatRowDate(item.sourceCreatedAt ?? item.sourceUpdatedAt)}</span>
                             <span>
-                              {providerLabel(item.provider)}
+                              {conversationProviderLabel(item.provider)}
                               {` · ${item.messageCount.toLocaleString()} 条 · ${item.turnCount.toLocaleString()} 轮`}
                               {item.totalNodeCount > item.messageCount ? ` · ${item.totalNodeCount.toLocaleString()} nodes` : ""}
                               {item.defaultModel ? ` · ${item.defaultModel}` : ""}
@@ -886,9 +872,9 @@ function ConversationDetailView({
               key={message.id}
             >
               <div className="conversation-message-meta">
-                <strong>{message.role === "user" ? "You" : providerLabel(detail.provider)}</strong>
+                <strong>{message.role === "user" ? "You" : conversationProviderLabel(detail.provider)}</strong>
                 <span>{message.model ?? ""}</span>
-                <time className="conversation-message-time">{formatDateTime(message.sourceCreatedAt)}</time>
+                <time className="conversation-message-time">{formatConversationDateTime(message.sourceCreatedAt)}</time>
                 {scope === "active" && (detail.provider === "claude" || view === "all") ? (
                   <button
                     className="conversation-message-prune"

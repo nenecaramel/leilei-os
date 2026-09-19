@@ -1,3 +1,5 @@
+import type { ConversationProvider } from "./conversation-archive-api";
+
 export type ConversationMonthGroup<T> = {
   key: string;
   label: string;
@@ -8,6 +10,26 @@ type DatedItem<T> = {
   item: T;
   time: number | null;
 };
+
+export function conversationProviderLabel(provider: ConversationProvider): string {
+  return provider === "chatgpt" ? "ChatGPT" : "Claude";
+}
+
+export function formatConversationDateTime(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+export function formatConversationBytes(value: number | null): string {
+  if (value === null) return "—";
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
 
 /**
  * Conversation dates are instants, so month grouping follows the browser's

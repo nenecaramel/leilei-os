@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const page = readFileSync(
@@ -14,20 +14,21 @@ const importHistory = readFileSync(
   new URL("../web/src/pages/ConversationImportHistoryPanel.tsx", import.meta.url),
   "utf8",
 );
-const refinementCss = readFileSync(
-  new URL("../web/src/pages/conversation-layout-refinement.css", import.meta.url),
+const css = readFileSync(
+  new URL("../web/src/pages/conversations.css", import.meta.url),
   "utf8",
 );
 
 test("Conversation provider filter is vertically compact and clear of the first card", () => {
   assert.match(page, /conversation-provider-filter/);
-  assert.match(refinementCss, /\.conversation-page \.conversation-list-heading\s*\{[^}]*top:\s*-8px/s);
-  assert.match(refinementCss, /\.conversation-page \.conversation-provider-filter button\s*\{[^}]*min-height:\s*24px[^}]*padding:\s*2px 9px/s);
+  assert.match(css, /\.conversation-list-heading\s*\{[^}]*top:\s*-8px/s);
+  assert.match(css, /\.conversation-provider-filter button\s*\{[^}]*min-height:\s*24px[^}]*padding:\s*2px 9px/s);
 });
 
 test("Located Conversation message keeps only a neutral left marker", () => {
-  assert.match(refinementCss, /\.conversation-detail-page \.conversation-message--anchor\s*\{[^}]*background:\s*transparent[^}]*box-shadow:\s*inset 3px 0 0 #bdbdbd/s);
-  assert.doesNotMatch(refinementCss, /#fff9df|#e0ca71|background:\s*#f5f5f5/);
+  assert.match(css, /\.conversation-detail-page \.conversation-message--anchor\s*\{[^}]*background:\s*transparent[^}]*box-shadow:\s*inset 3px 0 0 #bdbdbd/s);
+  const anchorRule = css.match(/\.conversation-detail-page \.conversation-message--anchor\s*\{[^}]*\}/s)?.[0] ?? "";
+  assert.doesNotMatch(anchorRule, /#fff9df|#e0ca71|background:\s*#f5f5f5/);
 });
 
 test("Source summary hides low-value raw hash and storage diagnostics", () => {
@@ -37,15 +38,24 @@ test("Source summary hides low-value raw hash and storage diagnostics", () => {
 });
 
 test("Import run rows are fixed-height and vertically centered inside the expanded area", () => {
-  assert.match(refinementCss, /\.conversation-page \.conversation-import-run-list\s*\{[^}]*padding-top:\s*0[^}]*padding-bottom:\s*0/s);
-  assert.match(refinementCss, /\.conversation-page \.conversation-import-run\s*\{[^}]*height:\s*42px[^}]*min-height:\s*42px[^}]*align-items:\s*center[^}]*padding:\s*0/s);
-  assert.match(refinementCss, /\.conversation-page \.conversation-import-run > strong,[\s\S]*line-height:\s*1\.2/s);
+  assert.match(css, /\.conversation-import-run-list\s*\{[^}]*padding:\s*0 13px/s);
+  assert.match(css, /\.conversation-import-run\s*\{[^}]*height:\s*42px[^}]*min-height:\s*42px[^}]*align-items:\s*center[^}]*padding:\s*0/s);
+  assert.match(css, /\.conversation-import-run > strong,[\s\S]*line-height:\s*1\.2/s);
 });
 
 test("Import run action stays immediately left of the far-right date", () => {
-  assert.match(refinementCss, /\.conversation-page \.conversation-import-run > \.conversation-history-inline-action\s*\{[^}]*grid-column:\s*4/s);
-  assert.match(refinementCss, /\.conversation-page \.conversation-import-run > time\s*\{[^}]*grid-column:\s*5[^}]*justify-self:\s*end/s);
+  assert.match(css, /\.conversation-import-run > \.conversation-history-inline-action\s*\{[^}]*grid-column:\s*4/s);
+  assert.match(css, /\.conversation-import-run > time\s*\{[^}]*grid-column:\s*5[^}]*justify-self:\s*end/s);
   assert.match(importHistory, /canConfirmImport\(run\)[\s\S]*conversation-history-inline-action[\s\S]*<time>/);
+});
+
+test("Conversation refinement rules live in the canonical stylesheet", () => {
+  assert.doesNotMatch(importHistory, /conversation-layout-refinement\.css/);
+  assert.equal(
+    existsSync(new URL("../web/src/pages/conversation-layout-refinement.css", import.meta.url)),
+    false,
+  );
+  assert.doesNotMatch(css, /Targeted Conversation follow-up geometry/);
 });
 
 test("Search toolbar shows hit count and removes the duplicate footer count", () => {

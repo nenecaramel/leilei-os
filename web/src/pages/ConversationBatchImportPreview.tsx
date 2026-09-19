@@ -1,9 +1,5 @@
 import type { ConversationImportBatchPreview } from "./conversation-archive-api";
-
-function shortBytes(value: number): string {
-  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
+import { conversationProviderLabel, formatConversationBytes } from "./conversation-presentation";
 
 function statusLabel(status: ConversationImportBatchPreview["items"][number]["status"]): string {
   if (status === "pending") return "待执行";
@@ -59,7 +55,7 @@ export function ConversationBatchImportPreview({
               <div>
                 <strong>{item.input_index + 1}. {item.filename}</strong>
                 <span>
-                  {item.provider === "chatgpt" ? "ChatGPT" : "Claude"} · {shortBytes(item.raw_bytes)}
+                  {conversationProviderLabel(item.provider)} · {formatConversationBytes(item.raw_bytes)}
                 </span>
               </div>
               <div className="conversation-batch-file-result">
