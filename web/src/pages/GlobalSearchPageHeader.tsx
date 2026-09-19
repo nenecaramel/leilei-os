@@ -142,7 +142,7 @@ export function GlobalSearchPageHeader({
           ) : null}
         </div>
 
-        <div className="memory-page-tool-wrap">
+        <div className="memory-page-tool-wrap task-time-tool-wrap">
           <button
             type="button"
             aria-label="筛选日期"

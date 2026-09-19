@@ -54,6 +54,10 @@ export function DiaryPageHeader({
     if (searchDraft) setSearchOpen(true);
   }, [searchDraft]);
 
+  useEffect(() => {
+    if (dateFrom || dateTo) setCustomDateOpen(true);
+  }, [dateFrom, dateTo]);
+
   function toggleTool(next: Exclude<OpenTool, null>) {
     setSearchOpen(false);
     setOpenTool((current) => current === next ? null : next);
@@ -74,7 +78,7 @@ export function DiaryPageHeader({
       </div>
 
       <div className="memory-page-tools diary-page-tools">
-        <div className="memory-page-tool-wrap">
+        <div className="memory-page-tool-wrap task-time-tool-wrap">
           <button
             type="button"
             aria-label="按日期筛选"
