@@ -1237,7 +1237,7 @@ export function DiaryPageContent({
               {state.status === "error" ? (
                 <ModuleSearchStateMessage
                   state="error"
-                  placement="module"
+                  placement={filters.q ? "module" : "page"}
                   emptyText=""
                   errorText="Unable to read diary entries."
                   retryLabel="Retry"
@@ -1679,7 +1679,7 @@ function MobileArchivedDiaryList({
     body = (
       <ModuleSearchStateMessage
         state="error"
-        placement="module"
+        placement="page"
         emptyText=""
         errorText="Unable to read archived diary entries."
         retryLabel="Retry"

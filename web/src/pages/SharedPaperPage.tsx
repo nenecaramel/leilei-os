@@ -393,7 +393,7 @@ export function SharedPaperPageContent({ api }: { api: WebApiClient }) {
           <SharedPaperListLoading label={scope === "archived" ? "Shared Paper Archive 加载中" : "Shared Paper 加载中"} />
         )
       ) : null}
-      {list.status === "error" ? <ModuleStateMessage state="error" placement="module" emptyText="" errorText={scope === "archived" ? "Unable to read archived shared papers." : "Unable to read shared papers."} retryLabel="Retry" onRetry={() => setSearchRetry((value) => value + 1)} /> : null}
+      {list.status === "error" ? <ModuleStateMessage state="error" placement={query ? "module" : "page"} emptyText="" errorText={scope === "archived" ? "Unable to read archived shared papers." : "Unable to read shared papers."} retryLabel="Retry" onRetry={() => setSearchRetry((value) => value + 1)} /> : null}
       {list.status === "ready" && papers.length === 0 ? (
         query ? (
           <ModuleStateMessage state="empty" placement="module" emptyText="没有符合条件的 Shared Paper" errorText="" />

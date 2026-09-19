@@ -2695,7 +2695,7 @@ body:has(.home-prototype) {
   color: #666;
   background: transparent;
   font: inherit;
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 .module-state-slot {
@@ -7268,6 +7268,15 @@ body:has(.system-page) {
   margin: 0;
 }
 
+.state-surface--page.state-surface--loading::after {
+  content: "Retry";
+  visibility: hidden;
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .state-surface--module {
   width: min(100%, 360px);
   min-height: 0;
@@ -7524,6 +7533,7 @@ body:has(.system-page) {
 /* UI convergence: inline failures use System typography without shifting Home cards. */
 .state-surface--inline[role="alert"] {
   display: grid;
+  width: 100%;
   min-height: 0;
   justify-items: center;
   gap: 10px;
@@ -7531,31 +7541,30 @@ body:has(.system-page) {
 
 .home-page-heading,
 .calendar-section-heading {
-  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: baseline;
 }
 
 .home-page-heading {
-  display: flex;
   height: 22px;
   margin-bottom: 6px;
-  align-items: flex-start;
 }
 
-.home-page-heading .home-page-title {
+.home-page-heading .home-page-title,
+.calendar-section-heading h2 {
+  grid-column: 1;
   margin: 0;
 }
 
 .home-inline-unavailable {
-  position: absolute;
-  top: -4px;
-  left: 50%;
-  display: grid;
-  align-content: start;
-  justify-items: center;
-  gap: 0;
-  transform: translateX(-50%);
+  grid-column: 2;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   font-family: var(--state-font);
   text-align: center;
+  white-space: nowrap;
 }
 
 .home-inline-unavailable span {
@@ -7575,19 +7584,3 @@ body:has(.system-page) {
   cursor: pointer;
 }
 
-
-/* UI convergence round 2: center Day Space search states on the content axis. */
-.day-space-search-panel .module-search-state,
-.day-space-search-panel .state-surface {
-  width: 100%;
-  margin-right: auto;
-  margin-left: auto;
-  justify-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-/* Keep Universe loading on the same headline row as the unavailable copy. */
-.universe-cosmos-loading .state-surface__message {
-  transform: translateY(-13px);
-}

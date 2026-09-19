@@ -277,6 +277,8 @@ test("Conversation advanced search filters stay secondary until requested", () =
 });
 
 
-test("Conversation import glyph is slightly larger without changing the header tool slot", () => {
-  assert.match(css, /\.conversation-page \.conversation-import-icon\s*\{[^}]*width:\s*25px[^}]*height:\s*25px/s);\n  assert.match(css, /\.conversation-page \.memory-page-search-icon\s*\{[^}]*width:\s*20px[^}]*height:\s*20px/s);
+test("Conversation header icons reuse the shared search primitive and keep import optically balanced", () => {
+  assert.match(page, /<ModuleSearchButton/);
+  assert.doesNotMatch(css, /\.conversation-page \.memory-page-search-icon/);
+  assert.match(css, /\.conversation-import-icon\s*\{[^}]*width:\s*24px[^}]*height:\s*24px/s);
 });

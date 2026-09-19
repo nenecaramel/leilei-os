@@ -1260,7 +1260,7 @@ export function MemoryPageContent({
               {state.status === "error" ? (
                 <ModuleSearchStateMessage
                   state="error"
-                  placement="module"
+                  placement={filters.q ? "module" : "page"}
                   emptyText=""
                   errorText="Unable to read memories."
                   retryLabel="Retry"
@@ -1407,7 +1407,7 @@ function ArchivedMemoryList({
     body = (
       <ModuleSearchStateMessage
         state="error"
-        placement="module"
+        placement="page"
         emptyText=""
         errorText="Unable to read archived memories."
         retryLabel="Retry"

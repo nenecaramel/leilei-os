@@ -183,20 +183,16 @@ export function ConversationImportHistoryPanel({
           </div>
 
           {state.status === "loading" ? (
-            <div className="conversation-tab-source-state">
-              <div className="system-section conversation-import-history-loading">
-                <p className="system-state-copy" role="status" aria-live="polite">Reading...</p>
-              </div>
+            <div className="system-section conversation-import-history-loading">
+              <p className="system-state-copy" role="status" aria-live="polite">Reading...</p>
             </div>
           ) : state.status === "error" ? (
-            <div className="conversation-tab-source-state">
-              <div className="system-section conversation-import-history-loading">
-                <div className="system-state-message" role="alert">
-                  <p>Unable to read sources.</p>
-                  <button className="secondary-button" type="button" onClick={() => void load()}>
-                    Retry
-                  </button>
-                </div>
+            <div className="system-section conversation-import-history-loading">
+              <div className="system-state-message" role="alert">
+                <p>Unable to read sources.</p>
+                <button className="secondary-button" type="button" onClick={() => void load()}>
+                  Retry
+                </button>
               </div>
             </div>
           ) : state.items.length === 0 ? (

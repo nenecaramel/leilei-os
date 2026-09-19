@@ -27,7 +27,7 @@ export function StateSurface({
   const role = state === "error" ? "alert" : "status";
   return (
     <section
-      className={`state-surface state-surface--${placement}${className ? ` ${className}` : ""}`}
+      className={`state-surface state-surface--${placement} state-surface--${state}${className ? ` ${className}` : ""}`}
       role={role}
       aria-live={state === "error" ? undefined : "polite"}
     >
