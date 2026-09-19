@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
-import { ArchiveIcon, PlusIcon, TrashIcon } from "../components/icons";
+import { ArchiveIcon, PlusIcon } from "../components/icons";
 import { PageState } from "../components/StateSurface";
 import { ConversationSearchPanel } from "./ConversationSearchPanel";
 import { ConversationBatchImportPreview } from "./ConversationBatchImportPreview";
@@ -263,7 +263,6 @@ function ConversationListView({
             onClick={() => setSearchOpen((value) => !value)}
           />
           <button type="button" aria-label="查看归档" title="Archive" onClick={() => navigate("/conversations/archive")}><ArchiveIcon /></button>
-          <button type="button" aria-label="查看已删除" title="Deleted" onClick={() => navigate("/conversations/deleted")}><TrashIcon /></button>
           <button
             type="button"
             aria-label="导入 Conversation export"
@@ -680,32 +679,21 @@ function ConversationDetailView({
 
   const deleteWindow = async () => {
     if (!window.confirm(
-      "把整个 Conversation 移到 Deleted？之后可以恢复。\n\n原始 export 文件仍会保留。",
+      "把整个 Conversation 移到 Archive？之后可以恢复。\n\n原始 export 文件仍会保留。",
     )) return;
     setPruneStatus("");
     try {
       const result = await client.deleteConversation(conversationId);
-      setPruneStatus(`已移到 Deleted（${result.deletedMessages} 个保存节点可恢复）。`);
+      setPruneStatus(`已移到 Archive（${result.deletedMessages} 个保存节点可恢复）。`);
       navigate("/conversations", { replace: true });
     } catch {
       setPruneStatus("窗口删除失败。");
     }
   };
 
-  const archiveWindow = async () => {
-    if (!window.confirm("归档这个 Conversation？之后可在 Archive 中恢复。")) return;
-    setPruneStatus("");
-    try {
-      await client.archiveConversation(conversationId);
-      navigate("/conversations", { replace: true });
-    } catch {
-      setPruneStatus("窗口归档失败。");
-    }
-  };
-
   const deleteBranch = async (message: ConversationMessage) => {
     if (!window.confirm(
-      "把这个分支移到 Deleted？之后可以恢复。\n\n原始 export 文件仍会保留。",
+      "把这个分支移到 Archive？之后可以恢复。\n\n原始 export 文件仍会保留。",
     )) return;
     setPruningMessageId(message.id);
     setPruneStatus("");
@@ -716,7 +704,7 @@ function ConversationDetailView({
         messageId: message.id,
       });
       setPruneStatus(
-        `已把这个分支移到 Deleted（${result.deletedMessages} 个保存节点可恢复）。`,
+        `已把这个分支移到 Archive（${result.deletedMessages} 个保存节点可恢复）。`,
       );
       pendingScrollRestoreRef.current = pendingRestore;
       setState({ status: "loading" });
@@ -788,39 +776,61 @@ function ConversationDetailView({
           </div>
         </div>
         <div className="conversation-detail-header-actions">
-          {scope === "active" ? (
-            <button className="memory-archive-back" type="button" onClick={() => void archiveWindow()}>Archive</button>
-          ) : null}
           {scope === "archived" ? (
-            <button className="memory-archive-back" type="button" onClick={() => void client.restoreConversation(conversationId).then(() => navigate("/conversations/archive"))}>Restore</button>
-          ) : null}
-          {scope === "deleted" ? (
+            <button
+              className="memory-archive-back"
+              type="button"
+              onClick={() => void client.restoreConversation(conversationId).then(() => navigate("/conversations/archive"))}
+            >
+              Restore
+            </button>
+          ) : scope === "deleted" ? (
             <>
-            {confirmPermanentDelete ? <>
-              <span>{"永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留。"}</span>
-              <button className="memory-archive-back" type="button" onClick={() => {
-                if (branchId) {
-                  void client.permanentlyDeleteBranch({ conversationId, branchId }).then(() => navigate("/conversations/deleted"));
-                } else {
-                  void client.permanentlyDeleteConversation(conversationId).then(() => navigate("/conversations/deleted"));
-                }
-              }}>Confirm Permanently Delete</button>
-              <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(false)}>Cancel</button>
-            </> : <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(true)}>Permanently Delete</button>}
-            <button className="memory-archive-back" type="button" onClick={() => {
-              if (branchId) {
-                void client.restoreBranch({ conversationId, branchId }).then(() => navigate("/conversations/deleted"));
-              } else {
-                void client.restoreDeletedConversation(conversationId).then(() => navigate("/conversations/deleted"));
-              }
-            }}>Restore</button>
+              {confirmPermanentDelete ? (
+                <>
+                  <span>{"永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留。"}</span>
+                  <button
+                    className="memory-archive-back"
+                    type="button"
+                    onClick={() => {
+                      if (branchId) {
+                        void client.permanentlyDeleteBranch({ conversationId, branchId }).then(() => navigate("/conversations/archive"));
+                      } else {
+                        void client.permanentlyDeleteConversation(conversationId).then(() => navigate("/conversations/archive"));
+                      }
+                    }}
+                  >
+                    Confirm Permanently Delete
+                  </button>
+                  <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(false)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(true)}>
+                  Permanently Delete
+                </button>
+              )}
+              <button
+                className="memory-archive-back"
+                type="button"
+                onClick={() => {
+                  if (branchId) {
+                    void client.restoreBranch({ conversationId, branchId }).then(() => navigate("/conversations/archive"));
+                  } else {
+                    void client.restoreDeletedConversation(conversationId).then(() => navigate("/conversations/archive"));
+                  }
+                }}
+              >
+                Restore
+              </button>
             </>
           ) : (
             <button
               className="memory-archive-back conversation-detail-delete"
               type="button"
-              aria-label="把整个对话窗口移到 Deleted"
-              title="移到 Deleted；原始 export 仍保留"
+              aria-label="把整个对话窗口移到 Archive"
+              title="移到 Archive；原始 export 仍保留"
               onClick={() => void deleteWindow()}
             >
               Delete
@@ -829,7 +839,7 @@ function ConversationDetailView({
           <button
             className="memory-archive-back"
             type="button"
-            onClick={() => navigate(scope === "archived" ? "/conversations/archive" : scope === "deleted" ? "/conversations/deleted" : "/conversations")}
+            onClick={() => navigate(scope === "archived" || scope === "deleted" ? "/conversations/archive" : "/conversations")}
           >
             Return
           </button>
@@ -883,8 +893,8 @@ function ConversationDetailView({
                   <button
                     className="conversation-message-prune"
                     type="button"
-                    aria-label="从这条消息开始把整个分支移到 Deleted"
-                    title="删除此分支；原始 export 仍保留"
+                    aria-label="从这条消息开始把整个分支移到 Archive"
+                    title="移到 Archive；原始 export 仍保留"
                     disabled={pruningMessageId !== null}
                     onClick={() => void deleteBranch(message)}
                   >

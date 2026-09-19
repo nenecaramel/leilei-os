@@ -36,7 +36,7 @@ export default function App() {
             <Route path="shared-paper" element={<SharedPaperPage />} />
             <Route path="conversations" element={<ConversationArchivePage />} />
             <Route path="conversations/archive" element={<ConversationLifecyclePage />} />
-            <Route path="conversations/deleted" element={<ConversationLifecyclePage />} />
+            <Route path="conversations/deleted" element={<Navigate to="/conversations/archive" replace />} />
             <Route path="conversations/:conversationId" element={<ConversationArchivePage />} />
             <Route path="task" element={<TaskPage />} />
             <Route path="day-space" element={<DaySpacePage />} />
