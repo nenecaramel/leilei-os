@@ -8,6 +8,10 @@ import {
   ScopeIcon,
   SearchIcon,
 } from "../components/icons.js";
+import {
+  PopoverOption,
+  PopoverShell,
+} from "../components/FilterPopover.js";
 import { NativeDateInput } from "../components/NativeDateInput.js";
 import {
   SEARCH_MODULES,
@@ -48,6 +52,9 @@ export function GlobalSearchPageHeader({
   onClearDateRange,
 }: GlobalSearchPageHeaderProps) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const [customDateOpen, setCustomDateOpen] = useState(
+    Boolean(draftFilters.dateFrom || draftFilters.dateTo),
+  );
 
   const toggleModule = (module: SearchModule) => {
     const selected = draftFilters.modules.includes(module);
@@ -96,49 +103,34 @@ export function GlobalSearchPageHeader({
           </button>
 
           {openMenu === "modules" ? (
-            <div
-              className="memory-page-popover global-search-popover global-search-module-popover"
-              role="menu"
-              aria-label="Global Search 模块"
-            >
-              <button
-                type="button"
+            <PopoverShell role="menu" ariaLabel="Global Search 模块">
+              <PopoverOption
                 role="menuitemcheckbox"
-                aria-checked={allModulesSelected}
+                checked={allModulesSelected}
+                showCheck
                 onClick={() => {
                   onModulesChange([...SEARCH_MODULES]);
                   setOpenMenu(null);
                 }}
               >
-                <span>全部模块</span>
-                <span className="global-search-menu-check" aria-hidden="true">
-                  {allModulesSelected ? "✓" : ""}
-                </span>
-              </button>
+                全部模块
+              </PopoverOption>
 
               {SEARCH_MODULES.map((module) => {
                 const selected = draftFilters.modules.includes(module);
-
                 return (
-                  <button
+                  <PopoverOption
                     key={module}
-                    className="global-search-module-option"
-                    type="button"
                     role="menuitemcheckbox"
-                    aria-checked={selected}
+                    checked={selected}
+                    showCheck
                     onClick={() => toggleModule(module)}
                   >
-                    <span>{GLOBAL_SEARCH_MODULE_LABELS[module]}</span>
-                    <span
-                      className="global-search-menu-check"
-                      aria-hidden="true"
-                    >
-                      {selected ? "✓" : ""}
-                    </span>
-                  </button>
+                    {GLOBAL_SEARCH_MODULE_LABELS[module]}
+                  </PopoverOption>
                 );
               })}
-            </div>
+            </PopoverShell>
           ) : null}
         </div>
 
@@ -158,54 +150,29 @@ export function GlobalSearchPageHeader({
           </button>
 
           {openMenu === "date" ? (
-            <div
-              className="memory-page-popover global-search-popover global-search-date-popover"
-              role="menu"
-              aria-label="Global Search 日期"
-            >
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={
-                  !draftFilters.dateFrom && !draftFilters.dateTo
-                }
+            <PopoverShell variant="time" role="menu" ariaLabel="Global Search 日期">
+              <PopoverOption
+                checked={!draftFilters.dateFrom && !draftFilters.dateTo}
                 onClick={() => {
+                  setCustomDateOpen(false);
                   onClearDateRange();
-                  setOpenMenu(null);
                 }}
               >
-                <span>全部时间</span>
-                <span className="global-search-menu-check" aria-hidden="true">
-                  {!draftFilters.dateFrom && !draftFilters.dateTo
-                    ? "✓"
-                    : ""}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={Boolean(
-                  draftFilters.dateFrom || draftFilters.dateTo,
-                )}
-                onClick={() => {
-                  window.requestAnimationFrame(() =>
-                    document
-                      .getElementById("global-search-date-from-menu")
-                      ?.focus(),
-                  );
-                }}
+                全部时间
+              </PopoverOption>
+              <PopoverOption
+                checked={Boolean(draftFilters.dateFrom || draftFilters.dateTo)}
+                onClick={() => setCustomDateOpen(true)}
               >
-                <span>自定义范围</span>
-              </button>
-
-              <div className="global-search-date-fields">
-                <label>
-                  <span>开始日期</span>
+                自定义范围
+              </PopoverOption>
+              {customDateOpen ? (
+                <div className="filter-popover-time-range">
                   <NativeDateInput
-                    id="global-search-date-from-menu"
                     type="date"
+                    aria-label="Global Search 自定义开始时间"
                     value={draftFilters.dateFrom}
+                    max={draftFilters.dateTo || undefined}
                     onChange={(event) =>
                       onDateRangeChange(
                         event.target.value,
@@ -213,14 +180,11 @@ export function GlobalSearchPageHeader({
                       )
                     }
                   />
-                </label>
-
-                <label>
-                  <span>结束日期</span>
                   <NativeDateInput
-                    id="global-search-date-to-menu"
                     type="date"
+                    aria-label="Global Search 自定义结束时间"
                     value={draftFilters.dateTo}
+                    min={draftFilters.dateFrom || undefined}
                     onChange={(event) =>
                       onDateRangeChange(
                         draftFilters.dateFrom,
@@ -228,9 +192,9 @@ export function GlobalSearchPageHeader({
                       )
                     }
                   />
-                </label>
-              </div>
-            </div>
+                </div>
+              ) : null}
+            </PopoverShell>
           ) : null}
         </div>
 
@@ -250,33 +214,24 @@ export function GlobalSearchPageHeader({
           </button>
 
           {openMenu === "scope" ? (
-            <div
-              className="memory-page-popover global-search-popover global-search-scope-popover"
-              role="menu"
-              aria-label="Global Search 范围"
-            >
+            <PopoverShell role="menu" ariaLabel="Global Search 范围">
               {([
+                ["all", "全部"],
                 ["active", "当前"],
                 ["archived", "已归档"],
-                ["all", "全部"],
               ] as const).map(([scope, label]) => (
-                <button
+                <PopoverOption
                   key={scope}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={draftFilters.scope === scope}
+                  checked={draftFilters.scope === scope}
                   onClick={() => {
                     onScopeChange(scope);
                     setOpenMenu(null);
                   }}
                 >
-                  <span>{label}</span>
-                  <span className="global-search-menu-check" aria-hidden="true">
-                    {draftFilters.scope === scope ? "✓" : ""}
-                  </span>
-                </button>
+                  {label}
+                </PopoverOption>
               ))}
-            </div>
+            </PopoverShell>
           ) : null}
         </div>
       </div>

@@ -7601,3 +7601,163 @@ body:has(.system-page) {
   font-size: 11px;
   line-height: 1.4;
 }
+
+
+/* shared-filter-popover-contract-2026-09-19 */
+.memory-page-tool-wrap {
+  position: relative;
+}
+
+.filter-popover-shell {
+  position: absolute;
+  z-index: 20;
+  top: 46px;
+  right: 0;
+  width: max-content;
+  min-width: 0;
+  padding: 5px;
+  overflow: hidden;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  color: #303030;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.filter-popover-option {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  color: #303030;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.filter-popover-option[aria-checked="true"] {
+  background: #f2f2f2;
+}
+
+.filter-popover-check {
+  width: 14px;
+  flex: 0 0 14px;
+  color: #6f6f6f;
+  font-size: 11px;
+  line-height: 1;
+  text-align: right;
+}
+
+.filter-popover-shell--search {
+  width: 184px;
+}
+
+.filter-popover-search-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  outline: 0;
+  color: #303030;
+  background: #f4f4f4;
+  box-shadow: none;
+  font: inherit;
+  font-size: 13px;
+  line-height: 34px;
+  text-align: left;
+}
+
+.filter-popover-search-input::placeholder {
+  color: #a0a0a0;
+  opacity: 1;
+}
+
+.filter-popover-results {
+  max-height: 220px;
+  margin-top: 4px;
+  overflow-y: auto;
+}
+
+.filter-popover-shell--time {
+  width: 176px;
+  max-width: calc(100vw - 48px);
+}
+
+.filter-popover-time-range {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 6px 5px 5px;
+  border-top: 1px solid #eeeeee;
+}
+
+.filter-popover-time-range .native-date-field {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  inline-size: 100% !important;
+  min-inline-size: 0 !important;
+  max-inline-size: 100% !important;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #f4f4f4;
+}
+
+.filter-popover-time-range .native-date-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  inline-size: 100% !important;
+  min-inline-size: 0 !important;
+  max-inline-size: 100% !important;
+  box-sizing: border-box;
+  height: 34px !important;
+  min-height: 34px !important;
+  margin: 0;
+  padding: 0 5px !important;
+  border: 0;
+  border-radius: 7px;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 16px !important;
+  line-height: 34px !important;
+  text-align: center;
+}
+
+.filter-popover-time-range .native-date-input::-webkit-date-and-time-value,
+.filter-popover-time-range .native-date-input::-webkit-datetime-edit {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .filter-popover-shell--search {
+    max-width: calc(100vw - 48px);
+  }
+
+  .filter-popover-search-input {
+    font-size: 16px;
+    transform: scale(0.8125);
+    transform-origin: left center;
+    width: 123.076923% !important;
+    max-width: 123.076923% !important;
+  }
+}
