@@ -9,6 +9,7 @@ const source = readFileSync(
 const pruneConversationSource = source.slice(source.indexOf("async pruneConversation"), source.indexOf("async pruneBranch"));
 const pruneBranchSource = source.slice(source.indexOf("private async pruneBranchInTransaction"), source.indexOf("async archiveConversation"));
 const permanentDeleteBranchSource = source.slice(source.indexOf("async permanentDeleteBranch"), source.indexOf("async listDeletedBranches"));
+const permanentDeleteConversationSource = source.slice(source.indexOf("async permanentDeleteConversation"), source.indexOf("async restoreBranch"));
 
 test("Conversation pruning is serializable and keeps a recoverable tombstone instead of deleting the conversation", () => {
   assert.match(source, /isolationLevel:\s*"serializable"/);
@@ -34,6 +35,16 @@ test("branch pruning refuses to remove the entire window and repairs a removed c
   assert.match(pruneBranchSource, /CONVERSATION_PRUNE_WHOLE_WINDOW_REQUIRED/);
   assert.match(pruneBranchSource, /excludedSourceNodes\.has\(currentLeafSourceNodeId\)/);
   assert.match(pruneBranchSource, /currentPathIndex/);
+});
+
+
+test("permanent Conversation deletion accepts both legacy archived and recoverable-deleted rows", () => {
+  assert.match(
+    permanentDeleteConversationSource,
+    /deletedAt\} IS NOT NULL OR \$\{conversations\.archivedAt\} IS NOT NULL/,
+  );
+  assert.match(permanentDeleteConversationSource, /scope: "conversation"/);
+  assert.match(permanentDeleteConversationSource, /delete\(conversations\)/);
 });
 
 test("permanent branch deletion preserves the current-path pruning invariant before removing rows", () => {
