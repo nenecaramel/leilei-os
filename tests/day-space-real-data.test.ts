@@ -590,11 +590,11 @@ test("Day Space loading and empty states use the shared module state surface", (
 
   assert.match(
     daySpaceSource,
-    /<ModuleState state="loading" message="Reading\.\.\." className="day-space-stage-state" \/>/,
+    /<PageState state="loading" message="Reading\.\.\." \/>/,
   );
   assert.match(
     daySpaceSource,
-    /<ModuleState state="loading" message="Reading\.\.\." className="day-space-stage-state" \/>/,
+    /<PageState state="loading" message="Reading\.\.\." \/>/,
   );
   assert.match(
     daySpaceSource,
@@ -604,7 +604,7 @@ test("Day Space loading and empty states use the shared module state surface", (
   const stageStart = daySpaceSource.indexOf(
     '<div ref={stageMeasureRef} className="day-space-stage-measure">',
   );
-  const discoveryLoading = daySpaceSource.indexOf('<ModuleState state="loading" message="Reading..."', stageStart);
+  const discoveryLoading = daySpaceSource.indexOf('<PageState state="loading" message="Reading..."', stageStart);
   assert.ok(stageStart >= 0);
   assert.ok(discoveryLoading > stageStart);
 

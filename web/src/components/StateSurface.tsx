@@ -27,18 +27,31 @@ export function StateSurface({
   const role = state === "error" ? "alert" : "status";
   return (
     <section
-      className={`state-surface state-surface--${placement}${className ? ` ${className}` : ""}`}
+      className={`state-surface state-surface--${placement} state-surface--${state}${className ? ` ${className}` : ""}`}
       role={role}
       aria-live={state === "error" ? undefined : "polite"}
     >
       <p className="state-surface__message">{message}</p>
       {description ? <p className="state-surface__description">{description}</p> : null}
-      {onRetry ? (
-        <button className="state-surface__action" type="button" onClick={onRetry}>
-          {retryLabel}
-        </button>
-      ) : null}
-      {action}
+      {placement === "page" && (state === "loading" || state === "error") ? (
+        <div className="state-surface__action-row">
+          {onRetry ? (
+            <button className="state-surface__action" type="button" onClick={onRetry}>
+              {retryLabel}
+            </button>
+          ) : null}
+          {action}
+        </div>
+      ) : (
+        <>
+          {onRetry ? (
+            <button className="state-surface__action" type="button" onClick={onRetry}>
+              {retryLabel}
+            </button>
+          ) : null}
+          {action}
+        </>
+      )}
     </section>
   );
 }

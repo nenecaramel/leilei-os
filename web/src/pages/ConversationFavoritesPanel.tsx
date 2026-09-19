@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { PageState } from "../components/StateSurface";
 import type {
   ConversationFavoriteDetail,
   ConversationFavoriteListItem,
@@ -124,12 +125,7 @@ export function ConversationFavoritesPanel({ client }: { client: Client }) {
       {state.status === "loading" ? (
         <FavoritesMonthLoading />
       ) : state.status === "error" ? (
-        <div className="system-state-message conversation-tab-state" role="alert">
-          <p>Unable to read favorites.</p>
-          <button className="secondary-button" type="button" onClick={() => void load()}>
-            Retry
-          </button>
-        </div>
+        <PageState state="error" message="Unable to read favorites." retryLabel="Retry" onRetry={() => void load()} />
       ) : state.rows.length === 0 ? (
         <div className="conversation-muted-card">还没有收藏。打开任意 Conversation，点消息旁边的“收藏”即可。</div>
       ) : (

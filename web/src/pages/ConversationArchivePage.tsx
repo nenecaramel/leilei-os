@@ -765,7 +765,7 @@ function ConversationDetailView({
   if (state.status === "loading") {
     return (
       <div className="page memory-page conversation-page conversation-detail-page conversation-detail-state">
-        <p className="conversation-detail-loading system-state-copy" role="status" aria-live="polite">Reading...</p>
+        <PageState state="loading" message="Reading..." />
       </div>
     );
   }

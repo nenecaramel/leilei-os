@@ -185,10 +185,26 @@ test("UI convergence round two keeps search progress English and Diary tags sema
   assert.match(diaryEditor, /placeholder="tags"/);
 });
 
-test("empty Conversation states lose the legacy card frame and center on one shared state axis", () => {
+test("empty Conversation states use the shared PageState anchor without page-specific height hacks", () => {
   const css = readFileSync(resolve(webRoot, "pages", "conversations.css"), "utf8");
-  assert.doesNotMatch(css, /\.conversation-page \.state-surface,\s*\n\.conversation-page \.page-state,/);
-  assert.match(css, /\.conversation-archive-section > \.state-surface,[\s\S]*?min-height:\s*min\(56dvh, 520px\)/);
-  assert.match(css, /\.conversation-lifecycle-page > \.state-surface,[\s\S]*?min-height:\s*calc\(100dvh - 160px\)/);
-  assert.match(css, /\.conversation-tab-source-state[\s\S]*?place-items:\s*center/);
+  const favorites = page("ConversationFavoritesPanel.tsx");
+  const sources = page("ConversationImportHistoryPanel.tsx");
+  const lifecycle = page("ConversationLifecyclePage.tsx");
+  const archive = page("ConversationArchivePage.tsx");
+  assert.match(css, /\.conversation-page \.state-surface\s*\{[^}]*border:\s*0/s);
+  assert.doesNotMatch(css, /conversation-tab-source-state/);
+  assert.doesNotMatch(css, /100dvh - 160px/);
+  assert.match(favorites, /<PageState state="error" message="Unable to read favorites\."/);
+  assert.match(lifecycle, /<PageState state="loading" message="Reading\.\.\." \/>/);
+  assert.match(archive, /<PageState state="loading" message="Reading\.\.\." \/>/);
+  assert.match(sources, /className="system-section conversation-import-history-loading"/);
+  assert.doesNotMatch(sources, /conversation-tab-source-state/);
+});
+
+test("record list and archive read failures can opt into the shared page anchor", () => {
+  assert.match(page("MemoryPage.tsx"), /placement=\{filters\.q \? "module" : "page"\}/);
+  assert.match(page("MemoryPage.tsx"), /errorText="Unable to read archived memories\."[\s\S]*?placement="page"|placement="page"[\s\S]*?errorText="Unable to read archived memories\."/);
+  assert.match(page("DiaryPage.tsx"), /placement=\{filters\.q \? "module" : "page"\}/);
+  assert.match(page("TaskPage.tsx"), /placement=\{filters\.q \? "module" : "page"\}/);
+  assert.match(page("SharedPaperPage.tsx"), /placement=\{query \? "module" : "page"\}/);
 });

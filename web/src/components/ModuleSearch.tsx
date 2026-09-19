@@ -36,7 +36,7 @@ export function ModuleSearchField({ ariaLabel, placeholder, value, onChange, cla
 }
 
 export type ModuleSearchState = "idle" | "loading" | "ready" | "empty" | "error";
-export type ModuleStatePlacement = "inline" | "module" | "paper";
+export type ModuleStatePlacement = "inline" | "module" | "paper" | "page";
 
 type ModuleStateMessageProps = {
   state: ModuleSearchState;

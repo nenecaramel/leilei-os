@@ -337,41 +337,7 @@
   box-shadow: none;
 }
 
-.conversation-archive-section > .state-surface,
-.conversation-favorites > .conversation-tab-state {
-  min-height: min(56dvh, 520px);
-  margin: 0;
-  padding: 0;
-  place-content: center;
-}
-
-.conversation-tab-source-state {
-  display: grid;
-  min-height: calc(min(56dvh, 520px) - 28px);
-  place-items: center;
-}
-
-.conversation-tab-source-state .conversation-import-history-loading {
-  width: 100%;
-  margin: 0;
-}
-
-.conversation-lifecycle-page > .state-surface,
-.conversation-detail-state > .state-surface,
-.conversation-lifecycle-page > .conversation-detail-loading,
-.conversation-detail-state > .conversation-detail-loading {
-  min-height: calc(100dvh - 160px);
-  margin: 0;
-  padding: 0;
-  place-content: center;
-}
-
-.conversation-page .memory-page-search-icon {
-  width: 20px;
-  height: 20px;
-}
-
-.conversation-page .conversation-import-icon {
-  width: 25px;
-  height: 25px;
+.conversation-import-icon {
+  width: 24px;
+  height: 24px;
 }

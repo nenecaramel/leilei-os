@@ -21,7 +21,7 @@ import { DaySpaceDatePicker } from "./DaySpaceDatePicker.js";
 import { DaySpaceDiaryDialog } from "./DaySpaceDiaryDialog.js";
 import { TodoPaperDialog } from "./TodoPaperDialog.js";
 import { ModuleSearchButton, ModuleSearchField, ModuleSearchStateMessage, type ModuleSearchState } from "../components/ModuleSearch";
-import { ModuleState } from "../components/StateSurface";
+import { ModuleState, PageState } from "../components/StateSurface";
 import { composeDaySpacePapers, resolveDaySpaceDefaultDate, type DaySpaceModuleState } from "./day-space-data.js";
 import type { DaySpaceApi, DaySpaceDiary } from "./day-space-api.js";
 import type { TodoAuthor, TodoDay, TodoPaper } from "./todo-types.js";
@@ -293,7 +293,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
         {todoSearchOpen ? <ModuleSearchField ariaLabel="搜索 Todo 内容" placeholder="Search todos..." value={todoSearchDraft} onChange={setTodoSearchDraft} /> : null}
       </header>
       {todoSearchOpen ? <div className="day-space-search-panel">
-        <ModuleSearchStateMessage state={todoSearchState} emptyText="没有匹配的 Todo" errorText="Unable to read todos." retryLabel="Retry" onRetry={() => setTodoSearchRetry((value) => value + 1)} />
+        <ModuleSearchStateMessage state={todoSearchState} placement="inline" emptyText="没有匹配的 Todo" errorText="Unable to read todos." retryLabel="Retry" onRetry={() => setTodoSearchRetry((value) => value + 1)} />
         {todoSearchState === "ready" ? <div className="day-space-search-results" aria-label="Todo 搜索结果">
           {todoSearchResults.map((entry) => <button type="button" key={`${entry.date}:${entry.author}:${entry.entry_id}`} onClick={() => navigate(`/day-space?date=${encodeURIComponent(entry.date)}&author=${entry.author}`)}>
             <span>{entry.date} · {entry.author} · {entry.kind}</span><strong>{entry.snippet}</strong>
@@ -311,7 +311,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       {discoveryIncomplete && selectedDate ? <div className="day-space-warning" role="status">最新日期发现不完整，当前日期仍可查看。</div> : null}
       {selectedDate && moduleWarning && !bothModulesFailed ? <div className="day-space-warning" role="alert">部分 Day Space 内容暂时无法读取。{todoState.status === "error" ? <button type="button" onClick={() => retryTodo(selectedDate)}>重试 Todo</button> : null}{diaryState.status === "error" ? <button type="button" onClick={() => retryDiary(selectedDate)}>重试 Diary</button> : null}</div> : null}
       <div ref={stageMeasureRef} className="day-space-stage-measure">
-        {discoveryStatus === "loading" && !selectedDate ? <ModuleState state="loading" message="Reading..." className="day-space-stage-state" /> : discoveryStatus === "error" ? <ModuleState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => setDiscoveryRetry((value) => value + 1)} className="day-space-stage-state" /> : completeEmpty ? <ModuleState state="empty" message="这一天还没有内容" className="day-space-stage-state" /> : bothModulesFailed ? <ModuleState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => selectedDate && loadDate(selectedDate)} className="day-space-stage-state" /> : moduleWarning && papers.length === 0 ? null : papers.length === 0 ? <ModuleState state="loading" message="Reading..." className="day-space-stage-state" /> : (
+        {discoveryStatus === "loading" && !selectedDate ? <PageState state="loading" message="Reading..." /> : discoveryStatus === "error" ? <PageState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => setDiscoveryRetry((value) => value + 1)} /> : completeEmpty ? <ModuleState state="empty" message="这一天还没有内容" className="day-space-stage-state" /> : bothModulesFailed ? <PageState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => selectedDate && loadDate(selectedDate)} /> : moduleWarning && papers.length === 0 ? null : papers.length === 0 ? <PageState state="loading" message="Reading..." /> : (
           <section className="day-space-stage" aria-label={`${selectedDate} 的内容`} style={{ height: `${layout?.stageHeight ?? 0}px` }}>
             {papers.map((paper) => {
               const item = layoutById.get(paper.id); if (!item) return null;
