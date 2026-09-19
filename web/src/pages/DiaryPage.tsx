@@ -6,9 +6,7 @@ import {
   type RefObject,
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
-import { DiaryIcon } from "../components/icons";
 import { ModuleSearchStateMessage } from "../components/ModuleSearch";
-import { NativeDateInput } from "../components/NativeDateInput";
 import { DiaryPageHeader } from "./DiaryPageHeader";
 import {
   DiaryCommentsSection,
@@ -1368,27 +1366,6 @@ export function DiaryPageContent({
         </>
       )}
     </div>
-  );
-}
-
-function DiaryMessage({
-  action,
-  description,
-  role = "status",
-  title,
-}: {
-  action?: ReactNode;
-  description?: string;
-  role?: "status" | "alert";
-  title: string;
-}) {
-  return (
-    <section className="memory-message memory-module-state records-state" role={role}>
-      <div className="placeholder-icon"><DiaryIcon /></div>
-      <h2>{title}</h2>
-      {description ? <p>{description}</p> : null}
-      {action}
-    </section>
   );
 }
 

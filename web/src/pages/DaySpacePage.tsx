@@ -7,7 +7,6 @@ import {
   type CSSProperties,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { WebApiClient } from "../api/useWebApiClient";
 import { layoutDaySpacePapers } from "./day-space-layout.js";
 import {
   buildDaySpaceLocation,

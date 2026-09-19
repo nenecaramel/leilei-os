@@ -1,4 +1,4 @@
-import React, {
+import {
   type RefObject,
 } from "react";
 import { SearchIcon } from "../components/icons";

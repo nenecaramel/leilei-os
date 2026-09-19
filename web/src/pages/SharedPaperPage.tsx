@@ -14,7 +14,7 @@ import {
   formatSharedPaperRowDate,
   groupSharedPapersByMonth,
 } from "./shared-paper-presentation";
-import { createSharedPaperApi, type SharedPaper, type SharedPaperAuthor, type SharedPaperEdit, type SharedPaperScope } from "./shared-paper-api";
+import { createSharedPaperApi, type SharedPaper, type SharedPaperEdit, type SharedPaperScope } from "./shared-paper-api";
 import { confirmUnsavedChanges } from "./submission-gate";
 import { useUnsavedChanges } from "./use-unsaved-changes";
 

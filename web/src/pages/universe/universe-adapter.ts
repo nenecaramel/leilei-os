@@ -5,7 +5,6 @@ import type {
   UniverseNode,
   UniverseNodeCreateInput,
   UniverseReadResult,
-  UniverseRelation,
   UniverseRelationCreateInput,
   UniverseRevision,
   UniverseSnapshot,

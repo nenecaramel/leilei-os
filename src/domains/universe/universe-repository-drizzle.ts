@@ -21,7 +21,6 @@ import { UniverseServiceError } from "./universe-service.js";
 import type {
   UniverseBackup,
   UniverseGalaxy,
-  UniverseMeta as CanonicalMeta,
   UniverseNode,
   UniverseRelation,
   UniverseRevision,

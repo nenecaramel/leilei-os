@@ -258,7 +258,7 @@ export class MemoryService {
   }
 
   async searchMemoryDiscovery(input: ReadMemoryInput): Promise<SearchMemoryDiscoveryResult> {
-    const user = await this.requireActiveUser(input.userId);
+    await this.requireActiveUser(input.userId);
     const categories = this.validateCategories(input.categories);
     const query = this.normalizeQuery(input.query);
     const tag = this.normalizeTagFilter(input.tag);

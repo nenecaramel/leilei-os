@@ -42,7 +42,6 @@ function DiaryProvenanceTimeline({ sources, onOpen }: { sources: UniverseDiarySo
 }
 
 const NODE_TYPES: UniverseNode["type"][] = ["concept", "question", "claim", "experience", "project", "source", "reflection"];
-const IMPORTANCE_OPTIONS = ["anchor", "major", "normal"];
 const NODE_TYPE_LABELS: Record<string, string> = {
   concept: "概念",
   question: "问题",

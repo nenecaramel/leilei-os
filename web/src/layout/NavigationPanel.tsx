@@ -1,4 +1,3 @@
-import React from "react";
 import { NavigationGroups } from "./NavigationGroups";
 
 export function NavigationPanel({
