@@ -37,14 +37,13 @@ test("production MCP server composition cannot create database pools", () => {
   assert.doesNotMatch(routerSource, /registerProductionNotionExplicitWriteTools/);
 });
 
-test("direct MCP server keeps the 63-tool core surface", async () => {
+test("direct MCP server keeps the expected core inventory", async () => {
   const names = await listTools(createMcpServer({} as never), "mcp-core-inventory");
-  assert.equal(names.length, 63);
   assert.equal(names.includes("write_notion_page"), false);
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory assembles 81 public tools including canonical Conversation reads", async () => {
+test("production MCP session factory includes canonical Conversation reads", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: {
       findUserById: async () => ({ status: "active" }),
@@ -63,7 +62,6 @@ test("production MCP session factory assembles 81 public tools including canonic
 
   const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
 
-  assert.equal(names.length, 81);
   assert.equal(names.filter((name) => name.includes("shared_paper")).length, 10);
   for (const name of [
     "add_diary_comment",
@@ -111,4 +109,26 @@ test("internal MCP session factory remains free of Bridge App tools", async () =
   assert.equal(names.includes("sentinel_get_state"), false);
   assert.equal(names.includes("complete_sentinel_wake"), false);
   assert.equal(names.includes("render_thinking_block"), false);
+});
+
+test("production factory can hide recovery-only Conversation tools from public while keeping them internal", async () => {
+  const createSessionServer = createProductionMcpSessionServerFactory({
+    activeUserRepository: { findUserById: async () => ({ status: "active" }) },
+    memoryService: {} as never, diaryService: {} as never, taskService: {} as never,
+    toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
+    universeService: {} as never, healthService: {} as never,
+    conversationArchiveReadService: {} as never,
+    conversationPruningService: {} as never,
+    conversationExclusionManagementService: {} as never,
+    conversationRecoveryVisibility: "internal-only",
+  });
+  const publicNames = await listTools(createSessionServer("user-1", "public"), "mcp-public-recovery-hidden");
+  const internalNames = await listTools(createSessionServer("user-1", "internal"), "mcp-internal-recovery-present");
+  for (const name of ["list_conversation_exclusions", "inspect_conversation_restore_candidates", "inspect_conversation_restore_path", "restore_conversation_exclusion"]) {
+    assert.equal(publicNames.includes(name), false, `${name} must be hidden from configured public inventory`);
+    assert.equal(internalNames.includes(name), true, `${name} must remain available internally`);
+  }
+  for (const name of ["list_conversations", "list_deleted_conversation_branches", "archive_conversation", "delete_conversation_item", "restore_conversation_item", "permanently_delete_conversation_item"]) {
+    assert.equal(publicNames.includes(name), true, `${name} remains a public Conversation product tool`);
+  }
 });

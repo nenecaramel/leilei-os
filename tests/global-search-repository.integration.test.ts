@@ -277,6 +277,7 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
       const otherRun = await seedImport(other, "chatgpt", "c");
       const chatgptConversationId = randomUUID();
       const claudeConversationId = randomUUID();
+      const archivedConversationId = randomUUID();
       const otherConversationId = randomUUID();
 
       await tx.insert(schema.conversations).values([
@@ -311,6 +312,22 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
           updatedAt: now,
         },
         {
+          id: archivedConversationId,
+          userId: owner,
+          provider: "chatgpt",
+          sourceConversationId: "chatgpt-archived",
+          title: "Archived conversation",
+          sourceCreatedAt: now,
+          sourceUpdatedAt: now,
+          currentLeafSourceNodeId: "archived-node",
+          sourceFingerprint: "a".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          archivedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
           id: otherConversationId,
           userId: other,
           provider: "chatgpt",
@@ -330,6 +347,7 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
       const currentId = randomUUID();
       const savedBranchId = randomUUID();
       const claudeId = randomUUID();
+      const archivedId = randomUUID();
       await tx.insert(schema.conversationMessages).values([
         {
           id: currentId,
@@ -428,6 +446,25 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
           updatedAt: now,
         },
         {
+          id: archivedId,
+          userId: owner,
+          conversationId: archivedConversationId,
+          sourceNodeId: "archived-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T04:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T04:00:00.000Z"),
+          isCurrentPath: true,
+          currentPathIndex: 0,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "global conversation needle archived",
+          sourceFingerprint: "7".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
           id: randomUUID(),
           userId: other,
           conversationId: otherConversationId,
@@ -469,6 +506,7 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
         && result.detail_arguments.conversation_id === result.conversation_id
         && result.detail_arguments.message_id === result.entity_id
         && result.detail_arguments.view === result.conversation_view
+        && result.detail_arguments.scope === "active"
       ));
       assert.ok(found.results.every((result) => result.time_basis === "message_time"));
       assert.equal(found.results.find((result) => result.entity_id === currentId)?.conversation_view, "default");
@@ -485,7 +523,17 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
         scope: "archived",
         limit: 25,
       });
-      assert.deepEqual(archived.results, []);
+      assert.deepEqual(archived.results.map((result) => result.entity_id), [archivedId]);
+      assert.equal(archived.results[0]?.lifecycle_status, "archived");
+
+      const all = await service.search({
+        userId: owner,
+        query: "global conversation needle",
+        modules: ["conversation"],
+        scope: "all",
+        limit: 25,
+      });
+      assert.equal(all.results.length, 4);
 
       throw new Rollback();
     }), Rollback);
