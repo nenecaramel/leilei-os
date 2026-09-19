@@ -3,7 +3,7 @@ import { z } from "zod";
 import { TaskDomainError, type AuthenticatedTaskContext, type TaskEntryResult, type UpdateMcpTaskInput } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
-import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { quoteMcpText } from "../content-contract.js";
 
 const updateTaskInputSchema = z.object({
   id: z.string().trim().min(1),

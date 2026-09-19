@@ -92,6 +92,17 @@ test("Conversation stylesheet excludes retired Favorites and count/search struct
   }
 });
 
+test("Conversation stylesheet excludes retired lifecycle selectors with no current structure", () => {
+  for (const retiredSelector of [
+    "conversation-detail-loading",
+    "conversation-lifecycle-link",
+    "conversation-lifecycle-actions",
+    "conversation-deleted-branches",
+  ]) {
+    assert.doesNotMatch(css, new RegExp(`\\.${retiredSelector}\\b`), retiredSelector);
+  }
+});
+
 test("Conversation surfaces keep shared tab, provider, destructive, and loading contracts", () => {
   assert.match(css, /\.conversation-surface-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.conversation-surface-tabs\s*\{[^}]*background:\s*transparent/s);
@@ -117,7 +128,7 @@ test("Conversation pages reuse shared page geometry without route-level shell ov
   assert.match(css, /border-radius:\s*14px/);
   assert.match(css, /conversation-list,/);
   assert.match(css, /conversation-message-list/);
-  assert.match(page, /className="conversation-detail-loading"/);
+  assert.doesNotMatch(page, /conversation-detail-loading/);
 });
 
 test("Conversation UI redesign keeps import search Favorites Sources and pruning functionality wired", () => {

@@ -18,7 +18,6 @@ import { hashCanonical } from "./import-canonical.js";
 import {
   ImportValidationError,
   parseImportPackage,
-  type ParsedImportPackage,
 } from "./import-schema.js";
 import type { ImportRepository } from "./import-repository.js";
 import {

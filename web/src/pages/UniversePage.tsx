@@ -24,7 +24,6 @@ import { navigateWithinApp } from "./app-navigation";
 import type { UniverseMapMode } from "./universe/universe-map-interaction";
 import type { UniversePoint, UniverseViewport } from "./universe/universe-map-transform";
 import type {
-  UniverseGalaxy,
   UniverseDiarySourceSummary,
   UniverseNode,
   UniverseNodeCreateInput,

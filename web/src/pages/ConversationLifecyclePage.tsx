@@ -12,8 +12,6 @@ import { groupConversationsByMonth } from "./conversation-presentation";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import "./conversations.css";
 
-type Client = ReturnType<typeof createConversationArchiveApi>;
-
 type ConversationArchiveItem = {
   kind: "conversation";
   source: "archived" | "deleted";

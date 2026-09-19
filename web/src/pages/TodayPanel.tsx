@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { TodoAuthor, TodoEntry } from "./todo-types";
 

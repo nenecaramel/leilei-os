@@ -252,23 +252,6 @@
 .conversation-context-banner { margin: 0 0 12px; padding: 12px 13px; border: 1px solid rgba(0, 0, 0, .09); border-radius: 12px; color: #737373; background: #fafafa; font-size: 12px; line-height: 1.45; }
 .conversation-history-inline-action { margin-left: 8px; }
 
-.conversation-detail-loading {
-  display: grid;
-  min-height: min(56dvh, 520px);
-  margin: 0;
-  place-items: center;
-  color: #777;
-  font-size: 13px;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.conversation-lifecycle-link { min-width: 0; flex: 1; color: inherit; text-decoration: none; }
-.conversation-lifecycle-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: 12px; }
-.conversation-lifecycle-actions button { padding: 0; border: 0; color: #777; background: transparent; font: inherit; font-size: 10px; }
-.conversation-lifecycle-actions button:hover { color: #171717; }
-.conversation-deleted-branches { margin-top: 20px; }
-
 .conversation-lifecycle-source-time {
   margin: 18px 0 0;
   color: #8a8a8a;
@@ -348,4 +331,3 @@
   width: 24px;
   height: 24px;
 }
-

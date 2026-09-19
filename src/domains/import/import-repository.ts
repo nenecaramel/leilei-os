@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   coreMemories,

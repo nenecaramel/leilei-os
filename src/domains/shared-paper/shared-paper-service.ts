@@ -1,7 +1,7 @@
 import { isContentAuthor, type ContentAuthor } from "../content-author.js";
 import { requireActiveUser, ActiveUserAuthorizationError } from "../require-active-user.js";
 import { hashMcpWriteRequest, normalizeMcpIdempotencyKey } from "../mcp-write/mcp-write-idempotency.js";
-import { codePointLength, codeUnitOffsetToCodePointOffset, replaceCodePointRange } from "../../shared/unicode.js";
+import { codePointLength, codeUnitOffsetToCodePointOffset } from "../../shared/unicode.js";
 import type {
   SharedPaperAppendIdempotencyInput,
   SharedPaperCreateInput,

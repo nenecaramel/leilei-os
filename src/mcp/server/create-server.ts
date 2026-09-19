@@ -93,7 +93,6 @@ import {
   type SearchNotionToolDependencies,
 } from "../tools/search-notion/register.js";
 import {
-  ReadNotionPageAuthenticationError,
   registerReadNotionPageTool,
   type ReadNotionPageToolDependencies,
 } from "../tools/read-notion-page/register.js";

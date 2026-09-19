@@ -13,7 +13,6 @@ import {
   normalizeNodeCreate,
   normalizeRelationCreate,
   validateUniverseNode,
-  validateUniverseRelation,
   validateUniverseSnapshot,
 } from "./universe-validation.js";
 import { UniverseValidationError } from "./universe-validation.js";

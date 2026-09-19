@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { CalendarPreview, type CalendarLoadState } from "./CalendarPreview";
 import { listDiaryDates } from "./day-space-api";
@@ -25,7 +25,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   const [calendarLoadState, setCalendarLoadState] = useState<CalendarLoadState>("loading");
   const [dialogAuthor, setDialogAuthor] = useState<TodoAuthor | null>(null);
   const [dialogDirty, setDialogDirty] = useState(false);
-  const [pendingDate, setPendingDate] = useState<string | null>(null);
+  const [, setPendingDate] = useState<string | null>(null);
   const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
   const loadGeneration = useRef(0);
   const calendarLoadGeneration = useRef(0);

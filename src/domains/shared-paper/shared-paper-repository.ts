@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { sharedPaperEdits, sharedPapers, users } from "../../database/schema.js";
 import {
