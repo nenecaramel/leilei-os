@@ -225,7 +225,6 @@ export function MemoryPageContent({
   >(null);
   const [availableCategories, setAvailableCategories] =
     useState<MemoryCategory[]>([]);
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [actionError, setActionError] = useState("");
   const [permanentDeleteConfirmId, setPermanentDeleteConfirmId] = useState("");
   const [permanentDeletingId, setPermanentDeletingId] = useState("");
@@ -472,7 +471,6 @@ export function MemoryPageContent({
           result: response.data,
         });
         setAvailableCategories(response.data.metadata.categories);
-        setAvailableTags(response.data.metadata.tags);
         const position = pendingScrollRestore.current;
         pendingScrollRestore.current = null;
         if (position !== null) {
@@ -1036,7 +1034,6 @@ export function MemoryPageContent({
                 value,
                 label: categoryLabels[value],
               }))}
-              tags={availableTags}
               category={filters.category}
               tag={filters.tag}
               searchDraft={searchDraft}

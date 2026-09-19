@@ -9,7 +9,6 @@ import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearc
 type MemoryPageHeaderProps = {
   count: number;
   categories: Array<{ value: string; label: string }>;
-  tags: string[];
   category: string;
   tag: string;
   searchDraft: string;
@@ -25,7 +24,6 @@ type MemoryPageHeaderProps = {
 export function MemoryPageHeader({
   count,
   categories,
-  tags,
   category,
   tag,
   searchDraft,
@@ -69,7 +67,7 @@ export function MemoryPageHeader({
             <DashboardIcon className="memory-page-category-icon" />
           </button>
           {openMenu === "category" ? (
-            <div className="memory-page-popover" role="menu" aria-label="Memory 分类">
+            <div className="memory-page-popover task-filter-popover" role="menu" aria-label="Memory 分类">
               <button
                 type="button"
                 role="menuitemradio"
@@ -102,40 +100,24 @@ export function MemoryPageHeader({
         <div className="memory-page-tool-wrap">
           <button
             type="button"
-            aria-label="筛选标签"
+            aria-label="按标签筛选"
             aria-expanded={openMenu === "tag"}
+            aria-pressed={Boolean(tag)}
             disabled={busy}
             onClick={() => setOpenMenu((value) => value === "tag" ? null : "tag")}
           >
             <span className="memory-page-tag-icon" aria-hidden="true">#</span>
           </button>
           {openMenu === "tag" ? (
-            <div className="memory-page-popover" role="menu" aria-label="Memory 标签">
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={tag === ""}
-                onClick={() => {
-                  onTagChange("");
-                  setOpenMenu(null);
-                }}
-              >
-                全部标签
-              </button>
-              {tags.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={tag === item}
-                  onClick={() => {
-                    onTagChange(item);
-                    setOpenMenu(null);
-                  }}
-                >
-                  #{item}
-                </button>
-              ))}
+            <div className="memory-page-popover diary-filter-popover diary-text-popover">
+              <input
+                type="text"
+                aria-label="按标签筛选"
+                placeholder="标签"
+                maxLength={50}
+                value={tag}
+                onChange={(event) => onTagChange(event.target.value)}
+              />
             </div>
           ) : null}
         </div>
