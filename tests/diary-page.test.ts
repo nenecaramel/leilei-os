@@ -162,7 +162,7 @@ test("Diary detail refresh starts in detail loading and skips list request", asy
     api,
   );
   try {
-    assert.match(page.container.textContent ?? "", /正在读取日记/);
+    assert.match(page.container.textContent ?? "", /Reading\.\.\./);
     assertNoList(page.container);
     assert.deepEqual(requests.map(({ path }) => path), ["/diary/diary-1"]);
   } finally {
@@ -570,7 +570,7 @@ test("Diary archived direct refresh requests only archived detail", async () => 
     api,
   );
   try {
-    assert.match(page.container.textContent ?? "", /正在读取归档日记/);
+    assert.match(page.container.textContent ?? "", /Reading\.\.\./);
     assertNoList(page.container);
     assert.deepEqual(
       requests.map(({ path }) => path),
