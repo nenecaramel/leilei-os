@@ -7,6 +7,11 @@ import {
 } from "../components/icons";
 import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
 import { NativeDateInput } from "../components/NativeDateInput";
+import {
+  PopoverOption,
+  PopoverSearchInput,
+  PopoverShell,
+} from "../components/FilterPopover";
 
 type DiaryPageHeaderProps = {
   count: number;
@@ -49,10 +54,15 @@ export function DiaryPageHeader({
 }: DiaryPageHeaderProps) {
   const [openTool, setOpenTool] = useState<OpenTool>(null);
   const [searchOpen, setSearchOpen] = useState(Boolean(searchDraft));
+  const [customDateOpen, setCustomDateOpen] = useState(Boolean(dateFrom || dateTo));
 
   useEffect(() => {
     if (searchDraft) setSearchOpen(true);
   }, [searchDraft]);
+
+  useEffect(() => {
+    if (dateFrom || dateTo) setCustomDateOpen(true);
+  }, [dateFrom, dateTo]);
 
   function toggleTool(next: Exclude<OpenTool, null>) {
     setSearchOpen(false);
@@ -86,39 +96,41 @@ export function DiaryPageHeader({
             <CalendarIcon className="diary-page-date-icon" />
           </button>
           {openTool === "date" ? (
-            <div
-              className="memory-page-popover diary-filter-popover diary-date-popover"
-              aria-label="Diary 日期筛选"
-            >
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={!dateFrom && !dateTo}
-                onClick={onDateRangeClear}
+            <PopoverShell variant="time" role="menu" ariaLabel="Diary 日期筛选">
+              <PopoverOption
+                checked={!dateFrom && !dateTo}
+                onClick={() => {
+                  setCustomDateOpen(false);
+                  onDateRangeClear();
+                }}
               >
                 全部时间
-              </button>
-              <div className="diary-filter-field">
-                <span>开始日期</span>
-                <NativeDateInput
-                  type="date"
-                  aria-label="开始日期"
-                  value={dateFrom}
-                  max={dateTo || undefined}
-                  onChange={(event) => onDateFromChange(event.target.value)}
-                />
-              </div>
-              <div className="diary-filter-field">
-                <span>结束日期</span>
-                <NativeDateInput
-                  type="date"
-                  aria-label="结束日期"
-                  value={dateTo}
-                  min={dateFrom || undefined}
-                  onChange={(event) => onDateToChange(event.target.value)}
-                />
-              </div>
-            </div>
+              </PopoverOption>
+              <PopoverOption
+                checked={Boolean(dateFrom || dateTo)}
+                onClick={() => setCustomDateOpen(true)}
+              >
+                自定义范围
+              </PopoverOption>
+              {customDateOpen ? (
+                <div className="filter-popover-time-range">
+                  <NativeDateInput
+                    type="date"
+                    aria-label="Diary 自定义开始时间"
+                    value={dateFrom}
+                    max={dateTo || undefined}
+                    onChange={(event) => onDateFromChange(event.target.value)}
+                  />
+                  <NativeDateInput
+                    type="date"
+                    aria-label="Diary 自定义结束时间"
+                    value={dateTo}
+                    min={dateFrom || undefined}
+                    onChange={(event) => onDateToChange(event.target.value)}
+                  />
+                </div>
+              ) : null}
+            </PopoverShell>
           ) : null}
         </div>
 
@@ -134,16 +146,15 @@ export function DiaryPageHeader({
             <MoodIcon className="diary-page-mood-icon" />
           </button>
           {openTool === "mood" ? (
-            <div className="memory-page-popover diary-filter-popover diary-text-popover">
-              <input
-                type="text"
+            <PopoverShell variant="search" ariaLabel="Diary 心情搜索">
+              <PopoverSearchInput
                 aria-label="按心情筛选"
                 placeholder="心情"
                 maxLength={50}
                 value={moodDraft}
                 onChange={(event) => onMoodChange(event.target.value)}
               />
-            </div>
+            </PopoverShell>
           ) : null}
         </div>
 
@@ -159,16 +170,15 @@ export function DiaryPageHeader({
             <span className="memory-page-tag-icon" aria-hidden="true">#</span>
           </button>
           {openTool === "tag" ? (
-            <div className="memory-page-popover diary-filter-popover diary-text-popover">
-              <input
-                type="text"
+            <PopoverShell variant="search" ariaLabel="Diary 标签搜索">
+              <PopoverSearchInput
                 aria-label="按标签筛选"
                 placeholder="标签"
                 maxLength={50}
                 value={tagDraft}
                 onChange={(event) => onTagChange(event.target.value)}
               />
-            </div>
+            </PopoverShell>
           ) : null}
         </div>
 

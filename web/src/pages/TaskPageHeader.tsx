@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { ArchiveIcon, CalendarIcon, PenIcon, StatusIcon } from "../components/icons";
 import { NativeDateInput } from "../components/NativeDateInput";
 import { ModuleSearchButton, ModuleSearchField } from "../components/ModuleSearch";
+import {
+  PopoverOption,
+  PopoverSearchInput,
+  PopoverShell,
+} from "../components/FilterPopover";
 import type { TaskDueFilter } from "./task-location";
 
 type Props = {
@@ -43,11 +48,33 @@ export function TaskPageHeader(props: Props) {
         </div>
         <div className="memory-page-tool-wrap">
           <button type="button" aria-label="按状态筛选" aria-expanded={tool === "status"} aria-pressed={Boolean(props.status)} disabled={props.busy} onClick={() => toggle("status")}><StatusIcon className="task-page-status-icon" /></button>
-          {tool === "status" ? <div className="memory-page-popover task-filter-popover" aria-label="Task 状态筛选">{STATUSES.map(([value, label]) => <button key={value || "all"} type="button" role="menuitemradio" aria-checked={props.status === value} onClick={() => props.onStatusChange(value)}>{label}</button>)}</div> : null}
+          {tool === "status" ? (
+            <PopoverShell ariaLabel="Task 状态筛选">
+              {STATUSES.map(([value, label]) => (
+                <PopoverOption
+                  key={value || "all"}
+                  checked={props.status === value}
+                  onClick={() => props.onStatusChange(value)}
+                >
+                  {label}
+                </PopoverOption>
+              ))}
+            </PopoverShell>
+          ) : null}
         </div>
         <div className="memory-page-tool-wrap">
           <button type="button" aria-label="按标签筛选" aria-expanded={tool === "tag"} aria-pressed={Boolean(props.tagDraft)} disabled={props.busy} onClick={() => toggle("tag")}><span className="memory-page-tag-icon" aria-hidden="true">#</span></button>
-          {tool === "tag" ? <div className="memory-page-popover diary-filter-popover diary-text-popover"><input type="text" aria-label="按标签筛选" placeholder="标签" maxLength={50} value={props.tagDraft} onChange={(e) => props.onTagChange(e.target.value)} /></div> : null}
+          {tool === "tag" ? (
+            <PopoverShell variant="search" ariaLabel="Task 标签搜索">
+              <PopoverSearchInput
+                aria-label="按标签筛选"
+                placeholder="标签"
+                maxLength={50}
+                value={props.tagDraft}
+                onChange={(event) => props.onTagChange(event.target.value)}
+              />
+            </PopoverShell>
+          ) : null}
         </div>
         <ModuleSearchButton label="搜索任务" expanded={searchOpen} disabled={props.busy} onClick={() => { setTool(null); setSearchOpen((v) => !v); }} />
         <button type="button" aria-label="查看归档" disabled={props.busy} onClick={(e) => props.onOpenArchive(e.currentTarget)}><ArchiveIcon /></button>
