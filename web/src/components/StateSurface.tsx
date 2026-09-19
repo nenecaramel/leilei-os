@@ -33,12 +33,25 @@ export function StateSurface({
     >
       <p className="state-surface__message">{message}</p>
       {description ? <p className="state-surface__description">{description}</p> : null}
-      {onRetry ? (
-        <button className="state-surface__action" type="button" onClick={onRetry}>
-          {retryLabel}
-        </button>
-      ) : null}
-      {action}
+      {placement === "page" && (state === "loading" || state === "error") ? (
+        <div className="state-surface__action-row">
+          {onRetry ? (
+            <button className="state-surface__action" type="button" onClick={onRetry}>
+              {retryLabel}
+            </button>
+          ) : null}
+          {action}
+        </div>
+      ) : (
+        <>
+          {onRetry ? (
+            <button className="state-surface__action" type="button" onClick={onRetry}>
+              {retryLabel}
+            </button>
+          ) : null}
+          {action}
+        </>
+      )}
     </section>
   );
 }
