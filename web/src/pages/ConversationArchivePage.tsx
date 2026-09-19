@@ -263,7 +263,6 @@ function ConversationListView({
             onClick={() => setSearchOpen((value) => !value)}
           />
           <button type="button" aria-label="查看归档" title="Archive" onClick={() => navigate("/conversations/archive")}><ArchiveIcon /></button>
-          <button type="button" aria-label="查看已删除" title="Deleted" onClick={() => navigate("/conversations/archive")}><TrashIcon /></button>
           <button
             type="button"
             aria-label="导入 Conversation export"
@@ -680,7 +679,7 @@ function ConversationDetailView({
 
   const deleteWindow = async () => {
     if (!window.confirm(
-      "把整个 Conversation 移到 Deleted？之后可以恢复。\n\n原始 export 文件仍会保留。",
+      "把整个 Conversation 移到 Archive？之后可以恢复。\n\n原始 export 文件仍会保留。",
     )) return;
     setPruneStatus("");
     try {
@@ -694,7 +693,7 @@ function ConversationDetailView({
 
   const deleteBranch = async (message: ConversationMessage) => {
     if (!window.confirm(
-      "把这个分支移到 Deleted？之后可以恢复。\n\n原始 export 文件仍会保留。",
+      "把这个分支移到 Archive？之后可以恢复。\n\n原始 export 文件仍会保留。",
     )) return;
     setPruningMessageId(message.id);
     setPruneStatus("");
@@ -778,28 +777,53 @@ function ConversationDetailView({
         </div>
         <div className="conversation-detail-header-actions">
           {scope === "archived" ? (
-            <button className="memory-archive-back" type="button" onClick={() => void client.restoreConversation(conversationId).then(() => navigate("/conversations/archive"))}>Restore</button>
-          ) : null}
-          {scope === "deleted" ? (
+            <button
+              className="memory-archive-back"
+              type="button"
+              onClick={() => void client.restoreConversation(conversationId).then(() => navigate("/conversations/archive"))}
+            >
+              Restore
+            </button>
+          ) : scope === "deleted" ? (
             <>
-            {confirmPermanentDelete ? <>
-              <span>{"永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留。"}</span>
-              <button className="memory-archive-back" type="button" onClick={() => {
-                if (branchId) {
-                  void client.permanentlyDeleteBranch({ conversationId, branchId }).then(() => navigate("/conversations/archive"));
-                } else {
-                  void client.permanentlyDeleteConversation(conversationId).then(() => navigate("/conversations/archive"));
-                }
-              }}>Confirm Permanently Delete</button>
-              <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(false)}>Cancel</button>
-            </> : <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(true)}>Permanently Delete</button>}
-            <button className="memory-archive-back" type="button" onClick={() => {
-              if (branchId) {
-                void client.restoreBranch({ conversationId, branchId }).then(() => navigate("/conversations/archive"));
-              } else {
-                void client.restoreDeletedConversation(conversationId).then(() => navigate("/conversations/archive"));
-              }
-            }}>Restore</button>
+              {confirmPermanentDelete ? (
+                <>
+                  <span>{"永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留。"}</span>
+                  <button
+                    className="memory-archive-back"
+                    type="button"
+                    onClick={() => {
+                      if (branchId) {
+                        void client.permanentlyDeleteBranch({ conversationId, branchId }).then(() => navigate("/conversations/archive"));
+                      } else {
+                        void client.permanentlyDeleteConversation(conversationId).then(() => navigate("/conversations/archive"));
+                      }
+                    }}
+                  >
+                    Confirm Permanently Delete
+                  </button>
+                  <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(false)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button className="memory-archive-back" type="button" onClick={() => setConfirmPermanentDelete(true)}>
+                  Permanently Delete
+                </button>
+              )}
+              <button
+                className="memory-archive-back"
+                type="button"
+                onClick={() => {
+                  if (branchId) {
+                    void client.restoreBranch({ conversationId, branchId }).then(() => navigate("/conversations/archive"));
+                  } else {
+                    void client.restoreDeletedConversation(conversationId).then(() => navigate("/conversations/archive"));
+                  }
+                }}
+              >
+                Restore
+              </button>
             </>
           ) : (
             <button
