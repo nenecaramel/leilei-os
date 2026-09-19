@@ -157,7 +157,7 @@ test("Shared Paper detail and history states reuse the Paper body anchor", () =>
   assert.match(sharedPaper, /paper-detail-state--loading/);
   assert.match(
     css,
-    /\.paper-detail-state--loading\s*\{[\s\S]*?position:\s*absolute[\s\S]*?inset:\s*0[\s\S]*?margin:\s*0[\s\S]*?place-content:\s*center/,
+    /\.paper-detail-state\.paper-detail-state--loading\s*\{[\s\S]*?position:\s*absolute[\s\S]*?inset:\s*0[\s\S]*?margin:\s*0[\s\S]*?place-content:\s*center/,
   );
 });
 
