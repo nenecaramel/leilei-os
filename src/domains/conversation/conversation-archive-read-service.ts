@@ -416,12 +416,22 @@ export class ConversationArchiveReadService {
     context?: unknown;
     limit?: unknown;
     offset?: unknown;
+    scope?: unknown;
+    branchId?: unknown;
+    mode?: unknown;
   }): Promise<ConversationModelView> {
     await this.requireActive(input.userId);
     const conversationId = uuid(input.conversationId);
+    const scope = lifecycleScope(input.scope);
+    const branchId = optionalBranchId(input.branchId);
+    if (branchId && scope !== "deleted") {
+      throw new ConversationArchiveReadError("CONVERSATION_INVALID_REQUEST", "Branch scope is invalid.");
+    }
     const detail = await this.repository.getConversation({
       userId: input.userId,
       conversationId,
+      scope,
+      branchId,
     });
     if (!detail) {
       throw new ConversationArchiveReadError(
@@ -441,6 +451,17 @@ export class ConversationArchiveReadService {
         "Conversation message view is invalid.",
       );
     }
+    const mode = input.mode === undefined || input.mode === "" || input.mode === "full"
+      ? "full"
+      : input.mode === "compact"
+        ? "compact"
+        : null;
+    if (!mode) {
+      throw new ConversationArchiveReadError(
+        "CONVERSATION_INVALID_REQUEST",
+        "Conversation read mode is invalid.",
+      );
+    }
 
     let page: { items: ConversationArchiveMessage[]; total: number };
     let offset: number;
@@ -455,6 +476,8 @@ export class ConversationArchiveReadService {
         provider: detail.provider,
         view,
         messageId,
+        scope,
+        branchId,
       });
       if (!ordinal) {
         throw new ConversationArchiveReadError(
@@ -470,6 +493,8 @@ export class ConversationArchiveReadService {
         view,
         limit: context * 2 + 1,
         offset,
+        scope,
+        branchId,
       });
       anchorIndex = ordinal.index - offset;
     } else {
@@ -481,13 +506,17 @@ export class ConversationArchiveReadService {
         view,
         limit: boundedInt(input.limit, 40, 1, 100),
         offset,
+        scope,
+        branchId,
       });
     }
 
-    const payloads = await this.repository.readMessagePayloads({
-      userId: input.userId,
-      messageIds: page.items.map((item) => item.id),
-    });
+    const payloads = mode === "full"
+      ? await this.repository.readMessagePayloads({
+          userId: input.userId,
+          messageIds: page.items.map((item) => item.id),
+        })
+      : {};
     const items = page.items.map((item) => ({
       ...item,
       ...(payloads[item.id] ?? { contentBlocks: [], attachments: [] }),

@@ -145,6 +145,7 @@ export interface ConversationArchiveReadRepository {
     provider: ConversationProvider;
     view: "default" | "all";
     messageId: string;
+    scope?: "active" | "archived" | "deleted";
     branchId?: string;
   }): Promise<{ index: number; total: number } | null>;
   dailyStats(input: {
@@ -704,6 +705,7 @@ implements ConversationArchiveReadRepository {
     provider: ConversationProvider;
     view: "default" | "all";
     messageId: string;
+    scope?: "active" | "archived" | "deleted";
     branchId?: string;
   }): Promise<{ index: number; total: number } | null> {
     const rows = await this.db
@@ -712,6 +714,7 @@ implements ConversationArchiveReadRepository {
       .where(and(
         eq(conversationMessages.userId, input.userId),
         eq(conversationMessages.conversationId, input.conversationId),
+        lifecyclePredicate(input.scope, input.userId, input.conversationId, input.branchId),
         messageVisibility(input.provider, input.view),
         input.branchId ? branchSelectionPredicate(input.userId, input.branchId) : branchVisibilityPredicate(input.userId),
       ))

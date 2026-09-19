@@ -15,6 +15,7 @@ const EXCLUSION_ID = "00000000-0000-4000-8000-000000000904";
 const SOURCE_ID = "00000000-0000-4000-8000-000000000905";
 
 class ConversationReads {
+  listCalls: Array<Record<string, unknown>> = [];
   searchCalls: Array<Record<string, unknown>> = [];
   readCalls: Array<Record<string, unknown>> = [];
 
@@ -36,6 +37,19 @@ class ConversationReads {
         sourceCreatedAt: "2026-09-16T12:00:00.000Z",
         isCurrentPath: false,
         snippet: "needle in the canonical saved branch",
+      }],
+    };
+  }
+
+  async list(input: Record<string, unknown>) {
+    this.listCalls.push(input);
+    return {
+      total: 1,
+      items: [{
+        id: CONVERSATION_ID, provider: "chatgpt" as const, sourceConversationId: "provider-conversation",
+        title: "Canonical archive", sourceCreatedAt: "2026-09-16T11:00:00.000Z", sourceUpdatedAt: "2026-09-16T12:30:00.000Z",
+        defaultModel: "gpt-5.6", currentLeafSourceNodeId: "current-leaf", messageCount: 1, turnCount: 0, totalNodeCount: 2,
+        archivedAt: null, deletedAt: null,
       }],
     };
   }
@@ -107,6 +121,18 @@ class ConversationReads {
       nextOffset: null,
     };
   }
+}
+
+class ConversationPruning {
+  async listDeletedBranches() { return { total: 0, items: [] }; }
+  async archiveConversation() { return { archived: true as const }; }
+  async deleteConversation() { return { provider: "chatgpt" as const, sourceConversationId: "provider", deletedMessages: 1, rawSourcePreserved: true as const }; }
+  async deleteBranch() { return { provider: "chatgpt" as const, sourceConversationId: "provider", sourceNodeId: "node", deletedMessages: 1, remainingMessages: 1, currentLeafSourceNodeId: "leaf", rawSourcePreserved: true as const }; }
+  async restoreConversation() { return { restored: true as const }; }
+  async restoreDeletedConversation() { return { restored: true as const }; }
+  async restoreBranch() { return { restored: true as const }; }
+  async permanentlyDeleteConversation() { return { deleted: true as const, rawSourcePreserved: true as const }; }
+  async permanentlyDeleteBranch() { return { deleted: true as const, rawSourcePreserved: true as const }; }
 }
 
 
@@ -198,9 +224,11 @@ class RecoveryReads {
 
 async function connect() {
   const reads = new ConversationReads();
+  const pruning = new ConversationPruning();
   const server = createMcpServer({
     conversationArchiveTools: {
       conversationArchiveReadService: reads as never,
+      conversationPruningService: pruning as never,
       getAuthenticatedUserId: () => USER_ID,
     },
   });
@@ -211,7 +239,7 @@ async function connect() {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  return { client, server, reads };
+  return { client, server, reads, pruning };
 }
 
 test("Conversation MCP inventory exposes dedicated read-only search and model-view tools", async (t) => {
@@ -272,10 +300,11 @@ test("search_conversations returns exact read_conversation pointers for saved br
     snippet: "needle in the canonical saved branch",
     detail_tool: "read_conversation",
     detail_arguments: {
-      conversation_id: CONVERSATION_ID,
-      message_id: MESSAGE_ID,
-      view: "all",
-    },
+        conversation_id: CONVERSATION_ID,
+        message_id: MESSAGE_ID,
+        view: "all",
+        scope: "active",
+      },
   });
   assert.equal(fixture.reads.searchCalls[0]?.userId, USER_ID);
 });
@@ -293,6 +322,7 @@ test("read_conversation returns canonical structured blocks and a model-readable
       conversation_id: CONVERSATION_ID,
       message_id: MESSAGE_ID,
       view: "all",
+      mode: "full",
       context: 20,
     },
   });
@@ -484,4 +514,42 @@ test("Conversation MCP schemas reject client-supplied identity before service ca
   });
   assert.equal(result.isError, true);
   assert.equal(fixture.reads.searchCalls.length, 0);
+});
+
+test("Conversation product surface exposes browse, lifecycle, and compact reads without client identity", async (t) => {
+  const fixture = await connect();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const inventory = await fixture.client.listTools();
+  for (const name of [
+    "list_conversations",
+    "search_conversations",
+    "read_conversation",
+    "list_deleted_conversation_branches",
+    "archive_conversation",
+    "delete_conversation_item",
+    "restore_conversation_item",
+    "permanently_delete_conversation_item",
+  ]) {
+    const tool = inventory.tools.find((candidate) => candidate.name === name);
+    assert.ok(tool, `${name} should be registered`);
+    assert.equal("userId" in (tool.inputSchema.properties ?? {}), false);
+    assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
+  }
+
+  const compact = await fixture.client.callTool({
+    name: "read_conversation",
+    arguments: { conversation_id: CONVERSATION_ID },
+  });
+  assert.equal(compact.isError, undefined);
+  const data = (compact.structuredContent as {
+    data: { messages: Array<Record<string, unknown>>; conversation: Record<string, unknown> };
+  }).data;
+  assert.equal(data.messages[0]?.display_text, "needle in the canonical saved branch");
+  assert.equal("content_blocks" in (data.messages[0] ?? {}), false);
+  assert.equal("attachments" in (data.messages[0] ?? {}), false);
+  assert.equal("provider_metadata" in data.conversation, false);
 });
