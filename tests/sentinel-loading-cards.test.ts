@@ -39,7 +39,7 @@ function installDom() {
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-test("Sentinel loading keeps the final card stack visible and loads each data card in place", async () => {
+test("Sentinel loading renders all data states as titleless cards", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
@@ -49,26 +49,30 @@ test("Sentinel loading keeps the final card stack visible and loads each data ca
     root.render(React.createElement(SentinelPageContent, { api }));
     await waitForPaint();
 
-    assert.ok(container.querySelector('[aria-label="Sentinel status"]'));
-    assert.ok(container.querySelector('[aria-label="ChatGPT Message Bridge"]'));
-    assert.ok(container.querySelector('[aria-labelledby="sentinel-policy-title"]'));
-    assert.ok(container.querySelector('[aria-label="Sentinel controls"]'));
-    assert.ok(container.querySelector('[aria-labelledby="sentinel-activity-title"]'));
+    const labels = [
+      "Sentinel status",
+      "Wake policy",
+      "Sentinel controls",
+      "Wake activity",
+    ];
+    for (const label of labels) {
+      const card = container.querySelector(`section[aria-label="${label}"]`);
+      assert.ok(card, `${label} state card is rendered`);
+      assert.ok(card?.querySelector(".sentinel-card-state"));
+      assert.equal(card?.querySelector("h2"), null);
+    }
 
-    const loadingCopies = [...container.querySelectorAll(".system-state-copy")]
-      .map((node) => node.textContent?.trim())
-      .filter(Boolean);
-    assert.deepEqual(loadingCopies, [
-      "Reading Sentinel…",
-      "Reading wake policy…",
-      "Reading Sentinel controls…",
-      "Reading wake activity…",
-    ]);
-
+    assert.ok(container.querySelector('[aria-label="ChatGPT / Claude Message Bridge"]'));
+    assert.equal(container.querySelectorAll(".sentinel-card-state").length, 4);
+    assert.ok(
+      [...container.querySelectorAll(".sentinel-card-state p")]
+        .every((node) => node.textContent === "Reading..."),
+    );
     assert.ok(container.textContent?.includes("Message Bridge"));
-    assert.ok(container.textContent?.includes("Wake Policy"));
-    assert.ok(container.textContent?.includes("First Wake / Controls"));
-    assert.ok(container.textContent?.includes("Wake Activity"));
+    assert.doesNotMatch(
+      container.textContent ?? "",
+      /Wake Policy|First Wake \/ Controls|Wake Activity/,
+    );
   } finally {
     root.unmount();
     await waitForPaint();
