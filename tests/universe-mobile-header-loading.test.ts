@@ -50,7 +50,7 @@ test("Universe mobile controls share the same visual page-edge inset", () => {
 });
 
 test("Universe loading mirrors the Day Space placeholder and removes orbital rings", () => {
-  assert.match(pageSource, /正在读取 Universe(?:…|\.\.\.)/);
+  assert.match(pageSource, /Reading\.\.\./);
   assert.match(
     homePolishCss,
     /\.universe-page:has\(\.universe-cosmos-loading\) \.universe-cosmos-loading::before,\s*\.universe-page:has\(\.universe-cosmos-loading\) \.universe-cosmos-loading::after\s*\{[\s\S]*display:\s*none/,
