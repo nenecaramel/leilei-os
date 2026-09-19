@@ -6,9 +6,8 @@ import {
   createConversationArchiveApi,
   type ConversationDeletedBranch,
   type ConversationListItem,
-  type ConversationProvider,
 } from "./conversation-archive-api";
-import { groupConversationsByMonth } from "./conversation-presentation";
+import { conversationProviderLabel, groupConversationsByMonth } from "./conversation-presentation";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import "./conversations.css";
 
@@ -32,10 +31,6 @@ type ReadyState = {
   items: ArchiveItem[];
   total: number;
 };
-
-function providerLabel(provider: ConversationProvider): string {
-  return provider === "chatgpt" ? "ChatGPT" : "Claude";
-}
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
@@ -286,7 +281,7 @@ export function ConversationLifecyclePageContent({ api }: { api: WebApiClient })
           label={selected.kind === "conversation"
             ? `Archived Conversation ${title(selected.item.title)}`
             : `Archived Branch ${title(selected.item.title)}`}
-          dateLabel={`${formatPaperDateTime(selected.removalTime)} · ${providerLabel(selected.item.provider)}`}
+          dateLabel={`${formatPaperDateTime(selected.removalTime)} · ${conversationProviderLabel(selected.item.provider)}`}
           signature=""
           triggerRef={triggerRef}
           errorMessage={actionError || null}

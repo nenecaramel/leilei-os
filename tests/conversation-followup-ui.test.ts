@@ -10,8 +10,8 @@ const search = readFileSync(
   new URL("../web/src/pages/ConversationSearchPanel.tsx", import.meta.url),
   "utf8",
 );
-const refinement = readFileSync(
-  new URL("../web/src/pages/conversation-layout-refinement.css", import.meta.url),
+const css = readFileSync(
+  new URL("../web/src/pages/conversations.css", import.meta.url),
   "utf8",
 );
 const archive = readFileSync(
@@ -42,7 +42,7 @@ test("Sources uses the same month wrapper, heading rhythm, and card shell as the
   assert.match(importHistory, /<h2 className="memory-month-label">原始导入记录<\/h2>/);
   assert.match(importHistory, /className="memory-month-card conversation-import-history-list"/);
   assert.doesNotMatch(importHistory, /className="conversation-section-heading"/);
-  assert.doesNotMatch(refinement, /conversation-import-history \.conversation-section-heading/);
+  assert.doesNotMatch(css, /conversation-import-history \.conversation-section-heading/);
 });
 
 test("Conversation list groups and displays by the source conversation creation time", () => {

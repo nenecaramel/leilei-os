@@ -6,7 +6,11 @@ import type {
   ConversationImportSourceHistoryItem,
 } from "./conversation-archive-api";
 import { createConversationArchiveApi } from "./conversation-archive-api";
-import "./conversation-layout-refinement.css";
+import {
+  conversationProviderLabel,
+  formatConversationBytes,
+  formatConversationDateTime,
+} from "./conversation-presentation";
 
 type Client = ReturnType<typeof createConversationArchiveApi>;
 
@@ -14,22 +18,6 @@ type HistoryState =
   | { status: "loading" }
   | { status: "ready"; items: ConversationImportSourceHistoryItem[]; total: number }
   | { status: "error" };
-
-function dateTime(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function bytes(value: number | null): string {
-  if (value === null) return "—";
-  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
 
 function statusLabel(status: string): string {
   if (status === "executed") return "已执行";
@@ -207,14 +195,14 @@ export function ConversationImportHistoryPanel({
                     <div className="conversation-import-source-main">
                       <div className="conversation-import-source-topline">
                         <span className={`conversation-provider conversation-provider--${source.provider}`}>
-                          {source.provider === "chatgpt" ? "ChatGPT" : "Claude"}
+                          {conversationProviderLabel(source.provider)}
                         </span>
-                        <time>{dateTime(source.receivedAt)}</time>
+                        <time>{formatConversationDateTime(source.receivedAt)}</time>
                       </div>
                       <div className="conversation-import-source-titleline">
                         <h3>{source.filename}</h3>
                         <span>
-                          {bytes(source.rawBytes)} · {source.runCount} 次 Preview/Execute
+                          {formatConversationBytes(source.rawBytes)} · {source.runCount} 次 Preview/Execute
                           {source.supersededRunCount ? ` · ${source.supersededRunCount} 次被替代` : ""}
                         </span>
                       </div>
@@ -222,7 +210,7 @@ export function ConversationImportHistoryPanel({
                         <small>
                           最近：{statusLabel(latest.status)} ·
                           {" "}{latest.executionMode === "reapply" ? "显式 reapply" : "标准导入"} ·
-                          {" "}{dateTime(latest.completedAt ?? latest.createdAt)}
+                          {" "}{formatConversationDateTime(latest.completedAt ?? latest.createdAt)}
                         </small>
                       ) : null}
                     </div>
@@ -277,7 +265,7 @@ export function ConversationImportHistoryPanel({
                                 {executingRunId === run.id ? "确认中…" : "确认导入"}
                               </button>
                             ) : null}
-                            <time>{dateTime(run.completedAt ?? run.createdAt)}</time>
+                            <time>{formatConversationDateTime(run.completedAt ?? run.createdAt)}</time>
                           </div>
                         ))}
                       </div>

@@ -197,6 +197,7 @@ test("Conversation rows use the approved Memory inset-card geometry", () => {
 test("Conversation controls stay overlaid while Favorites count aligns with its first month label", () => {
   assert.match(css, /\.conversation-archive-section,[\s\S]*?\.conversation-favorites\s*\{[^}]*position:\s*relative/s);
   assert.match(css, /\.conversation-list-heading\s*\{[^}]*position:\s*absolute[^}]*top:\s*0[^}]*right:\s*0/s);
+  assert.match(css, /\.conversation-page \.conversation-list-heading\s*\{\s*top:\s*-8px;?\s*\}/);
   assert.doesNotMatch(favoritesPanel, /conversation-section-heading conversation-list-heading/);
   assert.match(favoritesPanel, /conversation-favorites-month-heading/);
   assert.match(favoritesPanel, /className="conversation-favorites-total"/);
@@ -221,8 +222,8 @@ test("Sources uses full card width below top-right actions", () => {
   assert.match(importHistoryPanel, /共 \{state\.total\.toLocaleString\(\)\} 份/);
   assert.doesNotMatch(importHistoryPanel, /份 source/);
   assert.match(importHistoryPanel, /conversation-import-source-main[\s\S]*<\/div>[\s\S]*conversation-import-source-actions/);
-  assert.match(importHistoryPanel, /conversation-import-source-titleline[\s\S]*<h3>\{source\.filename\}<\/h3>[\s\S]*\{bytes\(source\.rawBytes\)\} · \{source\.runCount\} 次 Preview\/Execute/);
-  assert.doesNotMatch(importHistoryPanel, /<p>\s*\{bytes\(source\.rawBytes\)\}/);
+  assert.match(importHistoryPanel, /conversation-import-source-titleline[\s\S]*<h3>\{source\.filename\}<\/h3>[\s\S]*\{formatConversationBytes\(source\.rawBytes\)\} · \{source\.runCount\} 次 Preview\/Execute/);
+  assert.doesNotMatch(importHistoryPanel, /<p>\s*\{formatConversationBytes\(source\.rawBytes\)\}/);
   assert.match(importHistoryPanel, /className="conversation-message-favorite active conversation-import-source-action"/);
   assert.match(css, /\.conversation-import-source-titleline > span\s*\{[^}]*margin-left:\s*auto[^}]*white-space:\s*nowrap/s);
   assert.match(importHistoryPanel, /className="system-section conversation-import-history-loading"/);
@@ -262,7 +263,7 @@ test("Conversation Archive unifies recoverable Conversation and Branch rows behi
   assert.match(lifecyclePage, /<span>\{title\(entry\.item\.title\)\}<\/span>/);
   assert.match(lifecyclePage, /<PaperDetailDialog/);
   assert.match(lifecyclePage, /formatPaperDateTime\(selected\.removalTime\)/);
-  assert.match(lifecyclePage, /providerLabel\(selected\.item\.provider\)/);
+  assert.match(lifecyclePage, /conversationProviderLabel\(selected\.item\.provider\)/);
   assert.match(lifecyclePage, /bottomLeft=\{selected\.kind === "conversation" \? "Conversation" : "Branch"\}/);
   assert.match(lifecyclePage, /确认永久删除/);
   assert.match(lifecyclePage, /恢复中…/);

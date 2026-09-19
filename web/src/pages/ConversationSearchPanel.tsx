@@ -7,6 +7,10 @@ import type {
   ConversationSearchResult,
   createConversationArchiveApi,
 } from "./conversation-archive-api";
+import {
+  conversationProviderLabel,
+  formatConversationDateTime,
+} from "./conversation-presentation";
 
 type SearchState =
   | { status: "idle" }
@@ -14,22 +18,8 @@ type SearchState =
   | { status: "ready"; items: ConversationSearchResult[]; total: number }
   | { status: "error" };
 
-function providerLabel(provider: ConversationProvider): string {
-  return provider === "chatgpt" ? "ChatGPT" : "Claude";
-}
-
 function browserTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }
 
 function resultLocation(result: ConversationSearchResult): string {
@@ -150,7 +140,7 @@ export function ConversationSearchPanel({
             <option value="">全部窗口</option>
             {conversations.map((conversation) => (
               <option value={conversation.id} key={conversation.id}>
-                {providerLabel(conversation.provider)} · {conversation.title?.trim() || "Untitled"}
+                {conversationProviderLabel(conversation.provider)} · {conversation.title?.trim() || "Untitled"}
               </option>
             ))}
           </select>
@@ -183,10 +173,10 @@ export function ConversationSearchPanel({
           {state.items.map((result) => (
             <Link className="conversation-search-result" to={resultLocation(result)} key={result.messageId}>
               <div className="conversation-search-result-meta">
-                <span>{providerLabel(result.provider)}</span>
-                <strong>{result.role === "user" ? "You" : providerLabel(result.provider)}</strong>
+                <span>{conversationProviderLabel(result.provider)}</span>
+                <strong>{result.role === "user" ? "You" : conversationProviderLabel(result.provider)}</strong>
                 <span>{result.conversationTitle?.trim() || "Untitled conversation"}</span>
-                <time>{formatDateTime(result.sourceCreatedAt)}</time>
+                <time>{formatConversationDateTime(result.sourceCreatedAt)}</time>
               </div>
               <p>{result.snippet}</p>
               {result.provider === "chatgpt" && !result.isCurrentPath ? (
