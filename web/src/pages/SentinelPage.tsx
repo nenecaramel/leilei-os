@@ -115,6 +115,24 @@ function SentinelCardState({
   );
 }
 
+function SentinelStateCard({
+  label,
+  state,
+  message,
+  onRetry,
+}: {
+  label: string;
+  state: "loading" | "error";
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <section className="system-section sentinel-state-card" aria-label={label}>
+      <SentinelCardState state={state} message={message} onRetry={onRetry} />
+    </section>
+  );
+}
+
 export function SentinelPageContent({
   api,
   now = () => new Date(),
@@ -223,20 +241,9 @@ export function SentinelPageContent({
 
         <ChatGPTMessageBridgeCard api={api} />
 
-        <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
-          <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
-          <SentinelCardState state="loading" message="Reading..." />
-        </section>
-
-        <section className="system-section sentinel-controls-card" aria-label="Sentinel controls">
-          <h2 className="system-product-name">First Wake / Controls</h2>
-          <SentinelCardState state="loading" message="Reading..." />
-        </section>
-
-        <section className="system-section sentinel-activity-card" aria-labelledby="sentinel-activity-title">
-          <h2 className="system-product-name" id="sentinel-activity-title">Wake Activity</h2>
-          <SentinelCardState state="loading" message="Reading..." />
-        </section>
+        <SentinelStateCard label="Wake policy" state="loading" message="Reading..." />
+        <SentinelStateCard label="Sentinel controls" state="loading" message="Reading..." />
+        <SentinelStateCard label="Wake activity" state="loading" message="Reading..." />
       </div>
     );
   }
@@ -249,18 +256,24 @@ export function SentinelPageContent({
           <SentinelCardState state="error" message="Unable to read Sentinel." onRetry={() => void load()} />
         </section>
         <ChatGPTMessageBridgeCard api={api} />
-        <section className="system-section sentinel-policy-card" aria-labelledby="sentinel-policy-title">
-          <h2 className="system-product-name" id="sentinel-policy-title">Wake Policy</h2>
-          <SentinelCardState state="error" message="Unable to read wake policy." onRetry={() => void load()} />
-        </section>
-        <section className="system-section sentinel-controls-card" aria-label="Sentinel controls">
-          <h2 className="system-product-name">First Wake / Controls</h2>
-          <SentinelCardState state="error" message="Unable to read Sentinel controls." onRetry={() => void load()} />
-        </section>
-        <section className="system-section sentinel-activity-card" aria-labelledby="sentinel-activity-title">
-          <h2 className="system-product-name" id="sentinel-activity-title">Wake Activity</h2>
-          <SentinelCardState state="error" message="Unable to read wake activity." onRetry={() => void load()} />
-        </section>
+        <SentinelStateCard
+          label="Wake policy"
+          state="error"
+          message="Unable to read wake policy."
+          onRetry={() => void load()}
+        />
+        <SentinelStateCard
+          label="Sentinel controls"
+          state="error"
+          message="Unable to read Sentinel controls."
+          onRetry={() => void load()}
+        />
+        <SentinelStateCard
+          label="Wake activity"
+          state="error"
+          message="Unable to read wake activity."
+          onRetry={() => void load()}
+        />
       </div>
     );
   }

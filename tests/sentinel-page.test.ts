@@ -665,9 +665,14 @@ test("Sentinel host-facing copy names ChatGPT and Claude together", () => {
 });
 
 
-test("Sentinel loading and unavailable cards share the same first-row state structure", () => {
+test("Sentinel loading and unavailable cards share the same titleless state-card structure", () => {
   assert.match(sentinelSource, /function SentinelCardState/);
-  assert.match(sentinelSource, /<SentinelCardState state="loading" message="Reading\.\.\." \/>/);
-  assert.match(sentinelSource, /<SentinelCardState state="error" message="Unable to read wake policy\." onRetry=/);
+  assert.match(sentinelSource, /function SentinelStateCard/);
+  assert.match(
+    sentinelSource,
+    /<section className="system-section sentinel-state-card" aria-label=\{label\}>[\s\S]*?<SentinelCardState state=\{state\} message=\{message\} onRetry=\{onRetry\} \/>/,
+  );
+  assert.match(sentinelSource, /<SentinelStateCard label="Wake policy" state="loading" message="Reading\.\.\." \/>/);
+  assert.match(sentinelSource, /label="Wake policy"[\s\S]*?message="Unable to read wake policy\."/);
   assert.match(stylesSource, /\.sentinel-card-state__action-row\s*\{[^}]*min-height:\s*1\.4em[^}]*place-items:\s*center/s);
 });
