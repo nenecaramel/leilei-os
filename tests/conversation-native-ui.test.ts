@@ -239,28 +239,27 @@ test("Conversation lists restore content rows without standalone page headings",
   assert.match(css, /.conversation-surface-tabs button,[\s\S]*?min-height:\s*32px/s);
 });
 
-test("Conversation lifecycle uses lifecycle time and totals, with recoverable detail actions", () => {
-  assert.match(lifecyclePage, /time: item\.deletedAt \?\? null/);
-  assert.match(lifecyclePage, /time: item\.archivedAt \?\? null/);
-  assert.match(lifecyclePage, /shortTime\(\(deleted \? item\.deletedAt : item\.archivedAt\) \?\? null\)/);
-  assert.match(lifecyclePage, /state\.total\.toLocaleString\(\)\}项/);
-  assert.match(lifecyclePage, /result\.conversations\.total \+ result\.branches\.total \+ exclusions\.total/);
-  assert.match(lifecyclePage, /branch\.title/);
-  assert.match(lifecyclePage, /"Branch"/);
-  assert.doesNotMatch(lifecyclePage, /branch\.sourceNodeId/);
-  assert.match(page, /Permanently Delete[\s\S]*Restore[\s\S]*Return/);
-  assert.match(page, /永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留/);
-  assert.doesNotMatch(page, /删除整个分支并在后续导入中排除/);
+test("Conversation Archive unifies recoverable Conversation and Branch rows behind paper details", () => {
+  assert.match(lifecyclePage, /client\.listArchive/);
+  assert.match(lifecyclePage, /client\.listDeleted/);
+  assert.doesNotMatch(lifecyclePage, /client\.listExclusions|restoreCandidates|restoreLegacyExclusion/);
+  assert.match(lifecyclePage, /removalTime: item\.archivedAt \?\? null/);
+  assert.match(lifecyclePage, /removalTime: item\.deletedAt \?\? null/);
+  assert.match(lifecyclePage, /archived\.total \+ deleted\.conversations\.total \+ deleted\.branches\.total/);
+  assert.match(lifecyclePage, /className="memory-row-title">\{branchText\(entry\.item\.rootSnippet\)\}/);
+  assert.match(lifecyclePage, /<span>Conversation<\/span>/);
+  assert.match(lifecyclePage, /<span>\{title\(entry\.item\.title\)\}<\/span>/);
+  assert.match(lifecyclePage, /<PaperDetailDialog/);
+  assert.match(lifecyclePage, /formatPaperDateTime\(selected\.removalTime\)/);
+  assert.match(lifecyclePage, /providerLabel\(selected\.item\.provider\)/);
+  assert.match(lifecyclePage, /bottomLeft=\{selected\.kind === "conversation" \? "Conversation" : "Branch"\}/);
+  assert.match(lifecyclePage, /确认永久删除/);
+  assert.match(lifecyclePage, /恢复中…/);
+  assert.match(lifecyclePage, /删除中…/);
+  assert.doesNotMatch(page, /TrashIcon|title="Deleted"|\/conversations\/deleted|archiveWindow/);
+  assert.match(page, /移到 Archive/);
   assert.doesNotMatch(css, /\.conversation-lifecycle-icon\b/);
-  assert.match(lifecyclePage, /client\.restoreCandidates/);
-  assert.match(lifecyclePage, /client\.restoreExclusion/);
-  assert.match(lifecyclePage, /restoreLegacyExclusion/);
-  assert.match(lifecyclePage, /candidateStatusByExclusion/);
-  assert.doesNotMatch(lifecyclePage, /Promise\.all\(exclusions\.items\.map[\s\S]*restoreCandidates/);
-  assert.doesNotMatch(lifecyclePage, /client\.importSources\(\{ limit: 100/);
-  assert.match(lifecyclePage, /永久从 Conversation Archive 删除并阻止后续重新导入；原始 export 仍保留/);
 });
-
 test("Conversation advanced search filters stay secondary until requested", () => {
   assert.match(searchPanel, /className="conversation-search-toolbar"/);
   assert.match(searchPanel, /conversation-search-filter-toggle/);
