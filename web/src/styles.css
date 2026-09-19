@@ -7304,6 +7304,18 @@ body:has(.system-page) {
   padding: 0;
 }
 
+.paper-detail-state--loading {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  place-content: center;
+  align-content: center;
+  justify-items: center;
+}
+
 .state-surface--paper .state-surface__message {
   font-weight: 500;
 }
