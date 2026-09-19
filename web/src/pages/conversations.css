@@ -341,3 +341,24 @@
   width: 24px;
   height: 24px;
 }
+
+
+/* True state-only Conversation pages occupy the viewport and center the shared PageState. */
+.conversation-state-page {
+  display: grid;
+  min-height: 100dvh;
+  padding-top: 0;
+  padding-bottom: 0;
+  place-items: center;
+}
+
+.conversation-state-page > .state-surface--page {
+  min-height: 0;
+  flex: none;
+}
+
+@media (max-width: 760px) {
+  .conversation-state-page {
+    min-height: calc(100dvh - (44px + env(safe-area-inset-top, 0px)));
+  }
+}

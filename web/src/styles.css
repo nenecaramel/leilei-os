@@ -2689,12 +2689,15 @@ body:has(.home-prototype) {
 }
 
 .module-search-state > button:not(.secondary-button) {
-  margin-left: 8px;
+  margin: 0;
   padding: 0;
   border: 0;
-  color: #666;
+  color: var(--state-action);
   background: transparent;
-  font: inherit;
+  font-family: var(--state-font);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
   text-decoration: none;
 }
 
@@ -7583,3 +7586,13 @@ body:has(.system-page) {
   cursor: pointer;
 }
 
+
+
+/* Sentinel data cards keep Reading and Unable copy on the same first-row anchor. */
+.sentinel-card-state__action-row {
+  display: grid;
+  min-height: 1.4em;
+  place-items: center;
+  font-size: 11px;
+  line-height: 1.4;
+}

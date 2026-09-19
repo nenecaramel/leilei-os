@@ -613,3 +613,12 @@ test("Day Space loading and empty states use the shared module state surface", (
     /\.day-space-stage-state,[\s\S]*?\.day-space-placeholder\s*\{[^}]*margin:\s*64px auto 0[^}]*font-size:\s*13px[^}]*font-weight:\s*400[^}]*text-align:\s*center/s,
   );
 });
+
+
+test("Day Space search Retry uses the global Retry typography", () => {
+  const stylesSource = readFileSync(new URL("../web/src/styles.css", import.meta.url), "utf8");
+  assert.match(
+    stylesSource,
+    /\.module-search-state > button:not\(\.secondary-button\)\s*\{[^}]*font-size:\s*11px[^}]*font-weight:\s*500[^}]*line-height:\s*1\.4[^}]*text-decoration:\s*none/s,
+  );
+});
