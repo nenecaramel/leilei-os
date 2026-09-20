@@ -50,7 +50,7 @@ test("real PostgreSQL global search covers fields, ranking, scope, dates, pagina
       const matrix=["精确计划","命中短语：海边旅行；","记忆标签","日记正文字段","日记标签","平静心情","任务描述字段","任务标签","Shared Paper 正文字段","space format","cafe\u0301"];
       for(const query of matrix){const found=await service.search({userId:owner,query,scope:"active",limit:25});assert.ok(found.results.length>=1,query);assert.ok(found.results.every((r)=>r.snippet.length<=242));}
       const ranked=await service.search({userId:owner,query:"精确计划",scope:"active",limit:25});assert.deepEqual(ranked.results.map((r)=>r.match_reason),["exact_stable_name","exact_stable_name","exact_stable_name","exact_stable_name"]);assert.equal(ranked.results.find((r)=>r.entity_id===memoryIds[0])?.author,"C");assert.equal(ranked.results.find((r)=>r.entity_id===sharedPaperIds[0])?.author,"G");assert.equal(ranked.results.find((r)=>r.entity_id===sharedPaperIds[0])?.detail_tool,"get_shared_paper");assert.equal(ranked.results.some((r)=>r.stable_name==="不能泄露"),false);
-      const archived=await service.search({userId:owner,query:"历史",scope:"archived",limit:25});assert.equal(archived.results.length,4);assert.ok(archived.results.every((r)=>r.lifecycle_status==="archived"&&r.detail_arguments.scope==="archived"));
+      const archived=await service.search({userId:owner,query:"历史",scope:"archived",limit:25});assert.equal(archived.results.length,4);assert.ok(archived.results.every((r)=>r.lifecycle_status==="archived"));assert.ok(archived.results.filter((r)=>r.entity_type!=="shared_paper").every((r)=>r.detail_arguments.scope==="archived"));assert.deepEqual(archived.results.find((r)=>r.entity_type==="shared_paper")?.detail_arguments,{id:sharedPaperIds[1]});
       const dated=await service.search({userId:owner,query:"精确计划",date_from:"2026-08-01",date_to:"2026-08-01",limit:25});assert.equal(dated.results.length,4);
       const p1=await service.search({userId:owner,query:"精确计划",limit:1});const p2=await service.search({userId:owner,query:"精确计划",limit:1,cursor:p1.metadata.next_cursor!});assert.notEqual(p1.results[0]?.entity_id,p2.results[0]?.entity_id);
       const memoryDetail=await new MemoryService(new DrizzleMemoryRepository(tx as never)).readArchivedMemoryDetail({userId:owner,id:memoryIds[1]});assert.equal(memoryDetail.content,"归档 Memory 正文");
@@ -277,6 +277,8 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
       const otherRun = await seedImport(other, "chatgpt", "c");
       const chatgptConversationId = randomUUID();
       const claudeConversationId = randomUUID();
+      const archivedConversationId = randomUUID();
+      const deletedConversationId = randomUUID();
       const otherConversationId = randomUUID();
 
       await tx.insert(schema.conversations).values([
@@ -311,6 +313,38 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
           updatedAt: now,
         },
         {
+          id: archivedConversationId,
+          userId: owner,
+          provider: "chatgpt",
+          sourceConversationId: "chatgpt-archived",
+          title: "Archived conversation",
+          sourceCreatedAt: now,
+          sourceUpdatedAt: now,
+          currentLeafSourceNodeId: "archived-node",
+          sourceFingerprint: "a".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          archivedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: deletedConversationId,
+          userId: owner,
+          provider: "chatgpt",
+          sourceConversationId: "chatgpt-deleted",
+          title: "Whole deleted conversation",
+          sourceCreatedAt: now,
+          sourceUpdatedAt: now,
+          currentLeafSourceNodeId: "deleted-window-node",
+          sourceFingerprint: "b".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          deletedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
           id: otherConversationId,
           userId: other,
           provider: "chatgpt",
@@ -330,6 +364,12 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
       const currentId = randomUUID();
       const savedBranchId = randomUUID();
       const claudeId = randomUUID();
+      const archivedId = randomUUID();
+      const activeDeletedRootId = randomUUID();
+      const activeDeletedChildId = randomUUID();
+      const archivedDeletedRootId = randomUUID();
+      const archivedDeletedChildId = randomUUID();
+      const wholeDeletedMessageId = randomUUID();
       await tx.insert(schema.conversationMessages).values([
         {
           id: currentId,
@@ -428,6 +468,124 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
           updatedAt: now,
         },
         {
+          id: archivedId,
+          userId: owner,
+          conversationId: archivedConversationId,
+          sourceNodeId: "archived-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T04:00:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T04:00:00.000Z"),
+          isCurrentPath: true,
+          currentPathIndex: 0,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "global conversation needle archived",
+          sourceFingerprint: "7".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: activeDeletedRootId,
+          userId: owner,
+          conversationId: chatgptConversationId,
+          sourceNodeId: "deleted-active-root",
+          parentSourceNodeId: "current-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T03:30:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:30:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 3,
+          isPrimary: true,
+          displayText: "deleted active branch unique token",
+          sourceFingerprint: "8".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: activeDeletedChildId,
+          userId: owner,
+          conversationId: chatgptConversationId,
+          sourceNodeId: "deleted-active-child",
+          parentSourceNodeId: "deleted-active-root",
+          role: "user",
+          sourceCreatedAt: new Date("2026-09-16T03:31:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:31:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 4,
+          isPrimary: true,
+          displayText: "deleted active descendant unique token",
+          sourceFingerprint: "9".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: archivedDeletedRootId,
+          userId: owner,
+          conversationId: archivedConversationId,
+          sourceNodeId: "deleted-archived-root",
+          parentSourceNodeId: "archived-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T03:32:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:32:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 1,
+          isPrimary: true,
+          displayText: "deleted archived branch unique token",
+          sourceFingerprint: "a".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: archivedDeletedChildId,
+          userId: owner,
+          conversationId: archivedConversationId,
+          sourceNodeId: "deleted-archived-child",
+          parentSourceNodeId: "deleted-archived-root",
+          role: "user",
+          sourceCreatedAt: new Date("2026-09-16T03:33:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:33:00.000Z"),
+          isCurrentPath: false,
+          currentPathIndex: null,
+          turnIndex: 2,
+          isPrimary: true,
+          displayText: "deleted archived descendant unique token",
+          sourceFingerprint: "b".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: wholeDeletedMessageId,
+          userId: owner,
+          conversationId: deletedConversationId,
+          sourceNodeId: "deleted-window-node",
+          role: "assistant",
+          sourceCreatedAt: new Date("2026-09-16T03:34:00.000Z"),
+          sourceUpdatedAt: new Date("2026-09-16T03:34:00.000Z"),
+          isCurrentPath: true,
+          currentPathIndex: 0,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "whole deleted conversation unique token",
+          sourceFingerprint: "c".repeat(64),
+          firstSeenImportId: chatgptRun,
+          lastSeenImportId: chatgptRun,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
           id: randomUUID(),
           userId: other,
           conversationId: otherConversationId,
@@ -445,6 +603,17 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
           lastSeenImportId: otherRun,
           createdAt: now,
           updatedAt: now,
+        },
+      ]);
+
+      await tx.insert(schema.conversationDeletedBranches).values([
+        {
+          id: randomUUID(), userId: owner, conversationId: chatgptConversationId,
+          provider: "chatgpt", sourceConversationId: "chatgpt-owner", sourceNodeId: "deleted-active-root", deletedAt: now, createdAt: now,
+        },
+        {
+          id: randomUUID(), userId: owner, conversationId: archivedConversationId,
+          provider: "chatgpt", sourceConversationId: "chatgpt-archived", sourceNodeId: "deleted-archived-root", deletedAt: now, createdAt: now,
         },
       ]);
 
@@ -469,6 +638,7 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
         && result.detail_arguments.conversation_id === result.conversation_id
         && result.detail_arguments.message_id === result.entity_id
         && result.detail_arguments.view === result.conversation_view
+        && result.detail_arguments.scope === "active"
       ));
       assert.ok(found.results.every((result) => result.time_basis === "message_time"));
       assert.equal(found.results.find((result) => result.entity_id === currentId)?.conversation_view, "default");
@@ -485,7 +655,30 @@ test("real PostgreSQL Conversation Global Search is owner-scoped, visible-messag
         scope: "archived",
         limit: 25,
       });
-      assert.deepEqual(archived.results, []);
+      assert.deepEqual(archived.results.map((result) => result.entity_id), [archivedId]);
+      assert.equal(archived.results[0]?.lifecycle_status, "archived");
+
+      const all = await service.search({
+        userId: owner,
+        query: "global conversation needle",
+        modules: ["conversation"],
+        scope: "all",
+        limit: 25,
+      });
+      assert.equal(all.results.length, 4);
+
+      for (const [query, scope] of [
+        ["deleted active branch unique token", "active"],
+        ["deleted active descendant unique token", "active"],
+        ["deleted archived branch unique token", "archived"],
+        ["deleted archived descendant unique token", "archived"],
+        ["deleted active branch unique token", "all"],
+        ["deleted archived branch unique token", "all"],
+        ["whole deleted conversation unique token", "all"],
+      ] as const) {
+        const hidden = await service.search({ userId: owner, query, modules: ["conversation"], scope, limit: 25 });
+        assert.deepEqual(hidden.results, [], `${query} must be excluded from canonical visible Conversation search`);
+      }
 
       throw new Rollback();
     }), Rollback);

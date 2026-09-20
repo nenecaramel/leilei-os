@@ -35,6 +35,7 @@ class FakeReadRepository implements ConversationArchiveReadRepository {
   lastMessagesInput: Parameters<ConversationArchiveReadRepository["listMessages"]>[0] | null = null;
   lastSearchInput: Parameters<ConversationArchiveReadRepository["searchMessages"]>[0] | null = null;
   ordinal: { index: number; total: number } | null = { index: 250, total: 400 };
+  payloadReads = 0;
 
   async findUserStatus() { return this.status; }
 
@@ -55,6 +56,7 @@ class FakeReadRepository implements ConversationArchiveReadRepository {
   }
 
   async readMessagePayloads(input: Parameters<ConversationArchiveReadRepository["readMessagePayloads"]>[0]) {
+    this.payloadReads += 1;
     return Object.fromEntries(input.messageIds.map((messageId) => [
       messageId,
       {
@@ -377,4 +379,21 @@ test("Claude canonical model view is explicitly branch-inclusive", async () => {
 
   assert.equal(view.view, "default");
   assert.equal(view.pathBasis, "branch_inclusive");
+});
+
+test("compact Conversation model view does not fetch payloads", async () => {
+  const repository = new FakeReadRepository();
+  repository.listMessages = async () => ({
+    items: [{
+      id: "22222222-2222-4222-8222-222222222222", sourceNodeId: "node", sourceMessageId: null,
+      parentSourceNodeId: null, role: "assistant", rawRole: "assistant", model: null,
+      sourceCreatedAt: null, sourceUpdatedAt: null, isCurrentPath: true, currentPathIndex: 0,
+      turnIndex: 0, isPrimary: true, displayText: "compact text",
+    }], total: 1,
+  });
+  const view = await new ConversationArchiveReadService(repository).modelView({
+    userId: "user", conversationId: CONVERSATION_ID, mode: "compact",
+  });
+  assert.equal(repository.payloadReads, 0);
+  assert.deepEqual(view.items[0]?.contentBlocks, []);
 });

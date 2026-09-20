@@ -371,6 +371,7 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
 
 const productionConversationArchiveDependencies: ConversationArchiveMcpToolDependencies = {
   conversationArchiveReadService: {
+    list: (input) => missingDatabaseService(),
     search: (input) => missingDatabaseService(),
     modelView: (input) => missingDatabaseService(),
   },
@@ -526,6 +527,7 @@ export type McpServerDependencies = {
   globalSearch?: GlobalSearchToolDependencies;
   conversationArchiveTools?: ConversationArchiveMcpToolDependencies;
   conversationRecoveryInspection?: ConversationRecoveryInspectionToolDependencies;
+  includeConversationRecoveryTools?: boolean;
   todoTools?: TodoToolsDependencies;
   sharedPaperTools?: SharedPaperToolDependencies;
   notionTools?: NotionToolsDependencies;
@@ -744,13 +746,15 @@ export function createMcpServer(
       return authenticatedUserId;
     },
   });
-  registerConversationRecoveryInspectionTools(server, dependencies.conversationRecoveryInspection ?? {
-    ...productionConversationRecoveryInspectionDependencies,
-    getAuthenticatedUserId: () => {
-      if (!authenticatedUserId) throw new ConversationArchiveAuthenticationError();
-      return authenticatedUserId;
-    },
-  });
+  if (dependencies.includeConversationRecoveryTools !== false) {
+    registerConversationRecoveryInspectionTools(server, dependencies.conversationRecoveryInspection ?? {
+      ...productionConversationRecoveryInspectionDependencies,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new ConversationArchiveAuthenticationError();
+        return authenticatedUserId;
+      },
+    });
+  }
   const universeTools = dependencies.universeTools ?? {
     universeService: productionUniverseService,
     globalSearchService: productionUniverseService,

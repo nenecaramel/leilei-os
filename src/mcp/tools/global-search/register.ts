@@ -36,6 +36,7 @@ const globalSearchDetailArgumentsSchema = z.union([
     conversation_id: z.string().uuid(),
     message_id: z.string().uuid(),
     view: z.enum(["default", "all"]),
+    scope: z.enum(["active", "archived"]),
   }).strict(),
 ]);
 
@@ -69,6 +70,7 @@ const globalSearchResultSchema = z.object({
       || result.detail_arguments.conversation_id !== result.conversation_id
       || result.detail_arguments.message_id !== result.entity_id
       || result.detail_arguments.view !== result.conversation_view
+      || result.detail_arguments.scope !== result.lifecycle_status
     ) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Conversation detail_arguments must point to the exact canonical message and view." });
     }
@@ -118,7 +120,7 @@ const globalSearchResultSchema = z.object({
   if (result.detail_tool !== expectedTool) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Detail tool must match the result module." });
   }
-  if ("scope" in result.detail_arguments && z.string().uuid().safeParse(result.detail_arguments.id).success) return;
+  if ("scope" in result.detail_arguments && "id" in result.detail_arguments && z.string().uuid().safeParse(result.detail_arguments.id).success) return;
   context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Memory, Diary, and Task detail_arguments require a UUID id and scope." });
 });
 

@@ -72,7 +72,7 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     if (input.modules.includes("todo") && input.scope !== "archived") moduleQueries.push(todoQuery(input, queryText, pattern));
     if (input.modules.includes("universe") && input.scope !== "archived") moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("shared_paper")) moduleQueries.push(sharedPaperQuery(input, queryText, pattern, prefix));
-    if (input.modules.includes("conversation") && input.scope !== "archived") {
+    if (input.modules.includes("conversation")) {
       moduleQueries.push(conversationQuery(input, queryText, pattern));
     }
     if (moduleQueries.length === 0) return [];
@@ -275,6 +275,7 @@ function conversationQuery(
   const text = normalized(sql`m.display_text`, input.mode);
   const effectiveTime = sql`coalesce(m.source_created_at, m.created_at)`;
   const businessDate = sql`(${effectiveTime} at time zone ${input.timezone})::date`;
+  const lifecycleStatus = sql`case when c.archived_at is null then 'active' else 'archived' end`;
   return bounded(sql`select
     'conversation'::text entity_type,
     m.id::text entity_id,
@@ -282,7 +283,7 @@ function conversationQuery(
     'text'::text matched_field,
     m.display_text matched_value,
     case when ${text} = lower(${query}) then 'exact_phrase' else 'field_match' end::text match_reason,
-    'active'::text lifecycle_status,
+    ${lifecycleStatus}::text lifecycle_status,
     null::text author,
     ${effectiveTime} business_time,
     'message_time'::text time_basis,
@@ -298,8 +299,29 @@ function conversationQuery(
       on c.id = m.conversation_id
       and c.user_id = m.user_id
     where m.user_id = ${input.userId}::uuid
+      and c.deleted_at is null
+      and ${lifecycle(lifecycleStatus, input.scope)}
       and m.is_primary = true
       and m.role in ('user', 'assistant')
+      and not exists (
+        select 1
+        from conversation_deleted_branches deleted_branch
+        where deleted_branch.user_id = m.user_id
+          and deleted_branch.conversation_id = m.conversation_id
+          and exists (
+            with recursive branch_nodes(source_node_id) as (
+              select deleted_branch.source_node_id
+              union all
+              select descendant.source_node_id
+              from conversation_messages descendant
+              join branch_nodes parent on descendant.parent_source_node_id = parent.source_node_id
+              where descendant.conversation_id = deleted_branch.conversation_id
+            )
+            select 1
+            from branch_nodes
+            where branch_nodes.source_node_id = m.source_node_id
+          )
+      )
       and ${text} like ${pattern} escape '\\'
       and ${dates(businessDate, input)}`, input);
 }

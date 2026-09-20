@@ -174,6 +174,7 @@ function detailArguments(
       conversation_id: row.conversationId,
       message_id: row.entityId,
       view: row.conversationView ?? "default",
+      scope: row.lifecycleStatus,
     };
   }
   if (row.entityType === "universe" || row.entityType === "shared_paper") {
