@@ -143,7 +143,9 @@ The provider checkpoint is for Claude Code recovery/fork only. The canonical con
 
 ## Writer / Service Boundary
 
-Add a database-backed `NativeLiveConversationRepository` plus a thin `NativeLiveConversationService`, separate from archive import/read services. The minimal surface is:
+Add a database-backed `NativeLiveConversationRepository` plus a thin `NativeLiveConversationService`, separate from archive import/read services.
+
+The repository may expose fine-grained persistence primitives internally:
 
 - `createConversation`
 - `getConversation`
@@ -153,6 +155,12 @@ Add a database-backed `NativeLiveConversationRepository` plus a thin `NativeLive
 - `setCurrentHead`
 - `bindProviderCheckpoint`
 - `getProviderCheckpointForHead`
+
+The service must not expose a sequence that lets callers assemble a partially completed assistant turn. The only successful assistant-completion entry point is:
+
+- `completeAssistantTurn(...)`
+
+That operation atomically writes the assistant message, all content blocks, the exact provider checkpoint, and `current_head_message_id`.
 
 Every operation accepts `userId`; all reads and writes include user scope. A row owned by a different user is indistinguishable from not found to callers.
 
@@ -166,6 +174,10 @@ The writer does not expose Retry/Edit HTTP endpoints in this phase. Its graph mo
 4. **Runtime failure** leaves the already-created user message visible. No assistant message or checkpoint is fabricated.
 5. **Set current head** verifies that the target message belongs to the specified native conversation and user before changing the head.
 6. **Checkpoint binding** verifies that the target canonical message belongs to the specified conversation and user; it is bound to that exact message, never merely the conversation.
+
+A checkpoint binding means the provider state is exact for that canonical assistant message. A provider session ID that has continued to grow after the message is not, by itself, an immutable historical checkpoint and must not be bound as though it were one.
+
+If Claude Code exposes a message-level provider checkpoint identifier, that exact identifier may be persisted. If it does not, the runtime must preserve an exact frozen/forked provider session for that head or reconstruct provider context from canonical LeileiOS history before branching from the old head.
 
 This makes a failed model call recoverable and observable while preserving canonical history.
 
