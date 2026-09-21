@@ -27,7 +27,7 @@
     "db:check": "drizzle-kit check",
     "db:seed:phase2": "tsx scripts/seed-phase-2.ts",
     "e2e:native-live-canonical": "tsx scripts/native-live-canonical-e2e.ts",
-    "test:native-live-minimal": "tsx --test tests/native-live-conversation-service.test.ts tests/native-live-conversation-orchestrator.test.ts tests/native-live-conversation-branch-orchestrator.test.ts && pnpm --dir tools/claude-bridge test",
+    "test:native-live-minimal": "tsx --test tests/native-live-conversation-service.test.ts tests/native-live-conversation-orchestrator.test.ts tests/native-live-conversation-branch-orchestrator.test.ts tests/native-live-relay-contract.test.ts && pnpm --dir tools/claude-bridge test",
     "test:native-live-db": "RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST=1 tsx --test tests/native-live-conversation-repository.integration.test.ts"
   },
   "dependencies": {
