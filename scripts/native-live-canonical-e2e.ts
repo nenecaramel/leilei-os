@@ -1,3 +1,4 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
@@ -26,7 +27,7 @@ function finalText(result: {
 void (async () => {
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
-  assert.equal(process.env.ANTHROPIC_API_KEY, undefined, "ANTHROPIC_API_KEY must be unset");
+  assert.ok(!process.env.ANTHROPIC_API_KEY, "ANTHROPIC_API_KEY must be unset");
 
   const database = createDatabase(databaseUrl);
   const suffix = crypto.randomUUID().replaceAll("-", "");
