@@ -78,6 +78,25 @@ test(
       },
     });
 
+    await assert.rejects(
+      service.setCurrentHead({
+        userId: userA,
+        conversationId: conversation.id,
+        messageId: userMessage.id,
+      }),
+      /not found/i,
+    );
+
+    await assert.rejects(
+      service.appendUserMessage({
+        userId: userA,
+        conversationId: conversation.id,
+        parentMessageId: userMessage.id,
+        blocks: [{ kind: "text", text: "invalid same-role child" }],
+      }),
+      /not found/i,
+    );
+
     const second = await service.completeAssistantTurn({
       userId: userA,
       conversationId: conversation.id,

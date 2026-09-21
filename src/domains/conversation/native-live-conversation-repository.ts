@@ -281,11 +281,14 @@ implements NativeLiveConversationRepository {
   }): Promise<NativeLiveMessage> {
     await this.requireNativeConversation(input.userId, input.conversationId);
     if (input.parentMessageId) {
-      await this.requireMessage(
+      const parent = await this.requireMessage(
         input.userId,
         input.conversationId,
         input.parentMessageId,
       );
+      if (parent.role !== "assistant" || parent.status !== "completed") {
+        throw notFound();
+      }
     }
 
     const now = new Date();
@@ -439,11 +442,14 @@ implements NativeLiveConversationRepository {
     conversationId: string;
     messageId: string;
   }): Promise<void> {
-    await this.requireMessage(
+    const head = await this.requireMessage(
       input.userId,
       input.conversationId,
       input.messageId,
     );
+    if (head.role !== "assistant" || head.status !== "completed") {
+      throw notFound();
+    }
 
     const rows = await this.db
       .update(conversations)
