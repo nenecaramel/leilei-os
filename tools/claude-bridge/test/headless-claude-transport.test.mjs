@@ -63,3 +63,36 @@ test("a non-zero Claude exit returns observable stderr", async () => {
 test("refuses to run when ANTHROPIC_API_KEY is present", () => {
   assert.throws(() => new HeadlessClaudeTransport({ environment: { ANTHROPIC_API_KEY: "forbidden" } }), /ANTHROPIC_API_KEY/);
 });
+
+
+test("emits normalized events before exit and returns the same event objects", async () => {
+  const transport = new HeadlessClaudeTransport({
+    spawn: () => fakeChild({
+      stdout: [
+        JSON.stringify({ type: "system", subtype: "init", session_id: "provider-stream-1" }) + "\n",
+        JSON.stringify({ type: "assistant", session_id: "provider-stream-1", delta: { text: "hel" } }) + "\n",
+        JSON.stringify({ type: "result", session_id: "provider-stream-1", result: "hello" }) + "\n",
+      ],
+    }),
+    environment: {},
+  });
+
+  const order = [];
+  const emitted = [];
+  transport.events.on("normalized-event", (event) => {
+    order.push(`normalized:${event.type}`);
+    emitted.push(event);
+  });
+  transport.events.on("exit", () => order.push("exit"));
+
+  const result = await transport.sendNew("hello");
+
+  assert.deepEqual(order, [
+    "normalized:session",
+    "normalized:partial_text",
+    "normalized:result",
+    "exit",
+  ]);
+  assert.deepEqual(result.normalizedEvents, emitted);
+  assert.deepEqual(result.normalizedEvents.map((event) => event.sequence), [1, 2, 3]);
+});
