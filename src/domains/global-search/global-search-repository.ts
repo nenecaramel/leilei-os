@@ -299,6 +299,7 @@ function conversationQuery(
       on c.id = m.conversation_id
       and c.user_id = m.user_id
     where m.user_id = ${input.userId}::uuid
+      and c.origin = 'legacy_import'
       and c.deleted_at is null
       and ${lifecycle(lifecycleStatus, input.scope)}
       and m.is_primary = true

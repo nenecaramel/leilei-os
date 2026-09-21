@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
@@ -48,7 +48,10 @@ implements ConversationArchiveStateRepository {
         sourceUpdatedAt: conversations.sourceUpdatedAt,
       })
       .from(conversations)
-      .where(eq(conversations.userId, userId))
+      .where(and(
+        eq(conversations.userId, userId),
+        eq(conversations.origin, "legacy_import"),
+      ))
       .orderBy(asc(conversations.provider), asc(conversations.sourceConversationId));
 
     if (conversationRows.length === 0) return { conversations: [] };
@@ -77,6 +80,9 @@ implements ConversationArchiveStateRepository {
 
     const messagesByConversation = new Map<string, CurrentConversationMessageState[]>();
     for (const row of messageRows) {
+      if (!row.sourceNodeId || !row.sourceFingerprint) {
+        throw new Error("Legacy conversation message is missing import provenance.");
+      }
       const messages = messagesByConversation.get(row.conversationId) ?? [];
       messages.push({
         id: row.id,
@@ -92,15 +98,20 @@ implements ConversationArchiveStateRepository {
     }
 
     const currentConversations: CurrentConversationState[] = conversationRows.map(
-      (row) => ({
-        id: row.id,
-        provider: row.provider as ConversationProvider,
-        sourceConversationId: row.sourceConversationId,
-        sourceFingerprint: row.sourceFingerprint,
+      (row) => {
+        if (!row.provider || !row.sourceConversationId || !row.sourceFingerprint) {
+          throw new Error("Legacy conversation is missing import provenance.");
+        }
+        return {
+          id: row.id,
+          provider: row.provider as ConversationProvider,
+          sourceConversationId: row.sourceConversationId,
+          sourceFingerprint: row.sourceFingerprint,
         sourceCreatedAt: row.sourceCreatedAt?.toISOString() ?? null,
         sourceUpdatedAt: row.sourceUpdatedAt?.toISOString() ?? null,
-        messages: messagesByConversation.get(row.id) ?? [],
-      }),
+          messages: messagesByConversation.get(row.id) ?? [],
+        };
+      },
     );
 
     return { conversations: currentConversations };
