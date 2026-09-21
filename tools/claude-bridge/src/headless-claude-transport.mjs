@@ -1,7 +1,7 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { ClaudeTransport } from "./claude-transport.mjs";
-import { normalizeClaudeEvents } from "./normalized-events.mjs";
+import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 
 function streamError(message, details) {
   return Object.assign(new Error(message), details);
@@ -50,6 +50,8 @@ export class HeadlessClaudeTransport extends ClaudeTransport {
       let pending = "";
       let providerSessionId = null;
       const parsedEvents = [];
+      const normalizedEvents = [];
+      const normalizer = new ClaudeEventNormalizer({ logicalConversationId: null, ...normalization });
       let parseFailure = null;
 
       const consumeLine = (line) => {
@@ -65,6 +67,11 @@ export class HeadlessClaudeTransport extends ClaudeTransport {
         if (!providerSessionId && typeof event.session_id === "string") providerSessionId = event.session_id;
         if (!providerSessionId && typeof event.sessionId === "string") providerSessionId = event.sessionId;
         this.events.emit("event", event);
+        const nextNormalizedEvents = normalizer.normalize(event);
+        normalizedEvents.push(...nextNormalizedEvents);
+        for (const normalizedEvent of nextNormalizedEvents) {
+          this.events.emit("normalized-event", normalizedEvent);
+        }
       };
 
       child.stdout.on("data", (chunk) => {
@@ -83,7 +90,7 @@ export class HeadlessClaudeTransport extends ClaudeTransport {
         if (parseFailure) { reject(Object.assign(parseFailure, { stdout, stderr, exitCode: code, signal })); return; }
         if (code !== 0) { reject(streamError(`Claude Code exited with exit code ${code}: ${stderr.trim() || "no stderr"}`, { stdout, stderr, exitCode: code, signal })); return; }
         this.events.emit("exit", { code, signal, stdout, stderr });
-        resolve({ providerSessionId, events: parsedEvents, normalizedEvents: normalizeClaudeEvents(parsedEvents, { logicalConversationId: null, ...normalization }), stdout, stderr, exitCode: code, signal });
+        resolve({ providerSessionId, events: parsedEvents, normalizedEvents, stdout, stderr, exitCode: code, signal });
       });
     });
   }
