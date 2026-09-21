@@ -97,6 +97,7 @@ implements ConversationPruningRepository {
         .from(conversations)
         .where(and(
           eq(conversations.userId, input.userId),
+          eq(conversations.origin, "legacy_import"),
           eq(conversations.id, input.conversationId),
         ))
         .for("update")
@@ -153,6 +154,7 @@ implements ConversationPruningRepository {
       .from(conversations)
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
       ))
       .for("update")
@@ -254,6 +256,7 @@ implements ConversationPruningRepository {
       .set({ archivedAt: new Date(), deletedAt: null, updatedAt: new Date() })
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         sql`${conversations.deletedAt} IS NULL`,
         sql`${conversations.archivedAt} IS NULL`,
@@ -267,6 +270,7 @@ implements ConversationPruningRepository {
       .set({ archivedAt: null, updatedAt: new Date() })
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         sql`${conversations.archivedAt} IS NOT NULL`,
       ))
@@ -279,6 +283,7 @@ implements ConversationPruningRepository {
       .set({ deletedAt: null, archivedAt: null, updatedAt: new Date() })
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         sql`${conversations.deletedAt} IS NOT NULL`,
       ))
@@ -294,6 +299,7 @@ implements ConversationPruningRepository {
         sourceConversationId: conversations.sourceConversationId,
       }).from(conversations).where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         sql`${conversations.deletedAt} IS NOT NULL`,
       )).for("update").limit(1);
@@ -311,6 +317,7 @@ implements ConversationPruningRepository {
       }).onConflictDoNothing();
       await transaction.delete(conversations).where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, conversation.id),
       ));
       return {
@@ -349,6 +356,7 @@ implements ConversationPruningRepository {
         sourceFingerprint: conversations.sourceFingerprint,
       }).from(conversations).where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
       )).for("update").limit(1);
       if (!conversation) return null;
@@ -412,6 +420,7 @@ implements ConversationPruningRepository {
         updatedAt: new Date(),
       }).where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
       ));
       for (const idChunk of chunks(ids, DELETE_BATCH)) {

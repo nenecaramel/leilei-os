@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
@@ -48,7 +48,10 @@ implements ConversationArchiveStateRepository {
         sourceUpdatedAt: conversations.sourceUpdatedAt,
       })
       .from(conversations)
-      .where(eq(conversations.userId, userId))
+      .where(and(
+        eq(conversations.userId, userId),
+        eq(conversations.origin, "legacy_import"),
+      ))
       .orderBy(asc(conversations.provider), asc(conversations.sourceConversationId));
 
     if (conversationRows.length === 0) return { conversations: [] };

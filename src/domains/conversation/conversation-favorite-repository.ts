@@ -178,6 +178,7 @@ implements ConversationFavoriteRepository {
         .from(conversations)
         .where(and(
           eq(conversations.userId, input.userId),
+          eq(conversations.origin, "legacy_import"),
           eq(conversations.id, input.conversationId),
         ))
         .for("share")

@@ -324,6 +324,7 @@ implements ConversationArchiveReadRepository {
   }): Promise<{ items: ConversationArchiveListItem[]; total: number }> {
     const where = and(
       eq(conversations.userId, input.userId),
+      eq(conversations.origin, "legacy_import"),
       input.provider ? eq(conversations.provider, input.provider) : undefined,
       lifecyclePredicate(input.scope),
     );
@@ -464,6 +465,7 @@ implements ConversationArchiveReadRepository {
       )
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         lifecyclePredicate(input.scope, input.userId, conversations.id, input.branchId),
       ))
