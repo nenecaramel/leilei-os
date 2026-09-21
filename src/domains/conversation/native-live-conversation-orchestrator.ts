@@ -91,7 +91,7 @@ function stringValue(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function eventBlocks(events: readonly NativeLiveNormalizedEvent[]): {
+export function canonicalizeNativeLiveEvents(events: readonly NativeLiveNormalizedEvent[]): {
   blocks: NativeLiveContentBlockInput[];
   error: string | null;
 } {
@@ -252,7 +252,7 @@ export class NativeLiveConversationOrchestrator {
       };
     }
 
-    const canonical = eventBlocks(runtimeResult.normalizedEvents);
+    const canonical = canonicalizeNativeLiveEvents(runtimeResult.normalizedEvents);
     if (canonical.error) {
       return {
         ok: false,
