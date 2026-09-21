@@ -44,20 +44,20 @@ test("fork resumes with --fork-session and rejects a provider session id reused 
   assert.deepEqual(args, ["-p", "branch prompt", "--resume", "provider-root", "--fork-session", "--output-format=stream-json", "--verbose"]);
   assert.equal(result.providerSessionId, "provider-fork");
   const sameId = new HeadlessClaudeTransport({ spawn: () => fakeChild({ stdout: [JSON.stringify({ type: "system", session_id: "provider-root" }) + "\n"] }), environment: {} });
-  await assert.rejects(() => sameId.fork("provider-root", "branch prompt"), /same provider session id/i);
+  await assert.rejects(() => sameId.fork("provider-root", "branch prompt"), (error) => error.runtimeCode === "PROVIDER_SESSION_CONFLICT" && /same provider session id/i.test(error.message));
 });
 
 test("a malformed stream event is observable and rejects the request", async () => {
   const transport = new HeadlessClaudeTransport({ spawn: () => fakeChild({ stdout: ["not-json\n"] }), environment: {} });
   const errors = [];
   transport.events.on("parse-error", (error) => errors.push(error.message));
-  await assert.rejects(() => transport.sendNew("hello"), /malformed JSON/i);
+  await assert.rejects(() => transport.sendNew("hello"), (error) => error.runtimeCode === "MALFORMED_STREAM" && /malformed JSON/i.test(error.message));
   assert.equal(errors.length, 1);
 });
 
 test("a non-zero Claude exit returns observable stderr", async () => {
   const transport = new HeadlessClaudeTransport({ spawn: () => fakeChild({ stderr: ["not logged in\n"], code: 1 }), environment: {} });
-  await assert.rejects(() => transport.sendNew("hello"), /exit code 1: not logged in/i);
+  await assert.rejects(() => transport.sendNew("hello"), (error) => error.runtimeCode === "CLAUDE_PROCESS_FAILED" && /exit code 1: not logged in/i.test(error.message));
 });
 
 test("refuses to run when ANTHROPIC_API_KEY is present", () => {
