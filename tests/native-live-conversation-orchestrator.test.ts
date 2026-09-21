@@ -231,3 +231,38 @@ test("normalized error events fail closed before canonical assistant completion"
   assert.equal(result.code, "RUNTIME_PROTOCOL_ERROR");
   assert.equal(port.completeCalls, 0);
 });
+
+
+test("later send fails closed when the current canonical assistant head has no exact checkpoint", async () => {
+  const port = new FakePort();
+  port.currentHeadMessageId = "a1";
+  port.checkpoint = null;
+
+  const calls: string[] = [];
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew() {
+      calls.push("new");
+      return { providerSessionId: "unexpected", normalizedEvents: [] };
+    },
+    async resume() {
+      calls.push("resume");
+      return { providerSessionId: "unexpected", normalizedEvents: [] };
+    },
+    async fork() {
+      calls.push("fork");
+      return { providerSessionId: "unexpected", normalizedEvents: [] };
+    },
+  };
+
+  const result = await new NativeLiveConversationOrchestrator(port, runtime).send({
+    userId: "u1",
+    conversationId: "c1",
+    text: "next",
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("expected failure");
+  assert.equal(result.code, "CANONICAL_CHECKPOINT_MISSING");
+  assert.deepEqual(calls, []);
+  assert.equal(port.completeCalls, 0);
+});
