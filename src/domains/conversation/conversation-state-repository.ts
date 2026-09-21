@@ -80,6 +80,9 @@ implements ConversationArchiveStateRepository {
 
     const messagesByConversation = new Map<string, CurrentConversationMessageState[]>();
     for (const row of messageRows) {
+      if (!row.sourceNodeId || !row.sourceFingerprint) {
+        throw new Error("Legacy conversation message is missing import provenance.");
+      }
       const messages = messagesByConversation.get(row.conversationId) ?? [];
       messages.push({
         id: row.id,
@@ -95,15 +98,20 @@ implements ConversationArchiveStateRepository {
     }
 
     const currentConversations: CurrentConversationState[] = conversationRows.map(
-      (row) => ({
-        id: row.id,
-        provider: row.provider as ConversationProvider,
-        sourceConversationId: row.sourceConversationId,
-        sourceFingerprint: row.sourceFingerprint,
+      (row) => {
+        if (!row.provider || !row.sourceConversationId || !row.sourceFingerprint) {
+          throw new Error("Legacy conversation is missing import provenance.");
+        }
+        return {
+          id: row.id,
+          provider: row.provider as ConversationProvider,
+          sourceConversationId: row.sourceConversationId,
+          sourceFingerprint: row.sourceFingerprint,
         sourceCreatedAt: row.sourceCreatedAt?.toISOString() ?? null,
         sourceUpdatedAt: row.sourceUpdatedAt?.toISOString() ?? null,
-        messages: messagesByConversation.get(row.id) ?? [],
-      }),
+          messages: messagesByConversation.get(row.id) ?? [],
+        };
+      },
     );
 
     return { conversations: currentConversations };

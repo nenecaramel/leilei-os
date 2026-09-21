@@ -41,6 +41,18 @@ ALTER TABLE "conversation_messages" ALTER COLUMN "source_fingerprint" DROP NOT N
 ALTER TABLE "conversation_messages" ALTER COLUMN "first_seen_import_id" DROP NOT NULL;
 ALTER TABLE "conversation_messages" ALTER COLUMN "last_seen_import_id" DROP NOT NULL;
 ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_status_allowed" CHECK ("conversation_messages"."status" IN ('pending', 'streaming', 'completed', 'error'));
+ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_provenance_consistency" CHECK (
+  ("conversation_messages"."source_node_id" IS NULL
+    AND "conversation_messages"."parent_source_node_id" IS NULL
+    AND "conversation_messages"."source_fingerprint" IS NULL
+    AND "conversation_messages"."first_seen_import_id" IS NULL
+    AND "conversation_messages"."last_seen_import_id" IS NULL)
+  OR
+  ("conversation_messages"."source_node_id" IS NOT NULL
+    AND "conversation_messages"."source_fingerprint" IS NOT NULL
+    AND "conversation_messages"."first_seen_import_id" IS NOT NULL
+    AND "conversation_messages"."last_seen_import_id" IS NOT NULL)
+);
 ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_id_conversation_user_unique" UNIQUE("id","conversation_id","user_id");
 ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_parent_same_conversation_fk" FOREIGN KEY ("parent_message_id","conversation_id","user_id") REFERENCES "public"."conversation_messages"("id","conversation_id","user_id") ON DELETE cascade ON UPDATE cascade;
 CREATE INDEX "conversation_messages_conversation_parent_idx" ON "conversation_messages" USING btree ("conversation_id","parent_message_id","created_at","id");

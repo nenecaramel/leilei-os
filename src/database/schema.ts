@@ -1075,6 +1075,10 @@ export const conversationMessages = pgTable(
     check("conversation_messages_source_node_not_blank", sql`char_length(btrim(${table.sourceNodeId})) > 0`),
     check("conversation_messages_status_allowed", sql`${table.status} IN ('pending', 'streaming', 'completed', 'error')`),
     check(
+      "conversation_messages_provenance_consistency",
+      sql`(${table.sourceNodeId} IS NULL AND ${table.parentSourceNodeId} IS NULL AND ${table.sourceFingerprint} IS NULL AND ${table.firstSeenImportId} IS NULL AND ${table.lastSeenImportId} IS NULL) OR (${table.sourceNodeId} IS NOT NULL AND ${table.sourceFingerprint} IS NOT NULL AND ${table.firstSeenImportId} IS NOT NULL AND ${table.lastSeenImportId} IS NOT NULL)`,
+    ),
+    check(
       "conversation_messages_role_allowed",
       sql`${table.role} IN ('user', 'assistant', 'system', 'tool', 'reasoning', 'unknown')`,
     ),

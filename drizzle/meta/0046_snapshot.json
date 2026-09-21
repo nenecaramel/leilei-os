@@ -2445,6 +2445,10 @@
         "conversation_messages_status_allowed": {
           "name": "conversation_messages_status_allowed",
           "value": "\"conversation_messages\".\"status\" IN ('pending', 'streaming', 'completed', 'error')"
+        },
+        "conversation_messages_provenance_consistency": {
+          "name": "conversation_messages_provenance_consistency",
+          "value": "(\"conversation_messages\".\"source_node_id\" IS NULL AND \"conversation_messages\".\"parent_source_node_id\" IS NULL AND \"conversation_messages\".\"source_fingerprint\" IS NULL AND \"conversation_messages\".\"first_seen_import_id\" IS NULL AND \"conversation_messages\".\"last_seen_import_id\" IS NULL) OR (\"conversation_messages\".\"source_node_id\" IS NOT NULL AND \"conversation_messages\".\"source_fingerprint\" IS NOT NULL AND \"conversation_messages\".\"first_seen_import_id\" IS NOT NULL AND \"conversation_messages\".\"last_seen_import_id\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": false

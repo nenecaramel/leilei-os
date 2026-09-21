@@ -183,7 +183,7 @@ implements ConversationFavoriteRepository {
         ))
         .for("share")
         .limit(1);
-      if (!conversation) {
+      if (!conversation?.provider || !conversation.sourceConversationId) {
         throw Object.assign(new Error("Conversation not found."), {
           code: "CONVERSATION_FAVORITE_RANGE_NOT_FOUND",
         });
@@ -215,8 +215,17 @@ implements ConversationFavoriteRepository {
         .orderBy(...order(conversation.provider, input.view))
         .for("share");
 
+      if (messages.some((message) => !message.sourceNodeId)) {
+        throw Object.assign(new Error("Legacy conversation message is missing import provenance."), {
+          code: "CONVERSATION_FAVORITE_RANGE_NOT_FOUND",
+        });
+      }
+      const legacyMessages = messages as Array<
+        (typeof messages)[number] & { sourceNodeId: string }
+      >;
+
       const selected = selectConversationFavoriteRange(
-        messages,
+        legacyMessages,
         input.startMessageId,
         input.endMessageId,
         200,
