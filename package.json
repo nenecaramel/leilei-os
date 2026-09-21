@@ -13,7 +13,7 @@
     "check:generated": "node scripts/build-bridge-browser.mjs --check && node scripts/build-thinking-block-browser.mjs --check && node scripts/generate-web-icons.mjs --check",
     "start": "node dist/app/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/**/*.test.ts",
+    "test": "tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/**/*.test.ts && pnpm --dir tools/claude-bridge test",
     "web:icons": "node scripts/generate-web-icons.mjs",
     "test:task-tag-integration": "RUN_DATABASE_INTEGRATION_TEST=1 tsx --test tests/task-tag-repository.integration.test.ts",
     "test:task-time-integration": "RUN_TASK_TIME_DATABASE_TEST=1 tsx --test tests/task-time-repository.integration.test.ts",
@@ -25,7 +25,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
-    "db:seed:phase2": "tsx scripts/seed-phase-2.ts"
+    "db:seed:phase2": "tsx scripts/seed-phase-2.ts",
+    "e2e:native-live-canonical": "tsx scripts/native-live-canonical-e2e.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
