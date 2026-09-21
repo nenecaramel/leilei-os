@@ -5,6 +5,7 @@ import type {
 } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
 import type {
+  NativeLiveContentBlock,
   NativeLiveConversation,
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
@@ -59,8 +60,17 @@ class FakeRepository implements NativeLiveConversationRepository {
     return message("a1", "assistant");
   }
 
-  async appendContentBlock(input: { ordinal: number }): Promise<void> {
+  async appendContentBlock(input: { ordinal: number }): Promise<NativeLiveContentBlock> {
     this.events.push(`block:${input.ordinal}`);
+    return {
+      id: `b${input.ordinal}`,
+      ordinal: input.ordinal,
+      kind: "text",
+      rawType: "text",
+      text: null,
+      payload: null,
+      createdAt: "2026-09-21T00:00:00.000Z",
+    };
   }
 
   async setCurrentHead(): Promise<void> {

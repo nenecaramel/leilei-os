@@ -37,28 +37,20 @@ export class NativeLiveConversationService {
         parentMessageId: input.parentMessageId,
       });
 
+      const blocks = [];
       for (const [ordinal, block] of input.blocks.entries()) {
-        await repository.appendContentBlock({
-          userId: input.userId,
-          conversationId: input.conversationId,
-          messageId: message.id,
-          ordinal,
-          block,
-        });
+        blocks.push(
+          await repository.appendContentBlock({
+            userId: input.userId,
+            conversationId: input.conversationId,
+            messageId: message.id,
+            ordinal,
+            block,
+          }),
+        );
       }
 
-      return {
-        ...message,
-        blocks: input.blocks.map((block, ordinal) => ({
-          id: "",
-          ordinal,
-          kind: block.kind,
-          rawType: block.rawType ?? block.kind,
-          text: block.text ?? null,
-          payload: block.payload ?? null,
-          createdAt: message.createdAt,
-        })),
-      };
+      return { ...message, blocks };
     });
   }
 
@@ -79,14 +71,17 @@ export class NativeLiveConversationService {
         parentMessageId: input.parentMessageId,
       });
 
+      const blocks = [];
       for (const [ordinal, block] of input.blocks.entries()) {
-        await repository.appendContentBlock({
-          userId: input.userId,
-          conversationId: input.conversationId,
-          messageId: message.id,
-          ordinal,
-          block,
-        });
+        blocks.push(
+          await repository.appendContentBlock({
+            userId: input.userId,
+            conversationId: input.conversationId,
+            messageId: message.id,
+            ordinal,
+            block,
+          }),
+        );
       }
 
       const checkpoint = await repository.bindProviderCheckpoint({
@@ -102,7 +97,7 @@ export class NativeLiveConversationService {
         messageId: message.id,
       });
 
-      return { message, checkpoint };
+      return { message: { ...message, blocks }, checkpoint };
     });
   }
 

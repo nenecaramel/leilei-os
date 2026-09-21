@@ -42,7 +42,7 @@ ALTER TABLE "conversation_messages" ALTER COLUMN "first_seen_import_id" DROP NOT
 ALTER TABLE "conversation_messages" ALTER COLUMN "last_seen_import_id" DROP NOT NULL;
 ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_status_allowed" CHECK ("conversation_messages"."status" IN ('pending', 'streaming', 'completed', 'error'));
 ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_id_conversation_user_unique" UNIQUE("id","conversation_id","user_id");
-ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_parent_same_conversation_fk" FOREIGN KEY ("parent_message_id","conversation_id","user_id") REFERENCES "public"."conversation_messages"("id","conversation_id","user_id") ON DELETE restrict ON UPDATE cascade;
+ALTER TABLE "conversation_messages" ADD CONSTRAINT "conversation_messages_parent_same_conversation_fk" FOREIGN KEY ("parent_message_id","conversation_id","user_id") REFERENCES "public"."conversation_messages"("id","conversation_id","user_id") ON DELETE cascade ON UPDATE cascade;
 CREATE INDEX "conversation_messages_conversation_parent_idx" ON "conversation_messages" USING btree ("conversation_id","parent_message_id","created_at","id");
 --> statement-breakpoint
 ALTER TABLE "conversation_content_blocks" ADD COLUMN "created_at" timestamp with time zone DEFAULT now() NOT NULL;
@@ -67,4 +67,4 @@ ALTER TABLE "conversation_provider_session_checkpoints" ADD CONSTRAINT "conversa
 CREATE UNIQUE INDEX "conversation_provider_session_checkpoints_message_provider_uidx" ON "conversation_provider_session_checkpoints" USING btree ("conversation_id","canonical_message_id","provider");
 CREATE INDEX "conversation_provider_session_checkpoints_user_head_idx" ON "conversation_provider_session_checkpoints" USING btree ("user_id","conversation_id","canonical_message_id");
 --> statement-breakpoint
-ALTER TABLE "conversations" ADD CONSTRAINT "conversations_current_head_same_conversation_fk" FOREIGN KEY ("current_head_message_id","id","user_id") REFERENCES "public"."conversation_messages"("id","conversation_id","user_id") ON DELETE restrict ON UPDATE cascade;
+ALTER TABLE "conversations" ADD CONSTRAINT "conversations_current_head_same_conversation_fk" FOREIGN KEY ("current_head_message_id","id","user_id") REFERENCES "public"."conversation_messages"("id","conversation_id","user_id") ON DELETE SET NULL ("current_head_message_id") ON UPDATE cascade;

@@ -7,6 +7,7 @@ import {
   conversations,
 } from "../../database/schema.js";
 import type {
+  NativeLiveContentBlock,
   NativeLiveContentBlockInput,
   NativeLiveConversation,
   NativeLiveMessage,
@@ -65,7 +66,7 @@ export interface NativeLiveConversationRepository {
     messageId: string;
     ordinal: number;
     block: NativeLiveContentBlockInput;
-  }): Promise<void>;
+  }): Promise<NativeLiveContentBlock>;
 
   setCurrentHead(input: {
     userId: string;
@@ -384,22 +385,53 @@ implements NativeLiveConversationRepository {
     messageId: string;
     ordinal: number;
     block: NativeLiveContentBlockInput;
-  }): Promise<void> {
+  }): Promise<NativeLiveContentBlock> {
     await this.requireMessage(
       input.userId,
       input.conversationId,
       input.messageId,
     );
 
-    await this.db.insert(conversationContentBlocks).values({
-      userId: input.userId,
-      messageId: input.messageId,
-      ordinal: input.ordinal,
-      kind: input.block.kind,
-      rawType: input.block.rawType ?? input.block.kind,
-      text: input.block.text ?? null,
-      payload: input.block.payload ?? null,
-    });
+    const [row] = await this.db
+      .insert(conversationContentBlocks)
+      .values({
+        userId: input.userId,
+        messageId: input.messageId,
+        ordinal: input.ordinal,
+        kind: input.block.kind,
+        rawType: input.block.rawType ?? input.block.kind,
+        text: input.block.text ?? null,
+        payload: input.block.payload ?? null,
+      })
+      .returning({
+        id: conversationContentBlocks.id,
+        ordinal: conversationContentBlocks.ordinal,
+        kind: conversationContentBlocks.kind,
+        rawType: conversationContentBlocks.rawType,
+        text: conversationContentBlocks.text,
+        payload: conversationContentBlocks.payload,
+        createdAt: conversationContentBlocks.createdAt,
+      });
+
+    if (!row) throw new Error("Native live content block insert failed.");
+    if (
+      row.kind !== "text" &&
+      row.kind !== "tool_use" &&
+      row.kind !== "tool_result" &&
+      row.kind !== "attachment"
+    ) {
+      throw new Error("Native live content block has an unsupported kind.");
+    }
+
+    return {
+      id: row.id,
+      ordinal: row.ordinal,
+      kind: row.kind,
+      rawType: row.rawType,
+      text: row.text,
+      payload: row.payload,
+      createdAt: row.createdAt.toISOString(),
+    };
   }
 
   async setCurrentHead(input: {
