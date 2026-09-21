@@ -19,3 +19,4 @@ dist/
 *.dump.enc
 *.backup.enc
 *.sha256
+.runtime/
