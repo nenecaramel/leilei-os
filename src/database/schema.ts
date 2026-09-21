@@ -1051,7 +1051,7 @@ export const conversationMessages = pgTable(
       columns: [table.parentMessageId, table.conversationId, table.userId],
       foreignColumns: [table.id, table.conversationId, table.userId],
       name: "conversation_messages_parent_same_conversation_fk",
-    }).onDelete("restrict").onUpdate("cascade"),
+    }).onDelete("cascade").onUpdate("cascade"),
     foreignKey({
       columns: [table.firstSeenImportId, table.userId],
       foreignColumns: [conversationImportRuns.id, conversationImportRuns.userId],

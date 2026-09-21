@@ -43,6 +43,9 @@ test(
     const userB = createdUsers[1]!.id;
 
     t.after(async () => {
+      await database.db
+        .delete(conversations)
+        .where(eq(conversations.userId, userA));
       await database.db.delete(users).where(eq(users.id, userA));
       await database.db.delete(users).where(eq(users.id, userB));
     });
