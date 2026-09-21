@@ -32,7 +32,7 @@ export class HeadlessClaudeTransport extends ClaudeTransport {
   async fork(sessionId, prompt) {
     const result = await this.#run(["-p", prompt, "--resume", sessionId, "--fork-session", "--output-format=stream-json", "--verbose"], { mode: "fork", parentProviderSessionId: sessionId });
     if (!result.providerSessionId || result.providerSessionId === sessionId) {
-      throw streamError("Claude fork returned the same provider session id as its parent.", { parentSessionId: sessionId, forkSessionId: result.providerSessionId, ...result });
+      throw streamError("Claude fork returned the same provider session id as its parent.", { runtimeCode: "PROVIDER_SESSION_CONFLICT", parentSessionId: sessionId, forkSessionId: result.providerSessionId, ...result });
     }
     return result;
   }
@@ -59,7 +59,7 @@ export class HeadlessClaudeTransport extends ClaudeTransport {
         let event;
         try { event = JSON.parse(line); }
         catch (cause) {
-          parseFailure ??= streamError("Claude stream emitted malformed JSON.", { cause, line });
+          parseFailure ??= streamError("Claude stream emitted malformed JSON.", { runtimeCode: "MALFORMED_STREAM", cause, line });
           this.events.emit("parse-error", parseFailure);
           return;
         }
@@ -83,12 +83,12 @@ export class HeadlessClaudeTransport extends ClaudeTransport {
         for (const line of lines) consumeLine(line);
       });
       child.stderr.on("data", (chunk) => { stderr += chunk.toString(); this.events.emit("stderr", chunk.toString()); });
-      child.on("error", (cause) => reject(streamError(`Failed to start Claude Code: ${cause.message}`, { cause, stdout, stderr })));
+      child.on("error", (cause) => reject(streamError(`Failed to start Claude Code: ${cause.message}`, { runtimeCode: "RUNTIME_UNAVAILABLE", cause, stdout, stderr })));
       child.on("close", (code, signal) => {
         if (pending) consumeLine(pending);
         this.activeChild = null;
         if (parseFailure) { reject(Object.assign(parseFailure, { stdout, stderr, exitCode: code, signal })); return; }
-        if (code !== 0) { reject(streamError(`Claude Code exited with exit code ${code}: ${stderr.trim() || "no stderr"}`, { stdout, stderr, exitCode: code, signal })); return; }
+        if (code !== 0 || signal) { const runtimeCode = signal === "SIGTERM" ? "ABORTED" : "CLAUDE_PROCESS_FAILED"; reject(streamError(`Claude Code exited with exit code ${code}: ${stderr.trim() || "no stderr"}`, { runtimeCode, stdout, stderr, exitCode: code, signal })); return; }
         this.events.emit("exit", { code, signal, stdout, stderr });
         resolve({ providerSessionId, events: parsedEvents, normalizedEvents, stdout, stderr, exitCode: code, signal });
       });
