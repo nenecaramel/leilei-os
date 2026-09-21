@@ -1,0 +1,435 @@
+import { randomUUID } from "node:crypto";
+import {
+  canonicalizeNativeLiveEvents,
+  type NativeLiveNormalizedEvent,
+} from "../conversation/native-live-conversation-orchestrator.js";
+import type {
+  NativeLiveContentBlockInput,
+  NativeLiveMessage,
+  NativeLiveProviderCheckpoint,
+} from "../conversation/native-live-conversation-types.js";
+import {
+  NativeLiveRelayContractError,
+  parseNativeLiveRelayRequest,
+  type NativeLiveRelayRequest,
+} from "./native-live-relay-contract.js";
+import {
+  NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+  NativeLiveRuntimeProtocolError,
+  assertRuntimeResultMatchesCommand,
+  parseNativeLiveRuntimeExecutionResult,
+  type NativeLiveRuntimeCommand,
+  type NativeLiveRuntimeExecutionResult,
+  type NativeLiveRuntimeFailureCode,
+  type NativeLiveRuntimeMode,
+} from "./native-live-runtime-protocol.js";
+
+export type NativeLivePreparedTurn = {
+  prepareId: string;
+  requestId: string;
+  userId: string;
+  conversationId: string;
+  operation: NativeLiveRelayRequest["operation"];
+  canonicalUserMessageId: string;
+  runtimeMode: NativeLiveRuntimeMode;
+  parentProviderSessionId: string | null;
+  prompt: string;
+};
+
+export type NativeLivePrepareFailureCode =
+  | "INVALID_REQUEST"
+  | "CONVERSATION_NOT_FOUND"
+  | "STALE_HEAD"
+  | "BRANCH_POINT_INVALID"
+  | "CHECKPOINT_NOT_FOUND"
+  | "REQUEST_CONFLICT"
+  | "INTERNAL_ERROR";
+
+export type NativeLivePreparePortResult =
+  | {
+      ok: true;
+      outcome: "created" | "replayed";
+      preparation: NativeLivePreparedTurn;
+    }
+  | {
+      ok: false;
+      code: Exclude<NativeLivePrepareFailureCode, "INVALID_REQUEST" | "INTERNAL_ERROR">;
+      currentHeadMessageId?: string | null;
+    };
+
+export type NativeLivePrepareResult =
+  | {
+      ok: true;
+      outcome: "created" | "replayed";
+      command: NativeLiveRuntimeCommand;
+    }
+  | {
+      ok: false;
+      requestId: string | null;
+      operation: NativeLiveRelayRequest["operation"] | null;
+      conversationId: string | null;
+      code: NativeLivePrepareFailureCode;
+      currentHeadMessageId?: string | null;
+    };
+
+export type NativeLiveFinalizeFailureCode =
+  | NativeLiveRuntimeFailureCode
+  | "INVALID_RESULT"
+  | "PREPARATION_NOT_FOUND"
+  | "RESULT_MISMATCH"
+  | "RUNTIME_PROTOCOL_ERROR"
+  | "FINALIZE_CONFLICT"
+  | "CANONICAL_WRITE_FAILURE"
+  | "INTERNAL_ERROR";
+
+export type NativeLiveFinalizeSuccessRecord = {
+  assistantMessage: NativeLiveMessage;
+  checkpoint: NativeLiveProviderCheckpoint;
+};
+
+export type NativeLiveFinalizeSuccessPortResult =
+  | {
+      ok: true;
+      outcome: "completed" | "idempotent";
+      record: NativeLiveFinalizeSuccessRecord;
+    }
+  | {
+      ok: false;
+      code: "FINALIZE_CONFLICT" | "CANONICAL_WRITE_FAILURE";
+    };
+
+export type NativeLiveFinalizeFailurePortResult =
+  | { ok: true; outcome: "recorded" | "idempotent" }
+  | { ok: false; code: "FINALIZE_CONFLICT" };
+
+export type NativeLiveFinalizeResult =
+  | {
+      ok: true;
+      outcome: "completed" | "idempotent";
+      requestId: string;
+      operation: NativeLiveRelayRequest["operation"];
+      conversationId: string;
+      userMessageId: string;
+      assistantMessageId: string;
+      checkpointId: string;
+      providerSessionId: string;
+    }
+  | {
+      ok: false;
+      prepareId: string | null;
+      requestId: string | null;
+      conversationId: string | null;
+      code: NativeLiveFinalizeFailureCode;
+    };
+
+/**
+ * Future DB implementation requirements:
+ *
+ * - prepare* must atomically validate canonical ownership / branch preconditions,
+ *   create or select the canonical user message where applicable, resolve the
+ *   exact parent provider checkpoint, and persist an idempotent preparation
+ *   record keyed by request id.
+ * - finalizeSuccess must atomically lock that preparation, reject conflicting
+ *   replays, append assistant blocks, bind the provider checkpoint, advance
+ *   current head, and mark the preparation finalized.
+ * - finalizeFailure must atomically record the terminal runtime failure without
+ *   fabricating an assistant message or advancing current head.
+ */
+export interface NativeLiveBackendTurnPort {
+  prepareSend(input: {
+    prepareId: string;
+    userId: string;
+    requestId: string;
+    conversationId: string;
+    expectedHeadMessageId: string | null;
+    text: string;
+  }): Promise<NativeLivePreparePortResult>;
+
+  prepareRetry(input: {
+    prepareId: string;
+    userId: string;
+    requestId: string;
+    conversationId: string;
+    targetUserMessageId: string;
+  }): Promise<NativeLivePreparePortResult>;
+
+  prepareEdit(input: {
+    prepareId: string;
+    userId: string;
+    requestId: string;
+    conversationId: string;
+    targetUserMessageId: string;
+    text: string;
+  }): Promise<NativeLivePreparePortResult>;
+
+  getPreparation(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<NativeLivePreparedTurn | null>;
+
+  finalizeSuccess(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    providerSessionId: string;
+    blocks: NativeLiveContentBlockInput[];
+    normalizedEvents: readonly NativeLiveNormalizedEvent[];
+  }): Promise<NativeLiveFinalizeSuccessPortResult>;
+
+  finalizeFailure(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    errorCode: NativeLiveRuntimeFailureCode | "RUNTIME_PROTOCOL_ERROR";
+  }): Promise<NativeLiveFinalizeFailurePortResult>;
+}
+
+export class NativeLiveBackendTurnCoordinator {
+  constructor(
+    private readonly port: NativeLiveBackendTurnPort,
+    private readonly createPrepareId: () => string = randomUUID,
+  ) {}
+
+  async prepare(
+    userId: string,
+    rawRequest: unknown,
+  ): Promise<NativeLivePrepareResult> {
+    let request: NativeLiveRelayRequest;
+    try {
+      request = parseNativeLiveRelayRequest(rawRequest);
+    } catch (error) {
+      if (error instanceof NativeLiveRelayContractError) {
+        return {
+          ok: false,
+          requestId: readStringField(rawRequest, "request_id"),
+          operation: readOperation(rawRequest),
+          conversationId: readStringField(rawRequest, "conversation_id"),
+          code: "INVALID_REQUEST",
+        };
+      }
+      return {
+        ok: false,
+        requestId: null,
+        operation: null,
+        conversationId: null,
+        code: "INTERNAL_ERROR",
+      };
+    }
+
+    const prepareId = this.createPrepareId();
+    let prepared: NativeLivePreparePortResult;
+    try {
+      if (request.operation === "send") {
+        prepared = await this.port.prepareSend({
+          prepareId,
+          userId,
+          requestId: request.request_id,
+          conversationId: request.conversation_id,
+          expectedHeadMessageId: request.expected_head_message_id,
+          text: request.text,
+        });
+      } else if (request.operation === "retry") {
+        prepared = await this.port.prepareRetry({
+          prepareId,
+          userId,
+          requestId: request.request_id,
+          conversationId: request.conversation_id,
+          targetUserMessageId: request.target_user_message_id,
+        });
+      } else {
+        prepared = await this.port.prepareEdit({
+          prepareId,
+          userId,
+          requestId: request.request_id,
+          conversationId: request.conversation_id,
+          targetUserMessageId: request.target_user_message_id,
+          text: request.text,
+        });
+      }
+    } catch {
+      return {
+        ok: false,
+        requestId: request.request_id,
+        operation: request.operation,
+        conversationId: request.conversation_id,
+        code: "INTERNAL_ERROR",
+      };
+    }
+
+    if (!prepared.ok) {
+      return {
+        ok: false,
+        requestId: request.request_id,
+        operation: request.operation,
+        conversationId: request.conversation_id,
+        code: prepared.code,
+        ...(prepared.currentHeadMessageId !== undefined
+          ? { currentHeadMessageId: prepared.currentHeadMessageId }
+          : {}),
+      };
+    }
+
+    return {
+      ok: true,
+      outcome: prepared.outcome,
+      command: commandFromPreparation(prepared.preparation),
+    };
+  }
+
+  async finalize(
+    userId: string,
+    rawResult: unknown,
+  ): Promise<NativeLiveFinalizeResult> {
+    let result: NativeLiveRuntimeExecutionResult;
+    try {
+      result = parseNativeLiveRuntimeExecutionResult(rawResult);
+    } catch (error) {
+      if (error instanceof NativeLiveRuntimeProtocolError) {
+        return {
+          ok: false,
+          prepareId: readStringField(rawResult, "prepare_id"),
+          requestId: readStringField(rawResult, "request_id"),
+          conversationId: readStringField(rawResult, "conversation_id"),
+          code: "INVALID_RESULT",
+        };
+      }
+      return {
+        ok: false,
+        prepareId: null,
+        requestId: null,
+        conversationId: null,
+        code: "INTERNAL_ERROR",
+      };
+    }
+
+    let preparation: NativeLivePreparedTurn | null;
+    try {
+      preparation = await this.port.getPreparation({
+        userId,
+        prepareId: result.prepare_id,
+      });
+    } catch {
+      return failureForResult(result, "INTERNAL_ERROR");
+    }
+
+    if (!preparation) {
+      return failureForResult(result, "PREPARATION_NOT_FOUND");
+    }
+
+    const command = commandFromPreparation(preparation);
+    try {
+      assertRuntimeResultMatchesCommand(command, result);
+    } catch (error) {
+      if (error instanceof NativeLiveRuntimeProtocolError) {
+        return failureForResult(result, "RESULT_MISMATCH");
+      }
+      return failureForResult(result, "INTERNAL_ERROR");
+    }
+
+    if (result.status === "failure") {
+      try {
+        const recorded = await this.port.finalizeFailure({
+          userId,
+          preparation,
+          errorCode: result.error_code,
+        });
+        if (!recorded.ok) {
+          return failureForResult(result, recorded.code);
+        }
+        return failureForResult(result, result.error_code);
+      } catch {
+        return failureForResult(result, "INTERNAL_ERROR");
+      }
+    }
+
+    const canonical = canonicalizeNativeLiveEvents(result.normalized_events);
+    if (canonical.error) {
+      try {
+        const recorded = await this.port.finalizeFailure({
+          userId,
+          preparation,
+          errorCode: "RUNTIME_PROTOCOL_ERROR",
+        });
+        if (!recorded.ok) {
+          return failureForResult(result, recorded.code);
+        }
+      } catch {
+        return failureForResult(result, "INTERNAL_ERROR");
+      }
+      return failureForResult(result, "RUNTIME_PROTOCOL_ERROR");
+    }
+
+    let finalized: NativeLiveFinalizeSuccessPortResult;
+    try {
+      finalized = await this.port.finalizeSuccess({
+        userId,
+        preparation,
+        providerSessionId: result.provider_session_id,
+        blocks: canonical.blocks,
+        normalizedEvents: result.normalized_events,
+      });
+    } catch {
+      return failureForResult(result, "INTERNAL_ERROR");
+    }
+
+    if (!finalized.ok) {
+      return failureForResult(result, finalized.code);
+    }
+
+    return {
+      ok: true,
+      outcome: finalized.outcome,
+      requestId: preparation.requestId,
+      operation: preparation.operation,
+      conversationId: preparation.conversationId,
+      userMessageId: preparation.canonicalUserMessageId,
+      assistantMessageId: finalized.record.assistantMessage.id,
+      checkpointId: finalized.record.checkpoint.id,
+      providerSessionId: finalized.record.checkpoint.providerSessionId,
+    };
+  }
+}
+
+function commandFromPreparation(
+  preparation: NativeLivePreparedTurn,
+): NativeLiveRuntimeCommand {
+  const command: NativeLiveRuntimeCommand = {
+    protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+    dispatch_target: "claude_code",
+    prepare_id: preparation.prepareId,
+    request_id: preparation.requestId,
+    operation: preparation.operation,
+    conversation_id: preparation.conversationId,
+    canonical_user_message_id: preparation.canonicalUserMessageId,
+    runtime_mode: preparation.runtimeMode,
+    parent_provider_session_id: preparation.parentProviderSessionId,
+    prompt: preparation.prompt,
+  };
+  return command;
+}
+
+function failureForResult(
+  result: NativeLiveRuntimeExecutionResult,
+  code: NativeLiveFinalizeFailureCode,
+): NativeLiveFinalizeResult {
+  return {
+    ok: false,
+    prepareId: result.prepare_id,
+    requestId: result.request_id,
+    conversationId: result.conversation_id,
+    code,
+  };
+}
+
+function readStringField(value: unknown, key: string): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "string" ? field : null;
+}
+
+function readOperation(
+  value: unknown,
+): NativeLiveRelayRequest["operation"] | null {
+  const operation = readStringField(value, "operation");
+  return operation === "send" || operation === "retry" || operation === "edit"
+    ? operation
+    : null;
+}
