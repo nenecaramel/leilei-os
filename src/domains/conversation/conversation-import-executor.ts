@@ -402,7 +402,12 @@ implements ConversationImportExecutionTransaction {
           id: conversationMessages.id,
           sourceNodeId: conversationMessages.sourceNodeId,
         });
-      for (const row of rows) messageIds.set(row.sourceNodeId, row.id);
+      for (const row of rows) {
+        if (!row.sourceNodeId) {
+          throw new Error("Legacy conversation message is missing import provenance.");
+        }
+        messageIds.set(row.sourceNodeId, row.id);
+      }
     }
 
     const childMessages = writable.filter((planned) => {
