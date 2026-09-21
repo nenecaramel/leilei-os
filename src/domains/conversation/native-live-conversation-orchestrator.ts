@@ -82,7 +82,8 @@ export type NativeLiveSendResult =
       code:
         | "RUNTIME_FAILURE"
         | "RUNTIME_PROTOCOL_ERROR"
-        | "CANONICAL_WRITE_FAILURE";
+        | "CANONICAL_WRITE_FAILURE"
+        | "CANONICAL_CHECKPOINT_MISSING";
       message: string;
       normalizedEvents: readonly NativeLiveNormalizedEvent[];
     };
@@ -223,6 +224,16 @@ export class NativeLiveConversationOrchestrator {
           canonicalMessageId: parentHead,
         })
       : null;
+
+    if (parentHead && !parentCheckpoint) {
+      return {
+        ok: false,
+        userMessage,
+        code: "CANONICAL_CHECKPOINT_MISSING",
+        message: "Current canonical assistant head has no provider checkpoint.",
+        normalizedEvents: [],
+      };
+    }
 
     let runtimeResult: NativeLiveRuntimeResult;
     try {
