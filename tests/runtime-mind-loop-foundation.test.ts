@@ -19,6 +19,9 @@ import {
 import { decideProvisionalSettlement } from "../src/domains/runtime/subject-state-settlement.js";
 import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
 import {
+  writeDriveEvolution,
+} from "../src/domains/runtime/drive-evolution.js";
+import {
   writeThoughtEvolution,
 } from "../src/domains/runtime/thought-evolution.js";
 
@@ -313,6 +316,94 @@ test("Context Assembly injects typed Surface, Bedrock and Breath as bounded data
     assembled.prompt.includes('<leileios_context authority="data">'),
     true,
   );
+});
+
+test("Context Assembly injects only active Drive anchors and drops satisfied/reinforcement copies", () => {
+  const active = state(
+    "44444444-4444-4444-8444-444444444444",
+    "drive",
+    "我还想把这条主线继续推进",
+  );
+  active.payload = writeDriveEvolution(active.payload, {
+    phase: "active",
+    role: "anchor",
+    threadKey: "drive-thread-active",
+    anchorStateId: active.id,
+    pressure: 0.8,
+    reinforcementCount: 3,
+    reinforcementSources: ["m1", "m2", "m3"],
+    satisfactionTotal: 0,
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+    lastSatisfiedAt: null,
+  });
+
+  const reinforcement = state(
+    "55555555-5555-4555-8555-555555555555",
+    "drive",
+    "我还想把这条主线继续推进",
+  );
+  reinforcement.payload = writeDriveEvolution(reinforcement.payload, {
+    phase: "active",
+    role: "reinforcement",
+    threadKey: "drive-thread-active",
+    anchorStateId: active.id,
+    pressure: 0.8,
+    reinforcementCount: 3,
+    reinforcementSources: ["m1", "m2", "m3"],
+    satisfactionTotal: 0,
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+    lastSatisfiedAt: null,
+  });
+
+  const satisfied = state(
+    "66666666-6666-4666-8666-666666666666",
+    "drive",
+    "已经满足的缺口",
+  );
+  satisfied.payload = writeDriveEvolution(satisfied.payload, {
+    phase: "satisfied",
+    role: "anchor",
+    threadKey: "drive-thread-satisfied",
+    anchorStateId: satisfied.id,
+    pressure: 0,
+    reinforcementCount: 1,
+    reinforcementSources: ["m4"],
+    satisfactionTotal: 0.4,
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+    lastSatisfiedAt: now,
+  });
+
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-drive",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-drive",
+    userText: "继续",
+    subjectStates: [active, reinforcement, satisfied],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v1",
+    surfaceLimit: 4,
+    breathLimit: 3,
+    driveLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  const driveItems = assembled.manifest.items.filter(
+    (item) => item.selection.reason === "active_drive",
+  );
+  assert.deepEqual(driveItems.map((item) => item.sourceId), [active.id]);
+  assert.equal(
+    assembled.prompt.includes("我还想把这条主线继续推进"),
+    true,
+  );
+  assert.equal(assembled.prompt.includes("已经满足的缺口"), false);
 });
 
 test("Context Assembly injects only anchor Fixations and keeps Flits out", () => {
