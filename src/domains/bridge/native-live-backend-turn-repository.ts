@@ -126,14 +126,16 @@ implements NativeLiveBackendTurnPort {
       requestHash,
       async (transaction) => {
         const existing = await this.findByRequest(
-          transaction,
+          transaction as Transaction,
           input.userId,
           input.requestId,
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
 
         const conversations =
-          new DrizzleNativeLiveConversationRepository(transaction);
+          new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
         const conversation = await conversations.getConversation({
           userId: input.userId,
           conversationId: input.conversationId,
@@ -218,14 +220,16 @@ implements NativeLiveBackendTurnPort {
       requestHash,
       async (transaction) => {
         const existing = await this.findByRequest(
-          transaction,
+          transaction as Transaction,
           input.userId,
           input.requestId,
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
 
         const conversations =
-          new DrizzleNativeLiveConversationRepository(transaction);
+          new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
         const conversation = await conversations.getConversation({
           userId: input.userId,
           conversationId: input.conversationId,
@@ -295,14 +299,16 @@ implements NativeLiveBackendTurnPort {
       requestHash,
       async (transaction) => {
         const existing = await this.findByRequest(
-          transaction,
+          transaction as Transaction,
           input.userId,
           input.requestId,
         );
         if (existing) return requestConflictOrReplay(existing, requestHash);
 
         const conversations =
-          new DrizzleNativeLiveConversationRepository(transaction);
+          new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
         const conversation = await conversations.getConversation({
           userId: input.userId,
           conversationId: input.conversationId,
@@ -388,7 +394,7 @@ implements NativeLiveBackendTurnPort {
     return this.db.transaction(
       async (transaction) => {
         const row = await this.findById(
-          transaction,
+          transaction as Transaction,
           input.userId,
           input.prepareId,
           true,
@@ -421,7 +427,7 @@ implements NativeLiveBackendTurnPort {
         if (updated) return mapPreparation(updated);
 
         const raced = await this.findById(
-          transaction,
+          transaction as Transaction,
           input.userId,
           input.prepareId,
           true,
@@ -465,7 +471,10 @@ implements NativeLiveBackendTurnPort {
             if (row.resultHash !== resultHash) {
               return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
             }
-            const record = await this.loadFinalizedSuccess(transaction, row);
+            const record = await this.loadFinalizedSuccess(
+              transaction as Transaction,
+              row,
+            );
             return {
               ok: true as const,
               outcome: "idempotent" as const,
@@ -477,7 +486,9 @@ implements NativeLiveBackendTurnPort {
           }
 
           const conversations =
-            new DrizzleNativeLiveConversationRepository(transaction);
+            new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
           const assistantMessage = await conversations.appendAssistantMessage({
             userId: input.userId,
             conversationId: row.conversationId,
@@ -632,9 +643,10 @@ implements NativeLiveBackendTurnPort {
     if (existing) return requestConflictOrReplay(existing, requestHash);
 
     try {
-      return await this.db.transaction(work, {
-        isolationLevel: "serializable",
-      });
+      return await this.db.transaction(
+        async (transaction) => work(transaction as Transaction),
+        { isolationLevel: "serializable" },
+      );
     } catch (error) {
       const raced = await this.findByRequest(this.db, userId, requestId);
       if (raced) return requestConflictOrReplay(raced, requestHash);
@@ -774,7 +786,9 @@ implements NativeLiveBackendTurnPort {
     }
 
     const conversations =
-      new DrizzleNativeLiveConversationRepository(transaction);
+      new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
     const conversation = await conversations.getConversation({
       userId: row.userId,
       conversationId: row.conversationId,
