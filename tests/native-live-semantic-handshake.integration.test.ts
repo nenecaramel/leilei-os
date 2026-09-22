@@ -257,6 +257,24 @@ test(
     assert.ok(beforeRecovery);
     assert.equal(beforeRecovery.mindPrepared, false);
 
+    const stagedPlan = await semanticService.readPlan({
+      userId: user.id,
+      prepareId: scoring.reservationId,
+    });
+    assert.ok(stagedPlan);
+    const firstAssembledPrompt = await backendMind.completeSemanticPrompt({
+      userId: user.id,
+      preparation: beforeRecovery,
+      plan: stagedPlan,
+      scores: new Map(Object.entries(scores)),
+    });
+    const stillUnpersisted = await turnPort.getPreparation({
+      userId: user.id,
+      prepareId: scoring.reservationId,
+    });
+    assert.ok(stillUnpersisted);
+    assert.equal(stillUnpersisted.mindPrepared, false);
+
     assert.equal(
       await semanticService.processNextCompletion(),
       "processed",
@@ -268,6 +286,7 @@ test(
     });
     assert.ok(afterRecovery);
     assert.equal(afterRecovery.mindPrepared, true);
+    assert.equal(afterRecovery.prompt, firstAssembledPrompt);
     assert.equal(
       afterRecovery.prompt.includes(
         "那趟独自旅行让我第一次真切感到自己可以照顾好自己",
