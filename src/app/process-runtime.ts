@@ -25,7 +25,13 @@ import { DrizzleUniverseRepository } from "../domains/universe/universe-reposito
 import { UniverseService } from "../domains/universe/universe-service.js";
 import { DrizzleBridgeEventRepository } from "../domains/bridge/bridge-event-repository.js";
 import { BridgeService } from "../domains/bridge/bridge-service.js";
-import { createDefaultBackendMindRuntime } from "../domains/runtime/default-backend-mind-runtime.js";
+import {
+  createDefaultBackendMindRuntime,
+  createDefaultDriveSatisfactionService,
+} from "../domains/runtime/default-backend-mind-runtime.js";
+import type {
+  DriveSatisfactionService,
+} from "../domains/runtime/drive-satisfaction-runtime-repository.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/native-live-backend-turn-coordinator.js";
 import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/native-live-backend-relay-prepare.js";
@@ -88,6 +94,7 @@ type DatabaseResource = ReturnType<typeof createDatabase>;
 
 export type ProcessRuntime = {
   appDependencies: AppDependencies;
+  driveSatisfactionService: DriveSatisfactionService;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
   startBackgroundWork(): void;
@@ -139,6 +146,8 @@ export function createProcessRuntime(
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
   const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
+  const driveSatisfactionService =
+    createDefaultDriveSatisfactionService(db);
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
   const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
     new DrizzleNativeLiveMindFollowUpRepository(db),
@@ -256,6 +265,7 @@ export function createProcessRuntime(
   return {
     mcpSessionRegistry,
     logger,
+    driveSatisfactionService,
     appDependencies: {
       logger,
       webMemoryService: memoryService,
