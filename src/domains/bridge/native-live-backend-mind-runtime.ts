@@ -5,7 +5,10 @@ import type {
 } from "../conversation/native-live-conversation-types.js";
 import type { MindWriteIntent } from "../runtime/mind-intent-parser.js";
 import type { ParsedAssistantBlocks } from "../runtime/mind-block-parser.js";
-import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
+import type {
+  NativeLiveMindRuntime,
+  NativeLiveMindSemanticPlan,
+} from "../runtime/native-live-mind-runtime.js";
 import type { NativeLivePreparedTurn } from "./native-live-backend-turn-coordinator.js";
 
 export interface NativeLiveBackendMindConversationReader {
@@ -19,6 +22,18 @@ export interface NativeLiveBackendMindRuntime {
   preparePrompt(input: {
     userId: string;
     preparation: NativeLivePreparedTurn;
+  }): Promise<string>;
+
+  planSemanticPrompt?(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+  }): Promise<NativeLiveMindSemanticPlan | null>;
+
+  completeSemanticPrompt?(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    plan: NativeLiveMindSemanticPlan;
+    scores: ReadonlyMap<string, number>;
   }): Promise<string>;
 
   parseAssistantBlocks(
@@ -91,6 +106,70 @@ implements NativeLiveBackendMindRuntime {
       userMessage,
       userText: input.preparation.prompt,
       surfaceHeadMessageId: userMessage.parentMessageId,
+    });
+  }
+
+  async planSemanticPrompt(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+  }): Promise<NativeLiveMindSemanticPlan | null> {
+    if (!this.mind.planSemanticUserTurn) return null;
+
+    const conversation = await this.requireConversation(
+      input.userId,
+      input.preparation.conversationId,
+    );
+    const userMessage = requirePreparedUserMessage(
+      conversation,
+      input.preparation.canonicalUserMessageId,
+    );
+
+    if (input.preparation.operation === "send") {
+      await this.mind.reconcileSelectedPath({
+        userId: input.userId,
+        conversation: {
+          ...conversation,
+          currentHeadMessageId: userMessage.id,
+        },
+      });
+    }
+
+    return this.mind.planSemanticUserTurn({
+      userId: input.userId,
+      conversation,
+      userMessage,
+      userText: input.preparation.prompt,
+      surfaceHeadMessageId: userMessage.parentMessageId,
+    });
+  }
+
+  async completeSemanticPrompt(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    plan: NativeLiveMindSemanticPlan;
+    scores: ReadonlyMap<string, number>;
+  }): Promise<string> {
+    if (!this.mind.prepareUserTurnWithSemanticScores) {
+      throw new Error("Backend Mind runtime does not support semantic completion.");
+    }
+
+    const conversation = await this.requireConversation(
+      input.userId,
+      input.preparation.conversationId,
+    );
+    const userMessage = requirePreparedUserMessage(
+      conversation,
+      input.preparation.canonicalUserMessageId,
+    );
+
+    return this.mind.prepareUserTurnWithSemanticScores({
+      userId: input.userId,
+      conversation,
+      userMessage,
+      userText: input.preparation.prompt,
+      surfaceHeadMessageId: userMessage.parentMessageId,
+      plan: input.plan,
+      scores: input.scores,
     });
   }
 
