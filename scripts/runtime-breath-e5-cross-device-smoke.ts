@@ -75,6 +75,7 @@ const scores = submittedScores as Record<string, number>;
 assert.ok(scores["travel-related"] !== undefined);
 assert.ok(scores.food !== undefined);
 assert.ok(scores.database !== undefined);
+assert.ok(scores["travel-related"]! >= 0.8);
 assert.ok(scores["travel-related"]! > scores.food!);
 assert.ok(scores["travel-related"]! > scores.database!);
 
