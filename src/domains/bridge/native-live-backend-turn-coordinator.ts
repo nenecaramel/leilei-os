@@ -11,6 +11,7 @@ import type {
 import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
+import type { MindWriteIntent } from "../runtime/mind-intent-parser.js";
 import {
   NativeLiveRelayContractError,
   parseNativeLiveRelayRequest,
@@ -90,6 +91,17 @@ export type NativeLiveFinalizeSuccessRecord = {
   assistantMessage: NativeLiveMessage;
   checkpoint: NativeLiveProviderCheckpoint;
 };
+
+export type NativeLiveMindFollowUpPayload = {
+  intents: readonly MindWriteIntent[];
+};
+
+export interface NativeLivePostFinalizeRunner {
+  processPreparation(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<unknown>;
+}
 
 export type NativeLiveFinalizeSuccessPortResult =
   | {
@@ -183,6 +195,7 @@ export interface NativeLiveBackendTurnPort {
     providerSessionId: string;
     blocks: NativeLiveContentBlockInput[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
+    mindFollowUp: NativeLiveMindFollowUpPayload | null;
   }): Promise<NativeLiveFinalizeSuccessPortResult>;
 
   finalizeFailure(input: {
@@ -197,6 +210,7 @@ export class NativeLiveBackendTurnCoordinator {
     private readonly port: NativeLiveBackendTurnPort,
     private readonly createPrepareId: () => string = randomUUID,
     private readonly mind: NativeLiveBackendMindRuntime | null = null,
+    private readonly postFinalize: NativeLivePostFinalizeRunner | null = null,
   ) {}
 
   async prepare(
@@ -406,6 +420,9 @@ export class NativeLiveBackendTurnCoordinator {
         providerSessionId: result.provider_session_id,
         blocks: parsedMind.visibleBlocks,
         normalizedEvents: result.normalized_events,
+        mindFollowUp: this.mind
+          ? { intents: parsedMind.intents }
+          : null,
       });
     } catch {
       return failureForResult(result, "INTERNAL_ERROR");
@@ -415,7 +432,17 @@ export class NativeLiveBackendTurnCoordinator {
       return failureForResult(result, finalized.code);
     }
 
-    if (
+    if (this.postFinalize) {
+      try {
+        await this.postFinalize.processPreparation({
+          userId,
+          prepareId: preparation.prepareId,
+        });
+      } catch {
+        // The canonical completion and durable follow-up row are already
+        // committed together. The background worker can retry the follow-up.
+      }
+    } else if (
       this.mind
       && finalized.outcome === "completed"
     ) {
@@ -427,9 +454,7 @@ export class NativeLiveBackendTurnCoordinator {
           intents: parsedMind.intents,
         });
       } catch {
-        // Canonical assistant completion is already committed. Mind follow-up
-        // is non-authoritative and must not turn a committed turn into a
-        // fabricated canonical failure.
+        // Compatibility fallback for non-durable test/local bindings.
       }
     }
 
