@@ -256,6 +256,7 @@ implements NativeLiveBackendRelayPort {
           FROM native_live_turn_preparations
           WHERE user_id = ${input.userId}::uuid
             AND status = 'prepared'
+            AND mind_prepared = true
             AND dispatch_status = 'pending'
           ORDER BY created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
