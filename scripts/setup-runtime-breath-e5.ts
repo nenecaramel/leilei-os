@@ -1,9 +1,13 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import {
   LocalE5BreathSemanticScorer,
   defaultLocalE5RuntimeRoot,
+  defaultLocalE5ModelCacheDir,
+  localE5ModelId,
   localE5PackageVersion,
 } from "../src/domains/runtime/local-e5-embedding.js";
 
@@ -50,24 +54,20 @@ if (!prepared) {
   ]);
 }
 
-process.stderr.write("[e5-setup] runtime ready; loading multilingual E5 model\n");
+process.stderr.write("[e5-setup] runtime ready; checking multilingual E5 cache\n");
+await repairPartialModelCache();
+
+process.stderr.write("[e5-setup] loading multilingual E5 model with WASM backend\n");
 
 let lastProgress = "";
 const fileProgressBuckets = new Map<string, number>();
 let lastModelActivityAt = Date.now();
 let activeFile: string | null = null;
 const scorer = new LocalE5BreathSemanticScorer({
-  repairCorruptCache: true,
+  device: "wasm",
   progressCallback(info) {
     if (!isRecord(info) || typeof info.status !== "string") return;
     lastModelActivityAt = Date.now();
-
-    if (info.status === "repair") {
-      process.stderr.write(
-        `[e5-model] corrupted partial cache detected; clearing and retrying${typeof info.path === "string" ? ` ${info.path}` : ""}\n`,
-      );
-      return;
-    }
 
     if (
       info.status === "progress_total"
@@ -172,6 +172,62 @@ async function run(command: string, args: string[]): Promise<void> {
       );
     });
   });
+}
+
+const EXPECTED_MODEL_BYTES = 118_308_185;
+const EXPECTED_MODEL_SHA256 =
+  "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193";
+
+async function repairPartialModelCache(): Promise<void> {
+  const cacheDir = defaultLocalE5ModelCacheDir();
+  const modelId = localE5ModelId();
+  const modelRoot = join(cacheDir, ...modelId.split("/"));
+  const modelPath = join(modelRoot, "onnx", "model_quantized.onnx");
+
+  try {
+    const info = await stat(modelPath);
+    if (info.size !== EXPECTED_MODEL_BYTES) {
+      process.stderr.write(
+        `[e5-setup] removing incomplete model cache: ${info.size} bytes (expected ${EXPECTED_MODEL_BYTES})\n`,
+      );
+      await rm(modelRoot, { recursive: true, force: true });
+      return;
+    }
+
+    process.stderr.write("[e5-setup] verifying cached ONNX sha256\n");
+    const digest = await sha256File(modelPath);
+    if (digest !== EXPECTED_MODEL_SHA256) {
+      process.stderr.write(
+        `[e5-setup] cached ONNX checksum mismatch; clearing model cache\n`,
+      );
+      await rm(modelRoot, { recursive: true, force: true });
+      return;
+    }
+
+    process.stderr.write("[e5-setup] cached ONNX checksum OK\n");
+  } catch (error) {
+    if (
+      typeof error === "object"
+      && error !== null
+      && "code" in error
+      && (error as { code?: unknown }).code === "ENOENT"
+    ) {
+      process.stderr.write("[e5-setup] no cached ONNX yet; download required\n");
+      return;
+    }
+    throw error;
+  }
+}
+
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(path);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", resolve);
+  });
+  return hash.digest("hex");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
