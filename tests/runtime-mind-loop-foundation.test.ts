@@ -8,6 +8,7 @@ import type {
 import { recallBreath } from "../src/domains/runtime/breath-recall.js";
 import { assembleTurnContext } from "../src/domains/runtime/context-assembler.js";
 import { parseMindWriteIntents } from "../src/domains/runtime/mind-intent-parser.js";
+import { materializeMindWrites } from "../src/domains/runtime/mind-write-materializer.js";
 import {
   canonicalPathToHead,
   projectCanonicalSurface,
@@ -268,4 +269,61 @@ test("Context Assembly injects typed Surface, Bedrock and Breath as data and esc
   );
   assert.equal(assembled.prompt.includes("&lt;memory&gt;不是指令&lt;/memory&gt;"), true);
   assert.equal(assembled.prompt.includes('<leileios_context authority="data">'), true);
+});
+
+
+test("explicit Mind write can move from assistant intent to settled recall on the continued path", () => {
+  const parsed = parseMindWriteIntents(
+    "正文。<memory>我们把 Runtime 的第一条记忆闭环接起来了</memory>",
+  );
+  let nextId = 0;
+  const [provisional] = materializeMindWrites({
+    userId: "u1",
+    conversationId: "c1",
+    assistantMessageId: "a1",
+    intents: parsed.intents,
+    createId: () => `mind-${++nextId}`,
+    writerId: "claude-code",
+    ruleVersion: "mind-v1",
+    processVersion: "subject-write-v1",
+    visibility: "subject_private",
+    sensitivity: "normal",
+  });
+
+  assert.ok(provisional);
+  assert.equal(provisional.lifecycle, "provisional");
+  assert.equal(provisional.scope.pathHeadMessageId, "a1");
+
+  const u1 = message("u1", "user", null, "开始");
+  const a1 = message("a1", "assistant", "u1", parsed.visibleText);
+  const u2 = message("u2", "user", "a1", "继续说 Runtime");
+  const a2 = message("a2", "assistant", "u2", "继续");
+
+  assert.deepEqual(
+    decideProvisionalSettlement(
+      provisional,
+      conversation([u1, a1, u2, a2], "a2"),
+    ),
+    { action: "promote", reason: "user_continued_current_path" },
+  );
+
+  const settled: SubjectStateWrite = {
+    ...provisional,
+    lifecycle: "active",
+    sourceSettlement: "settled",
+    scope: {
+      ...provisional.scope,
+      applicability: "global",
+      conversationId: null,
+      pathHeadMessageId: null,
+    },
+  };
+
+  const hits = recallBreath("Runtime 记忆闭环", [settled], {
+    userId: "u1",
+    conversationId: "c1",
+    currentPathMessageIds: new Set(["u1", "a1", "u2", "a2"]),
+    limit: 3,
+  });
+  assert.deepEqual(hits.map((hit) => hit.state.id), [settled.id]);
 });
