@@ -188,6 +188,7 @@ export function readNativeLiveTurnHandler(
           canonicalStatus: turn.canonicalStatus,
           dispatchStatus: turn.dispatchStatus,
           semanticStatus: turn.semanticStatus,
+          semanticFallbackCode: turn.semanticFallbackCode,
           failureCode: turn.failureCode,
           assistantMessage: turn.assistantMessage
             ? {
