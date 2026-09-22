@@ -168,6 +168,32 @@ test("fork result cannot reuse the parent provider session", () => {
   );
 });
 
+test("assembled Mind prompt may exceed raw user-text limit while remaining bounded", () => {
+  const prompt = "x".repeat(8_000);
+  const command = parseNativeLiveRuntimeCommand({
+    protocol_version: 1,
+    dispatch_target: "claude_code",
+    prepare_id: prepareId,
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    canonical_user_message_id: userMessageId,
+    runtime_mode: "new",
+    parent_provider_session_id: null,
+    prompt,
+  });
+  assert.equal(command.prompt.length, 8_000);
+
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeCommand({
+        ...command,
+        prompt: "x".repeat(16_001),
+      }),
+    /between 1 and 16000 characters/u,
+  );
+});
+
 test("protocol rejects unknown versions and extra fields", () => {
   assert.throws(
     () =>
