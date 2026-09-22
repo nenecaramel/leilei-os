@@ -35,6 +35,28 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
   : never;
 type Executor = Database | Transaction;
 
+export type NativeLiveBackendTurnReadModel = {
+  prepareId: string;
+  requestId: string;
+  conversationId: string;
+  operation: "send" | "retry" | "edit";
+  canonicalUserMessageId: string;
+  canonicalStatus:
+    | "prepared"
+    | "finalized_success"
+    | "finalized_failure";
+  dispatchStatus:
+    | "staged"
+    | "pending"
+    | "reserved"
+    | "executing"
+    | "delivery_unknown"
+    | "completed"
+    | "rejected";
+  assistantMessage: NativeLiveMessage | null;
+  failureCode: string | null;
+};
+
 type PreparationRow = {
   id: string;
   userId: string;
@@ -379,6 +401,64 @@ implements NativeLiveBackendTurnPort {
   }): Promise<NativeLivePreparedTurn | null> {
     const row = await this.findById(this.db, input.userId, input.prepareId);
     return row ? mapPreparation(row) : null;
+  }
+
+  async readTurn(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<NativeLiveBackendTurnReadModel | null> {
+    const [row] = await this.db
+      .select({
+        id: nativeLiveTurnPreparations.id,
+        requestId: nativeLiveTurnPreparations.requestId,
+        conversationId: nativeLiveTurnPreparations.conversationId,
+        operation: nativeLiveTurnPreparations.operation,
+        canonicalUserMessageId:
+          nativeLiveTurnPreparations.canonicalUserMessageId,
+        canonicalStatus: nativeLiveTurnPreparations.status,
+        dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
+        assistantMessageId: nativeLiveTurnPreparations.assistantMessageId,
+        failureCode: nativeLiveTurnPreparations.failureCode,
+      })
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+          eq(nativeLiveTurnPreparations.id, input.prepareId),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return null;
+
+    let assistantMessage: NativeLiveMessage | null = null;
+    if (row.assistantMessageId) {
+      const conversations =
+        new DrizzleNativeLiveConversationRepository(this.db);
+      const conversation = await conversations.getConversation({
+        userId: input.userId,
+        conversationId: row.conversationId,
+      });
+      assistantMessage =
+        conversation?.messages.find(
+          (message) => message.id === row.assistantMessageId,
+        ) ?? null;
+      if (!assistantMessage) {
+        throw new Error("Finalized assistant message was not found.");
+      }
+    }
+
+    return {
+      prepareId: row.id,
+      requestId: row.requestId,
+      conversationId: row.conversationId,
+      operation: row.operation,
+      canonicalUserMessageId: row.canonicalUserMessageId,
+      canonicalStatus: row.canonicalStatus,
+      dispatchStatus: row.dispatchStatus,
+      assistantMessage,
+      failureCode: row.failureCode,
+    };
   }
 
   async persistMindPreparedPrompt(input: {
