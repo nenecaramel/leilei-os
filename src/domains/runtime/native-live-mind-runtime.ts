@@ -21,7 +21,7 @@ export type NativeLiveMindSemanticPlan = {
   candidates: BreathSemanticCandidate[];
 };
 
-export interface NativeLiveThoughtEvolutionRuntime {
+export interface NativeLiveSubjectEvolutionRuntime {
   runOnce(input: {
     userId: string;
     subjectId: string;
@@ -37,7 +37,8 @@ export type NativeLiveMindRuntimeBindingOptions = {
   now?: () => string;
   producerId?: string;
   committerId?: string;
-  thoughtEvolution?: NativeLiveThoughtEvolutionRuntime | null;
+  thoughtEvolution?: NativeLiveSubjectEvolutionRuntime | null;
+  driveEvolution?: NativeLiveSubjectEvolutionRuntime | null;
 };
 
 export interface NativeLiveMindRuntime {
@@ -100,7 +101,8 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
   private readonly now: () => string;
   private readonly producerId: string;
   private readonly committerId: string;
-  private readonly thoughtEvolution: NativeLiveThoughtEvolutionRuntime | null;
+  private readonly thoughtEvolution: NativeLiveSubjectEvolutionRuntime | null;
+  private readonly driveEvolution: NativeLiveSubjectEvolutionRuntime | null;
 
   constructor(
     private readonly service: NativeLiveMindLoopService,
@@ -113,6 +115,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     this.producerId = options.producerId ?? "claude-code";
     this.committerId = options.committerId ?? "leileios-runtime";
     this.thoughtEvolution = options.thoughtEvolution ?? null;
+    this.driveEvolution = options.driveEvolution ?? null;
   }
 
   async prepareUserTurn(input: {
@@ -123,7 +126,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     surfaceHeadMessageId: string | null;
   }): Promise<string> {
     const assembledAt = this.now();
-    await this.evolveThoughts(input.userId, assembledAt);
+    await this.evolveSubjectState(input.userId, assembledAt);
     const assembled = await this.service.prepareTurn({
       manifestId: this.createManifestId(),
       userId: input.userId,
@@ -146,7 +149,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     surfaceHeadMessageId: string | null;
   }): Promise<NativeLiveMindSemanticPlan | null> {
     const assembledAt = this.now();
-    await this.evolveThoughts(input.userId, assembledAt);
+    await this.evolveSubjectState(input.userId, assembledAt);
     const semantic = await this.service.planSemanticRecall({
       userId: input.userId,
       subjectId: this.subjectId,
@@ -255,20 +258,23 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     });
   }
 
-  private async evolveThoughts(
+  private async evolveSubjectState(
     userId: string,
     now: string,
   ): Promise<void> {
-    if (!this.thoughtEvolution) return;
-    try {
-      await this.thoughtEvolution.runOnce({
-        userId,
-        subjectId: this.subjectId,
-        now,
-      });
-    } catch {
-      // Thought evolution is derived subject state. A maintenance failure must
-      // not block a user turn or rewrite canonical conversation history.
+    for (const process of [this.driveEvolution, this.thoughtEvolution]) {
+      if (!process) continue;
+      try {
+        await process.runOnce({
+          userId,
+          subjectId: this.subjectId,
+          now,
+        });
+      } catch {
+        // Derived subject-state maintenance is fail-soft: a Drive/Thought
+        // process failure must not block the user turn or rewrite canonical
+        // conversation history.
+      }
     }
   }
 }
