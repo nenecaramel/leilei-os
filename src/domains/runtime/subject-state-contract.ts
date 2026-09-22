@@ -57,9 +57,9 @@ export type SubjectStateSourceRef = {
 
 export type SubjectStateScope = {
   userId: string;
-  applicability: "global" | "conversation" | "branch";
+  applicability: "global" | "conversation" | "path";
   conversationId?: string | null;
-  branchId?: string | null;
+  pathHeadMessageId?: string | null;
   visibility:
     | "subject_private"
     | "user_visible"
@@ -106,7 +106,7 @@ export class SubjectStateContractError extends Error {
       | "INVALID_VERSION"
       | "BEDROCK_AUTHORITY_REQUIRED"
       | "UNSETTLED_STATE_MUST_BE_PROVISIONAL"
-      | "PROVISIONAL_STATE_MUST_BE_BRANCH_SCOPED"
+      | "PROVISIONAL_STATE_MUST_BE_PATH_SCOPED"
       | "INVALID_SCOPE",
     message: string,
   ) {
@@ -137,11 +137,11 @@ function validateScope(scope: SubjectStateScope): SubjectStateScope {
     );
   }
 
-  if (scope.applicability === "branch") {
-    if (!scope.conversationId || !scope.branchId) {
+  if (scope.applicability === "path") {
+    if (!scope.conversationId || !scope.pathHeadMessageId) {
       throw new SubjectStateContractError(
         "INVALID_SCOPE",
-        "Branch-scoped subject state requires conversationId and branchId.",
+        "Path-scoped subject state requires conversationId and pathHeadMessageId.",
       );
     }
   }
@@ -151,9 +151,9 @@ function validateScope(scope: SubjectStateScope): SubjectStateScope {
 
 /**
  * Persistent Subject State is derived from real experience but is not itself the
- * canonical event history. This validator intentionally enforces only the
- * invariants that are already architecture-level decisions; per-kind write
- * matrices and lifecycle rules remain separate, versioned policy.
+ * canonical event history. The canonical conversation model represents
+ * immutable branches as parent-linked message paths, so provisional state is
+ * scoped to an exact path head rather than to an invented branch entity.
  */
 export function validateSubjectStateWrite(
   input: SubjectStateWrite,
@@ -215,11 +215,11 @@ export function validateSubjectStateWrite(
   const scope = validateScope(input.scope);
   if (
     input.lifecycle === "provisional"
-    && scope.applicability !== "branch"
+    && scope.applicability !== "path"
   ) {
     throw new SubjectStateContractError(
-      "PROVISIONAL_STATE_MUST_BE_BRANCH_SCOPED",
-      "Provisional subject state must remain branch-scoped until settlement.",
+      "PROVISIONAL_STATE_MUST_BE_PATH_SCOPED",
+      "Provisional subject state must remain path-scoped until settlement.",
     );
   }
 
