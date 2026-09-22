@@ -114,6 +114,10 @@ test(
     });
     assert.equal(first.ok, true);
     if (!first.ok) throw new Error("expected first prepare success");
+    await relay.enqueuePreparation({
+      userId: user.id,
+      prepareId: first.command.prepare_id,
+    });
 
     const firstReservation = await relay.reserveNext({
       userId: user.id,
@@ -173,6 +177,10 @@ test(
     });
     assert.equal(second.ok, true);
     if (!second.ok) throw new Error("expected second prepare success");
+    await relay.enqueuePreparation({
+      userId: user.id,
+      prepareId: second.command.prepare_id,
+    });
 
     const secondReservation = await relay.reserveNext({
       userId: user.id,
