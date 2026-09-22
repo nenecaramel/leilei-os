@@ -23,6 +23,13 @@ import {
   NativeLiveBackendTurnCoordinator,
 } from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
 import {
+  NativeLiveBackendRelayPrepareCoordinator,
+} from "../src/domains/bridge/native-live-backend-relay-prepare.js";
+import {
+  DrizzleNativeLiveSemanticScoringRepository,
+  NativeLiveSemanticHandshakeService,
+} from "../src/domains/bridge/native-live-semantic-handshake.js";
+import {
   DrizzleNativeLiveBackendTurnPort,
 } from "../src/domains/bridge/native-live-backend-turn-repository.js";
 import { createDefaultBackendMindRuntime } from "../src/domains/runtime/default-backend-mind-runtime.js";
@@ -36,8 +43,9 @@ const enabled = process.env.RUN_NATIVE_LIVE_HTTP_DATABASE_TEST === "1";
 async function withServer(
   userId: string,
   input: {
-    coordinator: NativeLiveBackendTurnCoordinator;
+    coordinator: NativeLiveBackendRelayPrepareCoordinator;
     relayService: NativeLiveBackendRelayService;
+    semanticService: NativeLiveSemanticHandshakeService;
     turnReader: DrizzleNativeLiveBackendTurnPort;
   },
   callback: (baseUrl: string) => Promise<void>,
@@ -65,6 +73,7 @@ async function withServer(
     "/internal/native-live-relay",
     createNativeLiveRelayInternalRouter({
       relayService: input.relayService,
+      semanticService: input.semanticService,
     }),
   );
 
@@ -142,7 +151,7 @@ test(
       backendMind,
       crypto.randomUUID(),
     );
-    const coordinator = new NativeLiveBackendTurnCoordinator(
+    const finalizeCoordinator = new NativeLiveBackendTurnCoordinator(
       turnPort,
       undefined,
       backendMind,
@@ -150,12 +159,23 @@ test(
     );
     const relayService = new NativeLiveBackendRelayService(
       new DrizzleNativeLiveBackendRelayRepository(database.db),
-      coordinator,
+      finalizeCoordinator,
+    );
+    const semanticService = new NativeLiveSemanticHandshakeService(
+      new DrizzleNativeLiveSemanticScoringRepository(database.db),
+      turnPort,
+      backendMind,
+      relayService,
+    );
+    const coordinator = new NativeLiveBackendRelayPrepareCoordinator(
+      turnPort,
+      backendMind,
+      semanticService,
     );
 
     await withServer(
       user.id,
-      { coordinator, relayService, turnReader: turnPort },
+      { coordinator, relayService, semanticService, turnReader: turnPort },
       async (baseUrl) => {
         const listenerId = crypto.randomUUID();
         const firstRequestId = crypto.randomUUID();
@@ -335,7 +355,14 @@ test(
             }),
           },
         );
-        assert.equal(secondPrepared.status, 201);
+        assert.equal(secondPrepared.status, 202);
+        const secondPreparedPayload = await secondPrepared.json() as {
+          data: {
+            prepareId: string;
+            semanticPending: boolean;
+          };
+        };
+        assert.equal(secondPreparedPayload.data.semanticPending, true);
 
         const [settled] = await database.db
           .select({
@@ -351,6 +378,58 @@ test(
           settlementStatus: "settled",
           scopeApplicability: "global",
         });
+
+        const semanticReserved = await fetch(
+          `${baseUrl}/internal/native-live-relay/semantic/reserve`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              listener_instance_id: listenerId,
+              dispatch_target: "claude_code",
+            }),
+          },
+        );
+        assert.equal(semanticReserved.status, 200);
+        const semanticPayload = await semanticReserved.json() as {
+          data: {
+            reservationId: string;
+            candidates: Array<{
+              stateId: string;
+              kind: string;
+              text: string;
+            }>;
+          };
+        };
+        assert.equal(
+          semanticPayload.data.reservationId,
+          secondPreparedPayload.data.prepareId,
+        );
+        assert.equal(
+          semanticPayload.data.candidates.some(
+            (candidate) => candidate.stateId === provisional.id,
+          ),
+          true,
+        );
+
+        const scores = Object.fromEntries(
+          semanticPayload.data.candidates.map((candidate) => [
+            candidate.stateId,
+            candidate.stateId === provisional.id ? 0.93 : 0.2,
+          ]),
+        );
+        const scored = await fetch(
+          `${baseUrl}/internal/native-live-relay/semantic/reservations/${secondPreparedPayload.data.prepareId}/scores`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              listener_instance_id: listenerId,
+              scores,
+            }),
+          },
+        );
+        assert.equal(scored.status, 200);
 
         const secondReserved = await fetch(
           `${baseUrl}/internal/native-live-relay/reserve`,
@@ -375,6 +454,21 @@ test(
           ),
           true,
         );
+
+        const manifests = await database.db
+          .select({
+            items: runtimeContextManifests.items,
+          })
+          .from(runtimeContextManifests)
+          .where(eq(runtimeContextManifests.userId, user.id));
+        const selected = manifests
+          .flatMap((manifest) => manifest.items)
+          .find(
+            (item) =>
+              item.sourceId === provisional.id
+              && item.selection.reason === "breath_semantic_match",
+          );
+        assert.ok(selected);
       },
     );
   },
