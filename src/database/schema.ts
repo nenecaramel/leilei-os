@@ -1495,11 +1495,15 @@ export const nativeLiveSemanticScoringRequests = pgTable(
     ),
     check(
       "native_live_semantic_scoring_requests_candidates_array",
-      sql`jsonb_typeof(${table.candidates}) = 'array' AND jsonb_array_length(${table.candidates}) > 0`,
+      sql`jsonb_typeof(${table.candidates}) = 'array' AND jsonb_array_length(${table.candidates}) BETWEEN 1 AND 64`,
     ),
     check(
       "native_live_semantic_scoring_requests_snapshot_nonnegative",
       sql`${table.snapshotSequence} >= 0`,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_scores_object",
+      sql`${table.scores} IS NULL OR jsonb_typeof(${table.scores}) = 'object'`,
     ),
     check(
       "native_live_semantic_scoring_requests_status_allowed",
