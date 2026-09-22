@@ -31,6 +31,7 @@ import { createConversationFavoriteApiRouter, type ConversationFavoriteApiDepend
 import { createConversationExclusionManagementApiRouter, type ConversationExclusionManagementApiDependencies } from "./conversation-exclusion-management-router.js";
 import { createConversationImportHistoryApiRouter, type ConversationImportHistoryApiDependencies } from "./conversation-import-history-router.js";
 import { createConversationLifecycleApiRouter, type ConversationLifecycleApiDependencies } from "./conversation-lifecycle-router.js";
+import { createNativeLiveApiRouter, type NativeLiveApiDependencies } from "./native-live-router.js";
 
 export type WebApiRouterDependencies = {
   memory: MemoryApiDependencies;
@@ -53,6 +54,7 @@ export type WebApiRouterDependencies = {
   conversationExclusionManagement?: ConversationExclusionManagementApiDependencies;
   conversationImportHistory?: ConversationImportHistoryApiDependencies;
   conversationLifecycle?: ConversationLifecycleApiDependencies;
+  nativeLive?: NativeLiveApiDependencies;
 };
 
 export function createWebApiRouter(
@@ -117,6 +119,7 @@ export function createWebApiRouter(
   if (dependencies.conversationRead) router.use("/conversations", createConversationArchiveReadApiRouter(dependencies.conversationRead));
   if (dependencies.conversationPruning) router.use("/conversations", createConversationPruningApiRouter(dependencies.conversationPruning));
   if (dependencies.conversationImport) router.use("/conversations", createConversationImportApiRouter(dependencies.conversationImport));
+  if (dependencies.nativeLive) router.use("/native-live", createNativeLiveApiRouter(dependencies.nativeLive));
 
   return router;
 }
