@@ -270,7 +270,6 @@ implements DriveSatisfactionRuntimePort {
           satisfactionTotal: nextSatisfactionTotal,
         };
       },
-      { isolationLevel: "serializable" },
     );
   }
 
