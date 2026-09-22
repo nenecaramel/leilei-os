@@ -86,6 +86,7 @@ export type MindLoopConfig = {
   breathSemanticWeight?: number;
   breathSemanticMinScore?: number;
   breathSemanticCandidateLimit?: number;
+  breathSemanticCandidateMaxChars?: number;
   maxContextItems: number;
   maxContextChars: number;
 };
@@ -312,6 +313,17 @@ export class NativeLiveMindLoopService {
       );
     }
 
+    const candidateMaxChars =
+      this.config.breathSemanticCandidateMaxChars ?? 2_000;
+    if (
+      !Number.isInteger(candidateMaxChars)
+      || candidateMaxChars < 1
+    ) {
+      throw new Error(
+        "Breath semantic candidate max chars must be a positive integer.",
+      );
+    }
+
     const candidates = semanticCandidatesFromStates(
       filterBreathEligibleStates(input.states, {
         userId: input.userId,
@@ -323,7 +335,11 @@ export class NativeLiveMindLoopService {
       }),
     )
       .sort((left, right) => left.stateId.localeCompare(right.stateId))
-      .slice(0, candidateLimit);
+      .slice(0, candidateLimit)
+      .map((candidate) => ({
+        ...candidate,
+        text: candidate.text.slice(0, candidateMaxChars),
+      }));
 
     if (candidates.length === 0) return null;
     return {
