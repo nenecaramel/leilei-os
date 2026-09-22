@@ -279,19 +279,21 @@ export class NativeLiveBackendTurnCoordinator {
     }
 
     let preparation = prepared.preparation;
-    if (this.mind && !preparation.mindPrepared) {
+    if (!preparation.mindPrepared) {
       try {
-        const prompt = await this.mind.preparePrompt({
-          userId,
-          preparation,
-        });
+        const prompt = this.mind
+          ? await this.mind.preparePrompt({
+              userId,
+              preparation,
+            })
+          : preparation.prompt;
         preparation = await this.port.persistMindPreparedPrompt({
           userId,
           prepareId: preparation.prepareId,
           prompt,
         });
         if (!preparation.mindPrepared) {
-          throw new Error("Mind-prepared prompt was not persisted.");
+          throw new Error("Prepared runtime prompt was not persisted.");
         }
       } catch {
         return {
