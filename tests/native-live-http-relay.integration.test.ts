@@ -16,6 +16,10 @@ import {
   NativeLiveBackendRelayService,
 } from "../src/domains/bridge/native-live-backend-relay.js";
 import {
+  DrizzleNativeLiveMindFollowUpRepository,
+  NativeLiveMindFollowUpService,
+} from "../src/domains/bridge/native-live-mind-followup.js";
+import {
   NativeLiveBackendTurnCoordinator,
 } from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
 import {
@@ -131,10 +135,18 @@ test(
     });
 
     const turnPort = new DrizzleNativeLiveBackendTurnPort(database.db);
+    const backendMind = createDefaultBackendMindRuntime(database.db);
+    const mindFollowUp = new NativeLiveMindFollowUpService(
+      new DrizzleNativeLiveMindFollowUpRepository(database.db),
+      turnPort,
+      backendMind,
+      crypto.randomUUID(),
+    );
     const coordinator = new NativeLiveBackendTurnCoordinator(
       turnPort,
       undefined,
-      createDefaultBackendMindRuntime(database.db),
+      backendMind,
+      mindFollowUp,
     );
     const relayService = new NativeLiveBackendRelayService(
       new DrizzleNativeLiveBackendRelayRepository(database.db),
