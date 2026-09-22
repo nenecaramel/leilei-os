@@ -1,7 +1,5 @@
-import type {
-  SubjectStateKind,
-  SubjectStateWrite,
-} from "./subject-state-contract.js";
+import type { SubjectStateKind, SubjectStateWrite } from "./subject-state-contract.js";
+import { isConsolidationEligible } from "./runtime-status-axes.js";
 
 export const BREATH_RECALL_KINDS = ["memory", "feel"] as const satisfies readonly SubjectStateKind[];
 
@@ -34,20 +32,24 @@ function scopeApplies(
   state: SubjectStateWrite,
   input: {
     userId: string;
+    subjectId: string;
     conversationId: string;
     currentPathMessageIds: ReadonlySet<string>;
   },
 ): boolean {
-  if (state.scope.userId !== input.userId) return false;
+  const scope = state.envelope.scope;
+  if (scope.userId !== input.userId || scope.subjectId !== input.subjectId) {
+    return false;
+  }
 
-  if (state.scope.applicability === "global") return true;
+  if (scope.applicability === "global") return true;
+  if (scope.conversationId !== input.conversationId) return false;
+  if (scope.applicability === "conversation") return true;
 
-  if (state.scope.conversationId !== input.conversationId) return false;
-
-  if (state.scope.applicability === "conversation") return true;
-
-  const pathHead = state.scope.pathHeadMessageId;
-  return Boolean(pathHead && input.currentPathMessageIds.has(pathHead));
+  return Boolean(
+    scope.pathHeadMessageId
+    && input.currentPathMessageIds.has(scope.pathHeadMessageId),
+  );
 }
 
 export function recallBreath(
@@ -55,6 +57,7 @@ export function recallBreath(
   candidates: readonly SubjectStateWrite[],
   input: {
     userId: string;
+    subjectId: string;
     conversationId: string;
     currentPathMessageIds: ReadonlySet<string>;
     limit: number;
@@ -73,8 +76,7 @@ export function recallBreath(
   for (const state of candidates) {
     if (
       !allowedKinds.has(state.kind)
-      || state.lifecycle !== "active"
-      || state.sourceSettlement !== "settled"
+      || !isConsolidationEligible(state.envelope.status)
       || !scopeApplies(state, input)
       || !state.text
     ) {
