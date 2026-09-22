@@ -59,21 +59,23 @@ const preparationSelection = {
   reservedBy: nativeLiveTurnPreparations.reservedBy,
 };
 
+type SelectedRelayPreparationRow = {
+  prepareId: string;
+  requestId: string;
+  userId: string;
+  conversationId: string;
+  operation: "send" | "retry" | "edit";
+  canonicalUserMessageId: string;
+  runtimeMode: "new" | "fork";
+  parentProviderSessionId: string | null;
+  prompt: string;
+  mindPrepared: boolean;
+  dispatchStatus: RelayPreparationRow["dispatchStatus"];
+  reservedBy: string | null;
+};
+
 function mapPreparation(
-  row: typeof preparationSelection extends infer _T ? {
-    prepareId: string;
-    requestId: string;
-    userId: string;
-    conversationId: string;
-    operation: "send" | "retry" | "edit";
-    canonicalUserMessageId: string;
-    runtimeMode: "new" | "fork";
-    parentProviderSessionId: string | null;
-    prompt: string;
-    mindPrepared: boolean;
-    dispatchStatus: RelayPreparationRow["dispatchStatus"];
-    reservedBy: string | null;
-  } : never,
+  row: SelectedRelayPreparationRow,
 ): RelayPreparationRow {
   return { ...row };
 }
