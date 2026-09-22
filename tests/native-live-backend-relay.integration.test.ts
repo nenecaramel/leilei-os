@@ -114,6 +114,14 @@ test(
     });
     assert.equal(first.ok, true);
     if (!first.ok) throw new Error("expected first prepare success");
+    assert.equal(
+      await relay.reserveNext({
+        userId: user.id,
+        listenerInstanceId: listenerA,
+        dispatchTarget: "claude_code",
+      }),
+      null,
+    );
     await relay.enqueuePreparation({
       userId: user.id,
       prepareId: first.command.prepare_id,
