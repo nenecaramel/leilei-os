@@ -8,6 +8,9 @@ import type {
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
 } from "../conversation/native-live-conversation-types.js";
+import type {
+  NativeLiveBackendMindRuntime,
+} from "./native-live-backend-mind-runtime.js";
 import {
   NativeLiveRelayContractError,
   parseNativeLiveRelayRequest,
@@ -34,6 +37,7 @@ export type NativeLivePreparedTurn = {
   runtimeMode: NativeLiveRuntimeMode;
   parentProviderSessionId: string | null;
   prompt: string;
+  mindPrepared: boolean;
 };
 
 export type NativeLivePrepareFailureCode =
@@ -167,6 +171,12 @@ export interface NativeLiveBackendTurnPort {
     prepareId: string;
   }): Promise<NativeLivePreparedTurn | null>;
 
+  persistMindPreparedPrompt(input: {
+    userId: string;
+    prepareId: string;
+    prompt: string;
+  }): Promise<NativeLivePreparedTurn>;
+
   finalizeSuccess(input: {
     userId: string;
     preparation: NativeLivePreparedTurn;
@@ -186,6 +196,7 @@ export class NativeLiveBackendTurnCoordinator {
   constructor(
     private readonly port: NativeLiveBackendTurnPort,
     private readonly createPrepareId: () => string = randomUUID,
+    private readonly mind: NativeLiveBackendMindRuntime | null = null,
   ) {}
 
   async prepare(
@@ -267,10 +278,36 @@ export class NativeLiveBackendTurnCoordinator {
       };
     }
 
+    let preparation = prepared.preparation;
+    if (this.mind && !preparation.mindPrepared) {
+      try {
+        const prompt = await this.mind.preparePrompt({
+          userId,
+          preparation,
+        });
+        preparation = await this.port.persistMindPreparedPrompt({
+          userId,
+          prepareId: preparation.prepareId,
+          prompt,
+        });
+        if (!preparation.mindPrepared) {
+          throw new Error("Mind-prepared prompt was not persisted.");
+        }
+      } catch {
+        return {
+          ok: false,
+          requestId: request.request_id,
+          operation: request.operation,
+          conversationId: request.conversation_id,
+          code: "INTERNAL_ERROR",
+        };
+      }
+    }
+
     return {
       ok: true,
       outcome: prepared.outcome,
-      command: commandFromPreparation(prepared.preparation),
+      command: commandFromPreparation(preparation),
     };
   }
 
@@ -357,13 +394,17 @@ export class NativeLiveBackendTurnCoordinator {
       return failureForResult(result, "RUNTIME_PROTOCOL_ERROR");
     }
 
+    const parsedMind = this.mind
+      ? this.mind.parseAssistantBlocks(canonical.blocks)
+      : { visibleBlocks: canonical.blocks, intents: [] };
+
     let finalized: NativeLiveFinalizeSuccessPortResult;
     try {
       finalized = await this.port.finalizeSuccess({
         userId,
         preparation,
         providerSessionId: result.provider_session_id,
-        blocks: canonical.blocks,
+        blocks: parsedMind.visibleBlocks,
         normalizedEvents: result.normalized_events,
       });
     } catch {
@@ -372,6 +413,24 @@ export class NativeLiveBackendTurnCoordinator {
 
     if (!finalized.ok) {
       return failureForResult(result, finalized.code);
+    }
+
+    if (
+      this.mind
+      && finalized.outcome === "completed"
+    ) {
+      try {
+        await this.mind.afterFinalize({
+          userId,
+          preparation,
+          assistantMessageId: finalized.record.assistantMessage.id,
+          intents: parsedMind.intents,
+        });
+      } catch {
+        // Canonical assistant completion is already committed. Mind follow-up
+        // is non-authoritative and must not turn a committed turn into a
+        // fabricated canonical failure.
+      }
     }
 
     return {
