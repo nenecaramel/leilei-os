@@ -3,6 +3,7 @@ import test from "node:test";
 import { and, eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
+  conversations as conversationRows,
   runtimeContextManifests,
   runtimeSubjectStateTransitions,
   runtimeSubjectStates,
@@ -23,7 +24,24 @@ test(
     assert.ok(databaseUrl, "DATABASE_URL is required");
 
     const database = createDatabase(databaseUrl, { ssl: false });
-    t.after(async () => database.close());
+    let cleanupUserId: string | null = null;
+    t.after(async () => {
+      try {
+        if (cleanupUserId) {
+          await database.db
+            .delete(runtimeSubjectStates)
+            .where(eq(runtimeSubjectStates.userId, cleanupUserId));
+          await database.db
+            .delete(conversationRows)
+            .where(eq(conversationRows.userId, cleanupUserId));
+          await database.db
+            .delete(users)
+            .where(eq(users.id, cleanupUserId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
 
     const suffix = crypto.randomUUID();
     const [user] = await database.db
@@ -34,6 +52,7 @@ test(
       })
       .returning({ id: users.id });
     assert.ok(user);
+    cleanupUserId = user.id;
 
     const conversations = new NativeLiveConversationService(
       new DrizzleNativeLiveConversationRepository(database.db),
@@ -45,15 +64,6 @@ test(
     const secondConversation = await conversations.createConversation({
       userId: user.id,
       title: "Mind persistence B",
-    });
-
-    t.after(async () => {
-      await database.db
-        .delete(runtimeSubjectStates)
-        .where(eq(runtimeSubjectStates.userId, user.id));
-      await database.db
-        .delete(users)
-        .where(eq(users.id, user.id));
     });
 
     const rootUser = await conversations.appendUserMessage({
