@@ -83,6 +83,56 @@ class FakeRelay implements NativeLiveMacDaemonRelayClient {
   }
 }
 
+class FakeSemanticRelay extends FakeRelay {
+  semanticReservation = {
+    reservationId: prepareId,
+    query: "solo travel independent",
+    candidates: [{
+      stateId: "state-travel",
+      kind: "memory" as const,
+      text: "独自旅行让我觉得自己可以照顾好自己",
+    }],
+  };
+  semanticSubmitError: Error | null = null;
+  semanticFallbackError: Error | null = null;
+
+  async reserveSemanticScoring(input: unknown) {
+    this.calls.push({ name: "reserveSemanticScoring", input });
+    return this.semanticReservation;
+  }
+
+  async submitSemanticScores(input: unknown) {
+    this.calls.push({ name: "submitSemanticScores", input });
+    if (this.semanticSubmitError) throw this.semanticSubmitError;
+  }
+
+  async submitSemanticFallback(input: unknown) {
+    this.calls.push({ name: "submitSemanticFallback", input });
+    if (this.semanticFallbackError) throw this.semanticFallbackError;
+  }
+}
+
+class FakeSemanticScorer {
+  error: Error | null = null;
+  calls: unknown[] = [];
+
+  async score(input: {
+    query: string;
+    candidates: readonly {
+      stateId: string;
+      kind: "memory" | "feel";
+      text: string;
+    }[];
+  }) {
+    this.calls.push(input);
+    if (this.error) throw this.error;
+    return new Map(input.candidates.map((candidate) => [
+      candidate.stateId,
+      0.93,
+    ]));
+  }
+}
+
 class FakeExecutor implements NativeLivePreparedCommandExecutor {
   calls: unknown[] = [];
   value: NativeLiveRuntimeExecutionResult = success();
@@ -209,6 +259,86 @@ test("ambiguous result callback is quarantined and never blindly resubmitted", a
   assert.equal(
     relay.calls.filter((entry) => entry.name === "submitResult").length,
     1,
+  );
+});
+
+test("semantic reservation is scored locally before the Claude queue is polled", async () => {
+  const relay = new FakeSemanticRelay();
+  relay.reservation = null;
+  const executor = new FakeExecutor();
+  const semantic = new FakeSemanticScorer();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    executor,
+    semantic,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "semantic_completed",
+    reservationId: prepareId,
+  });
+  assert.equal(semantic.calls.length, 1);
+  assert.deepEqual(relay.calls.map((entry) => entry.name), [
+    "renewLease",
+    "reserveSemanticScoring",
+    "submitSemanticScores",
+    "reserveNext",
+  ]);
+});
+
+test("unavailable local E5 falls back to lexical assembly without blocking the turn", async () => {
+  const relay = new FakeSemanticRelay();
+  relay.reservation = null;
+  const executor = new FakeExecutor();
+  const semantic = new FakeSemanticScorer();
+  const providerError = Object.assign(new Error("not prepared"), {
+    code: "PROVIDER_NOT_PREPARED",
+  });
+  semantic.error = providerError;
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    executor,
+    semantic,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "semantic_completed",
+    reservationId: prepareId,
+  });
+  assert.deepEqual(relay.calls.map((entry) => entry.name), [
+    "renewLease",
+    "reserveSemanticScoring",
+    "submitSemanticFallback",
+    "reserveNext",
+  ]);
+  const fallback = relay.calls.find(
+    (entry) => entry.name === "submitSemanticFallback",
+  )?.input as { code: string };
+  assert.equal(fallback.code, "E5_PROVIDER_UNAVAILABLE");
+});
+
+test("ambiguous semantic callback is surfaced without executing Claude", async () => {
+  const relay = new FakeSemanticRelay();
+  relay.semanticSubmitError = new Error("timeout after semantic write");
+  const executor = new FakeExecutor();
+  const semantic = new FakeSemanticScorer();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    executor,
+    semantic,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "semantic_delivery_unknown",
+    reservationId: prepareId,
+  });
+  assert.equal(executor.calls.length, 0);
+  assert.equal(
+    relay.calls.some((entry) => entry.name === "reserveNext"),
+    false,
   );
 });
 
