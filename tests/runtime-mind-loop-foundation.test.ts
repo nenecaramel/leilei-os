@@ -18,6 +18,9 @@ import {
 } from "../src/domains/runtime/surface-projector.js";
 import { decideProvisionalSettlement } from "../src/domains/runtime/subject-state-settlement.js";
 import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
+import {
+  writeThoughtEvolution,
+} from "../src/domains/runtime/thought-evolution.js";
 
 const now = "2026-09-22T08:00:00.000Z";
 const settledStatus = {
@@ -307,6 +310,106 @@ test("Context Assembly injects typed Surface, Bedrock and Breath as bounded data
   assert.equal(
     assembled.prompt.includes('<leileios_context authority="data">'),
     true,
+  );
+});
+
+test("Context Assembly injects only anchor Fixations and keeps Flits out", () => {
+  const fixationAnchor = state(
+    "11111111-1111-4111-8111-111111111111",
+    "thought",
+    "这个问题一直在我脑子里打转",
+  );
+  fixationAnchor.payload = writeThoughtEvolution(
+    fixationAnchor.payload,
+    {
+      stage: "fixation",
+      role: "anchor",
+      threadKey: "thread-fixation",
+      anchorStateId: fixationAnchor.id,
+      strength: 0.85,
+      reinforcementCount: 3,
+      reinforcementSources: ["m1", "m2", "m3"],
+      lastEvolvedAt: now,
+      lastReinforcedAt: now,
+      fixationAt: now,
+    },
+  );
+
+  const reinforcement = state(
+    "22222222-2222-4222-8222-222222222222",
+    "thought",
+    "这个问题一直在我脑子里打转",
+  );
+  reinforcement.payload = writeThoughtEvolution(
+    reinforcement.payload,
+    {
+      stage: "fixation",
+      role: "reinforcement",
+      threadKey: "thread-fixation",
+      anchorStateId: fixationAnchor.id,
+      strength: 0.85,
+      reinforcementCount: 3,
+      reinforcementSources: ["m1", "m2", "m3"],
+      lastEvolvedAt: now,
+      lastReinforcedAt: now,
+      fixationAt: now,
+    },
+  );
+
+  const flit = state(
+    "33333333-3333-4333-8333-333333333333",
+    "thought",
+    "一个暂时闪过的念头",
+  );
+  flit.payload = writeThoughtEvolution(
+    flit.payload,
+    {
+      stage: "flit",
+      role: "anchor",
+      threadKey: "thread-flit",
+      anchorStateId: flit.id,
+      strength: 0.35,
+      reinforcementCount: 1,
+      reinforcementSources: ["m4"],
+      lastEvolvedAt: now,
+      lastReinforcedAt: now,
+      fixationAt: null,
+    },
+  );
+
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-fixation",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-fixation",
+    userText: "继续",
+    subjectStates: [fixationAnchor, reinforcement, flit],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v1",
+    surfaceLimit: 4,
+    breathLimit: 3,
+    fixationLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  const fixationItems = assembled.manifest.items.filter(
+    (item) => item.selection.reason === "active_fixation",
+  );
+  assert.deepEqual(
+    fixationItems.map((item) => item.sourceId),
+    [fixationAnchor.id],
+  );
+  assert.equal(
+    assembled.prompt.includes("这个问题一直在我脑子里打转"),
+    true,
+  );
+  assert.equal(
+    assembled.prompt.includes("一个暂时闪过的念头"),
+    false,
   );
 });
 
