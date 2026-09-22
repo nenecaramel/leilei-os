@@ -2,6 +2,13 @@ import type {
   NativeLiveRuntimeCommand,
   NativeLiveRuntimeExecutionResult,
 } from "./native-live-runtime-protocol.js";
+import type {
+  BreathSemanticScorer,
+} from "../runtime/breath-semantic-recall.js";
+import type {
+  NativeLiveSemanticFallbackCode,
+  NativeLiveSemanticScoringReservation,
+} from "./native-live-semantic-handshake.js";
 
 export type NativeLiveDaemonLeaseState = "acquired" | "renewed" | "busy";
 
@@ -17,6 +24,14 @@ export type NativeLiveDaemonRejectCode =
 export type NativeLiveDaemonRunOutcome =
   | { outcome: "idle" }
   | { outcome: "busy" }
+  | {
+      outcome: "semantic_completed";
+      reservationId: string;
+    }
+  | {
+      outcome: "semantic_delivery_unknown";
+      reservationId: string;
+    }
   | {
       outcome: "completed";
       reservationId: string;
@@ -34,6 +49,23 @@ export type NativeLiveDaemonRunOutcome =
     };
 
 export interface NativeLiveMacDaemonRelayClient {
+  reserveSemanticScoring?(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }): Promise<NativeLiveSemanticScoringReservation | null>;
+
+  submitSemanticScores?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    scores: Record<string, number>;
+  }): Promise<void>;
+
+  submitSemanticFallback?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    code: NativeLiveSemanticFallbackCode;
+  }): Promise<void>;
+
   renewLease(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
@@ -78,6 +110,7 @@ export class NativeLiveMacDaemonLoop {
     private readonly listenerInstanceId: string,
     private readonly relay: NativeLiveMacDaemonRelayClient,
     private readonly executor: NativeLivePreparedCommandExecutor,
+    private readonly semanticScorer: BreathSemanticScorer | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -95,11 +128,72 @@ export class NativeLiveMacDaemonLoop {
       });
       if (lease === "busy") return { outcome: "busy" };
 
+      let semanticReservationId: string | null = null;
+      if (
+        this.relay.reserveSemanticScoring
+        && this.relay.submitSemanticScores
+        && this.relay.submitSemanticFallback
+      ) {
+        const semantic = await this.relay.reserveSemanticScoring({
+          listenerInstanceId: this.listenerInstanceId,
+          dispatchTarget: "claude_code",
+        });
+        if (semantic) {
+          semanticReservationId = semantic.reservationId;
+          try {
+            if (!this.semanticScorer) {
+              await this.relay.submitSemanticFallback({
+                listenerInstanceId: this.listenerInstanceId,
+                reservationId: semantic.reservationId,
+                code: "E5_PROVIDER_UNAVAILABLE",
+              });
+            } else {
+              const scored = await this.semanticScorer.score({
+                query: semantic.query,
+                candidates: semantic.candidates,
+              });
+              await this.relay.submitSemanticScores({
+                listenerInstanceId: this.listenerInstanceId,
+                reservationId: semantic.reservationId,
+                scores: Object.fromEntries(scored),
+              });
+            }
+          } catch (error) {
+            if (this.semanticScorer && isSemanticProviderFailure(error)) {
+              try {
+                await this.relay.submitSemanticFallback({
+                  listenerInstanceId: this.listenerInstanceId,
+                  reservationId: semantic.reservationId,
+                  code: semanticFallbackCode(error),
+                });
+              } catch {
+                return {
+                  outcome: "semantic_delivery_unknown",
+                  reservationId: semantic.reservationId,
+                };
+              }
+            } else {
+              return {
+                outcome: "semantic_delivery_unknown",
+                reservationId: semantic.reservationId,
+              };
+            }
+          }
+        }
+      }
+
       const reservation = await this.relay.reserveNext({
         listenerInstanceId: this.listenerInstanceId,
         dispatchTarget: "claude_code",
       });
-      if (!reservation) return { outcome: "idle" };
+      if (!reservation) {
+        return semanticReservationId
+          ? {
+              outcome: "semantic_completed",
+              reservationId: semanticReservationId,
+            }
+          : { outcome: "idle" };
+      }
 
       try {
         await this.relay.markExecutionStarted({
@@ -184,3 +278,29 @@ export class NativeLiveMacDaemonLoop {
     }
   }
 }
+\nfunction isSemanticProviderFailure(error: unknown): boolean {
+  return (
+    typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (
+      (error as { code?: unknown }).code === "PROVIDER_NOT_PREPARED"
+      || (error as { code?: unknown }).code === "PROVIDER_LOAD_FAILED"
+      || (error as { code?: unknown }).code === "INVALID_EMBEDDING_OUTPUT"
+    )
+  );
+}
+
+function semanticFallbackCode(
+  error: unknown,
+): NativeLiveSemanticFallbackCode {
+  return (
+    typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: unknown }).code === "PROVIDER_NOT_PREPARED"
+  )
+    ? "E5_PROVIDER_UNAVAILABLE"
+    : "E5_SCORING_FAILED";
+}
+
