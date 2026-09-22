@@ -15,6 +15,10 @@ import {
   validateSubjectStateWrite,
   type SubjectStateWrite,
 } from "./subject-state-contract.js";
+import {
+  readSubjectStateLifecycle,
+  writeSubjectStateLifecycle,
+} from "./memory-lifecycle.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -227,6 +231,78 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
           beforeEnvelope: envelopeRecord(current.envelope),
           afterEnvelope: envelopeRecord(next.envelope),
         });
+      }
+    });
+  }
+
+  async recordBreathRecall(input: {
+    userId: string;
+    subjectId: string;
+    stateIds: readonly string[];
+    recalledAt: string;
+  }): Promise<void> {
+    if (input.stateIds.length === 0) return;
+    const recalledAt = new Date(input.recalledAt);
+    if (!Number.isFinite(recalledAt.getTime())) {
+      throw new Error("Breath recalledAt must be an ISO timestamp.");
+    }
+
+    await this.db.transaction(async (transaction) => {
+      for (const stateId of [...new Set(input.stateIds)]) {
+        const [row] = await transaction
+          .select({
+            id: runtimeSubjectStates.id,
+            kind: runtimeSubjectStates.kind,
+            payload: runtimeSubjectStates.payload,
+          })
+          .from(runtimeSubjectStates)
+          .where(
+            and(
+              eq(runtimeSubjectStates.id, stateId),
+              eq(runtimeSubjectStates.userId, input.userId),
+              eq(runtimeSubjectStates.subjectId, input.subjectId),
+              eq(runtimeSubjectStates.settlementStatus, "settled"),
+              eq(runtimeSubjectStates.pathStatus, "current"),
+              eq(runtimeSubjectStates.validityStatus, "valid"),
+            ),
+          )
+          .for("update")
+          .limit(1);
+
+        if (!row || (row.kind !== "memory" && row.kind !== "feel")) continue;
+
+        let current;
+        try {
+          current = readSubjectStateLifecycle(row.payload);
+        } catch {
+          continue;
+        }
+        if (current?.status === "archived") continue;
+
+        const lifecycle = current
+          ? { ...current, lastRecalledAt: recalledAt.toISOString() }
+          : {
+              status: "active" as const,
+              salience: 1,
+              protected: false,
+              lastDecayedAt: recalledAt.toISOString(),
+              lastRecalledAt: recalledAt.toISOString(),
+              archivedAt: null,
+            };
+
+        await transaction
+          .update(runtimeSubjectStates)
+          .set({
+            payload: writeSubjectStateLifecycle(row.payload, lifecycle),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(runtimeSubjectStates.id, stateId),
+              eq(runtimeSubjectStates.userId, input.userId),
+              eq(runtimeSubjectStates.subjectId, input.subjectId),
+            ),
+          );
       }
     });
   }
