@@ -561,9 +561,14 @@ implements NativeLiveSemanticPreparationStager {
           scores: new Map(Object.entries(request.scores)),
         });
       } else if (request.status === "fallback") {
-        prompt = await this.mind.preparePrompt({
+        if (!this.mind.completeSemanticPrompt) {
+          throw new Error("Semantic fallback completion is unavailable.");
+        }
+        prompt = await this.mind.completeSemanticPrompt({
           userId: request.userId,
           preparation,
+          plan: toMindPlan(request),
+          scores: null,
         });
       } else {
         throw new Error("Semantic request is not ready for prompt assembly.");
