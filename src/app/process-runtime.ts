@@ -25,6 +25,7 @@ import { DrizzleUniverseRepository } from "../domains/universe/universe-reposito
 import { UniverseService } from "../domains/universe/universe-service.js";
 import { DrizzleBridgeEventRepository } from "../domains/bridge/bridge-event-repository.js";
 import { BridgeService } from "../domains/bridge/bridge-service.js";
+import { createDefaultBackendMindRuntime } from "../domains/runtime/default-backend-mind-runtime.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/native-live-backend-turn-coordinator.js";
 import {
@@ -126,8 +127,11 @@ export function createProcessRuntime(
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
   const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
+  const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
   const nativeLiveTurnCoordinator = new NativeLiveBackendTurnCoordinator(
     new DrizzleNativeLiveBackendTurnPort(db),
+    undefined,
+    nativeLiveBackendMind,
   );
   const nativeLiveRelayService = new NativeLiveBackendRelayService(
     new DrizzleNativeLiveBackendRelayRepository(db),
