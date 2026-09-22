@@ -182,10 +182,23 @@ export class NativeLiveMindLoopService {
         manifestId: input.manifestId,
       });
       if (persisted) {
+        const expectedHead =
+          input.surfaceHeadMessageId === undefined
+            ? input.conversation.currentHeadMessageId
+            : input.surfaceHeadMessageId;
+        const persistedUser = persisted.items.find(
+          (item) => item.type === "user_message",
+        );
         if (
           persisted.conversationId !== input.conversation.id
+          || persisted.pathHeadMessageId !== expectedHead
           || persisted.snapshotSequence !== input.snapshotSequence
           || persisted.createdAt !== input.assembledAt
+          || persisted.assemblyVersion !== this.config.assemblyVersion
+          || persisted.promptContractVersion
+            !== this.config.promptContractVersion
+          || persistedUser?.sourceId !== input.userMessageId
+          || persistedUser.text !== input.userText
         ) {
           throw new Error(
             "Persisted Context Manifest conflicts with the requested turn snapshot.",
