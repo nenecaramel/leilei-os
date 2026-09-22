@@ -319,6 +319,92 @@ test("Context Assembly injects typed Surface, Bedrock and Breath as bounded data
   );
 });
 
+test("unsettled or superseded Drive never enters Context Assembly", () => {
+  const provisional = state(
+    "77777777-7777-4777-8777-777777777777",
+    "drive",
+    "这条 Drive 还没有被当前路径确认",
+  );
+  provisional.payload = writeDriveEvolution(provisional.payload, {
+    phase: "active",
+    role: "anchor",
+    threadKey: "drive-unsettled",
+    anchorStateId: provisional.id,
+    pressure: 0.8,
+    reinforcementCount: 1,
+    reinforcementSources: ["a-old"],
+    satisfactionTotal: 0,
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+    lastSatisfiedAt: null,
+  });
+  provisional.envelope = {
+    ...provisional.envelope,
+    status: {
+      ...provisional.envelope.status,
+      settlementStatus: "unsettled",
+    },
+    scope: {
+      ...provisional.envelope.scope,
+      applicability: "path",
+      conversationId: "c1",
+      pathHeadMessageId: "a-old",
+    },
+  };
+
+  const superseded = state(
+    "88888888-8888-4888-8888-888888888888",
+    "drive",
+    "已经被 Retry 放弃的 Drive",
+  );
+  superseded.payload = writeDriveEvolution(superseded.payload, {
+    phase: "active",
+    role: "anchor",
+    threadKey: "drive-superseded",
+    anchorStateId: superseded.id,
+    pressure: 0.9,
+    reinforcementCount: 2,
+    reinforcementSources: ["a-old", "a-older"],
+    satisfactionTotal: 0,
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+    lastSatisfiedAt: null,
+  });
+  superseded.envelope = {
+    ...superseded.envelope,
+    status: {
+      ...superseded.envelope.status,
+      pathStatus: "superseded",
+    },
+  };
+
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-drive-branch-safe",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-drive-branch-safe",
+    userText: "继续",
+    subjectStates: [provisional, superseded],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v1",
+    surfaceLimit: 4,
+    breathLimit: 3,
+    driveLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  assert.equal(
+    assembled.manifest.items.some(
+      (item) => item.selection.reason === "active_drive",
+    ),
+    false,
+  );
+});
+
 test("Context Assembly injects only active Drive anchors and drops satisfied/reinforcement copies", () => {
   const active = state(
     "44444444-4444-4444-8444-444444444444",
