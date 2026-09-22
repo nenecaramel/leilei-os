@@ -27,10 +27,10 @@ test("local E5 embedding parser rejects row-count and dimension mismatch", () =>
   );
 });
 
-test("local E5 provider can be configured to use the WASM backend", async () => {
+test("local E5 provider can be configured to use the CPU backend", async () => {
   const source = await import("../src/domains/runtime/local-e5-embedding.js");
   const scorer = new source.LocalE5BreathSemanticScorer({
-    device: "wasm",
+    device: "cpu",
   });
   assert.ok(scorer);
 });
