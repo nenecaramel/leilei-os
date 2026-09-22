@@ -5,10 +5,10 @@ import { canonicalPathToHead } from "./surface-projector.js";
 export type ProvisionalSettlementDecision =
   | {
       action: "keep";
-      reason: "not_provisional" | "awaiting_user_continuation";
+      reason: "already_resolved" | "awaiting_user_continuation";
     }
   | {
-      action: "promote";
+      action: "settle";
       reason: "user_continued_current_path";
     }
   | {
@@ -17,29 +17,34 @@ export type ProvisionalSettlementDecision =
     };
 
 /**
- * Decides whether a provisional Mind write still belongs to the selected
- * canonical path. It does not mutate storage: persistence owns the actual
- * lifecycle transition and its transition ledger.
+ * Settlement is decided from canonical path evidence. This function returns a
+ * transition decision only; persistence must record the actual status-axis
+ * change as its own durable transition.
  */
 export function decideProvisionalSettlement(
   state: SubjectStateWrite,
   conversation: NativeLiveConversation,
 ): ProvisionalSettlementDecision {
-  if (state.lifecycle !== "provisional") {
-    return { action: "keep", reason: "not_provisional" };
+  const status = state.envelope.status;
+  if (
+    status.settlementStatus !== "unsettled"
+    || status.validityStatus !== "valid"
+  ) {
+    return { action: "keep", reason: "already_resolved" };
   }
 
+  const scope = state.envelope.scope;
   if (
-    state.scope.applicability !== "path"
-    || state.scope.conversationId !== conversation.id
-    || !state.scope.pathHeadMessageId
+    scope.applicability !== "path"
+    || scope.conversationId !== conversation.id
+    || !scope.pathHeadMessageId
   ) {
     return { action: "invalidate", reason: "path_superseded" };
   }
 
   const path = canonicalPathToHead(conversation);
   const index = path.findIndex(
-    (message) => message.id === state.scope.pathHeadMessageId,
+    (message) => message.id === scope.pathHeadMessageId,
   );
 
   if (index < 0) {
@@ -48,7 +53,7 @@ export function decideProvisionalSettlement(
 
   const laterMessages = path.slice(index + 1);
   if (laterMessages.some((message) => message.role === "user")) {
-    return { action: "promote", reason: "user_continued_current_path" };
+    return { action: "settle", reason: "user_continued_current_path" };
   }
 
   return { action: "keep", reason: "awaiting_user_continuation" };
