@@ -45,7 +45,8 @@
     "runtime:native-live-mac-daemon": "tsx scripts/native-live-mac-daemon.ts",
     "test:native-live-http-db": "RUN_NATIVE_LIVE_HTTP_DATABASE_TEST=1 tsx --test tests/native-live-http-relay.integration.test.ts",
     "test:native-live-followup-db": "RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST=1 tsx --test tests/native-live-mind-followup.integration.test.ts",
-    "test:native-live-semantic-db": "RUN_NATIVE_LIVE_SEMANTIC_DATABASE_TEST=1 tsx --test tests/native-live-semantic-handshake.integration.test.ts"
+    "test:native-live-semantic-db": "RUN_NATIVE_LIVE_SEMANTIC_DATABASE_TEST=1 tsx --test tests/native-live-semantic-handshake.integration.test.ts",
+    "smoke:runtime-breath-e5-cross-device": "tsx scripts/runtime-breath-e5-cross-device-smoke.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
