@@ -10,6 +10,7 @@ import { recallBreath } from "./breath-recall.js";
 import { canonicalPathToHead, projectCanonicalSurface } from "./surface-projector.js";
 import type { SubjectStateWrite } from "./subject-state-contract.js";
 import { isConsolidationEligible } from "./runtime-status-axes.js";
+import { readDriveEvolution } from "./drive-evolution.js";
 import { readThoughtEvolution } from "./thought-evolution.js";
 
 export type AssembledTurnContext = {
@@ -109,7 +110,7 @@ function selectWithinBudget(
 
 /**
  * First Non-style Context Assembly slice:
- * current user message + settled Bedrock + active Fixation + canonical Surface + bounded Breath.
+ * current user message + settled Bedrock + active Drive + active Fixation + canonical Surface + bounded Breath.
  * Selection order is deterministic; exact budget values are supplied by the
  * caller/runtime config rather than hard-coded here.
  */
@@ -132,6 +133,7 @@ export function assembleTurnContext(input: {
   breathSemanticWeight?: number;
   breathSemanticMinScore?: number;
   breathSemanticScores?: ReadonlyMap<string, number>;
+  driveLimit?: number;
   fixationLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
@@ -178,6 +180,59 @@ export function assembleTurnContext(input: {
         selection("stable_bedrock", 100 + index),
       ),
     );
+
+  const driveLimit = input.driveLimit ?? 0;
+  if (!Number.isInteger(driveLimit) || driveLimit < 0) {
+    throw new Error("Drive limit must be a nonnegative integer.");
+  }
+
+  const drives = input.subjectStates
+    .filter((state) => {
+      if (
+        state.kind !== "drive"
+        || !stateApplies(state, {
+          userId: input.userId,
+          subjectId: input.subjectId,
+          conversationId: input.conversation.id,
+          currentPathMessageIds,
+        })
+      ) {
+        return false;
+      }
+
+      try {
+        const evolution = readDriveEvolution(state.payload);
+        return Boolean(
+          evolution
+          && evolution.phase === "active"
+          && evolution.role === "anchor",
+        );
+      } catch {
+        return false;
+      }
+    })
+    .sort((left, right) => {
+      const leftEvolution = readDriveEvolution(left.payload)!;
+      const rightEvolution = readDriveEvolution(right.payload)!;
+      return (
+        rightEvolution.pressure - leftEvolution.pressure
+        || rightEvolution.reinforcementCount
+          - leftEvolution.reinforcementCount
+        || left.id.localeCompare(right.id)
+      );
+    })
+    .slice(0, driveLimit)
+    .map((state, index) => {
+      const evolution = readDriveEvolution(state.payload)!;
+      return subjectStateToContextItem(
+        state,
+        selection(
+          "active_drive",
+          125 + index,
+          evolution.pressure,
+        ),
+      );
+    });
 
   const fixationLimit = input.fixationLimit ?? 0;
   if (!Number.isInteger(fixationLimit) || fixationLimit < 0) {
@@ -274,7 +329,7 @@ export function assembleTurnContext(input: {
   );
 
   const selected = selectWithinBudget(
-    [userItem, ...bedrock, ...fixations, ...surfaceItems, ...breathItems],
+    [userItem, ...bedrock, ...drives, ...fixations, ...surfaceItems, ...breathItems],
     {
       maxItems: input.maxContextItems,
       maxChars: input.maxContextChars,
