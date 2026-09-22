@@ -356,7 +356,7 @@ implements NativeLiveSemanticPreparationStager {
          AND preparation.user_id = semantic.user_id
         WHERE semantic.status IN ('completed', 'fallback')
           AND preparation.status = 'prepared'
-          AND preparation.mind_prepared = false
+          AND preparation.dispatch_status = 'staged'
         ORDER BY semantic.completed_at ASC, semantic.prepare_id ASC
         LIMIT 1
       `,
