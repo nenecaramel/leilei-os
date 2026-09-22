@@ -31,7 +31,7 @@ export type ContextManifestItem = {
 
 export type InitialContextManifest = {
   conversationId: string;
-  branchId: string;
+  pathHeadMessageId: string | null;
   snapshotSequence: number;
   assembledAt: string;
   items: ContextManifestItem[];
@@ -39,7 +39,7 @@ export type InitialContextManifest = {
 
 export type TurnContextDelta = {
   conversationId: string;
-  branchId: string;
+  pathHeadMessageId: string | null;
   afterSnapshotSequence: number;
   deltaSequence: number;
   observedAt: string;
