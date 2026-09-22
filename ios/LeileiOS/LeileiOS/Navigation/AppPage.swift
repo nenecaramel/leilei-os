@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 enum AppPage: String, Identifiable {
     case home = "Home"
@@ -13,8 +13,6 @@ enum AppPage: String, Identifiable {
     case sentinel = "Sentinel"
 
     case globalSearch = "Global Search"
-
-    case system = "System"
 
     case account = "Account"
     case connections = "Connections"

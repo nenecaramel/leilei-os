@@ -6,11 +6,14 @@ struct ComposerCircleButton: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(.primary.opacity(0.055))
-                .frame(width: 46, height: 46)
+                .fill(Color(uiColor: .tertiarySystemFill))
+                .frame(width: 36, height: 36)
 
             Image(systemName: systemName)
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(
+                    size: 15,
+                    weight: .medium
+                ))
                 .foregroundStyle(.primary)
         }
     }
@@ -23,18 +26,18 @@ struct CombinedModelCapsule: View {
     var body: some View {
         HStack(spacing: 5) {
             Text(model)
-                .fontWeight(.semibold)
+                .fontWeight(.medium)
 
             Text(effort)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary.opacity(0.80))
         }
-        .font(.system(size: 15))
+        .font(.system(size: 13))
         .foregroundStyle(.primary)
-        .padding(.horizontal, 14)
-        .frame(height: 46)
+        .padding(.horizontal, 10)
+        .frame(height: 36)
         .background(
             Capsule()
-                .fill(.primary.opacity(0.055))
+                .fill(Color(uiColor: .tertiarySystemFill))
         )
     }
 }

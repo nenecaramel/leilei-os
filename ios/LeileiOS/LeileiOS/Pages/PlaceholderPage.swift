@@ -11,7 +11,12 @@ struct PlaceholderPage: View {
             Text("LeileiOS iOS")
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity
+        )
+        .background(
+            Color(.systemBackground)
+        )
     }
 }

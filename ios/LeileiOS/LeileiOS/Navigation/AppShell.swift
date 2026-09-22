@@ -5,6 +5,8 @@ struct AppShell: View {
 
     @State private var selectedPage: AppPage = .chat
     @State private var menuOpen = false
+    @State private var settingsPresented = false
+    @State private var floatingControlCenters: [String: CGFloat] = [:]
 
     var body: some View {
         Group {
@@ -15,72 +17,134 @@ struct AppShell: View {
             }
         }
         .tint(.primary)
+        .onPreferenceChange(FloatingControlCenterPreferenceKey.self) {
+            floatingControlCenters = $0
+        }
     }
 
     private var iPhoneLayout: some View {
-        ZStack(alignment: .leading) {
-            SidebarView(
-                selectedPage: $selectedPage,
-                onSelect: closeMenu
-            )
-            .frame(width: 285)
-            .background(.regularMaterial)
+        GeometryReader { proxy in
+            let revealOffset = min(proxy.size.width * 0.77, 330)
+            let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
 
-            PageContainer(
-                selectedPage: $selectedPage,
-                onMenu: {
-                    withAnimation(.snappy) {
-                        menuOpen.toggle()
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color(red: 0.98, green: 0.98, blue: 0.98))
+                    .ignoresSafeArea()
+
+                SidebarView(
+                    selectedPage: $selectedPage,
+                    menuButtonCenterY: floatingControlCenters[FloatingControlCenter.menu],
+                    composerControlsCenterY: floatingControlCenters[FloatingControlCenter.composer],
+                    onSettings: {
+                        withAnimation(.snappy) {
+                            settingsPresented = true
+                        }
+                    },
+                    onSelect: {
+                        withAnimation(.snappy) {
+                            menuOpen = false
+                        }
+                    }
+                )
+                .frame(width: 300)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .safeAreaPadding()
+
+                MainPageLayer(
+                    selectedPage: selectedPage,
+                    onMenu: {
+                        withAnimation(.snappy) {
+                            menuOpen.toggle()
+                        }
+                    }
+                )
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .background(Color(.systemBackground))
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: cardCornerRadius,
+                        bottomLeadingRadius: cardCornerRadius,
+                        bottomTrailingRadius: cardCornerRadius,
+                        topTrailingRadius: cardCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .shadow(
+                    color: .black.opacity(menuOpen ? 0.08 : 0),
+                    radius: 12,
+                    x: -2,
+                    y: 4
+                )
+                .overlay {
+                    if menuOpen {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.snappy) {
+                                    menuOpen = false
+                                }
+                        }
                     }
                 }
-            )
-            .offset(x: menuOpen ? 285 : 0)
-            .overlay {
-                if menuOpen {
-                    Color.black.opacity(0.08)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            closeMenu()
+                .offset(x: menuOpen ? revealOffset : 0)
+
+                Color.black
+                    .opacity(settingsPresented ? 0.12 : 0)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+
+                SettingsSheetView(
+                    isPresented: settingsPresented,
+                    onDismiss: {
+                        withAnimation(.snappy) {
+                            settingsPresented = false
                         }
-                }
-            }
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: menuOpen ? 20 : 0,
-                    style: .continuous
+                    }
                 )
-            )
-            .shadow(
-                color: .black.opacity(menuOpen ? 0.18 : 0),
-                radius: 18,
-                x: -3,
-                y: 0
-            )
+                .offset(y: settingsPresented ? 0 : proxy.size.height)
+                .allowsHitTesting(settingsPresented)
+                .zIndex(10)
+            }
         }
-        .animation(.snappy, value: menuOpen)
+        .ignoresSafeArea()
     }
 
     private var iPadLayout: some View {
         HStack(spacing: 0) {
             SidebarView(
                 selectedPage: $selectedPage,
+                menuButtonCenterY: nil,
+                composerControlsCenterY: nil,
+                onSettings: nil,
                 onSelect: {}
             )
             .frame(width: 280)
-            .background(.regularMaterial)
+            .background(Color(red: 0.98, green: 0.98, blue: 0.98))
 
             Divider()
 
             PageContainer(
-                selectedPage: $selectedPage,
+                selectedPage: selectedPage,
                 onMenu: nil
             )
         }
     }
+}
 
-    private func closeMenu() {
-        withAnimation(.snappy) {
-            menuOpen = false
+private struct MainPageLayer: View {
+    let selectedPage: AppPage
+    let onMenu: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+
+            PageContainer(
+                selectedPage: selectedPage,
+                onMenu: onMenu
+            )
         }
     }
 }

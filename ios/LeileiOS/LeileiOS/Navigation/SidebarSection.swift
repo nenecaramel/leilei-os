@@ -1,20 +1,24 @@
 import SwiftUI
 
 struct SidebarSection: View {
-    let title: String
+    let title: String?
     let pages: [AppPage]
 
     @Binding var selectedPage: AppPage
 
+    let textLeadingOffset: CGFloat
+    let selectedBackgroundLeadingOffset: CGFloat
     let onSelect: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
+            if let title {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+            }
 
             ForEach(pages) { page in
                 Button {
@@ -23,8 +27,8 @@ struct SidebarSection: View {
                 } label: {
                     HStack {
                         Text(page.rawValue)
-                            .font(.body)
-                            .fontWeight(selectedPage == page ? .semibold : .regular)
+                            .font(.system(size: 17.5, weight: .semibold))
+                            .offset(x: textLeadingOffset)
 
                         Spacer()
                     }
@@ -34,7 +38,9 @@ struct SidebarSection: View {
                     .background {
                         if selectedPage == page {
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(.primary.opacity(0.07))
+                                .fill(.primary.opacity(0.05))
+                                .padding(.leading, selectedBackgroundLeadingOffset)
+                                .padding(.trailing, -2)
                         }
                     }
                 }

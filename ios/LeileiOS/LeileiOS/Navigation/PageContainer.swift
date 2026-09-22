@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PageContainer: View {
-    @Binding var selectedPage: AppPage
+    let selectedPage: AppPage
     let onMenu: (() -> Void)?
 
     var body: some View {
@@ -9,10 +9,8 @@ struct PageContainer: View {
             Group {
                 if selectedPage == .chat {
                     ChatView()
-                } else if selectedPage == .system {
-                    SystemPage(selectedPage: $selectedPage)
-                } else if selectedPage == .connections {
-                    ConnectionsPage()
+                } else if selectedPage == .globalSearch {
+                    GlobalSearchView()
                 } else {
                     PlaceholderPage(page: selectedPage)
                 }
@@ -21,57 +19,62 @@ struct PageContainer: View {
                 ToolbarItem(placement: .topBarLeading) {
                     if let onMenu {
                         Button(action: onMenu) {
-                            MenuIconView()
+                            CompactMenuIcon()
                         }
+                        .reportingFloatingControlCenter(FloatingControlCenter.menu)
                     }
                 }
 
                 if selectedPage == .chat {
                     ToolbarItem(placement: .principal) {
                         Text("Claude")
-                            .font(.headline)
+                            .font(.system(size: 18, weight: .semibold))
                     }
                 } else {
                     ToolbarItem(placement: .principal) {
                         Text(selectedPage.rawValue)
-                            .font(.headline)
+                            .font(.system(size: 18, weight: .semibold))
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    if selectedPage == .chat {
-                        Button {
-                            // Chat more menu
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 18, weight: .medium))
-                        }
-                    } else {
-                        Button {
-                            // Search
-                        } label: {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 18, weight: .medium))
+                if selectedPage != .globalSearch {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if selectedPage == .chat {
+                            Button {
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 18, weight: .medium))
+                            }
+                        } else {
+                            Button {
+                            } label: {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 18, weight: .medium))
+                            }
                         }
                     }
                 }
             }
-            .toolbarBackground(
-                selectedPage == .chat ? .hidden : .visible,
-                for: .navigationBar
-            )
-            .toolbarBackground(
-                selectedPage == .chat
-                ? Color(.systemBackground)
-                : Color(.secondarySystemBackground),
-                for: .navigationBar
-            )
-            .background {
-                if selectedPage == .chat {
-                    Color(.systemBackground)
-                        .ignoresSafeArea()
-                }
-            }
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
+        .background(Color(.systemBackground).ignoresSafeArea())
+    }
+}
+
+private struct CompactMenuIcon: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            line(width: 17)
+            line(width: 17)
+            line(width: 10)
+        }
+        .frame(width: 17, height: 14, alignment: .leading)
+        .accessibilityLabel("Menu")
+    }
+
+    private func line(width: CGFloat) -> some View {
+        Capsule()
+            .fill(Color.primary)
+            .frame(width: width, height: 2)
     }
 }

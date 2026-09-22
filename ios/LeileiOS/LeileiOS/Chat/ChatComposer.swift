@@ -4,87 +4,137 @@ struct ChatComposer: View {
     @Binding var text: String
     @Binding var model: String
     @Binding var effort: String
+    var isFocused: FocusState<Bool>.Binding
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TextField("Chat with Claude", text: $text, axis: .vertical)
-                .font(.system(size: 20, weight: .medium))
-                .lineLimit(1...6)
-                .padding(.top, 2)
+            TextField(
+                "",
+                text: $text,
+                prompt: Text("Chat with Claude")
+                    .foregroundStyle(Color.primary.opacity(0.64)),
+                axis: .vertical
+            )
+            .focused(isFocused)
+            .font(.system(size: 17.5, weight: .medium))
+            .foregroundStyle(Color.primary.opacity(0.68))
+            .lineLimit(1...6)
 
-            HStack(spacing: 10) {
-                attachmentsMenu
-                modelMenu
+            HStack(spacing: 8) {
+                Menu {
+                    Button {
+                    } label: {
+                        Label("Photo", systemImage: "photo")
+                    }
+
+                    Button {
+                    } label: {
+                        Label("Camera", systemImage: "camera")
+                    }
+
+                    Button {
+                    } label: {
+                        Label("File", systemImage: "doc")
+                    }
+                } label: {
+                    ComposerCircleButton(
+                        systemName: "plus"
+                    )
+                }
+
+                Menu {
+                    Section("Model") {
+                        Button("Opus 5") {
+                            model = "Opus 5"
+                        }
+
+                        Button("Sonnet 5") {
+                            model = "Sonnet 5"
+                        }
+
+                        Button("Default") {
+                            model = "Default"
+                        }
+                    }
+
+                    Section("Thinking") {
+                        Button("Low") {
+                            effort = "Low"
+                        }
+
+                        Button("Medium") {
+                            effort = "Medium"
+                        }
+
+                        Button("High") {
+                            effort = "High"
+                        }
+                    }
+                } label: {
+                    CombinedModelCapsule(
+                        model: model,
+                        effort: effort
+                    )
+                }
 
                 Spacer(minLength: 0)
 
                 Button {
-                    // Voice input
                 } label: {
-                    ComposerCircleButton(systemName: "mic.fill")
+                    ComposerCircleButton(
+                        systemName: "mic.fill"
+                    )
                 }
                 .buttonStyle(.plain)
 
                 Button {
-                    if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        // Future voice conversation / call
+                    if text.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty {
                     } else {
-                        // Future send action
                         text = ""
                     }
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(.primary)
-                            .frame(width: 46, height: 46)
+                            .fill(.black)
+                            .frame(width: 36, height: 36)
 
-                        Image(systemName: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "waveform" : "arrow.up")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Color(.systemBackground))
+                        Image(
+                            systemName:
+                                text.trimmingCharacters(
+                                    in: .whitespacesAndNewlines
+                                ).isEmpty
+                                ? "waveform"
+                                : "arrow.up"
+                        )
+                        .font(.system(
+                            size: 15,
+                            weight: .semibold
+                        ))
+                        .foregroundStyle(.white)
                     }
                 }
                 .buttonStyle(.plain)
             }
+            .reportingFloatingControlCenter(FloatingControlCenter.composer)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 17)
+        .padding(.top, 15)
         .padding(.bottom, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(.ultraThinMaterial)
+        .glassEffect(
+            .regular,
+            in: RoundedRectangle(
+                cornerRadius: 30,
+                style: .continuous
+            )
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.055), radius: 18, y: 7)
-    }
-
-    private var attachmentsMenu: some View {
-        Menu {
-            Button { } label: { Label("Photo", systemImage: "photo") }
-            Button { } label: { Label("Camera", systemImage: "camera") }
-            Button { } label: { Label("File", systemImage: "doc") }
-        } label: {
-            ComposerCircleButton(systemName: "plus")
-        }
-    }
-
-    private var modelMenu: some View {
-        Menu {
-            Section("Model") {
-                Button("Opus 5") { model = "Opus 5" }
-                Button("Sonnet 5") { model = "Sonnet 5" }
-                Button("Default") { model = "Default" }
-            }
-
-            Section("Thinking") {
-                Button("Low") { effort = "Low" }
-                Button("Medium") { effort = "Medium" }
-                Button("High") { effort = "High" }
-            }
-        } label: {
-            CombinedModelCapsule(model: model, effort: effort)
+            RoundedRectangle(
+                cornerRadius: 30,
+                style: .continuous
+            )
+            .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
     }
 }

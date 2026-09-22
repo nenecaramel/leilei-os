@@ -4,6 +4,7 @@ struct ChatView: View {
     @State private var messageText = ""
     @State private var model = "Opus 5"
     @State private var effort = "High"
+    @FocusState private var isComposerFocused: Bool
 
     var body: some View {
         ZStack {
@@ -18,11 +19,16 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            isComposerFocused = false
+        }
         .safeAreaInset(edge: .bottom) {
             ChatComposer(
                 text: $messageText,
                 model: $model,
-                effort: $effort
+                effort: $effort,
+                isFocused: $isComposerFocused
             )
             .padding(.horizontal, 14)
             .padding(.top, 18)
