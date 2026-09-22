@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -29,9 +30,21 @@ final class AppModel: ObservableObject {
     @Published private(set) var backendState: ProbeState = .idle
     @Published private(set) var sessionState: ProbeState = .idle
 
+    init() {
+        let config = AppConfig.production()
+        let tokenStore = KeychainAccessTokenStore()
+
+        self.config = config
+        self.tokenStore = tokenStore
+        self.api = LeileiAPIClient(
+            baseURL: config.apiBaseURL,
+            tokenStore: tokenStore
+        )
+    }
+
     init(
-        config: AppConfig = .production(),
-        tokenStore: KeychainAccessTokenStore = KeychainAccessTokenStore()
+        config: AppConfig,
+        tokenStore: KeychainAccessTokenStore
     ) {
         self.config = config
         self.tokenStore = tokenStore
