@@ -48,6 +48,10 @@ class FakeCoordinator {
 class FakeRelayService {
   calls: Array<{ name: string; input: unknown }> = [];
 
+  async enqueuePreparation(input: unknown) {
+    this.calls.push({ name: "enqueuePreparation", input });
+  }
+
   async renewLease(input: unknown) {
     this.calls.push({ name: "renewLease", input });
     return "acquired" as const;
@@ -122,6 +126,7 @@ async function withServer(
 
 test("web prepare endpoint is user scoped and never returns the runtime prompt", async () => {
   const coordinator = new FakeCoordinator();
+  const relayService = new FakeRelayService();
   await withServer(
     (app) => {
       app.use((request, _response, next) => {
@@ -132,7 +137,7 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
       });
       app.use(
         "/api/v1/native-live",
-        createNativeLiveApiRouter({ coordinator }),
+        createNativeLiveApiRouter({ coordinator, relayService }),
       );
     },
     async (baseUrl) => {
@@ -176,6 +181,10 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
         userMessageId,
       });
       assert.equal(JSON.stringify(payload).includes("private prompt"), false);
+      assert.deepEqual(relayService.calls, [{
+        name: "enqueuePreparation",
+        input: { userId, prepareId },
+      }]);
     },
   );
 });
