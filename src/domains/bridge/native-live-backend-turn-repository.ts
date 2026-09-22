@@ -63,6 +63,7 @@ export type NativeLiveBackendTurnReadModel = {
     | "completed"
     | "fallback"
     | null;
+  semanticFallbackCode: string | null;
 };
 
 type PreparationRow = {
@@ -442,6 +443,7 @@ implements NativeLiveBackendTurnPort {
     const [semantic] = await this.db
       .select({
         status: nativeLiveSemanticScoringRequests.status,
+        fallbackCode: nativeLiveSemanticScoringRequests.fallbackCode,
       })
       .from(nativeLiveSemanticScoringRequests)
       .where(
@@ -480,6 +482,7 @@ implements NativeLiveBackendTurnPort {
       assistantMessage,
       failureCode: row.failureCode,
       semanticStatus: semantic?.status ?? null,
+      semanticFallbackCode: semantic?.fallbackCode ?? null,
     };
   }
 
