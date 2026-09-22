@@ -34,7 +34,7 @@ export function createDefaultBackendMindRuntime(
       breathCooldownHours: 0,
       breathSalienceWeight: 0,
       breathSemanticWeight: 0.65,
-      breathSemanticMinScore: 0.86,
+      breathSemanticMinScore: 0.80,
       breathSemanticCandidateLimit: 64,
       maxContextItems: 16,
       maxContextChars: 8_000,
