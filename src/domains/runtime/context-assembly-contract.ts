@@ -70,8 +70,20 @@ export function subjectStateToContextItem(
 export function assertContextManifestSafe(
   manifest: InitialContextManifest | TurnContextDelta,
 ): void {
-  if (!Number.isInteger(manifest.snapshotSequence ?? manifest.afterSnapshotSequence)) {
-    throw new Error("Context manifest sequence must be an integer.");
+  const sequence =
+    "snapshotSequence" in manifest
+      ? manifest.snapshotSequence
+      : manifest.afterSnapshotSequence;
+
+  if (!Number.isInteger(sequence) || sequence < 0) {
+    throw new Error("Context manifest sequence must be a non-negative integer.");
+  }
+
+  if (
+    "deltaSequence" in manifest
+    && (!Number.isInteger(manifest.deltaSequence) || manifest.deltaSequence < 1)
+  ) {
+    throw new Error("Turn context delta sequence must be a positive integer.");
   }
 
   for (const item of manifest.items) {
