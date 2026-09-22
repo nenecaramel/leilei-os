@@ -8,6 +8,10 @@ import {
   parseNativeLiveRuntimeCommand,
   type NativeLiveRuntimeExecutionResult,
 } from "./native-live-runtime-protocol.js";
+import type {
+  NativeLiveSemanticFallbackCode,
+  NativeLiveSemanticScoringReservation,
+} from "./native-live-semantic-handshake.js";
 
 type FetchLike = typeof fetch;
 
@@ -23,6 +27,74 @@ implements NativeLiveMacDaemonRelayClient {
     this.baseUrl = baseUrl.replace(/\/+$/u, "");
     if (!this.baseUrl) throw new Error("Native live relay base URL is required.");
     if (!token.trim()) throw new Error("Native live relay token is required.");
+  }
+
+  async reserveSemanticScoring(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }): Promise<NativeLiveSemanticScoringReservation | null> {
+    const data = await this.post("/semantic/reserve", {
+      listener_instance_id: input.listenerInstanceId,
+      dispatch_target: input.dispatchTarget,
+    });
+    if (data === null) return null;
+
+    const record = readRecord(data);
+    if (
+      typeof record.reservationId !== "string"
+      || typeof record.query !== "string"
+      || !Array.isArray(record.candidates)
+    ) {
+      throw new Error("Native live semantic reservation is invalid.");
+    }
+
+    return {
+      reservationId: record.reservationId,
+      query: record.query,
+      candidates: record.candidates.map((candidate) => {
+        const item = readRecord(candidate);
+        if (
+          typeof item.stateId !== "string"
+          || (item.kind !== "memory" && item.kind !== "feel")
+          || typeof item.text !== "string"
+        ) {
+          throw new Error("Native live semantic candidate is invalid.");
+        }
+        return {
+          stateId: item.stateId,
+          kind: item.kind,
+          text: item.text,
+        };
+      }),
+    };
+  }
+
+  async submitSemanticScores(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    scores: Record<string, number>;
+  }): Promise<void> {
+    await this.post(
+      `/semantic/reservations/${encodeURIComponent(input.reservationId)}/scores`,
+      {
+        listener_instance_id: input.listenerInstanceId,
+        scores: input.scores,
+      },
+    );
+  }
+
+  async submitSemanticFallback(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    code: NativeLiveSemanticFallbackCode;
+  }): Promise<void> {
+    await this.post(
+      `/semantic/reservations/${encodeURIComponent(input.reservationId)}/fallback`,
+      {
+        listener_instance_id: input.listenerInstanceId,
+        code: input.code,
+      },
+    );
   }
 
   async renewLease(input: {
