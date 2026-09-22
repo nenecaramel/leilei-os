@@ -351,7 +351,7 @@ test(
               conversation_id: conversation.id,
               expected_head_message_id:
                 readPayload.data.assistantMessage.id,
-              text: "continue the HTTP relay memory",
+              text: "what was that earlier experience about?",
             }),
           },
         );
