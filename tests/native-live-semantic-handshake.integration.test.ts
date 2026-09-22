@@ -172,6 +172,23 @@ test(
     if (!prepared.ok) throw new Error("expected prepare success");
     assert.equal(prepared.semanticPending, true);
 
+    const replayed = await prepareCoordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: null,
+      text: "solo travel made me feel independent",
+    });
+    assert.equal(replayed.ok, true);
+    if (!replayed.ok) throw new Error("expected prepare replay success");
+    assert.equal(replayed.outcome, "replayed");
+    assert.equal(replayed.semanticPending, true);
+    assert.equal(
+      replayed.command.prepare_id,
+      prepared.command.prepare_id,
+    );
+
     const listenerId = crypto.randomUUID();
     assert.equal(
       await relayService.renewLease({
@@ -206,6 +223,32 @@ test(
       prepareId: scoring.reservationId,
       scores,
     });
+    await semanticRepository.acceptScores({
+      userId: user.id,
+      listenerInstanceId: listenerId,
+      prepareId: scoring.reservationId,
+      scores,
+    });
+    await assert.rejects(
+      () =>
+        semanticRepository.acceptScores({
+          userId: user.id,
+          listenerInstanceId: listenerId,
+          prepareId: scoring.reservationId,
+          scores: Object.fromEntries(
+            scoring.candidates.map((candidate) => [
+              candidate.stateId,
+              candidate.stateId === memoryId ? 0.91 : 0.2,
+            ]),
+          ),
+        }),
+      (error: unknown) =>
+        typeof error === "object"
+        && error !== null
+        && "code" in error
+        && (error as { code?: unknown }).code
+          === "SEMANTIC_RESERVATION_CONFLICT",
+    );
 
     const beforeRecovery = await turnPort.getPreparation({
       userId: user.id,
