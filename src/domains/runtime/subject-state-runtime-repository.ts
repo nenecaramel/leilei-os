@@ -355,18 +355,62 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     manifest: InitialContextManifest;
   }): Promise<void> {
     const manifest = input.manifest;
-    await this.db.insert(runtimeContextManifests).values({
-      id: manifest.manifestId,
-      userId: manifest.userId,
-      subjectId: manifest.subjectId,
-      conversationId: manifest.conversationId,
-      pathHeadMessageId: manifest.pathHeadMessageId,
-      snapshotSequence: manifest.snapshotSequence,
-      assemblyVersion: manifest.assemblyVersion,
-      promptContractVersion: manifest.promptContractVersion,
-      budget: manifest.budget as unknown as Record<string, unknown>,
-      items: manifest.items as unknown as Record<string, unknown>[],
-      assembledAt: new Date(manifest.createdAt),
-    });
+    await this.db
+      .insert(runtimeContextManifests)
+      .values({
+        id: manifest.manifestId,
+        userId: manifest.userId,
+        subjectId: manifest.subjectId,
+        conversationId: manifest.conversationId,
+        pathHeadMessageId: manifest.pathHeadMessageId,
+        snapshotSequence: manifest.snapshotSequence,
+        assemblyVersion: manifest.assemblyVersion,
+        promptContractVersion: manifest.promptContractVersion,
+        budget: manifest.budget as unknown as Record<string, unknown>,
+        items: manifest.items as unknown as Record<string, unknown>[],
+        assembledAt: new Date(manifest.createdAt),
+      })
+      .onConflictDoNothing();
+
+    const [row] = await this.db
+      .select({
+        id: runtimeContextManifests.id,
+        userId: runtimeContextManifests.userId,
+        subjectId: runtimeContextManifests.subjectId,
+        conversationId: runtimeContextManifests.conversationId,
+        pathHeadMessageId: runtimeContextManifests.pathHeadMessageId,
+        snapshotSequence: runtimeContextManifests.snapshotSequence,
+        assemblyVersion: runtimeContextManifests.assemblyVersion,
+        promptContractVersion: runtimeContextManifests.promptContractVersion,
+        budget: runtimeContextManifests.budget,
+        items: runtimeContextManifests.items,
+        assembledAt: runtimeContextManifests.assembledAt,
+      })
+      .from(runtimeContextManifests)
+      .where(eq(runtimeContextManifests.id, manifest.manifestId))
+      .limit(1);
+
+    if (!row) {
+      throw new Error("Context manifest idempotent save could not verify row.");
+    }
+
+    const actual = {
+      manifestId: row.id,
+      userId: row.userId,
+      subjectId: row.subjectId,
+      conversationId: row.conversationId,
+      pathHeadMessageId: row.pathHeadMessageId,
+      snapshotSequence: row.snapshotSequence,
+      assemblyVersion: row.assemblyVersion,
+      promptContractVersion: row.promptContractVersion,
+      createdAt: row.assembledAt.toISOString(),
+      budget: row.budget,
+      items: row.items,
+    };
+    if (!isDeepStrictEqual(actual, manifest)) {
+      throw new Error(
+        "Context manifest idempotent save encountered a conflicting manifest id.",
+      );
+    }
   }
 }
