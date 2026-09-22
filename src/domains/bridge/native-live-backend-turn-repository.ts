@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   nativeLiveMindFollowUps,
+  nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
 } from "../../database/schema.js";
 import {
@@ -56,6 +57,12 @@ export type NativeLiveBackendTurnReadModel = {
     | "rejected";
   assistantMessage: NativeLiveMessage | null;
   failureCode: string | null;
+  semanticStatus:
+    | "pending"
+    | "reserved"
+    | "completed"
+    | "fallback"
+    | null;
 };
 
 type PreparationRow = {
@@ -432,6 +439,19 @@ implements NativeLiveBackendTurnPort {
 
     if (!row) return null;
 
+    const [semantic] = await this.db
+      .select({
+        status: nativeLiveSemanticScoringRequests.status,
+      })
+      .from(nativeLiveSemanticScoringRequests)
+      .where(
+        and(
+          eq(nativeLiveSemanticScoringRequests.userId, input.userId),
+          eq(nativeLiveSemanticScoringRequests.prepareId, input.prepareId),
+        ),
+      )
+      .limit(1);
+
     let assistantMessage: NativeLiveMessage | null = null;
     if (row.assistantMessageId) {
       const conversations =
@@ -459,6 +479,7 @@ implements NativeLiveBackendTurnPort {
       dispatchStatus: row.dispatchStatus,
       assistantMessage,
       failureCode: row.failureCode,
+      semanticStatus: semantic?.status ?? null,
     };
   }
 
