@@ -32,6 +32,11 @@ import {
   DrizzleNativeLiveBackendRelayRepository,
   NativeLiveBackendRelayService,
 } from "../domains/bridge/native-live-backend-relay.js";
+import {
+  DrizzleNativeLiveMindFollowUpRepository,
+  NativeLiveMindFollowUpService,
+  createNativeLiveMindFollowUpScheduler,
+} from "../domains/bridge/native-live-mind-followup.js";
 import { BRIDGE_TERMINAL_RETENTION_DAYS, deleteExpiredBridgeEventsBatch } from "../domains/bridge/bridge-retention.js";
 import {
   deleteExpiredMcpIdempotencyBatch,
@@ -129,10 +134,20 @@ export function createProcessRuntime(
   const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
+  const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
+    new DrizzleNativeLiveMindFollowUpRepository(db),
+    nativeLiveTurnPort,
+    nativeLiveBackendMind,
+  );
+  const nativeLiveMindFollowUpScheduler =
+    createNativeLiveMindFollowUpScheduler({
+      service: nativeLiveMindFollowUpService,
+    });
   const nativeLiveTurnCoordinator = new NativeLiveBackendTurnCoordinator(
     nativeLiveTurnPort,
     undefined,
     nativeLiveBackendMind,
+    nativeLiveMindFollowUpService,
   );
   const nativeLiveRelayService = new NativeLiveBackendRelayService(
     new DrizzleNativeLiveBackendRelayRepository(db),
@@ -256,15 +271,18 @@ export function createProcessRuntime(
     startBackgroundWork: () => {
       retentionCoordinator.start();
       sentinelScheduler.start();
+      nativeLiveMindFollowUpScheduler.start();
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
       sentinelScheduler.stopScheduling();
+      nativeLiveMindFollowUpScheduler.stopScheduling();
     },
     drainBackgroundWork: async () => {
       await Promise.all([
         retentionCoordinator.drain(),
         sentinelScheduler.drain(),
+        nativeLiveMindFollowUpScheduler.drain(),
       ]);
     },
     closeDatabase: database.close,
