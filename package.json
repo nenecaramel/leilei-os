@@ -27,7 +27,7 @@
     "db:check": "drizzle-kit check",
     "db:seed:phase2": "tsx scripts/seed-phase-2.ts",
     "e2e:native-live-canonical": "tsx scripts/native-live-canonical-e2e.ts",
-    "test:native-live-minimal": "tsx --test tests/native-live-conversation-service.test.ts tests/native-live-conversation-orchestrator.test.ts tests/native-live-conversation-branch-orchestrator.test.ts tests/native-live-relay-contract.test.ts tests/bridge-dispatch-partition-contract.test.ts tests/native-live-relay-consumer.test.ts tests/native-live-runtime-protocol.test.ts tests/native-live-backend-turn-coordinator.test.ts tests/native-live-mac-runtime-executor.test.ts tests/native-live-mac-daemon-loop.test.ts && pnpm --dir tools/claude-bridge test",
+    "test:native-live-minimal": "tsx --test tests/native-live-conversation-service.test.ts tests/native-live-conversation-orchestrator.test.ts tests/native-live-conversation-branch-orchestrator.test.ts tests/native-live-relay-contract.test.ts tests/bridge-dispatch-partition-contract.test.ts tests/native-live-relay-consumer.test.ts tests/native-live-runtime-protocol.test.ts tests/native-live-backend-turn-coordinator.test.ts tests/native-live-mac-runtime-executor.test.ts tests/native-live-mac-daemon-loop.test.ts tests/runtime-subject-state-foundation.test.ts tests/runtime-mind-loop-foundation.test.ts && pnpm --dir tools/claude-bridge test",
     "test:native-live-db": "RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST=1 tsx --test tests/native-live-conversation-repository.integration.test.ts"
   },
   "dependencies": {
