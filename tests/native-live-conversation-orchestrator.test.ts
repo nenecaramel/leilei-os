@@ -266,3 +266,87 @@ test("later send fails closed when the current canonical assistant head has no e
   assert.deepEqual(calls, []);
   assert.equal(port.completeCalls, 0);
 });
+
+
+test("Mind-aware send uses assembled prompt, strips Mind tags before canonical write, and records intents", async () => {
+  const port = new FakePort();
+  const runtimeCalls: string[] = [];
+  const mindCalls: string[] = [];
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew(prompt) {
+      runtimeCalls.push(prompt);
+      return {
+        providerSessionId: "session-mind",
+        normalizedEvents: events([
+          {
+            type: "text",
+            payload: {
+              text: "VISIBLE <memory>remember this</memory>",
+            },
+          },
+          {
+            type: "result",
+            payload: {
+              status: "success",
+              final_text: "VISIBLE <memory>remember this</memory>",
+            },
+          },
+        ]),
+      };
+    },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+  };
+
+  const mind = {
+    async prepareUserTurn() {
+      mindCalls.push("prepare");
+      return "ASSEMBLED_PROMPT";
+    },
+    parseAssistantBlocks(blocks: NativeLiveContentBlockInput[]) {
+      mindCalls.push("parse");
+      return {
+        visibleBlocks: blocks.map((block) =>
+          block.kind === "text"
+            ? { ...block, text: "VISIBLE" }
+            : block
+        ),
+        intents: [{
+          kind: "memory" as const,
+          text: "remember this",
+          sourceStart: 8,
+          sourceEnd: 39,
+          raw: "<memory>remember this</memory>",
+        }],
+      };
+    },
+    async recordAssistantIntents(input: { assistantMessageId: string }) {
+      mindCalls.push(`record:${input.assistantMessageId}`);
+      return [];
+    },
+    async reconcileSelectedPath() {
+      mindCalls.push("reconcile");
+      return [];
+    },
+  };
+
+  const result = await new NativeLiveConversationOrchestrator(
+    port,
+    runtime,
+    mind,
+  ).send({
+    userId: "u1",
+    conversationId: "c1",
+    text: "hello",
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(runtimeCalls, ["ASSEMBLED_PROMPT"]);
+  assert.deepEqual(mindCalls, [
+    "reconcile",
+    "prepare",
+    "parse",
+    "record:a-next",
+  ]);
+  assert.equal(port.completedBlocks?.[0]?.text, "VISIBLE");
+});
