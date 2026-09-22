@@ -46,7 +46,7 @@ export type NativeLiveRuntimeExecutionResult =
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const MAX_PROMPT_CHARS = 4_000;
+const MAX_PROMPT_CHARS = 16_000;
 
 export class NativeLiveRuntimeProtocolError extends Error {
   readonly code = "INVALID_NATIVE_LIVE_RUNTIME_PROTOCOL";
@@ -276,7 +276,7 @@ function normalizePrompt(value: unknown): string {
   const prompt = value.replace(/\r\n?/g, "\n").trim();
   if (prompt.length === 0 || prompt.length > MAX_PROMPT_CHARS) {
     throw new NativeLiveRuntimeProtocolError(
-      "prompt must contain between 1 and 4000 characters.",
+      "prompt must contain between 1 and 16000 characters.",
     );
   }
   return prompt;
