@@ -178,10 +178,7 @@ implements NativeLiveBackendRelayPort {
       .limit(1);
 
     if (!current) return "not_found";
-    if (
-      current.status === "prepared"
-      && current.dispatchStatus !== "staged"
-    ) {
+    if (current.dispatchStatus !== "staged") {
       return "idempotent";
     }
     return "conflict";
