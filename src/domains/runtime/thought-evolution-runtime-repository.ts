@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { and, asc, eq } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { runtimeSubjectStates } from "../../database/schema.js";
@@ -76,6 +77,36 @@ implements ThoughtEvolutionRuntimePort {
       let conflicts = 0;
 
       for (const update of input.updates) {
+        const [current] = await transaction
+          .select({
+            id: runtimeSubjectStates.id,
+            payload: runtimeSubjectStates.payload,
+            updatedAt: runtimeSubjectStates.updatedAt,
+          })
+          .from(runtimeSubjectStates)
+          .where(
+            and(
+              eq(runtimeSubjectStates.id, update.stateId),
+              eq(runtimeSubjectStates.userId, input.userId),
+              eq(runtimeSubjectStates.subjectId, input.subjectId),
+              eq(runtimeSubjectStates.kind, "thought"),
+              eq(runtimeSubjectStates.settlementStatus, "settled"),
+              eq(runtimeSubjectStates.pathStatus, "current"),
+              eq(runtimeSubjectStates.validityStatus, "valid"),
+            ),
+          )
+          .for("update")
+          .limit(1);
+
+        if (
+          !current
+          || current.updatedAt.toISOString() !== update.expectedUpdatedAt
+          || !isDeepStrictEqual(current.payload, update.expectedPayload)
+        ) {
+          conflicts += 1;
+          continue;
+        }
+
         const rows = await transaction
           .update(runtimeSubjectStates)
           .set({
@@ -91,10 +122,6 @@ implements ThoughtEvolutionRuntimePort {
               eq(runtimeSubjectStates.settlementStatus, "settled"),
               eq(runtimeSubjectStates.pathStatus, "current"),
               eq(runtimeSubjectStates.validityStatus, "valid"),
-              eq(
-                runtimeSubjectStates.updatedAt,
-                new Date(update.expectedUpdatedAt),
-              ),
             ),
           )
           .returning({ id: runtimeSubjectStates.id });
