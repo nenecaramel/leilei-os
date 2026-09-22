@@ -11,6 +11,10 @@ import {
   localE5PackageVersion,
 } from "../src/domains/runtime/local-e5-embedding.js";
 
+const EXPECTED_MODEL_BYTES = 118_308_185;
+const EXPECTED_MODEL_SHA256 =
+  "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193";
+
 const runtimeRoot = defaultLocalE5RuntimeRoot();
 await mkdir(runtimeRoot, { recursive: true });
 
@@ -173,10 +177,6 @@ async function run(command: string, args: string[]): Promise<void> {
     });
   });
 }
-
-const EXPECTED_MODEL_BYTES = 118_308_185;
-const EXPECTED_MODEL_SHA256 =
-  "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193";
 
 async function repairPartialModelCache(): Promise<void> {
   const cacheDir = defaultLocalE5ModelCacheDir();
