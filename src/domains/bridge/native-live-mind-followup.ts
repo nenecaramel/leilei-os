@@ -287,15 +287,17 @@ export function createNativeLiveMindFollowUpScheduler(
     if (inFlight) return inFlight;
 
     const run = (async () => {
+      let attempted = 0;
       let processed = 0;
-      while (processed < batchLimit) {
+      while (attempted < batchLimit) {
+        attempted += 1;
         try {
           const outcome = await options.service.processNext();
           if (outcome === "idle") break;
           processed += 1;
         } catch {
-          // Failed jobs are released with a retry delay. Keep draining other
-          // eligible work without turning the scheduler itself into a failure.
+          // Failed jobs are released with a retry delay. Bound failed attempts
+          // too, so a repository outage cannot create a hot in-process loop.
         }
       }
       return processed;
