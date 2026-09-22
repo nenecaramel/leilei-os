@@ -351,6 +351,13 @@
       "when": 1790079120000,
       "tag": "0049_native_live_turn_preparations",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790083460000,
+      "tag": "0050_native_live_http_relay",
+      "breakpoints": true
     }
   ]
 }
