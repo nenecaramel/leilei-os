@@ -774,6 +774,22 @@ export type ConversationOrigin = "legacy_import" | "native_live";
 export type ConversationLifecycleStatus = "active" | "archived" | "deleted";
 export type ConversationMessageStatus = "pending" | "streaming" | "completed" | "error";
 export type ConversationRuntimeProvider = "claude_code";
+export type RuntimeSubjectStateKind =
+  | "feel"
+  | "memory"
+  | "dream"
+  | "bedrock"
+  | "drive"
+  | "thought"
+  | "curiosity"
+  | "topic";
+export type RuntimeSubjectScopeApplicability =
+  | "global"
+  | "conversation"
+  | "path";
+export type RuntimeSettlementStatus = "unsettled" | "settled" | "rejected";
+export type RuntimePathStatus = "current" | "superseded";
+export type RuntimeValidityStatus = "valid" | "invalidated" | "tombstoned";
 export type ConversationExclusionScope = "conversation" | "branch";
 export type ConversationFavoriteView = "default" | "all";
 export type ConversationImportRunStatus = "processing" | "executed" | "failed";
@@ -1179,6 +1195,148 @@ export const conversationProviderSessionCheckpoints = pgTable(
       "conversation_provider_session_checkpoints_checkpoint_not_blank",
       sql`${table.providerCheckpointId} IS NULL OR char_length(btrim(${table.providerCheckpointId})) > 0`,
     ),
+  ],
+);
+
+export const runtimeSubjectStates = pgTable(
+  "runtime_subject_states",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    subjectId: text("subject_id").notNull(),
+    kind: varchar("kind", { length: 32 }).$type<RuntimeSubjectStateKind>().notNull(),
+    text: text("text"),
+    payload: jsonb("payload").$type<Record<string, unknown> | null>(),
+    scopeApplicability: varchar("scope_applicability", { length: 32 })
+      .$type<RuntimeSubjectScopeApplicability>()
+      .notNull(),
+    scopeConversationId: uuid("scope_conversation_id"),
+    scopePathHeadMessageId: uuid("scope_path_head_message_id"),
+    settlementStatus: varchar("settlement_status", { length: 32 })
+      .$type<RuntimeSettlementStatus>()
+      .notNull(),
+    pathStatus: varchar("path_status", { length: 32 })
+      .$type<RuntimePathStatus>()
+      .notNull(),
+    validityStatus: varchar("validity_status", { length: 32 })
+      .$type<RuntimeValidityStatus>()
+      .notNull(),
+    envelope: jsonb("envelope").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("runtime_subject_states_id_user_unique").on(table.id, table.userId),
+    index("runtime_subject_states_user_subject_kind_idx").on(
+      table.userId,
+      table.subjectId,
+      table.kind,
+      table.updatedAt.desc(),
+    ),
+    index("runtime_subject_states_scope_idx").on(
+      table.userId,
+      table.subjectId,
+      table.scopeConversationId,
+      table.settlementStatus,
+      table.validityStatus,
+    ),
+    check("runtime_subject_states_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
+    check("runtime_subject_states_kind_allowed", sql`${table.kind} IN ('feel', 'memory', 'dream', 'bedrock', 'drive', 'thought', 'curiosity', 'topic')`),
+    check("runtime_subject_states_scope_allowed", sql`${table.scopeApplicability} IN ('global', 'conversation', 'path')`),
+    check("runtime_subject_states_settlement_allowed", sql`${table.settlementStatus} IN ('unsettled', 'settled', 'rejected')`),
+    check("runtime_subject_states_path_status_allowed", sql`${table.pathStatus} IN ('current', 'superseded')`),
+    check("runtime_subject_states_validity_allowed", sql`${table.validityStatus} IN ('valid', 'invalidated', 'tombstoned')`),
+    check(
+      "runtime_subject_states_scope_consistency",
+      sql`(${table.scopeApplicability} = 'global' AND ${table.scopeConversationId} IS NULL AND ${table.scopePathHeadMessageId} IS NULL)
+        OR (${table.scopeApplicability} = 'conversation' AND ${table.scopeConversationId} IS NOT NULL AND ${table.scopePathHeadMessageId} IS NULL)
+        OR (${table.scopeApplicability} = 'path' AND ${table.scopeConversationId} IS NOT NULL AND ${table.scopePathHeadMessageId} IS NOT NULL)`,
+    ),
+    check(
+      "runtime_subject_states_content_present",
+      sql`(${table.text} IS NOT NULL AND char_length(btrim(${table.text})) > 0)
+        OR (${table.payload} IS NOT NULL AND jsonb_typeof(${table.payload}) = 'object' AND ${table.payload} <> '{}'::jsonb)`,
+    ),
+    check("runtime_subject_states_payload_object", sql`${table.payload} IS NULL OR jsonb_typeof(${table.payload}) = 'object'`),
+    check("runtime_subject_states_envelope_object", sql`jsonb_typeof(${table.envelope}) = 'object'`),
+  ],
+);
+
+export const runtimeSubjectStateTransitions = pgTable(
+  "runtime_subject_state_transitions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    stateId: uuid("state_id").notNull(),
+    reason: varchar("reason", { length: 64 }).notNull(),
+    beforeEnvelope: jsonb("before_envelope").$type<Record<string, unknown>>().notNull(),
+    afterEnvelope: jsonb("after_envelope").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.stateId, table.userId],
+      foreignColumns: [runtimeSubjectStates.id, runtimeSubjectStates.userId],
+      name: "runtime_subject_state_transitions_state_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("runtime_subject_state_transitions_state_created_idx").on(
+      table.stateId,
+      table.createdAt,
+      table.id,
+    ),
+    check("runtime_subject_state_transitions_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
+    check("runtime_subject_state_transitions_reason_not_blank", sql`char_length(btrim(${table.reason})) > 0`),
+    check("runtime_subject_state_transitions_before_object", sql`jsonb_typeof(${table.beforeEnvelope}) = 'object'`),
+    check("runtime_subject_state_transitions_after_object", sql`jsonb_typeof(${table.afterEnvelope}) = 'object'`),
+  ],
+);
+
+export const runtimeContextManifests = pgTable(
+  "runtime_context_manifests",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    pathHeadMessageId: uuid("path_head_message_id"),
+    snapshotSequence: integer("snapshot_sequence").notNull(),
+    assemblyVersion: varchar("assembly_version", { length: 64 }).notNull(),
+    promptContractVersion: varchar("prompt_contract_version", { length: 64 }).notNull(),
+    budget: jsonb("budget").$type<Record<string, unknown>>().notNull(),
+    items: jsonb("items").$type<Record<string, unknown>[]>().notNull(),
+    assembledAt: timestamp("assembled_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "runtime_context_manifests_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.pathHeadMessageId, table.conversationId, table.userId],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_context_manifests_head_conversation_user_fk",
+    }).onDelete("set null").onUpdate("cascade"),
+    index("runtime_context_manifests_user_subject_created_idx").on(
+      table.userId,
+      table.subjectId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    check("runtime_context_manifests_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
+    check("runtime_context_manifests_snapshot_nonnegative", sql`${table.snapshotSequence} >= 0`),
+    check("runtime_context_manifests_assembly_not_blank", sql`char_length(btrim(${table.assemblyVersion})) > 0`),
+    check("runtime_context_manifests_prompt_not_blank", sql`char_length(btrim(${table.promptContractVersion})) > 0`),
+    check("runtime_context_manifests_budget_object", sql`jsonb_typeof(${table.budget}) = 'object'`),
+    check("runtime_context_manifests_items_array", sql`jsonb_typeof(${table.items}) = 'array'`),
   ],
 );
 
