@@ -54,8 +54,16 @@ process.stderr.write("[e5-setup] runtime ready; loading multilingual E5 model\n"
 
 let lastProgress = "";
 const scorer = new LocalE5BreathSemanticScorer({
+  repairCorruptCache: true,
   progressCallback(info) {
     if (!isRecord(info) || typeof info.status !== "string") return;
+
+    if (info.status === "repair") {
+      process.stderr.write(
+        `[e5-model] corrupted partial cache detected; clearing and retrying${typeof info.path === "string" ? ` ${info.path}` : ""}\n`,
+      );
+      return;
+    }
 
     if (
       info.status === "progress_total"
