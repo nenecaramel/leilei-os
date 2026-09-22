@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { NativeLiveBackendMindRuntime } from "../src/domains/bridge/native-live-backend-mind-runtime.js";
+import type { NativeLiveContentBlockInput } from "../src/domains/conversation/native-live-conversation-types.js";
 import type {
   NativeLiveBackendTurnPort,
   NativeLivePreparedTurn,
@@ -96,7 +97,7 @@ class FakeMind implements NativeLiveBackendMindRuntime {
     return "assembled";
   }
 
-  parseAssistantBlocks(blocks: readonly never[]) {
+  parseAssistantBlocks(blocks: readonly NativeLiveContentBlockInput[]) {
     return { visibleBlocks: blocks, intents: [] };
   }
 
