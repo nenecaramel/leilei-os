@@ -17,8 +17,9 @@ CREATE TABLE "native_live_semantic_scoring_requests" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   "completed_at" timestamp with time zone,
   CONSTRAINT "native_live_semantic_scoring_requests_query_not_blank" CHECK (char_length(btrim("native_live_semantic_scoring_requests"."query")) > 0),
-  CONSTRAINT "native_live_semantic_scoring_requests_candidates_array" CHECK (jsonb_typeof("native_live_semantic_scoring_requests"."candidates") = 'array' AND jsonb_array_length("native_live_semantic_scoring_requests"."candidates") > 0),
+  CONSTRAINT "native_live_semantic_scoring_requests_candidates_array" CHECK (jsonb_typeof("native_live_semantic_scoring_requests"."candidates") = 'array' AND jsonb_array_length("native_live_semantic_scoring_requests"."candidates") BETWEEN 1 AND 64),
   CONSTRAINT "native_live_semantic_scoring_requests_snapshot_nonnegative" CHECK ("native_live_semantic_scoring_requests"."snapshot_sequence" >= 0),
+  CONSTRAINT "native_live_semantic_scoring_requests_scores_object" CHECK ("native_live_semantic_scoring_requests"."scores" IS NULL OR jsonb_typeof("native_live_semantic_scoring_requests"."scores") = 'object'),
   CONSTRAINT "native_live_semantic_scoring_requests_status_allowed" CHECK ("native_live_semantic_scoring_requests"."status" IN ('pending', 'reserved', 'completed', 'fallback')),
   CONSTRAINT "native_live_semantic_scoring_requests_state_consistency" CHECK (
     ("native_live_semantic_scoring_requests"."status" = 'pending'
