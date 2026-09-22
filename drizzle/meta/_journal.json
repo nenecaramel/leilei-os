@@ -365,6 +365,13 @@
       "when": 1790086260000,
       "tag": "0051_native_live_mind_followups",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790087600000,
+      "tag": "0052_native_live_semantic_scoring",
+      "breakpoints": true
     }
   ]
 }
