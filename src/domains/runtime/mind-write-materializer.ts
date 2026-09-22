@@ -1,32 +1,31 @@
-import type {
-  SubjectStateWrite,
-  SubjectStateWriter,
-} from "./subject-state-contract.js";
+import type { RuntimeStatusAxes } from "./runtime-status-axes.js";
+import type { RuntimePrincipal } from "./persistent-write-envelope.js";
+import type { SubjectStateWrite } from "./subject-state-contract.js";
 import type { MindWriteIntent } from "./mind-intent-parser.js";
 
 export type MaterializeMindWritesInput = {
   userId: string;
+  subjectId: string;
   conversationId: string;
   assistantMessageId: string;
   intents: readonly MindWriteIntent[];
   createId: () => string;
-  writerId: string;
+  producer: RuntimePrincipal;
+  committer: RuntimePrincipal;
+  sourceStatus: RuntimeStatusAxes;
   ruleVersion: string;
   processVersion: string;
-  visibility: SubjectStateWrite["scope"]["visibility"];
-  sensitivity: SubjectStateWrite["scope"]["sensitivity"];
-  model?: SubjectStateWrite["provenance"]["model"];
-};
-
-const SUBJECT_WRITER: Pick<SubjectStateWriter, "actor" | "authority"> = {
-  actor: "subject",
-  authority: "subject_authorized",
+  visibility: SubjectStateWrite["envelope"]["scope"]["visibility"];
+  sensitivity: SubjectStateWrite["envelope"]["scope"]["sensitivity"];
+  audience: string[];
+  model?: SubjectStateWrite["envelope"]["versions"]["model"];
 };
 
 /**
- * Converts explicit <feel>/<memory>/<dream>/<thought> output into provisional
- * Persistent Subject State tied to the exact assistant path head that produced
- * it. Settlement is a later canonical-path decision.
+ * Converts explicit subject-authored tags into typed state. It does not guess
+ * from ordinary prose. The caller supplies the source status axes so this layer
+ * does not pretend that "generated", "presented", "current", and "settled" are
+ * the same thing.
  */
 export function materializeMindWrites(
   input: MaterializeMindWritesInput,
@@ -39,30 +38,35 @@ export function materializeMindWrites(
       source_start: intent.sourceStart,
       source_end: intent.sourceEnd,
     },
-    lifecycle: "provisional",
-    sourceSettlement: "presented",
-    writer: {
-      ...SUBJECT_WRITER,
-      writerId: input.writerId,
-    },
-    scope: {
-      userId: input.userId,
-      applicability: "path",
-      conversationId: input.conversationId,
-      pathHeadMessageId: input.assistantMessageId,
-      visibility: input.visibility,
-      sensitivity: input.sensitivity,
-    },
-    provenance: {
-      sources: [{ kind: "message", id: input.assistantMessageId }],
-      causedBy: input.assistantMessageId,
-      derivedFromStateIds: [],
-      decisionId: null,
-      processRunId: null,
-      schemaVersion: 1,
-      ruleVersion: input.ruleVersion,
-      processVersion: input.processVersion,
-      model: input.model ?? null,
+    envelope: {
+      semanticActor: { kind: "subject", id: input.subjectId },
+      producer: input.producer,
+      committer: input.committer,
+      authority: "subject_authorized",
+      scope: {
+        userId: input.userId,
+        subjectId: input.subjectId,
+        applicability: "path",
+        conversationId: input.conversationId,
+        pathHeadMessageId: input.assistantMessageId,
+        visibility: input.visibility,
+        sensitivity: input.sensitivity,
+        audience: input.audience,
+      },
+      status: input.sourceStatus,
+      provenance: {
+        sources: [{ kind: "message", id: input.assistantMessageId }],
+        causedBy: input.assistantMessageId,
+        derivedFrom: [],
+        decisionId: null,
+        processRunId: null,
+      },
+      versions: {
+        schemaVersion: 1,
+        ruleVersion: input.ruleVersion,
+        processVersion: input.processVersion,
+        model: input.model ?? null,
+      },
     },
   }));
 }
