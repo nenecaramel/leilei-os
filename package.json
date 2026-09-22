@@ -42,7 +42,8 @@
     "smoke:runtime-breath-e5-mind": "tsx scripts/runtime-breath-e5-mind-smoke.ts",
     "test:native-live-turn-db": "RUN_NATIVE_LIVE_TURN_DATABASE_TEST=1 tsx --test tests/native-live-backend-turn-repository.integration.test.ts",
     "test:native-live-relay-db": "RUN_NATIVE_LIVE_RELAY_DATABASE_TEST=1 tsx --test tests/native-live-backend-relay.integration.test.ts",
-    "runtime:native-live-mac-daemon": "tsx scripts/native-live-mac-daemon.ts"
+    "runtime:native-live-mac-daemon": "tsx scripts/native-live-mac-daemon.ts",
+    "test:native-live-http-db": "RUN_NATIVE_LIVE_HTTP_DATABASE_TEST=1 tsx --test tests/native-live-http-relay.integration.test.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
