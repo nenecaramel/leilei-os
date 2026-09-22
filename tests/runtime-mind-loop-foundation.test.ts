@@ -6,7 +6,10 @@ import type {
   NativeLiveMessage,
 } from "../src/domains/conversation/native-live-conversation-types.js";
 import { recallBreath } from "../src/domains/runtime/breath-recall.js";
-import { assembleTurnContext } from "../src/domains/runtime/context-assembler.js";
+import {
+  assembleTurnContext,
+  assembledTurnContextFromManifest,
+} from "../src/domains/runtime/context-assembler.js";
 import { parseMindWriteIntents } from "../src/domains/runtime/mind-intent-parser.js";
 import { materializeMindWrites } from "../src/domains/runtime/mind-write-materializer.js";
 import {
@@ -305,6 +308,32 @@ test("Context Assembly injects typed Surface, Bedrock and Breath as bounded data
     assembled.prompt.includes('<leileios_context authority="data">'),
     true,
   );
+});
+
+test("persisted Context Manifest reconstructs the exact prompt without re-selection", () => {
+  const memory = state("memory-replay", "一次需要稳定重放的记忆");
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-replay",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-replay",
+    userText: "重新组装这一轮",
+    subjectStates: [memory],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v1",
+    surfaceLimit: 4,
+    breathLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  const replayed = assembledTurnContextFromManifest(assembled.manifest);
+  assert.equal(replayed.prompt, assembled.prompt);
+  assert.equal(replayed.contextData, assembled.contextData);
+  assert.deepEqual(replayed.breathStateIds, assembled.breathStateIds);
 });
 
 test("explicit Mind write can move from emitted intent to settled Breath recall", () => {
