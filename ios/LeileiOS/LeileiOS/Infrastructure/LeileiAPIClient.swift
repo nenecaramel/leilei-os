@@ -68,7 +68,7 @@ final class LeileiAPIClient {
         return BackendSession(authenticated: envelope.data.authenticated)
     }
 
-    func request<Response: Decodable & Sendable>(
+    func request<Response: Decodable>(
         path: String,
         method: String = "GET",
         body: Data? = nil,
