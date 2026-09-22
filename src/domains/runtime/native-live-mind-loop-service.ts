@@ -58,6 +58,13 @@ export interface SubjectStateRuntimePort {
   saveContextManifest(input: {
     manifest: InitialContextManifest;
   }): Promise<void>;
+
+  recordBreathRecall?(input: {
+    userId: string;
+    subjectId: string;
+    stateIds: readonly string[];
+    recalledAt: string;
+  }): Promise<void>;
 }
 
 export type MindLoopConfig = {
@@ -67,6 +74,8 @@ export type MindLoopConfig = {
   processVersion: string;
   surfaceLimit: number;
   breathLimit: number;
+  breathCooldownHours?: number;
+  breathSalienceWeight?: number;
   maxContextItems: number;
   maxContextChars: number;
 };
@@ -165,12 +174,29 @@ export class NativeLiveMindLoopService {
       promptContractVersion: this.config.promptContractVersion,
       surfaceLimit: this.config.surfaceLimit,
       breathLimit: this.config.breathLimit,
+      breathCooldownHours: this.config.breathCooldownHours ?? 0,
+      breathSalienceWeight: this.config.breathSalienceWeight ?? 0,
       maxContextItems: this.config.maxContextItems,
       maxContextChars: this.config.maxContextChars,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
     });
 
     await this.port.saveContextManifest({ manifest: assembled.manifest });
+
+    if (assembled.breathStateIds.length > 0 && this.port.recordBreathRecall) {
+      try {
+        await this.port.recordBreathRecall({
+          userId: input.userId,
+          subjectId: input.subjectId,
+          stateIds: assembled.breathStateIds,
+          recalledAt: input.assembledAt,
+        });
+      } catch {
+        // Recall metadata is non-authoritative. A failed cooldown marker must
+        // not block the foreground model invocation.
+      }
+    }
+
     return assembled;
   }
 
