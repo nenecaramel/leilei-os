@@ -28,6 +28,7 @@ import { BridgeService } from "../domains/bridge/bridge-service.js";
 import { createDefaultBackendMindRuntime } from "../domains/runtime/default-backend-mind-runtime.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/native-live-backend-turn-coordinator.js";
+import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/native-live-backend-relay-prepare.js";
 import {
   DrizzleNativeLiveBackendRelayRepository,
   NativeLiveBackendRelayService,
@@ -37,6 +38,11 @@ import {
   NativeLiveMindFollowUpService,
   createNativeLiveMindFollowUpScheduler,
 } from "../domains/bridge/native-live-mind-followup.js";
+import {
+  DrizzleNativeLiveSemanticScoringRepository,
+  NativeLiveSemanticHandshakeService,
+  createNativeLiveSemanticCompletionScheduler,
+} from "../domains/bridge/native-live-semantic-handshake.js";
 import { BRIDGE_TERMINAL_RETENTION_DAYS, deleteExpiredBridgeEventsBatch } from "../domains/bridge/bridge-retention.js";
 import {
   deleteExpiredMcpIdempotencyBatch,
@@ -153,6 +159,22 @@ export function createProcessRuntime(
     new DrizzleNativeLiveBackendRelayRepository(db),
     nativeLiveTurnCoordinator,
   );
+  const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
+    new DrizzleNativeLiveSemanticScoringRepository(db),
+    nativeLiveTurnPort,
+    nativeLiveBackendMind,
+    nativeLiveRelayService,
+  );
+  const nativeLiveSemanticScheduler =
+    createNativeLiveSemanticCompletionScheduler({
+      service: nativeLiveSemanticService,
+    });
+  const nativeLiveRelayPrepareCoordinator =
+    new NativeLiveBackendRelayPrepareCoordinator(
+      nativeLiveTurnPort,
+      nativeLiveBackendMind,
+      nativeLiveSemanticService,
+    );
   const sentinelRepository = new DrizzleSentinelRepository(db);
   const sentinelService = new SentinelService(sentinelRepository);
   const healthService = new HealthService(new DrizzleHealthRepository(db));
@@ -248,9 +270,10 @@ export function createProcessRuntime(
       webImportService: importService,
       webUniverseService: universeService,
       webBridgeService: bridgeService,
-      webNativeLiveCoordinator: nativeLiveTurnCoordinator,
+      webNativeLiveCoordinator: nativeLiveRelayPrepareCoordinator,
       webNativeLiveTurnReader: nativeLiveTurnPort,
       nativeLiveRelayService,
+      nativeLiveSemanticService,
       webSentinelService: sentinelService,
       webSharedPaperService: sharedPaperService,
       webConversationImportService: conversationImportService,
@@ -272,17 +295,20 @@ export function createProcessRuntime(
       retentionCoordinator.start();
       sentinelScheduler.start();
       nativeLiveMindFollowUpScheduler.start();
+      nativeLiveSemanticScheduler.start();
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
       sentinelScheduler.stopScheduling();
       nativeLiveMindFollowUpScheduler.stopScheduling();
+      nativeLiveSemanticScheduler.stopScheduling();
     },
     drainBackgroundWork: async () => {
       await Promise.all([
         retentionCoordinator.drain(),
         sentinelScheduler.drain(),
         nativeLiveMindFollowUpScheduler.drain(),
+        nativeLiveSemanticScheduler.drain(),
       ]);
     },
     closeDatabase: database.close,
