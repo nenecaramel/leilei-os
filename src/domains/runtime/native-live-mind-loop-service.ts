@@ -4,6 +4,7 @@ import type {
 } from "../conversation/native-live-conversation-types.js";
 import {
   assembleTurnContext,
+  assembledTurnContextFromManifest,
   type AssembledTurnContext,
 } from "./context-assembler.js";
 import type { InitialContextManifest } from "./context-assembly-contract.js";
@@ -65,6 +66,12 @@ export interface SubjectStateRuntimePort {
   saveContextManifest(input: {
     manifest: InitialContextManifest;
   }): Promise<void>;
+
+  loadContextManifest?(input: {
+    userId: string;
+    subjectId: string;
+    manifestId: string;
+  }): Promise<InitialContextManifest | null>;
 
   recordBreathRecall?(input: {
     userId: string;
@@ -168,6 +175,26 @@ export class NativeLiveMindLoopService {
     semanticScores?: ReadonlyMap<string, number>;
     semanticCandidates?: readonly BreathSemanticCandidate[];
   }): Promise<AssembledTurnContext> {
+    if (this.port.loadContextManifest) {
+      const persisted = await this.port.loadContextManifest({
+        userId: input.userId,
+        subjectId: input.subjectId,
+        manifestId: input.manifestId,
+      });
+      if (persisted) {
+        if (
+          persisted.conversationId !== input.conversation.id
+          || persisted.snapshotSequence !== input.snapshotSequence
+          || persisted.createdAt !== input.assembledAt
+        ) {
+          throw new Error(
+            "Persisted Context Manifest conflicts with the requested turn snapshot.",
+          );
+        }
+        return assembledTurnContextFromManifest(persisted);
+      }
+    }
+
     const states = await this.port.list({
       userId: input.userId,
       subjectId: input.subjectId,
