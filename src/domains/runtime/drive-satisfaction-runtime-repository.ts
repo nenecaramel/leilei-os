@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import { and, eq } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
@@ -178,30 +177,15 @@ implements DriveSatisfactionRuntimePort {
         if (!requestedEvolution) {
           return { outcome: "rejected" as const, code: "DRIVE_NOT_EVOLVED" as const };
         }
-
-        const anchorId = requestedEvolution.anchorStateId;
-        const anchor =
-          anchorId === requested.id
-            ? requested
-            : await this.loadDrive(
-                transaction as Transaction,
-                input.userId,
-                input.subjectId,
-                anchorId,
-                true,
-              );
-        if (!anchor || !isEligibleDrive(anchor)) {
+        if (
+          requestedEvolution.role !== "anchor"
+          || requestedEvolution.anchorStateId !== requested.id
+        ) {
           return { outcome: "rejected" as const, code: "DRIVE_NOT_ELIGIBLE" as const };
         }
 
-        const anchorEvolution = readDriveEvolution(anchor.payload);
-        if (
-          !anchorEvolution
-          || anchorEvolution.role !== "anchor"
-          || anchorEvolution.anchorStateId !== anchor.id
-        ) {
-          return { outcome: "rejected" as const, code: "DRIVE_NOT_EVOLVED" as const };
-        }
+        const anchor = requested;
+        const anchorEvolution = requestedEvolution;
 
         const evidence = await validateEvidence(
           transaction as Transaction,
@@ -412,20 +396,14 @@ function matchesReplay(
     evidence: DriveSatisfactionEvidence;
   },
 ): boolean {
-  return (
-    event.driveStateId === input.driveStateId
-    || event.driveStateId === readRequestedAnchorCompatible(input.driveStateId)
-  ) && event.conversationId === input.evidence.conversationId
+  return event.driveStateId === input.driveStateId
+    && event.conversationId === input.evidence.conversationId
     && event.evidenceMessageId === input.evidence.messageId
     && event.evidenceKind === input.evidence.kind
     && event.evidenceBlockId === (
       input.evidence.kind === "tool_result" ? input.evidence.blockId : null
     )
     && Math.abs(event.amount - input.amount) < 1e-12;
-}
-
-function readRequestedAnchorCompatible(stateId: string): string {
-  return stateId;
 }
 
 function isEligibleDrive(input: {
