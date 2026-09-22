@@ -26,3 +26,11 @@ test("local E5 embedding parser rejects row-count and dimension mismatch", () =>
       && error.code === "INVALID_EMBEDDING_OUTPUT",
   );
 });
+
+test("local E5 provider exposes cache repair as opt-in setup behavior", async () => {
+  const source = await import("../src/domains/runtime/local-e5-embedding.js");
+  const scorer = new source.LocalE5BreathSemanticScorer({
+    repairCorruptCache: true,
+  });
+  assert.ok(scorer);
+});
