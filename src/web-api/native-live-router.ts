@@ -187,6 +187,7 @@ export function readNativeLiveTurnHandler(
           userMessageId: turn.canonicalUserMessageId,
           canonicalStatus: turn.canonicalStatus,
           dispatchStatus: turn.dispatchStatus,
+          semanticStatus: turn.semanticStatus,
           failureCode: turn.failureCode,
           assistantMessage: turn.assistantMessage
             ? {
