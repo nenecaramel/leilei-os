@@ -160,7 +160,7 @@ class FakeMind implements NativeLiveBackendMindRuntime {
     return {
       visibleBlocks: blocks.map((block) =>
         block.kind === "text"
-          ? { ...block, text: block.text?.replace(/<memory>.*?<\\/memory>/gu, "").trim() ?? null }
+          ? { ...block, text: block.text?.replace(/<memory>.*?<\/memory>/gu, "").trim() ?? null }
           : block
       ),
       intents: [{
