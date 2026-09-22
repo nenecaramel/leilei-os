@@ -73,7 +73,10 @@ while (!stopping) {
       }) + "\n",
     );
 
-    if (outcome.outcome === "completed") {
+    if (
+      outcome.outcome === "completed"
+      || outcome.outcome === "semantic_completed"
+    ) {
       continue;
     }
     await sleep(outcome.outcome === "busy" ? 5_000 : 1_500);
