@@ -9,7 +9,7 @@ import {
   type NativeLiveConversationPort,
   type NativeLiveNormalizedEvent,
 } from "./native-live-conversation-orchestrator.js";
-import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
+import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";\nimport type { NativeLiveDistillationTrigger } from "../runtime/distillation-background-trigger.js";
 
 export type NativeLiveBranchTurnResult =
   | {

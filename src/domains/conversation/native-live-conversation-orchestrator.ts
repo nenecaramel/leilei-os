@@ -4,7 +4,7 @@ import type {
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
 } from "./native-live-conversation-types.js";
-import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
+import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";\nimport type { NativeLiveDistillationTrigger } from "../runtime/distillation-background-trigger.js";
 
 export type NativeLiveNormalizedEventType =
   | "session"
