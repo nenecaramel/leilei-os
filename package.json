@@ -27,14 +27,15 @@
     "db:check": "drizzle-kit check",
     "db:seed:phase2": "tsx scripts/seed-phase-2.ts",
     "e2e:native-live-canonical": "tsx scripts/native-live-canonical-e2e.ts",
-    "test:native-live-minimal": "tsx --test tests/native-live-conversation-service.test.ts tests/native-live-conversation-orchestrator.test.ts tests/native-live-conversation-branch-orchestrator.test.ts tests/native-live-relay-contract.test.ts tests/bridge-dispatch-partition-contract.test.ts tests/native-live-relay-consumer.test.ts tests/native-live-runtime-protocol.test.ts tests/native-live-backend-turn-coordinator.test.ts tests/native-live-mac-runtime-executor.test.ts tests/native-live-mac-daemon-loop.test.ts tests/runtime-subject-state-foundation.test.ts tests/runtime-mind-loop-foundation.test.ts tests/runtime-milestone1-branch-safe-memory.test.ts tests/runtime-distillation.test.ts tests/claude-code-distillation-model.test.ts tests/runtime-distillation-background-trigger.test.ts tests/runtime-distillation-orchestrator-hook.test.ts tests/runtime-memory-lifecycle.test.ts tests/runtime-breath-governance.test.ts tests/runtime-breath-hybrid.test.ts && pnpm --dir tools/claude-bridge test",
+    "test:native-live-minimal": "tsx --test tests/native-live-conversation-service.test.ts tests/native-live-conversation-orchestrator.test.ts tests/native-live-conversation-branch-orchestrator.test.ts tests/native-live-relay-contract.test.ts tests/bridge-dispatch-partition-contract.test.ts tests/native-live-relay-consumer.test.ts tests/native-live-runtime-protocol.test.ts tests/native-live-backend-turn-coordinator.test.ts tests/native-live-mac-runtime-executor.test.ts tests/native-live-mac-daemon-loop.test.ts tests/runtime-subject-state-foundation.test.ts tests/runtime-mind-loop-foundation.test.ts tests/runtime-milestone1-branch-safe-memory.test.ts tests/runtime-distillation.test.ts tests/claude-code-distillation-model.test.ts tests/runtime-distillation-background-trigger.test.ts tests/runtime-distillation-orchestrator-hook.test.ts tests/runtime-memory-lifecycle.test.ts tests/runtime-breath-governance.test.ts tests/runtime-breath-hybrid.test.ts tests/runtime-macos-natural-language-embedding.test.ts && pnpm --dir tools/claude-bridge test",
     "test:native-live-db": "RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST=1 tsx --test tests/native-live-conversation-repository.integration.test.ts",
     "test:runtime-mind-db": "RUN_RUNTIME_MIND_DATABASE_TEST=1 tsx --test tests/runtime-subject-state-repository.integration.test.ts",
     "test:runtime-distillation-db": "RUN_RUNTIME_DISTILLATION_DATABASE_TEST=1 tsx --test tests/runtime-distillation-repository.integration.test.ts",
     "smoke:runtime-distillation-claude": "tsx scripts/runtime-distillation-claude-smoke.ts",
     "smoke:runtime-distillation-background": "tsx scripts/runtime-distillation-background-smoke.ts",
     "test:runtime-lifecycle-db": "RUN_RUNTIME_LIFECYCLE_DATABASE_TEST=1 tsx --test tests/runtime-memory-lifecycle-repository.integration.test.ts",
-    "test:runtime-breath-db": "RUN_RUNTIME_BREATH_DATABASE_TEST=1 tsx --test tests/runtime-breath-recall-repository.integration.test.ts"
+    "test:runtime-breath-db": "RUN_RUNTIME_BREATH_DATABASE_TEST=1 tsx --test tests/runtime-breath-recall-repository.integration.test.ts",
+    "smoke:runtime-breath-embedding": "tsx scripts/runtime-breath-embedding-smoke.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
