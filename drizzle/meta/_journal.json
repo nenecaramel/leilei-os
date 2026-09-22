@@ -358,6 +358,13 @@
       "when": 1790083460000,
       "tag": "0050_native_live_http_relay",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790086260000,
+      "tag": "0051_native_live_mind_followups",
+      "breakpoints": true
     }
   ]
 }
