@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationContentBlocks,
@@ -128,6 +128,15 @@ implements DriveSatisfactionRuntimePort {
 
     return this.db.transaction(
       async (transaction) => {
+        await transaction.execute(sql`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(
+              ${input.userId + ":" + input.idempotencyKey},
+              0
+            )
+          )
+        `);
+
         const replay = await this.findEvent(
           transaction as Transaction,
           input.userId,
