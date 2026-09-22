@@ -13,6 +13,12 @@ import {
   DrizzleSubjectStateRuntimePort,
 } from "./subject-state-runtime-repository.js";
 import {
+  DriveEvolutionService,
+} from "./drive-evolution.js";
+import {
+  DrizzleDriveEvolutionRuntimePort,
+} from "./drive-evolution-runtime-repository.js";
+import {
   ThoughtEvolutionService,
 } from "./thought-evolution.js";
 import {
@@ -43,11 +49,22 @@ export function createDefaultBackendMindRuntime(
       breathSemanticMinScore: 0.80,
       breathSemanticCandidateLimit: 64,
       breathSemanticCandidateMaxChars: 2_000,
+      driveLimit: 3,
       fixationLimit: 3,
       maxContextItems: 16,
       maxContextChars: 8_000,
     },
     null,
+  );
+  const driveEvolution = new DriveEvolutionService(
+    new DrizzleDriveEvolutionRuntimePort(db),
+    {
+      basePressure: 0.4,
+      reinforcementBoost: 0.2,
+      activeThreshold: 0.1,
+      minEvolutionIntervalHours: 6,
+      maxReinforcementSources: 16,
+    },
   );
   const thoughtEvolution = new ThoughtEvolutionService(
     new DrizzleThoughtEvolutionRuntimePort(db),
@@ -62,6 +79,7 @@ export function createDefaultBackendMindRuntime(
   );
   const mind = new DefaultNativeLiveMindRuntime(loop, {
     subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+    driveEvolution,
     thoughtEvolution,
   });
   return new DefaultNativeLiveBackendMindRuntime(conversations, mind);
