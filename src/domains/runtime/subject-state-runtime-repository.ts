@@ -6,7 +6,10 @@ import {
   runtimeSubjectStateTransitions,
   runtimeSubjectStates,
 } from "../../database/schema.js";
-import type { InitialContextManifest } from "./context-assembly-contract.js";
+import {
+  assertContextManifestSafe,
+  type InitialContextManifest,
+} from "./context-assembly-contract.js";
 import type {
   SubjectStateRuntimePort,
   SubjectStateTransition,
@@ -349,6 +352,53 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
           );
       }
     });
+  }
+
+  async loadContextManifest(input: {
+    userId: string;
+    subjectId: string;
+    manifestId: string;
+  }): Promise<InitialContextManifest | null> {
+    const [row] = await this.db
+      .select({
+        id: runtimeContextManifests.id,
+        userId: runtimeContextManifests.userId,
+        subjectId: runtimeContextManifests.subjectId,
+        conversationId: runtimeContextManifests.conversationId,
+        pathHeadMessageId: runtimeContextManifests.pathHeadMessageId,
+        snapshotSequence: runtimeContextManifests.snapshotSequence,
+        assemblyVersion: runtimeContextManifests.assemblyVersion,
+        promptContractVersion: runtimeContextManifests.promptContractVersion,
+        budget: runtimeContextManifests.budget,
+        items: runtimeContextManifests.items,
+        assembledAt: runtimeContextManifests.assembledAt,
+      })
+      .from(runtimeContextManifests)
+      .where(
+        and(
+          eq(runtimeContextManifests.id, input.manifestId),
+          eq(runtimeContextManifests.userId, input.userId),
+          eq(runtimeContextManifests.subjectId, input.subjectId),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return null;
+    const manifest = {
+      manifestId: row.id,
+      userId: row.userId,
+      subjectId: row.subjectId,
+      conversationId: row.conversationId,
+      pathHeadMessageId: row.pathHeadMessageId,
+      snapshotSequence: row.snapshotSequence,
+      assemblyVersion: row.assemblyVersion,
+      promptContractVersion: row.promptContractVersion,
+      createdAt: row.assembledAt.toISOString(),
+      budget: row.budget,
+      items: row.items,
+    } as InitialContextManifest;
+    assertContextManifestSafe(manifest);
+    return manifest;
   }
 
   async saveContextManifest(input: {
