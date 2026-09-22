@@ -57,6 +57,13 @@ function job(): NativeLiveMindFollowUpJob {
         sourceEnd: 53,
         raw: "<feel>warm</feel>",
       },
+      {
+        kind: "drive",
+        text: "keep exploring",
+        sourceStart: 54,
+        sourceEnd: 90,
+        raw: "<drive>keep exploring</drive>",
+      },
     ],
   };
 }
@@ -139,6 +146,7 @@ test("durable Mind follow-up uses stable per-intent UUIDs and completes only aft
   assert.deepEqual(call.stateIds, [
     nativeLiveMindFollowUpStateId(prepareId, 0),
     nativeLiveMindFollowUpStateId(prepareId, 1),
+    nativeLiveMindFollowUpStateId(prepareId, 2),
   ]);
   assert.notEqual(call.stateIds[0], call.stateIds[1]);
   assert.match(
