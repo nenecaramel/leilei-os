@@ -53,10 +53,14 @@ if (!prepared) {
 process.stderr.write("[e5-setup] runtime ready; loading multilingual E5 model\n");
 
 let lastProgress = "";
+const fileProgressBuckets = new Map<string, number>();
+let lastModelActivityAt = Date.now();
+let activeFile: string | null = null;
 const scorer = new LocalE5BreathSemanticScorer({
   repairCorruptCache: true,
   progressCallback(info) {
     if (!isRecord(info) || typeof info.status !== "string") return;
+    lastModelActivityAt = Date.now();
 
     if (info.status === "repair") {
       process.stderr.write(
@@ -78,6 +82,30 @@ const scorer = new LocalE5BreathSemanticScorer({
     }
 
     if (
+      info.status === "progress"
+      && typeof info.file === "string"
+      && typeof info.progress === "number"
+    ) {
+      activeFile = info.file;
+      const bucket = Math.floor(info.progress / 5);
+      if (fileProgressBuckets.get(info.file) !== bucket) {
+        fileProgressBuckets.set(info.file, bucket);
+        const loaded =
+          typeof info.loaded === "number"
+            ? ` ${formatMegabytes(info.loaded)}`
+            : "";
+        const total =
+          typeof info.total === "number"
+            ? `/${formatMegabytes(info.total)}`
+            : "";
+        process.stderr.write(
+          `[e5-model] ${info.file} ${info.progress.toFixed(1)}%${loaded}${total}\n`,
+        );
+      }
+      return;
+    }
+
+    if (
       (info.status === "download"
         || info.status === "done"
         || info.status === "ready")
@@ -86,14 +114,16 @@ const scorer = new LocalE5BreathSemanticScorer({
         typeof info.file === "string"
           ? ` ${info.file}`
           : "";
+      if (typeof info.file === "string") activeFile = info.file;
       process.stderr.write(`[e5-model] ${info.status}${file}\n`);
     }
   },
 });
 
 const heartbeat = setInterval(() => {
+  const idleSeconds = Math.round((Date.now() - lastModelActivityAt) / 1_000);
   process.stderr.write(
-    "[e5-model] still waiting for model download/load; Ctrl+C is safe and a rerun will reuse cached files\n",
+    `[e5-model] still active${activeFile ? ` on ${activeFile}` : ""}; last progress event ${idleSeconds}s ago\n`,
   );
 }, 30_000);
 heartbeat.unref();
@@ -146,4 +176,8 @@ async function run(command: string, args: string[]): Promise<void> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
