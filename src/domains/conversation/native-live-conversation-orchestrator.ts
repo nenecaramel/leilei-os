@@ -4,7 +4,8 @@ import type {
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
 } from "./native-live-conversation-types.js";
-import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";\nimport type { NativeLiveDistillationTrigger } from "../runtime/distillation-background-trigger.js";
+import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
+import type { NativeLiveDistillationTrigger } from "../runtime/distillation-background-trigger.js";
 
 export type NativeLiveNormalizedEventType =
   | "session"
@@ -194,6 +195,7 @@ export class NativeLiveConversationOrchestrator {
     private readonly conversations: NativeLiveConversationPort,
     private readonly runtime: NativeLiveClaudeRuntime,
     private readonly mind: NativeLiveMindRuntime | null = null,
+    private readonly distillation: NativeLiveDistillationTrigger | null = null,
   ) {}
 
   async send(input: {
@@ -323,6 +325,11 @@ export class NativeLiveConversationOrchestrator {
           intents: parsedMind.intents,
         });
       }
+
+      this.distillation?.schedule({
+        userId: input.userId,
+        conversationId: input.conversationId,
+      });
 
       return {
         ok: true,
