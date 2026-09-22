@@ -21,6 +21,15 @@ export type NativeLiveMindSemanticPlan = {
   candidates: BreathSemanticCandidate[];
 };
 
+export interface NativeLiveThoughtEvolutionRuntime {
+  runOnce(input: {
+    userId: string;
+    subjectId: string;
+    now: string;
+    limit?: number;
+  }): Promise<unknown>;
+}
+
 export type NativeLiveMindRuntimeBindingOptions = {
   subjectId: string;
   createManifestId?: () => string;
@@ -28,6 +37,7 @@ export type NativeLiveMindRuntimeBindingOptions = {
   now?: () => string;
   producerId?: string;
   committerId?: string;
+  thoughtEvolution?: NativeLiveThoughtEvolutionRuntime | null;
 };
 
 export interface NativeLiveMindRuntime {
@@ -90,6 +100,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
   private readonly now: () => string;
   private readonly producerId: string;
   private readonly committerId: string;
+  private readonly thoughtEvolution: NativeLiveThoughtEvolutionRuntime | null;
 
   constructor(
     private readonly service: NativeLiveMindLoopService,
@@ -101,6 +112,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     this.now = options.now ?? (() => new Date().toISOString());
     this.producerId = options.producerId ?? "claude-code";
     this.committerId = options.committerId ?? "leileios-runtime";
+    this.thoughtEvolution = options.thoughtEvolution ?? null;
   }
 
   async prepareUserTurn(input: {
@@ -110,6 +122,8 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userText: string;
     surfaceHeadMessageId: string | null;
   }): Promise<string> {
+    const assembledAt = this.now();
+    await this.evolveThoughts(input.userId, assembledAt);
     const assembled = await this.service.prepareTurn({
       manifestId: this.createManifestId(),
       userId: input.userId,
@@ -118,7 +132,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       userMessageId: input.userMessage.id,
       userText: input.userText,
       snapshotSequence: input.conversation.messages.length,
-      assembledAt: this.now(),
+      assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
     });
     return assembled.prompt;
@@ -132,6 +146,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     surfaceHeadMessageId: string | null;
   }): Promise<NativeLiveMindSemanticPlan | null> {
     const assembledAt = this.now();
+    await this.evolveThoughts(input.userId, assembledAt);
     const semantic = await this.service.planSemanticRecall({
       userId: input.userId,
       subjectId: this.subjectId,
@@ -238,5 +253,22 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       subjectId: this.subjectId,
       conversation: input.conversation,
     });
+  }
+
+  private async evolveThoughts(
+    userId: string,
+    now: string,
+  ): Promise<void> {
+    if (!this.thoughtEvolution) return;
+    try {
+      await this.thoughtEvolution.runOnce({
+        userId,
+        subjectId: this.subjectId,
+        now,
+      });
+    } catch {
+      // Thought evolution is derived subject state. A maintenance failure must
+      // not block a user turn or rewrite canonical conversation history.
+    }
   }
 }
