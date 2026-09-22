@@ -30,6 +30,7 @@ export interface NativeLiveBackendMindRuntime {
     preparation: NativeLivePreparedTurn;
     assistantMessageId: string;
     intents: readonly MindWriteIntent[];
+    stateIds?: readonly string[];
   }): Promise<void>;
 }
 
@@ -104,6 +105,7 @@ implements NativeLiveBackendMindRuntime {
     preparation: NativeLivePreparedTurn;
     assistantMessageId: string;
     intents: readonly MindWriteIntent[];
+    stateIds?: readonly string[];
   }): Promise<void> {
     if (input.intents.length > 0) {
       await this.mind.recordAssistantIntents({
@@ -111,6 +113,7 @@ implements NativeLiveBackendMindRuntime {
         conversationId: input.preparation.conversationId,
         assistantMessageId: input.assistantMessageId,
         intents: input.intents,
+        stateIds: input.stateIds,
       });
     }
 
