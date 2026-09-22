@@ -11,6 +11,7 @@ import type {
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
 } from "../src/domains/conversation/native-live-conversation-types.js";
+import type { NativeLiveBackendMindRuntime } from "../src/domains/bridge/native-live-backend-mind-runtime.js";
 
 const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const prepareId = "11111111-1111-4111-8111-111111111111";
@@ -36,6 +37,7 @@ function prepared(
     runtimeMode: "fork",
     parentProviderSessionId: "provider-parent",
     prompt: "hello",
+    mindPrepared: false,
     ...input,
   };
 }
@@ -69,8 +71,10 @@ class FakePort implements NativeLiveBackendTurnPort {
   prepareSendCalls: unknown[] = [];
   prepareRetryCalls: unknown[] = [];
   prepareEditCalls: unknown[] = [];
+  persistMindPreparedPromptCalls: unknown[] = [];
   finalizeSuccessCalls: unknown[] = [];
   finalizeFailureCalls: unknown[] = [];
+  finalizeOutcome: "completed" | "idempotent" = "completed";
   preparation: NativeLivePreparedTurn | null = prepared();
   prepareResult: NativeLivePreparePortResult = {
     ok: true,
@@ -97,13 +101,36 @@ class FakePort implements NativeLiveBackendTurnPort {
     return this.preparation;
   }
 
+  async persistMindPreparedPrompt(input: {
+    userId: string;
+    prepareId: string;
+    prompt: string;
+  }) {
+    this.persistMindPreparedPromptCalls.push(input);
+    const next = {
+      ...(this.prepareResult.ok
+        ? this.prepareResult.preparation
+        : prepared()),
+      prompt: input.prompt,
+      mindPrepared: true,
+    };
+    this.preparation = next;
+    if (this.prepareResult.ok) {
+      this.prepareResult = {
+        ...this.prepareResult,
+        preparation: next,
+      };
+    }
+    return next;
+  }
+
   async finalizeSuccess(input: {
     blocks: NativeLiveContentBlockInput[];
   }) {
     this.finalizeSuccessCalls.push(input);
     return {
       ok: true as const,
-      outcome: "completed" as const,
+      outcome: this.finalizeOutcome,
       record: {
         assistantMessage: assistantMessage(),
         checkpoint: checkpoint(),
@@ -117,11 +144,46 @@ class FakePort implements NativeLiveBackendTurnPort {
   }
 }
 
-function setup() {
+class FakeMind implements NativeLiveBackendMindRuntime {
+  prepareCalls: unknown[] = [];
+  parseCalls: unknown[] = [];
+  finalizeCalls: unknown[] = [];
+  preparedPrompt = "ASSEMBLED_PROMPT";
+
+  async preparePrompt(input: unknown) {
+    this.prepareCalls.push(input);
+    return this.preparedPrompt;
+  }
+
+  parseAssistantBlocks(blocks: readonly NativeLiveContentBlockInput[]) {
+    this.parseCalls.push(blocks);
+    return {
+      visibleBlocks: blocks.map((block) =>
+        block.kind === "text"
+          ? { ...block, text: block.text?.replace(/<memory>.*?<\\/memory>/gu, "").trim() ?? null }
+          : block
+      ),
+      intents: [{
+        kind: "memory" as const,
+        text: "remember this",
+        sourceStart: 6,
+        sourceEnd: 41,
+        raw: "<memory>remember this</memory>",
+      }],
+    };
+  }
+
+  async afterFinalize(input: unknown) {
+    this.finalizeCalls.push(input);
+  }
+}
+
+function setup(options: { mind?: NativeLiveBackendMindRuntime | null } = {}) {
   const port = new FakePort();
   const coordinator = new NativeLiveBackendTurnCoordinator(
     port,
     () => prepareId,
+    options.mind ?? null,
   );
   return { port, coordinator };
 }
@@ -388,4 +450,136 @@ test("success envelope carrying normalized runtime error is recorded as protocol
     conversationId,
     code: "RUNTIME_PROTOCOL_ERROR",
   });
+});
+
+
+test("Mind-aware prepare persists one assembled prompt before emitting the runtime command", async () => {
+  const mind = new FakeMind();
+  const { port, coordinator } = setup({ mind });
+
+  const result = await coordinator.prepare(userId, {
+    dispatch_target: "claude_code",
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    expected_head_message_id: headId,
+    text: "hello",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("expected success");
+  assert.equal(result.command.prompt, "ASSEMBLED_PROMPT");
+  assert.equal(mind.prepareCalls.length, 1);
+  assert.deepEqual(port.persistMindPreparedPromptCalls, [{
+    userId,
+    prepareId,
+    prompt: "ASSEMBLED_PROMPT",
+  }]);
+});
+
+test("Mind-aware prepare replay reuses an already assembled prompt without rebuilding context", async () => {
+  const mind = new FakeMind();
+  const { port, coordinator } = setup({ mind });
+  port.prepareResult = {
+    ok: true,
+    outcome: "replayed",
+    preparation: prepared({
+      prompt: "STORED_ASSEMBLED_PROMPT",
+      mindPrepared: true,
+    }),
+  };
+
+  const result = await coordinator.prepare(userId, {
+    dispatch_target: "claude_code",
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    expected_head_message_id: headId,
+    text: "hello",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("expected success");
+  assert.equal(result.command.prompt, "STORED_ASSEMBLED_PROMPT");
+  assert.equal(mind.prepareCalls.length, 0);
+  assert.equal(port.persistMindPreparedPromptCalls.length, 0);
+});
+
+test("Mind-aware prepare can recover a replay whose Mind prompt was not persisted yet", async () => {
+  const mind = new FakeMind();
+  const { port, coordinator } = setup({ mind });
+  port.prepareResult = {
+    ok: true,
+    outcome: "replayed",
+    preparation: prepared({
+      prompt: "raw",
+      mindPrepared: false,
+    }),
+  };
+
+  const result = await coordinator.prepare(userId, {
+    dispatch_target: "claude_code",
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    expected_head_message_id: headId,
+    text: "hello",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("expected success");
+  assert.equal(result.command.prompt, "ASSEMBLED_PROMPT");
+  assert.equal(mind.prepareCalls.length, 1);
+  assert.equal(port.persistMindPreparedPromptCalls.length, 1);
+});
+
+test("Mind-aware finalize strips hidden Mind tags before canonical write and runs post-finalize once", async () => {
+  const mind = new FakeMind();
+  const { port, coordinator } = setup({ mind });
+  port.preparation = prepared({ mindPrepared: true });
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [
+      {
+        type: "text",
+        payload: { text: "VISIBLE <memory>remember this</memory>" },
+      },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  const call = port.finalizeSuccessCalls[0] as {
+    blocks: NativeLiveContentBlockInput[];
+  };
+  assert.equal(call.blocks[0]?.text, "VISIBLE");
+  assert.equal(mind.parseCalls.length, 1);
+  assert.equal(mind.finalizeCalls.length, 1);
+});
+
+test("idempotent finalize never duplicates Mind writes or branch reconciliation", async () => {
+  const mind = new FakeMind();
+  const { port, coordinator } = setup({ mind });
+  port.preparation = prepared({ mindPrepared: true });
+  port.finalizeOutcome = "idempotent";
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [
+      { type: "text", payload: { text: "VISIBLE <memory>remember this</memory>" } },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(mind.finalizeCalls.length, 0);
 });
