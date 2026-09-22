@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  nativeLiveMindFollowUps,
   nativeLiveTurnPreparations,
 } from "../../database/schema.js";
 import {
@@ -527,6 +528,8 @@ implements NativeLiveBackendTurnPort {
     providerSessionId: string;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
+    mindFollowUp:
+      Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["mindFollowUp"];
   }): Promise<NativeLiveFinalizeSuccessPortResult> {
     const resultHash = hashJson(RESULT_HASH_VERSION, {
       status: "success",
@@ -627,6 +630,25 @@ implements NativeLiveBackendTurnPort {
 
           if (updated.length !== 1) {
             throw new Error("Native live turn finalization lost its preparation lock.");
+          }
+
+          if (input.mindFollowUp) {
+            await transaction.insert(nativeLiveMindFollowUps).values({
+              prepareId: row.id,
+              userId: input.userId,
+              conversationId: row.conversationId,
+              assistantMessageId: assistantMessage.id,
+              operation: row.operation,
+              intents: input.mindFollowUp.intents.map((intent) => ({
+                kind: intent.kind,
+                text: intent.text,
+                sourceStart: intent.sourceStart,
+                sourceEnd: intent.sourceEnd,
+                raw: intent.raw,
+              })),
+              status: "pending",
+              retryCount: 0,
+            });
           }
 
           return {
