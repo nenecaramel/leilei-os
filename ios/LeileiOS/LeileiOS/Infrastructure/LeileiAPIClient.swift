@@ -33,7 +33,8 @@ enum LeileiAPIError: LocalizedError {
     }
 }
 
-actor LeileiAPIClient {
+@MainActor
+final class LeileiAPIClient {
     private let baseURL: URL
     private let session: URLSession
     private let tokenStore: any AccessTokenStore
