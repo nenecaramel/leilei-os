@@ -27,10 +27,10 @@ test("local E5 embedding parser rejects row-count and dimension mismatch", () =>
   );
 });
 
-test("local E5 provider exposes cache repair as opt-in setup behavior", async () => {
+test("local E5 provider can be configured to use the WASM backend", async () => {
   const source = await import("../src/domains/runtime/local-e5-embedding.js");
   const scorer = new source.LocalE5BreathSemanticScorer({
-    repairCorruptCache: true,
+    device: "wasm",
   });
   assert.ok(scorer);
 });
