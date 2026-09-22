@@ -210,23 +210,31 @@ test(
     );
     const idempotencyKey =
       "drive-satisfy:test:user-message:0001";
-    const applied = await satisfaction.satisfy({
+    const satisfyInput = {
       userId,
       subjectId: "G",
       driveStateId: driveIds[0]!,
       amount: 0.55,
       idempotencyKey,
       evidence: {
-        kind: "user_message",
+        kind: "user_message" as const,
         conversationId: conversation.id,
         messageId: evidenceUser.id,
       },
       now: new Date().toISOString(),
-    });
-    assert.equal(applied.outcome, "applied");
-    if (applied.outcome === "rejected") {
-      throw new Error("expected Drive satisfaction");
-    }
+    };
+    const concurrent = await Promise.all([
+      satisfaction.satisfy(satisfyInput),
+      satisfaction.satisfy(satisfyInput),
+    ]);
+    assert.deepEqual(
+      concurrent.map((result) => result.outcome).sort(),
+      ["applied", "idempotent"],
+    );
+    const applied = concurrent.find(
+      (result) => result.outcome === "applied",
+    );
+    assert.ok(applied && applied.outcome !== "rejected");
     assert.equal(applied.phase, "satisfied");
     assert.ok(Math.abs(applied.pressure - 0.05) < 1e-9);
     assert.equal(applied.satisfactionTotal, 0.55);
