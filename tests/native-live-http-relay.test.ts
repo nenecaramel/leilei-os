@@ -4,8 +4,10 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import type {
   NativeLiveFinalizeResult,
-  NativeLivePrepareResult,
 } from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+import type {
+  NativeLiveRelayPrepareResult,
+} from "../src/domains/bridge/native-live-backend-relay-prepare.js";
 import {
   createNativeLiveApiRouter,
 } from "../src/web-api/native-live-router.js";
@@ -22,9 +24,10 @@ const userMessageId = "66666666-6666-4666-8666-666666666666";
 
 class FakeCoordinator {
   prepareCalls: unknown[] = [];
-  result: NativeLivePrepareResult = {
+  result: NativeLiveRelayPrepareResult = {
     ok: true,
     outcome: "created",
+    semanticPending: false,
     command: {
       protocol_version: 1,
       dispatch_target: "claude_code",
@@ -212,6 +215,7 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
       };
       assert.deepEqual(payload.data, {
         outcome: "created",
+        semanticPending: false,
         prepareId,
         requestId,
         conversationId,
@@ -239,6 +243,53 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
       assert.equal(readPayload.data.dispatchStatus, "completed");
       assert.equal(readPayload.data.assistantMessage?.blocks[0]?.text, "VISIBLE");
       assert.deepEqual(turnReader.calls, [{ userId, prepareId }]);
+    },
+  );
+});
+
+test("web prepare leaves semantic-pending turns staged instead of exposing them to Claude", async () => {
+  const coordinator = new FakeCoordinator();
+  coordinator.result = {
+    ...(coordinator.result as Extract<NativeLiveRelayPrepareResult, { ok: true }>),
+    semanticPending: true,
+  };
+  const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.webUserId = userId;
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({ coordinator, relayService, turnReader }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/prepare`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            dispatch_target: "claude_code",
+            request_id: requestId,
+            operation: "send",
+            conversation_id: conversationId,
+            expected_head_message_id: null,
+            text: "hello",
+          }),
+        },
+      );
+
+      assert.equal(response.status, 202);
+      const payload = await response.json() as {
+        data: { semanticPending: boolean };
+      };
+      assert.equal(payload.data.semanticPending, true);
+      assert.deepEqual(relayService.calls, []);
     },
   );
 });
