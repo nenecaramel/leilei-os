@@ -1324,7 +1324,7 @@ export const runtimeContextManifests = pgTable(
         conversationMessages.userId,
       ],
       name: "runtime_context_manifests_head_conversation_user_fk",
-    }).onDelete("set null").onUpdate("cascade"),
+    }).onDelete("cascade").onUpdate("cascade"),
     index("runtime_context_manifests_user_subject_created_idx").on(
       table.userId,
       table.subjectId,
