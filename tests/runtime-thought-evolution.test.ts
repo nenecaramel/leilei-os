@@ -195,6 +195,30 @@ test("a promoted Fixation does not automatically demote during V1 decay", async 
       "2026-09-20T12:00:00.000Z",
       fixationPayload,
     ),
+    candidate(
+      "22222222-2222-4222-8222-222222222222",
+      "sticky thought",
+      "m2",
+      "2026-09-21T12:00:00.000Z",
+      {
+        thought_v1: {
+          ...(fixationPayload.thought_v1 as Record<string, unknown>),
+          role: "reinforcement",
+        },
+      },
+    ),
+    candidate(
+      "33333333-3333-4333-8333-333333333333",
+      "sticky thought",
+      "m3",
+      "2026-09-22T12:00:00.000Z",
+      {
+        thought_v1: {
+          ...(fixationPayload.thought_v1 as Record<string, unknown>),
+          role: "reinforcement",
+        },
+      },
+    ),
   ]);
   const service = new ThoughtEvolutionService(port, policy);
 
