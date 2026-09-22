@@ -23,7 +23,7 @@ class Port implements SubjectStateRuntimePort {
   async saveContextManifest() {}
 }
 
-class ThoughtEvolution {
+class Evolution {
   calls: unknown[] = [];
   shouldFail = false;
 
@@ -69,7 +69,10 @@ function conversation(): NativeLiveConversation {
   };
 }
 
-function createMind(thoughtEvolution: ThoughtEvolution) {
+function createMind(
+  thoughtEvolution: Evolution,
+  driveEvolution: Evolution | null = null,
+) {
   const service = new NativeLiveMindLoopService(
     new Port(),
     {
@@ -92,11 +95,35 @@ function createMind(thoughtEvolution: ThoughtEvolution) {
     createManifestId: () =>
       "44444444-4444-4444-8444-444444444444",
     thoughtEvolution,
+    driveEvolution,
   });
 }
 
+test("fresh Mind preparation evolves Drive and Thought state before Context Assembly", async () => {
+  const thoughtEvolution = new Evolution();
+  const driveEvolution = new Evolution();
+  const mind = createMind(thoughtEvolution, driveEvolution);
+  const user = userMessage();
+
+  await mind.prepareUserTurn({
+    userId: "u1",
+    conversation: conversation(),
+    userMessage: user,
+    userText: "hello",
+    surfaceHeadMessageId: null,
+  });
+
+  assert.equal(driveEvolution.calls.length, 1);
+  assert.equal(thoughtEvolution.calls.length, 1);
+  assert.deepEqual(driveEvolution.calls[0], {
+    userId: "u1",
+    subjectId: "G",
+    now,
+  });
+});
+
 test("fresh Mind preparation evolves settled Thoughts before Context Assembly", async () => {
-  const evolution = new ThoughtEvolution();
+  const evolution = new Evolution();
   const mind = createMind(evolution);
   const user = userMessage();
 
@@ -118,7 +145,7 @@ test("fresh Mind preparation evolves settled Thoughts before Context Assembly", 
 });
 
 test("Thought evolution maintenance failure is fail-soft for the user turn", async () => {
-  const evolution = new ThoughtEvolution();
+  const evolution = new Evolution();
   evolution.shouldFail = true;
   const mind = createMind(evolution);
   const user = userMessage();
@@ -135,7 +162,7 @@ test("Thought evolution maintenance failure is fail-soft for the user turn", asy
 });
 
 test("semantic planning evolves Thoughts once and completion reuses that snapshot without re-evolving", async () => {
-  const evolution = new ThoughtEvolution();
+  const evolution = new Evolution();
   const mind = createMind(evolution);
   const user = userMessage();
 
