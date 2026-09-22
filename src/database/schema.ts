@@ -780,6 +780,13 @@ export type NativeLiveTurnPreparationStatus =
   | "prepared"
   | "finalized_success"
   | "finalized_failure";
+export type NativeLiveTurnDispatchStatus =
+  | "pending"
+  | "reserved"
+  | "executing"
+  | "delivery_unknown"
+  | "completed"
+  | "rejected";
 export type RuntimeSubjectStateKind =
   | "feel"
   | "memory"
@@ -1230,6 +1237,22 @@ export const nativeLiveTurnPreparations = pgTable(
     providerSessionId: text("provider_session_id"),
     assistantMessageId: uuid("assistant_message_id"),
     failureCode: varchar("failure_code", { length: 64 }),
+    dispatchStatus: varchar("dispatch_status", { length: 32 })
+      .$type<NativeLiveTurnDispatchStatus>()
+      .default("pending")
+      .notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    executionStartedAt: timestamp("execution_started_at", {
+      withTimezone: true,
+    }),
+    deliveryUnknownAt: timestamp("delivery_unknown_at", {
+      withTimezone: true,
+    }),
+    dispatchErrorCode: varchar("dispatch_error_code", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1285,6 +1308,12 @@ export const nativeLiveTurnPreparations = pgTable(
       table.createdAt,
       table.id,
     ),
+    index("native_live_turn_preparations_dispatch_queue_idx").on(
+      table.userId,
+      table.dispatchStatus,
+      table.createdAt,
+      table.id,
+    ),
     check(
       "native_live_turn_preparations_operation_allowed",
       sql`${table.operation} IN ('send', 'retry', 'edit')`,
@@ -1309,6 +1338,28 @@ export const nativeLiveTurnPreparations = pgTable(
     check(
       "native_live_turn_preparations_status_allowed",
       sql`${table.status} IN ('prepared', 'finalized_success', 'finalized_failure')`,
+    ),
+    check(
+      "native_live_turn_preparations_dispatch_status_allowed",
+      sql`${table.dispatchStatus} IN ('pending', 'reserved', 'executing', 'delivery_unknown', 'completed', 'rejected')`,
+    ),
+    check(
+      "native_live_turn_preparations_dispatch_reservation_consistency",
+      sql`(${table.dispatchStatus} IN ('pending', 'rejected')
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.executionStartedAt} IS NULL)
+        OR (${table.dispatchStatus} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.executionStartedAt} IS NULL)
+        OR (${table.dispatchStatus} IN ('executing', 'delivery_unknown', 'completed')
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.executionStartedAt} IS NOT NULL)`,
     ),
     check(
       "native_live_turn_preparations_result_hash_format",
@@ -1336,6 +1387,34 @@ export const nativeLiveTurnPreparations = pgTable(
           AND ${table.failureCode} IS NOT NULL
           AND char_length(btrim(${table.failureCode})) > 0
           AND ${table.finalizedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const nativeLiveRuntimeListenerLeases = pgTable(
+  "native_live_runtime_listener_leases",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    dispatchTarget: varchar("dispatch_target", { length: 32 })
+      .$type<ConversationRuntimeProvider>()
+      .notNull(),
+    listenerInstanceId: uuid("listener_instance_id").notNull(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true })
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.dispatchTarget] }),
+    index("native_live_runtime_listener_leases_expiry_idx").on(
+      table.leaseExpiresAt,
+    ),
+    check(
+      "native_live_runtime_listener_leases_target_allowed",
+      sql`${table.dispatchTarget} = 'claude_code'`,
     ),
   ],
 );
