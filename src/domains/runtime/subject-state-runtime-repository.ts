@@ -1,4 +1,5 @@
-import { and, asc, eq, isNull, or } from "drizzle-orm";
+import { isDeepStrictEqual } from "node:util";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   runtimeContextManifests,
@@ -105,24 +106,63 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     });
 
     await this.db.transaction(async (transaction) => {
-      await transaction.insert(runtimeSubjectStates).values(
-        states.map((state) => ({
-          id: state.id,
-          userId: input.userId,
-          subjectId: input.subjectId,
-          kind: state.kind,
-          text: state.text ?? null,
-          payload: state.payload ?? null,
-          scopeApplicability: state.envelope.scope.applicability,
-          scopeConversationId: state.envelope.scope.conversationId ?? null,
-          scopePathHeadMessageId:
-            state.envelope.scope.pathHeadMessageId ?? null,
-          settlementStatus: state.envelope.status.settlementStatus,
-          pathStatus: state.envelope.status.pathStatus,
-          validityStatus: state.envelope.status.validityStatus,
-          envelope: envelopeRecord(state.envelope),
-        })),
-      );
+      await transaction
+        .insert(runtimeSubjectStates)
+        .values(
+          states.map((state) => ({
+            id: state.id,
+            userId: input.userId,
+            subjectId: input.subjectId,
+            kind: state.kind,
+            text: state.text ?? null,
+            payload: state.payload ?? null,
+            scopeApplicability: state.envelope.scope.applicability,
+            scopeConversationId: state.envelope.scope.conversationId ?? null,
+            scopePathHeadMessageId:
+              state.envelope.scope.pathHeadMessageId ?? null,
+            settlementStatus: state.envelope.status.settlementStatus,
+            pathStatus: state.envelope.status.pathStatus,
+            validityStatus: state.envelope.status.validityStatus,
+            envelope: envelopeRecord(state.envelope),
+          })),
+        )
+        .onConflictDoNothing();
+
+      const rows = await transaction
+        .select({
+          id: runtimeSubjectStates.id,
+          kind: runtimeSubjectStates.kind,
+          text: runtimeSubjectStates.text,
+          payload: runtimeSubjectStates.payload,
+          envelope: runtimeSubjectStates.envelope,
+        })
+        .from(runtimeSubjectStates)
+        .where(
+          and(
+            eq(runtimeSubjectStates.userId, input.userId),
+            eq(runtimeSubjectStates.subjectId, input.subjectId),
+            inArray(
+              runtimeSubjectStates.id,
+              states.map((state) => state.id),
+            ),
+          ),
+        );
+
+      if (rows.length !== states.length) {
+        throw new Error(
+          "Subject state idempotent append could not verify every state.",
+        );
+      }
+
+      const byId = new Map(rows.map((row) => [row.id, rowToState(row)]));
+      for (const expected of states) {
+        const actual = byId.get(expected.id);
+        if (!actual || !isDeepStrictEqual(actual, expected)) {
+          throw new Error(
+            "Subject state idempotent append encountered a conflicting state id.",
+          );
+        }
+      }
     });
   }
 
