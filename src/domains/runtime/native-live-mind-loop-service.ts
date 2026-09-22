@@ -11,7 +11,11 @@ import {
   materializeMindWrites,
   type MaterializeMindWritesInput,
 } from "./mind-write-materializer.js";
-import { parseMindWriteIntentsFromBlocks } from "./mind-block-parser.js";
+import {
+  parseMindWriteIntentsFromBlocks,
+  type ParsedAssistantBlocks,
+} from "./mind-block-parser.js";
+import type { MindWriteIntent } from "./mind-intent-parser.js";
 import { decideProvisionalSettlement } from "./subject-state-settlement.js";
 import type { SubjectStateWrite } from "./subject-state-contract.js";
 import type {
@@ -170,12 +174,18 @@ export class NativeLiveMindLoopService {
     return assembled;
   }
 
-  async finalizeAssistantBlocks(input: {
+  parseAssistantBlocks(
+    blocks: readonly NativeLiveContentBlockInput[],
+  ): ParsedAssistantBlocks {
+    return parseMindWriteIntentsFromBlocks(blocks);
+  }
+
+  async recordAssistantIntents(input: {
     userId: string;
     subjectId: string;
     conversationId: string;
     assistantMessageId: string;
-    blocks: readonly NativeLiveContentBlockInput[];
+    intents: readonly MindWriteIntent[];
     createStateId: () => string;
     producer: MaterializeMindWritesInput["producer"];
     committer: MaterializeMindWritesInput["committer"];
@@ -184,17 +194,13 @@ export class NativeLiveMindLoopService {
     sensitivity: MaterializeMindWritesInput["sensitivity"];
     audience: string[];
     model?: MaterializeMindWritesInput["model"];
-  }): Promise<{
-    visibleBlocks: NativeLiveContentBlockInput[];
-    states: SubjectStateWrite[];
-  }> {
-    const parsed = parseMindWriteIntentsFromBlocks(input.blocks);
+  }): Promise<SubjectStateWrite[]> {
     const states = materializeMindWrites({
       userId: input.userId,
       subjectId: input.subjectId,
       conversationId: input.conversationId,
       assistantMessageId: input.assistantMessageId,
-      intents: parsed.intents,
+      intents: input.intents,
       createId: input.createStateId,
       producer: input.producer,
       committer: input.committer,
@@ -214,10 +220,37 @@ export class NativeLiveMindLoopService {
         states,
       });
     }
+    return states;
+  }
+
+  async finalizeAssistantBlocks(input: {
+    userId: string;
+    subjectId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    blocks: readonly NativeLiveContentBlockInput[];
+    createStateId: () => string;
+    producer: MaterializeMindWritesInput["producer"];
+    committer: MaterializeMindWritesInput["committer"];
+    sourceStatus: MaterializeMindWritesInput["sourceStatus"];
+    visibility: MaterializeMindWritesInput["visibility"];
+    sensitivity: MaterializeMindWritesInput["sensitivity"];
+    audience: string[];
+    model?: MaterializeMindWritesInput["model"];
+  }): Promise<{
+    visibleBlocks: NativeLiveContentBlockInput[];
+    states: SubjectStateWrite[];
+  }> {
+    const parsed = this.parseAssistantBlocks(input.blocks);
+    const states = await this.recordAssistantIntents({
+      ...input,
+      intents: parsed.intents,
+    });
 
     return {
       visibleBlocks: parsed.visibleBlocks,
       states,
     };
   }
+
 }
