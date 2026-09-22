@@ -1,0 +1,237 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { and, eq } from "drizzle-orm";
+import { createDatabase } from "../src/database/client.js";
+import {
+  conversations,
+  nativeLiveMindFollowUps,
+  runtimeContextManifests,
+  runtimeSubjectStates,
+  users,
+} from "../src/database/schema.js";
+import {
+  NativeLiveBackendTurnCoordinator,
+} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+import {
+  DrizzleNativeLiveBackendTurnPort,
+} from "../src/domains/bridge/native-live-backend-turn-repository.js";
+import {
+  DrizzleNativeLiveMindFollowUpRepository,
+  NativeLiveMindFollowUpService,
+  nativeLiveMindFollowUpStateId,
+} from "../src/domains/bridge/native-live-mind-followup.js";
+import {
+  DrizzleNativeLiveConversationRepository,
+} from "../src/domains/conversation/native-live-conversation-repository.js";
+import {
+  NativeLiveConversationService,
+} from "../src/domains/conversation/native-live-conversation-service.js";
+import {
+  createDefaultBackendMindRuntime,
+} from "../src/domains/runtime/default-backend-mind-runtime.js";
+
+const enabled =
+  process.env.RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST === "1";
+
+test(
+  "durable Mind follow-up survives the canonical/follow-up crash window and retry stays idempotent",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+
+    const database = createDatabase(databaseUrl, { ssl: false });
+    let userId: string | null = null;
+
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(runtimeSubjectStates)
+            .where(eq(runtimeSubjectStates.userId, userId));
+          await database.db
+            .delete(runtimeContextManifests)
+            .where(eq(runtimeContextManifests.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db
+            .delete(users)
+            .where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const suffix = crypto.randomUUID();
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `native-live-followup-${suffix}@example.com`,
+        displayName: "Native Live Follow-up",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const conversation = await conversationService.createConversation({
+      userId,
+      title: "Durable Mind follow-up",
+    });
+
+    const turnPort = new DrizzleNativeLiveBackendTurnPort(database.db);
+    const backendMind = createDefaultBackendMindRuntime(database.db);
+    const crashAfterCanonical = {
+      async processPreparation() {
+        throw new Error("simulated process death after canonical commit");
+      },
+    };
+    const coordinator = new NativeLiveBackendTurnCoordinator(
+      turnPort,
+      undefined,
+      backendMind,
+      crashAfterCanonical,
+    );
+
+    const requestId = crypto.randomUUID();
+    const prepared = await coordinator.prepare(userId, {
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: null,
+      text: "remember the durable outbox",
+    });
+    assert.equal(prepared.ok, true);
+    if (!prepared.ok) throw new Error("expected prepare success");
+
+    const finalized = await coordinator.finalize(userId, {
+      protocol_version: 1,
+      prepare_id: prepared.command.prepare_id,
+      request_id: requestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "followup-provider-1",
+      normalized_events: [
+        {
+          type: "text",
+          payload: {
+            text: "VISIBLE <memory>durable outbox memory</memory>",
+          },
+        },
+        {
+          type: "result",
+          payload: {
+            status: "success",
+            final_text:
+              "VISIBLE <memory>durable outbox memory</memory>",
+          },
+        },
+      ],
+    });
+    assert.equal(finalized.ok, true);
+    if (!finalized.ok) throw new Error("expected canonical success");
+
+    const [pending] = await database.db
+      .select({
+        status: nativeLiveMindFollowUps.status,
+        retryCount: nativeLiveMindFollowUps.retryCount,
+        assistantMessageId: nativeLiveMindFollowUps.assistantMessageId,
+      })
+      .from(nativeLiveMindFollowUps)
+      .where(
+        and(
+          eq(nativeLiveMindFollowUps.userId, userId),
+          eq(nativeLiveMindFollowUps.prepareId, prepared.command.prepare_id),
+        ),
+      )
+      .limit(1);
+    assert.deepEqual(pending, {
+      status: "pending",
+      retryCount: 0,
+      assistantMessageId: finalized.assistantMessageId,
+    });
+
+    const beforeRecovery = await database.db
+      .select({ id: runtimeSubjectStates.id })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, userId));
+    assert.equal(beforeRecovery.length, 0);
+
+    const service = new NativeLiveMindFollowUpService(
+      new DrizzleNativeLiveMindFollowUpRepository(database.db),
+      turnPort,
+      backendMind,
+      crypto.randomUUID(),
+    );
+    assert.equal(
+      await service.processPreparation({
+        userId,
+        prepareId: prepared.command.prepare_id,
+      }),
+      "processed",
+    );
+
+    const expectedStateId = nativeLiveMindFollowUpStateId(
+      prepared.command.prepare_id,
+      0,
+    );
+    const afterRecovery = await database.db
+      .select({
+        id: runtimeSubjectStates.id,
+        text: runtimeSubjectStates.text,
+      })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, userId));
+    assert.deepEqual(afterRecovery, [{
+      id: expectedStateId,
+      text: "durable outbox memory",
+    }]);
+
+    const [completed] = await database.db
+      .select({
+        status: nativeLiveMindFollowUps.status,
+        completedAt: nativeLiveMindFollowUps.completedAt,
+      })
+      .from(nativeLiveMindFollowUps)
+      .where(eq(nativeLiveMindFollowUps.prepareId, prepared.command.prepare_id))
+      .limit(1);
+    assert.equal(completed?.status, "completed");
+    assert.ok(completed?.completedAt);
+
+    await database.db
+      .update(nativeLiveMindFollowUps)
+      .set({
+        status: "pending",
+        availableAt: new Date(0),
+        lockedBy: null,
+        lockedUntil: null,
+        completedAt: null,
+      })
+      .where(eq(nativeLiveMindFollowUps.prepareId, prepared.command.prepare_id));
+
+    assert.equal(
+      await service.processPreparation({
+        userId,
+        prepareId: prepared.command.prepare_id,
+      }),
+      "processed",
+    );
+
+    const afterReplay = await database.db
+      .select({
+        id: runtimeSubjectStates.id,
+        text: runtimeSubjectStates.text,
+      })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, userId));
+    assert.deepEqual(afterReplay, [{
+      id: expectedStateId,
+      text: "durable outbox memory",
+    }]);
+  },
+);
