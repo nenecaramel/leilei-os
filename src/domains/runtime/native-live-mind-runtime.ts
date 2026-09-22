@@ -39,6 +39,7 @@ export interface NativeLiveMindRuntime {
     conversationId: string;
     assistantMessageId: string;
     intents: readonly MindWriteIntent[];
+    stateIds?: readonly string[];
   }): Promise<SubjectStateWrite[]>;
 
   reconcileSelectedPath(input: {
@@ -107,14 +108,29 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     conversationId: string;
     assistantMessageId: string;
     intents: readonly MindWriteIntent[];
+    stateIds?: readonly string[];
   }): Promise<SubjectStateWrite[]> {
+    if (
+      input.stateIds
+      && input.stateIds.length !== input.intents.length
+    ) {
+      throw new Error(
+        "Mind stateIds must align one-to-one with assistant intents.",
+      );
+    }
+
+    let stateIndex = 0;
+    const createStateId = input.stateIds
+      ? () => input.stateIds![stateIndex++]!
+      : this.createStateId;
+
     return this.service.recordAssistantIntents({
       userId: input.userId,
       subjectId: this.subjectId,
       conversationId: input.conversationId,
       assistantMessageId: input.assistantMessageId,
       intents: input.intents,
-      createStateId: this.createStateId,
+      createStateId,
       producer: { kind: "model", id: this.producerId },
       committer: { kind: "runtime", id: this.committerId },
       sourceStatus: {
