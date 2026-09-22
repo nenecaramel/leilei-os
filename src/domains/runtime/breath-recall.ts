@@ -8,8 +8,10 @@ export type BreathRecallHit = {
   state: SubjectStateWrite;
   score: number;
   lexicalScore: number;
+  semanticScore: number | null;
   salience: number;
   matchedTokens: string[];
+  channel: "lexical" | "semantic" | "hybrid";
 };
 
 function tokens(value: string): Set<string> {
@@ -66,6 +68,8 @@ function scopeApplies(
 function validatePolicy(input: {
   cooldownHours: number;
   salienceWeight: number;
+  semanticWeight: number;
+  semanticMinScore: number;
   now?: string;
 }): number | null {
   if (!Number.isFinite(input.cooldownHours) || input.cooldownHours < 0) {
@@ -77,6 +81,20 @@ function validatePolicy(input: {
     || input.salienceWeight > 1
   ) {
     throw new Error("Breath salienceWeight must be between 0 and 1.");
+  }
+  if (
+    !Number.isFinite(input.semanticWeight)
+    || input.semanticWeight < 0
+    || input.semanticWeight > 1
+  ) {
+    throw new Error("Breath semanticWeight must be between 0 and 1.");
+  }
+  if (
+    !Number.isFinite(input.semanticMinScore)
+    || input.semanticMinScore < 0
+    || input.semanticMinScore > 1
+  ) {
+    throw new Error("Breath semanticMinScore must be between 0 and 1.");
   }
   if (input.cooldownHours === 0) return null;
   if (!input.now) {
@@ -101,6 +119,9 @@ export function recallBreath(
     now?: string;
     cooldownHours?: number;
     salienceWeight?: number;
+    semanticWeight?: number;
+    semanticMinScore?: number;
+    semanticScores?: ReadonlyMap<string, number>;
   },
 ): BreathRecallHit[] {
   if (!Number.isInteger(input.limit) || input.limit < 1) {
@@ -109,9 +130,13 @@ export function recallBreath(
 
   const cooldownHours = input.cooldownHours ?? 0;
   const salienceWeight = input.salienceWeight ?? 0;
+  const semanticWeight = input.semanticWeight ?? 0;
+  const semanticMinScore = input.semanticMinScore ?? 0;
   const nowMs = validatePolicy({
     cooldownHours,
     salienceWeight,
+    semanticWeight,
+    semanticMinScore,
     now: input.now,
   });
 
@@ -154,22 +179,50 @@ export function recallBreath(
     const matchedTokens = [...queryTokens].filter((token) =>
       candidateTokens.has(token),
     );
-    if (matchedTokens.length === 0) continue;
-
     const lexicalScore =
-      matchedTokens.length
-      / Math.sqrt(queryTokens.size * candidateTokens.size);
+      matchedTokens.length === 0
+        ? 0
+        : matchedTokens.length
+          / Math.sqrt(queryTokens.size * candidateTokens.size);
+
+    const rawSemanticScore = input.semanticScores?.get(state.id);
+    const semanticScore =
+      typeof rawSemanticScore === "number"
+      && Number.isFinite(rawSemanticScore)
+      && rawSemanticScore >= 0
+      && rawSemanticScore <= 1
+        ? rawSemanticScore
+        : null;
+
+    const semanticEligible =
+      semanticWeight > 0
+      && semanticScore !== null
+      && semanticScore >= semanticMinScore;
+    if (lexicalScore <= 0 && !semanticEligible) continue;
+
+    const lexicalWeight = 1 - semanticWeight;
+    const baseScore =
+      lexicalWeight * lexicalScore
+      + semanticWeight * (semanticScore ?? 0);
     const salience = lifecycle?.salience ?? 1;
     const salienceFactor =
       (1 - salienceWeight) + salienceWeight * salience;
-    const score = lexicalScore * salienceFactor;
+    const score = baseScore * salienceFactor;
+    const channel =
+      lexicalScore > 0 && semanticEligible
+        ? "hybrid"
+        : semanticEligible
+          ? "semantic"
+          : "lexical";
 
     hits.push({
       state,
       score,
       lexicalScore,
+      semanticScore,
       salience,
       matchedTokens,
+      channel,
     });
   }
 
