@@ -1,0 +1,194 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  DefaultNativeLiveBackendMindRuntime,
+} from "../src/domains/bridge/native-live-backend-mind-runtime.js";
+import type { NativeLivePreparedTurn } from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+import type {
+  NativeLiveContentBlockInput,
+  NativeLiveConversation,
+  NativeLiveMessage,
+} from "../src/domains/conversation/native-live-conversation-types.js";
+import type { NativeLiveMindRuntime } from "../src/domains/runtime/native-live-mind-runtime.js";
+
+const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const conversationId = "33333333-3333-4333-8333-333333333333";
+const userMessageId = "44444444-4444-4444-8444-444444444444";
+const parentId = "55555555-5555-4555-8555-555555555555";
+const assistantId = "66666666-6666-4666-8666-666666666666";
+const now = "2026-09-22T11:00:00.000Z";
+
+function userMessage(): NativeLiveMessage {
+  return {
+    id: userMessageId,
+    conversationId,
+    parentMessageId: parentId,
+    role: "user",
+    status: "completed",
+    createdAt: now,
+    completedAt: now,
+    blocks: [{
+      id: "b-user",
+      ordinal: 0,
+      kind: "text",
+      rawType: "text",
+      text: "hello",
+      payload: null,
+      createdAt: now,
+    }],
+  };
+}
+
+function conversation(head: string | null = parentId): NativeLiveConversation {
+  return {
+    id: conversationId,
+    userId,
+    title: null,
+    lifecycleStatus: "active",
+    currentHeadMessageId: head,
+    createdAt: now,
+    updatedAt: now,
+    messages: [userMessage()],
+  };
+}
+
+function prepared(
+  operation: NativeLivePreparedTurn["operation"] = "send",
+): NativeLivePreparedTurn {
+  return {
+    prepareId: "11111111-1111-4111-8111-111111111111",
+    requestId: "22222222-2222-4222-8222-222222222222",
+    userId,
+    conversationId,
+    operation,
+    canonicalUserMessageId: userMessageId,
+    runtimeMode: "fork",
+    parentProviderSessionId: "provider-parent",
+    prompt: "hello",
+    mindPrepared: false,
+  };
+}
+
+class Reader {
+  value: NativeLiveConversation | null = conversation();
+  calls: unknown[] = [];
+
+  async getConversation(input: unknown) {
+    this.calls.push(input);
+    return this.value;
+  }
+}
+
+class Mind implements NativeLiveMindRuntime {
+  calls: string[] = [];
+
+  async prepareUserTurn(input: {
+    surfaceHeadMessageId: string | null;
+    userText: string;
+  }) {
+    this.calls.push(
+      `prepare:${input.surfaceHeadMessageId}:${input.userText}`,
+    );
+    return "ASSEMBLED_PROMPT";
+  }
+
+  parseAssistantBlocks(blocks: readonly NativeLiveContentBlockInput[]) {
+    this.calls.push("parse");
+    return {
+      visibleBlocks: [...blocks],
+      intents: [],
+    };
+  }
+
+  async recordAssistantIntents() {
+    this.calls.push("record");
+    return [];
+  }
+
+  async reconcileSelectedPath(input: {
+    conversation: NativeLiveConversation;
+  }) {
+    this.calls.push(`reconcile:${input.conversation.currentHeadMessageId}`);
+    return [];
+  }
+}
+
+test("send preparation settles the continued path before assembling context", async () => {
+  const reader = new Reader();
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+
+  const prompt = await runtime.preparePrompt({
+    userId,
+    preparation: prepared("send"),
+  });
+
+  assert.equal(prompt, "ASSEMBLED_PROMPT");
+  assert.deepEqual(mind.calls, [
+    `reconcile:${userMessageId}`,
+    `prepare:${parentId}:hello`,
+  ]);
+});
+
+test("retry preparation uses the historical parent without pre-reconciling the selected path", async () => {
+  const reader = new Reader();
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+
+  await runtime.preparePrompt({
+    userId,
+    preparation: prepared("retry"),
+  });
+
+  assert.deepEqual(mind.calls, [
+    `prepare:${parentId}:hello`,
+  ]);
+});
+
+test("branch finalize records intents and then reconciles the finalized canonical head", async () => {
+  const reader = new Reader();
+  reader.value = conversation(assistantId);
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+
+  await runtime.afterFinalize({
+    userId,
+    preparation: prepared("edit"),
+    assistantMessageId: assistantId,
+    intents: [{
+      kind: "memory",
+      text: "remember",
+      sourceStart: 0,
+      sourceEnd: 1,
+      raw: "<memory>remember</memory>",
+    }],
+  });
+
+  assert.deepEqual(mind.calls, [
+    "record",
+    `reconcile:${assistantId}`,
+  ]);
+});
+
+test("ordinary send finalize records intents but leaves the new state provisional until next user continuation", async () => {
+  const reader = new Reader();
+  reader.value = conversation(assistantId);
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+
+  await runtime.afterFinalize({
+    userId,
+    preparation: prepared("send"),
+    assistantMessageId: assistantId,
+    intents: [{
+      kind: "feel",
+      text: "warm",
+      sourceStart: 0,
+      sourceEnd: 1,
+      raw: "<feel>warm</feel>",
+    }],
+  });
+
+  assert.deepEqual(mind.calls, ["record"]);
+  assert.equal(reader.calls.length, 0);
+});
