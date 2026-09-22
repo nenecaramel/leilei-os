@@ -1,5 +1,6 @@
 import type { SubjectStateKind, SubjectStateWrite } from "./subject-state-contract.js";
 import { isConsolidationEligible } from "./runtime-status-axes.js";
+import { readSubjectStateLifecycle } from "./memory-lifecycle.js";
 
 export const BREATH_RECALL_KINDS = ["memory", "feel"] as const satisfies readonly SubjectStateKind[];
 
@@ -74,9 +75,11 @@ export function recallBreath(
   const hits: BreathRecallHit[] = [];
 
   for (const state of candidates) {
+    const lifecycle = readSubjectStateLifecycle(state.payload);
     if (
       !allowedKinds.has(state.kind)
       || !isConsolidationEligible(state.envelope.status)
+      || lifecycle?.status === "archived"
       || !scopeApplies(state, input)
       || !state.text
     ) {
