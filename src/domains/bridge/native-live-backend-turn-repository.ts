@@ -746,7 +746,7 @@ implements NativeLiveBackendTurnPort {
     prepareId: string,
     lock = false,
   ): Promise<PreparationRow | null> {
-    let query = executor
+    const query = executor
       .select(this.selection())
       .from(nativeLiveTurnPreparations)
       .where(
@@ -754,15 +754,12 @@ implements NativeLiveBackendTurnPort {
           eq(nativeLiveTurnPreparations.userId, userId),
           eq(nativeLiveTurnPreparations.id, prepareId),
         ),
-      )
-      .limit(1);
+      );
 
-    if (lock && "for" in query && typeof query.for === "function") {
-      query = query.for("update") as typeof query;
-    }
-
-    const [row] = await query;
-    return row ?? null;
+    const rows = lock
+      ? await query.for("update").limit(1)
+      : await query.limit(1);
+    return rows[0] ?? null;
   }
 
   private async loadFinalizedSuccess(
