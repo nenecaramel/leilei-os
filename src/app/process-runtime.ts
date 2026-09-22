@@ -128,8 +128,9 @@ export function createProcessRuntime(
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
   const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
+  const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
   const nativeLiveTurnCoordinator = new NativeLiveBackendTurnCoordinator(
-    new DrizzleNativeLiveBackendTurnPort(db),
+    nativeLiveTurnPort,
     undefined,
     nativeLiveBackendMind,
   );
@@ -233,6 +234,7 @@ export function createProcessRuntime(
       webUniverseService: universeService,
       webBridgeService: bridgeService,
       webNativeLiveCoordinator: nativeLiveTurnCoordinator,
+      webNativeLiveTurnReader: nativeLiveTurnPort,
       nativeLiveRelayService,
       webSentinelService: sentinelService,
       webSharedPaperService: sharedPaperService,
