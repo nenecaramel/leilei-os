@@ -788,6 +788,10 @@ export type NativeLiveTurnDispatchStatus =
   | "delivery_unknown"
   | "completed"
   | "rejected";
+export type NativeLiveMindFollowUpStatus =
+  | "pending"
+  | "processing"
+  | "completed";
 export type RuntimeSubjectStateKind =
   | "feel"
   | "memory"
@@ -1298,6 +1302,10 @@ export const nativeLiveTurnPreparations = pgTable(
       table.userId,
       table.requestId,
     ),
+    unique("native_live_turn_preparations_id_user_unique").on(
+      table.id,
+      table.userId,
+    ),
     index("native_live_turn_preparations_user_status_created_idx").on(
       table.userId,
       table.status,
@@ -1416,6 +1424,111 @@ export const nativeLiveRuntimeListenerLeases = pgTable(
     check(
       "native_live_runtime_listener_leases_target_allowed",
       sql`${table.dispatchTarget} = 'claude_code'`,
+    ),
+  ],
+);
+
+export const nativeLiveMindFollowUps = pgTable(
+  "native_live_mind_followups",
+  {
+    prepareId: uuid("prepare_id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    assistantMessageId: uuid("assistant_message_id").notNull(),
+    operation: varchar("operation", { length: 16 })
+      .$type<NativeLiveTurnOperation>()
+      .notNull(),
+    intents: jsonb("intents")
+      .$type<Record<string, unknown>[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveMindFollowUpStatus>()
+      .default("pending")
+      .notNull(),
+    retryCount: integer("retry_count").default(0).notNull(),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    lockedBy: uuid("locked_by"),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    lastErrorName: varchar("last_error_name", { length: 128 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_mind_followups_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "native_live_mind_followups_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [
+        table.assistantMessageId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "native_live_mind_followups_assistant_message_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("native_live_mind_followups_status_available_idx").on(
+      table.status,
+      table.availableAt,
+      table.createdAt,
+      table.prepareId,
+    ),
+    index("native_live_mind_followups_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+      table.prepareId,
+    ),
+    check(
+      "native_live_mind_followups_operation_allowed",
+      sql`${table.operation} IN ('send', 'retry', 'edit')`,
+    ),
+    check(
+      "native_live_mind_followups_intents_array",
+      sql`jsonb_typeof(${table.intents}) = 'array'`,
+    ),
+    check(
+      "native_live_mind_followups_status_allowed",
+      sql`${table.status} IN ('pending', 'processing', 'completed')`,
+    ),
+    check(
+      "native_live_mind_followups_retry_nonnegative",
+      sql`${table.retryCount} >= 0`,
+    ),
+    check(
+      "native_live_mind_followups_lock_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.lockedBy} IS NULL
+          AND ${table.lockedUntil} IS NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'processing'
+          AND ${table.lockedBy} IS NOT NULL
+          AND ${table.lockedUntil} IS NOT NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'completed'
+          AND ${table.lockedBy} IS NULL
+          AND ${table.lockedUntil} IS NULL
+          AND ${table.completedAt} IS NOT NULL)`,
     ),
   ],
 );
