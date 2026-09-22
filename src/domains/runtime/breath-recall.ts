@@ -75,7 +75,14 @@ export function recallBreath(
   const hits: BreathRecallHit[] = [];
 
   for (const state of candidates) {
-    const lifecycle = readSubjectStateLifecycle(state.payload);
+    let lifecycle;
+    try {
+      lifecycle = readSubjectStateLifecycle(state.payload);
+    } catch {
+      // Malformed lifecycle metadata is excluded from prompt assembly rather
+      // than allowed to break the foreground chat.
+      continue;
+    }
     if (
       !allowedKinds.has(state.kind)
       || !isConsolidationEligible(state.envelope.status)
