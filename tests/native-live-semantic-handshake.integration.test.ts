@@ -246,9 +246,20 @@ test(
       .where(eq(runtimeContextManifests.userId, user.id));
     const selected = manifests
       .flatMap((manifest) => manifest.items)
-      .find((item) => item.sourceId === memoryId);
+      .find((item) => item.sourceId === memoryId) as
+        | {
+            selection?: {
+              reason?: unknown;
+              score?: unknown;
+            };
+          }
+        | undefined;
     assert.ok(selected);
-    assert.equal(selected.selection.reason, "breath_semantic_match");
-    assert.ok((selected.selection.score ?? 0) > 0);
+    assert.equal(
+      selected.selection?.reason,
+      "breath_semantic_match",
+    );
+    assert.equal(typeof selected.selection?.score, "number");
+    assert.ok((selected.selection?.score as number) > 0);
   },
 );
