@@ -278,7 +278,7 @@ function evaluateThread(
     .sort()
     .at(-1) ?? null;
 
-  const pressure = clamp01(
+  const pressure = clampDrivePressure(
     policy.basePressure
     + policy.reinforcementBoost * Math.max(0, reinforcementCount - 1)
     - satisfactionTotal,
@@ -426,8 +426,15 @@ function requireNonnegativeNumber(value: unknown, label: string): number {
   return value;
 }
 
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
+export function canonicalizeDriveNumber(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new Error("Drive numeric state must be finite.");
+  }
+  return Number(value.toFixed(12));
+}
+
+export function clampDrivePressure(value: number): number {
+  return canonicalizeDriveNumber(Math.min(1, Math.max(0, value)));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

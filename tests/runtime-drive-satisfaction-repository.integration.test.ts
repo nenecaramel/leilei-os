@@ -236,7 +236,7 @@ test(
     );
     assert.ok(applied && applied.outcome !== "rejected");
     assert.equal(applied.phase, "satisfied");
-    assert.ok(Math.abs(applied.pressure - 0.05) < 1e-9);
+    assert.equal(applied.pressure, 0.05);
     assert.equal(applied.satisfactionTotal, 0.55);
 
     const replay = await satisfaction.satisfy({
@@ -310,9 +310,7 @@ test(
     }
     assert.equal(toolApplied.pressure, 0);
     assert.equal(toolApplied.phase, "satisfied");
-    assert.ok(
-      Math.abs(toolApplied.satisfactionTotal - 0.6) < 1e-9,
-    );
+    assert.equal(toolApplied.satisfactionTotal, 0.6);
 
     const events = await database.db
       .select({
@@ -358,8 +356,8 @@ test(
     const drive = readDriveEvolution(anchor.payload);
     assert.ok(drive);
     assert.equal(drive.phase, "active");
-    assert.ok(Math.abs(drive.pressure - 0.2) < 1e-9);
-    assert.ok(Math.abs(drive.satisfactionTotal - 0.6) < 1e-9);
+    assert.equal(drive.pressure, 0.2);
+    assert.equal(drive.satisfactionTotal, 0.6);
     assert.equal(drive.reinforcementCount, 3);
   },
 );

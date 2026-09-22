@@ -8,6 +8,8 @@ import {
   type RuntimeDriveSatisfactionEvidenceKind,
 } from "../../database/schema.js";
 import {
+  canonicalizeDriveNumber,
+  clampDrivePressure,
   readDriveEvolution,
   writeDriveEvolution,
   type DriveEvolutionPolicy,
@@ -208,9 +210,12 @@ implements DriveSatisfactionRuntimePort {
           return { outcome: "rejected" as const, code: "EVIDENCE_INVALID" as const };
         }
 
-        const nextSatisfactionTotal =
-          anchorEvolution.satisfactionTotal + input.amount;
-        const nextPressure = clamp01(anchorEvolution.pressure - input.amount);
+        const nextSatisfactionTotal = canonicalizeDriveNumber(
+          anchorEvolution.satisfactionTotal + input.amount,
+        );
+        const nextPressure = clampDrivePressure(
+          anchorEvolution.pressure - input.amount,
+        );
         const nextEvolution = {
           ...anchorEvolution,
           pressure: nextPressure,
@@ -434,6 +439,3 @@ function normalizeIso(value: string): string {
   return new Date(parsed).toISOString();
 }
 
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
