@@ -84,6 +84,15 @@ test(
     assert.equal(firstPrepare.command.parent_provider_session_id, null);
     const firstUserId = firstPrepare.command.canonical_user_message_id;
 
+    const pendingRead = await port.readTurn({
+      userId: user.id,
+      prepareId: firstPrepare.command.prepare_id,
+    });
+    assert.ok(pendingRead);
+    assert.equal(pendingRead.canonicalStatus, "prepared");
+    assert.equal(pendingRead.dispatchStatus, "staged");
+    assert.equal(pendingRead.assistantMessage, null);
+
     const replay = await coordinator.prepare(user.id, {
       dispatch_target: "claude_code",
       request_id: firstRequestId,
@@ -155,6 +164,21 @@ test(
     assert.equal(firstFinalize.ok, true);
     if (!firstFinalize.ok) throw new Error("expected first finalize success");
     assert.equal(firstFinalize.outcome, "completed");
+
+    const finalizedRead = await port.readTurn({
+      userId: user.id,
+      prepareId: firstPrepare.command.prepare_id,
+    });
+    assert.ok(finalizedRead);
+    assert.equal(finalizedRead.canonicalStatus, "finalized_success");
+    assert.equal(
+      finalizedRead.assistantMessage?.id,
+      firstFinalize.assistantMessageId,
+    );
+    assert.equal(
+      finalizedRead.assistantMessage?.blocks[0]?.text,
+      "first answer",
+    );
 
     const finalizeReplay = await coordinator.finalize(user.id, {
       protocol_version: 1,
@@ -234,6 +258,15 @@ test(
     assert.equal(failure.ok, false);
     if (failure.ok) throw new Error("expected runtime failure result");
     assert.equal(failure.code, "CLAUDE_PROCESS_FAILED");
+
+    const failedRead = await port.readTurn({
+      userId: user.id,
+      prepareId: secondPrepare.command.prepare_id,
+    });
+    assert.ok(failedRead);
+    assert.equal(failedRead.canonicalStatus, "finalized_failure");
+    assert.equal(failedRead.failureCode, "CLAUDE_PROCESS_FAILED");
+    assert.equal(failedRead.assistantMessage, null);
 
     const failureReplay = await coordinator.finalize(user.id, {
       protocol_version: 1,
