@@ -396,7 +396,9 @@ function parseIntents(value: unknown): MindWriteIntent[] {
         && record.kind !== "thought")
       || typeof record.text !== "string"
       || !record.text.trim()
+      || typeof record.sourceStart !== "number"
       || !Number.isInteger(record.sourceStart)
+      || typeof record.sourceEnd !== "number"
       || !Number.isInteger(record.sourceEnd)
       || typeof record.raw !== "string"
     ) {
