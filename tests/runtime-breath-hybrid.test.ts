@@ -60,9 +60,9 @@ const base = {
 };
 
 test("semantic-only candidate can enter Breath when lexical overlap is zero", () => {
-  const semantic = state("semantic", "那趟独自旅行让我第一次觉得自己真的长大了");
+  const semantic = state("semantic", "那趟独自旅行让我长大了");
   const hits = recallBreath(
-    "还记得韩国吗",
+    "韩国海边",
     [semantic],
     {
       ...base,
@@ -126,7 +126,7 @@ function conversation(): NativeLiveConversation {
 
 test("Mind loop consumes an injected semantic scorer and records semantic selection in Context Manifest", async () => {
   const port = new Port([
-    state("semantic", "那趟独自旅行让我第一次觉得自己真的长大了"),
+    state("semantic", "那趟独自旅行让我长大了"),
   ]);
   const mind = new NativeLiveMindLoopService(
     port,
@@ -155,7 +155,7 @@ test("Mind loop consumes an injected semantic scorer and records semantic select
     subjectId: "G",
     conversation: conversation(),
     userMessageId: "u-now",
-    userText: "还记得韩国吗",
+    userText: "韩国海边",
     snapshotSequence: 1,
     assembledAt: "2026-09-22T10:00:00.000Z",
   });
