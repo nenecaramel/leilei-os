@@ -37,6 +37,7 @@ export type ThoughtEvolutionCandidate = {
 export type ThoughtEvolutionUpdate = {
   stateId: string;
   expectedUpdatedAt: string;
+  expectedPayload: Record<string, unknown> | null;
   nextPayload: Record<string, unknown>;
   evolution: ThoughtEvolutionState;
   reason: "initialize" | "decay" | "reinforce" | "promote";
@@ -333,6 +334,7 @@ function evaluateThread(
     updates.push({
       stateId: candidate.stateId,
       expectedUpdatedAt: candidate.updatedAt,
+      expectedPayload: candidate.payload,
       nextPayload: writeThoughtEvolution(candidate.payload, evolution),
       evolution,
       reason,
