@@ -1,5 +1,4 @@
 import { createRequire } from "node:module";
-import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,7 +17,7 @@ export type LocalE5Options = {
   modelId?: string;
   dtype?: "q8" | "fp16" | "fp32";
   progressCallback?: (info: unknown) => void;
-  repairCorruptCache?: boolean;
+  device?: "wasm" | "cpu";
 };
 
 export class LocalE5ProviderError extends Error {
@@ -48,6 +47,7 @@ type TransformersModule = {
     model: string,
     options: {
       dtype: "q8" | "fp16" | "fp32";
+      device?: "wasm" | "cpu";
       progress_callback?: (info: unknown) => void;
     },
   ): Promise<Extractor>;
@@ -156,47 +156,20 @@ export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
     module.env.allowRemoteModels = true;
     module.env.allowLocalModels = true;
 
-    const load = () =>
-      module.pipeline(
+    try {
+      return await module.pipeline(
         "feature-extraction",
         modelId,
         {
           dtype: this.options.dtype ?? "q8",
+          device: this.options.device ?? "wasm",
           progress_callback: this.options.progressCallback,
         },
       );
-
-    try {
-      return await load();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (
-        this.options.repairCorruptCache
-        && message.includes("Protobuf parsing failed")
-      ) {
-        const modelCachePath = join(cacheDir, ...modelId.split("/"));
-        this.options.progressCallback?.({
-          status: "repair",
-          path: modelCachePath,
-          reason: "protobuf_parse_failed",
-        });
-        await rm(modelCachePath, { recursive: true, force: true });
-
-        try {
-          return await load();
-        } catch (retryError) {
-          throw new LocalE5ProviderError(
-            "PROVIDER_LOAD_FAILED",
-            retryError instanceof Error
-              ? retryError.message
-              : String(retryError),
-          );
-        }
-      }
-
       throw new LocalE5ProviderError(
         "PROVIDER_LOAD_FAILED",
-        message,
+        error instanceof Error ? error.message : String(error),
       );
     }
   }
