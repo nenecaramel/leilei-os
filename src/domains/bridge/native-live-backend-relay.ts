@@ -32,6 +32,10 @@ type RelayMutationOutcome =
   | "conflict";
 
 export interface NativeLiveBackendRelayPort {
+  enqueuePreparation(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<RelayMutationOutcome>;
   renewLease(input: {
     userId: string;
     listenerInstanceId: string;
@@ -70,6 +74,7 @@ export interface NativeLiveBackendRelayPort {
 
 type RelayPreparationRow = NativeLivePreparedTurn & {
   dispatchStatus:
+    | "staged"
     | "pending"
     | "reserved"
     | "executing"
@@ -134,6 +139,53 @@ export class NativeLiveBackendRelayError extends Error {
 export class DrizzleNativeLiveBackendRelayRepository
 implements NativeLiveBackendRelayPort {
   constructor(private readonly db: Database) {}
+
+  async enqueuePreparation(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<RelayMutationOutcome> {
+    const updated = await this.db
+      .update(nativeLiveTurnPreparations)
+      .set({
+        dispatchStatus: "pending",
+        dispatchErrorCode: null,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+          eq(nativeLiveTurnPreparations.id, input.prepareId),
+          eq(nativeLiveTurnPreparations.status, "prepared"),
+          eq(nativeLiveTurnPreparations.dispatchStatus, "staged"),
+        ),
+      )
+      .returning({ id: nativeLiveTurnPreparations.id });
+
+    if (updated.length === 1) return "applied";
+
+    const [current] = await this.db
+      .select({
+        status: nativeLiveTurnPreparations.status,
+        dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
+      })
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+          eq(nativeLiveTurnPreparations.id, input.prepareId),
+        ),
+      )
+      .limit(1);
+
+    if (!current) return "not_found";
+    if (
+      current.status === "prepared"
+      && current.dispatchStatus !== "staged"
+    ) {
+      return "idempotent";
+    }
+    return "conflict";
+  }
 
   async renewLease(input: {
     userId: string;
@@ -256,7 +308,6 @@ implements NativeLiveBackendRelayPort {
           FROM native_live_turn_preparations
           WHERE user_id = ${input.userId}::uuid
             AND status = 'prepared'
-            AND mind_prepared = true
             AND dispatch_status = 'pending'
           ORDER BY created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
@@ -593,6 +644,14 @@ export class NativeLiveBackendRelayService {
       "finalize"
     >,
   ) {}
+
+  async enqueuePreparation(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<void> {
+    const outcome = await this.repository.enqueuePreparation(input);
+    this.requireMutation(outcome);
+  }
 
   async renewLease(input: {
     userId: string;
