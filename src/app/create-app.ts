@@ -99,7 +99,9 @@ export type AppDependencies = {
   webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
   webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
   webNativeLiveCoordinator?: NativeLiveApiDependencies["coordinator"];
-  nativeLiveRelayService?: NativeLiveRelayInternalDependencies["relayService"];
+  nativeLiveRelayService?:
+    NativeLiveRelayInternalDependencies["relayService"]
+    & NativeLiveApiDependencies["relayService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
