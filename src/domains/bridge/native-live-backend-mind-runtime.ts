@@ -33,7 +33,7 @@ export interface NativeLiveBackendMindRuntime {
     userId: string;
     preparation: NativeLivePreparedTurn;
     plan: NativeLiveMindSemanticPlan;
-    scores: ReadonlyMap<string, number>;
+    scores: ReadonlyMap<string, number> | null;
   }): Promise<string>;
 
   parseAssistantBlocks(
@@ -147,9 +147,9 @@ implements NativeLiveBackendMindRuntime {
     userId: string;
     preparation: NativeLivePreparedTurn;
     plan: NativeLiveMindSemanticPlan;
-    scores: ReadonlyMap<string, number>;
+    scores: ReadonlyMap<string, number> | null;
   }): Promise<string> {
-    if (!this.mind.prepareUserTurnWithSemanticScores) {
+    if (!this.mind.prepareUserTurnFromSemanticPlan) {
       throw new Error("Backend Mind runtime does not support semantic completion.");
     }
 
@@ -162,7 +162,7 @@ implements NativeLiveBackendMindRuntime {
       input.preparation.canonicalUserMessageId,
     );
 
-    return this.mind.prepareUserTurnWithSemanticScores({
+    return this.mind.prepareUserTurnFromSemanticPlan({
       userId: input.userId,
       conversation,
       userMessage,
