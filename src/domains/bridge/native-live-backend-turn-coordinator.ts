@@ -420,7 +420,7 @@ export class NativeLiveBackendTurnCoordinator {
         providerSessionId: result.provider_session_id,
         blocks: parsedMind.visibleBlocks,
         normalizedEvents: result.normalized_events,
-        mindFollowUp: this.mind
+        mindFollowUp: this.mind && this.postFinalize
           ? { intents: parsedMind.intents }
           : null,
       });
