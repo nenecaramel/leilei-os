@@ -395,6 +395,7 @@ function parseIntents(value: unknown): MindWriteIntent[] {
       (record.kind !== "feel"
         && record.kind !== "memory"
         && record.kind !== "dream"
+        && record.kind !== "drive"
         && record.kind !== "thought")
       || typeof record.text !== "string"
       || !record.text.trim()
