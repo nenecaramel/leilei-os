@@ -9,6 +9,7 @@ import {
   type NativeLiveConversationPort,
   type NativeLiveNormalizedEvent,
 } from "./native-live-conversation-orchestrator.js";
+import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
 
 export type NativeLiveBranchTurnResult =
   | {
@@ -64,6 +65,7 @@ export class NativeLiveConversationBranchOrchestrator {
   constructor(
     private readonly conversations: NativeLiveConversationPort,
     private readonly runtime: NativeLiveClaudeRuntime,
+    private readonly mind: NativeLiveMindRuntime | null = null,
   ) {}
 
   async retry(input: {
@@ -73,11 +75,23 @@ export class NativeLiveConversationBranchOrchestrator {
   }): Promise<NativeLiveBranchTurnResult> {
     const conversation = await this.requireConversation(input.userId, input.conversationId);
     const target = requireUserMessage(conversation, input.targetUserMessageId);
+    const userText = userPrompt(target);
+    const runtimePrompt = this.mind
+      ? await this.mind.prepareUserTurn({
+          userId: input.userId,
+          conversation,
+          userMessage: target,
+          userText,
+          surfaceHeadMessageId: target.parentMessageId,
+        })
+      : userText;
+
     return this.completeFromHistoricalParent({
       userId: input.userId,
       conversationId: input.conversationId,
+      conversationSnapshot: conversation,
       userMessage: target,
-      prompt: userPrompt(target),
+      runtimePrompt,
       parentAssistantMessageId: target.parentMessageId,
     });
   }
@@ -96,11 +110,26 @@ export class NativeLiveConversationBranchOrchestrator {
       parentMessageId: target.parentMessageId,
       blocks: [{ kind: "text", rawType: "text", text: input.text }],
     });
+    const conversationSnapshot: NativeLiveConversation = {
+      ...conversation,
+      messages: [...conversation.messages, editedUser],
+    };
+    const runtimePrompt = this.mind
+      ? await this.mind.prepareUserTurn({
+          userId: input.userId,
+          conversation: conversationSnapshot,
+          userMessage: editedUser,
+          userText: input.text,
+          surfaceHeadMessageId: target.parentMessageId,
+        })
+      : input.text;
+
     return this.completeFromHistoricalParent({
       userId: input.userId,
       conversationId: input.conversationId,
+      conversationSnapshot,
       userMessage: editedUser,
-      prompt: input.text,
+      runtimePrompt,
       parentAssistantMessageId: target.parentMessageId,
     });
   }
@@ -121,8 +150,9 @@ export class NativeLiveConversationBranchOrchestrator {
   private async completeFromHistoricalParent(input: {
     userId: string;
     conversationId: string;
+    conversationSnapshot: NativeLiveConversation;
     userMessage: NativeLiveMessage;
-    prompt: string;
+    runtimePrompt: string;
     parentAssistantMessageId: string | null;
   }): Promise<NativeLiveBranchTurnResult> {
     let parentCheckpoint: NativeLiveProviderCheckpoint | null = null;
@@ -142,8 +172,8 @@ export class NativeLiveConversationBranchOrchestrator {
     let runtimeResult;
     try {
       runtimeResult = parentCheckpoint
-        ? await this.runtime.fork(parentCheckpoint.providerSessionId, input.prompt)
-        : await this.runtime.sendNew(input.prompt);
+        ? await this.runtime.fork(parentCheckpoint.providerSessionId, input.runtimePrompt)
+        : await this.runtime.sendNew(input.runtimePrompt);
     } catch (error) {
       return {
         ok: false,
@@ -175,17 +205,41 @@ export class NativeLiveConversationBranchOrchestrator {
       };
     }
 
+    const parsedMind = this.mind
+      ? this.mind.parseAssistantBlocks(canonical.blocks)
+      : { visibleBlocks: canonical.blocks, intents: [] };
+
     try {
       const completed = await this.conversations.completeAssistantTurn({
         userId: input.userId,
         conversationId: input.conversationId,
         parentMessageId: input.userMessage.id,
-        blocks: canonical.blocks,
+        blocks: parsedMind.visibleBlocks,
         checkpoint: {
           provider: "claude_code",
           providerSessionId: runtimeResult.providerSessionId,
         },
       });
+      if (this.mind && parsedMind.intents.length > 0) {
+        await this.mind.recordAssistantIntents({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          assistantMessageId: completed.message.id,
+          intents: parsedMind.intents,
+        });
+      }
+
+      if (this.mind) {
+        await this.mind.reconcileSelectedPath({
+          userId: input.userId,
+          conversation: {
+            ...input.conversationSnapshot,
+            currentHeadMessageId: completed.message.id,
+            messages: [...input.conversationSnapshot.messages, completed.message],
+          },
+        });
+      }
+
       return {
         ok: true,
         userMessage: input.userMessage,
