@@ -579,7 +579,7 @@ implements NativeLiveBackendTurnPort {
       return await this.db.transaction(
         async (transaction) => {
           const row = await this.findById(
-            transaction,
+            transaction as Transaction,
             input.userId,
             input.preparation.prepareId,
             true,
