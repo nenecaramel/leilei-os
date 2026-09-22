@@ -246,9 +246,28 @@ export function assembleTurnContext(input: {
     },
     items: selected,
   };
+  return assembledTurnContextFromManifest(manifest);
+}
+
+export function assembledTurnContextFromManifest(
+  manifest: InitialContextManifest,
+): AssembledTurnContext {
   assertContextManifestSafe(manifest);
 
-  const renderedDataItems = selected
+  const userItems = manifest.items.filter(
+    (item) => item.type === "user_message",
+  );
+  if (
+    userItems.length !== 1
+    || typeof userItems[0]?.text !== "string"
+    || !userItems[0].text.trim()
+  ) {
+    throw new Error(
+      "Context Manifest must contain exactly one nonblank user message.",
+    );
+  }
+
+  const renderedDataItems = manifest.items
     .filter((item) => item.type !== "user_message")
     .sort(
       (left, right) =>
@@ -268,14 +287,14 @@ export function assembleTurnContext(input: {
   const prompt = [
     contextData,
     "",
-    `<user_message>${escapeData(input.userText)}</user_message>`,
+    `<user_message>${escapeData(userItems[0].text)}</user_message>`,
   ].join("\n");
 
   return {
     manifest,
     contextData,
     prompt,
-    breathStateIds: selected
+    breathStateIds: manifest.items
       .filter((item) => item.selection.reason.startsWith("breath_"))
       .map((item) => item.sourceId),
   };
