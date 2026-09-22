@@ -24,16 +24,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    enum NativeAuthError: LocalizedError {
-        case notConfigured
-
-        var errorDescription: String? {
-            "Auth0 native client is not configured."
-        }
-    }
-
     let config: AppConfig
-    let tokenStore: KeychainAccessTokenStore
+    let authSession: AuthSessionController
     let api: LeileiAPIClient
 
     @Published private(set) var backendState: ProbeState = .idle
@@ -43,55 +35,37 @@ final class AppModel: ObservableObject {
 
     init() {
         let config = AppConfig.production()
-        let tokenStore = KeychainAccessTokenStore()
+        let authSession = AuthSessionController(config: config)
 
         self.config = config
-        self.tokenStore = tokenStore
+        self.authSession = authSession
         self.api = LeileiAPIClient(
             baseURL: config.apiBaseURL,
-            tokenStore: tokenStore
+            authSession: authSession
         )
-    }
 
-    init(
-        config: AppConfig,
-        tokenStore: KeychainAccessTokenStore
-    ) {
-        self.config = config
-        self.tokenStore = tokenStore
-        self.api = LeileiAPIClient(
-            baseURL: config.apiBaseURL,
-            tokenStore: tokenStore
-        )
+        // Retire the old access-token-only Keychain entry.
+        try? KeychainAccessTokenStore().clear()
     }
 
     func restoreAuthState() async {
-        guard
-            let token = try? tokenStore.read(),
-            !token.isEmpty
-        else {
-            isAuthenticated = false
-            accountEmail = nil
-            await refreshConnectivity()
-            return
-        }
-
         do {
-            let session = try await api.authenticatedSession()
-            isAuthenticated = session.authenticated
-
-            if session.authenticated,
-               let auth = try? authConfiguration() {
-                let profile = try? await Auth0
-                    .authentication(
-                        clientId: auth.clientID,
-                        domain: auth.domain
-                    )
-                    .userInfo(withAccessToken: token)
-                    .start()
-
-                accountEmail = profile?.email
+            guard
+                let token = try await authSession.accessToken(),
+                !token.isEmpty
+            else {
+                isAuthenticated = false
+                accountEmail = nil
+                await refreshConnectivity()
+                return
             }
+
+            isAuthenticated = true
+            accountEmail = authSession.userProfile()?.email
+
+            #if DEBUG
+            print("LeileiOS Auth0 renewable session:", authSession.canRenew)
+            #endif
         } catch {
             isAuthenticated = false
             accountEmail = nil
@@ -101,58 +75,27 @@ final class AppModel: ObservableObject {
     }
 
     func signIn() async throws {
-        let auth = try authConfiguration()
-
-        let credentials = try await Auth0
-            .webAuth(
-                clientId: auth.clientID,
-                domain: auth.domain
-            )
-            .audience(auth.audience)
-            .scope("openid profile email \(auth.scope)")
-            .start()
-
-        try tokenStore.write(credentials.accessToken)
+        try await authSession.signIn()
 
         isAuthenticated = true
-
-        let profile = try? await Auth0
-            .authentication(
-                clientId: auth.clientID,
-                domain: auth.domain
-            )
-            .userInfo(withAccessToken: credentials.accessToken)
-            .start()
-
-        accountEmail = profile?.email
+        accountEmail = authSession.userProfile()?.email
 
         await refreshConnectivity()
     }
 
     func signOut() async throws {
-        let auth = try authConfiguration()
-
-        var logoutError: Error?
-
         do {
-            try await Auth0
-                .webAuth(
-                    clientId: auth.clientID,
-                    domain: auth.domain
-                )
-                .logout()
+            try await authSession.signOut()
         } catch {
-            logoutError = error
+            isAuthenticated = false
+            accountEmail = nil
+            sessionState = .unavailable("Sign-in required")
+            throw error
         }
 
-        try tokenStore.clear()
         isAuthenticated = false
         accountEmail = nil
         sessionState = .unavailable("Sign-in required")
-
-        if let logoutError {
-            throw logoutError
-        }
     }
 
     func refreshConnectivity() async {
@@ -169,11 +112,16 @@ final class AppModel: ObservableObject {
         do {
             let session = try await api.authenticatedSession()
             isAuthenticated = session.authenticated
-            sessionState = session.authenticated
-                ? .reachable("Authenticated")
-                : .unavailable("Not authenticated")
+
+            if session.authenticated {
+                accountEmail = accountEmail ?? authSession.userProfile()?.email
+                sessionState = .reachable("Authenticated")
+            } else {
+                sessionState = .unavailable("Not authenticated")
+            }
         } catch LeileiAPIError.missingAccessToken {
             isAuthenticated = false
+            accountEmail = nil
             sessionState = .unavailable(
                 config.isNativeAuthConfigured
                     ? "Sign-in required"
@@ -181,27 +129,10 @@ final class AppModel: ObservableObject {
             )
         } catch LeileiAPIError.unauthorized {
             isAuthenticated = false
+            accountEmail = nil
             sessionState = .unavailable("Sign-in required")
         } catch {
             sessionState = .unavailable(error.localizedDescription)
         }
-    }
-
-    private func authConfiguration() throws -> (
-        clientID: String,
-        domain: String,
-        audience: String,
-        scope: String
-    ) {
-        guard
-            let clientID = config.authClientID,
-            let domain = config.authIssuer?.host,
-            let audience = config.authAudience,
-            let scope = config.authScope
-        else {
-            throw NativeAuthError.notConfigured
-        }
-
-        return (clientID, domain, audience, scope)
     }
 }

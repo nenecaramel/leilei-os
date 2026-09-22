@@ -28,7 +28,7 @@ enum LeileiAPIError: LocalizedError {
             let label = code ?? "HTTP_\(status)"
             return message.map { "\(label): \($0)" } ?? label
         case .missingAccessToken:
-            return "No Auth0 access token is stored on this device."
+            return "No Auth0 session is stored on this device."
         }
     }
 }
@@ -37,15 +37,15 @@ enum LeileiAPIError: LocalizedError {
 final class LeileiAPIClient {
     private let baseURL: URL
     private let session: URLSession
-    private let tokenStore: any AccessTokenStore
+    private let authSession: AuthSessionController
 
     init(
         baseURL: URL,
-        tokenStore: any AccessTokenStore,
+        authSession: AuthSessionController,
         session: URLSession = .shared
     ) {
         self.baseURL = baseURL
-        self.tokenStore = tokenStore
+        self.authSession = authSession
         self.session = session
     }
 
@@ -87,18 +87,27 @@ final class LeileiAPIClient {
         if body != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+
         if let idempotencyKey {
             request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
         }
 
         if authenticated {
-            guard let token = try tokenStore.read(), !token.isEmpty else {
+            guard
+                let token = try await authSession.accessToken(),
+                !token.isEmpty
+            else {
                 throw LeileiAPIError.missingAccessToken
             }
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+            request.setValue(
+                "Bearer \(token)",
+                forHTTPHeaderField: "Authorization"
+            )
         }
 
         let (data, response) = try await session.data(for: request)
+
         guard let http = response as? HTTPURLResponse else {
             throw LeileiAPIError.invalidResponse
         }
