@@ -126,6 +126,8 @@ export function assembleTurnContext(input: {
   promptContractVersion: string;
   surfaceLimit: number;
   breathLimit: number;
+  breathCooldownHours?: number;
+  breathSalienceWeight?: number;
   maxContextItems: number;
   maxContextChars: number;
   surfaceHeadMessageId?: string | null;
@@ -191,6 +193,9 @@ export function assembleTurnContext(input: {
     conversationId: input.conversation.id,
     currentPathMessageIds,
     limit: input.breathLimit,
+    now: input.assembledAt,
+    cooldownHours: input.breathCooldownHours ?? 0,
+    salienceWeight: input.breathSalienceWeight ?? 0,
   });
   const breathItems = breath.map((hit, index) =>
     subjectStateToContextItem(
