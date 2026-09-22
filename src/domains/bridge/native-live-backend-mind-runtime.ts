@@ -1,0 +1,142 @@
+import type {
+  NativeLiveContentBlockInput,
+  NativeLiveConversation,
+  NativeLiveMessage,
+} from "../conversation/native-live-conversation-types.js";
+import type { MindWriteIntent } from "../runtime/mind-intent-parser.js";
+import type { ParsedAssistantBlocks } from "../runtime/mind-block-parser.js";
+import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
+import type { NativeLivePreparedTurn } from "./native-live-backend-turn-coordinator.js";
+
+export interface NativeLiveBackendMindConversationReader {
+  getConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversation | null>;
+}
+
+export interface NativeLiveBackendMindRuntime {
+  preparePrompt(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+  }): Promise<string>;
+
+  parseAssistantBlocks(
+    blocks: readonly NativeLiveContentBlockInput[],
+  ): ParsedAssistantBlocks;
+
+  afterFinalize(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    assistantMessageId: string;
+    intents: readonly MindWriteIntent[];
+  }): Promise<void>;
+}
+
+function requirePreparedUserMessage(
+  conversation: NativeLiveConversation,
+  messageId: string,
+): NativeLiveMessage {
+  const message = conversation.messages.find(
+    (candidate) => candidate.id === messageId,
+  );
+  if (!message || message.role !== "user") {
+    throw new Error("Prepared canonical user message was not found.");
+  }
+  return message;
+}
+
+/**
+ * Cross-device adapter between the persisted backend preparation and the
+ * existing branch-safe Mind runtime.
+ *
+ * The backend remains canonical for conversation/Mind state. The prepared
+ * runtime prompt is persisted before it is handed to the Mac executor so
+ * idempotent prepare replays do not rebuild context from a later state.
+ */
+export class DefaultNativeLiveBackendMindRuntime
+implements NativeLiveBackendMindRuntime {
+  constructor(
+    private readonly conversations: NativeLiveBackendMindConversationReader,
+    private readonly mind: NativeLiveMindRuntime,
+  ) {}
+
+  async preparePrompt(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+  }): Promise<string> {
+    const conversation = await this.requireConversation(
+      input.userId,
+      input.preparation.conversationId,
+    );
+    const userMessage = requirePreparedUserMessage(
+      conversation,
+      input.preparation.canonicalUserMessageId,
+    );
+
+    if (input.preparation.operation === "send") {
+      await this.mind.reconcileSelectedPath({
+        userId: input.userId,
+        conversation: {
+          ...conversation,
+          currentHeadMessageId: userMessage.id,
+        },
+      });
+    }
+
+    return this.mind.prepareUserTurn({
+      userId: input.userId,
+      conversation,
+      userMessage,
+      userText: input.preparation.prompt,
+      surfaceHeadMessageId: userMessage.parentMessageId,
+    });
+  }
+
+  parseAssistantBlocks(
+    blocks: readonly NativeLiveContentBlockInput[],
+  ): ParsedAssistantBlocks {
+    return this.mind.parseAssistantBlocks(blocks);
+  }
+
+  async afterFinalize(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    assistantMessageId: string;
+    intents: readonly MindWriteIntent[];
+  }): Promise<void> {
+    if (input.intents.length > 0) {
+      await this.mind.recordAssistantIntents({
+        userId: input.userId,
+        conversationId: input.preparation.conversationId,
+        assistantMessageId: input.assistantMessageId,
+        intents: input.intents,
+      });
+    }
+
+    if (input.preparation.operation === "send") return;
+
+    const conversation = await this.requireConversation(
+      input.userId,
+      input.preparation.conversationId,
+    );
+    await this.mind.reconcileSelectedPath({
+      userId: input.userId,
+      conversation,
+    });
+  }
+
+  private async requireConversation(
+    userId: string,
+    conversationId: string,
+  ): Promise<NativeLiveConversation> {
+    const conversation = await this.conversations.getConversation({
+      userId,
+      conversationId,
+    });
+    if (!conversation) {
+      throw new Error("Prepared native/live conversation was not found.");
+    }
+    return conversation;
+  }
+}
