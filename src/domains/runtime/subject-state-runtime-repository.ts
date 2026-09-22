@@ -102,7 +102,11 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     const states = input.states.map((candidate) => {
       const state = validateSubjectStateWrite(candidate);
       requirePortIdentity(state, input);
-      return state;
+      return {
+        ...state,
+        text: state.text ?? null,
+        payload: state.payload ?? null,
+      };
     });
 
     await this.db.transaction(async (transaction) => {
