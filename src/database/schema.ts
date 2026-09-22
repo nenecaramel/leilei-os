@@ -1340,6 +1340,46 @@ export const runtimeContextManifests = pgTable(
   ],
 );
 
+export const runtimeDistillationWatermarks = pgTable(
+  "runtime_distillation_watermarks",
+  {
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    lastSourceMessageId: uuid("last_source_message_id").notNull(),
+    processVersion: varchar("process_version", { length: 64 }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.userId, table.subjectId, table.conversationId],
+      name: "runtime_distillation_watermarks_pk",
+    }),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "runtime_distillation_watermarks_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.lastSourceMessageId, table.conversationId, table.userId],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_distillation_watermarks_message_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    check(
+      "runtime_distillation_watermarks_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_distillation_watermarks_process_not_blank",
+      sql`char_length(btrim(${table.processVersion})) > 0`,
+    ),
+  ],
+);
+
 export const conversationAttachments = pgTable(
   "conversation_attachments",
   {
