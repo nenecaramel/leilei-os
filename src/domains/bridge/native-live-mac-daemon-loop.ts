@@ -278,7 +278,8 @@ export class NativeLiveMacDaemonLoop {
     }
   }
 }
-\nfunction isSemanticProviderFailure(error: unknown): boolean {
+
+function isSemanticProviderFailure(error: unknown): boolean {
   return (
     typeof error === "object"
     && error !== null
