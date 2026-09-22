@@ -4,6 +4,7 @@ import type {
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
 } from "./native-live-conversation-types.js";
+import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
 
 export type NativeLiveNormalizedEventType =
   | "session"
@@ -192,6 +193,7 @@ export class NativeLiveConversationOrchestrator {
   constructor(
     private readonly conversations: NativeLiveConversationPort,
     private readonly runtime: NativeLiveClaudeRuntime,
+    private readonly mind: NativeLiveMindRuntime | null = null,
   ) {}
 
   async send(input: {
@@ -217,6 +219,29 @@ export class NativeLiveConversationOrchestrator {
       blocks: [{ kind: "text", rawType: "text", text: input.text }],
     });
 
+    const turnConversation: NativeLiveConversation = {
+      ...conversation,
+      messages: [...conversation.messages, userMessage],
+    };
+
+    let runtimePrompt = input.text;
+    if (this.mind) {
+      await this.mind.reconcileSelectedPath({
+        userId: input.userId,
+        conversation: {
+          ...turnConversation,
+          currentHeadMessageId: userMessage.id,
+        },
+      });
+      runtimePrompt = await this.mind.prepareUserTurn({
+        userId: input.userId,
+        conversation: turnConversation,
+        userMessage,
+        userText: input.text,
+        surfaceHeadMessageId: parentHead,
+      });
+    }
+
     const parentCheckpoint = parentHead
       ? await this.conversations.getProviderCheckpointForHead({
           userId: input.userId,
@@ -240,9 +265,9 @@ export class NativeLiveConversationOrchestrator {
       runtimeResult = parentCheckpoint
         ? await this.runtime.fork(
             parentCheckpoint.providerSessionId,
-            input.text,
+            runtimePrompt,
           )
-        : await this.runtime.sendNew(input.text);
+        : await this.runtime.sendNew(runtimePrompt);
     } catch (error) {
       return {
         ok: false,
@@ -274,17 +299,30 @@ export class NativeLiveConversationOrchestrator {
       };
     }
 
+    const parsedMind = this.mind
+      ? this.mind.parseAssistantBlocks(canonical.blocks)
+      : { visibleBlocks: canonical.blocks, intents: [] };
+
     try {
       const completed = await this.conversations.completeAssistantTurn({
         userId: input.userId,
         conversationId: input.conversationId,
         parentMessageId: userMessage.id,
-        blocks: canonical.blocks,
+        blocks: parsedMind.visibleBlocks,
         checkpoint: {
           provider: "claude_code",
           providerSessionId: runtimeResult.providerSessionId,
         },
       });
+
+      if (this.mind && parsedMind.intents.length > 0) {
+        await this.mind.recordAssistantIntents({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          assistantMessageId: completed.message.id,
+          intents: parsedMind.intents,
+        });
+      }
 
       return {
         ok: true,
