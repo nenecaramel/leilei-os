@@ -103,6 +103,8 @@ export type AppDependencies = {
   nativeLiveRelayService?:
     NativeLiveRelayInternalDependencies["relayService"]
     & NativeLiveApiDependencies["relayService"];
+  nativeLiveSemanticService?:
+    NativeLiveRelayInternalDependencies["semanticService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -454,6 +456,9 @@ export function createApp(
         databaseReadinessMiddleware,
         createNativeLiveRelayInternalRouter({
           relayService: dependencies.nativeLiveRelayService,
+          ...(dependencies.nativeLiveSemanticService
+            ? { semanticService: dependencies.nativeLiveSemanticService }
+            : {}),
         }),
       );
     }
