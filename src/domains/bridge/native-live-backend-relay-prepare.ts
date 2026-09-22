@@ -121,6 +121,21 @@ export class NativeLiveBackendRelayPrepareCoordinator {
           && this.mind.planSemanticPrompt
           && this.mind.completeSemanticPrompt
         ) {
+          const stagedPlan = this.semantic.readPlan
+            ? await this.semantic.readPlan({
+                userId,
+                prepareId: preparation.prepareId,
+              })
+            : null;
+          if (stagedPlan) {
+            return {
+              ok: true,
+              outcome: prepared.outcome,
+              semanticPending: true,
+              command: nativeLiveRuntimeCommandFromPreparation(preparation),
+            };
+          }
+
           const plan = await this.mind.planSemanticPrompt({
             userId,
             preparation,
