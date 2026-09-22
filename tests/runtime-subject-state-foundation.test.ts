@@ -26,7 +26,7 @@ const base: SubjectStateWrite = {
     userId: "user-1",
     applicability: "global",
     conversationId: null,
-    branchId: null,
+    pathHeadMessageId: null,
     visibility: "subject_private",
     sensitivity: "normal",
   },
@@ -67,7 +67,7 @@ test("bedrock rejects derived authority", () => {
   );
 });
 
-test("unsettled state must remain provisional and branch scoped", () => {
+test("unsettled state must remain provisional and path scoped", () => {
   assert.throws(
     () =>
       validateSubjectStateWrite({
@@ -84,7 +84,7 @@ test("unsettled state must remain provisional and branch scoped", () => {
         lifecycle: "provisional",
         sourceSettlement: "presented",
       }),
-    /must remain branch-scoped/,
+    /must remain path-scoped/,
   );
 
   const provisional = validateSubjectStateWrite({
@@ -93,9 +93,9 @@ test("unsettled state must remain provisional and branch scoped", () => {
     sourceSettlement: "presented",
     scope: {
       ...base.scope,
-      applicability: "branch",
+      applicability: "path",
       conversationId: "conversation-1",
-      branchId: "branch-1",
+      pathHeadMessageId: "assistant-1",
     },
   });
   assert.equal(provisional.lifecycle, "provisional");
@@ -135,7 +135,7 @@ test("subject state cannot be promoted to instruction authority in context", () 
   assert.doesNotThrow(() =>
     assertContextManifestSafe({
       conversationId: "conversation-1",
-      branchId: "branch-1",
+      pathHeadMessageId: "assistant-1",
       snapshotSequence: 10,
       assembledAt: "2026-09-22T07:40:00.000Z",
       items: [item],
@@ -146,7 +146,7 @@ test("subject state cannot be promoted to instruction authority in context", () 
     () =>
       assertContextManifestSafe({
         conversationId: "conversation-1",
-        branchId: "branch-1",
+        pathHeadMessageId: "assistant-1",
         snapshotSequence: 10,
         assembledAt: "2026-09-22T07:40:00.000Z",
         items: [{ ...item, authority: "instruction" }],
