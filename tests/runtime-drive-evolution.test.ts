@@ -173,7 +173,7 @@ test("satisfaction stored on the anchor lowers pressure and later reinforcement 
     pressure: 0,
     reinforcementCount: 2,
     reinforcementSources: ["m1", "m2"],
-    satisfactionTotal: 0.7,
+    satisfactionTotal: 0.65,
     lastEvolvedAt: "2026-09-22T12:00:00.000Z",
     lastReinforcedAt: "2026-09-22T11:00:00.000Z",
     lastSatisfiedAt: "2026-09-22T12:00:00.000Z",
@@ -214,7 +214,7 @@ test("satisfaction stored on the anchor lowers pressure and later reinforcement 
   assert.equal(result.active, 1);
   const anchor = port.updates.find((update) => update.stateId === anchorId);
   assert.ok(anchor);
-  assert.ok(Math.abs(anchor.evolution.pressure - 0.1) < 1e-9);
+  assert.ok(Math.abs(anchor.evolution.pressure - 0.15) < 1e-9);
   assert.equal(anchor.evolution.phase, "active");
-  assert.equal(anchor.evolution.satisfactionTotal, 0.7);
+  assert.equal(anchor.evolution.satisfactionTotal, 0.65);
 });
