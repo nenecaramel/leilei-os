@@ -1510,6 +1510,10 @@ export const nativeLiveSemanticScoringRequests = pgTable(
       sql`${table.status} IN ('pending', 'reserved', 'completed', 'fallback')`,
     ),
     check(
+      "native_live_semantic_scoring_requests_fallback_code_allowed",
+      sql`${table.fallbackCode} IS NULL OR ${table.fallbackCode} IN ('E5_PROVIDER_UNAVAILABLE', 'E5_SCORING_FAILED')`,
+    ),
+    check(
       "native_live_semantic_scoring_requests_state_consistency",
       sql`(${table.status} = 'pending'
           AND ${table.reservedBy} IS NULL
