@@ -121,8 +121,16 @@ class FakeMind implements NativeLiveBackendMindRuntime {
 
 class FakeSemanticStager implements NativeLiveSemanticPreparationStager {
   calls: unknown[] = [];
+  stagedPlan: Awaited<
+    ReturnType<NonNullable<NativeLiveSemanticPreparationStager["readPlan"]>>
+  > = null;
+
   async stage(input: unknown) {
     this.calls.push(input);
+  }
+
+  async readPlan() {
+    return this.stagedPlan;
   }
 }
 
@@ -181,6 +189,34 @@ test("relay prepare falls back to immediate lexical assembly when no semantic ca
   assert.equal(mind.prepareCalls.length, 1);
   assert.equal(port.persistCalls.length, 1);
   assert.equal(semantic.calls.length, 0);
+});
+
+test("relay prepare replay reuses an existing semantic snapshot instead of rebuilding it", async () => {
+  const port = new FakePort();
+  port.prepareResult = {
+    ok: true,
+    outcome: "replayed",
+    preparation: prepared(),
+  };
+  const mind = new FakeMind();
+  const semantic = new FakeSemanticStager();
+  semantic.stagedPlan = mind.semanticPlan;
+  const coordinator = new NativeLiveBackendRelayPrepareCoordinator(
+    port,
+    mind,
+    semantic,
+    () => prepareId,
+  );
+
+  const result = await coordinator.prepare(userId, request());
+
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("expected semantic replay success");
+  assert.equal(result.semanticPending, true);
+  assert.equal(mind.planCalls.length, 0);
+  assert.equal(mind.prepareCalls.length, 0);
+  assert.equal(semantic.calls.length, 0);
+  assert.equal(port.persistCalls.length, 0);
 });
 
 test("relay prepare replay reuses an already prepared prompt and never restages semantics", async () => {
