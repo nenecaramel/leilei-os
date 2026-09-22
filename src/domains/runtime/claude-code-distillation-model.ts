@@ -199,7 +199,7 @@ function readFinalAssistantText(
 }
 
 function stripSingleJsonFence(value: string): string {
-  const match = value.match(/^\`\`\`(?:json)?\s*([\s\S]*?)\s*\`\`\`$/iu);
+  const match = value.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/iu);
   return match ? match[1]!.trim() : value;
 }
 
