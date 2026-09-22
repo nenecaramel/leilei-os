@@ -57,6 +57,11 @@ class FakePort implements NativeLiveBackendRelayPort {
     | "conflict" = "applied";
   calls: Array<{ name: string; input: unknown }> = [];
 
+  async enqueuePreparation(input: unknown) {
+    this.calls.push({ name: "enqueuePreparation", input });
+    return this.mutation;
+  }
+
   async renewLease(input: unknown) {
     this.calls.push({ name: "renewLease", input });
     return this.lease;
