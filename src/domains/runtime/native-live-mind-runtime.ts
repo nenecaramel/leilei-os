@@ -175,6 +175,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       assembledAt: input.plan.assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
       semanticScores: input.scores,
+      semanticCandidates: input.plan.candidates,
     });
     return assembled.prompt;
   }
