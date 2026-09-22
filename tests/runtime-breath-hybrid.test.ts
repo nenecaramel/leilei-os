@@ -171,8 +171,9 @@ test("Mind loop consumes an injected semantic scorer and records semantic select
   );
 });
 
-test("semantic scorer failure falls back to lexical Breath instead of failing the turn", async () => {
-  const port = new Port([state("lexical", "我们刚聊过 Runtime")]);
+test("semantic scorer failure falls back to full lexical scoring instead of failing the turn", async () => {
+  const lexicalState = state("lexical", "我们刚聊过 Runtime");
+  const port = new Port([lexicalState]);
   const mind = new NativeLiveMindLoopService(
     port,
     {
@@ -206,4 +207,118 @@ test("semantic scorer failure falls back to lexical Breath instead of failing th
   });
 
   assert.deepEqual(assembled.breathStateIds, ["lexical"]);
+
+  const expectedLexical = recallBreath("Runtime", [lexicalState], {
+    ...base,
+    semanticWeight: 0,
+  })[0];
+  assert.ok(expectedLexical);
+  const selected = assembled.manifest.items.find(
+    (item) => item.sourceId === "lexical",
+  );
+  assert.ok(selected);
+  assert.equal(selected.selection.score, expectedLexical.score);
+});
+
+test("Mind loop sends only Breath-eligible states to the semantic scorer", async () => {
+  const eligible = state("eligible", "一段可以被召回的旅行记忆");
+  const invalid = state("invalid", "旧分支里的旅行记忆");
+  invalid.envelope = {
+    ...invalid.envelope,
+    status: {
+      ...invalid.envelope.status,
+      validityStatus: "invalidated",
+    },
+  };
+  const scopedElsewhere = state("other-conversation", "另一个对话里的旅行记忆");
+  scopedElsewhere.envelope = {
+    ...scopedElsewhere.envelope,
+    scope: {
+      ...scopedElsewhere.envelope.scope,
+      applicability: "conversation",
+      conversationId: "other",
+    },
+  };
+
+  const port = new Port([eligible, invalid, scopedElsewhere]);
+  const seen: string[] = [];
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      surfaceLimit: 4,
+      breathLimit: 3,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    {
+      async score(input) {
+        seen.push(...input.candidates.map((candidate) => candidate.stateId));
+        return new Map([["eligible", 0.93]]);
+      },
+    },
+  );
+
+  await mind.prepareTurn({
+    manifestId: "m3",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userMessageId: "u-now",
+    userText: "海边旅行",
+    snapshotSequence: 1,
+    assembledAt: "2026-09-22T10:00:00.000Z",
+  });
+
+  assert.deepEqual(seen, ["eligible"]);
+});
+
+test("partial semantic score maps are rejected and fall back to lexical scoring", async () => {
+  const first = state("first", "Runtime 记忆");
+  const second = state("second", "Runtime 对话");
+  const port = new Port([first, second]);
+
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      surfaceLimit: 4,
+      breathLimit: 3,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    {
+      async score() {
+        return new Map([["first", 0.95]]);
+      },
+    },
+  );
+
+  const assembled = await mind.prepareTurn({
+    manifestId: "m4",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userMessageId: "u-now",
+    userText: "Runtime",
+    snapshotSequence: 1,
+    assembledAt: "2026-09-22T10:00:00.000Z",
+  });
+
+  assert.equal(
+    assembled.manifest.items
+      .filter((item) => item.selection.reason.startsWith("breath_"))
+      .every((item) => item.selection.reason === "breath_lexical_match"),
+    true,
+  );
 });
