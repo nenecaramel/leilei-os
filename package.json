@@ -33,7 +33,8 @@
     "test:runtime-distillation-db": "RUN_RUNTIME_DISTILLATION_DATABASE_TEST=1 tsx --test tests/runtime-distillation-repository.integration.test.ts",
     "smoke:runtime-distillation-claude": "tsx scripts/runtime-distillation-claude-smoke.ts",
     "smoke:runtime-distillation-background": "tsx scripts/runtime-distillation-background-smoke.ts",
-    "test:runtime-lifecycle-db": "RUN_RUNTIME_LIFECYCLE_DATABASE_TEST=1 tsx --test tests/runtime-memory-lifecycle-repository.integration.test.ts"
+    "test:runtime-lifecycle-db": "RUN_RUNTIME_LIFECYCLE_DATABASE_TEST=1 tsx --test tests/runtime-memory-lifecycle-repository.integration.test.ts",
+    "test:runtime-breath-db": "RUN_RUNTIME_BREATH_DATABASE_TEST=1 tsx --test tests/runtime-breath-recall-repository.integration.test.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
