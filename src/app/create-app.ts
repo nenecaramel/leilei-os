@@ -405,7 +405,14 @@ export function createApp(
         ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
         ...(dependencies.webConversationLifecycle ? { conversationLifecycle: dependencies.webConversationLifecycle } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
-        ...(webNativeLiveCoordinator ? { nativeLive: { coordinator: webNativeLiveCoordinator } } : {}),
+        ...(webNativeLiveCoordinator && dependencies.nativeLiveRelayService
+          ? {
+              nativeLive: {
+                coordinator: webNativeLiveCoordinator,
+                relayService: dependencies.nativeLiveRelayService,
+              },
+            }
+          : {}),
       }),
     );
   }
