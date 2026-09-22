@@ -47,14 +47,14 @@ export interface NativeLiveMindRuntime {
     surfaceHeadMessageId: string | null;
   }): Promise<NativeLiveMindSemanticPlan | null>;
 
-  prepareUserTurnWithSemanticScores?(input: {
+  prepareUserTurnFromSemanticPlan?(input: {
     userId: string;
     conversation: NativeLiveConversation;
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
     plan: NativeLiveMindSemanticPlan;
-    scores: ReadonlyMap<string, number>;
+    scores: ReadonlyMap<string, number> | null;
   }): Promise<string>;
 
   parseAssistantBlocks(
@@ -151,14 +151,14 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     };
   }
 
-  async prepareUserTurnWithSemanticScores(input: {
+  async prepareUserTurnFromSemanticPlan(input: {
     userId: string;
     conversation: NativeLiveConversation;
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
     plan: NativeLiveMindSemanticPlan;
-    scores: ReadonlyMap<string, number>;
+    scores: ReadonlyMap<string, number> | null;
   }): Promise<string> {
     if (input.plan.query !== input.userText) {
       throw new Error("Semantic scoring query does not match the user turn.");
@@ -174,7 +174,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       snapshotSequence: input.plan.snapshotSequence,
       assembledAt: input.plan.assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
-      semanticScores: input.scores,
+      ...(input.scores ? { semanticScores: input.scores } : {}),
       semanticCandidates: input.plan.candidates,
     });
     return assembled.prompt;
