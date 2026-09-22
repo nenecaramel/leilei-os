@@ -536,12 +536,20 @@ implements ConversationImportExecutionTransaction {
       attachmentsByMessage.set(attachment.messageId, list);
     }
 
-    const versions = messages.map((message) => ({
-      userId,
-      messageId: message.id,
-      previousFingerprint: message.sourceFingerprint,
-      replacedByImportId: importRunId,
-      snapshot: {
+    const versions: Array<typeof conversationMessageVersions.$inferInsert> = messages.map((message) => {
+      if (!message.sourceFingerprint) {
+        throw Object.assign(
+          new Error("Cannot snapshot an imported conversation message without a source fingerprint."),
+          { code: "CONVERSATION_MESSAGE_FINGERPRINT_MISSING" },
+        );
+      }
+
+      return {
+        userId,
+        messageId: message.id,
+        previousFingerprint: message.sourceFingerprint,
+        replacedByImportId: importRunId,
+        snapshot: {
         message: {
           source_node_id: message.sourceNodeId,
           source_message_id: message.sourceMessageId,
@@ -567,18 +575,19 @@ implements ConversationImportExecutionTransaction {
             text: block.text,
             payload: block.payload,
           })),
-        attachments: (attachmentsByMessage.get(message.id) ?? [])
-          .sort((left, right) => left.ordinal - right.ordinal)
-          .map((attachment) => ({
-            ordinal: attachment.ordinal,
-            source_attachment_id: attachment.sourceAttachmentId,
-            name: attachment.name,
-            mime_type: attachment.mimeType,
-            size_bytes: attachment.sizeBytes,
-            payload: attachment.payload,
-          })),
-      },
-    }));
+          attachments: (attachmentsByMessage.get(message.id) ?? [])
+            .sort((left, right) => left.ordinal - right.ordinal)
+            .map((attachment) => ({
+              ordinal: attachment.ordinal,
+              source_attachment_id: attachment.sourceAttachmentId,
+              name: attachment.name,
+              mime_type: attachment.mimeType,
+              size_bytes: attachment.sizeBytes,
+              payload: attachment.payload,
+            })),
+        },
+      };
+    });
 
     for (const batch of chunks(versions, MESSAGE_BATCH)) {
       if (batch.length > 0) await this.tx.insert(conversationMessageVersions).values(batch);
