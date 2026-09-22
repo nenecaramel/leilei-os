@@ -781,6 +781,7 @@ export type NativeLiveTurnPreparationStatus =
   | "finalized_success"
   | "finalized_failure";
 export type NativeLiveTurnDispatchStatus =
+  | "staged"
   | "pending"
   | "reserved"
   | "executing"
@@ -1239,7 +1240,7 @@ export const nativeLiveTurnPreparations = pgTable(
     failureCode: varchar("failure_code", { length: 64 }),
     dispatchStatus: varchar("dispatch_status", { length: 32 })
       .$type<NativeLiveTurnDispatchStatus>()
-      .default("pending")
+      .default("staged")
       .notNull(),
     reservedBy: uuid("reserved_by"),
     reservedAt: timestamp("reserved_at", { withTimezone: true }),
@@ -1341,11 +1342,11 @@ export const nativeLiveTurnPreparations = pgTable(
     ),
     check(
       "native_live_turn_preparations_dispatch_status_allowed",
-      sql`${table.dispatchStatus} IN ('pending', 'reserved', 'executing', 'delivery_unknown', 'completed', 'rejected')`,
+      sql`${table.dispatchStatus} IN ('staged', 'pending', 'reserved', 'executing', 'delivery_unknown', 'completed', 'rejected')`,
     ),
     check(
       "native_live_turn_preparations_dispatch_reservation_consistency",
-      sql`(${table.dispatchStatus} IN ('pending', 'rejected')
+      sql`(${table.dispatchStatus} IN ('staged', 'pending', 'rejected')
           AND ${table.reservedBy} IS NULL
           AND ${table.reservedAt} IS NULL
           AND ${table.reservationExpiresAt} IS NULL
