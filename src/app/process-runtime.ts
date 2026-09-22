@@ -25,6 +25,12 @@ import { DrizzleUniverseRepository } from "../domains/universe/universe-reposito
 import { UniverseService } from "../domains/universe/universe-service.js";
 import { DrizzleBridgeEventRepository } from "../domains/bridge/bridge-event-repository.js";
 import { BridgeService } from "../domains/bridge/bridge-service.js";
+import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
+import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/native-live-backend-turn-coordinator.js";
+import {
+  DrizzleNativeLiveBackendRelayRepository,
+  NativeLiveBackendRelayService,
+} from "../domains/bridge/native-live-backend-relay.js";
 import { BRIDGE_TERMINAL_RETENTION_DAYS, deleteExpiredBridgeEventsBatch } from "../domains/bridge/bridge-retention.js";
 import {
   deleteExpiredMcpIdempotencyBatch,
@@ -120,6 +126,13 @@ export function createProcessRuntime(
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
   const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
+  const nativeLiveTurnCoordinator = new NativeLiveBackendTurnCoordinator(
+    new DrizzleNativeLiveBackendTurnPort(db),
+  );
+  const nativeLiveRelayService = new NativeLiveBackendRelayService(
+    new DrizzleNativeLiveBackendRelayRepository(db),
+    nativeLiveTurnCoordinator,
+  );
   const sentinelRepository = new DrizzleSentinelRepository(db);
   const sentinelService = new SentinelService(sentinelRepository);
   const healthService = new HealthService(new DrizzleHealthRepository(db));
@@ -215,6 +228,8 @@ export function createProcessRuntime(
       webImportService: importService,
       webUniverseService: universeService,
       webBridgeService: bridgeService,
+      webNativeLiveCoordinator: nativeLiveTurnCoordinator,
+      nativeLiveRelayService,
       webSentinelService: sentinelService,
       webSharedPaperService: sharedPaperService,
       webConversationImportService: conversationImportService,
