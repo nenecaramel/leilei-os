@@ -14,6 +14,15 @@ export type BreathRecallHit = {
   channel: "lexical" | "semantic" | "hybrid";
 };
 
+export type BreathEligibilityInput = {
+  userId: string;
+  subjectId: string;
+  conversationId: string;
+  currentPathMessageIds: ReadonlySet<string>;
+  now?: string;
+  cooldownHours?: number;
+};
+
 function tokens(value: string): Set<string> {
   const normalized = value.toLocaleLowerCase().normalize("NFKC");
   const result = new Set<string>();
@@ -65,6 +74,78 @@ function scopeApplies(
   );
 }
 
+function parseCooldownNow(
+  cooldownHours: number,
+  now?: string,
+): number | null {
+  if (!Number.isFinite(cooldownHours) || cooldownHours < 0) {
+    throw new Error("Breath cooldownHours must be a non-negative number.");
+  }
+  if (cooldownHours === 0) return null;
+  if (!now) {
+    throw new Error("Breath recall requires now when cooldownHours is enabled.");
+  }
+  const parsed = Date.parse(now);
+  if (!Number.isFinite(parsed)) {
+    throw new Error("Breath recall now must be an ISO timestamp.");
+  }
+  return parsed;
+}
+
+function eligibleBreathEntries(
+  candidates: readonly SubjectStateWrite[],
+  input: BreathEligibilityInput,
+): Array<{
+  state: SubjectStateWrite;
+  lifecycle: ReturnType<typeof readSubjectStateLifecycle>;
+}> {
+  const cooldownHours = input.cooldownHours ?? 0;
+  const nowMs = parseCooldownNow(cooldownHours, input.now);
+  const allowedKinds = new Set<SubjectStateKind>(BREATH_RECALL_KINDS);
+  const eligible: Array<{
+    state: SubjectStateWrite;
+    lifecycle: ReturnType<typeof readSubjectStateLifecycle>;
+  }> = [];
+
+  for (const state of candidates) {
+    let lifecycle;
+    try {
+      lifecycle = readSubjectStateLifecycle(state.payload);
+    } catch {
+      continue;
+    }
+
+    if (
+      !allowedKinds.has(state.kind)
+      || !isConsolidationEligible(state.envelope.status)
+      || lifecycle?.status === "archived"
+      || !scopeApplies(state, input)
+      || !state.text
+    ) {
+      continue;
+    }
+
+    if (
+      nowMs !== null
+      && lifecycle?.lastRecalledAt
+      && nowMs - Date.parse(lifecycle.lastRecalledAt) < cooldownHours * 3_600_000
+    ) {
+      continue;
+    }
+
+    eligible.push({ state, lifecycle });
+  }
+
+  return eligible;
+}
+
+export function filterBreathEligibleStates(
+  candidates: readonly SubjectStateWrite[],
+  input: BreathEligibilityInput,
+): SubjectStateWrite[] {
+  return eligibleBreathEntries(candidates, input).map((entry) => entry.state);
+}
+
 function validatePolicy(input: {
   cooldownHours: number;
   salienceWeight: number;
@@ -72,9 +153,7 @@ function validatePolicy(input: {
   semanticMinScore: number;
   now?: string;
 }): number | null {
-  if (!Number.isFinite(input.cooldownHours) || input.cooldownHours < 0) {
-    throw new Error("Breath cooldownHours must be a non-negative number.");
-  }
+  parseCooldownNow(input.cooldownHours, input.now);
   if (
     !Number.isFinite(input.salienceWeight)
     || input.salienceWeight < 0
@@ -96,15 +175,7 @@ function validatePolicy(input: {
   ) {
     throw new Error("Breath semanticMinScore must be between 0 and 1.");
   }
-  if (input.cooldownHours === 0) return null;
-  if (!input.now) {
-    throw new Error("Breath recall requires now when cooldownHours is enabled.");
-  }
-  const parsed = Date.parse(input.now);
-  if (!Number.isFinite(parsed)) {
-    throw new Error("Breath recall now must be an ISO timestamp.");
-  }
-  return parsed;
+  return parseCooldownNow(input.cooldownHours, input.now);
 }
 
 export function recallBreath(
@@ -132,7 +203,7 @@ export function recallBreath(
   const salienceWeight = input.salienceWeight ?? 0;
   const semanticWeight = input.semanticWeight ?? 0;
   const semanticMinScore = input.semanticMinScore ?? 0;
-  const nowMs = validatePolicy({
+  validatePolicy({
     cooldownHours,
     salienceWeight,
     semanticWeight,
@@ -143,37 +214,18 @@ export function recallBreath(
   const queryTokens = tokens(query);
   if (queryTokens.size === 0) return [];
 
-  const allowedKinds = new Set<SubjectStateKind>(BREATH_RECALL_KINDS);
   const hits: BreathRecallHit[] = [];
+  const eligible = eligibleBreathEntries(candidates, {
+    userId: input.userId,
+    subjectId: input.subjectId,
+    conversationId: input.conversationId,
+    currentPathMessageIds: input.currentPathMessageIds,
+    now: input.now,
+    cooldownHours,
+  });
 
-  for (const state of candidates) {
-    let lifecycle;
-    try {
-      lifecycle = readSubjectStateLifecycle(state.payload);
-    } catch {
-      // Malformed lifecycle metadata is excluded from prompt assembly rather
-      // than allowed to break the foreground chat.
-      continue;
-    }
-    if (
-      !allowedKinds.has(state.kind)
-      || !isConsolidationEligible(state.envelope.status)
-      || lifecycle?.status === "archived"
-      || !scopeApplies(state, input)
-      || !state.text
-    ) {
-      continue;
-    }
-
-    if (
-      nowMs !== null
-      && lifecycle?.lastRecalledAt
-      && nowMs - Date.parse(lifecycle.lastRecalledAt) < cooldownHours * 3_600_000
-    ) {
-      continue;
-    }
-
-    const candidateTokens = tokens(state.text);
+  for (const { state, lifecycle } of eligible) {
+    const candidateTokens = tokens(state.text!);
     if (candidateTokens.size === 0) continue;
 
     const matchedTokens = [...queryTokens].filter((token) =>
