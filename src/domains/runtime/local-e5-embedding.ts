@@ -16,6 +16,7 @@ export type LocalE5Options = {
   modelCacheDir?: string;
   modelId?: string;
   dtype?: "q8" | "fp16" | "fp32";
+  progressCallback?: (info: unknown) => void;
 };
 
 export class LocalE5ProviderError extends Error {
@@ -43,7 +44,10 @@ type TransformersModule = {
   pipeline(
     task: "feature-extraction",
     model: string,
-    options: { dtype: "q8" | "fp16" | "fp32" },
+    options: {
+      dtype: "q8" | "fp16" | "fp32";
+      progress_callback?: (info: unknown) => void;
+    },
   ): Promise<Extractor>;
   env: {
     cacheDir: string | null;
@@ -152,7 +156,10 @@ export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
       return await module.pipeline(
         "feature-extraction",
         this.options.modelId ?? MODEL_ID,
-        { dtype: this.options.dtype ?? "q8" },
+        {
+          dtype: this.options.dtype ?? "q8",
+          progress_callback: this.options.progressCallback,
+        },
       );
     } catch (error) {
       throw new LocalE5ProviderError(
