@@ -143,6 +143,31 @@ class FakeRelayService {
   }
 }
 
+class FakeSemanticService {
+  calls: Array<{ name: string; input: unknown }> = [];
+
+  async reserveNext(input: unknown) {
+    this.calls.push({ name: "reserveNext", input });
+    return {
+      reservationId: prepareId,
+      query: "solo travel independent",
+      candidates: [{
+        stateId: "state-travel",
+        kind: "memory" as const,
+        text: "独自旅行让我觉得自己可以照顾好自己",
+      }],
+    };
+  }
+
+  async submitScores(input: unknown) {
+    this.calls.push({ name: "submitScores", input });
+  }
+
+  async submitFallback(input: unknown) {
+    this.calls.push({ name: "submitFallback", input });
+  }
+}
+
 async function withServer(
   configure: (app: express.Express) => void,
   callback: (baseUrl: string) => Promise<void>,
@@ -376,6 +401,68 @@ test("internal relay reserve and result endpoints preserve listener ownership da
           "markExecutionStarted",
           "submitResult",
         ],
+      );
+    },
+  );
+});
+
+test("internal relay semantic endpoints preserve the bounded candidate snapshot and score ids", async () => {
+  const relayService = new FakeRelayService();
+  const semanticService = new FakeSemanticService();
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          semanticService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const reserve = await fetch(
+        `${baseUrl}/internal/native-live-relay/semantic/reserve`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+          }),
+        },
+      );
+      assert.equal(reserve.status, 200);
+      const reservation = await reserve.json() as {
+        data: {
+          reservationId: string;
+          candidates: Array<{ stateId: string }>;
+        };
+      };
+      assert.equal(reservation.data.reservationId, prepareId);
+      assert.deepEqual(
+        reservation.data.candidates.map((candidate) => candidate.stateId),
+        ["state-travel"],
+      );
+
+      const scores = await fetch(
+        `${baseUrl}/internal/native-live-relay/semantic/reservations/${prepareId}/scores`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            scores: { "state-travel": 0.93 },
+          }),
+        },
+      );
+      assert.equal(scores.status, 200);
+      assert.deepEqual(
+        semanticService.calls.map((entry) => entry.name),
+        ["reserveNext", "submitScores"],
       );
     },
   );
