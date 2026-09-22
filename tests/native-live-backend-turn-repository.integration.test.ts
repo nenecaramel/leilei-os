@@ -30,7 +30,7 @@ test(
     const databaseUrl = process.env.DATABASE_URL;
     assert.ok(databaseUrl, "DATABASE_URL is required");
 
-    const database = createDatabase(databaseUrl);
+    const database = createDatabase(databaseUrl, { ssl: false });
     t.after(async () => database.close());
 
     const suffix = crypto.randomUUID();
