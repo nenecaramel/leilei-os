@@ -21,6 +21,7 @@ CREATE TABLE "native_live_semantic_scoring_requests" (
   CONSTRAINT "native_live_semantic_scoring_requests_snapshot_nonnegative" CHECK ("native_live_semantic_scoring_requests"."snapshot_sequence" >= 0),
   CONSTRAINT "native_live_semantic_scoring_requests_scores_object" CHECK ("native_live_semantic_scoring_requests"."scores" IS NULL OR jsonb_typeof("native_live_semantic_scoring_requests"."scores") = 'object'),
   CONSTRAINT "native_live_semantic_scoring_requests_status_allowed" CHECK ("native_live_semantic_scoring_requests"."status" IN ('pending', 'reserved', 'completed', 'fallback')),
+  CONSTRAINT "native_live_semantic_scoring_requests_fallback_code_allowed" CHECK ("native_live_semantic_scoring_requests"."fallback_code" IS NULL OR "native_live_semantic_scoring_requests"."fallback_code" IN ('E5_PROVIDER_UNAVAILABLE', 'E5_SCORING_FAILED')),
   CONSTRAINT "native_live_semantic_scoring_requests_state_consistency" CHECK (
     ("native_live_semantic_scoring_requests"."status" = 'pending'
       AND "native_live_semantic_scoring_requests"."reserved_by" IS NULL
