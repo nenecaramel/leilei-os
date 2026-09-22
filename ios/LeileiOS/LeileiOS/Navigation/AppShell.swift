@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @EnvironmentObject private var appModel: AppModel
 
     @State private var selectedPage: AppPage = .chat
     @State private var menuOpen = false
@@ -100,7 +101,8 @@ struct AppShell: View {
                         withAnimation(.snappy) {
                             settingsPresented = false
                         }
-                    }
+                    },
+                    appModel: appModel
                 )
                 .offset(y: settingsPresented ? 0 : proxy.size.height)
                 .allowsHitTesting(settingsPresented)

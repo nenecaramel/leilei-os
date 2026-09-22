@@ -6,20 +6,20 @@ struct SettingsSheetView: View {
     let isPresented: Bool
     let onDismiss: () -> Void
     let dataService: any SettingsDataService
-    let authService: any SettingsAuthService
+    @ObservedObject var appModel: AppModel
     @State private var detailPage: SettingsDetailPage = .summary
     @State private var detailVisible = false
 
     init(
         isPresented: Bool,
         onDismiss: @escaping () -> Void,
-        dataService: any SettingsDataService = UnavailableSettingsDataService(),
-        authService: any SettingsAuthService = UnavailableSettingsAuthService()
+        appModel: AppModel,
+        dataService: any SettingsDataService = UnavailableSettingsDataService()
     ) {
         self.isPresented = isPresented
         self.onDismiss = onDismiss
+        self.appModel = appModel
         self.dataService = dataService
-        self.authService = authService
     }
 
     var body: some View {
@@ -34,7 +34,7 @@ struct SettingsSheetView: View {
                         resetTrigger: isPresented
                     ) {
                         SettingsHomeContent(
-                            authService: authService,
+                            appModel: appModel,
                             onShowSummary: { showDetail(.summary) },
                             onShowExport: { showDetail(.export) },
                             onShowRestore: { showDetail(.restore) },
@@ -245,7 +245,7 @@ private struct SettingsPageHeader: View {
 }
 
 private struct SettingsHomeContent: View {
-    let authService: any SettingsAuthService
+    @ObservedObject var appModel: AppModel
     let onShowSummary: () -> Void
     let onShowExport: () -> Void
     let onShowRestore: () -> Void
@@ -258,7 +258,7 @@ private struct SettingsHomeContent: View {
             SettingsSection(title: "Account") {
                 SettingsValueRow(
                     title: "Email",
-                    value: "you@example.com",
+                    value: appModel.accountEmail ?? (appModel.isAuthenticated ? "Signed in" : "Not signed in"),
                     symbol: "envelope",
                     iconSize: 16
                 )
@@ -269,7 +269,7 @@ private struct SettingsHomeContent: View {
                     symbol: "person.badge.key"
                 )
                 SettingsDivider(leadingInset: 52)
-                SettingsSignOutRow(authService: authService)
+                SettingsAuthRow(appModel: appModel)
             }
 
             SettingsSection(title: "Preference") {
@@ -431,19 +431,29 @@ private struct SettingsTextRow: View {
     }
 }
 
-private struct SettingsSignOutRow: View {
-    let authService: any SettingsAuthService
-
-    @State private var alert: SignOutAlert?
+private struct SettingsAuthRow: View {
+    @ObservedObject var appModel: AppModel
+    @State private var alert: AuthAlert?
 
     var body: some View {
         Button {
-            alert = .confirmation
+            if appModel.isAuthenticated {
+                alert = .confirmation
+            } else {
+                Task {
+                    await signIn()
+                }
+            }
         } label: {
             HStack(spacing: 16) {
-                SettingsRowIcon(symbol: "rectangle.portrait.and.arrow.right", size: 17)
+                SettingsRowIcon(
+                    symbol: appModel.isAuthenticated
+                        ? "rectangle.portrait.and.arrow.right"
+                        : "rectangle.portrait.and.arrow.forward",
+                    size: 17
+                )
 
-                Text("Sign out")
+                Text(appModel.isAuthenticated ? "Sign out" : "Sign in")
                     .font(.system(size: 17, weight: .medium))
 
                 Spacer()
@@ -467,7 +477,7 @@ private struct SettingsSignOutRow: View {
                 )
             case .error(let message):
                 Alert(
-                    title: Text("Sign out unavailable"),
+                    title: Text("Authentication unavailable"),
                     message: Text(message),
                     dismissButton: .cancel(Text("OK"))
                 )
@@ -476,16 +486,25 @@ private struct SettingsSignOutRow: View {
     }
 
     @MainActor
+    private func signIn() async {
+        do {
+            try await appModel.signIn()
+        } catch {
+            alert = .error(error.localizedDescription)
+        }
+    }
+
+    @MainActor
     private func signOut() async {
         do {
-            try await authService.signOut()
+            try await appModel.signOut()
         } catch {
             alert = .error(error.localizedDescription)
         }
     }
 }
 
-private enum SignOutAlert: Identifiable {
+private enum AuthAlert: Identifiable {
     case confirmation
     case error(String)
 
