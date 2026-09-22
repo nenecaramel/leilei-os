@@ -128,6 +128,9 @@ export function assembleTurnContext(input: {
   breathLimit: number;
   breathCooldownHours?: number;
   breathSalienceWeight?: number;
+  breathSemanticWeight?: number;
+  breathSemanticMinScore?: number;
+  breathSemanticScores?: ReadonlyMap<string, number>;
   maxContextItems: number;
   maxContextChars: number;
   surfaceHeadMessageId?: string | null;
@@ -196,11 +199,22 @@ export function assembleTurnContext(input: {
     now: input.assembledAt,
     cooldownHours: input.breathCooldownHours ?? 0,
     salienceWeight: input.breathSalienceWeight ?? 0,
+    semanticWeight: input.breathSemanticWeight ?? 0,
+    semanticMinScore: input.breathSemanticMinScore ?? 0,
+    semanticScores: input.breathSemanticScores,
   });
   const breathItems = breath.map((hit, index) =>
     subjectStateToContextItem(
       hit.state,
-      selection("breath_lexical_match", 300 + index, hit.score),
+      selection(
+        hit.channel === "hybrid"
+          ? "breath_hybrid_match"
+          : hit.channel === "semantic"
+            ? "breath_semantic_match"
+            : "breath_lexical_match",
+        300 + index,
+        hit.score,
+      ),
     ),
   );
 
@@ -262,7 +276,7 @@ export function assembleTurnContext(input: {
     contextData,
     prompt,
     breathStateIds: selected
-      .filter((item) => item.selection.reason === "breath_lexical_match")
+      .filter((item) => item.selection.reason.startsWith("breath_"))
       .map((item) => item.sourceId),
   };
 }
