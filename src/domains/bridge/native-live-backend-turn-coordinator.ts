@@ -307,7 +307,7 @@ export class NativeLiveBackendTurnCoordinator {
     return {
       ok: true,
       outcome: prepared.outcome,
-      command: commandFromPreparation(preparation),
+      command: nativeLiveRuntimeCommandFromPreparation(preparation),
     };
   }
 
@@ -351,7 +351,7 @@ export class NativeLiveBackendTurnCoordinator {
       return failureForResult(result, "PREPARATION_NOT_FOUND");
     }
 
-    const command = commandFromPreparation(preparation);
+    const command = nativeLiveRuntimeCommandFromPreparation(preparation);
     try {
       assertRuntimeResultMatchesCommand(command, result);
     } catch (error) {
@@ -447,7 +447,7 @@ export class NativeLiveBackendTurnCoordinator {
   }
 }
 
-function commandFromPreparation(
+export function nativeLiveRuntimeCommandFromPreparation(
   preparation: NativeLivePreparedTurn,
 ): NativeLiveRuntimeCommand {
   const command: NativeLiveRuntimeCommand = {
