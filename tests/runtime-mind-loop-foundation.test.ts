@@ -210,6 +210,7 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
     ],
   );
   assert.equal(parsed.visibleText.includes("<feel>"), false);
+  assert.equal(parsed.visibleText.includes("<drive>"), false);
   assert.equal(parsed.visibleText.includes("<unknown>别动我</unknown>"), true);
   assert.equal(parsed.visibleText.includes("<memory></memory>"), true);
 });
