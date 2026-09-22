@@ -128,11 +128,17 @@ export function assembleTurnContext(input: {
   breathLimit: number;
   maxContextItems: number;
   maxContextChars: number;
+  surfaceHeadMessageId?: string | null;
 }): AssembledTurnContext {
-  const path = canonicalPathToHead(input.conversation);
+  const surfaceHeadMessageId =
+    input.surfaceHeadMessageId === undefined
+      ? input.conversation.currentHeadMessageId
+      : input.surfaceHeadMessageId;
+  const path = canonicalPathToHead(input.conversation, surfaceHeadMessageId);
   const currentPathMessageIds = new Set(path.map((message) => message.id));
   const surface = projectCanonicalSurface(input.conversation, {
     maxMessages: input.surfaceLimit,
+    headMessageId: surfaceHeadMessageId,
   });
 
   const userItem: ContextManifestItem = {
@@ -207,7 +213,7 @@ export function assembleTurnContext(input: {
     userId: input.userId,
     subjectId: input.subjectId,
     conversationId: input.conversation.id,
-    pathHeadMessageId: input.conversation.currentHeadMessageId,
+    pathHeadMessageId: surfaceHeadMessageId,
     snapshotSequence: input.snapshotSequence,
     assemblyVersion: input.assemblyVersion,
     promptContractVersion: input.promptContractVersion,
