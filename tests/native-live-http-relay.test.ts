@@ -61,6 +61,7 @@ class FakeTurnReader {
       canonicalUserMessageId: userMessageId,
       canonicalStatus: "finalized_success" as const,
       dispatchStatus: "completed" as const,
+      semanticStatus: null,
       failureCode: null,
       assistantMessage: {
         id: "77777777-7777-4777-8777-777777777777",
