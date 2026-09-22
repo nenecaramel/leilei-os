@@ -463,11 +463,15 @@ test(
           .where(eq(runtimeContextManifests.userId, user.id));
         const selected = manifests
           .flatMap((manifest) => manifest.items)
-          .find(
-            (item) =>
+          .find((item) => {
+            const selection = item.selection as
+              | { reason?: unknown }
+              | undefined;
+            return (
               item.sourceId === provisional.id
-              && item.selection.reason === "breath_semantic_match",
-          );
+              && selection?.reason === "breath_semantic_match"
+            );
+          });
         assert.ok(selected);
       },
     );
