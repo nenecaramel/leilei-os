@@ -25,8 +25,11 @@ import type {
 } from "./runtime-status-axes.js";
 import {
   semanticCandidatesFromStates,
+  type BreathSemanticCandidate,
   type BreathSemanticScorer,
 } from "./breath-semantic-recall.js";
+import { filterBreathEligibleStates } from "./breath-recall.js";
+import { canonicalPathToHead } from "./surface-projector.js";
 
 export type SubjectStateTransition = {
   stateId: string;
@@ -167,19 +170,48 @@ export class NativeLiveMindLoopService {
       conversationId: input.conversation.id,
     });
 
+    const configuredSemanticWeight =
+      this.config.breathSemanticWeight ?? 0;
+    let effectiveSemanticWeight = 0;
     let semanticScores: ReadonlyMap<string, number> | undefined;
-    if (
-      this.semanticScorer
-      && (this.config.breathSemanticWeight ?? 0) > 0
-    ) {
-      try {
-        semanticScores = await this.semanticScorer.score({
-          query: input.userText,
-          candidates: semanticCandidatesFromStates(states),
-        });
-      } catch {
-        // Semantic recall is optional and non-authoritative. Fall back to the
-        // lexical channel rather than failing the foreground turn.
+
+    if (this.semanticScorer && configuredSemanticWeight > 0) {
+      const surfaceHeadMessageId =
+        input.surfaceHeadMessageId === undefined
+          ? input.conversation.currentHeadMessageId
+          : input.surfaceHeadMessageId;
+      const currentPathMessageIds = new Set(
+        canonicalPathToHead(
+          input.conversation,
+          surfaceHeadMessageId,
+        ).map((message) => message.id),
+      );
+      const semanticCandidates = semanticCandidatesFromStates(
+        filterBreathEligibleStates(states, {
+          userId: input.userId,
+          subjectId: input.subjectId,
+          conversationId: input.conversation.id,
+          currentPathMessageIds,
+          now: input.assembledAt,
+          cooldownHours: this.config.breathCooldownHours ?? 0,
+        }),
+      );
+
+      if (semanticCandidates.length > 0) {
+        try {
+          const scored = await this.semanticScorer.score({
+            query: input.userText,
+            candidates: semanticCandidates,
+          });
+          if (hasCompleteSemanticScores(scored, semanticCandidates)) {
+            semanticScores = scored;
+            effectiveSemanticWeight = configuredSemanticWeight;
+          }
+        } catch {
+          // Semantic recall is optional and non-authoritative. A provider
+          // failure must restore pure lexical scoring rather than attenuating
+          // lexical hits with a missing semantic channel.
+        }
       }
     }
 
@@ -199,7 +231,7 @@ export class NativeLiveMindLoopService {
       breathLimit: this.config.breathLimit,
       breathCooldownHours: this.config.breathCooldownHours ?? 0,
       breathSalienceWeight: this.config.breathSalienceWeight ?? 0,
-      breathSemanticWeight: this.config.breathSemanticWeight ?? 0,
+      breathSemanticWeight: effectiveSemanticWeight,
       breathSemanticMinScore: this.config.breathSemanticMinScore ?? 0,
       breathSemanticScores: semanticScores,
       maxContextItems: this.config.maxContextItems,
@@ -305,4 +337,19 @@ export class NativeLiveMindLoopService {
     };
   }
 
+}
+
+function hasCompleteSemanticScores(
+  scores: ReadonlyMap<string, number>,
+  candidates: readonly BreathSemanticCandidate[],
+): boolean {
+  return candidates.every((candidate) => {
+    const score = scores.get(candidate.stateId);
+    return (
+      typeof score === "number"
+      && Number.isFinite(score)
+      && score >= 0
+      && score <= 1
+    );
+  });
 }
