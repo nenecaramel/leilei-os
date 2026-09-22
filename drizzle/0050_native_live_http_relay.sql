@@ -1,4 +1,4 @@
-ALTER TABLE "native_live_turn_preparations" ADD COLUMN "dispatch_status" varchar(32) DEFAULT 'pending' NOT NULL;
+ALTER TABLE "native_live_turn_preparations" ADD COLUMN "dispatch_status" varchar(32) DEFAULT 'staged' NOT NULL;
 ALTER TABLE "native_live_turn_preparations" ADD COLUMN "reserved_by" uuid;
 ALTER TABLE "native_live_turn_preparations" ADD COLUMN "reserved_at" timestamp with time zone;
 ALTER TABLE "native_live_turn_preparations" ADD COLUMN "reservation_expires_at" timestamp with time zone;
@@ -6,9 +6,9 @@ ALTER TABLE "native_live_turn_preparations" ADD COLUMN "execution_started_at" ti
 ALTER TABLE "native_live_turn_preparations" ADD COLUMN "delivery_unknown_at" timestamp with time zone;
 ALTER TABLE "native_live_turn_preparations" ADD COLUMN "dispatch_error_code" varchar(64);
 CREATE INDEX "native_live_turn_preparations_dispatch_queue_idx" ON "native_live_turn_preparations" USING btree ("user_id","dispatch_status","created_at","id");
-ALTER TABLE "native_live_turn_preparations" ADD CONSTRAINT "native_live_turn_preparations_dispatch_status_allowed" CHECK ("native_live_turn_preparations"."dispatch_status" IN ('pending', 'reserved', 'executing', 'delivery_unknown', 'completed', 'rejected'));
+ALTER TABLE "native_live_turn_preparations" ADD CONSTRAINT "native_live_turn_preparations_dispatch_status_allowed" CHECK ("native_live_turn_preparations"."dispatch_status" IN ('staged', 'pending', 'reserved', 'executing', 'delivery_unknown', 'completed', 'rejected'));
 ALTER TABLE "native_live_turn_preparations" ADD CONSTRAINT "native_live_turn_preparations_dispatch_reservation_consistency" CHECK (
-  ("native_live_turn_preparations"."dispatch_status" IN ('pending', 'rejected')
+  ("native_live_turn_preparations"."dispatch_status" IN ('staged', 'pending', 'rejected')
     AND "native_live_turn_preparations"."reserved_by" IS NULL
     AND "native_live_turn_preparations"."reserved_at" IS NULL
     AND "native_live_turn_preparations"."reservation_expires_at" IS NULL
