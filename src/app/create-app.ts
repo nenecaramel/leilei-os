@@ -62,6 +62,11 @@ import type { ConversationLifecycleApiDependencies } from "../web-api/conversati
 import type { ConversationFavoriteApiDependencies } from "../web-api/conversation-favorite-router.js";
 import type { ConversationExclusionManagementApiDependencies } from "../web-api/conversation-exclusion-management-router.js";
 import type { ConversationImportHistoryApiDependencies } from "../web-api/conversation-import-history-router.js";
+import type { NativeLiveApiDependencies } from "../web-api/native-live-router.js";
+import {
+  createNativeLiveRelayInternalRouter,
+  type NativeLiveRelayInternalDependencies,
+} from "../web-api/native-live-relay-internal-router.js";
 import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
@@ -93,6 +98,8 @@ export type AppDependencies = {
   webConversationFavoriteService?: ConversationFavoriteApiDependencies["conversationFavoriteService"];
   webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
   webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
+  webNativeLiveCoordinator?: NativeLiveApiDependencies["coordinator"];
+  nativeLiveRelayService?: NativeLiveRelayInternalDependencies["relayService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -323,6 +330,7 @@ export function createApp(
     const webConversationFavoriteService = dependencies.webConversationFavoriteService;
     const webConversationExclusionManagementService = dependencies.webConversationExclusionManagementService;
     const webConversationImportHistoryService = dependencies.webConversationImportHistoryService;
+    const webNativeLiveCoordinator = dependencies.webNativeLiveCoordinator;
 
     if (
       !webMemoryService ||
@@ -397,6 +405,7 @@ export function createApp(
         ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
         ...(dependencies.webConversationLifecycle ? { conversationLifecycle: dependencies.webConversationLifecycle } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
+        ...(webNativeLiveCoordinator ? { nativeLive: { coordinator: webNativeLiveCoordinator } } : {}),
       }),
     );
   }
@@ -421,6 +430,20 @@ export function createApp(
   );
 
   if (config.MCP_AUTH_TOKEN) {
+    if (dependencies.nativeLiveRelayService) {
+      app.use(
+        "/internal/native-live-relay",
+        createInternalAuthMiddleware(
+          config.MCP_AUTH_TOKEN,
+          config.MCP_USER_ID,
+        ),
+        databaseReadinessMiddleware,
+        createNativeLiveRelayInternalRouter({
+          relayService: dependencies.nativeLiveRelayService,
+        }),
+      );
+    }
+
     app.use(
       "/internal/mcp",
       createInternalAuthMiddleware(
