@@ -11,6 +11,15 @@ import {
   type SubjectStateTransition,
 } from "./native-live-mind-loop-service.js";
 import type { SubjectStateWrite } from "./subject-state-contract.js";
+import type { BreathSemanticCandidate } from "./breath-semantic-recall.js";
+
+export type NativeLiveMindSemanticPlan = {
+  manifestId: string;
+  assembledAt: string;
+  snapshotSequence: number;
+  query: string;
+  candidates: BreathSemanticCandidate[];
+};
 
 export type NativeLiveMindRuntimeBindingOptions = {
   subjectId: string;
@@ -28,6 +37,24 @@ export interface NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+  }): Promise<string>;
+
+  planSemanticUserTurn?(input: {
+    userId: string;
+    conversation: NativeLiveConversation;
+    userMessage: NativeLiveMessage;
+    userText: string;
+    surfaceHeadMessageId: string | null;
+  }): Promise<NativeLiveMindSemanticPlan | null>;
+
+  prepareUserTurnWithSemanticScores?(input: {
+    userId: string;
+    conversation: NativeLiveConversation;
+    userMessage: NativeLiveMessage;
+    userText: string;
+    surfaceHeadMessageId: string | null;
+    plan: NativeLiveMindSemanticPlan;
+    scores: ReadonlyMap<string, number>;
   }): Promise<string>;
 
   parseAssistantBlocks(
@@ -93,6 +120,61 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       snapshotSequence: input.conversation.messages.length,
       assembledAt: this.now(),
       surfaceHeadMessageId: input.surfaceHeadMessageId,
+    });
+    return assembled.prompt;
+  }
+
+  async planSemanticUserTurn(input: {
+    userId: string;
+    conversation: NativeLiveConversation;
+    userMessage: NativeLiveMessage;
+    userText: string;
+    surfaceHeadMessageId: string | null;
+  }): Promise<NativeLiveMindSemanticPlan | null> {
+    const assembledAt = this.now();
+    const semantic = await this.service.planSemanticRecall({
+      userId: input.userId,
+      subjectId: this.subjectId,
+      conversation: input.conversation,
+      userText: input.userText,
+      assembledAt,
+      surfaceHeadMessageId: input.surfaceHeadMessageId,
+    });
+    if (!semantic) return null;
+
+    return {
+      manifestId: this.createManifestId(),
+      assembledAt,
+      snapshotSequence: input.conversation.messages.length,
+      query: semantic.query,
+      candidates: semantic.candidates,
+    };
+  }
+
+  async prepareUserTurnWithSemanticScores(input: {
+    userId: string;
+    conversation: NativeLiveConversation;
+    userMessage: NativeLiveMessage;
+    userText: string;
+    surfaceHeadMessageId: string | null;
+    plan: NativeLiveMindSemanticPlan;
+    scores: ReadonlyMap<string, number>;
+  }): Promise<string> {
+    if (input.plan.query !== input.userText) {
+      throw new Error("Semantic scoring query does not match the user turn.");
+    }
+
+    const assembled = await this.service.prepareTurn({
+      manifestId: input.plan.manifestId,
+      userId: input.userId,
+      subjectId: this.subjectId,
+      conversation: input.conversation,
+      userMessageId: input.userMessage.id,
+      userText: input.userText,
+      snapshotSequence: input.plan.snapshotSequence,
+      assembledAt: input.plan.assembledAt,
+      surfaceHeadMessageId: input.surfaceHeadMessageId,
+      semanticScores: input.scores,
     });
     return assembled.prompt;
   }
