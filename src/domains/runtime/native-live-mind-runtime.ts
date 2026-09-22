@@ -1,0 +1,143 @@
+import { randomUUID } from "node:crypto";
+import type {
+  NativeLiveContentBlockInput,
+  NativeLiveConversation,
+  NativeLiveMessage,
+} from "../conversation/native-live-conversation-types.js";
+import type { MindWriteIntent } from "./mind-intent-parser.js";
+import type { ParsedAssistantBlocks } from "./mind-block-parser.js";
+import {
+  NativeLiveMindLoopService,
+  type SubjectStateTransition,
+} from "./native-live-mind-loop-service.js";
+import type { SubjectStateWrite } from "./subject-state-contract.js";
+
+export type NativeLiveMindRuntimeBindingOptions = {
+  subjectId: string;
+  createManifestId?: () => string;
+  createStateId?: () => string;
+  now?: () => string;
+  producerId?: string;
+  committerId?: string;
+};
+
+export interface NativeLiveMindRuntime {
+  prepareUserTurn(input: {
+    userId: string;
+    conversation: NativeLiveConversation;
+    userMessage: NativeLiveMessage;
+    userText: string;
+    surfaceHeadMessageId: string | null;
+  }): Promise<string>;
+
+  parseAssistantBlocks(
+    blocks: readonly NativeLiveContentBlockInput[],
+  ): ParsedAssistantBlocks;
+
+  recordAssistantIntents(input: {
+    userId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    intents: readonly MindWriteIntent[];
+  }): Promise<SubjectStateWrite[]>;
+
+  reconcileSelectedPath(input: {
+    userId: string;
+    conversation: NativeLiveConversation;
+  }): Promise<SubjectStateTransition[]>;
+}
+
+/**
+ * Thin runtime binding for the V1 Mind loop.
+ *
+ * It keeps subject identity and local ID/time factories out of the conversation
+ * orchestrators. A true canonical event sequence can replace messages.length
+ * when the event-ledger port is wired; for the current local native/live path,
+ * the committed snapshot message count is the deterministic watermark.
+ */
+export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
+  private readonly subjectId: string;
+  private readonly createManifestId: () => string;
+  private readonly createStateId: () => string;
+  private readonly now: () => string;
+  private readonly producerId: string;
+  private readonly committerId: string;
+
+  constructor(
+    private readonly service: NativeLiveMindLoopService,
+    options: NativeLiveMindRuntimeBindingOptions,
+  ) {
+    this.subjectId = options.subjectId;
+    this.createManifestId = options.createManifestId ?? randomUUID;
+    this.createStateId = options.createStateId ?? randomUUID;
+    this.now = options.now ?? (() => new Date().toISOString());
+    this.producerId = options.producerId ?? "claude-code";
+    this.committerId = options.committerId ?? "leileios-runtime";
+  }
+
+  async prepareUserTurn(input: {
+    userId: string;
+    conversation: NativeLiveConversation;
+    userMessage: NativeLiveMessage;
+    userText: string;
+    surfaceHeadMessageId: string | null;
+  }): Promise<string> {
+    const assembled = await this.service.prepareTurn({
+      manifestId: this.createManifestId(),
+      userId: input.userId,
+      subjectId: this.subjectId,
+      conversation: input.conversation,
+      userMessageId: input.userMessage.id,
+      userText: input.userText,
+      snapshotSequence: input.conversation.messages.length,
+      assembledAt: this.now(),
+      surfaceHeadMessageId: input.surfaceHeadMessageId,
+    });
+    return assembled.prompt;
+  }
+
+  parseAssistantBlocks(
+    blocks: readonly NativeLiveContentBlockInput[],
+  ): ParsedAssistantBlocks {
+    return this.service.parseAssistantBlocks(blocks);
+  }
+
+  recordAssistantIntents(input: {
+    userId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    intents: readonly MindWriteIntent[];
+  }): Promise<SubjectStateWrite[]> {
+    return this.service.recordAssistantIntents({
+      userId: input.userId,
+      subjectId: this.subjectId,
+      conversationId: input.conversationId,
+      assistantMessageId: input.assistantMessageId,
+      intents: input.intents,
+      createStateId: this.createStateId,
+      producer: { kind: "model", id: this.producerId },
+      committer: { kind: "runtime", id: this.committerId },
+      sourceStatus: {
+        generationStatus: "committed",
+        presentationStatus: "presented",
+        pathStatus: "current",
+        settlementStatus: "unsettled",
+        validityStatus: "valid",
+      },
+      visibility: "subject_private",
+      sensitivity: "normal",
+      audience: [this.subjectId],
+    });
+  }
+
+  reconcileSelectedPath(input: {
+    userId: string;
+    conversation: NativeLiveConversation;
+  }): Promise<SubjectStateTransition[]> {
+    return this.service.reconcilePath({
+      userId: input.userId,
+      subjectId: this.subjectId,
+      conversation: input.conversation,
+    });
+  }
+}
