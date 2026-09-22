@@ -190,6 +190,7 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
       "正文第一句。",
       "<feel>有点开心</feel>",
       "<memory>今天把 Runtime 接起来了</memory>",
+      "<drive>我还想把这条 runtime 主线继续推进</drive>",
       "<thought>下一步验证 recall</thought>",
       "<unknown>别动我</unknown>",
       "<memory></memory>",
@@ -201,6 +202,7 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
     [
       ["feel", "有点开心"],
       ["memory", "今天把 Runtime 接起来了"],
+      ["drive", "我还想把这条 runtime 主线继续推进"],
       ["thought", "下一步验证 recall"],
     ],
   );
