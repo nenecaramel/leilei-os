@@ -39,7 +39,12 @@ enum HelperError: Error, CustomStringConvertible {
 }
 
 func containsHan(_ value: String) -> Bool {
-    value.range(of: #"\p{Script=Han}"#, options: .regularExpression) != nil
+    value.unicodeScalars.contains { scalar in
+        let code = scalar.value
+        return (0x3400...0x4DBF).contains(code)
+            || (0x4E00...0x9FFF).contains(code)
+            || (0xF900...0xFAFF).contains(code)
+    }
 }
 
 func preferredLanguage(requested: String?, query: String) -> NLLanguage {
