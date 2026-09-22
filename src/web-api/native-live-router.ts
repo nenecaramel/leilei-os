@@ -4,12 +4,21 @@ import type {
   NativeLivePrepareResult,
 } from "../domains/bridge/native-live-backend-turn-coordinator.js";
 import type {
+  NativeLiveBackendTurnReadModel,
+} from "../domains/bridge/native-live-backend-turn-repository.js";
+import type {
   NativeLiveBackendRelayService,
 } from "../domains/bridge/native-live-backend-relay.js";
 
 export type NativeLiveApiDependencies = {
   coordinator: Pick<NativeLiveBackendTurnCoordinator, "prepare">;
   relayService: Pick<NativeLiveBackendRelayService, "enqueuePreparation">;
+  turnReader: {
+    readTurn(input: {
+      userId: string;
+      prepareId: string;
+    }): Promise<NativeLiveBackendTurnReadModel | null>;
+  };
 };
 
 export function createNativeLiveApiRouter(
@@ -17,6 +26,7 @@ export function createNativeLiveApiRouter(
 ): Router {
   const router = Router();
   router.post("/prepare", prepareNativeLiveTurnHandler(dependencies));
+  router.get("/turns/:prepareId", readNativeLiveTurnHandler(dependencies));
   return router;
 }
 
@@ -115,4 +125,81 @@ function requireWebUser(
     },
   });
   return false;
+}
+
+
+export function readNativeLiveTurnHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const prepareId = routeParam(request.params.prepareId);
+    if (!UUID_PATTERN.test(prepareId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_TURN_ID",
+          message: "Native live turn id is invalid.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const turn = await dependencies.turnReader.readTurn({
+        userId: request.webUserId,
+        prepareId,
+      });
+      if (!turn) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_TURN_NOT_FOUND",
+            message: "Native live turn was not found.",
+          },
+        });
+        return;
+      }
+
+      response.json({
+        success: true,
+        data: {
+          prepareId: turn.prepareId,
+          requestId: turn.requestId,
+          conversationId: turn.conversationId,
+          operation: turn.operation,
+          userMessageId: turn.canonicalUserMessageId,
+          canonicalStatus: turn.canonicalStatus,
+          dispatchStatus: turn.dispatchStatus,
+          failureCode: turn.failureCode,
+          assistantMessage: turn.assistantMessage
+            ? {
+                id: turn.assistantMessage.id,
+                parentMessageId: turn.assistantMessage.parentMessageId,
+                status: turn.assistantMessage.status,
+                createdAt: turn.assistantMessage.createdAt,
+                completedAt: turn.assistantMessage.completedAt,
+                blocks: turn.assistantMessage.blocks,
+              }
+            : null,
+        },
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_TURN_READ_UNAVAILABLE",
+          message: "Native live turn is temporarily unavailable.",
+        },
+      });
+    }
+  };
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function routeParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
