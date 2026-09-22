@@ -31,7 +31,6 @@ test(
     assert.ok(databaseUrl, "DATABASE_URL is required");
 
     const database = createDatabase(databaseUrl, { ssl: false });
-    t.after(async () => database.close());
 
     const suffix = crypto.randomUUID();
     const [user] = await database.db
@@ -44,10 +43,14 @@ test(
     assert.ok(user);
 
     t.after(async () => {
-      await database.db
-        .delete(conversations)
-        .where(eq(conversations.userId, user.id));
-      await database.db.delete(users).where(eq(users.id, user.id));
+      try {
+        await database.db
+          .delete(conversations)
+          .where(eq(conversations.userId, user.id));
+        await database.db.delete(users).where(eq(users.id, user.id));
+      } finally {
+        await database.close();
+      }
     });
 
     const conversationService = new NativeLiveConversationService(
