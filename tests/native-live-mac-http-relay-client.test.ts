@@ -124,6 +124,80 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
   }
 });
 
+test("Mac HTTP relay client transports semantic candidate snapshots and score callbacks", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const responses = [
+    {
+      success: true,
+      data: {
+        reservationId: prepareId,
+        query: "solo travel independent",
+        candidates: [{
+          stateId: "state-travel",
+          kind: "memory",
+          text: "独自旅行让我觉得自己可以照顾好自己",
+        }],
+      },
+    },
+    { success: true, data: { accepted: true } },
+    { success: true, data: { accepted: true } },
+  ];
+
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const reservation = await client.reserveSemanticScoring({
+    listenerInstanceId: listenerId,
+    dispatchTarget: "claude_code",
+  });
+  assert.deepEqual(reservation, {
+    reservationId: prepareId,
+    query: "solo travel independent",
+    candidates: [{
+      stateId: "state-travel",
+      kind: "memory",
+      text: "独自旅行让我觉得自己可以照顾好自己",
+    }],
+  });
+
+  await client.submitSemanticScores({
+    listenerInstanceId: listenerId,
+    reservationId: prepareId,
+    scores: { "state-travel": 0.93 },
+  });
+  await client.submitSemanticFallback({
+    listenerInstanceId: listenerId,
+    reservationId: prepareId,
+    code: "E5_SCORING_FAILED",
+  });
+
+  assert.deepEqual(
+    calls.map((call) => call.url),
+    [
+      "https://relay.example/internal/native-live-relay/semantic/reserve",
+      `https://relay.example/internal/native-live-relay/semantic/reservations/${prepareId}/scores`,
+      `https://relay.example/internal/native-live-relay/semantic/reservations/${prepareId}/fallback`,
+    ],
+  );
+  assert.deepEqual(calls[1]?.body, {
+    listener_instance_id: listenerId,
+    scores: { "state-travel": 0.93 },
+  });
+});
+
 test("Mac HTTP relay client treats non-success responses as transport failures without leaking server details", async () => {
   const fakeFetch: typeof fetch = async () =>
     new Response(
