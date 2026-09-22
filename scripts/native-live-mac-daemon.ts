@@ -9,6 +9,9 @@ import {
 import {
   NativeLiveMacRuntimeExecutor,
 } from "../src/domains/bridge/native-live-mac-runtime-executor.js";
+import {
+  LocalE5BreathSemanticScorer,
+} from "../src/domains/runtime/local-e5-embedding.js";
 
 const { HeadlessClaudeTransport } = await import(
   "../tools/claude-bridge/src/headless-claude-transport.mjs"
@@ -37,10 +40,12 @@ const relay = new NativeLiveMacHttpRelayClient(
 );
 const runtime = new HeadlessClaudeTransport();
 const executor = new NativeLiveMacRuntimeExecutor(runtime);
+const semanticScorer = new LocalE5BreathSemanticScorer();
 const loop = new NativeLiveMacDaemonLoop(
   listenerInstanceId,
   relay,
   executor,
+  semanticScorer,
 );
 
 let stopping = false;
