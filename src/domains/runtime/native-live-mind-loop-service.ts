@@ -23,6 +23,10 @@ import type {
   ValidityStatus,
   PathStatus,
 } from "./runtime-status-axes.js";
+import {
+  semanticCandidatesFromStates,
+  type BreathSemanticScorer,
+} from "./breath-semantic-recall.js";
 
 export type SubjectStateTransition = {
   stateId: string;
@@ -76,6 +80,8 @@ export type MindLoopConfig = {
   breathLimit: number;
   breathCooldownHours?: number;
   breathSalienceWeight?: number;
+  breathSemanticWeight?: number;
+  breathSemanticMinScore?: number;
   maxContextItems: number;
   maxContextChars: number;
 };
@@ -95,6 +101,7 @@ export class NativeLiveMindLoopService {
   constructor(
     private readonly port: SubjectStateRuntimePort,
     private readonly config: MindLoopConfig,
+    private readonly semanticScorer: BreathSemanticScorer | null = null,
   ) {}
 
   async reconcilePath(input: {
@@ -160,6 +167,22 @@ export class NativeLiveMindLoopService {
       conversationId: input.conversation.id,
     });
 
+    let semanticScores: ReadonlyMap<string, number> | undefined;
+    if (
+      this.semanticScorer
+      && (this.config.breathSemanticWeight ?? 0) > 0
+    ) {
+      try {
+        semanticScores = await this.semanticScorer.score({
+          query: input.userText,
+          candidates: semanticCandidatesFromStates(states),
+        });
+      } catch {
+        // Semantic recall is optional and non-authoritative. Fall back to the
+        // lexical channel rather than failing the foreground turn.
+      }
+    }
+
     const assembled = assembleTurnContext({
       manifestId: input.manifestId,
       userId: input.userId,
@@ -176,6 +199,9 @@ export class NativeLiveMindLoopService {
       breathLimit: this.config.breathLimit,
       breathCooldownHours: this.config.breathCooldownHours ?? 0,
       breathSalienceWeight: this.config.breathSalienceWeight ?? 0,
+      breathSemanticWeight: this.config.breathSemanticWeight ?? 0,
+      breathSemanticMinScore: this.config.breathSemanticMinScore ?? 0,
+      breathSemanticScores: semanticScores,
       maxContextItems: this.config.maxContextItems,
       maxContextChars: this.config.maxContextChars,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
