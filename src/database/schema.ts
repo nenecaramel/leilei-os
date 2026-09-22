@@ -1782,7 +1782,7 @@ export const runtimeDriveSatisfactionEvents = pgTable(
     ),
     check(
       "runtime_drive_satisfaction_events_kind_allowed",
-      sql`${table.evidenceKind} IN ('user_message', 'tool_result')`,
+      sql`${table.evidenceKind} IN (\'user_message\', \'tool_result\')`,
     ),
     check(
       "runtime_drive_satisfaction_events_amount_bounds",
@@ -1790,7 +1790,17 @@ export const runtimeDriveSatisfactionEvents = pgTable(
     ),
     check(
       "runtime_drive_satisfaction_events_idempotency_format",
-      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9._:-]{16,128}
+      sql`${table.idempotencyKey} ~ \'^[A-Za-z0-9._:-]{16,128}$\'`,
+    ),
+    check(
+      "runtime_drive_satisfaction_events_block_consistency",
+      sql`(${table.evidenceKind} = \'user_message\' AND ${table.evidenceBlockId} IS NULL)
+        OR (${table.evidenceKind} = \'tool_result\' AND ${table.evidenceBlockId} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const runtimeSubjectStateTransitions = pgTable(
   "runtime_subject_state_transitions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -1815,11 +1825,10 @@ export const runtimeDriveSatisfactionEvents = pgTable(
     ),
     check("runtime_subject_state_transitions_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
     check("runtime_subject_state_transitions_reason_not_blank", sql`char_length(btrim(${table.reason})) > 0`),
-    check("runtime_subject_state_transitions_before_object", sql`jsonb_typeof(${table.beforeEnvelope}) = 'object'`),
-    check("runtime_subject_state_transitions_after_object", sql`jsonb_typeof(${table.afterEnvelope}) = 'object'`),
+    check("runtime_subject_state_transitions_before_object", sql`jsonb_typeof(${table.beforeEnvelope}) = \'object\'`),
+    check("runtime_subject_state_transitions_after_object", sql`jsonb_typeof(${table.afterEnvelope}) = \'object\'`),
   ],
 );
-
 export const runtimeContextManifests = pgTable(
   "runtime_context_manifests",
   {
