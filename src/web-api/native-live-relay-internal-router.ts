@@ -29,6 +29,10 @@ export function createNativeLiveRelayInternalRouter(
   dependencies: NativeLiveRelayInternalDependencies,
 ): Router {
   const router = Router();
+  router.use((_request, response, next) => {
+    response.setHeader("Cache-Control", "private, no-store");
+    next();
+  });
   router.post("/lease/renew", renewLeaseHandler(dependencies));
   router.post("/reserve", reserveNextHandler(dependencies));
   router.post(
