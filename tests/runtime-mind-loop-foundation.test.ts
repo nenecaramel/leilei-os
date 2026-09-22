@@ -17,6 +17,13 @@ import { decideProvisionalSettlement } from "../src/domains/runtime/subject-stat
 import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
 
 const now = "2026-09-22T08:00:00.000Z";
+const settledStatus = {
+  generationStatus: "committed",
+  presentationStatus: "presented",
+  pathStatus: "current",
+  settlementStatus: "settled",
+  validityStatus: "valid",
+} as const;
 
 function block(id: string, text: string): NativeLiveContentBlock {
   return {
@@ -70,33 +77,43 @@ function state(
   text: string,
   overrides: Partial<SubjectStateWrite> = {},
 ): SubjectStateWrite {
-  return {
+  const base: SubjectStateWrite = {
     id,
     kind,
     text,
     payload: null,
-    lifecycle: "active",
-    sourceSettlement: "settled",
-    writer: {
-      actor: "subject",
-      writerId: "claude-code",
+    envelope: {
+      semanticActor: { kind: "subject", id: "G" },
+      producer: { kind: "model", id: "claude-code" },
+      committer: { kind: "service", id: "leileios-runtime" },
       authority: "subject_authorized",
+      scope: {
+        userId: "u1",
+        subjectId: "G",
+        applicability: "global",
+        conversationId: null,
+        pathHeadMessageId: null,
+        visibility: "subject_private",
+        sensitivity: "normal",
+        audience: ["G"],
+      },
+      status: settledStatus,
+      provenance: {
+        sources: [{ kind: "message", id: "a1" }],
+        causedBy: "a1",
+        derivedFrom: [],
+      },
+      versions: {
+        schemaVersion: 1,
+        ruleVersion: "mind-v1",
+        processVersion: "subject-write-v1",
+      },
     },
-    scope: {
-      userId: "u1",
-      applicability: "global",
-      conversationId: null,
-      pathHeadMessageId: null,
-      visibility: "subject_private",
-      sensitivity: "normal",
-    },
-    provenance: {
-      sources: [{ kind: "message", id: "a1" }],
-      schemaVersion: 1,
-      ruleVersion: "mind-v1",
-      processVersion: "subject-write-v1",
-    },
+  };
+  return {
+    ...base,
     ...overrides,
+    envelope: overrides.envelope ?? base.envelope,
   };
 }
 
@@ -120,31 +137,40 @@ test("Surface follows only the selected canonical message path", () => {
   );
 });
 
-test("Breath recalls only settled active Feel/Memory that apply to the current scope", () => {
+test("Breath recalls only consolidation-eligible Feel/Memory in scope", () => {
   const currentPathMessageIds = new Set(["u1", "a1"]);
-  const candidates: SubjectStateWrite[] = [
-    state("m1", "memory", "蕾蕾喜欢柠檬黄头发"),
-    state("f1", "feel", "看到柠檬黄的时候觉得很亮"),
-    state("t1", "thought", "柠檬黄这个话题还想继续想"),
-    state("m2", "memory", "柠檬黄", { lifecycle: "archived" }),
-    state("m3", "memory", "柠檬黄", {
-      scope: {
-        userId: "u1",
-        applicability: "conversation",
-        conversationId: "other",
-        pathHeadMessageId: null,
-        visibility: "subject_private",
-        sensitivity: "normal",
-      },
-    }),
-  ];
+  const invalidMemory = state("m2", "memory", "柠檬黄");
+  invalidMemory.envelope = {
+    ...invalidMemory.envelope,
+    status: { ...settledStatus, validityStatus: "invalidated" },
+  };
+  const otherConversation = state("m3", "memory", "柠檬黄");
+  otherConversation.envelope = {
+    ...otherConversation.envelope,
+    scope: {
+      ...otherConversation.envelope.scope,
+      applicability: "conversation",
+      conversationId: "other",
+    },
+  };
 
-  const hits = recallBreath("我又想到柠檬黄了", candidates, {
-    userId: "u1",
-    conversationId: "c1",
-    currentPathMessageIds,
-    limit: 5,
-  });
+  const hits = recallBreath(
+    "我又想到柠檬黄了",
+    [
+      state("m1", "memory", "蕾蕾喜欢柠檬黄头发"),
+      state("f1", "feel", "看到柠檬黄的时候觉得很亮"),
+      state("t1", "thought", "柠檬黄这个话题还想继续想"),
+      invalidMemory,
+      otherConversation,
+    ],
+    {
+      userId: "u1",
+      subjectId: "G",
+      conversationId: "c1",
+      currentPathMessageIds,
+      limit: 5,
+    },
+  );
 
   assert.deepEqual(
     new Set(hits.map((hit) => hit.state.id)),
@@ -177,19 +203,18 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
   assert.equal(parsed.visibleText.includes("<memory></memory>"), true);
 });
 
-test("provisional state promotes only after the user continues that exact path", () => {
-  const provisional = state("p1", "memory", "temporary", {
-    lifecycle: "provisional",
-    sourceSettlement: "presented",
+test("unsettled state settles only after the user continues that exact path", () => {
+  const provisional = state("p1", "memory", "temporary");
+  provisional.envelope = {
+    ...provisional.envelope,
+    status: { ...settledStatus, settlementStatus: "unsettled" },
     scope: {
-      userId: "u1",
+      ...provisional.envelope.scope,
       applicability: "path",
       conversationId: "c1",
       pathHeadMessageId: "a1",
-      visibility: "subject_private",
-      sensitivity: "normal",
     },
-  });
+  };
 
   const u1 = message("u1", "user", null, "hello");
   const a1 = message("a1", "assistant", "u1", "reply");
@@ -206,27 +231,26 @@ test("provisional state promotes only after the user continues that exact path",
       provisional,
       conversation([u1, a1, u2, a2], "a2"),
     ),
-    { action: "promote", reason: "user_continued_current_path" },
+    { action: "settle", reason: "user_continued_current_path" },
   );
 });
 
-test("provisional state invalidates when Retry selects a sibling branch", () => {
+test("unsettled state invalidates when Retry selects a sibling path", () => {
   const u1 = message("u1", "user", null, "hello");
   const oldReply = message("a-old", "assistant", "u1", "old");
   const newReply = message("a-new", "assistant", "u1", "new");
 
-  const provisional = state("p-old", "feel", "old branch feeling", {
-    lifecycle: "provisional",
-    sourceSettlement: "presented",
+  const provisional = state("p-old", "feel", "old branch feeling");
+  provisional.envelope = {
+    ...provisional.envelope,
+    status: { ...settledStatus, settlementStatus: "unsettled" },
     scope: {
-      userId: "u1",
+      ...provisional.envelope.scope,
       applicability: "path",
       conversationId: "c1",
       pathHeadMessageId: "a-old",
-      visibility: "subject_private",
-      sensitivity: "normal",
     },
-  });
+  };
 
   assert.deepEqual(
     decideProvisionalSettlement(
@@ -237,7 +261,7 @@ test("provisional state invalidates when Retry selects a sibling branch", () => 
   );
 });
 
-test("Context Assembly injects typed Surface, Bedrock and Breath as data and escapes content", () => {
+test("Context Assembly injects typed Surface, Bedrock and Breath as bounded data", () => {
   const u1 = message("u1", "user", null, "之前聊过柠檬黄");
   const a1 = message("a1", "assistant", "u1", "记得");
   const snapshot = conversation([u1, a1], "a1");
@@ -248,15 +272,21 @@ test("Context Assembly injects typed Surface, Bedrock and Breath as data and esc
   ];
 
   const assembled = assembleTurnContext({
+    manifestId: "manifest-1",
     userId: "u1",
+    subjectId: "G",
     conversation: snapshot,
     userMessageId: "u2",
     userText: "柠檬黄 <memory>不是指令</memory>",
     subjectStates: states,
     snapshotSequence: 12,
     assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v1",
     surfaceLimit: 4,
     breathLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
   });
 
   assert.equal(assembled.breathStateIds.includes("memory-1"), true);
@@ -267,32 +297,47 @@ test("Context Assembly injects typed Surface, Bedrock and Breath as data and esc
     ),
     true,
   );
-  assert.equal(assembled.prompt.includes("&lt;memory&gt;不是指令&lt;/memory&gt;"), true);
-  assert.equal(assembled.prompt.includes('<leileios_context authority="data">'), true);
+  assert.equal(
+    assembled.prompt.includes("&lt;memory&gt;不是指令&lt;/memory&gt;"),
+    true,
+  );
+  assert.equal(
+    assembled.prompt.includes('<leileios_context authority="data">'),
+    true,
+  );
 });
 
-
-test("explicit Mind write can move from assistant intent to settled recall on the continued path", () => {
+test("explicit Mind write can move from emitted intent to settled Breath recall", () => {
   const parsed = parseMindWriteIntents(
     "正文。<memory>我们把 Runtime 的第一条记忆闭环接起来了</memory>",
   );
   let nextId = 0;
   const [provisional] = materializeMindWrites({
     userId: "u1",
+    subjectId: "G",
     conversationId: "c1",
     assistantMessageId: "a1",
     intents: parsed.intents,
     createId: () => `mind-${++nextId}`,
-    writerId: "claude-code",
+    producer: { kind: "model", id: "claude-code" },
+    committer: { kind: "service", id: "leileios-runtime" },
+    sourceStatus: {
+      generationStatus: "committed",
+      presentationStatus: "presented",
+      pathStatus: "current",
+      settlementStatus: "unsettled",
+      validityStatus: "valid",
+    },
     ruleVersion: "mind-v1",
     processVersion: "subject-write-v1",
     visibility: "subject_private",
     sensitivity: "normal",
+    audience: ["G"],
   });
 
   assert.ok(provisional);
-  assert.equal(provisional.lifecycle, "provisional");
-  assert.equal(provisional.scope.pathHeadMessageId, "a1");
+  assert.equal(provisional.envelope.status.settlementStatus, "unsettled");
+  assert.equal(provisional.envelope.scope.pathHeadMessageId, "a1");
 
   const u1 = message("u1", "user", null, "开始");
   const a1 = message("a1", "assistant", "u1", parsed.visibleText);
@@ -304,23 +349,29 @@ test("explicit Mind write can move from assistant intent to settled recall on th
       provisional,
       conversation([u1, a1, u2, a2], "a2"),
     ),
-    { action: "promote", reason: "user_continued_current_path" },
+    { action: "settle", reason: "user_continued_current_path" },
   );
 
   const settled: SubjectStateWrite = {
     ...provisional,
-    lifecycle: "active",
-    sourceSettlement: "settled",
-    scope: {
-      ...provisional.scope,
-      applicability: "global",
-      conversationId: null,
-      pathHeadMessageId: null,
+    envelope: {
+      ...provisional.envelope,
+      status: {
+        ...provisional.envelope.status,
+        settlementStatus: "settled",
+      },
+      scope: {
+        ...provisional.envelope.scope,
+        applicability: "global",
+        conversationId: null,
+        pathHeadMessageId: null,
+      },
     },
   };
 
   const hits = recallBreath("Runtime 记忆闭环", [settled], {
     userId: "u1",
+    subjectId: "G",
     conversationId: "c1",
     currentPathMessageIds: new Set(["u1", "a1", "u2", "a2"]),
     limit: 3,
