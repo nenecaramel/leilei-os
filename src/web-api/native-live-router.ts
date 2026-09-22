@@ -3,9 +3,13 @@ import type {
   NativeLiveBackendTurnCoordinator,
   NativeLivePrepareResult,
 } from "../domains/bridge/native-live-backend-turn-coordinator.js";
+import type {
+  NativeLiveBackendRelayService,
+} from "../domains/bridge/native-live-backend-relay.js";
 
 export type NativeLiveApiDependencies = {
   coordinator: Pick<NativeLiveBackendTurnCoordinator, "prepare">;
+  relayService: Pick<NativeLiveBackendRelayService, "enqueuePreparation">;
 };
 
 export function createNativeLiveApiRouter(
@@ -29,6 +33,22 @@ export function prepareNativeLiveTurnHandler(
 
     if (!result.ok) {
       sendPrepareFailure(response, result);
+      return;
+    }
+
+    try {
+      await dependencies.relayService.enqueuePreparation({
+        userId: request.webUserId,
+        prepareId: result.command.prepare_id,
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_RELAY_UNAVAILABLE",
+          message: "Native live turn was prepared but could not be queued.",
+        },
+      });
       return;
     }
 
