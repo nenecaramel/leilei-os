@@ -124,9 +124,9 @@ class FakePort implements NativeLiveBackendTurnPort {
     return next;
   }
 
-  async finalizeSuccess(input: {
-    blocks: NativeLiveContentBlockInput[];
-  }) {
+  async finalizeSuccess(
+    input: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0],
+  ) {
     this.finalizeSuccessCalls.push(input);
     return {
       ok: true as const,
@@ -141,6 +141,17 @@ class FakePort implements NativeLiveBackendTurnPort {
   async finalizeFailure(input: unknown) {
     this.finalizeFailureCalls.push(input);
     return { ok: true as const, outcome: "recorded" as const };
+  }
+}
+
+class FakePostFinalize {
+  calls: unknown[] = [];
+  shouldFail = false;
+
+  async processPreparation(input: unknown) {
+    this.calls.push(input);
+    if (this.shouldFail) throw new Error("simulated follow-up failure");
+    return "processed" as const;
   }
 }
 
@@ -178,12 +189,16 @@ class FakeMind implements NativeLiveBackendMindRuntime {
   }
 }
 
-function setup(options: { mind?: NativeLiveBackendMindRuntime | null } = {}) {
+function setup(options: {
+  mind?: NativeLiveBackendMindRuntime | null;
+  postFinalize?: FakePostFinalize | null;
+} = {}) {
   const port = new FakePort();
   const coordinator = new NativeLiveBackendTurnCoordinator(
     port,
     () => prepareId,
     options.mind ?? null,
+    options.postFinalize ?? null,
   );
   return { port, coordinator };
 }
@@ -560,6 +575,38 @@ test("Mind-aware finalize strips hidden Mind tags before canonical write and run
   assert.equal(call.blocks[0]?.text, "VISIBLE");
   assert.equal(mind.parseCalls.length, 1);
   assert.equal(mind.finalizeCalls.length, 1);
+});
+
+test("durable post-finalize runner owns Mind follow-up and failures never rewrite canonical success", async () => {
+  const mind = new FakeMind();
+  const postFinalize = new FakePostFinalize();
+  postFinalize.shouldFail = true;
+  const { port, coordinator } = setup({ mind, postFinalize });
+  port.preparation = prepared({ mindPrepared: true });
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [
+      {
+        type: "text",
+        payload: { text: "VISIBLE <memory>remember this</memory>" },
+      },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(postFinalize.calls, [{ userId, prepareId }]);
+  assert.equal(mind.finalizeCalls.length, 0);
+
+  const call = port.finalizeSuccessCalls[0] as
+    Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0];
+  assert.equal(call.mindFollowUp?.intents.length, 1);
+  assert.equal(call.mindFollowUp?.intents[0]?.kind, "memory");
 });
 
 test("idempotent finalize never duplicates Mind writes or branch reconciliation", async () => {
