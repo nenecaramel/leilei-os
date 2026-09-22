@@ -19,4 +19,6 @@ test("process runtime exposes bridge service from the shared database resource",
   });
   assert.equal(resources, 1);
   assert.ok(runtime.appDependencies);
+  assert.ok(runtime.appDependencies.webNativeLiveCoordinator);
+  assert.ok(runtime.appDependencies.nativeLiveRelayService);
 });
