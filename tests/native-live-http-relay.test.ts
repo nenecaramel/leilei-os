@@ -45,6 +45,42 @@ class FakeCoordinator {
   }
 }
 
+class FakeTurnReader {
+  calls: unknown[] = [];
+
+  async readTurn(input: unknown) {
+    this.calls.push(input);
+    return {
+      prepareId,
+      requestId,
+      conversationId,
+      operation: "send" as const,
+      canonicalUserMessageId: userMessageId,
+      canonicalStatus: "finalized_success" as const,
+      dispatchStatus: "completed" as const,
+      failureCode: null,
+      assistantMessage: {
+        id: "77777777-7777-4777-8777-777777777777",
+        conversationId,
+        parentMessageId: userMessageId,
+        role: "assistant" as const,
+        status: "completed" as const,
+        createdAt: "2026-09-22T13:00:00.000Z",
+        completedAt: "2026-09-22T13:00:01.000Z",
+        blocks: [{
+          id: "99999999-9999-4999-8999-999999999999",
+          ordinal: 0,
+          kind: "text" as const,
+          rawType: "text",
+          text: "VISIBLE",
+          payload: null,
+          createdAt: "2026-09-22T13:00:01.000Z",
+        }],
+      },
+    };
+  }
+}
+
 class FakeRelayService {
   calls: Array<{ name: string; input: unknown }> = [];
 
@@ -127,6 +163,7 @@ async function withServer(
 test("web prepare endpoint is user scoped and never returns the runtime prompt", async () => {
   const coordinator = new FakeCoordinator();
   const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
   await withServer(
     (app) => {
       app.use((request, _response, next) => {
@@ -137,7 +174,7 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
       });
       app.use(
         "/api/v1/native-live",
-        createNativeLiveApiRouter({ coordinator, relayService }),
+        createNativeLiveApiRouter({ coordinator, relayService, turnReader }),
       );
     },
     async (baseUrl) => {
@@ -185,6 +222,23 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
         name: "enqueuePreparation",
         input: { userId, prepareId },
       }]);
+
+      const read = await fetch(
+        `${baseUrl}/api/v1/native-live/turns/${prepareId}`,
+        { headers: { "x-test-user": "owner" } },
+      );
+      assert.equal(read.status, 200);
+      const readPayload = await read.json() as {
+        data: {
+          canonicalStatus: string;
+          dispatchStatus: string;
+          assistantMessage: { blocks: Array<{ text: string | null }> } | null;
+        };
+      };
+      assert.equal(readPayload.data.canonicalStatus, "finalized_success");
+      assert.equal(readPayload.data.dispatchStatus, "completed");
+      assert.equal(readPayload.data.assistantMessage?.blocks[0]?.text, "VISIBLE");
+      assert.deepEqual(turnReader.calls, [{ userId, prepareId }]);
     },
   );
 });
