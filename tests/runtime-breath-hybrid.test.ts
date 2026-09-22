@@ -278,6 +278,106 @@ test("Mind loop sends only Breath-eligible states to the semantic scorer", async
   assert.deepEqual(seen, ["eligible"]);
 });
 
+test("Mind loop accepts a staged remote semantic snapshot without invoking the local scorer", async () => {
+  const memory = state("remote", "那趟独自旅行让我长大了");
+  const port = new Port([memory]);
+  let localCalls = 0;
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      surfaceLimit: 4,
+      breathLimit: 3,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      breathSemanticCandidateLimit: 64,
+      breathSemanticCandidateMaxChars: 2000,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    {
+      async score() {
+        localCalls += 1;
+        return new Map();
+      },
+    },
+  );
+
+  const assembled = await mind.prepareTurn({
+    manifestId: "m-remote",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userMessageId: "u-now",
+    userText: "solo travel made me independent",
+    snapshotSequence: 1,
+    assembledAt: "2026-09-22T10:00:00.000Z",
+    semanticCandidates: [{
+      stateId: "remote",
+      kind: "memory",
+      text: "那趟独自旅行让我长大了",
+    }],
+    semanticScores: new Map([["remote", 0.93]]),
+  });
+
+  assert.equal(localCalls, 0);
+  const selected = assembled.manifest.items.find(
+    (item) => item.sourceId === "remote",
+  );
+  assert.ok(selected);
+  assert.equal(selected.selection.reason, "breath_semantic_match");
+});
+
+test("stale remote semantic snapshots are discarded instead of scoring changed state text", async () => {
+  const changed = state("remote", "这段记忆后来被改写了");
+  const port = new Port([changed]);
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      surfaceLimit: 4,
+      breathLimit: 3,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    null,
+  );
+
+  const assembled = await mind.prepareTurn({
+    manifestId: "m-stale",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userMessageId: "u-now",
+    userText: "solo travel made me independent",
+    snapshotSequence: 1,
+    assembledAt: "2026-09-22T10:00:00.000Z",
+    semanticCandidates: [{
+      stateId: "remote",
+      kind: "memory",
+      text: "那趟独自旅行让我长大了",
+    }],
+    semanticScores: new Map([["remote", 0.99]]),
+  });
+
+  assert.equal(
+    assembled.manifest.items.some(
+      (item) =>
+        item.sourceId === "remote"
+        && item.selection.reason === "breath_semantic_match",
+    ),
+    false,
+  );
+});
+
 test("partial semantic score maps are rejected and fall back to lexical scoring", async () => {
   const first = state("first", "Runtime 记忆");
   const second = state("second", "Runtime 对话");
