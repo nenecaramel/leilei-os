@@ -99,6 +99,7 @@ export type AppDependencies = {
   webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
   webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
   webNativeLiveCoordinator?: NativeLiveApiDependencies["coordinator"];
+  webNativeLiveTurnReader?: NativeLiveApiDependencies["turnReader"];
   nativeLiveRelayService?:
     NativeLiveRelayInternalDependencies["relayService"]
     & NativeLiveApiDependencies["relayService"];
@@ -333,6 +334,7 @@ export function createApp(
     const webConversationExclusionManagementService = dependencies.webConversationExclusionManagementService;
     const webConversationImportHistoryService = dependencies.webConversationImportHistoryService;
     const webNativeLiveCoordinator = dependencies.webNativeLiveCoordinator;
+    const webNativeLiveTurnReader = dependencies.webNativeLiveTurnReader;
 
     if (
       !webMemoryService ||
@@ -407,11 +409,14 @@ export function createApp(
         ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
         ...(dependencies.webConversationLifecycle ? { conversationLifecycle: dependencies.webConversationLifecycle } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
-        ...(webNativeLiveCoordinator && dependencies.nativeLiveRelayService
+        ...(webNativeLiveCoordinator
+          && webNativeLiveTurnReader
+          && dependencies.nativeLiveRelayService
           ? {
               nativeLive: {
                 coordinator: webNativeLiveCoordinator,
                 relayService: dependencies.nativeLiveRelayService,
+                turnReader: webNativeLiveTurnReader,
               },
             }
           : {}),
