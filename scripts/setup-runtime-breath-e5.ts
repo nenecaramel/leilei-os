@@ -61,14 +61,14 @@ if (!prepared) {
 process.stderr.write("[e5-setup] runtime ready; checking multilingual E5 cache\n");
 await repairPartialModelCache();
 
-process.stderr.write("[e5-setup] loading multilingual E5 model with WASM backend\n");
+process.stderr.write("[e5-setup] loading multilingual E5 model with Transformers.js 4.x CPU backend\n");
 
 let lastProgress = "";
 const fileProgressBuckets = new Map<string, number>();
 let lastModelActivityAt = Date.now();
 let activeFile: string | null = null;
 const scorer = new LocalE5BreathSemanticScorer({
-  device: "wasm",
+  device: "cpu",
   progressCallback(info) {
     if (!isRecord(info) || typeof info.status !== "string") return;
     lastModelActivityAt = Date.now();
