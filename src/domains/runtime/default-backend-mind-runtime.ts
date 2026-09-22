@@ -14,10 +14,15 @@ import {
 } from "./subject-state-runtime-repository.js";
 import {
   DriveEvolutionService,
+  type DriveEvolutionPolicy,
 } from "./drive-evolution.js";
 import {
   DrizzleDriveEvolutionRuntimePort,
 } from "./drive-evolution-runtime-repository.js";
+import {
+  DriveSatisfactionService,
+  DrizzleDriveSatisfactionRuntimePort,
+} from "./drive-satisfaction-runtime-repository.js";
 import {
   ThoughtEvolutionService,
 } from "./thought-evolution.js";
@@ -28,6 +33,14 @@ import {
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export const DEFAULT_NATIVE_LIVE_SUBJECT_ID = "G";
+
+export const DEFAULT_DRIVE_EVOLUTION_POLICY: DriveEvolutionPolicy = {
+  basePressure: 0.4,
+  reinforcementBoost: 0.2,
+  activeThreshold: 0.1,
+  minEvolutionIntervalHours: 6,
+  maxReinforcementSources: 16,
+};
 
 export function createDefaultBackendMindRuntime(
   db: Database,
@@ -58,13 +71,7 @@ export function createDefaultBackendMindRuntime(
   );
   const driveEvolution = new DriveEvolutionService(
     new DrizzleDriveEvolutionRuntimePort(db),
-    {
-      basePressure: 0.4,
-      reinforcementBoost: 0.2,
-      activeThreshold: 0.1,
-      minEvolutionIntervalHours: 6,
-      maxReinforcementSources: 16,
-    },
+    DEFAULT_DRIVE_EVOLUTION_POLICY,
   );
   const thoughtEvolution = new ThoughtEvolutionService(
     new DrizzleThoughtEvolutionRuntimePort(db),
@@ -83,4 +90,15 @@ export function createDefaultBackendMindRuntime(
     thoughtEvolution,
   });
   return new DefaultNativeLiveBackendMindRuntime(conversations, mind);
+}
+
+
+export function createDefaultDriveSatisfactionService(
+  db: Database,
+): DriveSatisfactionService {
+  return new DriveSatisfactionService(
+    new DrizzleDriveEvolutionRuntimePort(db),
+    new DrizzleDriveSatisfactionRuntimePort(db),
+    DEFAULT_DRIVE_EVOLUTION_POLICY,
+  );
 }
