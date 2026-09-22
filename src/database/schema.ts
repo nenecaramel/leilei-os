@@ -1730,7 +1730,10 @@ export const runtimeDriveSatisfactionEvents = pgTable(
     driveStateId: uuid("drive_state_id").notNull(),
     conversationId: uuid("conversation_id").notNull(),
     evidenceMessageId: uuid("evidence_message_id").notNull(),
-    evidenceBlockId: uuid("evidence_block_id"),
+    evidenceBlockId: uuid("evidence_block_id").references(
+      () => conversationContentBlocks.id,
+      { onDelete: "cascade", onUpdate: "cascade" },
+    ),
     evidenceKind: varchar("evidence_kind", { length: 32 })
       .$type<RuntimeDriveSatisfactionEvidenceKind>()
       .notNull(),
