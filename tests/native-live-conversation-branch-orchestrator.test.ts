@@ -167,3 +167,86 @@ test("historical retry fails closed when its parent assistant checkpoint is miss
   assert.deepEqual(calls, []);
   assert.equal(port.completeCalls.length, 0);
 });
+
+
+test("Mind-aware Retry assembles from the historical path and reconciles only after the sibling assistant commits", async () => {
+  const port = new FakePort();
+  const runtimeCalls: string[][] = [];
+  const mindCalls: string[] = [];
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew(prompt) {
+      runtimeCalls.push(["new", prompt]);
+      return {
+        providerSessionId: "session-new",
+        normalizedEvents: [{
+          type: "result",
+          payload: { status: "success", final_text: "VISIBLE <memory>new path</memory>" },
+        }],
+      };
+    },
+    async resume() { throw new Error("unused"); },
+    async fork(sessionId, prompt) {
+      runtimeCalls.push(["fork", sessionId, prompt]);
+      return {
+        providerSessionId: "session-child",
+        normalizedEvents: [{
+          type: "result",
+          payload: { status: "success", final_text: "VISIBLE <memory>new path</memory>" },
+        }],
+      };
+    },
+  };
+  const mind = {
+    async prepareUserTurn(input: { surfaceHeadMessageId: string | null }) {
+      mindCalls.push(`prepare:${input.surfaceHeadMessageId ?? "root"}`);
+      return "HISTORICAL_MIND_PROMPT";
+    },
+    parseAssistantBlocks(blocks: NativeLiveContentBlockInput[]) {
+      mindCalls.push("parse");
+      return {
+        visibleBlocks: blocks.map((block) =>
+          block.kind === "text" ? { ...block, text: "VISIBLE" } : block
+        ),
+        intents: [{
+          kind: "memory" as const,
+          text: "new path",
+          sourceStart: 8,
+          sourceEnd: 33,
+          raw: "<memory>new path</memory>",
+        }],
+      };
+    },
+    async recordAssistantIntents(input: { assistantMessageId: string }) {
+      mindCalls.push(`record:${input.assistantMessageId}`);
+      return [];
+    },
+    async reconcileSelectedPath(input: { conversation: NativeLiveConversation }) {
+      mindCalls.push(`reconcile:${input.conversation.currentHeadMessageId}`);
+      return [];
+    },
+  };
+
+  const result = await new NativeLiveConversationBranchOrchestrator(
+    port,
+    runtime,
+    mind,
+  ).retry({
+    userId: "u1",
+    conversationId: "c1",
+    targetUserMessageId: "u2",
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(runtimeCalls, [[
+    "fork",
+    "session-parent",
+    "HISTORICAL_MIND_PROMPT",
+  ]]);
+  assert.deepEqual(mindCalls, [
+    "prepare:a1",
+    "parse",
+    "record:a-new-1",
+    "reconcile:a-new-1",
+  ]);
+  assert.equal(port.completeCalls[0]?.blocks[0]?.text, "VISIBLE");
+});
