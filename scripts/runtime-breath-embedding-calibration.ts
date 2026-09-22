@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { MacOSNaturalLanguageBreathSemanticScorer } from "../src/domains/runtime/macos-natural-language-embedding.js";
 
 const scorer = new MacOSNaturalLanguageBreathSemanticScorer({
@@ -132,30 +131,40 @@ for (const probe of probes) {
     .sort((left, right) => right.score - left.score);
 
   const relevant = ranked.find((item) => item.stateId === probe.relevantId);
-  assert.ok(relevant, `${probe.name}: missing relevant score`);
-  assert.equal(
-    ranked[0]?.stateId,
-    probe.relevantId,
-    `${probe.name}: relevant memory must rank first`,
-  );
+  const relevantScore = relevant?.score ?? null;
+  const top1 = ranked[0] ?? null;
+  const runnerUp = ranked[1] ?? null;
+  const passed = top1?.stateId === probe.relevantId;
 
   results.push({
     name: probe.name,
-    relevant: relevant.score,
-    runnerUp: ranked[1]?.score ?? null,
-    margin:
-      ranked[1] === undefined
+    passed,
+    expectedTop1: probe.relevantId,
+    actualTop1: top1?.stateId ?? null,
+    relevant: relevantScore,
+    top1Score: top1?.score ?? null,
+    runnerUp: runnerUp?.score ?? null,
+    marginFromTop1:
+      relevantScore === null || top1 === null
         ? null
-        : relevant.score - ranked[1].score,
+        : relevantScore - top1.score,
+    top1Margin:
+      top1 === null || runnerUp === null
+        ? null
+        : top1.score - runnerUp.score,
     ranking: ranked,
   });
 }
 
+const passCount = results.filter((result) => result.passed).length;
+
 process.stdout.write(
   JSON.stringify({
-    status: "accepted",
+    status: passCount === results.length ? "accepted" : "rejected",
     provider: "macos_natural_language",
     probeCount: results.length,
+    passCount,
+    failCount: results.length - passCount,
     results,
   }, null, 2) + "\n",
 );
