@@ -31,6 +31,43 @@ type RelayMutationOutcome =
   | "not_found"
   | "conflict";
 
+export interface NativeLiveBackendRelayPort {
+  renewLease(input: {
+    userId: string;
+    listenerInstanceId: string;
+  }): Promise<NativeLiveDaemonLeaseState>;
+  reserveNext(input: {
+    userId: string;
+    listenerInstanceId: string;
+  }): Promise<NativeLivePreparedTurn | null>;
+  markExecutionStarted(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+  }): Promise<RelayMutationOutcome>;
+  ownsSubmitReservation(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+  }): Promise<boolean>;
+  markCompleted(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+  }): Promise<RelayMutationOutcome>;
+  markDeliveryUnknown(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+  }): Promise<RelayMutationOutcome>;
+  rejectReservation(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+    code: NativeLiveDaemonRejectCode;
+  }): Promise<RelayMutationOutcome>;
+}
+
 type RelayPreparationRow = NativeLivePreparedTurn & {
   dispatchStatus:
     | "pending"
@@ -94,7 +131,8 @@ export class NativeLiveBackendRelayError extends Error {
   }
 }
 
-export class DrizzleNativeLiveBackendRelayRepository {
+export class DrizzleNativeLiveBackendRelayRepository
+implements NativeLiveBackendRelayPort {
   constructor(private readonly db: Database) {}
 
   async renewLease(input: {
@@ -548,7 +586,7 @@ function isAcceptedTerminalFinalize(
 
 export class NativeLiveBackendRelayService {
   constructor(
-    private readonly repository: DrizzleNativeLiveBackendRelayRepository,
+    private readonly repository: NativeLiveBackendRelayPort,
     private readonly coordinator: Pick<
       NativeLiveBackendTurnCoordinator,
       "finalize"
