@@ -198,7 +198,7 @@ export class NativeLiveMindLoopService {
           || persisted.promptContractVersion
             !== this.config.promptContractVersion
           || persistedUser?.sourceId !== input.userMessageId
-          || persistedUser.text !== input.userText
+          || persistedUser?.text !== input.userText
         ) {
           throw new Error(
             "Persisted Context Manifest conflicts with the requested turn snapshot.",
