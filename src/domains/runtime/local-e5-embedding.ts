@@ -8,7 +8,7 @@ import type {
 } from "./breath-semantic-recall.js";
 
 const TRANSFORMERS_PACKAGE = "@huggingface/transformers";
-const TRANSFORMERS_VERSION = "3.8.1";
+const TRANSFORMERS_VERSION = "4.3.0";
 const MODEL_ID = "Xenova/multilingual-e5-small";
 
 export type LocalE5Options = {
@@ -17,7 +17,7 @@ export type LocalE5Options = {
   modelId?: string;
   dtype?: "q8" | "fp16" | "fp32";
   progressCallback?: (info: unknown) => void;
-  device?: "wasm" | "cpu";
+  device?: "cpu";
 };
 
 export class LocalE5ProviderError extends Error {
@@ -47,7 +47,7 @@ type TransformersModule = {
     model: string,
     options: {
       dtype: "q8" | "fp16" | "fp32";
-      device?: "wasm" | "cpu";
+      device?: "cpu";
       progress_callback?: (info: unknown) => void;
     },
   ): Promise<Extractor>;
@@ -162,7 +162,7 @@ export class LocalE5BreathSemanticScorer implements BreathSemanticScorer {
         modelId,
         {
           dtype: this.options.dtype ?? "q8",
-          device: this.options.device ?? "wasm",
+          device: this.options.device ?? "cpu",
           progress_callback: this.options.progressCallback,
         },
       );
