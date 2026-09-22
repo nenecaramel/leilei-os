@@ -38,7 +38,8 @@
     "smoke:runtime-breath-embedding": "tsx scripts/runtime-breath-embedding-smoke.ts",
     "smoke:runtime-breath-embedding-calibration": "tsx scripts/runtime-breath-embedding-calibration.ts",
     "setup:runtime-breath-e5": "tsx scripts/setup-runtime-breath-e5.ts",
-    "smoke:runtime-breath-e5-calibration": "tsx scripts/runtime-breath-e5-calibration.ts"
+    "smoke:runtime-breath-e5-calibration": "tsx scripts/runtime-breath-e5-calibration.ts",
+    "smoke:runtime-breath-e5-mind": "tsx scripts/runtime-breath-e5-mind-smoke.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
