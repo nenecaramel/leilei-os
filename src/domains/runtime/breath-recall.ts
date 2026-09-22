@@ -7,6 +7,8 @@ export const BREATH_RECALL_KINDS = ["memory", "feel"] as const satisfies readonl
 export type BreathRecallHit = {
   state: SubjectStateWrite;
   score: number;
+  lexicalScore: number;
+  salience: number;
   matchedTokens: string[];
 };
 
@@ -27,6 +29,14 @@ function tokens(value: string): Set<string> {
   }
 
   return result;
+}
+
+function dedupeKey(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/\s+/gu, " ")
+    .trim();
 }
 
 function scopeApplies(
@@ -53,6 +63,32 @@ function scopeApplies(
   );
 }
 
+function validatePolicy(input: {
+  cooldownHours: number;
+  salienceWeight: number;
+  now?: string;
+}): number | null {
+  if (!Number.isFinite(input.cooldownHours) || input.cooldownHours < 0) {
+    throw new Error("Breath cooldownHours must be a non-negative number.");
+  }
+  if (
+    !Number.isFinite(input.salienceWeight)
+    || input.salienceWeight < 0
+    || input.salienceWeight > 1
+  ) {
+    throw new Error("Breath salienceWeight must be between 0 and 1.");
+  }
+  if (input.cooldownHours === 0) return null;
+  if (!input.now) {
+    throw new Error("Breath recall requires now when cooldownHours is enabled.");
+  }
+  const parsed = Date.parse(input.now);
+  if (!Number.isFinite(parsed)) {
+    throw new Error("Breath recall now must be an ISO timestamp.");
+  }
+  return parsed;
+}
+
 export function recallBreath(
   query: string,
   candidates: readonly SubjectStateWrite[],
@@ -62,11 +98,22 @@ export function recallBreath(
     conversationId: string;
     currentPathMessageIds: ReadonlySet<string>;
     limit: number;
+    now?: string;
+    cooldownHours?: number;
+    salienceWeight?: number;
   },
 ): BreathRecallHit[] {
   if (!Number.isInteger(input.limit) || input.limit < 1) {
     throw new Error("Breath recall limit must be a positive integer.");
   }
+
+  const cooldownHours = input.cooldownHours ?? 0;
+  const salienceWeight = input.salienceWeight ?? 0;
+  const nowMs = validatePolicy({
+    cooldownHours,
+    salienceWeight,
+    now: input.now,
+  });
 
   const queryTokens = tokens(query);
   if (queryTokens.size === 0) return [];
@@ -93,6 +140,14 @@ export function recallBreath(
       continue;
     }
 
+    if (
+      nowMs !== null
+      && lifecycle?.lastRecalledAt
+      && nowMs - Date.parse(lifecycle.lastRecalledAt) < cooldownHours * 3_600_000
+    ) {
+      continue;
+    }
+
     const candidateTokens = tokens(state.text);
     if (candidateTokens.size === 0) continue;
 
@@ -101,17 +156,38 @@ export function recallBreath(
     );
     if (matchedTokens.length === 0) continue;
 
-    const score =
+    const lexicalScore =
       matchedTokens.length
       / Math.sqrt(queryTokens.size * candidateTokens.size);
+    const salience = lifecycle?.salience ?? 1;
+    const salienceFactor =
+      (1 - salienceWeight) + salienceWeight * salience;
+    const score = lexicalScore * salienceFactor;
 
-    hits.push({ state, score, matchedTokens });
+    hits.push({
+      state,
+      score,
+      lexicalScore,
+      salience,
+      matchedTokens,
+    });
   }
 
-  return hits
-    .sort((left, right) =>
-      right.score - left.score
-      || left.state.id.localeCompare(right.state.id),
-    )
-    .slice(0, input.limit);
+  const ordered = hits.sort((left, right) =>
+    right.score - left.score
+    || right.lexicalScore - left.lexicalScore
+    || left.state.id.localeCompare(right.state.id),
+  );
+
+  const deduped: BreathRecallHit[] = [];
+  const seen = new Set<string>();
+  for (const hit of ordered) {
+    const key = dedupeKey(hit.state.text ?? "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(hit);
+    if (deduped.length >= input.limit) break;
+  }
+
+  return deduped;
 }
