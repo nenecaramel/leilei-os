@@ -207,7 +207,7 @@ implements ConversationPruningRepository {
 
     const deletedRows = [...excludedSourceNodes]
       .map((sourceNodeId) => bySourceNode.get(sourceNodeId))
-      .filter((row): row is (typeof messages)[number] => Boolean(row));
+      .filter((row): row is (typeof legacyMessages)[number] => Boolean(row));
     if (deletedRows.length >= legacyMessages.length) {
       throw Object.assign(
         new Error("Deleting this branch would remove the entire conversation."),
