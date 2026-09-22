@@ -1,0 +1,70 @@
+export type MindWriteIntentKind = "feel" | "memory" | "dream" | "thought";
+
+export type MindWriteIntent = {
+  kind: MindWriteIntentKind;
+  text: string;
+  sourceStart: number;
+  sourceEnd: number;
+  raw: string;
+};
+
+export type ParsedMindIntents = {
+  visibleText: string;
+  intents: MindWriteIntent[];
+};
+
+const TAG_PATTERN = /<(feel|memory|dream|thought)>([\s\S]*?)<\/\1>/gi;
+const NESTED_TAG_PATTERN = /<\/?(feel|memory|dream|thought)>/i;
+
+/**
+ * Parses only explicit subject-authored write intents.
+ *
+ * Ordinary prose is never guessed into persistent state. Malformed, empty, or
+ * nested tags remain visible text so a parser failure cannot silently create or
+ * delete a memory.
+ */
+export function parseMindWriteIntents(source: string): ParsedMindIntents {
+  const intents: MindWriteIntent[] = [];
+  const removable: Array<{ start: number; end: number }> = [];
+
+  for (const match of source.matchAll(TAG_PATTERN)) {
+    const raw = match[0];
+    const kind = match[1]?.toLowerCase() as MindWriteIntentKind | undefined;
+    const body = match[2]?.trim() ?? "";
+    const start = match.index;
+
+    if (
+      !kind
+      || start === undefined
+      || !body
+      || NESTED_TAG_PATTERN.test(body)
+    ) {
+      continue;
+    }
+
+    const end = start + raw.length;
+    intents.push({
+      kind,
+      text: body,
+      sourceStart: start,
+      sourceEnd: end,
+      raw,
+    });
+    removable.push({ start, end });
+  }
+
+  let visibleText = source;
+  for (const range of removable.sort((a, b) => b.start - a.start)) {
+    visibleText =
+      visibleText.slice(0, range.start)
+      + visibleText.slice(range.end);
+  }
+
+  return {
+    visibleText: visibleText
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+    intents,
+  };
+}
