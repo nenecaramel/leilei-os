@@ -1,0 +1,252 @@
+import { and, asc, eq, isNull, or } from "drizzle-orm";
+import type { createDatabase } from "../../database/client.js";
+import {
+  runtimeContextManifests,
+  runtimeSubjectStateTransitions,
+  runtimeSubjectStates,
+} from "../../database/schema.js";
+import type { InitialContextManifest } from "./context-assembly-contract.js";
+import type {
+  SubjectStateRuntimePort,
+  SubjectStateTransition,
+} from "./native-live-mind-loop-service.js";
+import type { PersistentWriteEnvelope } from "./persistent-write-envelope.js";
+import {
+  validateSubjectStateWrite,
+  type SubjectStateWrite,
+} from "./subject-state-contract.js";
+
+type Database = ReturnType<typeof createDatabase>["db"];
+
+function envelopeRecord(
+  envelope: PersistentWriteEnvelope,
+): Record<string, unknown> {
+  return envelope as unknown as Record<string, unknown>;
+}
+
+function rowToState(row: {
+  id: string;
+  kind: SubjectStateWrite["kind"];
+  text: string | null;
+  payload: Record<string, unknown> | null;
+  envelope: Record<string, unknown>;
+}): SubjectStateWrite {
+  return validateSubjectStateWrite({
+    id: row.id,
+    kind: row.kind,
+    text: row.text,
+    payload: row.payload,
+    envelope: row.envelope as unknown as PersistentWriteEnvelope,
+  });
+}
+
+function requirePortIdentity(
+  state: SubjectStateWrite,
+  input: { userId: string; subjectId: string },
+): void {
+  if (
+    state.envelope.scope.userId !== input.userId
+    || state.envelope.scope.subjectId !== input.subjectId
+  ) {
+    throw new Error("Subject state write scope does not match the runtime port identity.");
+  }
+}
+
+export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
+  constructor(private readonly db: Database) {}
+
+  async list(input: {
+    userId: string;
+    subjectId: string;
+    conversationId: string;
+  }): Promise<SubjectStateWrite[]> {
+    const rows = await this.db
+      .select({
+        id: runtimeSubjectStates.id,
+        kind: runtimeSubjectStates.kind,
+        text: runtimeSubjectStates.text,
+        payload: runtimeSubjectStates.payload,
+        envelope: runtimeSubjectStates.envelope,
+      })
+      .from(runtimeSubjectStates)
+      .where(
+        and(
+          eq(runtimeSubjectStates.userId, input.userId),
+          eq(runtimeSubjectStates.subjectId, input.subjectId),
+          or(
+            isNull(runtimeSubjectStates.scopeConversationId),
+            eq(runtimeSubjectStates.scopeConversationId, input.conversationId),
+          ),
+        ),
+      )
+      .orderBy(
+        asc(runtimeSubjectStates.createdAt),
+        asc(runtimeSubjectStates.id),
+      );
+
+    return rows.map(rowToState);
+  }
+
+  async append(input: {
+    userId: string;
+    subjectId: string;
+    states: SubjectStateWrite[];
+  }): Promise<void> {
+    if (input.states.length === 0) return;
+
+    const states = input.states.map((candidate) => {
+      const state = validateSubjectStateWrite(candidate);
+      requirePortIdentity(state, input);
+      return state;
+    });
+
+    await this.db.transaction(async (transaction) => {
+      await transaction.insert(runtimeSubjectStates).values(
+        states.map((state) => ({
+          id: state.id,
+          userId: input.userId,
+          subjectId: input.subjectId,
+          kind: state.kind,
+          text: state.text ?? null,
+          payload: state.payload ?? null,
+          scopeApplicability: state.envelope.scope.applicability,
+          scopeConversationId: state.envelope.scope.conversationId ?? null,
+          scopePathHeadMessageId:
+            state.envelope.scope.pathHeadMessageId ?? null,
+          settlementStatus: state.envelope.status.settlementStatus,
+          pathStatus: state.envelope.status.pathStatus,
+          validityStatus: state.envelope.status.validityStatus,
+          envelope: envelopeRecord(state.envelope),
+        })),
+      );
+    });
+  }
+
+  async transition(input: {
+    userId: string;
+    subjectId: string;
+    conversationId: string;
+    transitions: SubjectStateTransition[];
+  }): Promise<void> {
+    if (input.transitions.length === 0) return;
+
+    await this.db.transaction(async (transaction) => {
+      for (const requested of input.transitions) {
+        const [row] = await transaction
+          .select({
+            id: runtimeSubjectStates.id,
+            kind: runtimeSubjectStates.kind,
+            text: runtimeSubjectStates.text,
+            payload: runtimeSubjectStates.payload,
+            envelope: runtimeSubjectStates.envelope,
+          })
+          .from(runtimeSubjectStates)
+          .where(
+            and(
+              eq(runtimeSubjectStates.id, requested.stateId),
+              eq(runtimeSubjectStates.userId, input.userId),
+              eq(runtimeSubjectStates.subjectId, input.subjectId),
+            ),
+          )
+          .for("update")
+          .limit(1);
+
+        if (!row) {
+          throw new Error("Subject state transition target was not found.");
+        }
+
+        const current = rowToState(row);
+        const currentScope = current.envelope.scope;
+        if (
+          currentScope.applicability !== "global"
+          && currentScope.conversationId !== input.conversationId
+        ) {
+          throw new Error("Subject state transition crossed conversation scope.");
+        }
+
+        const nextEnvelope: PersistentWriteEnvelope = {
+          ...current.envelope,
+          scope: requested.promoteScopeToGlobal
+            ? {
+                ...currentScope,
+                applicability: "global",
+                conversationId: null,
+                pathHeadMessageId: null,
+              }
+            : currentScope,
+          status: {
+            ...current.envelope.status,
+            settlementStatus:
+              requested.settlementStatus
+              ?? current.envelope.status.settlementStatus,
+            pathStatus:
+              requested.pathStatus
+              ?? current.envelope.status.pathStatus,
+            validityStatus:
+              requested.validityStatus
+              ?? current.envelope.status.validityStatus,
+          },
+        };
+
+        const next = validateSubjectStateWrite({
+          ...current,
+          envelope: nextEnvelope,
+        });
+
+        const updated = await transaction
+          .update(runtimeSubjectStates)
+          .set({
+            scopeApplicability: next.envelope.scope.applicability,
+            scopeConversationId: next.envelope.scope.conversationId ?? null,
+            scopePathHeadMessageId:
+              next.envelope.scope.pathHeadMessageId ?? null,
+            settlementStatus: next.envelope.status.settlementStatus,
+            pathStatus: next.envelope.status.pathStatus,
+            validityStatus: next.envelope.status.validityStatus,
+            envelope: envelopeRecord(next.envelope),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(runtimeSubjectStates.id, requested.stateId),
+              eq(runtimeSubjectStates.userId, input.userId),
+              eq(runtimeSubjectStates.subjectId, input.subjectId),
+            ),
+          )
+          .returning({ id: runtimeSubjectStates.id });
+
+        if (updated.length !== 1) {
+          throw new Error("Subject state transition affected an unexpected number of rows.");
+        }
+
+        await transaction.insert(runtimeSubjectStateTransitions).values({
+          userId: input.userId,
+          subjectId: input.subjectId,
+          stateId: requested.stateId,
+          reason: requested.reason,
+          beforeEnvelope: envelopeRecord(current.envelope),
+          afterEnvelope: envelopeRecord(next.envelope),
+        });
+      }
+    });
+  }
+
+  async saveContextManifest(input: {
+    manifest: InitialContextManifest;
+  }): Promise<void> {
+    const manifest = input.manifest;
+    await this.db.insert(runtimeContextManifests).values({
+      id: manifest.manifestId,
+      userId: manifest.userId,
+      subjectId: manifest.subjectId,
+      conversationId: manifest.conversationId,
+      pathHeadMessageId: manifest.pathHeadMessageId,
+      snapshotSequence: manifest.snapshotSequence,
+      assemblyVersion: manifest.assemblyVersion,
+      promptContractVersion: manifest.promptContractVersion,
+      budget: manifest.budget as unknown as Record<string, unknown>,
+      items: manifest.items as unknown as Record<string, unknown>[],
+      assembledAt: new Date(manifest.createdAt),
+    });
+  }
+}
