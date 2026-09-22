@@ -166,6 +166,7 @@ export class NativeLiveMindLoopService {
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
     semanticScores?: ReadonlyMap<string, number>;
+    semanticCandidates?: readonly BreathSemanticCandidate[];
   }): Promise<AssembledTurnContext> {
     const states = await this.port.list({
       userId: input.userId,
@@ -177,14 +178,28 @@ export class NativeLiveMindLoopService {
       this.config.breathSemanticWeight ?? 0;
     let effectiveSemanticWeight = 0;
     let semanticScores: ReadonlyMap<string, number> | undefined;
-    const semanticPlan = this.semanticPlanFromStates({
-      ...input,
-      states,
-    });
+    const semanticPlan = input.semanticCandidates
+      ? {
+          query: input.userText,
+          candidates: [...input.semanticCandidates],
+        }
+      : this.semanticPlanFromStates({
+          ...input,
+          states,
+        });
 
     if (
       semanticPlan
       && input.semanticScores
+      && this.semanticSnapshotStillCurrent({
+        userId: input.userId,
+        subjectId: input.subjectId,
+        conversation: input.conversation,
+        assembledAt: input.assembledAt,
+        surfaceHeadMessageId: input.surfaceHeadMessageId,
+        states,
+        candidates: semanticPlan.candidates,
+      })
       && hasCompleteSemanticScores(
         input.semanticScores,
         semanticPlan.candidates,
@@ -281,6 +296,37 @@ export class NativeLiveMindLoopService {
     });
   }
 
+  private semanticSnapshotStillCurrent(input: {
+    userId: string;
+    subjectId: string;
+    conversation: NativeLiveConversation;
+    assembledAt: string;
+    surfaceHeadMessageId?: string | null;
+    states: readonly SubjectStateWrite[];
+    candidates: readonly BreathSemanticCandidate[];
+  }): boolean {
+    const current = this.semanticCandidatesFromStates({
+      userId: input.userId,
+      subjectId: input.subjectId,
+      conversation: input.conversation,
+      assembledAt: input.assembledAt,
+      surfaceHeadMessageId: input.surfaceHeadMessageId,
+      states: input.states,
+      applyLimit: false,
+    });
+    const byId = new Map(
+      current.map((candidate) => [candidate.stateId, candidate] as const),
+    );
+
+    return input.candidates.every((candidate) => {
+      const actual = byId.get(candidate.stateId);
+      return (
+        actual?.kind === candidate.kind
+        && actual.text === candidate.text
+      );
+    });
+  }
+
   private semanticPlanFromStates(input: {
     userId: string;
     subjectId: string;
@@ -295,6 +341,27 @@ export class NativeLiveMindLoopService {
   } | null {
     if ((this.config.breathSemanticWeight ?? 0) <= 0) return null;
 
+    const candidates = this.semanticCandidatesFromStates({
+      ...input,
+      applyLimit: true,
+    });
+
+    if (candidates.length === 0) return null;
+    return {
+      query: input.userText,
+      candidates,
+    };
+  }
+
+  private semanticCandidatesFromStates(input: {
+    userId: string;
+    subjectId: string;
+    conversation: NativeLiveConversation;
+    assembledAt: string;
+    surfaceHeadMessageId?: string | null;
+    states: readonly SubjectStateWrite[];
+    applyLimit: boolean;
+  }): BreathSemanticCandidate[] {
     const surfaceHeadMessageId =
       input.surfaceHeadMessageId === undefined
         ? input.conversation.currentHeadMessageId
@@ -335,17 +402,14 @@ export class NativeLiveMindLoopService {
       }),
     )
       .sort((left, right) => left.stateId.localeCompare(right.stateId))
-      .slice(0, candidateLimit)
       .map((candidate) => ({
         ...candidate,
         text: candidate.text.slice(0, candidateMaxChars),
       }));
 
-    if (candidates.length === 0) return null;
-    return {
-      query: input.userText,
-      candidates,
-    };
+    return input.applyLimit
+      ? candidates.slice(0, candidateLimit)
+      : candidates;
   }
 
   parseAssistantBlocks(
