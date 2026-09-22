@@ -1,8 +1,7 @@
 import { Router, type RequestHandler, type Response } from "express";
 import type {
-  NativeLiveBackendTurnCoordinator,
-  NativeLivePrepareResult,
-} from "../domains/bridge/native-live-backend-turn-coordinator.js";
+  NativeLiveRelayPrepareResult,
+} from "../domains/bridge/native-live-backend-relay-prepare.js";
 import type {
   NativeLiveBackendTurnReadModel,
 } from "../domains/bridge/native-live-backend-turn-repository.js";
@@ -11,7 +10,12 @@ import type {
 } from "../domains/bridge/native-live-backend-relay.js";
 
 export type NativeLiveApiDependencies = {
-  coordinator: Pick<NativeLiveBackendTurnCoordinator, "prepare">;
+  coordinator: {
+    prepare(
+      userId: string,
+      rawRequest: unknown,
+    ): Promise<NativeLiveRelayPrepareResult>;
+  };
   relayService: Pick<NativeLiveBackendRelayService, "enqueuePreparation">;
   turnReader: {
     readTurn(input: {
@@ -46,38 +50,49 @@ export function prepareNativeLiveTurnHandler(
       return;
     }
 
-    try {
-      await dependencies.relayService.enqueuePreparation({
-        userId: request.webUserId,
-        prepareId: result.command.prepare_id,
-      });
-    } catch {
-      response.status(503).json({
-        success: false,
-        error: {
-          code: "NATIVE_LIVE_RELAY_UNAVAILABLE",
-          message: "Native live turn was prepared but could not be queued.",
-        },
-      });
-      return;
+    if (!result.semanticPending) {
+      try {
+        await dependencies.relayService.enqueuePreparation({
+          userId: request.webUserId,
+          prepareId: result.command.prepare_id,
+        });
+      } catch {
+        response.status(503).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_RELAY_UNAVAILABLE",
+            message: "Native live turn was prepared but could not be queued.",
+          },
+        });
+        return;
+      }
     }
 
-    response.status(result.outcome === "created" ? 201 : 200).json({
-      success: true,
-      data: {
-        outcome: result.outcome,
-        prepareId: result.command.prepare_id,
-        requestId: result.command.request_id,
-        conversationId: result.command.conversation_id,
-        userMessageId: result.command.canonical_user_message_id,
-      },
-    });
+    response
+      .status(
+        result.semanticPending
+          ? 202
+          : result.outcome === "created"
+            ? 201
+            : 200,
+      )
+      .json({
+        success: true,
+        data: {
+          outcome: result.outcome,
+          semanticPending: result.semanticPending,
+          prepareId: result.command.prepare_id,
+          requestId: result.command.request_id,
+          conversationId: result.command.conversation_id,
+          userMessageId: result.command.canonical_user_message_id,
+        },
+      });
   };
 }
 
 function sendPrepareFailure(
   response: Response,
-  result: Extract<NativeLivePrepareResult, { ok: false }>,
+  result: Extract<NativeLiveRelayPrepareResult, { ok: false }>,
 ): void {
   const status =
     result.code === "INVALID_REQUEST"
