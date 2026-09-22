@@ -24,6 +24,7 @@ try {
 }
 
 if (!prepared) {
+  process.stderr.write(`[e5-setup] installing local Transformers.js runtime at ${runtimeRoot}\n`);
   await writeFile(
     packageJsonPath,
     JSON.stringify(
@@ -49,8 +50,49 @@ if (!prepared) {
   ]);
 }
 
-const scorer = new LocalE5BreathSemanticScorer();
-const warm = await scorer.score({
+process.stderr.write("[e5-setup] runtime ready; loading multilingual E5 model\n");
+
+let lastProgress = "";
+const scorer = new LocalE5BreathSemanticScorer({
+  progressCallback(info) {
+    if (!isRecord(info) || typeof info.status !== "string") return;
+
+    if (
+      info.status === "progress_total"
+      && typeof info.progress === "number"
+    ) {
+      const message = `[e5-model] total ${info.progress.toFixed(1)}%\n`;
+      if (message !== lastProgress) {
+        lastProgress = message;
+        process.stderr.write(message);
+      }
+      return;
+    }
+
+    if (
+      (info.status === "download"
+        || info.status === "done"
+        || info.status === "ready")
+    ) {
+      const file =
+        typeof info.file === "string"
+          ? ` ${info.file}`
+          : "";
+      process.stderr.write(`[e5-model] ${info.status}${file}\n`);
+    }
+  },
+});
+
+const heartbeat = setInterval(() => {
+  process.stderr.write(
+    "[e5-model] still waiting for model download/load; Ctrl+C is safe and a rerun will reuse cached files\n",
+  );
+}, 30_000);
+heartbeat.unref();
+
+let warm;
+try {
+  warm = await scorer.score({
   query: "本地语义召回准备完成",
   candidates: [
     {
@@ -59,7 +101,10 @@ const warm = await scorer.score({
       text: "本地 embedding 模型已经准备好",
     },
   ],
-});
+  });
+} finally {
+  clearInterval(heartbeat);
+}
 
 process.stdout.write(
   JSON.stringify({
@@ -89,4 +134,8 @@ async function run(command: string, args: string[]): Promise<void> {
       );
     });
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
