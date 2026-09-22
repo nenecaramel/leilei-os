@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
-  nativeLiveRuntimeListenerLeases,
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
 } from "../../database/schema.js";
@@ -24,7 +23,11 @@ import type {
 } from "./native-live-backend-relay.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
-type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+type Transaction = Parameters<Database["transaction"]>[0] extends (
+  tx: infer T,
+) => unknown
+  ? T
+  : never;
 
 const SEMANTIC_RESERVATION_LEASE_MS = 300_000;
 const SEMANTIC_COMPLETION_INTERVAL_MS = 2_000;
@@ -58,6 +61,11 @@ export interface NativeLiveSemanticPreparationStager {
     preparation: NativeLivePreparedTurn;
     plan: NativeLiveMindSemanticPlan;
   }): Promise<void>;
+
+  readPlan?(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<NativeLiveMindSemanticPlan | null>;
 }
 
 type SemanticRequest = {
@@ -108,7 +116,11 @@ implements NativeLiveSemanticPreparationStager {
     }
     if (
       existing.conversationId !== input.preparation.conversationId
+      || existing.manifestId !== input.plan.manifestId
+      || existing.assembledAt !== input.plan.assembledAt
+      || existing.snapshotSequence !== input.plan.snapshotSequence
       || existing.query !== input.plan.query
+      || !isDeepStrictEqual(existing.candidates, input.plan.candidates)
     ) {
       throw new Error(
         "Semantic scoring request conflicts with an existing preparation.",
@@ -216,8 +228,21 @@ implements NativeLiveSemanticPreparationStager {
         );
       }
 
-      if (request.status === "completed" || request.status === "fallback") {
+      validateScores(request.candidates, input.scores);
+      if (request.status === "completed") {
+        if (!isDeepStrictEqual(request.scores, input.scores)) {
+          throw new NativeLiveSemanticHandshakeError(
+            "SEMANTIC_RESERVATION_CONFLICT",
+            "Semantic scores conflict with the completed reservation.",
+          );
+        }
         return request;
+      }
+      if (request.status === "fallback") {
+        throw new NativeLiveSemanticHandshakeError(
+          "SEMANTIC_RESERVATION_CONFLICT",
+          "Semantic reservation already completed through fallback.",
+        );
       }
       if (
         request.status !== "reserved"
@@ -229,9 +254,8 @@ implements NativeLiveSemanticPreparationStager {
         );
       }
 
-      validateScores(request.candidates, input.scores);
       const completedAt = new Date();
-      await transaction
+      const updated = await transaction
         .update(nativeLiveSemanticScoringRequests)
         .set({
           status: "completed",
@@ -256,7 +280,15 @@ implements NativeLiveSemanticPreparationStager {
               input.listenerInstanceId,
             ),
           ),
+        )
+        .returning({ prepareId: nativeLiveSemanticScoringRequests.prepareId });
+
+      if (updated.length !== 1) {
+        throw new NativeLiveSemanticHandshakeError(
+          "SEMANTIC_RESERVATION_CONFLICT",
+          "Semantic score reservation changed before commit.",
         );
+      }
 
       return {
         ...request,
@@ -288,8 +320,20 @@ implements NativeLiveSemanticPreparationStager {
         );
       }
 
-      if (request.status === "completed" || request.status === "fallback") {
+      if (request.status === "fallback") {
+        if (request.fallbackCode !== input.code) {
+          throw new NativeLiveSemanticHandshakeError(
+            "SEMANTIC_RESERVATION_CONFLICT",
+            "Semantic fallback conflicts with the completed reservation.",
+          );
+        }
         return request;
+      }
+      if (request.status === "completed") {
+        throw new NativeLiveSemanticHandshakeError(
+          "SEMANTIC_RESERVATION_CONFLICT",
+          "Semantic reservation already completed with scores.",
+        );
       }
       if (
         request.status !== "reserved"
@@ -302,7 +346,7 @@ implements NativeLiveSemanticPreparationStager {
       }
 
       const completedAt = new Date();
-      await transaction
+      const updated = await transaction
         .update(nativeLiveSemanticScoringRequests)
         .set({
           status: "fallback",
@@ -327,7 +371,15 @@ implements NativeLiveSemanticPreparationStager {
               input.listenerInstanceId,
             ),
           ),
+        )
+        .returning({ prepareId: nativeLiveSemanticScoringRequests.prepareId });
+
+      if (updated.length !== 1) {
+        throw new NativeLiveSemanticHandshakeError(
+          "SEMANTIC_RESERVATION_CONFLICT",
+          "Semantic fallback reservation changed before commit.",
         );
+      }
 
       return {
         ...request,
@@ -443,6 +495,14 @@ implements NativeLiveSemanticPreparationStager {
     plan: NativeLiveMindSemanticPlan;
   }): Promise<void> {
     return this.repository.stage(input);
+  }
+
+  async readPlan(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<NativeLiveMindSemanticPlan | null> {
+    const request = await this.repository.get(input);
+    return request ? toMindPlan(request) : null;
   }
 
   reserveNext(input: {
