@@ -174,6 +174,11 @@ test(
       dispatchStatus: "completed",
     });
 
+    await relay.enqueuePreparation({
+      userId: user.id,
+      prepareId: first.command.prepare_id,
+    });
+
     const secondRequestId = crypto.randomUUID();
     const second = await coordinator.prepare(user.id, {
       dispatch_target: "claude_code",
