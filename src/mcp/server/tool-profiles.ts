@@ -1,6 +1,7 @@
 export type McpToolSurface =
   | "core"
   | "notion"
+  | "notion_advanced"
   | "conversation_recovery"
   | "device"
   | "ui"
@@ -9,6 +10,7 @@ export type McpToolSurface =
 export type McpToolProfileName =
   | "core"
   | "notion"
+  | "notion_advanced"
   | "conversation_recovery"
   | "device"
   | "ui"
@@ -20,6 +22,7 @@ export type McpToolExposure = ReadonlySet<McpToolSurface>;
 const ALL_SURFACES: readonly McpToolSurface[] = [
   "core",
   "notion",
+  "notion_advanced",
   "conversation_recovery",
   "device",
   "ui",
@@ -32,6 +35,7 @@ const PROFILE_SURFACES: Record<
 > = {
   core: ["core"],
   notion: ["notion"],
+  notion_advanced: ["notion", "notion_advanced"],
   conversation_recovery: ["conversation_recovery"],
   device: ["device"],
   ui: ["ui"],
