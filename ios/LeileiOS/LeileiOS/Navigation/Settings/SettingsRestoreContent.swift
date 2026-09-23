@@ -30,11 +30,10 @@ struct SettingsRestoreContent: View {
                 }
 
                 if isPreviewing {
-                    HStack {
-                        Text("Loading…")
-                        Spacer()
-                        ProgressView()
-                    }
+                    SettingsSectionState(
+                        title: "Loading…",
+                        isLoading: true
+                    )
                 }
             }
 
@@ -66,15 +65,17 @@ struct SettingsRestoreContent: View {
 
             if let errorMessage {
                 Section {
-                    Text(errorMessage)
-                        .foregroundStyle(.secondary)
+                    SettingsSectionState(
+                        title: errorMessage
+                    )
                 }
             }
 
             if let outcomeMessage {
                 Section {
-                    Text(outcomeMessage)
-                        .foregroundStyle(.secondary)
+                    SettingsSectionState(
+                        title: outcomeMessage
+                    )
                 }
             }
         }
