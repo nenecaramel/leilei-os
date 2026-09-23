@@ -72,30 +72,18 @@ test("stable MCP defaults are explicit in tools/list", async () => {
   assert.ok(globalSearch);
   assert.deepEqual(
     property(globalSearch, "modules").default,
-    ["memory", "diary", "task", "todo", "universe", "shared_paper"],
+    ["diary", "todo", "universe"],
   );
   assert.equal(property(globalSearch, "scope").default, "active");
   assert.equal(property(globalSearch, "mode").default, "normal");
   assert.equal(property(globalSearch, "limit").default, 10);
 
-  for (const name of ["get_memory", "get_diary", "get_task"] as const) {
-    const tool = byName.get(name);
-    assert.ok(tool);
-    assert.equal(property(tool, "scope").default, "active");
-  }
-
-  for (const name of ["list_shared_papers", "search_shared_papers"] as const) {
-    const tool = byName.get(name);
-    assert.ok(tool);
-    assert.equal(property(tool, "scope").default, "active");
-    assert.equal(property(tool, "limit").default, 50);
-  }
+  const diary = byName.get("get_diary");
+  assert.ok(diary);
+  assert.equal(property(diary, "scope").default, "active");
 
   const expectedLimits: Record<string, number> = {
-    read_memory: 50,
-    search_memory: 50,
     search_diary: 50,
-    list_tasks: 50,
     search_todo: 50,
     list_todo_dates: 50,
     list_universe_nodes: 25,
@@ -104,7 +92,6 @@ test("stable MCP defaults are explicit in tools/list", async () => {
     read_conversation: 40,
     list_conversation_exclusions: 50,
     inspect_conversation_restore_path: 40,
-    list_shared_paper_edits: 50,
   };
   for (const [name, expected] of Object.entries(expectedLimits)) {
     const tool = byName.get(name);
@@ -117,14 +104,9 @@ test("growth discovery tools expose one cursor pagination contract", async () =>
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   for (const name of [
-    "read_memory",
-    "search_memory",
     "search_diary",
-    "list_tasks",
     "list_todo_dates",
     "search_todo",
-    "list_shared_papers",
-    "search_shared_papers",
   ] as const) {
     const tool = byName.get(name);
     assert.ok(tool, `${name} must stay registered`);
@@ -157,15 +139,10 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
   assert.match(globalSearch.description, /does not replace domain-specific detail or mutation tools/iu);
 
   const dedicatedDiscovery = [
-    ["read_memory", "get_memory"],
-    ["search_memory", "get_memory"],
     ["search_diary", "get_diary"],
-    ["list_tasks", "get_task"],
     ["search_todo", "read_todo_day"],
     ["list_universe_nodes", "get_universe_node"],
     ["search_universe", "get_universe_node"],
-    ["list_shared_papers", "get_shared_paper"],
-    ["search_shared_papers", "get_shared_paper"],
     ["search_conversations", "read_conversation"],
   ] as const;
 
@@ -194,24 +171,12 @@ test("domain language disambiguates adjacent model-facing concepts", async () =>
 
   const groups = [
     {
-      names: ["create_task", "list_tasks", "get_task", "update_task", "transition_task"],
-      pattern: /^Task is a durable actionable item .*not a date-scoped Todo/iu,
-    },
-    {
       names: ["read_todo_day", "list_todo_dates", "search_todo", "replace_todo_paper", "append_todo_entries", "append_todo_entry", "update_todo_entry", "delete_todo_entry"],
-      pattern: /^Todo is a date-scoped paper .*not the Task system/iu,
-    },
-    {
-      names: ["read_memory", "search_memory", "get_memory", "create_memory", "update_memory"],
-      pattern: /^Memory stores durable distilled .*not a dated Diary/iu,
+      pattern: /^Todo is a date-scoped paper of lightweight entries\./iu,
     },
     {
       names: ["search_diary", "get_diary", "create_diary", "update_diary"],
-      pattern: /^Diary stores dated authored .*not distilled Memory/iu,
-    },
-    {
-      names: ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "append_shared_paper"],
-      pattern: /^Shared Paper is a canonical long-form document .*not the Universe graph/iu,
+      pattern: /^Diary stores dated authored journal entries\./iu,
     },
   ] as const;
 
@@ -226,7 +191,7 @@ test("domain language disambiguates adjacent model-facing concepts", async () =>
   for (const name of ["list_universe_nodes", "search_universe", "get_universe_node", "get_universe_relations"] as const) {
     const tool = byName.get(name);
     assert.ok(tool?.description, `${name} must have a Universe boundary description`);
-    assert.match(tool.description, /^Universe is a graph .*not a Shared Paper/iu);
+    assert.match(tool.description, /^Universe is a graph of concepts, relations, and provenance\./iu);
   }
 
   for (const name of [
@@ -240,7 +205,7 @@ test("domain language disambiguates adjacent model-facing concepts", async () =>
   ] as const) {
     const tool = byName.get(name);
     assert.ok(tool?.description, `${name} must have a Universe boundary description`);
-    assert.match(tool.description, /Universe is a graph .*not a Shared Paper/iu);
+    assert.match(tool.description, /Universe is a graph of concepts, relations, and provenance\./iu);
   }
 });
 
@@ -248,14 +213,10 @@ test("L G C author enums expose stable human-readable semantics", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   const authorTools = [
-    "create_memory",
-    "update_memory",
     "search_diary",
     "create_diary",
     "update_diary",
     "add_diary_comment",
-    "create_task",
-    "update_task",
     "read_todo_day",
     "search_todo",
     "replace_todo_paper",
@@ -263,9 +224,6 @@ test("L G C author enums expose stable human-readable semantics", async () => {
     "append_todo_entry",
     "update_todo_entry",
     "delete_todo_entry",
-    "create_shared_paper",
-    "edit_shared_paper",
-    "append_shared_paper",
   ] as const;
 
   for (const name of authorTools) {
@@ -314,8 +272,6 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
     "replace_todo_paper",
     "update_todo_entry",
     "delete_todo_entry",
-    "edit_shared_paper",
-    "append_shared_paper",
     "update_diary_comment",
     "delete_diary_comment",
   ] as const;
@@ -334,20 +290,12 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
   }
 
   const idempotentTools = [
-    "create_memory",
     "create_diary",
-    "create_task",
     "replace_todo_paper",
     "append_todo_entries",
     "append_todo_entry",
     "update_todo_entry",
     "delete_todo_entry",
-    "create_shared_paper",
-    "edit_shared_paper",
-    "append_shared_paper",
-    "archive_shared_paper",
-    "restore_shared_paper",
-    "permanently_delete_shared_paper",
     "add_diary_comment",
     "create_universe_node",
     "create_universe_relation",
@@ -401,9 +349,7 @@ test("large detail reads expose one bounded continuation contract", async () => 
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
   for (const name of [
-    "get_memory",
     "get_diary",
-    "get_shared_paper",
     "read_notion_page",
   ] as const) {
     const tool = byName.get(name);
@@ -438,30 +384,16 @@ test("core mutation tools expose one model-readable receipt contract", async () 
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   const mutationTools = [
-    "create_memory",
-    "update_memory",
     "create_diary",
     "update_diary",
-    "archive_diary",
-    "restore_diary",
-    "permanently_delete_diary",
     "add_diary_comment",
     "update_diary_comment",
     "delete_diary_comment",
-    "create_task",
-    "update_task",
-    "transition_task",
     "replace_todo_paper",
     "append_todo_entries",
     "append_todo_entry",
     "update_todo_entry",
     "delete_todo_entry",
-    "create_shared_paper",
-    "edit_shared_paper",
-    "append_shared_paper",
-    "archive_shared_paper",
-    "restore_shared_paper",
-    "permanently_delete_shared_paper",
     "create_universe_node",
     "update_universe_node",
     "create_universe_relation",
@@ -526,3 +458,47 @@ test("operational connectivity stays out of the model-visible tool inventory", a
   const names = tools.map((tool) => tool.name);
   assert.equal(names.includes("hello"), false);
 });
+
+test("global_search runtime defaults cannot reintroduce retired modules", async () => {
+  let captured: Record<string, unknown> | undefined;
+  const server = createMcpServer({
+    globalSearch: {
+      getAuthenticatedUserId: () => "00000000-0000-4000-8000-000000000099",
+      globalSearchService: {
+        async search(input: Record<string, unknown>) {
+          captured = input;
+          return {
+            results: [],
+            metadata: {
+              count: 0,
+              has_more: false,
+              next_cursor: null,
+              searched_modules: input.modules as ["diary", "todo", "universe"],
+              searched_scope: "active" as const,
+            },
+          };
+        },
+      },
+    },
+  } as never);
+
+  const client = new Client(
+    { name: "global-search-retirement-defaults", version: "1.0.0" },
+    { capabilities: {} },
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const result = await client.callTool({
+      name: "global_search",
+      arguments: { query: "needle" },
+    });
+    assert.notEqual(result.isError, true);
+    assert.deepEqual(captured?.modules, ["diary", "todo", "universe"]);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+

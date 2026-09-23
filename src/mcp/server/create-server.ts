@@ -4,30 +4,6 @@ import { NotionReadClient } from "../../domains/notion/notion-read-client.js";
 import { NotionIntegration } from "../../domains/notion/notion-read-integration.js";
 import { registerGetWeatherContextTool } from "../tools/get-weather-context/register.js";
 import {
-  ReadMemoryAuthenticationError,
-  registerReadMemoryTool,
-  type ReadMemoryToolDependencies,
-} from "../tools/read-memory/register.js";
-import {
-  registerSearchMemoryTool,
-  type SearchMemoryToolDependencies,
-} from "../tools/search-memory/register.js";
-import {
-  registerGetMemoryTool,
-  type GetMemoryToolDependencies,
-} from "../tools/get-memory/register.js";
-import {
-  registerCreateMemoryTool,
-  registerWriteMemoryTool,
-  WriteMemoryAuthenticationError,
-  type WriteMemoryToolDependencies,
-} from "../tools/write-memory/register.js";
-import {
-  registerUpdateMemoryTool,
-  UpdateMemoryAuthenticationError,
-  type UpdateMemoryToolDependencies,
-} from "../tools/update-memory/register.js";
-import {
   registerCreateDiaryTool,
   registerWriteDiaryTool,
   WriteDiaryAuthenticationError,
@@ -48,40 +24,10 @@ import {
   type GetDiaryToolDependencies,
 } from "../tools/get-diary/register.js";
 import {
-  DiaryLifecycleAuthenticationError,
-  registerDiaryLifecycleTools,
-  registerLegacyDeleteDiaryAlias,
-  type DiaryLifecycleToolDependencies,
-} from "../tools/diary-lifecycle/register.js";
-import {
   DiaryCommentAuthenticationError,
   registerDiaryCommentTools,
   type DiaryCommentToolDependencies,
 } from "../tools/diary-comment/register.js";
-import {
-  CreateTaskAuthenticationError,
-  registerCreateTaskTool,
-  type CreateTaskToolDependencies,
-} from "../tools/create-task/register.js";
-import {
-  registerUpdateTaskTool,
-  UpdateTaskAuthenticationError,
-  type UpdateTaskToolDependencies,
-} from "../tools/update-task/register.js";
-import {
-  registerTransitionTaskTool,
-  TransitionTaskAuthenticationError,
-  type TransitionTaskToolDependencies,
-} from "../tools/transition-task/register.js";
-import {
-  registerListTasksTool,
-  TaskReadAuthenticationError,
-  type ListTasksToolDependencies,
-} from "../tools/list-tasks/register.js";
-import {
-  registerGetTaskTool,
-  type GetTaskToolDependencies,
-} from "../tools/get-task/register.js";
 import {
   registerToyCommandTools,
   ToyCommandAuthenticationError,
@@ -151,7 +97,6 @@ import { registerGetUniverseDiarySourcesTool, type GetUniverseDiarySourcesToolDe
 import { registerAddUniverseDiarySourceTool, type AddUniverseDiarySourceToolDependencies } from "../tools/add-universe-diary-source/register.js";
 import { registerDeleteUniverseDiarySourceTool, type DeleteUniverseDiarySourceToolDependencies } from "../tools/delete-universe-diary-source/register.js";
 import { UniverseAuthenticationError } from "../tools/universe/shared.js";
-import { registerLegacyDeleteSharedPaperAlias, registerSharedPaperTools, SharedPaperAuthenticationError, type SharedPaperToolDependencies, type SharedPaperToolService } from "../tools/shared-paper/register.js";
 import {
   mcpToolSurfaceEnabled,
   resolveMcpToolExposure,
@@ -208,54 +153,6 @@ function getDefaultNotionIntegration(): NotionIntegration {
 }
 
 
-const productionReadMemoryDependencies: ReadMemoryToolDependencies = {
-  memoryService: {
-    readMemory: (input) => missingDatabaseService(),
-    readMemoryDiscovery: (input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new ReadMemoryAuthenticationError();
-  },
-};
-
-const productionSearchMemoryDependencies: SearchMemoryToolDependencies = {
-  memoryService: {
-    readMemory: (input) => missingDatabaseService(),
-    searchMemoryDiscovery: (input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new ReadMemoryAuthenticationError();
-  },
-};
-
-const productionGetMemoryDependencies: GetMemoryToolDependencies = {
-  memoryService: {
-    readMemoryDetail: (input) => missingDatabaseService(),
-    readArchivedMemoryDetail: (input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new ReadMemoryAuthenticationError();
-  },
-};
-
-const productionWriteMemoryDependencies: WriteMemoryToolDependencies = {
-  memoryService: {
-    createMcpMemory: (context, input, idempotencyKey) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new WriteMemoryAuthenticationError();
-  },
-};
-
-const productionUpdateMemoryDependencies: UpdateMemoryToolDependencies = {
-  memoryService: {
-    updateMcpMemory: (context, input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new UpdateMemoryAuthenticationError();
-  },
-};
-
 const productionWriteDiaryDependencies: WriteDiaryToolDependencies = {
   diaryService: {
     createMcpDiary: (context, input) => missingDatabaseService(),
@@ -271,17 +168,6 @@ const productionUpdateDiaryDependencies: UpdateDiaryToolDependencies = {
   },
   getAuthenticatedUserId: () => {
     throw new UpdateDiaryAuthenticationError();
-  },
-};
-
-const productionDiaryLifecycleDependencies: DiaryLifecycleToolDependencies = {
-  diaryService: {
-    archiveMcpDiary: (context, input) => missingDatabaseService(),
-    restoreMcpDiary: (context, input) => missingDatabaseService(),
-    permanentlyDeleteMcpDiary: (context, input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new DiaryLifecycleAuthenticationError();
   },
 };
 
@@ -315,52 +201,6 @@ const productionDiaryCommentDependencies: DiaryCommentToolDependencies = {
   },
   getAuthenticatedUserId: () => {
     throw new DiaryCommentAuthenticationError();
-  },
-};
-
-const productionCreateTaskDependencies: CreateTaskToolDependencies = {
-  taskService: {
-    createTaskIdempotently: (context, input, idempotencyKey) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new CreateTaskAuthenticationError();
-  },
-};
-
-const productionUpdateTaskDependencies: UpdateTaskToolDependencies = {
-  taskService: {
-    updateMcpTask: (context, input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new UpdateTaskAuthenticationError();
-  },
-};
-
-const productionTransitionTaskDependencies: TransitionTaskToolDependencies = {
-  taskService: {
-    transitionMcpTask: (context, input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new TransitionTaskAuthenticationError();
-  },
-};
-
-const productionListTasksDependencies: ListTasksToolDependencies = {
-  taskService: {
-    listTasks: (input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new TaskReadAuthenticationError();
-  },
-};
-
-const productionGetTaskDependencies: GetTaskToolDependencies = {
-  taskService: {
-    readTask: (input) => missingDatabaseService(),
-    readArchivedTask: (input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => {
-    throw new TaskReadAuthenticationError();
   },
 };
 
@@ -445,19 +285,6 @@ const productionTodoService = {
   search: (input: Parameters<SearchTodoToolDependencies["todoService"]["search"]>[0]) => missingDatabaseService(),
 };
 
-const productionSharedPaperService: SharedPaperToolService = {
-  listPapers: () => missingDatabaseService(),
-  searchPapers: () => missingDatabaseService(),
-  getPaper: () => missingDatabaseService(),
-  listEdits: () => missingDatabaseService(),
-  createPaperIdempotently: () => missingDatabaseService(),
-  editPaperByMatch: () => missingDatabaseService(),
-  appendPaperIdempotently: () => missingDatabaseService(),
-  archivePaperIdempotently: () => missingDatabaseService(),
-  restorePaperIdempotently: () => missingDatabaseService(),
-  deletePaperIdempotently: () => missingDatabaseService(),
-};
-
 type TodoToolsDependencies = {
   todoService: ReadTodoDayToolDependencies["todoService"] &
     ListTodoDatesToolDependencies["todoService"] &
@@ -501,17 +328,6 @@ type UniverseProvenanceToolsDependencies = {
 
 export type McpServerDependencies = {
   activeUserAuthorization?: () => Promise<string>;
-  memoryReads?: {
-    memoryService: ReadMemoryToolDependencies["memoryService"] &
-      SearchMemoryToolDependencies["memoryService"] &
-      GetMemoryToolDependencies["memoryService"];
-    getAuthenticatedUserId: () => string;
-  };
-  readMemory?: ReadMemoryToolDependencies;
-  searchMemory?: SearchMemoryToolDependencies;
-  getMemory?: GetMemoryToolDependencies;
-  writeMemory?: WriteMemoryToolDependencies;
-  updateMemory?: UpdateMemoryToolDependencies;
   diaryTools?: {
     diaryService: WriteDiaryToolDependencies["diaryService"] &
       SearchDiaryToolDependencies["diaryService"] &
@@ -520,28 +336,15 @@ export type McpServerDependencies = {
   };
   writeDiary?: WriteDiaryToolDependencies;
   updateDiary?: UpdateDiaryToolDependencies;
-  diaryLifecycle?: DiaryLifecycleToolDependencies;
   searchDiary?: SearchDiaryToolDependencies;
   getDiary?: GetDiaryToolDependencies;
   diaryComments?: DiaryCommentToolDependencies;
-  taskTools?: {
-    taskService: CreateTaskToolDependencies["taskService"] &
-      ListTasksToolDependencies["taskService"] &
-      GetTaskToolDependencies["taskService"];
-    getAuthenticatedUserId: () => string;
-  };
-  createTask?: CreateTaskToolDependencies;
-  updateTask?: UpdateTaskToolDependencies;
-  transitionTask?: TransitionTaskToolDependencies;
-  listTasks?: ListTasksToolDependencies;
-  getTask?: GetTaskToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
   globalSearch?: GlobalSearchToolDependencies;
   conversationArchiveTools?: ConversationArchiveMcpToolDependencies;
   conversationRecoveryInspection?: ConversationRecoveryInspectionToolDependencies;
   includeConversationRecoveryTools?: boolean;
   todoTools?: TodoToolsDependencies;
-  sharedPaperTools?: SharedPaperToolDependencies;
   notionTools?: NotionToolsDependencies;
   notionRead?: NotionReadDependencies;
   universeTools?: UniverseToolsDependencies;
@@ -568,56 +371,6 @@ export function createMcpServer(
   }
 
   if (mcpToolSurfaceEnabled(toolExposure, "core")) {
-  registerReadMemoryTool(
-    server,
-    dependencies.readMemory ?? dependencies.memoryReads ?? {
-      ...productionReadMemoryDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerSearchMemoryTool(
-    server,
-    dependencies.searchMemory ?? dependencies.memoryReads ?? {
-      ...productionSearchMemoryDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerGetMemoryTool(
-    server,
-    dependencies.getMemory ?? dependencies.memoryReads ?? {
-      ...productionGetMemoryDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new ReadMemoryAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerCreateMemoryTool(
-    server,
-    dependencies.writeMemory ?? {
-      ...productionWriteMemoryDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new WriteMemoryAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerUpdateMemoryTool(
-    server,
-    dependencies.updateMemory ?? {
-      ...productionUpdateMemoryDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new UpdateMemoryAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
   registerCreateDiaryTool(
     server,
     dependencies.writeDiary ?? dependencies.diaryTools ?? {
@@ -637,17 +390,6 @@ export function createMcpServer(
         return authenticatedUserId;
       },
     },
-  );
-  registerDiaryLifecycleTools(
-    server,
-    dependencies.diaryLifecycle ?? {
-      ...productionDiaryLifecycleDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new DiaryLifecycleAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-    { permanentDeleteName: "canonical" },
   );
   registerSearchDiaryTool(
     server,
@@ -680,56 +422,6 @@ export function createMcpServer(
         if (!authenticatedUserId) {
           throw new DiaryCommentAuthenticationError();
         }
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerCreateTaskTool(
-    server,
-    dependencies.createTask ?? dependencies.taskTools ?? {
-      ...productionCreateTaskDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new CreateTaskAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerUpdateTaskTool(
-    server,
-    dependencies.updateTask ?? {
-      ...productionUpdateTaskDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new UpdateTaskAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerTransitionTaskTool(
-    server,
-    dependencies.transitionTask ?? {
-      ...productionTransitionTaskDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new TransitionTaskAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerListTasksTool(
-    server,
-    dependencies.listTasks ?? dependencies.taskTools ?? {
-      ...productionListTasksDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new TaskReadAuthenticationError();
-        return authenticatedUserId;
-      },
-    },
-  );
-  registerGetTaskTool(
-    server,
-    dependencies.getTask ?? dependencies.taskTools ?? {
-      ...productionGetTaskDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new TaskReadAuthenticationError();
         return authenticatedUserId;
       },
     },
@@ -894,27 +586,10 @@ export function createMcpServer(
       return authenticatedUserId;
     },
   });
-  registerSharedPaperTools(server, dependencies.sharedPaperTools ?? {
-    sharedPaperService: productionSharedPaperService,
-    getAuthenticatedUserId: () => {
-      if (!authenticatedUserId) throw new SharedPaperAuthenticationError();
-      return authenticatedUserId;
-    },
-  }, { permanentDeleteName: "canonical" });
   }
 
 
   if (mcpToolSurfaceEnabled(toolExposure, "legacy_aliases")) {
-    registerWriteMemoryTool(
-      server,
-      dependencies.writeMemory ?? {
-        ...productionWriteMemoryDependencies,
-        getAuthenticatedUserId: () => {
-          if (!authenticatedUserId) throw new WriteMemoryAuthenticationError();
-          return authenticatedUserId;
-        },
-      },
-    );
     registerWriteDiaryTool(
       server,
       dependencies.writeDiary ?? dependencies.diaryTools ?? {
@@ -929,23 +604,6 @@ export function createMcpServer(
       todoService: productionTodoService,
       getAuthenticatedUserId: () => {
         if (!authenticatedUserId) throw new WriteTodoPaperAuthenticationError();
-        return authenticatedUserId;
-      },
-    });
-    registerLegacyDeleteDiaryAlias(
-      server,
-      dependencies.diaryLifecycle ?? {
-        ...productionDiaryLifecycleDependencies,
-        getAuthenticatedUserId: () => {
-          if (!authenticatedUserId) throw new DiaryLifecycleAuthenticationError();
-          return authenticatedUserId;
-        },
-      },
-    );
-    registerLegacyDeleteSharedPaperAlias(server, dependencies.sharedPaperTools ?? {
-      sharedPaperService: productionSharedPaperService,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new SharedPaperAuthenticationError();
         return authenticatedUserId;
       },
     });

@@ -555,11 +555,6 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
-  assert.equal(
-    tools.some((tool) => tool.name === "append_shared_paper"),
-    true,
-    "the full test server must keep Shared Paper append registered",
-  );
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
