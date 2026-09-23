@@ -298,7 +298,7 @@ test("date filter schemas stay concrete and bounded", async () => {
         jsonSchemaContains(
           root,
           schema,
-          (candidate) => candidate.pattern === "^\\\\d{4}-\\\\d{2}-\\\\d{2}$",
+          (candidate) => candidate.pattern === "^\\d{4}-\\d{2}-\\d{2}$",
         ),
         `${name}.${field} must retain the YYYY-MM-DD pattern`,
       );
