@@ -10,7 +10,7 @@ import {
   isActiveUserAuthorizationError,
   type NotionUserAuthorizationDependencies,
 } from "../../server/notion-authorization.js";
-import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import {
   boundedReadInputSchemaFields,
@@ -119,9 +119,21 @@ export function registerReadNotionPageTool(
       };
     } catch (error) {
       if (error instanceof McpBoundedReadCursorError) {
+        const recommendedArguments = args.page_id
+          ? { page_id: args.page_id }
+          : args.page_url
+            ? { page_url: args.page_url }
+            : null;
         return createMcpToolError(
           "INVALID_CURSOR",
           "The Notion page continuation cursor is invalid or stale. Read the page again without a cursor.",
+          "The Notion page continuation cursor is invalid or stale. Read the page again without a cursor.",
+          mcpErrorRecoveryHint({
+            retryable: false,
+            reason: "invalid_cursor",
+            recommendedTool: recommendedArguments ? "read_notion_page" : null,
+            recommendedArguments,
+          }),
         );
       }
 
