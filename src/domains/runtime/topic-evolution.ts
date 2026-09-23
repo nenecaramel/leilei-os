@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export type TopicPhase = "active";
+export type TopicPhase = "active" | "dormant";
 export type TopicRole = "anchor" | "reinforcement";
 
 export type TopicEvolutionState = {
@@ -12,10 +12,12 @@ export type TopicEvolutionState = {
   reinforcementSources: string[];
   lastEvolvedAt: string;
   lastReinforcedAt: string;
+  dormantAt: string | null;
 };
 
 export type TopicEvolutionPolicy = {
   maxReinforcementSources: number;
+  dormantAfterHours: number;
 };
 
 export type TopicEvolutionCandidate = {
@@ -33,7 +35,7 @@ export type TopicEvolutionUpdate = {
   expectedPayload: Record<string, unknown> | null;
   nextPayload: Record<string, unknown>;
   evolution: TopicEvolutionState;
-  reason: "initialize" | "reinforce";
+  reason: "initialize" | "reinforce" | "dormant" | "reactivate";
 };
 
 export interface TopicEvolutionRuntimePort {
@@ -57,7 +59,10 @@ export type TopicEvolutionRunResult = {
   conflicts: number;
   initialized: number;
   reinforced: number;
+  dormantTransitions: number;
+  reactivated: number;
   active: number;
+  dormant: number;
 };
 
 const TOPIC_KEY = "topic_v1";
@@ -73,6 +78,14 @@ export class TopicEvolutionService {
     ) {
       throw new Error(
         "Topic reinforcement source limit must be a positive integer.",
+      );
+    }
+    if (
+      !Number.isFinite(policy.dormantAfterHours)
+      || policy.dormantAfterHours <= 0
+    ) {
+      throw new Error(
+        "Topic dormantAfterHours must be a positive finite number.",
       );
     }
   }
@@ -91,9 +104,14 @@ export class TopicEvolutionService {
     });
     const groups = groupCandidates(candidates);
     const updates: TopicEvolutionUpdate[] = [];
+    let active = 0;
+    let dormant = 0;
 
     for (const group of groups.values()) {
-      updates.push(...evaluateThread(group, now, this.policy));
+      const evaluated = evaluateThread(group, now, this.policy);
+      updates.push(...evaluated.updates);
+      if (evaluated.phase === "active") active += 1;
+      else dormant += 1;
     }
 
     const committed = await this.port.applyUpdates({
@@ -109,7 +127,12 @@ export class TopicEvolutionService {
       conflicts: committed.conflicts,
       initialized: updates.filter((update) => update.reason === "initialize").length,
       reinforced: updates.filter((update) => update.reason === "reinforce").length,
-      active: groups.size,
+      dormantTransitions:
+        updates.filter((update) => update.reason === "dormant").length,
+      reactivated:
+        updates.filter((update) => update.reason === "reactivate").length,
+      active,
+      dormant,
     };
   }
 }
@@ -123,7 +146,7 @@ export function readTopicEvolution(
     throw new Error("Topic evolution payload must be an object.");
   }
 
-  if (value.phase !== "active") {
+  if (value.phase !== "active" && value.phase !== "dormant") {
     throw new Error("Topic phase is invalid.");
   }
   if (value.role !== "anchor" && value.role !== "reinforcement") {
@@ -157,6 +180,10 @@ export function readTopicEvolution(
     lastEvolvedAt: normalizeIso(value.lastEvolvedAt, "lastEvolvedAt"),
     lastReinforcedAt:
       normalizeIso(value.lastReinforcedAt, "lastReinforcedAt"),
+    dormantAt:
+      value.dormantAt === null
+        ? null
+        : normalizeIso(value.dormantAt, "dormantAt"),
   };
 }
 
@@ -212,9 +239,12 @@ function evaluateThread(
   candidates: readonly TopicEvolutionCandidate[],
   now: string,
   policy: TopicEvolutionPolicy,
-): TopicEvolutionUpdate[] {
+): {
+  phase: TopicPhase;
+  updates: TopicEvolutionUpdate[];
+} {
   const anchor = candidates[0];
-  if (!anchor) return [];
+  if (!anchor) return { phase: "active", updates: [] };
 
   const uniqueSources = new Map<string, TopicEvolutionCandidate>();
   for (const candidate of candidates) {
@@ -236,6 +266,41 @@ function evaluateThread(
   const reinforcementSources = evidence
     .map((candidate) => candidate.sourceId)
     .slice(-policy.maxReinforcementSources);
+  const latestReinforcedAt = normalizeIso(latest.createdAt, "createdAt");
+  const currentAnchor = safeReadTopicEvolution(anchor.payload);
+  const hasNewIndependentEvidence = Boolean(
+    currentAnchor
+    && (
+      reinforcementCount > currentAnchor.reinforcementCount
+      || reinforcementSources.some(
+        (source) => !currentAnchor.reinforcementSources.includes(source),
+      )
+    ),
+  );
+  const activityAnchorAt = currentAnchor
+    ? Math.max(
+        Date.parse(currentAnchor.lastReinforcedAt),
+        Date.parse(currentAnchor.lastEvolvedAt),
+      )
+    : Date.parse(now);
+  const inactiveHours = Math.max(
+    0,
+    (Date.parse(now) - activityAnchorAt) / 3_600_000,
+  );
+  const phase: TopicPhase =
+    !currentAnchor || hasNewIndependentEvidence
+      ? "active"
+      : currentAnchor.phase === "dormant"
+        ? "dormant"
+        : inactiveHours >= policy.dormantAfterHours
+          ? "dormant"
+          : "active";
+  const dormantAt =
+    phase === "dormant"
+      ? currentAnchor?.phase === "dormant"
+        ? currentAnchor.dormantAt
+        : now
+      : null;
   const updates: TopicEvolutionUpdate[] = [];
 
   for (const candidate of candidates) {
@@ -243,14 +308,15 @@ function evaluateThread(
     const role: TopicRole =
       candidate.stateId === anchor.stateId ? "anchor" : "reinforcement";
     const evolution: TopicEvolutionState = {
-      phase: "active",
+      phase,
       role,
       threadKey: topicThreadKey(anchor.text),
       anchorStateId: anchor.stateId,
       reinforcementCount,
       reinforcementSources,
       lastEvolvedAt: now,
-      lastReinforcedAt: normalizeIso(latest.createdAt, "createdAt"),
+      lastReinforcedAt: latestReinforcedAt,
+      dormantAt,
     };
     const reason = evolutionReason(current, evolution);
     if (!reason) continue;
@@ -265,7 +331,7 @@ function evaluateThread(
     });
   }
 
-  return updates;
+  return { phase, updates };
 }
 
 function evolutionReason(
@@ -273,12 +339,20 @@ function evolutionReason(
   next: TopicEvolutionState,
 ): TopicEvolutionUpdate["reason"] | null {
   if (!current) return "initialize";
+  if (current.phase === "active" && next.phase === "dormant") {
+    return "dormant";
+  }
+  if (current.phase === "dormant" && next.phase === "active") {
+    return "reactivate";
+  }
   if (
     current.anchorStateId !== next.anchorStateId
     || current.role !== next.role
     || current.threadKey !== next.threadKey
     || current.reinforcementCount !== next.reinforcementCount
+    || current.phase !== next.phase
     || current.lastReinforcedAt !== next.lastReinforcedAt
+    || current.dormantAt !== next.dormantAt
     || !sameStrings(current.reinforcementSources, next.reinforcementSources)
   ) {
     return "reinforce";

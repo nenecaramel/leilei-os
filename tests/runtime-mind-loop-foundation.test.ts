@@ -713,6 +713,7 @@ test("Context Assembly injects only active Topic anchors and drops reinforcement
     reinforcementSources: ["m1", "m2"],
     lastEvolvedAt: now,
     lastReinforcedAt: now,
+    dormantAt: null,
   });
 
   const reinforcement = state(
@@ -729,6 +730,24 @@ test("Context Assembly injects only active Topic anchors and drops reinforcement
     reinforcementSources: ["m1", "m2"],
     lastEvolvedAt: now,
     lastReinforcedAt: now,
+    dormantAt: null,
+  });
+
+  const dormant = state(
+    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "topic",
+    "已经暂退的话题不应该进 Context",
+  );
+  dormant.payload = writeTopicEvolution(dormant.payload, {
+    phase: "dormant",
+    role: "anchor",
+    threadKey: "topic-thread-dormant",
+    anchorStateId: dormant.id,
+    reinforcementCount: 1,
+    reinforcementSources: ["m3"],
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+    dormantAt: now,
   });
 
   const assembled = assembleTurnContext({
@@ -738,7 +757,7 @@ test("Context Assembly injects only active Topic anchors and drops reinforcement
     conversation: conversation([], null),
     userMessageId: "u-topic",
     userText: "继续",
-    subjectStates: [anchor, reinforcement],
+    subjectStates: [anchor, reinforcement, dormant],
     snapshotSequence: 1,
     assembledAt: now,
     assemblyVersion: "assembly-v1",
@@ -755,4 +774,8 @@ test("Context Assembly injects only active Topic anchors and drops reinforcement
   );
   assert.deepEqual(topicItems.map((item) => item.sourceId), [anchor.id]);
   assert.equal(assembled.prompt.includes("下次继续研究 Topic Pool"), true);
+  assert.equal(
+    assembled.prompt.includes("已经暂退的话题不应该进 Context"),
+    false,
+  );
 });

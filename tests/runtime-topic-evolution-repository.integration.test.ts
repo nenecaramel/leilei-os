@@ -149,7 +149,10 @@ test(
 
     const service = new TopicEvolutionService(
       new DrizzleTopicEvolutionRuntimePort(database.db),
-      { maxReinforcementSources: 16 },
+      {
+        maxReinforcementSources: 16,
+        dormantAfterHours: 168,
+      },
     );
     const first = await service.runOnce({
       userId,
@@ -185,5 +188,22 @@ test(
     });
     assert.equal(second.applied, 0);
     assert.equal(second.conflicts, 0);
+
+    const dormantRun = await service.runOnce({
+      userId,
+      subjectId: "G",
+      now: new Date(Date.now() + 8 * 24 * 3_600_000).toISOString(),
+    });
+    assert.equal(dormantRun.dormant, 1);
+    assert.equal(dormantRun.conflicts, 0);
+
+    const afterDormancy = await statePort.list({
+      userId,
+      subjectId: "G",
+      conversationId: "11111111-1111-4111-8111-111111111111",
+    });
+    const dormantAnchor = afterDormancy.find((state) => state.id === anchorId);
+    assert.ok(dormantAnchor);
+    assert.equal(readTopicEvolution(dormantAnchor.payload)?.phase, "dormant");
   },
 );

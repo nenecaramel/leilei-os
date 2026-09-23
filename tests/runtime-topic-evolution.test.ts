@@ -56,6 +56,7 @@ test("one settled Topic becomes one active pool anchor without inventing lifecyc
   ]);
   const service = new TopicEvolutionService(port, {
     maxReinforcementSources: 16,
+    dormantAfterHours: 168,
   });
 
   const result = await service.runOnce({
@@ -71,6 +72,7 @@ test("one settled Topic becomes one active pool anchor without inventing lifecyc
   assert.equal(topic?.phase, "active");
   assert.equal(topic?.role, "anchor");
   assert.equal(topic?.reinforcementCount, 1);
+  assert.equal(topic?.dormantAt, null);
   assert.equal(
     topic?.threadKey,
     topicThreadKey("Continue exploring Topic Pool"),
@@ -94,6 +96,7 @@ test("independent repetitions reinforce one normalized Topic thread", async () =
   ]);
   const service = new TopicEvolutionService(port, {
     maxReinforcementSources: 16,
+    dormantAfterHours: 168,
   });
 
   const result = await service.runOnce({
@@ -137,6 +140,7 @@ test("duplicate Topic tags from one assistant message count as one reinforcement
   ]);
   const service = new TopicEvolutionService(port, {
     maxReinforcementSources: 16,
+    dormantAfterHours: 168,
   });
   await service.runOnce({
     userId: "u1",
@@ -147,4 +151,150 @@ test("duplicate Topic tags from one assistant message count as one reinforcement
   assert.equal(port.updates[0]?.evolution.reinforcementCount, 2);
   const roundTrip = readTopicEvolution(port.updates[0]?.nextPayload);
   assert.equal(roundTrip?.reinforcementCount, 2);
+});
+
+
+test("active Topic becomes dormant after the configured inactivity window", async () => {
+  const payload = {
+    topic_v1: {
+      phase: "active",
+      role: "anchor",
+      threadKey: topicThreadKey("sleeping topic"),
+      anchorStateId: "11111111-1111-4111-8111-111111111111",
+      reinforcementCount: 1,
+      reinforcementSources: ["source-1"],
+      lastEvolvedAt: "2026-09-23T00:00:00.000Z",
+      lastReinforcedAt: "2026-09-23T00:00:00.000Z",
+      dormantAt: null,
+    },
+  };
+  const port = new Port([
+    candidate(
+      "11111111-1111-4111-8111-111111111111",
+      "sleeping topic",
+      "source-1",
+      "2026-09-23T00:00:00.000Z",
+      payload,
+    ),
+  ]);
+  const service = new TopicEvolutionService(port, {
+    maxReinforcementSources: 16,
+    dormantAfterHours: 168,
+  });
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-30T00:00:01.000Z",
+  });
+
+  assert.equal(result.active, 0);
+  assert.equal(result.dormant, 1);
+  assert.equal(result.dormantTransitions, 1);
+  assert.equal(port.updates[0]?.reason, "dormant");
+  assert.equal(port.updates[0]?.evolution.phase, "dormant");
+  assert.equal(
+    port.updates[0]?.evolution.dormantAt,
+    "2026-09-30T00:00:01.000Z",
+  );
+});
+
+test("duplicate evidence from the same source cannot reactivate a dormant Topic", async () => {
+  const payload = {
+    topic_v1: {
+      phase: "dormant",
+      role: "anchor",
+      threadKey: topicThreadKey("same source topic"),
+      anchorStateId: "11111111-1111-4111-8111-111111111111",
+      reinforcementCount: 1,
+      reinforcementSources: ["message-1"],
+      lastEvolvedAt: "2026-09-30T00:00:00.000Z",
+      lastReinforcedAt: "2026-09-23T00:00:00.000Z",
+      dormantAt: "2026-09-30T00:00:00.000Z",
+    },
+  };
+  const port = new Port([
+    candidate(
+      "11111111-1111-4111-8111-111111111111",
+      "same source topic",
+      "message-1",
+      "2026-09-23T00:00:00.000Z",
+      payload,
+    ),
+    candidate(
+      "22222222-2222-4222-8222-222222222222",
+      "same source topic",
+      "message-1",
+      "2026-10-01T00:00:00.000Z",
+    ),
+  ]);
+  const service = new TopicEvolutionService(port, {
+    maxReinforcementSources: 16,
+    dormantAfterHours: 168,
+  });
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-10-01T00:01:00.000Z",
+  });
+
+  assert.equal(result.active, 0);
+  assert.equal(result.dormant, 1);
+  const anchor = port.updates.find(
+    (update) => update.stateId === "11111111-1111-4111-8111-111111111111",
+  );
+  assert.equal(anchor, undefined);
+});
+
+test("new independent evidence reactivates a dormant Topic thread", async () => {
+  const payload = {
+    topic_v1: {
+      phase: "dormant",
+      role: "anchor",
+      threadKey: topicThreadKey("returning topic"),
+      anchorStateId: "11111111-1111-4111-8111-111111111111",
+      reinforcementCount: 1,
+      reinforcementSources: ["message-1"],
+      lastEvolvedAt: "2026-09-30T00:00:00.000Z",
+      lastReinforcedAt: "2026-09-23T00:00:00.000Z",
+      dormantAt: "2026-09-30T00:00:00.000Z",
+    },
+  };
+  const port = new Port([
+    candidate(
+      "11111111-1111-4111-8111-111111111111",
+      "returning topic",
+      "message-1",
+      "2026-09-23T00:00:00.000Z",
+      payload,
+    ),
+    candidate(
+      "22222222-2222-4222-8222-222222222222",
+      "returning topic",
+      "message-2",
+      "2026-10-01T00:00:00.000Z",
+    ),
+  ]);
+  const service = new TopicEvolutionService(port, {
+    maxReinforcementSources: 16,
+    dormantAfterHours: 168,
+  });
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-10-01T00:01:00.000Z",
+  });
+
+  assert.equal(result.active, 1);
+  assert.equal(result.dormant, 0);
+  assert.ok(result.reactivated >= 1);
+  const anchor = port.updates.find(
+    (update) => update.stateId === "11111111-1111-4111-8111-111111111111",
+  );
+  assert.equal(anchor?.reason, "reactivate");
+  assert.equal(anchor?.evolution.phase, "active");
+  assert.equal(anchor?.evolution.dormantAt, null);
+  assert.equal(anchor?.evolution.reinforcementCount, 2);
 });

@@ -95,6 +95,7 @@ export function createDefaultBackendMindRuntime(
     new DrizzleTopicEvolutionRuntimePort(db),
     {
       maxReinforcementSources: 16,
+      dormantAfterHours: 168,
     },
   );
   const mind = new DefaultNativeLiveMindRuntime(loop, {
