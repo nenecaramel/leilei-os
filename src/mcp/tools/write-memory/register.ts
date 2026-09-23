@@ -111,7 +111,7 @@ function registerMemoryCreateTool(
     },
     async ({ category, key, content, tags, author, idempotency_key }) =>
       invokeMcpWrite({
-        toolName,
+        toolName: "write_memory",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           const data = await dependencies.memoryService.createMcpMemory(
