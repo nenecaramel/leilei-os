@@ -5,10 +5,11 @@ import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { joinMcpContentLines } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
+import { universeExpectedVersionSchema } from "../idempotency-contract.js";
 
 const inputSchema = z.object({
   relation_id: z.string().trim().min(1).max(256),
-  expected_version: z.number().int().nonnegative(),
+  expected_version: universeExpectedVersionSchema,
 }).strict();
 
 const outputSchema = z.object({
