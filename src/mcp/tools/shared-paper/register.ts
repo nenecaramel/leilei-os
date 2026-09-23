@@ -12,6 +12,12 @@ import {
   McpPaginationCursorError,
   paginateMcpRows,
 } from "../pagination.js";
+import {
+  boundedReadInputSchemaFields,
+  boundedReadMetadataSchema,
+  McpBoundedReadCursorError,
+  sliceMcpBoundedContent,
+} from "../bounded-read.js";
 
 const idSchema = z.string().uuid();
 const authorSchema = z.enum(["L", "G", "C"]);
@@ -25,7 +31,7 @@ const paperDetailSchema = z.object({ id: idSchema, title: z.string(), content: z
 const editSchema = z.object({ id: idSchema, paper_id: idSchema, base_revision: z.number().int().min(1), revision: z.number().int().min(2), author: authorSchema, target: editTargetSchema, start_offset: z.number().int().nonnegative(), end_offset: z.number().int().nonnegative(), deleted_text: z.string(), inserted_text: z.string(), created_at: z.string().datetime() }).strict();
 const listInput = z.object({ limit: z.number().int().min(1).max(100).default(50).optional(), cursor: z.string().min(1).max(2_048).optional(), scope: scopeSchema.default("active").optional() }).strict();
 const searchInput = z.object({ query: boundedCodePointString(400, 200, 1), limit: z.number().int().min(1).max(100).default(50).optional(), cursor: z.string().min(1).max(2_048).optional(), scope: scopeSchema.default("active").optional() }).strict();
-const getInput = z.object({ id: idSchema }).strict();
+const getInput = z.object({ id: idSchema, ...boundedReadInputSchemaFields(z) }).strict();
 const createInput = z.object({ title: boundedCodePointString(400, 200, 1), content: boundedCodePointString(200_000, 100_000), author: authorSchema, idempotency_key: idempotencyKeySchema }).strict();
 const editInput = z.object({ id: idSchema, expected_revision: z.number().int().min(1), author: authorSchema, target: editTargetSchema.default("content").optional(), match_text: boundedCodePointString(200_000, 100_000), replacement_text: boundedCodePointString(200_000, 100_000), idempotency_key: idempotencyKeySchema }).strict();
 const appendInput = z.object({ id: idSchema, expected_revision: z.number().int().min(1), author: authorSchema, text: boundedCodePointString(200_000, 100_000, 1), idempotency_key: idempotencyKeySchema }).strict();
@@ -33,7 +39,7 @@ const editsInput = z.object({ id: idSchema, limit: z.number().int().min(1).max(1
 const lifecycleInput = z.object({ id: idSchema, idempotency_key: idempotencyKeySchema }).strict();
 const listOutput = z.object({ success: z.boolean(), data: z.object({ papers: z.array(paperSummarySchema), count: z.number().int().nonnegative(), metadata: z.object({ returned: z.number().int().nonnegative(), has_more: z.boolean(), next_cursor: z.string().nullable() }).strict() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 const searchOutput = listOutput;
-const getOutput = z.object({ success: z.boolean(), data: z.object({ paper: paperDetailSchema }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
+const getOutput = z.object({ success: z.boolean(), data: z.object({ paper: paperDetailSchema, content_metadata: boundedReadMetadataSchema(z) }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 const mutationOutput = z.object({ success: z.boolean(), data: z.object({ paper_id: idSchema, revision: z.number().int().min(1), edit_id: idSchema.optional(), base_revision: z.number().int().min(1).optional(), author: authorSchema.optional(), created_at: z.string().datetime().optional(), metadata: z.object({ idempotent_replay: z.boolean() }).strict(), detail_tool: z.literal("get_shared_paper"), detail_arguments: z.object({ id: idSchema }).strict() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 const editsOutput = z.object({ success: z.boolean(), data: z.object({ edits: z.array(editSchema), count: z.number().int().nonnegative() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 const lifecycleOutput = z.object({ success: z.boolean(), data: z.object({ paper_id: idSchema, archived_at: z.string().datetime().nullable(), metadata: z.object({ idempotent_replay: z.boolean() }).strict(), detail_tool: z.literal("get_shared_paper"), detail_arguments: z.object({ id: idSchema }).strict() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
@@ -82,7 +88,7 @@ export function registerSharedPaperTools(server: McpServer, dependencies: Shared
       query,
     );
   });
-  server.registerTool("get_shared_paper", { title: "Read a shared paper", description: "Read the exact canonical content of one shared paper.", inputSchema: getInput, outputSchema: getOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id }) => runDetail(() => dependencies.sharedPaperService.getPaper({ userId: dependencies.getAuthenticatedUserId(), paperId: id })));
+  server.registerTool("get_shared_paper", { title: "Read a shared paper", description: "Read one shared paper by exact id using a bounded canonical content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id. A cursor becomes invalid when the paper revision changes.", inputSchema: getInput, outputSchema: getOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, max_chars, cursor }) => runDetail(() => dependencies.sharedPaperService.getPaper({ userId: dependencies.getAuthenticatedUserId(), paperId: id }), max_chars, cursor));
   server.registerTool("create_shared_paper", { title: "Create a shared paper", description: "Create one shared paper with a single canonical content body. L, G, and C are provenance authors only; provide a stable idempotency_key for safe replay.", inputSchema: createInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ title, content, author, idempotency_key }) => runMutation(() => dependencies.sharedPaperService.createPaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), title, content, author, idempotencyKey: idempotency_key }), dependencies));
   server.registerTool("edit_shared_paper", { title: "Edit a shared paper", description: "Apply one unique exact match replacement to the shared paper's canonical content or title. target defaults to content. Supply the expected revision and stable idempotency_key; stale revisions are rejected and no automatic merge occurs.", inputSchema: editInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, expected_revision, author, target, match_text, replacement_text, idempotency_key }) => runMutation(async () => { const result = await dependencies.sharedPaperService.editPaperByMatch({ userId: dependencies.getAuthenticatedUserId(), paperId: id, expectedRevision: expected_revision, author, target: target ?? "content", matchText: match_text, replacementText: replacement_text, idempotencyKey: idempotency_key }); return { ...result, edit: result.edit }; }, dependencies));
   server.registerTool("append_shared_paper", { title: "Append to a shared paper", description: "Append text directly to the end of canonical content without reading or resending the existing body. Supply expected_revision and a stable idempotency_key; stale revisions are rejected and replay never appends twice.", inputSchema: appendInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, expected_revision, author, text, idempotency_key }) => runMutation(() => dependencies.sharedPaperService.appendPaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), paperId: id, expectedRevision: expected_revision, author, text, idempotencyKey: idempotency_key }), dependencies));
@@ -129,7 +135,44 @@ async function runRead(
     return sharedError(error, tool);
   }
 }
-async function runDetail(read: () => Promise<SharedPaperRecord>) { try { const paper = await read(); return { content: [{ type: "text" as const, text: sharedPaperDetailContent(paper) }], structuredContent: { success: true as const, data: { paper: toDetail(paper) } } }; } catch (error) { return sharedError(error, "get_shared_paper"); } }
+async function runDetail(
+  read: () => Promise<SharedPaperRecord>,
+  maxChars: number | undefined,
+  cursor: string | undefined,
+) {
+  try {
+    const paper = await read();
+    const window = sliceMcpBoundedContent({
+      content: paper.content,
+      maxChars,
+      cursor,
+      tool: "get_shared_paper",
+      context: { id: paper.id, revision: paper.revision },
+    });
+    const boundedPaper = { ...paper, content: window.content };
+    return {
+      content: [{
+        type: "text" as const,
+        text: sharedPaperDetailContent(boundedPaper),
+      }],
+      structuredContent: {
+        success: true as const,
+        data: {
+          paper: toDetail(boundedPaper),
+          content_metadata: window.metadata,
+        },
+      },
+    };
+  } catch (error) {
+    if (error instanceof McpBoundedReadCursorError) {
+      return createMcpToolError(
+        "INVALID_CURSOR",
+        "The Shared Paper continuation cursor is invalid or stale. Read the paper again without a cursor.",
+      );
+    }
+    return sharedError(error, "get_shared_paper");
+  }
+}
 async function runMutation(mutate: () => Promise<{ paper: SharedPaperRecord; edit?: SharedPaperEdit; outcome?: "committed" | "replayed" }>, _dependencies: SharedPaperToolDependencies) { try { const result = await mutate(); const replayed = result.outcome === "replayed"; const data = { paper_id: result.paper.id, revision: result.edit?.revision ?? result.paper.revision, ...(result.edit ? { edit_id: result.edit.id, base_revision: result.edit.baseRevision, author: result.edit.author, created_at: result.edit.createdAt.toISOString() } : {}), metadata: { idempotent_replay: replayed }, detail_tool: "get_shared_paper" as const, detail_arguments: { id: result.paper.id } }; return { content: [{ type: "text" as const, text: `Shared paper ${replayed ? "replayed" : "committed"} at revision ${data.revision}.\n${formatMcpDetailPointer("get_shared_paper", data.detail_arguments)}` }], structuredContent: { success: true as const, data } }; } catch (error) { return sharedError(error, "shared_paper_mutation"); } }
 async function runLifecycleMutation(mutate: () => Promise<{ paper: SharedPaperRecord; outcome: "committed" | "replayed" }>) {
   try {
