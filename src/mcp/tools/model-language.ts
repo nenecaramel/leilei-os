@@ -13,5 +13,3 @@ export const DIARY_DOMAIN_BOUNDARY =
 
 export const UNIVERSE_DOMAIN_BOUNDARY =
   "Universe is a graph of concepts, relations, and provenance.";
-
- not the Universe graph.";
