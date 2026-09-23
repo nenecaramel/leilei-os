@@ -231,7 +231,7 @@ private struct SettingsHomeContent: View {
             Button("Cancel", role: .cancel) {}
         }
         .alert(
-            "Authentication unavailable",
+            "Authentication Unavailable",
             isPresented: Binding(
                 get: { authErrorMessage != nil },
                 set: { if !$0 { authErrorMessage = nil } }
@@ -239,7 +239,7 @@ private struct SettingsHomeContent: View {
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(authErrorMessage ?? "")
+            Text("Couldn’t complete the authentication request. Please try again.")
         }
     }
 
