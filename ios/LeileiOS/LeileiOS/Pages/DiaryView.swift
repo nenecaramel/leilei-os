@@ -193,7 +193,7 @@ struct DiaryView: View {
             await appModel.refreshConnectivity()
             state = .authRequired("Your sign-in session needs to be renewed.")
         } catch {
-            state = .unavailable("Couldn’t load this diary.")
+            state = .unavailable("Couldn’t load your Diary.")
         }
     }
 
@@ -205,7 +205,7 @@ struct DiaryView: View {
             try await appModel.reauthorize()
             await loadDiary()
         } catch {
-            state = .unavailable("Couldn’t load this diary.")
+            state = .unavailable("Couldn’t load your Diary.")
         }
     }
 
@@ -382,7 +382,7 @@ private struct DiaryArchiveView: View {
             diaryCount = response.data.metadata.count
             state = .loaded(response.data.diaries)
         } catch {
-            state = .unavailable(error.localizedDescription)
+            state = .unavailable("Couldn’t load archived diaries.")
         }
     }
 }
@@ -542,7 +542,7 @@ private struct DiaryArchivedDetailView: View {
             )
             state = .loaded(response.data)
         } catch {
-            state = .unavailable(error.localizedDescription)
+            state = .unavailable("Couldn’t load this diary.")
         }
     }
 
