@@ -4,6 +4,7 @@ import { UniverseServiceError, type UniverseService } from "../../../domains/uni
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { updateUniverseRelationInputSchema } from "./schema.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const relationOutputSchema = z.object({
   id: z.string().min(1).max(256),
@@ -16,7 +17,7 @@ const relationOutputSchema = z.object({
 
 const outputSchema = z.object({
   success: z.boolean(),
-  data: z.object({ relation: relationOutputSchema, universe_version: z.number().int().nonnegative() }).strict().optional(),
+  data: z.object({ relation: relationOutputSchema, universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict().optional(),
   error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 
@@ -50,7 +51,20 @@ export function registerUpdateUniverseRelationTool(server: McpServer, dependenci
       );
       return {
         content: [{ type: "text", text: "Universe relation updated." }],
-        structuredContent: { success: true as const, data: result },
+        structuredContent: {
+          success: true as const,
+          data: {
+            ...result,
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "universe_relation",
+              entity_id: result.relation.id,
+              revision: null,
+              detail_tool: "get_universe_relations",
+              detail_arguments: { node_id: result.relation.source },
+            }),
+          },
+        },
       };
     },
     mapError: (error) => safeUniverseWriteError(error, "Universe relation was not found."),
