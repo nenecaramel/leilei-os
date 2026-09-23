@@ -9,6 +9,9 @@ import {
   type ProactivityWakeGateInput,
 } from "./proactivity-wake-contract.js";
 import type {
+  EffectStatus,
+} from "./effect-protocol.js";
+import type {
   ProactivityWakeGateRevalidator,
   ProactivityWakeRecord,
 } from "./proactivity-wake-state.js";
@@ -36,6 +39,10 @@ type LatestWakeRow = {
 
 type ForegroundRow = {
   active: boolean;
+};
+
+type OutstandingEffectRow = {
+  status: string;
 };
 
 type SurfaceRow = {
@@ -211,6 +218,7 @@ implements ProactivityWakeOpportunitySource {
     latestUserActivityAt: string;
     latestDecidedWakeAt: string | null;
     foregroundActive: boolean;
+    outstandingEffectStatus: EffectStatus | null;
   } | null> {
     const conversation = await this.db.execute<LatestConversationRow>(sql`
       SELECT
@@ -239,7 +247,8 @@ implements ProactivityWakeOpportunitySource {
     const current = conversation[0];
     if (!current) return null;
 
-    const [wake, foreground] = await Promise.all([
+    const [wake, foreground, outstandingEffect] =
+      await Promise.all([
       this.db.execute<LatestWakeRow>(sql`
         SELECT decided_at
         FROM runtime_proactivity_wakes
@@ -264,6 +273,15 @@ implements ProactivityWakeOpportunitySource {
             )
         ) AS active
       `),
+      this.db.execute<OutstandingEffectRow>(sql`
+        SELECT status
+        FROM runtime_effects
+        WHERE user_id = ${input.userId}::uuid
+          AND subject_id = ${input.subjectId}
+          AND status <> 'observed'
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+      `),
     ]);
 
     return {
@@ -274,6 +292,10 @@ implements ProactivityWakeOpportunitySource {
       latestDecidedWakeAt:
         wake[0]?.decided_at?.toISOString() ?? null,
       foregroundActive: foreground[0]?.active ?? false,
+      outstandingEffectStatus:
+        outstandingEffect[0]
+          ? parseEffectStatus(outstandingEffect[0].status)
+          : null,
     };
   }
 
@@ -286,6 +308,7 @@ implements ProactivityWakeOpportunitySource {
       latestUserActivityAt: string;
       latestDecidedWakeAt: string | null;
       foregroundActive: boolean;
+      outstandingEffectStatus: EffectStatus | null;
     };
   }): ProactivityWakeGateInput {
     return {
@@ -296,7 +319,8 @@ implements ProactivityWakeOpportunitySource {
       mode: "live",
       enabled: true,
       foregroundActive: input.snapshot.foregroundActive,
-      outstandingEffectStatus: null,
+      outstandingEffectStatus:
+        input.snapshot.outstandingEffectStatus,
       quietUntil: addMs(
         input.snapshot.latestUserActivityAt,
         this.config.minIdleMs,
@@ -491,4 +515,20 @@ function boundText(value: string): string {
   return [...value.normalize("NFC").replace(/\r\n?/g, "\n").trim()]
     .slice(0, 400)
     .join("");
+}
+
+
+function parseEffectStatus(value: string): EffectStatus {
+  if (
+    value !== "pending"
+    && value !== "dispatched"
+    && value !== "observed"
+    && value !== "failed"
+    && value !== "unknown"
+  ) {
+    throw new Error(
+      "Outstanding runtime effect status is invalid.",
+    );
+  }
+  return value;
 }

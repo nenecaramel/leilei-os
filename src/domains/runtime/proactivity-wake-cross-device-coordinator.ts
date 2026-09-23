@@ -17,6 +17,9 @@ import {
 import {
   ProactivityWakeDecisionBuilder,
 } from "./proactivity-wake-service.js";
+import type {
+  ProactivityEffectMaterializer,
+} from "./proactivity-effect-materializer.js";
 import {
   normalizeProactivityWakeContext,
   type ProactivityWakeContextSnapshot,
@@ -52,6 +55,10 @@ export class ProactivityWakeCrossDeviceCoordinator {
       new ProactivityWakeDecisionBuilder(),
     private readonly now: () => string = () =>
       new Date().toISOString(),
+    private readonly effectMaterializer: Pick<
+      ProactivityEffectMaterializer,
+      "materialize"
+    > | null = null,
   ) {}
 
   async start(input: {
@@ -70,6 +77,7 @@ export class ProactivityWakeCrossDeviceCoordinator {
       durable.status === "decided"
       && durable.decision
     ) {
+      await this.materializeEffect(durable);
       return {
         outcome: "decided",
         wakeId: durable.id,
@@ -134,6 +142,7 @@ export class ProactivityWakeCrossDeviceCoordinator {
       waiting.status === "decided"
       && waiting.decision
     ) {
+      await this.materializeEffect(waiting);
       return decidedResult(waiting);
     }
     return {
@@ -184,6 +193,7 @@ export class ProactivityWakeCrossDeviceCoordinator {
       durable.status === "decided"
       && durable.decision
     ) {
+      await this.materializeEffect(durable);
       await this.queue.markConsumed({
         userId: input.userId,
         taskId: job.id,
@@ -256,11 +266,19 @@ export class ProactivityWakeCrossDeviceCoordinator {
       decision,
     });
 
+    await this.materializeEffect(completed);
     await this.queue.markConsumed({
       userId: input.userId,
       taskId: job.id,
     });
     return decidedResult(completed);
+  }
+
+  private async materializeEffect(
+    wake: ProactivityWakeRecord,
+  ): Promise<void> {
+    if (!this.effectMaterializer) return;
+    await this.effectMaterializer.materialize(wake);
   }
 }
 

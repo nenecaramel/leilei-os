@@ -806,6 +806,12 @@ export type RuntimeProactivityWakeStatus =
   | "created"
   | "waiting_model"
   | "decided";
+export type RuntimeEffectStatus =
+  | "pending"
+  | "dispatched"
+  | "observed"
+  | "failed"
+  | "unknown";
 export type RuntimeDriveSatisfactionEvidenceKind =
   | "user_message"
   | "tool_result";
@@ -1748,6 +1754,10 @@ export const runtimeProactivityWakes = pgTable(
     decidedAt: timestamp("decided_at", { withTimezone: true }),
   },
   (table) => [
+    unique("runtime_proactivity_wakes_id_user_unique").on(
+      table.id,
+      table.userId,
+    ),
     index("runtime_proactivity_wakes_user_status_created_idx").on(
       table.userId,
       table.status,
@@ -1795,6 +1805,109 @@ export const runtimeProactivityWakes = pgTable(
           AND ${table.decision} IS NOT NULL
           AND jsonb_typeof(${table.decision}) = 'object'
           AND ${table.decidedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const runtimeEffects = pgTable(
+  "runtime_effects",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    subjectId: text("subject_id").notNull(),
+    sourceWakeId: uuid("source_wake_id").notNull(),
+    decisionId: text("decision_id").notNull(),
+    idempotencyKey: varchar("idempotency_key", {
+      length: 64,
+    }).notNull(),
+    effectType: varchar("effect_type", { length: 64 })
+      .notNull(),
+    target: text("target").notNull(),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    payloadHash: varchar("payload_hash", {
+      length: 64,
+    }).notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<RuntimeEffectStatus>()
+      .default("pending")
+      .notNull(),
+    attempt: integer("attempt").default(0).notNull(),
+    retryable: boolean("retryable").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    observedAt: timestamp("observed_at", {
+      withTimezone: true,
+    }),
+    failureCode: varchar("failure_code", { length: 128 }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.sourceWakeId, table.userId],
+      foreignColumns: [
+        runtimeProactivityWakes.id,
+        runtimeProactivityWakes.userId,
+      ],
+      name: "runtime_effects_wake_user_fk",
+    }).onDelete("restrict").onUpdate("cascade"),
+    uniqueIndex("runtime_effects_user_idempotency_uidx").on(
+      table.userId,
+      table.idempotencyKey,
+    ),
+    uniqueIndex("runtime_effects_source_wake_uidx").on(
+      table.sourceWakeId,
+    ),
+    index("runtime_effects_user_status_created_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "runtime_effects_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_effects_decision_not_blank",
+      sql`char_length(btrim(${table.decisionId})) > 0`,
+    ),
+    check(
+      "runtime_effects_idempotency_format",
+      sql`${table.idempotencyKey} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "runtime_effects_type_allowed",
+      sql`${table.effectType} = 'message_send'`,
+    ),
+    check(
+      "runtime_effects_target_not_blank",
+      sql`char_length(btrim(${table.target})) > 0`,
+    ),
+    check(
+      "runtime_effects_payload_object",
+      sql`jsonb_typeof(${table.payload}) = 'object'`,
+    ),
+    check(
+      "runtime_effects_payload_hash_format",
+      sql`${table.payloadHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "runtime_effects_status_allowed",
+      sql`${table.status} IN ('pending', 'dispatched', 'observed', 'failed', 'unknown')`,
+    ),
+    check(
+      "runtime_effects_attempt_nonnegative",
+      sql`${table.attempt} >= 0`,
     ),
   ],
 );

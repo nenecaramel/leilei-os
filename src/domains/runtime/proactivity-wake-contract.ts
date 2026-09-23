@@ -178,8 +178,7 @@ export function normalizeProactivityDeliberationDraft(
   };
 }
 
-export function assertProactivityEffectDispatchAllowed(input: {
-  mode: ProactivityWakeMode;
+export function assertProactivityEffectBinding(input: {
   decision: ProactivityWakeDecision;
   effect: DurableEffect;
 }): void {
@@ -215,7 +214,17 @@ export function assertProactivityEffectDispatchAllowed(input: {
       "External effect does not match its proactivity decision binding.",
     );
   }
+}
 
+export function assertProactivityEffectDispatchAllowed(input: {
+  mode: ProactivityWakeMode;
+  decision: ProactivityWakeDecision;
+  effect: DurableEffect;
+}): void {
+  assertProactivityEffectBinding({
+    decision: input.decision,
+    effect: input.effect,
+  });
   assertEffectDispatchAllowed({
     mode: input.mode,
     effect: input.effect,

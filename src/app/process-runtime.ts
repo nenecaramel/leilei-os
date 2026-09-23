@@ -98,6 +98,12 @@ import {
   DrizzleProactivityWakeRepository,
 } from "../domains/runtime/proactivity-wake-repository.js";
 import {
+  DrizzleRuntimeEffectRepository,
+} from "../domains/runtime/runtime-effect-repository.js";
+import {
+  ProactivityEffectMaterializer,
+} from "../domains/runtime/proactivity-effect-materializer.js";
+import {
   DrizzleProactivityWakeOpportunitySource,
   ProactivityWakeOpportunityProducer,
 } from "../domains/runtime/proactivity-wake-opportunity.js";
@@ -342,11 +348,18 @@ export function createProcessRuntime(
           proactivityWakeOpportunityConfig,
         )
       : null;
+  const proactivityEffectMaterializer =
+    new ProactivityEffectMaterializer(
+      new DrizzleRuntimeEffectRepository(db),
+    );
   const proactivityWakeCrossDeviceCoordinator =
     new ProactivityWakeCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
       proactivityWakeRepository,
       proactivityWakeOpportunitySource,
+      undefined,
+      undefined,
+      proactivityEffectMaterializer,
     );
   const proactivityWakePlan =
     proactivityWakeOpportunityConfig
