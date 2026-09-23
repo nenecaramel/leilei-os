@@ -116,13 +116,6 @@ final class AuthSessionController {
 
         try? credentialsManager.clear()
 
-        try await Auth0
-            .webAuth(
-                clientId: clientID,
-                domain: domain
-            )
-            .logout(federated: true)
-
         let credentials = try await Auth0
             .webAuth(
                 clientId: clientID,
@@ -131,8 +124,7 @@ final class AuthSessionController {
             .useCredentialsManager(credentialsManager)
             .audience(audience)
             .scope("openid profile email offline_access \(scope)")
-            .parameters(["prompt": "login"])
-            .useEphemeralSession()
+            .parameters(["prompt": "select_account"])
             .start()
 
         guard credentials.refreshToken != nil else {
