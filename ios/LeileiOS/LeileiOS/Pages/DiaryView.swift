@@ -21,12 +21,11 @@ struct DiaryView: View {
             case .loading:
                 DiaryListSkeleton()
 
-            case .authRequired(let message):
+            case .authRequired:
                 AppStateSurface(
-                    title: "Sign In Required",
-                    systemImage: "person.crop.circle.badge.exclamationmark",
-                    message: message,
-                    actionTitle: "Sign In Again"
+                    title: "Sign in",
+                    systemImage: "person.crop.circle",
+                    actionTitle: "Sign In"
                 ) {
                     Task {
                         await reauthorizeAndReload()
@@ -36,9 +35,8 @@ struct DiaryView: View {
             case .unavailable:
                 if isSearching {
                     AppStateSurface(
-                        title: "Search Unavailable",
+                        title: "Unavailable",
                         systemImage: "magnifyingglass",
-                        message: "Couldn’t search your Diary.",
                         actionTitle: "Retry"
                     ) {
                         Task {
@@ -47,9 +45,8 @@ struct DiaryView: View {
                     }
                 } else {
                     AppStateSurface(
-                        title: "Diary Unavailable",
+                        title: "Unavailable",
                         systemImage: "book.closed",
-                        message: "Couldn’t load your Diary.",
                         actionTitle: "Retry"
                     ) {
                         Task {
@@ -63,21 +60,18 @@ struct DiaryView: View {
                 if visibleDiaries.isEmpty {
                     if isSearching {
                         AppStateSurface(
-                            title: "No Results",
-                            systemImage: "magnifyingglass",
-                            message: "No diary entries match this search."
+                            title: "Nothing here",
+                            systemImage: "magnifyingglass"
                         )
                     } else if timeFilter == .anyTime {
                         AppStateSurface(
-                            title: "No Diary Entries Yet",
-                            systemImage: "book.closed",
-                            message: "Your Diary is empty."
+                            title: "Nothing here",
+                            systemImage: "book.closed"
                         )
                     } else {
                         AppStateSurface(
-                            title: "No Results",
-                            systemImage: "calendar",
-                            message: "No diary entries match this time filter."
+                            title: "Nothing here",
+                            systemImage: "calendar"
                         )
                     }
                 } else {
@@ -190,12 +184,12 @@ struct DiaryView: View {
             }
             state = .loaded(response.data.diaries)
         } catch LeileiAPIError.missingAccessToken {
-            state = .authRequired("Sign in to view your Diary.")
+            state = .authRequired("Sign in")
         } catch LeileiAPIError.unauthorized {
             await appModel.refreshConnectivity()
-            state = .authRequired("Your sign-in session needs to be renewed.")
+            state = .authRequired("Sign in")
         } catch {
-            state = .unavailable("Couldn’t load your Diary.")
+            state = .unavailable("Unavailable")
         }
     }
 
@@ -207,7 +201,7 @@ struct DiaryView: View {
             try await appModel.reauthorize()
             await loadDiary()
         } catch {
-            state = .unavailable("Couldn’t load your Diary.")
+            state = .unavailable("Unavailable")
         }
     }
 
@@ -326,9 +320,8 @@ private struct DiaryArchiveView: View {
 
             case .unavailable:
                 AppStateSurface(
-                    title: "Archive Unavailable",
+                    title: "Unavailable",
                     systemImage: "archivebox",
-                    message: "Couldn’t load archived diaries.",
                     actionTitle: "Retry"
                 ) {
                     Task {
@@ -339,9 +332,8 @@ private struct DiaryArchiveView: View {
             case .loaded(let diaries):
                 if diaries.isEmpty {
                     AppStateSurface(
-                        title: "No Archived Diaries Yet",
-                        systemImage: "archivebox",
-                        message: "Archived diary entries will appear here."
+                        title: "Nothing here",
+                        systemImage: "archivebox"
                     )
                 } else {
                     DiaryArchiveList(diaries: diaries) {
@@ -384,7 +376,7 @@ private struct DiaryArchiveView: View {
             diaryCount = response.data.metadata.count
             state = .loaded(response.data.diaries)
         } catch {
-            state = .unavailable("Couldn’t load archived diaries.")
+            state = .unavailable("Unavailable")
         }
     }
 }
@@ -445,9 +437,8 @@ private struct DiaryArchivedDetailView: View {
 
             case .unavailable:
                 AppStateSurface(
-                    title: "Diary Unavailable",
-                    systemImage: "book.closed",
-                    message: "Couldn’t load this diary."
+                    title: "Unavailable",
+                    systemImage: "book.closed"
                 )
 
             case .loaded(let diary):
@@ -544,7 +535,7 @@ private struct DiaryArchivedDetailView: View {
             )
             state = .loaded(response.data)
         } catch {
-            state = .unavailable("Couldn’t load this diary.")
+            state = .unavailable("Unavailable")
         }
     }
 
@@ -564,7 +555,7 @@ private struct DiaryArchivedDetailView: View {
             onChanged()
             dismiss()
         } catch {
-            actionError = "Couldn’t restore this diary."
+            actionError = "Failed"
         }
     }
 
@@ -584,7 +575,7 @@ private struct DiaryArchivedDetailView: View {
             onChanged()
             dismiss()
         } catch {
-            actionError = "Couldn’t delete this diary."
+            actionError = "Failed"
         }
     }
 }
@@ -804,9 +795,8 @@ private struct DiaryDetailView: View {
 
             case .unavailable:
                 AppStateSurface(
-                    title: "Diary Unavailable",
-                    systemImage: "book.closed",
-                    message: "Couldn’t load this diary."
+                    title: "Unavailable",
+                    systemImage: "book.closed"
                 )
 
             case .loaded(let diary):
@@ -977,7 +967,7 @@ private struct DiaryDetailView: View {
             )
             state = .loaded(response.data)
         } catch {
-            state = .unavailable("Couldn’t load this diary.")
+            state = .unavailable("Unavailable")
         }
     }
 
@@ -1013,7 +1003,7 @@ private struct DiaryDetailView: View {
             isEditing = false
             onChanged()
         } catch {
-            editError = "Couldn’t save this diary."
+            editError = "Failed"
         }
     }
 
@@ -1033,7 +1023,7 @@ private struct DiaryDetailView: View {
             onChanged()
             dismiss()
         } catch {
-            editError = "Couldn’t archive this diary."
+            editError = "Failed"
         }
     }
 
@@ -1097,7 +1087,7 @@ private struct DiaryDetailView: View {
             )
             state = .loaded(diary)
         } catch {
-            commentError = "Couldn’t delete this comment."
+            commentError = "Failed"
         }
     }
 }
@@ -1408,7 +1398,7 @@ private struct DiaryCommentEditorSheet: View {
 
             dismiss()
         } catch {
-            errorMessage = "Couldn’t save this comment."
+            errorMessage = "Failed"
         }
     }
 }
@@ -1588,7 +1578,7 @@ private struct DiaryCreateView: View {
             onCreated()
             dismiss()
         } catch {
-            errorMessage = "Couldn’t save this diary."
+            errorMessage = "Failed"
         }
     }
 }
