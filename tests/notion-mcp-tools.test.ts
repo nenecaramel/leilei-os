@@ -247,6 +247,18 @@ test("read_notion_page continues bounded Unicode content and rejects a stale pag
   });
   assert.equal(stale.isError, true);
   assert.match(JSON.stringify(stale), /cursor is invalid or stale/i);
+  assert.deepEqual(
+    (stale.structuredContent as any).error,
+    {
+      code: "INVALID_CURSOR",
+      message: "The Notion page continuation cursor is invalid or stale. Read the page again without a cursor.",
+      retryable: false,
+      reason: "invalid_cursor",
+      current_revision: null,
+      recommended_tool: "read_notion_page",
+      recommended_arguments: { page_id: PAGE_ID },
+    },
+  );
 });
 
 test("read_notion_page accepts an official Notion URL as an exact page reference", async (t) => {
