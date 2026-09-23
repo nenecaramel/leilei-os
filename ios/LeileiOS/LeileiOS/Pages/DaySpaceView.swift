@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let daySpaceStateHeight: CGFloat = 470
+
 struct DaySpaceView: View {
     @EnvironmentObject private var appModel: AppModel
 
@@ -126,7 +128,11 @@ struct DaySpaceView: View {
                     }
                 }
             }
-            .frame(minHeight: 300)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: daySpaceStateHeight,
+                alignment: .center
+            )
         } else if let selectedDate {
             let papers = currentPapers
 
@@ -142,7 +148,11 @@ struct DaySpaceView: View {
                         }
                     }
                 }
-                .frame(minHeight: 300)
+                .frame(
+                maxWidth: .infinity,
+                minHeight: daySpaceStateHeight,
+                alignment: .center
+            )
             } else if todoState.isLoading && diaryState.isLoading && papers.isEmpty {
                 DaySpaceReadingState()
             } else if completeEmpty {
@@ -154,8 +164,11 @@ struct DaySpaceView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 64)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: daySpaceStateHeight,
+                    alignment: .center
+                )
             } else if !papers.isEmpty {
                 DaySpaceStage(
                     dateKey: selectedDate,
@@ -444,7 +457,7 @@ private struct DaySpaceReadingState: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .frame(height: 470)
+        .frame(height: daySpaceStateHeight)
         .accessibilityLabel("Loading…")
     }
 }
