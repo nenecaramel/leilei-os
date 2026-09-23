@@ -10,74 +10,61 @@ struct SettingsExportContent: View {
     @State private var exportedDocument: SettingsExportDocument?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            SettingsDetailCard {
-                ForEach(Array(SettingsExportScope.allCases.enumerated()), id: \.element.id) { index, scope in
-                    Button {
-                        selectedScope = scope
-                    } label: {
-                        HStack {
-                            Text(scope.title)
-                                .font(.system(size: 17, weight: .medium))
-                            Spacer()
-                            if selectedScope == scope {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
+        Form {
+            Section("Export") {
+                Picker("Scope", selection: $selectedScope) {
+                    ForEach(SettingsExportScope.allCases) { scope in
+                        Text(scope.title)
+                            .tag(scope)
+                    }
+                }
+
+                Toggle(
+                    "Include audit & lifecycle events",
+                    isOn: $includesAuditAndLifecycleEvents
+                )
+            }
+
+            Section {
+                Button {
+                    Task {
+                        await exportData()
+                    }
+                } label: {
+                    HStack {
+                        Text("Create Export")
+                        Spacer()
+                        if isExporting {
+                            ProgressView()
                         }
-                        .frame(height: 55)
-                        .padding(.horizontal, 16)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                }
+                .disabled(isExporting)
 
-                    if index < SettingsExportScope.allCases.count - 1 {
-                        SettingsDivider()
+                if let exportedDocument {
+                    ShareLink(item: exportedDocument.fileURL) {
+                        Label("Share Export", systemImage: "square.and.arrow.up")
                     }
                 }
             }
-
-            SettingsDetailCard {
-                Toggle("Include audit & lifecycle events", isOn: $includesAuditAndLifecycleEvents)
-                    .font(.system(size: 17, weight: .medium))
-                    .frame(height: 55)
-                    .padding(.horizontal, 16)
-            }
-
-            Button {
-                Task {
-                    await exportData()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    if isExporting {
-                        ProgressView()
-                    }
-                    Text("Export")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(isExporting)
 
             if let errorMessage {
-                SettingsUnavailableState(message: errorMessage)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+                Section {
+                    Text(errorMessage)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .sheet(item: $exportedDocument) { document in
-            ShareLink(item: document.fileURL) {
-                Text("Share Export")
-            }
-        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
     }
 
     @MainActor
     private func exportData() async {
         isExporting = true
         errorMessage = nil
+        exportedDocument = nil
         defer { isExporting = false }
 
         do {
