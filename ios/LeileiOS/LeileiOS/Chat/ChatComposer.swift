@@ -117,7 +117,6 @@ struct ChatComposer: View {
                 }
                 .buttonStyle(.plain)
             }
-            .reportingFloatingControlCenter(FloatingControlCenter.composer)
         }
         .padding(.horizontal, 16)
         .padding(.top, 15)
