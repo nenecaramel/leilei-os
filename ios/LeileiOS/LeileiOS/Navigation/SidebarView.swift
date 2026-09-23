@@ -4,7 +4,6 @@ import UIKit
 struct SidebarView: View {
     @Binding var selectedPage: AppPage
     let menuButtonCenterY: CGFloat?
-    let composerControlsCenterY: CGFloat?
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
     private let topContentOffset: CGFloat = 18
@@ -76,14 +75,7 @@ struct SidebarView: View {
                         onSelect()
                     }
                 }
-                .position(
-                    x: proxy.size.width - 40,
-                    y: localY(
-                        composerControlsCenterY,
-                        in: proxy,
-                        fallback: proxy.size.height - 38
-                    )
-                )
+                .padding()
             }
         }
     }
