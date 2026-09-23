@@ -4,6 +4,7 @@ import UIKit
 struct SidebarView: View {
     @Binding var selectedPage: AppPage
     let menuButtonCenterY: CGFloat?
+    let searchControlCenterY: CGFloat?
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
     private let topContentOffset: CGFloat = 18
@@ -57,7 +58,7 @@ struct SidebarView: View {
                 .position(
                     x: proxy.size.width - 40,
                     y: localY(
-                        menuButtonCenterY,
+                        searchControlCenterY ?? menuButtonCenterY,
                         in: proxy,
                         fallback: proxy.safeAreaInsets.top + 22
                     )
