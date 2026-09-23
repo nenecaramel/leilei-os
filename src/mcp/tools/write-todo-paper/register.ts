@@ -69,7 +69,7 @@ export type WriteTodoPaperToolDependencies = {
 };
 
 const REPLACE_TODO_PAPER_DESCRIPTION =
-  TODO_DOMAIN_BOUNDARY + " Replace one complete L, G, or C Todo paper. Use expected_revision from read_todo_day as the paper concurrency precondition, or null only when creating a missing paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding multiple entries in one user intent, prefer append_todo_entries; for one entry, prefer append_todo_entry; for editing, completing, or deleting one existing entry, prefer update_todo_entry or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.";
+  TODO_DOMAIN_BOUNDARY + " Replace one complete L/G/C paper using expected_revision from read_todo_day, or null only for a missing paper. Use only for creation or whole-paper reorder/replacement; prefer append_todo_entries, append_todo_entry, update_todo_entry, or delete_todo_entry for entry-level changes. Supply a complete ordered array like {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\".";
 
 export function registerReplaceTodoPaperTool(
   server: McpServer,
