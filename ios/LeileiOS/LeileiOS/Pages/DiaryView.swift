@@ -46,7 +46,30 @@ struct DiaryView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.settingsBackground)
         .searchable(text: $query, prompt: "Search Diary")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 18, weight: .medium))
+                }
+            }
+
+            if #available(iOS 26.0, *) {
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+
+                ToolbarItem(placement: .bottomBar) {
+                    Button {
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .accessibilityLabel("New Diary Entry")
+                }
+            }
+        }
         .task(id: query) {
             do {
                 try await Task.sleep(for: .milliseconds(250))
@@ -114,16 +137,14 @@ private struct DiaryList: View {
             ForEach(DiaryMonthGroup.make(from: diaries)) { group in
                 Section(group.title) {
                     ForEach(group.diaries) { diary in
-                        NavigationLink {
-                            DiaryDetailView(diary: diary)
-                        } label: {
-                            DiaryRow(diary: diary)
-                        }
+                        DiaryRow(diary: diary)
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
     }
 }
 
@@ -136,24 +157,21 @@ private struct DiaryRow: View {
                 .font(.headline)
                 .lineLimit(1)
 
-            Text(diary.content)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Text(DiaryDate.formatRow(diary.date))
 
-                if let mood = diary.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !mood.isEmpty {
-                    Text("·")
-                    Text(mood)
-                }
+                Spacer(minLength: 12)
 
-                if !diary.tags.isEmpty {
-                    Text("·")
-                    Text(diary.tags.map { "#\($0)" }.joined(separator: " "))
-                        .lineLimit(1)
+                HStack(spacing: 6) {
+                    if let mood = diary.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !mood.isEmpty {
+                        Text(mood)
+                    }
+
+                    if !diary.tags.isEmpty {
+                        Text(diary.tags.map { "#\($0)" }.joined(separator: " "))
+                            .lineLimit(1)
+                    }
                 }
             }
             .font(.caption)
