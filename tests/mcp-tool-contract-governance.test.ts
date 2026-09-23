@@ -60,10 +60,12 @@ test("stable MCP defaults are explicit in tools/list", async () => {
   }
 
   const expectedLimits: Record<string, number> = {
+    read_memory: 50,
     search_memory: 50,
     search_diary: 50,
     list_tasks: 50,
     search_todo: 50,
+    list_todo_dates: 50,
     list_universe_nodes: 25,
     search_universe: 10,
     search_conversations: 20,
@@ -76,6 +78,39 @@ test("stable MCP defaults are explicit in tools/list", async () => {
     const tool = byName.get(name);
     assert.ok(tool, `${name} must stay registered`);
     assert.equal(property(tool, "limit").default, expected);
+  }
+});
+
+test("growth discovery tools expose one cursor pagination contract", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+  for (const name of [
+    "read_memory",
+    "search_memory",
+    "search_diary",
+    "list_tasks",
+    "list_todo_dates",
+    "search_todo",
+    "list_shared_papers",
+    "search_shared_papers",
+  ] as const) {
+    const tool = byName.get(name);
+    assert.ok(tool, `${name} must stay registered`);
+    assert.ok(property(tool, "limit"));
+    assert.ok(property(tool, "cursor"));
+    const data = (tool.outputSchema as {
+      properties?: {
+        data?: {
+          properties?: {
+            metadata?: { properties?: Record<string, unknown> };
+          };
+        };
+      };
+    }).properties?.data?.properties?.metadata?.properties;
+    assert.ok(data, `${name} must expose pagination metadata`);
+    for (const field of ["returned", "has_more", "next_cursor"]) {
+      assert.ok(field in data, `${name} pagination metadata must expose ${field}`);
+    }
   }
 });
 
