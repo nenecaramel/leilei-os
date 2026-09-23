@@ -10,6 +10,7 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const diaryIdSchema = z
   .string()
@@ -24,11 +25,7 @@ const lifecycleInputSchema = z.object({
 const lifecycleDataSchema = z.object({
   diary_id: z.string().uuid(),
   lifecycle_status: z.enum(["active", "archived"]),
-  detail_tool: z.literal("get_diary"),
-  detail_arguments: z.object({
-    id: z.string().uuid(),
-    scope: z.enum(["active", "archived"]),
-  }).strict(),
+  ...mcpMutationReceiptFields,
 }).strict();
 
 const lifecycleOutputSchema = z.object({
@@ -40,6 +37,7 @@ const lifecycleOutputSchema = z.object({
 const deleteDataSchema = z.object({
   diary_id: z.string().uuid(),
   deleted: z.literal(true),
+  ...mcpMutationReceiptFields,
 }).strict();
 
 const deleteOutputSchema = z.object({
@@ -108,11 +106,17 @@ export function registerDiaryLifecycleTools(
           const data = {
             diary_id: id,
             lifecycle_status: "archived" as const,
-            detail_tool: "get_diary" as const,
-            detail_arguments: {
-              id,
-              scope: "archived" as const,
-            },
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "diary",
+              entity_id: id,
+              revision: null,
+              detail_tool: "get_diary",
+              detail_arguments: {
+                id,
+                scope: "archived",
+              },
+            }),
           };
           return {
             content: [{
@@ -159,11 +163,17 @@ export function registerDiaryLifecycleTools(
           const data = {
             diary_id: id,
             lifecycle_status: "active" as const,
-            detail_tool: "get_diary" as const,
-            detail_arguments: {
-              id,
-              scope: "active" as const,
-            },
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "diary",
+              entity_id: id,
+              revision: null,
+              detail_tool: "get_diary",
+              detail_arguments: {
+                id,
+                scope: "active",
+              },
+            }),
           };
           return {
             content: [{
@@ -217,6 +227,14 @@ export function registerDiaryLifecycleTools(
               data: {
                 diary_id: id,
                 deleted: true as const,
+                ...mcpMutationReceipt({
+                  outcome: "applied",
+                  entity_type: "diary",
+                  entity_id: id,
+                  revision: null,
+                  detail_tool: null,
+                  detail_arguments: null,
+                }),
               },
             },
           };
