@@ -32,6 +32,38 @@ function property(tool: ListedTool, name: string): Record<string, unknown> {
   return result;
 }
 
+function jsonSchemaContains(
+  root: Record<string, unknown>,
+  schema: unknown,
+  predicate: (candidate: Record<string, unknown>) => boolean,
+  seenRefs = new Set<string>(),
+): boolean {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return false;
+  const candidate = schema as Record<string, unknown>;
+  if (predicate(candidate)) return true;
+
+  const ref = candidate.$ref;
+  if (typeof ref === "string" && ref.startsWith("#/") && !seenRefs.has(ref)) {
+    seenRefs.add(ref);
+    const target = ref
+      .slice(2)
+      .split("/")
+      .map((segment) => segment.replaceAll("~1", "/").replaceAll("~0", "~"))
+      .reduce<unknown>((current, segment) => {
+        if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+        return (current as Record<string, unknown>)[segment];
+      }, root);
+    if (jsonSchemaContains(root, target, predicate, seenRefs)) return true;
+  }
+
+  return Object.values(candidate).some((value) => {
+    if (Array.isArray(value)) {
+      return value.some((entry) => jsonSchemaContains(root, entry, predicate, seenRefs));
+    }
+    return jsonSchemaContains(root, value, predicate, seenRefs);
+  });
+}
+
 test("stable MCP defaults are explicit in tools/list", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
@@ -255,10 +287,21 @@ test("date filter schemas stay concrete and bounded", async () => {
   for (const name of ["search_diary", "search_todo"] as const) {
     const tool = byName.get(name);
     assert.ok(tool, `${name} must stay registered`);
+    const root = tool.inputSchema as Record<string, unknown>;
     for (const field of ["date_from", "date_to"] as const) {
       const schema = property(tool, field);
-      assert.equal(schema.type, "string");
-      assert.equal(schema.pattern, "^\\d{4}-\\d{2}-\\d{2}$");
+      assert.ok(
+        jsonSchemaContains(root, schema, (candidate) => candidate.type === "string"),
+        `${name}.${field} must resolve to a string schema`,
+      );
+      assert.ok(
+        jsonSchemaContains(
+          root,
+          schema,
+          (candidate) => candidate.pattern === "^\\\\d{4}-\\\\d{2}-\\\\d{2}$",
+        ),
+        `${name}.${field} must retain the YYYY-MM-DD pattern`,
+      );
     }
   }
 });
