@@ -101,7 +101,7 @@ struct FloatingGlassButton: View {
         }
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
-        .controlSize(.regular)
+        .controlSize(.large)
         .accessibilityLabel(accessibilityLabel)
     }
 }
