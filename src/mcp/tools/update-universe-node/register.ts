@@ -80,7 +80,14 @@ export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: 
           },
         };
       },
-      mapError: (error) => safeUniverseWriteError(error, "Universe node was not updated."),
+      mapError: (error) => safeUniverseWriteError(
+        error,
+        "Universe node was not updated.",
+        {
+          recommendedTool: "get_universe_node",
+          recommendedArguments: { id },
+        },
+      ),
     }),
   );
 }
