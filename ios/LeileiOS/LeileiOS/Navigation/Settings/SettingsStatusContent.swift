@@ -19,10 +19,11 @@ struct SettingsStatusContent: View {
 
             if errorMessage != nil {
                 Section {
-                    HStack {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("Status Unavailable")
+                        Text("Couldn’t load system status.")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Spacer()
                         Button("Retry") {
                             Task {
                                 await loadStatus()
