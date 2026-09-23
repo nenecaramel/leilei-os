@@ -29,13 +29,13 @@ const legacySkinSchema = z.enum(["botanical", "microglow"]);
 
 const advertisedLegacyInputSchema = z.object({
   style: legacyStyleSchema.describe(
-    "Legacy display style retained only for cached clients. Prefer render_working_note.",
+    "选择本轮思考块的文体。用户明确指定时严格服从；否则按本轮主要目的选择：分析、研究、判断、创作取舍和问题求解使用 deep_think，陪伴、亲密交流、情绪回应与个人感受使用 relational。",
   ),
   thinking: z.string().describe(
-    "Legacy user-visible working text. This is not hidden chain-of-thought. Prefer render_working_note(note=...).",
+    "在这里写本轮外置的工作文本。它是用户可见的兼容字段，不是模型原生隐藏 CoT；旧客户端继续使用此字段，新调用请改用 render_working_note(note=...)。",
   ),
   effort: legacyEffortSchema.describe(
-    "Legacy display-length hint retained only for cached clients. Prefer render_working_note(detail=...).",
+    "本轮兼容思考块的长度目标：low 最多约 500 tokens；medium 约 700–1000 tokens；high 约 1200–2000 tokens。新调用请改用 render_working_note(detail=...)。",
   ),
 }).strict();
 
@@ -55,7 +55,7 @@ const WORKING_NOTE_DESCRIPTION =
   "Render a user-visible working note in the LeileiOS MCP App before continuing the normal answer. The note is explicit display content supplied to this tool; it is not hidden reasoning, private chain-of-thought, or a request to reveal internal scratchpad content. Use it only when a visible intermediate note materially helps the user.";
 
 const LEGACY_DESCRIPTION =
-  "DEPRECATED: use render_working_note. This legacy alias renders user-visible working text for cached clients and must not be treated as access to hidden reasoning or chain-of-thought.";
+  "DEPRECATED: use render_working_note. 兼容旧客户端：把工具参数里的用户可见外置工作文本显示在 LeileiOS MCP App 中。它不是模型原生隐藏 CoT，也不提供任何 hidden reasoning / private chain-of-thought 访问。";
 
 export function registerRenderWorkingNoteTool(server: McpServer): void {
   registerAppTool(
