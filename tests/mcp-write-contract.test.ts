@@ -3,10 +3,9 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CreateDiaryResult } from "../src/domains/diary/diary-service.js";
-import type { CreateTaskResult } from "../src/domains/task/task-service.js";
-import type { CreateMcpMemoryResult } from "../src/domains/memory/memory-service.js";
 import type { ToyCommandRecord } from "../src/domains/toy/toy-command-types.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
+import { resolveMcpToolExposure } from "../src/mcp/server/tool-profiles.js";
 import { MCP_WRITE_TOOL_NAMES } from "../src/mcp/tools/write-context.js";
 
 const AUTHENTICATED_USER_ID = "00000000-0000-4000-8000-000000000099";
@@ -18,26 +17,6 @@ const TODO_PAPER = {
   entries: [{ id: "todo-contract-row", kind: "pending" as const, text: "Todo contract" }],
 };
 
-function taskResult(): CreateTaskResult {
-  return {
-    task: {
-      id: "00000000-0000-4000-8000-000000000101",
-      title: "Task title",
-      description: "Task description",
-      status: "pending",
-      priority: "normal",
-      due_time: null,
-      timezone: "Asia/Shanghai",
-      time_bucket: "no_due_date",
-      tags: [],
-      created_at: "2026-08-01T00:00:00.000Z",
-      updated_at: "2026-08-01T00:00:00.000Z",
-      completed_at: null,
-      author: "L",
-    },
-  };
-}
-
 function diaryResult(): CreateDiaryResult {
   return {
     diary: {
@@ -48,24 +27,6 @@ function diaryResult(): CreateDiaryResult {
       mood: null,
       author: "G",
       created_at: "2026-08-01T00:00:00.000Z",
-    },
-    metadata: { created: true, idempotent_replay: false },
-  };
-}
-
-function memoryResult(): CreateMcpMemoryResult {
-  return {
-    memory: {
-      id: "00000000-0000-4000-8000-000000000105",
-      category: "goal",
-      key: "confirmed_goal",
-      content: "Confirmed content",
-      tags: ["confirmed"],
-      source: "mcp",
-      lifecycle_status: "active",
-      created_at: "2026-08-01T00:00:00.000Z",
-      updated_at: "2026-08-01T00:00:00.000Z",
-      author: "L",
     },
     metadata: { created: true, idempotent_replay: false },
   };
@@ -91,27 +52,12 @@ function toyResult(action: "set" | "stop", percent: number | null): ToyCommandRe
 }
 
 function createFixture(failure?: Error) {
-  const authCalls = { task: 0, diary: 0, memory: 0, toy: 0, todo: 0 };
-  const taskCalls: unknown[] = [];
+  const authCalls = { diary: 0, toy: 0, todo: 0 };
   const diaryCalls: unknown[] = [];
-  const memoryCalls: unknown[] = [];
   const toyCalls: unknown[] = [];
   const todoCalls: unknown[] = [];
 
-  const dependencies = {
-    createTask: {
-      getAuthenticatedUserId: () => {
-        authCalls.task += 1;
-        return AUTHENTICATED_USER_ID;
-      },
-      taskService: {
-        async createTaskIdempotently(context, input, idempotencyKey) {
-          taskCalls.push({ context, input, idempotencyKey });
-          if (failure) throw failure;
-          return taskResult();
-        },
-      },
-    },
+  const server = createMcpServer({
     writeDiary: {
       getAuthenticatedUserId: () => {
         authCalls.diary += 1;
@@ -122,19 +68,6 @@ function createFixture(failure?: Error) {
           diaryCalls.push({ context, input });
           if (failure) throw failure;
           return diaryResult();
-        },
-      },
-    },
-    writeMemory: {
-      getAuthenticatedUserId: () => {
-        authCalls.memory += 1;
-        return AUTHENTICATED_USER_ID;
-      },
-      memoryService: {
-        async createMcpMemory(context, input, idempotencyKey) {
-          memoryCalls.push({ context, input, idempotencyKey });
-          if (failure) throw failure;
-          return memoryResult();
         },
       },
     },
@@ -181,6 +114,15 @@ function createFixture(failure?: Error) {
             metadata: { committed: true, idempotent_replay: false },
           };
         },
+        async appendEntriesIdempotently(input: unknown) {
+          todoCalls.push({ operation: "append_many", input });
+          if (failure) throw failure;
+          return {
+            entries: [{ id: "todo-entry-batch", kind: "pending" as const, text: "Batch", revision: 1 }],
+            paperRevision: 2,
+            metadata: { committed: true, idempotent_replay: false },
+          };
+        },
         async updateEntryIdempotently(input: unknown) {
           todoCalls.push({ operation: "update", input });
           if (failure) throw failure;
@@ -199,12 +141,14 @@ function createFixture(failure?: Error) {
             metadata: { committed: true, idempotent_replay: false },
           };
         },
+        async search() {
+          return { results: [], metadata: { count: 0 } };
+        },
       },
     },
-  };
-  const server = createMcpServer(dependencies);
+  }, undefined, resolveMcpToolExposure(["core"]));
 
-  return { server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls, todoCalls };
+  return { server, authCalls, diaryCalls, toyCalls, todoCalls };
 }
 
 async function connect(failure?: Error) {
@@ -219,21 +163,10 @@ async function connect(failure?: Error) {
   return { ...fixture, client };
 }
 
-async function invokeAllWrites(client: Client) {
+async function invokeFixtureWrites(client: Client) {
   return Promise.all([
     client.callTool({
-      name: "create_task",
-      arguments: {
-        title: "Task title",
-        description: "Task description",
-        priority: "normal",
-        tags: [],
-        author: "L",
-        idempotency_key: "task-contract-20260801",
-      },
-    }),
-    client.callTool({
-      name: "write_diary",
+      name: "create_diary",
       arguments: {
         title: "Diary title",
         content: "Diary content",
@@ -243,25 +176,14 @@ async function invokeAllWrites(client: Client) {
         idempotency_key: "diary-20260801-contract",
       },
     }),
-    client.callTool({
-      name: "write_memory",
-      arguments: {
-        category: "goal",
-        key: "confirmed_goal",
-        content: "Confirmed content",
-        tags: ["confirmed"],
-        author: "L",
-        idempotency_key: "memory-20260801-contract",
-      },
-    }),
     client.callTool({ name: "toy_set", arguments: { percent: 20, idempotency_key: "toy-set-contract-20260801" } }),
     client.callTool({ name: "toy_stop", arguments: { idempotency_key: "toy-stop-contract-20260801" } }),
     client.callTool({
-      name: "write_todo_paper",
+      name: "replace_todo_paper",
       arguments: {
         date: TODO_PAPER.date,
         author: TODO_PAPER.author,
-        revision: null,
+        expected_revision: null,
         entries: TODO_PAPER.entries,
         idempotency_key: "todo-paper-contract-20260813",
       },
@@ -274,6 +196,15 @@ async function invokeAllWrites(client: Client) {
         kind: "pending",
         text: "Appended",
         idempotency_key: "todo-entry-append-contract-01",
+      },
+    }),
+    client.callTool({
+      name: "append_todo_entries",
+      arguments: {
+        date: TODO_PAPER.date,
+        author: TODO_PAPER.author,
+        entries: [{ kind: "pending", text: "Batch" }],
+        idempotency_key: "todo-entry-batch-contract-01",
       },
     }),
     client.callTool({
@@ -300,35 +231,26 @@ async function invokeAllWrites(client: Client) {
   ]);
 }
 
-test("MCP exposes exactly thirty-one write tools and preserves every annotation", async (t) => {
+test("MCP exposes only the surviving core write surface", async (t) => {
   const { client, server } = await connect();
   t.after(async () => {
     await client.close();
     await server.close();
   });
 
-  const tools = (await client.listTools()).tools;
-  const writes = tools.filter((tool) => tool.annotations?.readOnlyHint === false);
   assert.deepEqual(MCP_WRITE_TOOL_NAMES, [
-    "create_task",
     "write_diary",
-    "write_memory",
     "toy_set",
     "toy_stop",
     "write_todo_paper",
     "append_todo_entry",
+    "append_todo_entries",
     "update_todo_entry",
     "delete_todo_entry",
-    "update_memory",
     "update_diary",
-    "archive_diary",
-    "restore_diary",
-    "delete_diary",
     "add_diary_comment",
     "update_diary_comment",
     "delete_diary_comment",
-    "update_task",
-    "transition_task",
     "create_universe_node",
     "update_universe_node",
     "create_universe_relation",
@@ -336,127 +258,55 @@ test("MCP exposes exactly thirty-one write tools and preserves every annotation"
     "delete_universe_relation",
     "add_universe_diary_source",
     "delete_universe_diary_source",
-    "create_shared_paper",
-    "edit_shared_paper",
-    "archive_shared_paper",
-    "restore_shared_paper",
-    "delete_shared_paper",
   ]);
-  assert.deepEqual(
-    writes.map((tool) => tool.name).sort(),
-    [...MCP_WRITE_TOOL_NAMES].sort(),
-  );
+
+  const tools = (await client.listTools()).tools;
+  const writes = tools
+    .filter((tool) => tool.annotations?.readOnlyHint === false)
+    .map((tool) => tool.name)
+    .sort();
+  assert.deepEqual(writes, [
+    "add_diary_comment",
+    "add_universe_diary_source",
+    "append_todo_entries",
+    "append_todo_entry",
+    "create_diary",
+    "create_universe_node",
+    "create_universe_relation",
+    "delete_diary_comment",
+    "delete_todo_entry",
+    "delete_universe_diary_source",
+    "delete_universe_relation",
+    "replace_todo_paper",
+    "toy_set",
+    "toy_stop",
+    "update_diary",
+    "update_diary_comment",
+    "update_todo_entry",
+    "update_universe_node",
+    "update_universe_relation",
+  ]);
 
   for (const tool of tools) {
     assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
     assert.equal("userId" in (tool.inputSchema.properties ?? {}), false);
-    if (MCP_WRITE_TOOL_NAMES.includes(tool.name as (typeof MCP_WRITE_TOOL_NAMES)[number])) {
-      assert.equal(tool.annotations?.openWorldHint, false);
-    } else {
-      assert.equal(tool.annotations?.readOnlyHint, true);
-    }
-  }
-
-  for (const name of ["create_task", "write_diary", "write_memory"]) {
-    assert.equal(tools.find((tool) => tool.name === name)?.annotations?.destructiveHint, false);
-  }
-  for (const name of ["update_memory", "update_diary", "update_task", "transition_task", "update_universe_node", "update_universe_relation"]) {
-    assert.deepEqual(tools.find((tool) => tool.name === name)?.annotations, {
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: false,
-      openWorldHint: false,
-    });
-  }
-  assert.equal(tools.find((tool) => tool.name === "create_task")?.annotations?.idempotentHint, true);
-  assert.equal(tools.find((tool) => tool.name === "write_diary")?.annotations?.idempotentHint, true);
-  assert.equal(tools.find((tool) => tool.name === "write_memory")?.annotations?.idempotentHint, true);
-  assert.equal(tools.find((tool) => tool.name === "create_universe_node")?.annotations?.idempotentHint, true);
-  assert.equal(tools.find((tool) => tool.name === "create_universe_relation")?.annotations?.idempotentHint, true);
-  for (const name of ["archive_shared_paper", "restore_shared_paper", "delete_shared_paper"]) {
-    assert.equal(tools.find((tool) => tool.name === name)?.annotations?.idempotentHint, true);
-  }
-  assert.equal(tools.find((tool) => tool.name === "archive_shared_paper")?.annotations?.destructiveHint, false);
-  assert.equal(tools.find((tool) => tool.name === "restore_shared_paper")?.annotations?.destructiveHint, false);
-  assert.equal(tools.find((tool) => tool.name === "delete_shared_paper")?.annotations?.destructiveHint, true);
-  for (const name of ["archive_diary", "restore_diary"]) {
-    assert.deepEqual(tools.find((tool) => tool.name === name)?.annotations, {
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: false,
-    });
-  }
-  assert.deepEqual(tools.find((tool) => tool.name === "delete_diary")?.annotations, {
-    readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: false,
-  });
-  assert.equal(tools.find((tool) => tool.name === "add_diary_comment")?.annotations?.idempotentHint, true);
-  for (const name of ["update_diary_comment", "delete_diary_comment"]) {
-    assert.equal(tools.find((tool) => tool.name === name)?.annotations?.idempotentHint, false);
-  }
-  for (const name of ["create_task", "write_diary", "write_memory", "write_todo_paper"]) {
-    const tool = tools.find((candidate) => candidate.name === name);
-    assert.ok(tool?.inputSchema.required?.includes("author"));
-  }
-  for (const tool of tools) {
-    if (!["create_task", "write_diary", "write_memory", "write_todo_paper", "append_todo_entry", "update_todo_entry", "delete_todo_entry", "add_diary_comment", "create_shared_paper", "edit_shared_paper", "update_memory", "update_diary", "update_task", "read_todo_day", "search_todo", "search_diary"].includes(tool.name)) {
-      assert.equal("author" in (tool.inputSchema.properties ?? {}), false);
-    }
-  }
-  for (const name of ["toy_set", "toy_stop"]) {
-    const tool = tools.find((candidate) => candidate.name === name);
-    assert.equal(tool?.annotations?.destructiveHint, true);
-    assert.equal(tool?.annotations?.idempotentHint, true);
-  }
-  const todoWrite = tools.find((tool) => tool.name === "write_todo_paper");
-  assert.ok(todoWrite);
-  assert.deepEqual(todoWrite.annotations, {
-    readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  });
-  assert.deepEqual(
-    [...(todoWrite.inputSchema.required ?? [])].sort(),
-    ["date", "author", "revision", "entries", "idempotency_key"].sort(),
-  );
-  assert.deepEqual(tools.find((tool) => tool.name === "append_todo_entry")?.annotations, {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  });
-  for (const name of ["update_todo_entry", "delete_todo_entry"]) {
-    assert.deepEqual(tools.find((tool) => tool.name === name)?.annotations, {
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: false,
-    });
   }
 });
 
-test("each write resolves server identity once and invokes its service once", async (t) => {
-  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls, todoCalls } = await connect();
+test("surviving fixture writes resolve server identity once and invoke their service once", async (t) => {
+  const { client, server, authCalls, diaryCalls, toyCalls, todoCalls } = await connect();
   t.after(async () => {
     await client.close();
     await server.close();
   });
 
-  const responses = await invokeAllWrites(client);
+  const responses = await invokeFixtureWrites(client);
   assert.equal(responses.every((response) => response.isError !== true), true);
-  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2, todo: 4 });
-  assert.equal(taskCalls.length, 1);
+  assert.deepEqual(authCalls, { diary: 1, toy: 2, todo: 5 });
   assert.equal(diaryCalls.length, 1);
-  assert.equal(memoryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
-  assert.equal(todoCalls.length, 4);
-  assert.deepEqual(taskCalls[0] && (taskCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
-  assert.deepEqual(diaryCalls[0] && (diaryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
-  assert.deepEqual(memoryCalls[0] && (memoryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
+  assert.equal(todoCalls.length, 5);
+  assert.deepEqual((diaryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID, toolName: "write_diary", actorType: "user", channel: "mcp", source: "mcp" });
   assert.deepEqual(toyCalls.map((call) => (call as { userId: string }).userId), [
     AUTHENTICATED_USER_ID,
     AUTHENTICATED_USER_ID,
@@ -464,7 +314,7 @@ test("each write resolves server identity once and invokes its service once", as
 });
 
 test("unexpected identity arguments are rejected before authentication or writes", async (t) => {
-  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls, todoCalls } = await connect();
+  const { client, server, authCalls, diaryCalls, toyCalls, todoCalls } = await connect();
   t.after(async () => {
     await client.close();
     await server.close();
@@ -472,82 +322,27 @@ test("unexpected identity arguments are rejected before authentication or writes
 
   const attempts = [
     {
-      name: "create_task",
-      arguments: {
-        title: "Task title",
-        description: "Task description",
-        priority: "normal",
-        tags: [],
-        idempotency_key: "task-attacker-20260801",
-        user_id: "attacker",
-      },
-    },
-    {
-      name: "write_diary",
+      name: "create_diary",
       arguments: {
         title: "Diary title",
         content: "Diary content",
         date: "2026-08-01",
         tags: [],
-        idempotency_key: "diary-20260801-contract",
-        user_id: "attacker",
-      },
-    },
-    {
-      name: "write_memory",
-      arguments: {
-        category: "goal",
-        key: "confirmed_goal",
-        content: "Confirmed content",
-        tags: [],
-        idempotency_key: "memory-attacker-20260801",
+        author: "G",
+        idempotency_key: "diary-attacker-20260801",
         user_id: "attacker",
       },
     },
     { name: "toy_set", arguments: { percent: 20, idempotency_key: "toy-set-attacker-20260801", user_id: "attacker" } },
     { name: "toy_stop", arguments: { idempotency_key: "toy-stop-attacker-20260801", user_id: "attacker" } },
     {
-      name: "write_todo_paper",
+      name: "replace_todo_paper",
       arguments: {
         date: TODO_PAPER.date,
         author: TODO_PAPER.author,
-        revision: null,
+        expected_revision: null,
         entries: TODO_PAPER.entries,
         idempotency_key: "todo-paper-attacker-20260813",
-        user_id: "attacker",
-      },
-    },
-    {
-      name: "append_todo_entry",
-      arguments: {
-        date: TODO_PAPER.date,
-        author: TODO_PAPER.author,
-        kind: "pending",
-        text: "attacker",
-        idempotency_key: "todo-entry-append-attacker-01",
-        user_id: "attacker",
-      },
-    },
-    {
-      name: "update_todo_entry",
-      arguments: {
-        date: TODO_PAPER.date,
-        author: TODO_PAPER.author,
-        entry_id: "todo-contract-row",
-        expected_revision: 1,
-        text: "attacker",
-        idempotency_key: "todo-entry-update-attacker-01",
-        user_id: "attacker",
-      },
-    },
-    {
-      name: "delete_todo_entry",
-      arguments: {
-        date: TODO_PAPER.date,
-        author: TODO_PAPER.author,
-        entry_id: "todo-contract-row",
-        expected_revision: 1,
-        idempotency_key: "todo-entry-delete-attacker-01",
         user_id: "attacker",
       },
     },
@@ -558,31 +353,27 @@ test("unexpected identity arguments are rejected before authentication or writes
     assert.equal(response.isError, true);
   }
 
-  assert.deepEqual(authCalls, { task: 0, diary: 0, memory: 0, toy: 0, todo: 0 });
-  assert.equal(taskCalls.length, 0);
+  assert.deepEqual(authCalls, { diary: 0, toy: 0, todo: 0 });
   assert.equal(diaryCalls.length, 0);
-  assert.equal(memoryCalls.length, 0);
   assert.equal(toyCalls.length, 0);
   assert.equal(todoCalls.length, 0);
 });
 
 test("write failures are safe and never retried automatically", async (t) => {
   const internalFailure = new Error("private SQL and device transport detail");
-  const { client, server, authCalls, taskCalls, diaryCalls, memoryCalls, toyCalls, todoCalls } = await connect(internalFailure);
+  const { client, server, authCalls, diaryCalls, toyCalls, todoCalls } = await connect(internalFailure);
   t.after(async () => {
     await client.close();
     await server.close();
   });
 
-  const responses = await invokeAllWrites(client);
+  const responses = await invokeFixtureWrites(client);
   for (const response of responses) {
     assert.equal(response.isError, true);
     assert.doesNotMatch(JSON.stringify(response), /private SQL|device transport detail/);
   }
-  assert.deepEqual(authCalls, { task: 1, diary: 1, memory: 1, toy: 2, todo: 4 });
-  assert.equal(taskCalls.length, 1);
+  assert.deepEqual(authCalls, { diary: 1, toy: 2, todo: 5 });
   assert.equal(diaryCalls.length, 1);
-  assert.equal(memoryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
-  assert.equal(todoCalls.length, 4);
+  assert.equal(todoCalls.length, 5);
 });
