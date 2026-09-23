@@ -27,7 +27,7 @@ export type DeleteUniverseRelationToolDependencies = {
 export function registerDeleteUniverseRelationTool(server: McpServer, dependencies: DeleteUniverseRelationToolDependencies): void {
   server.registerTool("delete_universe_relation", {
     title: "Delete a Universe relation",
-    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Delete one relation. This is destructive and non-idempotent; on uncertain outcome, fresh-read relation and Universe version before retrying.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Delete one relation. Destructive and non-idempotent; on uncertain outcome, fresh-read relation and Universe version; never blindly retry.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
