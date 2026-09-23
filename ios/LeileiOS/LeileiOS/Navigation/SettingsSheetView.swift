@@ -261,7 +261,7 @@ private struct SettingsHomeContent: View {
         do {
             try await appModel.signIn()
         } catch {
-            authErrorMessage = error.localizedDescription
+            authErrorMessage = "Couldn’t complete the authentication request."
         }
     }
 
@@ -270,7 +270,7 @@ private struct SettingsHomeContent: View {
         do {
             try await appModel.signOut()
         } catch {
-            authErrorMessage = error.localizedDescription
+            authErrorMessage = "Couldn’t complete the authentication request."
         }
     }
 
