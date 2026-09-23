@@ -66,7 +66,8 @@ struct SettingsRestoreContent: View {
             if let errorMessage {
                 Section {
                     SettingsSectionState(
-                        title: errorMessage
+                        title: "Restore Failed",
+                        message: errorMessage
                     )
                 }
             }
@@ -74,7 +75,12 @@ struct SettingsRestoreContent: View {
             if let outcomeMessage {
                 Section {
                     SettingsSectionState(
-                        title: outcomeMessage
+                        title: outcomeMessage == "Restore completed."
+                            ? "Restore Completed"
+                            : "Restore Failed",
+                        message: outcomeMessage == "Restore completed."
+                            ? "Your data was restored."
+                            : outcomeMessage
                     )
                 }
             }
