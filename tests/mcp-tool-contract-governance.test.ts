@@ -156,6 +156,113 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
   assert.match(byName.get("delete_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
 });
 
+test("domain language disambiguates adjacent model-facing concepts", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+  const groups = [
+    {
+      names: ["create_task", "list_tasks", "get_task", "update_task", "transition_task"],
+      pattern: /^Task is a durable actionable item .*not a date-scoped Todo/iu,
+    },
+    {
+      names: ["read_todo_day", "list_todo_dates", "search_todo", "write_todo_paper", "append_todo_entries", "append_todo_entry", "update_todo_entry", "delete_todo_entry"],
+      pattern: /^Todo is a date-scoped paper .*not the Task system/iu,
+    },
+    {
+      names: ["read_memory", "search_memory", "get_memory", "write_memory", "update_memory"],
+      pattern: /^Memory stores durable distilled .*not a dated Diary/iu,
+    },
+    {
+      names: ["search_diary", "get_diary", "write_diary", "update_diary"],
+      pattern: /^Diary stores dated authored .*not distilled Memory/iu,
+    },
+    {
+      names: ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "append_shared_paper"],
+      pattern: /^Shared Paper is a canonical long-form document .*not the Universe graph/iu,
+    },
+  ] as const;
+
+  for (const group of groups) {
+    for (const name of group.names) {
+      const tool = byName.get(name);
+      assert.ok(tool?.description, `${name} must have a domain boundary description`);
+      assert.match(tool.description, group.pattern);
+    }
+  }
+
+  for (const name of ["list_universe_nodes", "search_universe", "get_universe_node", "get_universe_relations"] as const) {
+    const tool = byName.get(name);
+    assert.ok(tool?.description, `${name} must have a Universe boundary description`);
+    assert.match(tool.description, /^Universe is a graph .*not a Shared Paper/iu);
+  }
+
+  for (const name of [
+    "create_universe_node",
+    "update_universe_node",
+    "create_universe_relation",
+    "update_universe_relation",
+    "delete_universe_relation",
+    "add_universe_diary_source",
+    "delete_universe_diary_source",
+  ] as const) {
+    const tool = byName.get(name);
+    assert.ok(tool?.description, `${name} must have a Universe boundary description`);
+    assert.match(tool.description, /Universe is a graph .*not a Shared Paper/iu);
+  }
+});
+
+test("L G C author enums expose stable human-readable semantics", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+  const authorTools = [
+    "write_memory",
+    "update_memory",
+    "search_diary",
+    "write_diary",
+    "update_diary",
+    "add_diary_comment",
+    "create_task",
+    "update_task",
+    "read_todo_day",
+    "search_todo",
+    "write_todo_paper",
+    "append_todo_entries",
+    "append_todo_entry",
+    "update_todo_entry",
+    "delete_todo_entry",
+    "create_shared_paper",
+    "edit_shared_paper",
+    "append_shared_paper",
+  ] as const;
+
+  for (const name of authorTools) {
+    const tool = byName.get(name);
+    assert.ok(tool, `${name} must stay registered`);
+    const author = property(tool, "author");
+    assert.deepEqual(author.enum, ["L", "G", "C"]);
+    const description = String(author.description ?? "");
+    assert.match(description, /L\s*=\s*蕾蕾\s*\/\s*user/iu);
+    assert.match(description, /G\s*=\s*ChatGPT/iu);
+    assert.match(description, /C\s*=\s*Claude/iu);
+  }
+});
+
+test("date filter schemas stay concrete and bounded", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+  for (const name of ["search_diary", "search_todo"] as const) {
+    const tool = byName.get(name);
+    assert.ok(tool, `${name} must stay registered`);
+    for (const field of ["date_from", "date_to"] as const) {
+      const schema = property(tool, field);
+      assert.equal(schema.type, "string");
+      assert.equal(schema.pattern, "^\\d{4}-\\d{2}-\\d{2}$");
+    }
+  }
+});
+
 test("mutation preconditions and idempotency use one model-facing vocabulary", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
