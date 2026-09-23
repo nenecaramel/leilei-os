@@ -305,8 +305,8 @@ test("Shared Paper MCP mutation receipts distinguish fresh commits from idempote
   const createArgs = { title: "Shared", content: "canonical", author: "L", idempotency_key: "shared.paper:receipt-0001" };
   const created = await fixture.client.callTool({ name: "create_shared_paper", arguments: createArgs });
   const createdReplay = await fixture.client.callTool({ name: "create_shared_paper", arguments: createArgs });
-  assert.equal((created.structuredContent as any).data.metadata.idempotent_replay, false);
-  assert.equal((createdReplay.structuredContent as any).data.metadata.idempotent_replay, true);
+  assert.equal((created.structuredContent as any).data.outcome, "applied");
+  assert.equal((createdReplay.structuredContent as any).data.outcome, "replayed");
   assert.match(String(created.content?.[0]?.text), /committed/);
   assert.match(String(createdReplay.content?.[0]?.text), /replayed/);
 
@@ -382,7 +382,7 @@ test("Shared Paper MCP lifecycle tools return authoritative state and idempotent
   const deletedResult = await fixture.client.callTool({ name: "delete_shared_paper", arguments: { id, idempotency_key: "shared.paper:delete-0001" } });
   const deletedReplay = await fixture.client.callTool({ name: "delete_shared_paper", arguments: { id, idempotency_key: "shared.paper:delete-0001" } });
   assert.equal((deletedResult.structuredContent as any).data.deleted, true);
-  assert.equal((deletedReplay.structuredContent as any).data.metadata.idempotent_replay, true);
+  assert.equal((deletedReplay.structuredContent as any).data.outcome, "replayed");
   assert.equal((deletedReplay.structuredContent as any).data.paper_id, id);
   assert.match(String(deletedReplay.content?.[0]?.text), /replayed/);
 });
