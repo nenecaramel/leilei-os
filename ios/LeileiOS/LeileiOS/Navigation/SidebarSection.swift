@@ -35,7 +35,8 @@ struct SidebarSection: View {
                     }
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 12)
-                    .frame(height: 44)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
                     .background {
                         if selectedPage == page {
                             RoundedRectangle(cornerRadius: 12)
