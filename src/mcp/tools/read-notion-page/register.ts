@@ -15,6 +15,7 @@ import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import {
   boundedReadInputSchemaFields,
   boundedReadMetadataSchema,
+  formatMcpBoundedReadHint,
   McpBoundedReadCursorError,
   sliceMcpBoundedContent,
 } from "../bounded-read.js";
@@ -110,6 +111,7 @@ export function registerReadNotionPageTool(
           type: "text" as const,
           text: joinMcpContentLines([
             `Notion page ${quoteMcpText(data.page.title)} [id=${data.page.id}]`,
+            formatMcpBoundedReadHint(window.metadata),
             window.content || "(empty)",
           ]),
         }],
