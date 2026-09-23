@@ -117,7 +117,7 @@ export function registerCreateTaskTool(
     {
       title: "Create a personal task",
       description:
-        TASK_DOMAIN_BOUNDARY + " Create one personal Task in Leilei OS as an idempotent write. Supply a stable idempotency_key to prevent duplicate creation on replay. The due time may be omitted or null; exact ISO instants remain supported and local date-times use the authenticated user's account timezone. The authenticated user and initial pending status are assigned by the server.",
+        TASK_DOMAIN_BOUNDARY + " Create one Task. due_time may be omitted/null; exact ISO instants are supported and local date-times use the account timezone. User identity and initial pending status are server-owned.",
       inputSchema: createTaskInputSchema,
       outputSchema: createTaskOutputSchema,
       annotations: {
