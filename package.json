@@ -65,7 +65,8 @@
     "test:runtime-topic-opportunity-db": "RUN_RUNTIME_TOPIC_OPPORTUNITY_DATABASE_TEST=1 tsx --test tests/runtime-topic-resurface-cross-device-opportunity.integration.test.ts",
     "test:mcp-domain-semantics": "tsx --test tests/mcp-tool-contract-governance.test.ts",
     "test:mcp-naming-deprecation": "tsx --test tests/mcp-naming-deprecation.test.ts tests/mcp-tool-profiles.test.ts tests/mcp-production-tool-profiles.test.ts tests/mcp-tool-contract-governance.test.ts",
-    "test:mcp-ui-working-note": "tsx --test tests/mcp-ui-working-note.test.ts tests/render-thinking-block.test.ts tests/mcp-production-tool-profiles.test.ts"
+    "test:mcp-ui-working-note": "tsx --test tests/mcp-ui-working-note.test.ts tests/render-thinking-block.test.ts tests/mcp-production-tool-profiles.test.ts",
+    "test:mcp-final-audit": "tsx --test --test-concurrency=1 tests/mcp-final-surface-audit.test.ts tests/mcp-tool-contract-governance.test.ts tests/mcp-production-tool-profiles.test.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
