@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-private extension Color {
+extension Color {
     static let settingsBackground = Color(
         red: 0.965,
         green: 0.965,
@@ -82,20 +82,9 @@ private struct SettingsDetailLayer: View {
     let dataService: any SettingsDataService
 
     var body: some View {
-        ZStack {
-            Color.settingsBackground
-                .ignoresSafeArea()
-
-            ScrollView {
-                detailContent
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 64)
-            }
-            .scrollEdgeEffectStyle(.automatic, for: .top)
-        }
-        .navigationTitle(page.title)
-        .navigationBarTitleDisplayMode(.inline)
+        detailContent
+            .navigationTitle(page.title)
+            .navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder
@@ -309,72 +298,17 @@ private struct SettingsHomeContent: View {
 
 private struct SettingsSummaryContent: View {
     var body: some View {
-        VStack(spacing: 0) {
-            SettingsSummaryRow(title: "Memory")
-            SettingsDivider(leadingInset: 16)
-            SettingsSummaryRow(title: "Diary")
-            SettingsDivider(leadingInset: 16)
-            SettingsSummaryRow(title: "Task")
-            SettingsDivider(leadingInset: 16)
-            SettingsSummaryRow(title: "Todo")
-            SettingsDivider(leadingInset: 16)
-            SettingsSummaryRow(title: "Shared Paper")
-        }
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
-    }
-}
-
-private struct SettingsSummaryRow: View {
-    let title: String
-
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 17, weight: .medium))
-
-            Spacer()
-
-            Text("Loading…")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.secondary)
-        }
-        .frame(height: 55)
-        .padding(.horizontal, 16)
-    }
-}
-
-struct SettingsSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(title)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 13)
-
-            VStack(spacing: 0) {
-                content
+        Form {
+            Section {
+                LabeledContent("Memory", value: "Loading…")
+                LabeledContent("Diary", value: "Loading…")
+                LabeledContent("Task", value: "Loading…")
+                LabeledContent("Todo", value: "Loading…")
+                LabeledContent("Shared Paper", value: "Loading…")
             }
-            .background(Color.white)
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: 23,
-                    style: .continuous
-                )
-            )
         }
-    }
-}
-
-struct SettingsDivider: View {
-    var leadingInset: CGFloat = 16
-
-    var body: some View {
-        Divider()
-            .padding(.leading, leadingInset)
-            .padding(.trailing, 16)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
     }
 }
