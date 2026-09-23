@@ -394,7 +394,9 @@ private struct DiaryArchivedDetailView: View {
 
     @State private var state: DiaryDetailLoadState = .loading
     @State private var isRestoring = false
+    @State private var isDeleting = false
     @State private var showingRestoreConfirmation = false
+    @State private var showingDeleteConfirmation = false
     @State private var actionError: String?
 
     var body: some View {
@@ -454,12 +456,16 @@ private struct DiaryArchivedDetailView: View {
                     Button("Restore") {
                         showingRestoreConfirmation = true
                     }
+
+                    Button("Delete", role: .destructive) {
+                        showingDeleteConfirmation = true
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 18, weight: .medium))
                 }
                 .accessibilityLabel("Archived diary actions")
-                .disabled(isRestoring)
+                .disabled(isRestoring || isDeleting)
             }
         }
         .alert(
@@ -472,6 +478,19 @@ private struct DiaryArchivedDetailView: View {
                     await restoreDiary()
                 }
             }
+        }
+        .alert(
+            "Delete this diary permanently?",
+            isPresented: $showingDeleteConfirmation
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                Task {
+                    await deleteDiary()
+                }
+            }
+        } message: {
+            Text("This cannot be undone.")
         }
         .task(id: diaryID) {
             await loadDetail()
@@ -504,6 +523,26 @@ private struct DiaryArchivedDetailView: View {
             let _: DiarySuccessEnvelope = try await appModel.api.request(
                 path: "/api/v1/diary/archived/\(diaryID)/restore",
                 method: "POST"
+            )
+            onChanged()
+            dismiss()
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func deleteDiary() async {
+        guard !isDeleting else { return }
+
+        isDeleting = true
+        actionError = nil
+        defer { isDeleting = false }
+
+        do {
+            let _: NoContentResponse = try await appModel.api.request(
+                path: "/api/v1/diary/archived/\(diaryID)/permanent",
+                method: "DELETE"
             )
             onChanged()
             dismiss()
