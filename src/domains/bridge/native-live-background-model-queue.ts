@@ -27,7 +27,8 @@ export type NativeLiveBackgroundModelReservation = {
 
 export type NativeLiveBackgroundModelWorkflowKind =
   | "topic_resurface"
-  | "distillation";
+  | "distillation"
+  | "proactivity_wake";
 
 export type NativeLiveBackgroundModelWorkflow = {
   kind: NativeLiveBackgroundModelWorkflowKind;
@@ -366,6 +367,7 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
         (
           row.workflowKind === "topic_resurface"
           || row.workflowKind === "distillation"
+          || row.workflowKind === "proactivity_wake"
         )
         && row.workflowRunId
         && row.workflowPayload
