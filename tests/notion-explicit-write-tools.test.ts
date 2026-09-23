@@ -165,8 +165,8 @@ test("minimal registrar routes allowed page and comment actions only", async (t)
   }).data;
   assert.equal(commentData.outcome, "applied");
   assert.equal(commentData.entity_type, "notion_comment");
-  assert.equal(commentData.detail_tool, "read_notion_page");
-  assert.deepEqual(commentData.detail_arguments, { page_id: PAGE_ID });
+  assert.equal(commentData.detail_tool, null);
+  assert.equal(commentData.detail_arguments, null);
 });
 
 test("destructive or non-native actions are rejected by the public tool schema", async (t) => {
