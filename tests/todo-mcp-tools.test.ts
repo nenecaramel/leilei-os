@@ -43,6 +43,12 @@ const C_PAPER: TodoPaper = {
   revision: 1,
   entries: [{ id: "c-1", kind: "pending", text: "Claude item", revision: 1 }],
 };
+const L_WRITE_ENTRIES: ReplaceTodoPaperInput["entries"] = L_PAPER.entries.map(
+  ({ id, kind, text }) => ({ id, kind, text }),
+);
+const C_WRITE_ENTRIES: ReplaceTodoPaperInput["entries"] = C_PAPER.entries.map(
+  ({ id, kind, text }) => ({ id, kind, text }),
+);
 const C_PAPER_ON_DATE: TodoPaper = { ...C_PAPER, date: DATE };
 const PAPERS: TodoDayPapers = { L: null, G: null, C: C_PAPER };
 
@@ -375,7 +381,7 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
       date: DATE,
       author: "L",
       expected_revision: 3,
-      entries: L_PAPER.entries,
+      entries: L_WRITE_ENTRIES,
       idempotency_key: "todo-paper-direct-20260813",
     },
   });
@@ -396,7 +402,7 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
     date: DATE,
     author: "L",
     revision: 3,
-    entries: L_PAPER.entries,
+    entries: L_WRITE_ENTRIES,
     idempotencyKey: "todo-paper-direct-20260813",
   }]);
   assert.equal(fixture.authCalls(), 1);
@@ -415,7 +421,7 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
       date: C_PAPER.date,
       author: "C",
       expected_revision: null,
-      entries: C_PAPER.entries,
+      entries: C_WRITE_ENTRIES,
       idempotency_key: "todo-paper-c-author-20260905",
     },
   });
@@ -426,7 +432,7 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
       date: C_PAPER.date,
       author: "Claude",
       expected_revision: null,
-      entries: C_PAPER.entries,
+      entries: C_WRITE_ENTRIES,
       idempotency_key: "todo-paper-claude-invalid-01",
     },
   });
@@ -436,7 +442,7 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
     date: C_PAPER.date,
     author: "C",
     revision: null,
-    entries: C_PAPER.entries,
+    entries: C_WRITE_ENTRIES,
     idempotencyKey: "todo-paper-c-author-20260905",
   }]);
 });
@@ -484,7 +490,7 @@ test("write_todo_paper distinguishes bounded conflicts and sanitizes internal fa
       date: DATE,
       author: "L",
       expected_revision: null,
-      entries: L_PAPER.entries,
+      entries: L_WRITE_ENTRIES,
       idempotency_key: "todo-paper-errors-20260813",
     },
   };
@@ -669,7 +675,7 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
       date: DATE,
       author: "L",
       expected_revision: 3,
-      entries: L_PAPER.entries,
+      entries: L_WRITE_ENTRIES,
       idempotency_key: "todo-paper-contract-20260813",
     },
   });
@@ -692,7 +698,7 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
     date: DATE,
     author: "L",
     revision: 3,
-    entries: L_PAPER.entries,
+    entries: L_WRITE_ENTRIES,
     idempotencyKey: "todo-paper-contract-20260813",
   }]);
   assert.equal(fixture.authCalls(), 3);
@@ -714,7 +720,7 @@ test("Todo tool schemas reject identity injection before authentication or servi
         date: DATE,
         author: "L",
         expected_revision: null,
-        entries: L_PAPER.entries,
+        entries: L_WRITE_ENTRIES,
         idempotency_key: "todo-paper-attacker-20260813",
         user_id: "attacker",
       },
