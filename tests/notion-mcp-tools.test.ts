@@ -176,6 +176,12 @@ test("read_notion_page authenticates first and returns bounded page content", as
       content: "# 主线规划\nPhase 7",
       block_count: 2,
       truncated: false,
+      content_metadata: {
+        returned_chars: Array.from("# 主线规划\nPhase 7").length,
+        total_chars: Array.from("# 主线规划\nPhase 7").length,
+        truncated: false,
+        next_cursor: null,
+      },
     },
   });
 });
