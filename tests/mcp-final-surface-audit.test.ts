@@ -50,6 +50,9 @@ test("default production public surface stays compact and reports final inventor
   const tools = await listTools(
     factory("11111111-1111-4111-8111-111111111111", "public"),
   );
+  const fullTools = await listTools(
+    factory("11111111-1111-4111-8111-111111111111", "internal"),
+  );
 
   const descriptionChars = tools.reduce(
     (sum, tool) => sum + (tool.description?.length ?? 0),
@@ -77,19 +80,45 @@ test("default production public surface stays compact and reports final inventor
       chars: tool.description?.length ?? 0,
     }));
 
+  const fullDescriptionChars = fullTools.reduce(
+    (sum, tool) => sum + (tool.description?.length ?? 0),
+    0,
+  );
+  const fullSchemaChars = fullTools.reduce(
+    (sum, tool) => sum + jsonChars(tool.inputSchema) + jsonChars(tool.outputSchema),
+    0,
+  );
+
   console.log("[MCP_FINAL_AUDIT]", JSON.stringify({
-    tool_count: tools.length,
-    description_chars: descriptionChars,
-    input_schema_chars: inputSchemaChars,
-    output_schema_chars: outputSchemaChars,
-    schema_chars: inputSchemaChars + outputSchemaChars,
-    total_definition_chars: totalDefinitionChars,
-    longest_descriptions: longestDescriptions,
+    public_default: {
+      tool_count: tools.length,
+      tool_names: tools.map((tool) => tool.name).sort(),
+      description_chars: descriptionChars,
+      input_schema_chars: inputSchemaChars,
+      output_schema_chars: outputSchemaChars,
+      schema_chars: inputSchemaChars + outputSchemaChars,
+      total_definition_chars: totalDefinitionChars,
+      longest_descriptions: longestDescriptions,
+    },
+    internal_full: {
+      tool_count: fullTools.length,
+      description_chars: fullDescriptionChars,
+      schema_chars: fullSchemaChars,
+    },
+    reduction: {
+      tool_count: fullTools.length - tools.length,
+      schema_chars: fullSchemaChars - (inputSchemaChars + outputSchemaChars),
+      description_chars: fullDescriptionChars - descriptionChars,
+    },
   }));
 
   assert.ok(
     tools.length <= 66,
     `default public surface must stay at or below 66 tools, got ${tools.length}`,
+  );
+  assert.ok(
+    tools.length < fullTools.length,
+    "default public surface must be smaller than internal full",
   );
   for (const tool of tools) {
     assert.ok(
