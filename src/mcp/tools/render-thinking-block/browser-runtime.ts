@@ -170,11 +170,7 @@ export function installThinkingBlockRuntime(
       "note",
       pick(sources, "thinking", "本轮没有提供工作笔记。"),
     );
-    const normalizedStyle = style === "relational"
-      ? "relational"
-      : style === "analysis" || style === "deep_think"
-        ? "analysis"
-        : "analysis";
+    const normalizedStyle = style === "relational" ? "relational" : "analysis";
     meta.textContent = detail ? `${normalizedStyle} · ${detail}` : normalizedStyle;
     content.textContent = note;
     applyHostContext();
