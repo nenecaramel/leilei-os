@@ -316,11 +316,11 @@ test("typed comment tools build rich_text and route replies explicitly", async (
     await fixture.server.close();
   });
 
-  await fixture.client.callTool({
+  const added = await fixture.client.callTool({
     name: "add_notion_comment",
     arguments: { page_id: PAGE_ID, text: "  hello  " },
   });
-  await fixture.client.callTool({
+  const replied = await fixture.client.callTool({
     name: "reply_notion_comment",
     arguments: {
       page_id: PAGE_ID,
@@ -328,6 +328,21 @@ test("typed comment tools build rich_text and route replies explicitly", async (
       text: "reply",
     },
   });
+
+  for (const result of [added, replied]) {
+    const data = (result.structuredContent as {
+      data: {
+        outcome: string;
+        entity_type: string;
+        detail_tool: string | null;
+        detail_arguments: unknown;
+      };
+    }).data;
+    assert.equal(data.outcome, "applied");
+    assert.equal(data.entity_type, "notion_comment");
+    assert.equal(data.detail_tool, null);
+    assert.equal(data.detail_arguments, null);
+  }
 
   assert.deepEqual(fixture.calls, [
     {
