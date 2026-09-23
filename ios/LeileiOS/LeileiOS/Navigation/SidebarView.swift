@@ -25,11 +25,8 @@ struct SidebarView: View {
                             pages: [
                                 .home,
                                 .chat,
-                                .memory,
                                 .diary,
-                                .task,
                                 .daySpace,
-                                .sharedPaper,
                                 .conversations,
                                 .universe,
                                 .sentinel
