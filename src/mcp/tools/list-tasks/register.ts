@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TASK_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TaskDomainError,
   type ListTasksInput,
@@ -104,7 +105,7 @@ export function registerListTasksTool(
     {
       title: "List tasks",
       description:
-        "Browse or search the authenticated user's Tasks with optional text, status, priority, exact-tag, and due-time filters. Results are compact and intentionally omit descriptions; use each item's get_task detail pointer for full task detail. When has_more is true, continue by passing next_cursor back as cursor with the same filters.",
+        TASK_DOMAIN_BOUNDARY + " Browse or search the authenticated user's Tasks with optional text, status, priority, exact-tag, and due-time filters. Results are compact and intentionally omit descriptions; use each item's get_task detail pointer for full task detail. When has_more is true, continue by passing next_cursor back as cursor with the same filters.",
       inputSchema: listTasksInputSchema,
       outputSchema: listTasksOutputSchema,
       annotations: {
