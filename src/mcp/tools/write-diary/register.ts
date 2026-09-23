@@ -68,7 +68,7 @@ export type WriteDiaryToolDependencies = {
 };
 
 const CREATE_DIARY_DESCRIPTION =
-  DIARY_DOMAIN_BOUNDARY + " Create one personal diary entry in Leilei OS. This is a persistent write operation. Supply an exact YYYY-MM-DD date and a stable idempotency key. The authenticated user and source are assigned by the server and cannot be selected by tool input.";
+  DIARY_DOMAIN_BOUNDARY + " Create one dated Diary entry. Supply an exact YYYY-MM-DD date; authenticated user and source are server-owned.";
 
 export function registerCreateDiaryTool(
   server: McpServer,
