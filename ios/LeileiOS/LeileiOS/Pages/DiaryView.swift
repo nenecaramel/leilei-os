@@ -11,6 +11,7 @@ struct DiaryView: View {
     @State private var customEndDate = Date.now
     @State private var draftCustomStartDate = DiaryTimeFilter.defaultStartDate
     @State private var draftCustomEndDate = Date.now
+    @State private var diaryCount: Int?
     @State private var state: DiaryLoadState = .loading
 
     var body: some View {
@@ -72,6 +73,13 @@ struct DiaryView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                DiaryNavigationTitle(
+                    title: "Diary",
+                    count: diaryCount
+                )
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Archive") {
@@ -132,6 +140,9 @@ struct DiaryView: View {
             let response: DiaryListEnvelope = try await appModel.api.request(
                 path: diaryPath(for: query)
             )
+            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                diaryCount = response.data.metadata.count
+            }
             state = .loaded(response.data.diaries)
         } catch LeileiAPIError.missingAccessToken {
             state = .authRequired("Sign in to view your Diary.")
@@ -252,11 +263,63 @@ private struct DiaryCustomDateRangeSheet: View {
 }
 
 private struct DiaryArchivePlaceholder: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var diaryCount: Int?
+
     var body: some View {
         Color(.systemBackground)
             .ignoresSafeArea()
             .navigationTitle("Archive")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    DiaryNavigationTitle(
+                        title: "Archive",
+                        count: diaryCount
+                    )
+                }
+            }
+            .task {
+                await loadCount()
+            }
+    }
+
+    @MainActor
+    private func loadCount() async {
+        do {
+            let response: DiaryListEnvelope = try await appModel.api.request(
+                path: "/api/v1/diary/archived"
+            )
+            diaryCount = response.data.metadata.count
+        } catch {
+            diaryCount = nil
+        }
+    }
+}
+
+private struct DiaryNavigationTitle: View {
+    let title: String
+    let count: Int?
+
+    var body: some View {
+        if let count {
+            HStack(spacing: 6) {
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .regular))
+                    .hidden()
+
+                Text(title)
+                    .font(.headline)
+
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.secondary)
+            }
+            .fixedSize()
+        } else {
+            Text(title)
+                .font(.headline)
+        }
     }
 }
 
