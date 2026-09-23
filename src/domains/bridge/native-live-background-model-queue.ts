@@ -1,8 +1,11 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   nativeLiveBackgroundModelJobs,
 } from "../../database/schema.js";
+import {
+  RETENTION_BATCH_SIZE,
+} from "../retention/retention-policy.js";
 import {
   assertBackgroundModelResultMatchesCommand,
   parseNativeLiveBackgroundModelCommand,
@@ -383,17 +386,33 @@ export async function deleteExpiredNativeLiveBackgroundModelJobsBatch(
   cutoff: Date,
   limit: number,
 ): Promise<number> {
-  const rows = await db.execute<{ id: string }>(sql`
-    DELETE FROM native_live_background_model_jobs
-    WHERE id IN (
+  if (
+    !Number.isInteger(limit)
+    || limit <= 0
+    || limit > RETENTION_BATCH_SIZE
+  ) {
+    throw new RangeError(
+      `limit must be a positive integer no greater than ${RETENTION_BATCH_SIZE}`,
+    );
+  }
+
+  return db.transaction(async (transaction) => {
+    const victims = await transaction.execute<{ id: string }>(sql`
       SELECT id
       FROM native_live_background_model_jobs
       WHERE status IN ('completed', 'failed')
-        AND completed_at < ${cutoff}
+        AND completed_at < ${cutoff.toISOString()}::timestamptz
       ORDER BY completed_at ASC, id ASC
       LIMIT ${limit}
-    )
-    RETURNING id
-  `);
-  return rows.length;
+      FOR UPDATE SKIP LOCKED
+    `);
+    const ids = victims.map((victim) => victim.id);
+    if (ids.length === 0) return 0;
+
+    const deleted = await transaction
+      .delete(nativeLiveBackgroundModelJobs)
+      .where(inArray(nativeLiveBackgroundModelJobs.id, ids))
+      .returning({ id: nativeLiveBackgroundModelJobs.id });
+    return deleted.length;
+  });
 }
