@@ -65,12 +65,7 @@ class TodoToolService {
     this.writeCalls.push(input);
     return {
       paper: L_PAPER,
-      outcome: "applied",
-      entity_type: "todo_paper",
-      entity_id: `${DATE}:L`,
-      revision: L_PAPER.revision,
-      detail_tool: "read_todo_day",
-      detail_arguments: { date: DATE, author: "L" },
+      metadata: { committed: true, idempotent_replay: false },
     };
   }
 
