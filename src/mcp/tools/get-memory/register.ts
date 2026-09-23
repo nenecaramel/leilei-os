@@ -33,7 +33,7 @@ const getMemoryInputSchema = z
       .min(1)
       .describe("The exact Memory id returned by read_memory, search_memory, or global_search."),
     scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
-    ...boundedReadInputSchemaFields(z),
+    ...boundedReadInputSchemaFields,
   })
   .strict();
 
@@ -47,7 +47,7 @@ const getMemoryDataSchema = z.object({
   updated_at: z.string().datetime(),
   lifecycle_status: z.enum(["active", "archived"]),
   author: contentAuthorSchema.nullable(),
-  content_metadata: boundedReadMetadataSchema(z),
+  content_metadata: boundedReadMetadataSchema,
 });
 
 const getMemoryOutputSchema = z.object({
