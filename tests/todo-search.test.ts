@@ -27,6 +27,7 @@ class SearchRepository {
       dateFrom: "2026-08-01",
       dateTo: "2026-08-31",
       limit: 10,
+      offset: 0,
     });
     return Promise.resolve([rows[0]!]);
   }
@@ -100,7 +101,7 @@ test("TodoService rejects invalid search filters and enforces active-user isolat
   await assert.rejects(() => service.search({ userId: USER_ID, query: "x", author: "X" }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
   await assert.rejects(() => service.search({ userId: USER_ID, query: "x", kind: "other" }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
   await assert.rejects(() => service.search({ userId: USER_ID, query: "x", date_from: "2026-09-02", date_to: "2026-09-01" }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
-  await assert.rejects(() => service.search({ userId: USER_ID, query: "x", limit: 51 }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
+  await assert.rejects(() => service.search({ userId: USER_ID, query: "x", limit: 52 }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
   assert.equal(calls.length, 0);
 });
 
@@ -129,5 +130,5 @@ test("TodoService preserves a bounded result limit and case-insensitive query co
   repository.searchEntries = (input: unknown) => { received = input; return Promise.resolve([]); };
   const service = new TodoService(repository as never);
   await service.search({ userId: USER_ID, query: " Café ", limit: 50 });
-  assert.deepEqual(received, { userId: USER_ID, query: "café", limit: 50, author: undefined, kind: undefined, dateFrom: undefined, dateTo: undefined });
+  assert.deepEqual(received, { userId: USER_ID, query: "café", limit: 50, offset: 0, author: undefined, kind: undefined, dateFrom: undefined, dateTo: undefined });
 });
