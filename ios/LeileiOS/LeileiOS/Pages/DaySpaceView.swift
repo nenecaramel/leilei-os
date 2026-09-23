@@ -886,6 +886,26 @@ private struct DaySpaceTodoEditorSheet: View {
     }
 
     private func ensureRowCapacity() {
+        while rows.count > 1 {
+            let lastIsEmpty = rows.last?.text
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+                .isEmpty ?? false
+
+            let previousIsEmpty = rows[rows.count - 2].text
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+                .isEmpty
+
+            guard lastIsEmpty && previousIsEmpty else {
+                break
+            }
+
+            rows.removeLast()
+        }
+
         guard let last = rows.last,
               !last.text.trimmingCharacters(
                 in: .whitespacesAndNewlines
