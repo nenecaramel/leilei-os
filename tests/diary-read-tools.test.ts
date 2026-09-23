@@ -142,7 +142,8 @@ test("search_diary maps filters and identity but omits content", async (t) => {
   });
   assert.deepEqual(service.listCalls, [{
     userId: USER_ID,
-    limit: 12,
+    limit: 13,
+    offset: 0,
     query: {
       q: "海边",
       tag: "旅行",
@@ -173,7 +174,7 @@ test("search_diary maps filters and identity but omits content", async (t) => {
         detail_tool: "get_diary",
         detail_arguments: { id: ENTRY.id, scope: "active" },
       }],
-      metadata: { count: 1 },
+      metadata: { count: 1, returned: 1, has_more: false, next_cursor: null },
     },
   });
 });
@@ -184,7 +185,8 @@ test("search_diary supports no filters and rejects invalid schemas", async () =>
   await pair.client.callTool({ name: "search_diary", arguments: {} });
   assert.deepEqual(service.listCalls[0], {
     userId: USER_ID,
-    limit: undefined,
+    limit: 51,
+    offset: 0,
     query: {
       q: undefined,
       tag: undefined,
