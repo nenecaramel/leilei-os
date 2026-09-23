@@ -234,6 +234,8 @@ export function createProcessRuntime(
 
   const logger =
     (options.createLogger ?? ((level) => createSafeLogger({ level })))(runtimeEnv.LOG_LEVEL);
+  const cloudPeriodicBackgroundEnabled =
+    runtimeEnv.LEILEI_CLOUD_PERIODIC_BACKGROUND_ENABLED === true;
   const observeLifecycle = createMcpLifecycleObserver(logger);
   const database = (options.createDatabaseResource ?? createDatabase)(runtimeEnv.DATABASE_URL);
   const { db } = database;
@@ -662,11 +664,25 @@ export function createProcessRuntime(
       createMcpSessionServer,
     },
     startBackgroundWork: () => {
-      retentionCoordinator.start();
-      sentinelScheduler.start();
-      nativeLiveMindFollowUpScheduler.start();
-      nativeLiveSemanticScheduler.start();
-      backgroundMaintenancePulse.start();
+      logger.info("cloud_periodic_background_mode", {
+        state: cloudPeriodicBackgroundEnabled
+          ? "periodic"
+          : "startup_recovery_only",
+      });
+      if (cloudPeriodicBackgroundEnabled) {
+        retentionCoordinator.start();
+        sentinelScheduler.start();
+        nativeLiveMindFollowUpScheduler.start();
+        nativeLiveSemanticScheduler.start();
+        backgroundMaintenancePulse.start();
+        return;
+      }
+
+      // Railway Free must be able to idle. Recover durable work once at
+      // process start, but do not keep cloud timers or database polling alive.
+      void retentionCoordinator.runNow().catch(() => undefined);
+      void nativeLiveMindFollowUpScheduler.runNow().catch(() => undefined);
+      void nativeLiveSemanticScheduler.runNow().catch(() => undefined);
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
@@ -683,10 +699,8 @@ export function createProcessRuntime(
         nativeLiveSemanticScheduler.drain(),
         backgroundMaintenancePulse.drain(),
       ]);
-      // Durable follow-ups and the maintenance pulse may offer background
-      // work while producers drain.
-      // Wait for that bounded cycle only after all opportunity producers above
-      // have quiesced, otherwise shutdown could close the DB under a new job.
+      // Event-driven finalization can still offer bounded orchestrator work.
+      // Wait for that cycle before closing the shared database resource.
       await backgroundLoopOrchestrator.drain();
     },
     closeDatabase: database.close,
