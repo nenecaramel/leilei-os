@@ -7,8 +7,7 @@ struct SettingsSheetView: View {
     let onDismiss: () -> Void
     let dataService: any SettingsDataService
     @ObservedObject var appModel: AppModel
-    @State private var detailPage: SettingsDetailPage = .summary
-    @State private var detailVisible = false
+    @State private var path: [SettingsDetailPage] = []
 
     init(
         isPresented: Bool,
@@ -23,54 +22,45 @@ struct SettingsSheetView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            SettingsDrawerShell(size: proxy.size) {
-                ZStack {
-                    SettingsPageContent(
-                        title: "Settings",
-                        leadingSymbol: "xmark",
-                        leadingAccessibilityLabel: "Close Settings",
-                        leadingAction: onDismiss,
-                        resetTrigger: isPresented
-                    ) {
-                        SettingsHomeContent(
-                            appModel: appModel,
-                            onShowSummary: { showDetail(.summary) },
-                            onShowExport: { showDetail(.export) },
-                            onShowRestore: { showDetail(.restore) },
-                            onShowStatus: { showDetail(.status) },
-                            onShowActivity: { showDetail(.activity) },
-                            onShowAbout: { showDetail(.about) }
-                        )
-                    }
-
-                    SettingsDetailLayer(
-                        page: detailPage,
-                        dataService: dataService,
-                        onBack: {
-                            withAnimation(.snappy) {
-                                detailVisible = false
-                            }
+        NavigationStack(path: $path) {
+            SettingsPageContent(
+                title: "Settings",
+                leadingSymbol: "xmark",
+                leadingAccessibilityLabel: "Close Settings",
+                leadingAction: onDismiss,
+                resetTrigger: isPresented
+            ) {
+                SettingsHomeContent(
+                    appModel: appModel,
+                    onShowSummary: { showDetail(.summary) },
+                    onShowExport: { showDetail(.export) },
+                    onShowRestore: { showDetail(.restore) },
+                    onShowStatus: { showDetail(.status) },
+                    onShowActivity: { showDetail(.activity) },
+                    onShowAbout: { showDetail(.about) }
+                )
+            }
+            .navigationDestination(for: SettingsDetailPage.self) { page in
+                SettingsDetailLayer(
+                    page: page,
+                    dataService: dataService,
+                    onBack: {
+                        if !path.isEmpty {
+                            path.removeLast()
                         }
-                    )
-                    .offset(x: detailVisible ? 0 : proxy.size.width)
-                    .allowsHitTesting(detailVisible)
-                    .zIndex(1)
-                }
+                    }
+                )
             }
         }
-        .ignoresSafeArea()
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func showDetail(_ page: SettingsDetailPage) {
-        detailPage = page
-        withAnimation(.snappy) {
-            detailVisible = true
-        }
+        path.append(page)
     }
 }
 
-private enum SettingsDetailPage: Equatable {
+private enum SettingsDetailPage: Hashable {
     case summary
     case export
     case restore
@@ -123,28 +113,6 @@ private struct SettingsDetailLayer: View {
                 SettingsAboutContent()
             }
         }
-    }
-}
-
-private struct SettingsDrawerShell<Content: View>: View {
-    let size: CGSize
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content
-            .frame(width: size.width, height: size.height - 60, alignment: .top)
-            .background(Color(red: 0.965, green: 0.965, blue: 0.97))
-            .clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 34,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: 34,
-                    style: .continuous
-                )
-            )
-            .shadow(color: .black.opacity(0.08), radius: 12, y: -2)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }
 
