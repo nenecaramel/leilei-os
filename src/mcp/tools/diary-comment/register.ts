@@ -227,7 +227,7 @@ export function registerDiaryCommentTools(
             },
           };
         },
-        mapError: (error) => toSafeCommentError(error, { id }),
+        mapError: toSafeCommentError,
       }),
   );
 
