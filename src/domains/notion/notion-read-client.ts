@@ -6,7 +6,7 @@ import {
 
 const MAX_DEPTH = 8;
 const MAX_BLOCKS = 500;
-const MAX_TEXT_LENGTH = 60_000;
+const MAX_TEXT_LENGTH = 200_000;
 export const DEFAULT_NOTION_PAGE_READ_TIMEOUT_MS = 30_000;
 
 export type NotionReadClientOptions = NotionTransportOptions & {
