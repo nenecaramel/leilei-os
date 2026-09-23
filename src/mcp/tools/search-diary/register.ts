@@ -16,6 +16,11 @@ import {
   joinMcpContentLines,
   quoteMcpText,
 } from "../content-contract.js";
+import {
+  decodeMcpPaginationCursor,
+  McpPaginationCursorError,
+  paginateMcpRows,
+} from "../pagination.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
@@ -29,6 +34,7 @@ const searchDiaryInputSchema = z
     date_from: dateSchema.optional(),
     date_to: dateSchema.optional(),
     limit: z.number().int().min(1).max(50).default(50).optional(),
+    cursor: z.string().min(1).max(2_048).optional(),
   })
   .strict();
 
@@ -50,6 +56,9 @@ const searchDiaryDataSchema = z.object({
   ),
   metadata: z.object({
     count: z.number().int().nonnegative(),
+    returned: z.number().int().nonnegative(),
+    has_more: z.boolean(),
+    next_cursor: z.string().nullable(),
   }),
 });
 
@@ -88,12 +97,23 @@ export function registerSearchDiaryTool(
         openWorldHint: false,
       },
     },
-    async ({ query, tag, mood, author, date_from, date_to, limit }) => {
+    async ({ query, tag, mood, author, date_from, date_to, limit, cursor }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
+        const pageSize = limit ?? 50;
+        const cursorContext = {
+          query: query ?? null,
+          tag: tag ?? null,
+          mood: mood ?? null,
+          author: author ?? null,
+          date_from: date_from ?? null,
+          date_to: date_to ?? null,
+        };
+        const offset = decodeMcpPaginationCursor(cursor, "search_diary", cursorContext);
         const input = {
           userId,
-          limit,
+          limit: pageSize + 1,
+          offset,
           query: {
             q: query,
             tag,
@@ -106,7 +126,22 @@ export function registerSearchDiaryTool(
         const discovery = dependencies.diaryService.searchDiaryDiscovery
           ? await dependencies.diaryService.searchDiaryDiscovery(input)
           : compactFallback(await dependencies.diaryService.listDiaries(input), query ?? "");
-        const data = withDetailPointers(discovery);
+        const withPointers = withDetailPointers(discovery);
+        const page = paginateMcpRows({
+          rows: withPointers.diaries,
+          pageSize,
+          offset,
+          tool: "search_diary",
+          context: cursorContext,
+        });
+        const data = {
+          ...withPointers,
+          diaries: page.items,
+          metadata: {
+            ...withPointers.metadata,
+            ...page.metadata,
+          },
+        };
 
         return {
           content: [
@@ -168,6 +203,9 @@ function withDetailPointers(result: SearchDiaryDiscoveryResult): SearchDiaryDisc
 }
 
 function toSafeSearchDiaryError(error: unknown) {
+  if (error instanceof McpPaginationCursorError) {
+    return createMcpToolError("INVALID_CURSOR", "The Diary continuation cursor is invalid for this search.");
+  }
   if (error instanceof DiaryReadAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",
