@@ -480,6 +480,11 @@ test("Universe mutation errors remain safe and distinguish stale versions", asyn
     error: {
       code: "VERSION_CONFLICT",
       message: "Universe changed since expected_version; fresh-read before deciding whether to retry.",
+      retryable: false,
+      reason: "stale_version",
+      current_revision: null,
+      recommended_tool: "list_universe_nodes",
+      recommended_arguments: {},
     },
   });
   assert.match(JSON.stringify(stale.content), /VERSION_CONFLICT/);
