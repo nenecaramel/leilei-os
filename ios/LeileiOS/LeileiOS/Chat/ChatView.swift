@@ -44,6 +44,7 @@ struct ChatView: View {
                 )
                 .ignoresSafeArea()
             }
+            .offset(y: 10)
         }
     }
 }
