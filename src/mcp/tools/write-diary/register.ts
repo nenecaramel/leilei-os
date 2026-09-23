@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import {
   DiaryDomainError,
   type AuthenticatedDiaryContext,
@@ -30,7 +31,7 @@ const writeDiaryInputSchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("The diary date in YYYY-MM-DD format; never use relative dates."),
     tags: z.array(z.string().min(1).max(50)).max(20).describe("Organizational labels for the diary entry; use an empty array when none apply."),
     mood: z.string().min(1).max(50).optional().describe("An optional concise mood label."),
-    author: contentAuthorSchema.describe("The logical content author: L, G, or C."),
+    author: contentAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
     idempotency_key: mcpIdempotencyKeySchema,
   })
   .strict();
@@ -75,7 +76,7 @@ export function registerWriteDiaryTool(
     {
       title: "Write a personal diary entry",
       description:
-        "Create one personal diary entry in Leilei OS. This is a persistent write operation. Supply an exact YYYY-MM-DD date and a stable idempotency key. The authenticated user and source are assigned by the server and cannot be selected by tool input.",
+        DIARY_DOMAIN_BOUNDARY + " Create one personal diary entry in Leilei OS. This is a persistent write operation. Supply an exact YYYY-MM-DD date and a stable idempotency key. The authenticated user and source are assigned by the server and cannot be selected by tool input.",
       inputSchema: writeDiaryInputSchema,
       outputSchema: writeDiaryOutputSchema,
       annotations: {
