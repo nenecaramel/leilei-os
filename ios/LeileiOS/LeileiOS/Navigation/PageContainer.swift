@@ -15,6 +15,8 @@ struct PageContainer: View {
                     PlaceholderPage(page: selectedPage)
                 }
             }
+            .navigationTitle(selectedPage == .chat ? "Claude" : selectedPage.rawValue)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if let onMenu {
@@ -25,17 +27,6 @@ struct PageContainer: View {
                     }
                 }
 
-                if selectedPage == .chat {
-                    ToolbarItem(placement: .principal) {
-                        Text("Claude")
-                            .font(.system(size: 18, weight: .semibold))
-                    }
-                } else {
-                    ToolbarItem(placement: .principal) {
-                        Text(selectedPage.rawValue)
-                            .font(.system(size: 18, weight: .semibold))
-                    }
-                }
 
                 if selectedPage != .globalSearch {
                     ToolbarItem(placement: .topBarTrailing) {
