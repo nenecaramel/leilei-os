@@ -6,11 +6,6 @@ import {
   type CreateMcpMemoryInput,
   type CreateMcpMemoryResult,
 } from "../../../domains/memory/memory-service.js";
-import {
-  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
-  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
-  MCP_IDEMPOTENCY_KEY_PATTERN,
-} from "../../../domains/mcp-write/mcp-write-idempotency.js";
 import { MEMORY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
 import {
@@ -18,6 +13,7 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 import {
   mcpMutationReceipt,
   mcpMutationReceiptFields,
@@ -35,10 +31,7 @@ const writeMemoryInputSchema = z.object({
   content: rawMemoryContentSchema,
   tags: z.array(rawMemoryTagSchema).max(20).optional(),
   author: contentAuthorSchema,
-  idempotency_key: z.string()
-    .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-    .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-    .regex(MCP_IDEMPOTENCY_KEY_PATTERN),
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const writeMemoryDataSchema = z.object({
