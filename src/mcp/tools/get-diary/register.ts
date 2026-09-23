@@ -14,6 +14,7 @@ import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import {
   boundedReadInputSchemaFields,
   boundedReadMetadataSchema,
+  formatMcpBoundedReadHint,
   McpBoundedReadCursorError,
   sliceMcpBoundedContent,
 } from "../bounded-read.js";
@@ -119,6 +120,7 @@ export function registerGetDiaryTool(
             type: "text",
             text: joinMcpContentLines([
               `Diary ${quoteMcpText(data.title)} (${data.date}) [id=${data.id}]`,
+              formatMcpBoundedReadHint(window.metadata),
               data.content || "(empty)",
               `Comments: list_diary_comments(diary_id=${detail.id}, scope=${scope})`,
             ]),
