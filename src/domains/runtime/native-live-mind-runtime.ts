@@ -39,6 +39,7 @@ export type NativeLiveMindRuntimeBindingOptions = {
   committerId?: string;
   thoughtEvolution?: NativeLiveSubjectEvolutionRuntime | null;
   driveEvolution?: NativeLiveSubjectEvolutionRuntime | null;
+  curiosityTopicProjection?: NativeLiveSubjectEvolutionRuntime | null;
   topicEvolution?: NativeLiveSubjectEvolutionRuntime | null;
 };
 
@@ -104,6 +105,8 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
   private readonly committerId: string;
   private readonly thoughtEvolution: NativeLiveSubjectEvolutionRuntime | null;
   private readonly driveEvolution: NativeLiveSubjectEvolutionRuntime | null;
+  private readonly curiosityTopicProjection:
+    NativeLiveSubjectEvolutionRuntime | null;
   private readonly topicEvolution: NativeLiveSubjectEvolutionRuntime | null;
 
   constructor(
@@ -118,6 +121,8 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     this.committerId = options.committerId ?? "leileios-runtime";
     this.thoughtEvolution = options.thoughtEvolution ?? null;
     this.driveEvolution = options.driveEvolution ?? null;
+    this.curiosityTopicProjection =
+      options.curiosityTopicProjection ?? null;
     this.topicEvolution = options.topicEvolution ?? null;
   }
 
@@ -268,6 +273,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     for (const process of [
       this.driveEvolution,
       this.thoughtEvolution,
+      this.curiosityTopicProjection,
       this.topicEvolution,
     ]) {
       if (!process) continue;
@@ -278,8 +284,8 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
           now,
         });
       } catch {
-        // Derived subject-state maintenance is fail-soft: a Drive/Thought
-        // process failure must not block the user turn or rewrite canonical
+        // Derived subject-state maintenance is fail-soft: a Drive/Thought/
+        // Curiosity/Topic process failure must not block the user turn or rewrite canonical
         // conversation history.
       }
     }
