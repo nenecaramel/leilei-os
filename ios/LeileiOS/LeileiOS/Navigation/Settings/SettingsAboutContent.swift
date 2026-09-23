@@ -12,18 +12,17 @@ struct SettingsAboutContent: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            SettingsDetailCard {
-                SettingsDetailValueRow(title: "Leilei OS", value: "Leilei OS")
-                SettingsDivider()
-                SettingsDetailValueRow(title: "Version", value: version)
-                SettingsDivider()
-                SettingsDetailValueRow(title: "Build", value: build)
-                SettingsDivider()
-                SettingsDetailValueRow(title: "Commit", value: "Unavailable")
-                SettingsDivider()
-                SettingsDetailValueRow(title: "Environment", value: "Unavailable")
+        Form {
+            Section {
+                LabeledContent("Leilei OS", value: "Leilei OS")
+                LabeledContent("Version", value: version)
+                LabeledContent("Build", value: build)
+                LabeledContent("Commit", value: "Unavailable")
+                LabeledContent("Environment", value: "Unavailable")
             }
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
     }
 }
