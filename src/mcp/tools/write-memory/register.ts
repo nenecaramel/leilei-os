@@ -71,7 +71,7 @@ export type WriteMemoryToolDependencies = {
 };
 
 const CREATE_MEMORY_DESCRIPTION =
-  MEMORY_DOMAIN_BOUNDARY + " Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. The success result is a compact receipt; call get_memory with its returned detail_arguments for authoritative readback. For an archived idempotent replay, use get_memory with scope=archived; do not assume the active scope.";
+  MEMORY_DOMAIN_BOUNDARY + " Create only after explicit user approval of category, key, content, and tags. Never store model guesses, inferred facts, transient emotions, one-off details, or automatic summaries. The receipt points to get_memory; an archived replay must be read with scope=archived.";
 
 export function registerCreateMemoryTool(
   server: McpServer,
