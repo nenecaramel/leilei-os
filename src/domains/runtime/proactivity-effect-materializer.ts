@@ -13,7 +13,10 @@ import type {
 
 export class ProactivityEffectMaterializer {
   constructor(
-    private readonly effects: RuntimeEffectPort,
+    private readonly effects: Pick<
+      RuntimeEffectPort,
+      "createOrGet"
+    >,
     private readonly now: () => string = () =>
       new Date().toISOString(),
   ) {}

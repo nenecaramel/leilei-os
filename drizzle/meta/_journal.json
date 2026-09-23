@@ -414,6 +414,13 @@
       "when": 1790160120000,
       "tag": "0058_runtime_effects",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1790160960000,
+      "tag": "0059_runtime_effect_delivery",
+      "breakpoints": true
     }
   ]
 }

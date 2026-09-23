@@ -278,7 +278,15 @@ implements ProactivityWakeOpportunitySource {
         FROM runtime_effects
         WHERE user_id = ${input.userId}::uuid
           AND subject_id = ${input.subjectId}
-          AND status <> 'observed'
+          AND (
+            status IN (
+              'pending',
+              'reserved',
+              'dispatching',
+              'unknown'
+            )
+            OR (status = 'failed' AND retryable = true)
+          )
         ORDER BY updated_at DESC, id DESC
         LIMIT 1
       `),
@@ -521,7 +529,8 @@ function boundText(value: string): string {
 function parseEffectStatus(value: string): EffectStatus {
   if (
     value !== "pending"
-    && value !== "dispatched"
+    && value !== "reserved"
+    && value !== "dispatching"
     && value !== "observed"
     && value !== "failed"
     && value !== "unknown"

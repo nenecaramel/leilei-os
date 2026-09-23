@@ -808,7 +808,8 @@ export type RuntimeProactivityWakeStatus =
   | "decided";
 export type RuntimeEffectStatus =
   | "pending"
-  | "dispatched"
+  | "reserved"
+  | "dispatching"
   | "observed"
   | "failed"
   | "unknown";
@@ -1840,6 +1841,16 @@ export const runtimeEffects = pgTable(
       .notNull(),
     attempt: integer("attempt").default(0).notNull(),
     retryable: boolean("retryable").default(true).notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", {
+      withTimezone: true,
+    }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    dispatchStartedAt: timestamp("dispatch_started_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1903,11 +1914,67 @@ export const runtimeEffects = pgTable(
     ),
     check(
       "runtime_effects_status_allowed",
-      sql`${table.status} IN ('pending', 'dispatched', 'observed', 'failed', 'unknown')`,
+      sql`${table.status} IN ('pending', 'reserved', 'dispatching', 'observed', 'failed', 'unknown')`,
     ),
     check(
       "runtime_effects_attempt_nonnegative",
       sql`${table.attempt} >= 0`,
+    ),
+    check(
+      "runtime_effects_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.dispatchStartedAt} IS NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.retryable} = true)
+        OR (${table.status} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.dispatchStartedAt} IS NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.retryable} = true)
+        OR (${table.status} = 'dispatching'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.dispatchStartedAt} IS NOT NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.retryable} = true
+          AND ${table.attempt} > 0)
+        OR (${table.status} = 'observed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.dispatchStartedAt} IS NOT NULL
+          AND ${table.observedAt} IS NOT NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.retryable} = false
+          AND ${table.attempt} > 0)
+        OR (${table.status} = 'failed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.dispatchStartedAt} IS NOT NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NOT NULL
+          AND char_length(btrim(${table.failureCode})) > 0
+          AND ${table.attempt} > 0)
+        OR (${table.status} = 'unknown'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.dispatchStartedAt} IS NOT NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NOT NULL
+          AND char_length(btrim(${table.failureCode})) > 0
+          AND ${table.retryable} = false
+          AND ${table.attempt} > 0)`,
     ),
   ],
 );

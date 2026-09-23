@@ -190,9 +190,12 @@ test("contact candidate binds backend-owned target and payload hash but does not
     effectType: "message_send",
     target: "conversation:c1",
     payloadHash: hashProactivityMessagePayload("想起一件事。"),
-    status: "pending",
+    status: "reserved",
     attempt: 0,
     retryable: true,
+    reservedBy: "33333333-3333-4333-8333-333333333333",
+    reservedAt: "2026-09-23T09:30:02.000Z",
+    reservationExpiresAt: "2026-09-23T09:31:02.000Z",
     createdAt: "2026-09-23T09:30:02.000Z",
     updatedAt: "2026-09-23T09:30:02.000Z",
   };

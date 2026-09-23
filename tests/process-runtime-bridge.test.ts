@@ -28,6 +28,7 @@ test("process runtime exposes bridge service from the shared database resource",
   assert.ok(runtime.topicResurfaceCrossDeviceCoordinator);
   assert.ok(runtime.distillationCrossDeviceCoordinator);
   assert.ok(runtime.proactivityWakeCrossDeviceCoordinator);
+  assert.ok(runtime.runtimeEffectDeliveryCoordinator);
   assert.ok(runtime.driveSatisfactionService);
 });
 

@@ -216,11 +216,14 @@ test("Effect protocol forbids replay dispatch and blind retry from unknown deliv
     effectType: "message_send",
     target: "chat",
     payloadHash: "abc",
-    status: "pending",
+    status: "reserved",
     attempt: 0,
     retryable: true,
+    reservedBy: "33333333-3333-4333-8333-333333333333",
+    reservedAt: "2026-09-22T08:00:01.000Z",
+    reservationExpiresAt: "2026-09-22T08:01:01.000Z",
     createdAt: "2026-09-22T08:00:00.000Z",
-    updatedAt: "2026-09-22T08:00:00.000Z",
+    updatedAt: "2026-09-22T08:00:01.000Z",
   };
   assert.doesNotThrow(() =>
     assertEffectDispatchAllowed({ mode: "live", effect }),
@@ -231,9 +234,19 @@ test("Effect protocol forbids replay dispatch and blind retry from unknown deliv
   assert.throws(() =>
     assertEffectDispatchAllowed({
       mode: "live",
-      effect: { ...effect, status: "unknown" },
+      effect: {
+        ...effect,
+        status: "unknown",
+        reservedBy: null,
+        reservedAt: null,
+        reservationExpiresAt: null,
+        dispatchStartedAt: "2026-09-22T08:00:02.000Z",
+        attempt: 1,
+        retryable: false,
+        failureCode: "DELIVERY_UNKNOWN",
+      },
     }),
   );
   assert.doesNotThrow(() => assertEffectTransition("unknown", "observed"));
-  assert.throws(() => assertEffectTransition("unknown", "dispatched"));
+  assert.throws(() => assertEffectTransition("unknown", "pending"));
 });
