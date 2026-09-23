@@ -175,7 +175,7 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
     assert.match(tool.description, new RegExp(detailTool, "iu"));
   }
 
-  const writeTodo = byName.get("write_todo_paper");
+  const writeTodo = byName.get("replace_todo_paper");
   assert.ok(writeTodo?.description);
   for (const entryTool of ["append_todo_entry", "append_todo_entries", "update_todo_entry", "delete_todo_entry"]) {
     assert.match(writeTodo.description, new RegExp(entryTool, "iu"));
@@ -198,15 +198,15 @@ test("domain language disambiguates adjacent model-facing concepts", async () =>
       pattern: /^Task is a durable actionable item .*not a date-scoped Todo/iu,
     },
     {
-      names: ["read_todo_day", "list_todo_dates", "search_todo", "write_todo_paper", "append_todo_entries", "append_todo_entry", "update_todo_entry", "delete_todo_entry"],
+      names: ["read_todo_day", "list_todo_dates", "search_todo", "replace_todo_paper", "append_todo_entries", "append_todo_entry", "update_todo_entry", "delete_todo_entry"],
       pattern: /^Todo is a date-scoped paper .*not the Task system/iu,
     },
     {
-      names: ["read_memory", "search_memory", "get_memory", "write_memory", "update_memory"],
+      names: ["read_memory", "search_memory", "get_memory", "create_memory", "update_memory"],
       pattern: /^Memory stores durable distilled .*not a dated Diary/iu,
     },
     {
-      names: ["search_diary", "get_diary", "write_diary", "update_diary"],
+      names: ["search_diary", "get_diary", "create_diary", "update_diary"],
       pattern: /^Diary stores dated authored .*not distilled Memory/iu,
     },
     {
@@ -248,17 +248,17 @@ test("L G C author enums expose stable human-readable semantics", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   const authorTools = [
-    "write_memory",
+    "create_memory",
     "update_memory",
     "search_diary",
-    "write_diary",
+    "create_diary",
     "update_diary",
     "add_diary_comment",
     "create_task",
     "update_task",
     "read_todo_day",
     "search_todo",
-    "write_todo_paper",
+    "replace_todo_paper",
     "append_todo_entries",
     "append_todo_entry",
     "update_todo_entry",
@@ -324,11 +324,11 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
     const tool = byName.get(name);
     assert.ok(tool, `${name} must stay registered`);
     assert.ok(property(tool, "expected_revision"));
-    if (name === "write_todo_paper") {
+    if (name === "replace_todo_paper") {
       assert.equal(
         "revision" in ((tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}),
         false,
-        "write_todo_paper must expose expected_revision, not revision, as its concurrency precondition",
+        "replace_todo_paper must expose expected_revision, not revision, as its concurrency precondition",
       );
     }
   }
@@ -337,7 +337,7 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
     "write_memory",
     "write_diary",
     "create_task",
-    "write_todo_paper",
+    "replace_todo_paper",
     "append_todo_entries",
     "append_todo_entry",
     "update_todo_entry",
@@ -347,7 +347,7 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
     "append_shared_paper",
     "archive_shared_paper",
     "restore_shared_paper",
-    "delete_shared_paper",
+    "permanently_delete_shared_paper",
     "add_diary_comment",
     "create_universe_node",
     "create_universe_relation",
@@ -438,20 +438,20 @@ test("core mutation tools expose one model-readable receipt contract", async () 
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   const mutationTools = [
-    "write_memory",
+    "create_memory",
     "update_memory",
-    "write_diary",
+    "create_diary",
     "update_diary",
     "archive_diary",
     "restore_diary",
-    "delete_diary",
+    "permanently_delete_diary",
     "add_diary_comment",
     "update_diary_comment",
     "delete_diary_comment",
     "create_task",
     "update_task",
     "transition_task",
-    "write_todo_paper",
+    "replace_todo_paper",
     "append_todo_entries",
     "append_todo_entry",
     "update_todo_entry",
@@ -461,7 +461,7 @@ test("core mutation tools expose one model-readable receipt contract", async () 
     "append_shared_paper",
     "archive_shared_paper",
     "restore_shared_paper",
-    "delete_shared_paper",
+    "permanently_delete_shared_paper",
     "create_universe_node",
     "update_universe_node",
     "create_universe_relation",
