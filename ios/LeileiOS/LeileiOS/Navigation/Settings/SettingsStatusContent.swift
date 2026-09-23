@@ -8,7 +8,7 @@ struct SettingsStatusContent: View {
 
     var body: some View {
         Form {
-            Section {
+            Section("Status") {
                 LabeledContent("Web API", value: status?.webAPI ?? "Unavailable")
                 LabeledContent(
                     "ChatGPT / Claude MCP",
