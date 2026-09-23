@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import {
   DIARY_COMMENT_CONTENT_MAX_CODE_POINTS,
   DiaryCommentDomainError,
@@ -52,7 +53,7 @@ const commentSchema = z.object({
 
 const addInputSchema = z.object({
   diary_id: idSchema.describe("Exact Diary id returned by search_diary, get_diary, or global_search."),
-  author: contentAuthorSchema.describe("Logical author of this comment: L, G, or C. Author is immutable after creation."),
+  author: contentAuthorSchema.describe(`${MCP_CONTENT_AUTHOR_DESCRIPTION} Author is immutable after creation.`),
   content: commentContentSchema.describe("Complete comment text. The server NFC-normalizes and trims it."),
   idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
@@ -174,7 +175,7 @@ export function registerDiaryCommentTools(
     {
       title: "Add a Diary comment",
       description:
-        "Create one independent canonical comment on an active Diary entry. The comment does not modify Diary content, Diary author, Diary updated_at, or Diary ordering. Author is immutable after creation. Supply a stable idempotency key; if the outcome is uncertain, read back before retrying.",
+        DIARY_DOMAIN_BOUNDARY + " Create one independent canonical comment on an active Diary entry. The comment does not modify Diary content, Diary author, Diary updated_at, or Diary ordering. Author is immutable after creation. Supply a stable idempotency key; if the outcome is uncertain, read back before retrying.",
       inputSchema: addInputSchema,
       outputSchema: addOutputSchema,
       annotations: {
@@ -237,7 +238,7 @@ export function registerDiaryCommentTools(
     {
       title: "Get one Diary comment",
       description:
-        "Read one canonical Diary comment by exact id. scope defaults to active and must match the lifecycle state of the parent Diary.",
+        DIARY_DOMAIN_BOUNDARY + " Read one canonical Diary comment by exact id. scope defaults to active and must match the lifecycle state of the parent Diary.",
       inputSchema: getInputSchema,
       outputSchema: getOutputSchema,
       annotations: {
@@ -278,7 +279,7 @@ export function registerDiaryCommentTools(
     {
       title: "List Diary comments",
       description:
-        "List canonical comments attached to one Diary entry. The page is returned in chronological reading order. Use metadata.next_before to load older comments. scope defaults to active.",
+        DIARY_DOMAIN_BOUNDARY + " List canonical comments attached to one Diary entry. The page is returned in chronological reading order. Use metadata.next_before to load older comments. scope defaults to active.",
       inputSchema: listInputSchema,
       outputSchema: listOutputSchema,
       annotations: {
@@ -333,7 +334,7 @@ export function registerDiaryCommentTools(
     {
       title: "Update one Diary comment",
       description:
-        "Replace the content of one comment on an active Diary without changing its immutable author. Requires the exact current revision. On a conflict or uncertain outcome, call get_diary_comment before deciding whether to retry.",
+        DIARY_DOMAIN_BOUNDARY + " Replace the content of one comment on an active Diary without changing its immutable author. Requires the exact current revision. On a conflict or uncertain outcome, call get_diary_comment before deciding whether to retry.",
       inputSchema: updateInputSchema,
       outputSchema: updateOutputSchema,
       annotations: {
@@ -385,7 +386,7 @@ export function registerDiaryCommentTools(
     {
       title: "Delete one Diary comment",
       description:
-        "Permanently delete one comment from an active Diary. This does not modify or delete the Diary itself. Requires the exact current revision. On an uncertain outcome, read back with get_diary_comment before deciding whether to retry.",
+        DIARY_DOMAIN_BOUNDARY + " Permanently delete one comment from an active Diary. This does not modify or delete the Diary itself. Requires the exact current revision. On an uncertain outcome, read back with get_diary_comment before deciding whether to retry.",
       inputSchema: deleteInputSchema,
       outputSchema: deleteOutputSchema,
       annotations: {
