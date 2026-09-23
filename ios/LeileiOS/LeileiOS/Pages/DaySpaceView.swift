@@ -117,15 +117,14 @@ struct DaySpaceView: View {
         if discoveryState == .loading, selectedDate == nil {
             DaySpaceReadingState()
         } else if discoveryState == .unavailable {
-            ContentUnavailableView {
-                Label("Day Space Unavailable", systemImage: "square.stack.3d.up")
-            } description: {
-                Text("Couldn’t load Day Space.")
-            } actions: {
-                Button("Retry") {
-                    Task {
-                        await discoverAndLoad()
-                    }
+            AppStateSurface(
+                title: "Day Space Unavailable",
+                systemImage: "square.stack.3d.up",
+                message: "Couldn’t load Day Space.",
+                actionTitle: "Retry"
+            ) {
+                Task {
+                    await discoverAndLoad()
                 }
             }
             .frame(
@@ -137,33 +136,29 @@ struct DaySpaceView: View {
             let papers = currentPapers
 
             if bothModulesFailed {
-                ContentUnavailableView {
-                    Label("Day Space Unavailable", systemImage: "square.stack.3d.up")
-                } description: {
-                    Text("Couldn’t load Day Space.")
-                } actions: {
-                    Button("Retry") {
-                        Task {
-                            await loadDate(selectedDate)
-                        }
+                AppStateSurface(
+                    title: "Day Space Unavailable",
+                    systemImage: "square.stack.3d.up",
+                    message: "Couldn’t load Day Space.",
+                    actionTitle: "Retry"
+                ) {
+                    Task {
+                        await loadDate(selectedDate)
                     }
                 }
                 .frame(
-                maxWidth: .infinity,
-                minHeight: daySpaceStateHeight,
-                alignment: .center
-            )
+                    maxWidth: .infinity,
+                    minHeight: daySpaceStateHeight,
+                    alignment: .center
+                )
             } else if todoState.isLoading && diaryState.isLoading && papers.isEmpty {
                 DaySpaceReadingState()
             } else if completeEmpty {
-                VStack(spacing: 6) {
-                    Text("Nothing Here Yet")
-                        .font(.subheadline.weight(.medium))
-
-                    Text("No Todo or Diary entries for this day.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                AppStateSurface(
+                    title: "Nothing Here Yet",
+                    systemImage: "square.stack.3d.up",
+                    message: "No Todo or Diary entries for this day."
+                )
                 .frame(
                     maxWidth: .infinity,
                     minHeight: daySpaceStateHeight,
@@ -503,7 +498,7 @@ private struct DaySpaceWarning: View {
     let text: String
 
     var body: some View {
-        Text(text)
+        Label(text, systemImage: "exclamationmark.triangle")
             .font(.caption)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
@@ -518,20 +513,24 @@ private struct DaySpacePartialFailure: View {
     let onRetryDiary: () -> Void
 
     var body: some View {
-        HStack(spacing: 7) {
-            Text("Some Day Space content is unavailable.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(spacing: 6) {
+            Label(
+                "Some Day Space content is unavailable.",
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
-            if todoFailed {
-                Button("Retry Todo", action: onRetryTodo)
-                    .font(.caption)
-            }
+            HStack(spacing: 12) {
+                if todoFailed {
+                    Button("Retry Todo", action: onRetryTodo)
+                }
 
-            if diaryFailed {
-                Button("Retry Diary", action: onRetryDiary)
-                    .font(.caption)
+                if diaryFailed {
+                    Button("Retry Diary", action: onRetryDiary)
+                }
             }
+            .font(.caption.weight(.medium))
         }
         .frame(maxWidth: .infinity)
     }
