@@ -270,8 +270,10 @@ function explicitSuccess(
       entity_type: entityType,
       entity_id: entityId,
       revision: null,
-      detail_tool: "read_notion_page",
-      detail_arguments: { page_id: pageId },
+      detail_tool: entityType === "notion_comment" ? null : "read_notion_page",
+      detail_arguments: entityType === "notion_comment"
+        ? null
+        : { page_id: pageId },
     }),
   };
   return {
