@@ -66,13 +66,13 @@ struct DiaryView: View {
 
     private func diaryPath(for query: String) -> String {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return "/diary" }
+        guard !normalized.isEmpty else { return "/api/v1/diary" }
 
         var components = URLComponents()
         components.queryItems = [
             URLQueryItem(name: "q", value: normalized)
         ]
-        return "/diary?\(components.percentEncodedQuery ?? "")"
+        return "/api/v1/diary?\(components.percentEncodedQuery ?? "")"
     }
 }
 
