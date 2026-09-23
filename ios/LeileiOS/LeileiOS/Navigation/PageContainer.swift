@@ -23,9 +23,7 @@ struct PageContainer: View {
                 ToolbarItem(placement: .topBarLeading) {
                     if let onMenu {
                         Button(action: onMenu) {
-                            Image(systemName: "line.3.horizontal")
-                                .font(.system(size: 17, weight: .medium))
-                                .accessibilityLabel("Menu")
+                            CompactMenuIcon()
                         }
                         .reportingFloatingControlCenter(FloatingControlCenter.menu)
                     }
@@ -53,5 +51,24 @@ struct PageContainer: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+    }
+}
+
+
+private struct CompactMenuIcon: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            line(width: 17)
+            line(width: 17)
+            line(width: 10)
+        }
+        .frame(width: 17, height: 14, alignment: .leading)
+        .accessibilityLabel("Menu")
+    }
+
+    private func line(width: CGFloat) -> some View {
+        Capsule()
+            .fill(Color.primary)
+            .frame(width: width, height: 2)
     }
 }
