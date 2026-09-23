@@ -65,7 +65,12 @@ class TodoToolService {
     this.writeCalls.push(input);
     return {
       paper: L_PAPER,
-      metadata: { committed: true, idempotent_replay: false },
+      outcome: "applied",
+      entity_type: "todo_paper",
+      entity_id: `${DATE}:L`,
+      revision: L_PAPER.revision,
+      detail_tool: "read_todo_day",
+      detail_arguments: { date: DATE, author: "L" },
     };
   }
 
@@ -383,7 +388,12 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
     success: true,
     data: {
       paper: L_PAPER,
-      metadata: { committed: true, idempotent_replay: false },
+      outcome: "applied",
+      entity_type: "todo_paper",
+      entity_id: `${DATE}:L`,
+      revision: L_PAPER.revision,
+      detail_tool: "read_todo_day",
+      detail_arguments: { date: DATE, author: "L" },
     },
   });
   assert.deepEqual((fixture.todo as TodoToolService).writeCalls, [{
@@ -654,7 +664,12 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
     success: true,
     data: {
       paper: L_PAPER,
-      metadata: { committed: true, idempotent_replay: false },
+      outcome: "applied",
+      entity_type: "todo_paper",
+      entity_id: `${DATE}:L`,
+      revision: L_PAPER.revision,
+      detail_tool: "read_todo_day",
+      detail_arguments: { date: DATE, author: "L" },
     },
   });
   assert.deepEqual(fixture.todo.readCalls, [{ userId: USER_ID, date: DATE }]);
