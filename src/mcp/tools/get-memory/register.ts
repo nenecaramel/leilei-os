@@ -13,6 +13,7 @@ import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import {
   boundedReadInputSchemaFields,
   boundedReadMetadataSchema,
+  formatMcpBoundedReadHint,
   McpBoundedReadCursorError,
   sliceMcpBoundedContent,
 } from "../bounded-read.js";
@@ -118,6 +119,7 @@ export function registerGetMemoryTool(
               type: "text",
               text: joinMcpContentLines([
                 `Memory ${quoteMcpText(data.key)} (${data.category}) [id=${data.id}; ${data.lifecycle_status}]`,
+                formatMcpBoundedReadHint(window.metadata),
                 data.content || "(empty)",
               ]),
             },
