@@ -1,5 +1,4 @@
 import "dotenv/config";
-import assert from "node:assert/strict";
 import {
   NativeLiveMacDaemonLoop,
 } from "../src/domains/bridge/native-live-mac-daemon-loop.js";
@@ -15,27 +14,25 @@ import {
 import {
   LocalE5BreathSemanticScorer,
 } from "../src/domains/runtime/local-e5-embedding.js";
+import {
+  resolveNativeLiveMacDaemonConfig,
+} from "../src/domains/bridge/native-live-mac-daemon-config.js";
 
 const { HeadlessClaudeTransport } = await import(
   "../tools/claude-bridge/src/headless-claude-transport.mjs"
 );
 
-const relayBaseUrl = process.env.LEILEI_NATIVE_LIVE_RELAY_URL;
-const relayToken = process.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN;
-const listenerInstanceId = process.env.LEILEI_NATIVE_LIVE_LISTENER_ID;
-
-assert.ok(relayBaseUrl, "LEILEI_NATIVE_LIVE_RELAY_URL is required");
-assert.ok(relayToken, "LEILEI_NATIVE_LIVE_RELAY_TOKEN is required");
-assert.ok(listenerInstanceId, "LEILEI_NATIVE_LIVE_LISTENER_ID is required");
-assert.match(
+const {
+  relayBaseUrl,
+  relayToken,
   listenerInstanceId,
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
-  "LEILEI_NATIVE_LIVE_LISTENER_ID must be a UUID",
-);
-assert.ok(
-  !process.env.ANTHROPIC_API_KEY,
-  "ANTHROPIC_API_KEY must be unset; native live uses Claude Code subscription auth",
-);
+} = resolveNativeLiveMacDaemonConfig(process.env);
+
+if (process.env.ANTHROPIC_API_KEY) {
+  throw new Error(
+    "ANTHROPIC_API_KEY must be unset; native live uses Claude Code subscription auth.",
+  );
+}
 
 const relay = new NativeLiveMacHttpRelayClient(
   relayBaseUrl,
