@@ -12,6 +12,7 @@ import {
 import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 
 const todoEntryInputSchema = z.object({
   id: z.string(),
@@ -49,10 +50,7 @@ const writeTodoPaperInputSchema = z.object({
 
 const writeTodoPaperDataSchema = z.object({
   paper: todoPaperSchema,
-  metadata: z.object({
-    committed: z.boolean(),
-    idempotent_replay: z.boolean(),
-  }),
+  ...mcpMutationReceiptFields,
 });
 
 const writeTodoPaperOutputSchema = z.object({
@@ -119,7 +117,25 @@ export function registerWriteTodoPaperTool(
                 `Todo ${data.paper.date} author=${data.paper.author} revision=${data.paper.revision}; entries=${data.paper.entries.length}.`,
               ]),
             }],
-            structuredContent: { success: true as const, data },
+            structuredContent: {
+              success: true as const,
+              data: {
+                paper: data.paper,
+                ...mcpMutationReceipt({
+                  outcome: mcpMutationOutcomeFromReplay(
+                    data.metadata.idempotent_replay,
+                  ),
+                  entity_type: "todo_paper",
+                  entity_id: `${data.paper.date}:${data.paper.author}`,
+                  revision: data.paper.revision,
+                  detail_tool: "read_todo_day",
+                  detail_arguments: {
+                    date: data.paper.date,
+                    author: data.paper.author,
+                  },
+                }),
+              },
+            },
           };
         },
         mapError: toSafeWriteTodoPaperError,
