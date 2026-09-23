@@ -50,8 +50,9 @@ struct SettingsExportContent: View {
 
             if let errorMessage {
                 Section {
-                    Text(errorMessage)
-                        .foregroundStyle(.secondary)
+                    SettingsSectionState(
+                        title: errorMessage
+                    )
                 }
             }
         }
