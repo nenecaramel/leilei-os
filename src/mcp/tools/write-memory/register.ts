@@ -10,6 +10,7 @@ import { MEMORY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
@@ -168,6 +169,17 @@ function toSafeToolError(error: unknown) {
         : error.code === "MEMORY_KEY_CONFLICT"
           ? "A Memory record already uses this key."
           : "The Memory request is invalid.";
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, text);
   }
   console.error("write_memory failed", error instanceof Error ? error.name : "UnknownError");
