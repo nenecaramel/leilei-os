@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import { DiaryDomainError, type AuthenticatedDiaryContext, type DiaryEntryResult, type UpdateMcpDiaryInput } from "../../../domains/diary/diary-service.js";
 import { DIARY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
@@ -19,7 +20,7 @@ const updateDiaryInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   mood: z.string().min(1).max(50).nullable().optional(),
-  author: contentAuthorSchema.optional(),
+  author: contentAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
 }).strict();
 
 const updateDiaryDataSchema = z.object({
@@ -47,7 +48,7 @@ export type UpdateDiaryToolDependencies = { diaryService: UpdateDiaryToolService
 export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateDiaryToolDependencies): void {
   server.registerTool("update_diary", {
     title: "Update one Diary entry",
-    description: "Update only explicitly supplied fields on one active Diary entry. If the outcome is uncertain, perform a readback with get_diary before deciding what to do next; never blindly retry.",
+    description: DIARY_DOMAIN_BOUNDARY + " Update only explicitly supplied fields on one active Diary entry. If the outcome is uncertain, perform a readback with get_diary before deciding what to do next; never blindly retry.",
     inputSchema: updateDiaryInputSchema,
     outputSchema: updateDiaryOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
