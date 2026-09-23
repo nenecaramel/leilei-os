@@ -96,7 +96,7 @@ const listOutputSchema = z.object({
 
 const updateInputSchema = z.object({
   id: idSchema.describe("Exact Diary comment id."),
-  expected_revision: z.number().int().min(1).describe("Revision from the latest get_diary_comment, list_diary_comments, or get_diary read."),
+  expected_revision: z.number().int().min(1).describe("Revision from the latest get_diary_comment or list_diary_comments read."),
   content: commentContentSchema.describe("Complete replacement comment text. Author cannot be changed."),
 }).strict();
 
