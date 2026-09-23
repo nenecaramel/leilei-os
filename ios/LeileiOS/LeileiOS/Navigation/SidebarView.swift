@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SidebarView: View {
     @Binding var selectedPage: AppPage
@@ -95,13 +96,50 @@ struct FloatingGlassButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 17, weight: .medium))
+        FloatingUIKitGlassButton(
+            symbol: symbol,
+            accessibilityLabel: accessibilityLabel,
+            action: action
+        )
+        .frame(width: 44, height: 44)
+    }
+}
+
+private struct FloatingUIKitGlassButton: UIViewRepresentable {
+    let symbol: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .system)
+        let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+        var configuration = UIButton.Configuration.glass()
+        configuration.image = UIImage(systemName: symbol)
+        configuration.contentInsets = .zero
+        configuration.cornerStyle = .capsule
+        configuration.preferredSymbolConfigurationForImage = symbolConfiguration
+        button.configuration = configuration
+        button.accessibilityLabel = accessibilityLabel
+        button.addAction(UIAction { _ in
+            context.coordinator.parent.action()
+        }, for: .touchUpInside)
+        return button
+    }
+
+    func updateUIView(_ button: UIButton, context: Context) {
+        context.coordinator.parent = self
+        button.accessibilityLabel = accessibilityLabel
+    }
+
+    final class Coordinator {
+        var parent: FloatingUIKitGlassButton
+
+        init(_ parent: FloatingUIKitGlassButton) {
+            self.parent = parent
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
-        .accessibilityLabel(accessibilityLabel)
     }
 }
