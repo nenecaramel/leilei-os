@@ -48,7 +48,7 @@ export type UpdateDiaryToolDependencies = { diaryService: UpdateDiaryToolService
 export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateDiaryToolDependencies): void {
   server.registerTool("update_diary", {
     title: "Update one Diary entry",
-    description: DIARY_DOMAIN_BOUNDARY + " Update only explicitly supplied fields on one active Diary entry. If the outcome is uncertain, perform a readback with get_diary before deciding what to do next; never blindly retry.",
+    description: DIARY_DOMAIN_BOUNDARY + " Update only supplied fields on one active Diary entry. If outcome is uncertain, read get_diary before retrying.",
     inputSchema: updateDiaryInputSchema,
     outputSchema: updateDiaryOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
