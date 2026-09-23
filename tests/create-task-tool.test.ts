@@ -5,7 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type {
   AuthenticatedTaskContext,
   CreateTaskInput,
-  CreateTaskResult,
+  CreateTaskIdempotentResult,
 } from "../src/domains/task/task-service.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
 import {
@@ -26,7 +26,7 @@ class MockTaskToolService {
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
     idempotencyKey: string,
-  ): Promise<CreateTaskResult> {
+  ): Promise<CreateTaskIdempotentResult> {
     this.calls.push({ context, input, idempotencyKey });
 
     return {
