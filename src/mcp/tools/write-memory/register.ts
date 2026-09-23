@@ -79,7 +79,7 @@ export function registerWriteMemoryTool(
     {
       title: "Write a confirmed Memory record",
       description:
-        "Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. The success result is a compact receipt; call get_memory with its returned detail_arguments for authoritative readback. For an archived idempotent replay, use get_memory with scope=archived; do not assume the active scope.",
+        MEMORY_DOMAIN_BOUNDARY + " Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. The success result is a compact receipt; call get_memory with its returned detail_arguments for authoritative readback. For an archived idempotent replay, use get_memory with scope=archived; do not assume the active scope.",
       inputSchema: writeMemoryInputSchema,
       outputSchema: writeMemoryOutputSchema,
       annotations: {
