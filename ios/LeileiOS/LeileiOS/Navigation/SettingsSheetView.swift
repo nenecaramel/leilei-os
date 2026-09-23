@@ -3,20 +3,16 @@ import UIKit
 import UserNotifications
 
 struct SettingsSheetView: View {
-    let isPresented: Bool
-    let onDismiss: () -> Void
     let dataService: any SettingsDataService
     @ObservedObject var appModel: AppModel
+
+    @Environment(\.dismiss) private var dismiss
     @State private var path: [SettingsDetailPage] = []
 
     init(
-        isPresented: Bool,
-        onDismiss: @escaping () -> Void,
         appModel: AppModel,
         dataService: any SettingsDataService = UnavailableSettingsDataService()
     ) {
-        self.isPresented = isPresented
-        self.onDismiss = onDismiss
         self.appModel = appModel
         self.dataService = dataService
     }
@@ -47,7 +43,9 @@ struct SettingsSheetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(action: onDismiss) {
+                    Button {
+                        dismiss()
+                    } label: {
                         Image(systemName: "xmark")
                     }
                     .accessibilityLabel("Close Settings")
