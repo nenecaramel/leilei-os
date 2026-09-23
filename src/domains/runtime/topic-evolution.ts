@@ -170,8 +170,19 @@ export function readTopicEvolution(
     throw new Error("Topic reinforcement sources are invalid.");
   }
 
+  const dormantAt =
+    value.dormantAt === null
+      ? null
+      : normalizeIso(value.dormantAt, "dormantAt");
+  if (value.phase === "dormant" && dormantAt === null) {
+    throw new Error("Dormant Topic requires dormantAt.");
+  }
+  if (value.phase === "active" && dormantAt !== null) {
+    throw new Error("Active Topic must not retain dormantAt.");
+  }
+
   return {
-    phase: "active",
+    phase: value.phase,
     role: value.role,
     threadKey: requireString(value.threadKey, "threadKey"),
     anchorStateId: requireString(value.anchorStateId, "anchorStateId"),
@@ -180,10 +191,7 @@ export function readTopicEvolution(
     lastEvolvedAt: normalizeIso(value.lastEvolvedAt, "lastEvolvedAt"),
     lastReinforcedAt:
       normalizeIso(value.lastReinforcedAt, "lastReinforcedAt"),
-    dormantAt:
-      value.dormantAt === null
-        ? null
-        : normalizeIso(value.dormantAt, "dormantAt"),
+    dormantAt,
   };
 }
 
@@ -248,11 +256,7 @@ function evaluateThread(
 
   const uniqueSources = new Map<string, TopicEvolutionCandidate>();
   for (const candidate of candidates) {
-    const prior = uniqueSources.get(candidate.sourceId);
-    if (
-      !prior
-      || Date.parse(candidate.createdAt) > Date.parse(prior.createdAt)
-    ) {
+    if (!uniqueSources.has(candidate.sourceId)) {
       uniqueSources.set(candidate.sourceId, candidate);
     }
   }
