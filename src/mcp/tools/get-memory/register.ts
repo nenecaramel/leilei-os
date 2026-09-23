@@ -81,7 +81,7 @@ export function registerGetMemoryTool(
     {
       title: "Get one Memory",
       description:
-        MEMORY_DOMAIN_BOUNDARY + " Read one authenticated Memory by exact ID using a bounded authoritative content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id/scope. A cursor becomes invalid if the Memory changes. This is not the primary discovery tool.",
+        MEMORY_DOMAIN_BOUNDARY + " Read one exact ID with bounded authoritative content. max_chars defaults to 12000 code points; if truncated, continue with next_cursor and the same id/scope. The cursor expires when Memory changes. Not for discovery.",
       inputSchema: getMemoryInputSchema,
       outputSchema: getMemoryOutputSchema,
       annotations: {
