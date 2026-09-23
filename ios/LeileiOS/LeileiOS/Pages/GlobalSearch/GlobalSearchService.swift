@@ -1,28 +1,22 @@
 import Foundation
 
 enum GlobalSearchModule: String, CaseIterable, Identifiable, Hashable {
-    case memory
     case diary
-    case task
     case todo
     case universe
-    case sharedPaper = "shared_paper"
     case conversation
 
     static let defaultModules: Set<GlobalSearchModule> = [
-        .memory, .diary, .task, .todo, .universe, .sharedPaper,
+        .diary, .todo, .universe,
     ]
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .memory: "Memory"
         case .diary: "Diary"
-        case .task: "Task"
         case .todo: "Todo"
         case .universe: "Universe"
-        case .sharedPaper: "Shared Paper"
         case .conversation: "Conversation"
         }
     }
