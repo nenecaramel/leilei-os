@@ -150,7 +150,8 @@ test("search_memory injects identity and forces updated ordering without source"
       categories: ["project"],
       tag: "MCP",
       ordering: "updated_desc",
-      limit: 12,
+      limit: 13,
+      offset: 0,
     },
   ]);
   assert.equal("includeSource" in service.readCalls[0], false);
@@ -170,7 +171,7 @@ test("search_memory injects identity and forces updated ordering without source"
           detail_arguments: { id: MEMORY_ID, scope: "active" },
         },
       ],
-      metadata: { count: 1 },
+      metadata: { count: 1, returned: 1, has_more: false, next_cursor: null },
     },
   });
   assert.equal(
@@ -392,7 +393,7 @@ test("both new tools fail safely without authenticated MCP context", async (t) =
   assert.equal(service.detailCalls.length, 0);
 });
 
-test("legacy read_memory contract and default ordering remain unchanged", async (t) => {
+test("read_memory preserves default ordering while adding pagination", async (t) => {
   const service = new MockMemoryReadService();
   const { client, server } = await connect(service);
   t.after(async () => {
@@ -414,6 +415,8 @@ test("legacy read_memory contract and default ordering remain unchanged", async 
       userId: USER_ID,
       categories: ["project"],
       keys: ["leilei-os"],
+      limit: 51,
+      offset: 0,
     },
   ]);
   assert.deepEqual(result.structuredContent, {
@@ -433,7 +436,7 @@ test("legacy read_memory contract and default ordering remain unchanged", async 
           detail_arguments: { id: MEMORY_ID, scope: "active" },
         },
       ],
-      metadata: { count: 1 },
+      metadata: { count: 1, returned: 1, has_more: false, next_cursor: null },
     },
   });
 });
