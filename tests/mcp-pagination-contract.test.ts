@@ -15,8 +15,8 @@ test("opaque MCP cursors round-trip offsets and reject mismatched request contex
     rows: ["a", "b", "c"],
     pageSize: 2,
     offset: 0,
-    tool: "search_memory",
-    context: { query: "memory", category: "project" },
+    tool: "search_diary",
+    context: { query: "diary", date: "2026-09-23" },
   });
   assert.deepEqual(first.items, ["a", "b"]);
   assert.equal(first.metadata.returned, 2);
@@ -25,24 +25,24 @@ test("opaque MCP cursors round-trip offsets and reject mismatched request contex
 
   const offset = decodeMcpPaginationCursor(
     first.metadata.next_cursor ?? undefined,
-    "search_memory",
-    { query: "memory", category: "project" },
+    "search_diary",
+    { query: "diary", date: "2026-09-23" },
   );
   assert.equal(offset, 2);
 
   assert.throws(
     () => decodeMcpPaginationCursor(
       first.metadata.next_cursor ?? undefined,
-      "search_memory",
-      { query: "different", category: "project" },
+      "search_diary",
+      { query: "different", date: "2026-09-23" },
     ),
     McpPaginationCursorError,
   );
   assert.throws(
     () => decodeMcpPaginationCursor(
       first.metadata.next_cursor ?? undefined,
-      "search_diary",
-      { query: "memory", category: "project" },
+      "search_todo",
+      { query: "diary", date: "2026-09-23" },
     ),
     McpPaginationCursorError,
   );
