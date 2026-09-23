@@ -172,6 +172,57 @@ test("Shared Paper detail text exposes revision and authors before canonical con
   });
 });
 
+test("get_shared_paper continues bounded content and rejects a stale revision cursor", async (t) => {
+  let revision = 3;
+  const fixture = await connect(makeService({
+    getPaper: async () => ({
+      ...paper,
+      revision,
+      content: "甲😀乙丙丁",
+    }),
+  }));
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const first = await fixture.client.callTool({
+    name: "get_shared_paper",
+    arguments: { id, max_chars: 2 },
+  });
+  const firstData = (first.structuredContent as {
+    data: {
+      paper: { content: string };
+      content_metadata: { next_cursor: string | null; truncated: boolean };
+    };
+  }).data;
+  assert.equal(firstData.paper.content, "甲😀");
+  assert.equal(firstData.content_metadata.truncated, true);
+  assert.ok(firstData.content_metadata.next_cursor);
+
+  const second = await fixture.client.callTool({
+    name: "get_shared_paper",
+    arguments: {
+      id,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(
+    (second.structuredContent as { data: { paper: { content: string } } }).data.paper.content,
+    "乙丙",
+  );
+
+  revision = 4;
+  const stale = await fixture.client.callTool({
+    name: "get_shared_paper",
+    arguments: {
+      id,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(stale.isError, true);
+  assert.match(JSON.stringify(stale), /cursor is invalid or stale/i);
+});
+
 test("Shared Paper edit history text exposes ordered author and revision summaries", async (t) => {
   const edits: SharedPaperEdit[] = [
     { ...edit, id: "00000000-0000-4000-8000-000000000003", author: "C", baseRevision: 2, revision: 3, deletedText: "updated", insertedText: "final", createdAt: new Date("2026-01-03T00:00:00.000Z") },
