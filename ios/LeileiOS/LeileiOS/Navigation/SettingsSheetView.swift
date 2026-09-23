@@ -10,6 +10,46 @@ extension Color {
     )
 }
 
+struct SettingsSectionState: View {
+    let title: String
+    var message: String? = nil
+    var actionTitle: String? = nil
+    var isLoading = false
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+
+                Spacer()
+
+                if isLoading {
+                    ProgressView()
+                }
+            }
+
+            if let message {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let actionTitle,
+               let action {
+                Button(actionTitle, action: action)
+                    .font(.subheadline)
+            }
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: 44,
+            alignment: .leading
+        )
+        .padding(.vertical, 2)
+    }
+}
+
 struct SettingsSheetView: View {
     let dataService: any SettingsDataService
     @ObservedObject var appModel: AppModel
