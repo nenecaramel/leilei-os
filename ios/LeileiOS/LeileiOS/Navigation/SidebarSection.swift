@@ -43,6 +43,7 @@ struct SidebarSection: View {
                                 .fill(.primary.opacity(0.05))
                                 .padding(.leading, selectedBackgroundLeadingOffset)
                                 .padding(.trailing, -2)
+                                .offset(y: 2)
                         }
                     }
                 }
