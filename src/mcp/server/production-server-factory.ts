@@ -26,6 +26,7 @@ import {
   type McpServerDependencies,
 } from "./create-server.js";
 import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
+import { registerProductionNotionTypedWriteTools } from "./register-notion-typed-writes.js";
 import { registerSentinelTools } from "../tools/sentinel/register.js";
 import { registerRenderThinkingBlockTool } from "../tools/render-thinking-block/register.js";
 import { registerRenderThinkingBlockResource } from "../tools/render-thinking-block/resource.js";
@@ -180,6 +181,13 @@ export function createProductionMcpSessionServerFactory(input: {
       toolExposure,
     );
     if (mcpToolSurfaceEnabled(toolExposure, "notion")) {
+      registerProductionNotionTypedWriteTools(
+        server,
+        userId,
+        activeUserAuthorization,
+      );
+    }
+    if (mcpToolSurfaceEnabled(toolExposure, "notion_advanced")) {
       registerProductionNotionExplicitWriteTools(
         server,
         userId,
