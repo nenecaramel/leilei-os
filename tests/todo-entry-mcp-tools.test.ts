@@ -323,6 +323,24 @@ test("Todo entry tools preserve bounded conflicts and sanitize internal failures
     });
     assert.equal(response.isError, true);
     assert.match(JSON.stringify(response), new RegExp(code));
+    if (code === "TODO_ENTRY_CONFLICT") {
+      assert.deepEqual(
+        (response.structuredContent as any).error,
+        {
+          code,
+          message: "The Todo entry changed. Read the current Todo day and retry with that entry's revision.",
+          retryable: false,
+          reason: "stale_revision",
+          current_revision: null,
+          recommended_tool: "read_todo_day",
+          recommended_arguments: { date: DATE, author: "L" },
+        },
+      );
+    }
+    if (code === "IDEMPOTENCY_CONFLICT") {
+      assert.equal((response.structuredContent as any).error.reason, "idempotency_conflict");
+      assert.equal((response.structuredContent as any).error.retryable, false);
+    }
     assert.doesNotMatch(JSON.stringify(response), /private stale|private missing|private idem|private SQL|todo text/i);
   }
 });
