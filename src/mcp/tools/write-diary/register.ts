@@ -67,16 +67,36 @@ export type WriteDiaryToolDependencies = {
   getAuthenticatedUserId: () => string;
 };
 
+const CREATE_DIARY_DESCRIPTION =
+  DIARY_DOMAIN_BOUNDARY + " Create one personal diary entry in Leilei OS. This is a persistent write operation. Supply an exact YYYY-MM-DD date and a stable idempotency key. The authenticated user and source are assigned by the server and cannot be selected by tool input.";
+
+export function registerCreateDiaryTool(
+  server: McpServer,
+  dependencies: WriteDiaryToolDependencies,
+): void {
+  registerDiaryCreateTool(server, dependencies, "create_diary", false);
+}
+
 export function registerWriteDiaryTool(
   server: McpServer,
   dependencies: WriteDiaryToolDependencies,
 ): void {
+  registerDiaryCreateTool(server, dependencies, "write_diary", true);
+}
+
+function registerDiaryCreateTool(
+  server: McpServer,
+  dependencies: WriteDiaryToolDependencies,
+  toolName: "create_diary" | "write_diary",
+  deprecated: boolean,
+): void {
   server.registerTool(
-    "write_diary",
+    toolName,
     {
-      title: "Write a personal diary entry",
-      description:
-        DIARY_DOMAIN_BOUNDARY + " Create one personal diary entry in Leilei OS. This is a persistent write operation. Supply an exact YYYY-MM-DD date and a stable idempotency key. The authenticated user and source are assigned by the server and cannot be selected by tool input.",
+      title: deprecated ? "Deprecated: create Diary" : "Create a personal diary entry",
+      description: deprecated
+        ? "DEPRECATED: use create_diary. " + CREATE_DIARY_DESCRIPTION
+        : CREATE_DIARY_DESCRIPTION,
       inputSchema: writeDiaryInputSchema,
       outputSchema: writeDiaryOutputSchema,
       annotations: {
@@ -88,7 +108,7 @@ export function registerWriteDiaryTool(
     },
     async ({ title, content, date, tags, mood, author, idempotency_key }) =>
       invokeMcpWrite({
-        toolName: "write_diary",
+        toolName,
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           const data = await dependencies.diaryService.createMcpDiary(
