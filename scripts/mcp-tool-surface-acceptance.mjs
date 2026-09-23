@@ -10,6 +10,7 @@ const steps = [
   ["typed Notion", ["test:mcp-typed-notion"]],
   ["mutation contract", ["test:mcp-mutation-contract"]],
   ["error recovery", ["test:mcp-error-recovery"]],
+  ["revision / idempotency", ["test:mcp-revision-idempotency"]],
   ["tool surface", ["test:mcp-tool-surface"]],
   ["native live minimal", ["test:native-live-minimal"]],
 ];
