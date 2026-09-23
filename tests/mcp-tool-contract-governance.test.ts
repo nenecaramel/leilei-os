@@ -110,11 +110,13 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
 
   const writeTodo = byName.get("write_todo_paper");
   assert.ok(writeTodo?.description);
-  for (const entryTool of ["append_todo_entry", "update_todo_entry", "delete_todo_entry"]) {
+  for (const entryTool of ["append_todo_entry", "append_todo_entries", "update_todo_entry", "delete_todo_entry"]) {
     assert.match(writeTodo.description, new RegExp(entryTool, "iu"));
     assert.ok(byName.has(entryTool), `${entryTool} must stay registered`);
   }
   assert.match(byName.get("append_todo_entry")?.description ?? "", /does not require the paper revision/iu);
+  assert.match(byName.get("append_todo_entries")?.description ?? "", /atomically/iu);
+  assert.match(byName.get("append_todo_entries")?.description ?? "", /one idempotency_key/iu);
   assert.match(byName.get("update_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
   assert.match(byName.get("delete_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
 });

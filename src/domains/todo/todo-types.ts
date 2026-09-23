@@ -75,6 +75,25 @@ export type AppendTodoEntryIdempotentlyInput = {
   requestHash: string;
 };
 
+export type AppendTodoEntriesIdempotentlyInput = {
+  userId: string;
+  date: string;
+  author: ContentAuthor;
+  entries: Array<{ kind: TodoEntryKind; text: string }>;
+  idempotencyKey: string;
+  requestHash: string;
+};
+
+export type TodoEntriesMutationResult =
+  | {
+      outcome: "committed" | "replayed";
+      entries: TodoEntry[];
+      paperRevision: number;
+    }
+  | {
+      outcome: "idempotency_conflict" | "entry_not_found" | "entry_limit";
+    };
+
 export type UpdateTodoEntryIdempotentlyInput = {
   userId: string;
   date: string;
@@ -136,6 +155,9 @@ export interface TodoRepository {
   appendEntryIdempotently?(
     input: AppendTodoEntryIdempotentlyInput,
   ): Promise<TodoEntryMutationResult>;
+  appendEntriesIdempotently?(
+    input: AppendTodoEntriesIdempotentlyInput,
+  ): Promise<TodoEntriesMutationResult>;
   updateEntryIdempotently?(
     input: UpdateTodoEntryIdempotentlyInput,
   ): Promise<TodoEntryMutationResult>;

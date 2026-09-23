@@ -63,6 +63,7 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "search_diary",
     "list_tasks",
     "read_todo_day",
+    "append_todo_entries",
     "search_universe",
     "search_conversations",
     "list_shared_papers",

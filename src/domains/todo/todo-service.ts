@@ -128,6 +128,15 @@ export type TodoEntryMutationServiceResult = {
   };
 };
 
+export type TodoEntriesMutationServiceResult = {
+  entries: Array<TodoEntry & { outcome: "applied" | "replayed" }>;
+  paperRevision: number;
+  metadata: {
+    committed: boolean;
+    idempotent_replay: boolean;
+  };
+};
+
 export type TodoEntryDeleteServiceResult = {
   entryId: string;
   paperRevision: number;
@@ -304,6 +313,64 @@ export class TodoService {
     throw new Error("Unknown Todo entry append persistence outcome.");
   }
 
+  async appendEntriesIdempotently(input: {
+    userId: string;
+    date: unknown;
+    author: unknown;
+    entries: unknown;
+    idempotencyKey: string;
+  }): Promise<TodoEntriesMutationServiceResult> {
+    await this.requireActiveUser(input.userId);
+    const date = normalizeTodoDate(input.date);
+    const author = normalizeTodoAuthor(input.author);
+    const entries = normalizeTodoBatchEntries(input.entries);
+    const idempotencyKey = normalizeTodoIdempotencyKey(input.idempotencyKey);
+    if (!this.repository.appendEntriesIdempotently) {
+      throw new Error("Todo batch append persistence is unavailable.");
+    }
+    const result = await this.repository.appendEntriesIdempotently({
+      userId: input.userId,
+      date,
+      author,
+      entries,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({ date, author, entries }),
+    });
+    if (result.outcome === "committed" || result.outcome === "replayed") {
+      const entryOutcome = result.outcome === "committed" ? "applied" : "replayed";
+      return {
+        entries: result.entries.map((entry) => ({
+          ...entry,
+          outcome: entryOutcome,
+        })),
+        paperRevision: result.paperRevision,
+        metadata: {
+          committed: result.outcome === "committed",
+          idempotent_replay: result.outcome === "replayed",
+        },
+      };
+    }
+    if (result.outcome === "idempotency_conflict") {
+      throw new TodoServiceError(
+        "IDEMPOTENCY_CONFLICT",
+        "The idempotency key was already used for a different Todo entry append.",
+      );
+    }
+    if (result.outcome === "entry_limit") {
+      throw new TodoServiceError(
+        "TODO_ENTRY_LIMIT",
+        "The Todo batch would exceed the maximum number of entries.",
+      );
+    }
+    if (result.outcome === "entry_not_found") {
+      throw new TodoServiceError(
+        "TODO_ENTRY_NOT_FOUND",
+        "One or more replayed Todo entries are no longer available.",
+      );
+    }
+    throw new Error("Unknown Todo batch append persistence outcome.");
+  }
+
   async updateEntryIdempotently(input: {
     userId: string;
     date: unknown;
@@ -453,6 +520,33 @@ function normalizeTodoEntryText(value: unknown): string {
     throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry text is invalid.");
   }
   return normalized;
+}
+
+function normalizeTodoBatchEntries(
+  value: unknown,
+): Array<{ kind: TodoEntry["kind"]; text: string }> {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new TodoServiceError(
+      "TODO_ENTRY_INVALID",
+      "Todo batch must contain at least one entry.",
+    );
+  }
+  if (value.length > MAX_TODO_ENTRIES) {
+    throw new TodoServiceError(
+      "TODO_ENTRY_LIMIT",
+      "Todo batch exceeds the maximum number of entries.",
+    );
+  }
+  return value.map((row) => {
+    if (!row || typeof row !== "object") {
+      throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo batch entry is invalid.");
+    }
+    const candidate = row as Record<string, unknown>;
+    return {
+      kind: normalizeTodoKind(candidate.kind),
+      text: normalizeTodoEntryText(candidate.text),
+    };
+  });
 }
 
 function normalizeTodoEntryRevision(value: unknown): number {

@@ -7,12 +7,14 @@ import {
 } from "../../../domains/mcp-write/mcp-write-idempotency.js";
 import {
   TodoServiceError,
+  type TodoEntriesMutationServiceResult,
   type TodoEntryDeleteServiceResult,
   type TodoEntryMutationServiceResult,
 } from "../../../domains/todo/todo-service.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import { invokeMcpWrite } from "../write-context.js";
+import { MAX_TODO_ENTRIES } from "../../../domains/resource-limits.js";
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
 const todoKindSchema = z.enum(["pending", "completed", "record"]);
@@ -30,6 +32,18 @@ const appendInputSchema = z.object({
   author: todoAuthorSchema,
   kind: todoKindSchema,
   text: entryTextSchema,
+  idempotency_key: idempotencyKeySchema,
+}).strict();
+
+const appendBatchInputSchema = z.object({
+  date: dateSchema,
+  author: todoAuthorSchema,
+  entries: z.array(
+    z.object({
+      kind: todoKindSchema,
+      text: entryTextSchema,
+    }).strict(),
+  ).min(1).max(MAX_TODO_ENTRIES),
   idempotency_key: idempotencyKeySchema,
 }).strict();
 
@@ -76,6 +90,28 @@ const mutationOutputSchema = z.object({
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
+const batchMutationOutputSchema = z.object({
+  success: z.boolean(),
+  data: z.object({
+    entries: z.array(
+      entrySchema.extend({
+        outcome: z.enum(["applied", "replayed"]),
+      }).strict(),
+    ).min(1).max(MAX_TODO_ENTRIES),
+    paper_revision: z.number().int().min(1),
+    metadata: z.object({
+      committed: z.boolean(),
+      idempotent_replay: z.boolean(),
+    }).strict(),
+    detail_tool: z.literal("read_todo_day"),
+    detail_arguments: z.object({
+      date: dateSchema,
+      author: todoAuthorSchema,
+    }).strict(),
+  }).optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
+
 const deleteOutputSchema = z.object({
   success: z.boolean(),
   data: z.object({
@@ -104,6 +140,13 @@ export interface TodoEntryWriteToolService {
     text: unknown;
     idempotencyKey: string;
   }): Promise<TodoEntryMutationServiceResult>;
+  appendEntriesIdempotently(input: {
+    userId: string;
+    date: unknown;
+    author: unknown;
+    entries: unknown;
+    idempotencyKey: string;
+  }): Promise<TodoEntriesMutationServiceResult>;
   updateEntryIdempotently(input: {
     userId: string;
     date: unknown;
@@ -133,6 +176,34 @@ export function registerTodoEntryWriteTools(
   server: McpServer,
   dependencies: TodoEntryWriteToolDependencies,
 ): void {
+  server.registerTool(
+    "append_todo_entries",
+    {
+      title: "Append multiple Todo entries",
+      description:
+        "Append 1-200 entries atomically to one exact L, G, or C Todo paper in a single model operation. The whole batch shares one idempotency_key and either commits together or not at all. The server creates entry ids/revision=1, returns each entry's id/revision/outcome, and does not require the paper revision.",
+      inputSchema: appendBatchInputSchema,
+      outputSchema: batchMutationOutputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ date, author, entries, idempotency_key }) =>
+      invokeMcpWrite({
+        toolName: "append_todo_entries",
+        getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
+        operation: async ({ userId }) => {
+          const result = await dependencies.todoService.appendEntriesIdempotently({
+            userId,
+            date,
+            author,
+            entries,
+            idempotencyKey: idempotency_key,
+          });
+          return batchMutationSuccess(date, author, result);
+        },
+        mapError: toSafeTodoEntryWriteError,
+      }),
+  );
+
   server.registerTool(
     "append_todo_entry",
     {
@@ -243,6 +314,38 @@ export function registerTodoEntryWriteTools(
         mapError: toSafeTodoEntryWriteError,
       }),
   );
+}
+
+function batchMutationSuccess(
+  date: string,
+  author: "L" | "G" | "C",
+  result: TodoEntriesMutationServiceResult,
+) {
+  const detailArguments = { date, author };
+  const data = {
+    entries: result.entries.map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      text: entry.text,
+      revision: entry.revision ?? 1,
+      outcome: entry.outcome,
+    })),
+    paper_revision: result.paperRevision,
+    metadata: result.metadata,
+    detail_tool: "read_todo_day" as const,
+    detail_arguments: detailArguments,
+  };
+  return {
+    content: [{
+      type: "text" as const,
+      text: joinMcpContentLines([
+        `Todo batch append ${result.metadata.idempotent_replay ? "replayed" : "committed"}: ${data.entries.length} entries.`,
+        `paper_revision=${result.paperRevision}`,
+        formatMcpDetailPointer("read_todo_day", detailArguments),
+      ]),
+    }],
+    structuredContent: { success: true as const, data },
+  };
 }
 
 function mutationSuccess(
