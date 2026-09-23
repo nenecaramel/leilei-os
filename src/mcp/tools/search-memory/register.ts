@@ -106,7 +106,7 @@ export function registerSearchMemoryTool(
     {
       title: "Search Leilei's memory",
       description:
-        "Search authorized active Memory records by text, category, and exact tag. Use read_memory for category or exact-key browsing without a query. Results are compact and bounded; call get_memory for the complete content of a selected record. When has_more is true, continue by passing next_cursor back as cursor with the same search filters.",
+        "Search authorized active Memory records by text, category, and exact tag. Use read_memory for category or exact-key browsing without a query. Results are compact and bounded; call get_memory for authoritative bounded detail, continuing with its content cursor when needed. When has_more is true, continue this result set by passing next_cursor back as cursor with the same search filters.",
       inputSchema: searchMemoryInputSchema,
       outputSchema: searchMemoryOutputSchema,
       annotations: {
