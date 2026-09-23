@@ -43,4 +43,10 @@ test("read_notion_page exposes page reference fields through tools/list", async 
     "page_url" in properties,
     `read_notion_page should expose page_url in tools/list, got ${JSON.stringify(tool.inputSchema)}`,
   );
+  assert.ok("max_chars" in properties);
+  assert.ok("cursor" in properties);
+  assert.equal(
+    (properties.max_chars as { default?: number }).default,
+    12_000,
+  );
 });
