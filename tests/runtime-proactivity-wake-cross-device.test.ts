@@ -354,3 +354,59 @@ test("completed model output is discarded to quiet when backend activity changed
   );
   assert.ok(job.consumedAt);
 });
+
+
+test("effect materialization happens before background model job consumption and retries from durable decision", async () => {
+  const wakes = new WakeMemory();
+  const queue = new QueueMemory();
+  let materializeCalls = 0;
+  const coordinator =
+    new ProactivityWakeCrossDeviceCoordinator(
+      queue as never,
+      wakes,
+      null,
+      new ProactivityWakeDecisionBuilder(
+        () => "2026-09-23T09:31:00.000Z",
+        () => "decision-effect",
+      ),
+      () => "2026-09-23T09:31:00.000Z",
+      {
+        async materialize() {
+          materializeCalls += 1;
+          if (materializeCalls === 1) {
+            throw new Error("simulated effect persistence failure");
+          }
+          return null;
+        },
+      },
+    );
+
+  await coordinator.start({
+    gate: baseGate(),
+    contactTarget: "conversation:c1",
+    context: {
+      version: 1,
+      contextManifestId: null,
+      capsule: "{}",
+    },
+  });
+
+  const job = queue.jobs[0]!;
+  job.status = "completed";
+  job.resultText =
+    '{"outcome":"contact_candidate","text":"candidate"}';
+
+  await assert.rejects(
+    () => coordinator.advanceNextForUser({ userId }),
+    /simulated effect persistence failure/,
+  );
+  assert.equal(wakes.record?.status, "decided");
+  assert.equal(job.consumedAt, null);
+  assert.equal(materializeCalls, 1);
+
+  const recovered =
+    await coordinator.advanceNextForUser({ userId });
+  assert.equal(recovered.outcome, "decided");
+  assert.equal(materializeCalls, 2);
+  assert.ok(job.consumedAt);
+});
