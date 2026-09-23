@@ -93,6 +93,8 @@ test("Shared Paper MCP schemas enforce Unicode code-point bounds with host-visib
   const byName = new Map(listed.tools.map((tool) => [tool.name, tool]));
   assert.equal((byName.get("list_shared_papers")?.inputSchema.properties?.scope as { default?: string }).default, "active");
   assert.equal((byName.get("search_shared_papers")?.inputSchema.properties?.scope as { default?: string }).default, "active");
+  assert.ok(byName.get("list_shared_papers")?.inputSchema.properties?.cursor);
+  assert.ok(byName.get("search_shared_papers")?.inputSchema.properties?.cursor);
   assert.equal((byName.get("create_shared_paper")?.inputSchema.properties?.title as { maxLength?: number }).maxLength, 400);
   assert.equal((byName.get("create_shared_paper")?.inputSchema.properties?.content as { maxLength?: number }).maxLength, 200_000);
   assert.equal((byName.get("search_shared_papers")?.inputSchema.properties?.query as { maxLength?: number }).maxLength, 400);
@@ -297,7 +299,11 @@ test("Shared Paper MCP defaults discovery scope to active and accepts archived s
   await fixture.client.callTool({ name: "list_shared_papers", arguments: {} });
   await fixture.client.callTool({ name: "search_shared_papers", arguments: { query: "shared", scope: "archived" } });
   assert.equal(received[0]?.scope, "active");
+  assert.equal(received[0]?.limit, 51);
+  assert.equal(received[0]?.offset, 0);
   assert.equal(received[1]?.scope, "archived");
+  assert.equal(received[1]?.limit, 51);
+  assert.equal(received[1]?.offset, 0);
 });
 
 test("Shared Paper MCP lifecycle tools return authoritative state and idempotent receipts", async (t) => {
