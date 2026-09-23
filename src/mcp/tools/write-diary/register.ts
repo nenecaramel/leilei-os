@@ -108,7 +108,7 @@ function registerDiaryCreateTool(
     },
     async ({ title, content, date, tags, mood, author, idempotency_key }) =>
       invokeMcpWrite({
-        toolName,
+        toolName: "write_diary",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           const data = await dependencies.diaryService.createMcpDiary(
