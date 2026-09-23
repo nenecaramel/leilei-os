@@ -79,7 +79,7 @@ test("Todo MCP exposes search_todo with compact entry pointers", async (t) => {
   const outputSchema = tool.outputSchema as { properties?: { data?: { properties?: { metadata?: { properties?: Record<string, unknown> } } } } };
   assert.ok(outputSchema.properties?.data?.properties?.metadata?.properties?.author);
   const response = await client.callTool({ name: "search_todo", arguments: { query: "计划" } });
-  assert.deepEqual(response.structuredContent, { success: true, data: { entries: [{ entry_id: rows[0]!.entryId, date: rows[0]!.date, author: rows[0]!.author, kind: rows[0]!.kind, text: rows[0]!.text, snippet: "Café 计划", detail_tool: "read_todo_day", detail_arguments: { date: rows[0]!.date } }], metadata: { count: 1, author: "C" } } });
+  assert.deepEqual(response.structuredContent, { success: true, data: { entries: [{ entry_id: rows[0]!.entryId, date: rows[0]!.date, author: rows[0]!.author, kind: rows[0]!.kind, text: rows[0]!.text, snippet: "Café 计划", detail_tool: "read_todo_day", detail_arguments: { date: rows[0]!.date } }], metadata: { count: 1, author: "C", returned: 1, has_more: false, next_cursor: null } } });
   const rejected = await client.callTool({ name: "search_todo", arguments: { query: "😀".repeat(201) } });
   assert.equal(rejected.isError, true);
 });
