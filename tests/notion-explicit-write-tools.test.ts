@@ -7,12 +7,13 @@ import {
   registerNotionExplicitWriteTools,
   type NotionExplicitWriteServiceContract,
 } from "../src/mcp/server/register-notion-explicit-writes.js";
+import { NotionExplicitWriteError } from "../src/domains/notion/notion-explicit-write-service.js";
 
 const PAGE_ID = "11111111-1111-4111-8111-111111111111";
 const COMMENT_ID = "22222222-2222-4222-8222-222222222222";
 const DISCUSSION_ID = "33333333-3333-4333-8333-333333333333";
 
-async function connect() {
+async function connect(overrides: Partial<NotionExplicitWriteServiceContract> = {}) {
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const result = (operation: string, targetId: string) => ({
     operation,
@@ -40,6 +41,7 @@ async function connect() {
       calls.push({ method: "replyComment", args: [pageId, discussionId, body] });
       return result("comment.reply", COMMENT_ID);
     },
+    ...overrides,
   };
 
   const server = new McpServer({ name: "notion-explicit-write-test", version: "1.0.0" });
@@ -98,6 +100,24 @@ test("Phase 8.6.2 registrar exposes only page and comment writes with frozen act
       "detail_arguments",
     ]) {
       assert.ok(field in dataProperties, `${tool.name} must expose ${field}`);
+    }
+
+    const errorProperties = (tool.outputSchema as {
+      properties?: {
+        error?: {
+          properties?: Record<string, unknown>;
+        };
+      };
+    }).properties?.error?.properties;
+    assert.ok(errorProperties, `${tool.name} must expose structured errors`);
+    for (const field of [
+      "retryable",
+      "reason",
+      "current_revision",
+      "recommended_tool",
+      "recommended_arguments",
+    ]) {
+      assert.ok(field in errorProperties, `${tool.name} error must expose ${field}`);
     }
   }
 });
@@ -167,6 +187,45 @@ test("minimal registrar routes allowed page and comment actions only", async (t)
   assert.equal(commentData.entity_type, "notion_comment");
   assert.equal(commentData.detail_tool, null);
   assert.equal(commentData.detail_arguments, null);
+});
+
+test("advanced Notion uncertain page writes point to authoritative page readback", async (t) => {
+  const fixture = await connect({
+    async updatePage() {
+      throw new NotionExplicitWriteError(
+        "UNCERTAIN_WRITE",
+        "private advanced transport uncertainty",
+      );
+    },
+  });
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const response = await fixture.client.callTool({
+    name: "write_notion_page",
+    arguments: {
+      action: "update",
+      page_id: PAGE_ID,
+      body: { properties: { Done: { checkbox: true } } },
+    },
+  });
+
+  assert.equal(response.isError, true);
+  assert.deepEqual(
+    (response.structuredContent as any).error,
+    {
+      code: "UNCERTAIN_WRITE",
+      message: "The Notion write outcome is uncertain. Fresh readback was attempted and the write was not retried.",
+      retryable: false,
+      reason: "uncertain_outcome",
+      current_revision: null,
+      recommended_tool: "read_notion_page",
+      recommended_arguments: { page_id: PAGE_ID },
+    },
+  );
+  assert.doesNotMatch(JSON.stringify(response), /private advanced transport uncertainty/);
 });
 
 test("destructive or non-native actions are rejected by the public tool schema", async (t) => {
