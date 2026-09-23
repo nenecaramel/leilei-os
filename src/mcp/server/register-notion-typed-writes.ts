@@ -19,6 +19,10 @@ import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../tools/error-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+} from "../tools/mutation-contract.js";
 
 const MAX_TYPED_PROPERTY_TEXT_CODE_POINTS = 20_000;
 const MAX_TYPED_COMMENT_CODE_POINTS = 2_000;
@@ -159,8 +163,7 @@ const receiptDataSchema = z.object({
   page_id: z.string().min(1),
   verified: z.literal(true),
   discussion_id: z.string().nullable().optional(),
-  detail_tool: z.literal("read_notion_page"),
-  detail_arguments: z.object({ page_id: z.string().min(1) }).strict(),
+  ...mcpMutationReceiptFields,
 }).strict();
 
 const receiptOutputSchema = z.object({
@@ -451,6 +454,7 @@ function pageReceipt(
   pageId: string,
   text: string,
 ) {
+  const isComment = result.operation.startsWith("comment.");
   const data = {
     operation: result.operation,
     target_id: result.target_id,
@@ -459,8 +463,14 @@ function pageReceipt(
     ...(typeof result.discussion_id === "string" || result.discussion_id === null
       ? { discussion_id: result.discussion_id }
       : {}),
-    detail_tool: "read_notion_page" as const,
-    detail_arguments: { page_id: pageId },
+    ...mcpMutationReceipt({
+      outcome: "applied",
+      entity_type: isComment ? "notion_comment" : "notion_page",
+      entity_id: result.target_id,
+      revision: null,
+      detail_tool: "read_notion_page",
+      detail_arguments: { page_id: pageId },
+    }),
   };
   return {
     content: [{
