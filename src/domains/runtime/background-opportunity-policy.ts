@@ -25,6 +25,7 @@ export type BackgroundOpportunityDecision = {
 export type BackgroundOpportunityPolicyConfig = {
   maintenancePulseIntervalMs: number;
   decayEnabled: boolean;
+  proactivityWakeEnabled: boolean;
   topicResurfaceMinIntervalMs: number | null;
 };
 
@@ -56,6 +57,11 @@ export const DEFAULT_BACKGROUND_TARGET_PLANS = {
   },
   topicResurface: {
     kind: "topic_resurface",
+    priority: "reflection",
+    cost: 1,
+  },
+  proactivityWake: {
+    kind: "proactivity_wake",
     priority: "reflection",
     cost: 1,
   },
@@ -109,6 +115,9 @@ export class BackgroundOpportunityPolicy {
             DEFAULT_BACKGROUND_TARGET_PLANS.thoughtEvolution,
             DEFAULT_BACKGROUND_TARGET_PLANS.driveEvolution,
             DEFAULT_BACKGROUND_TARGET_PLANS.topicLifecycle,
+            ...(this.config.proactivityWakeEnabled
+              ? [DEFAULT_BACKGROUND_TARGET_PLANS.proactivityWake]
+              : []),
           ],
         };
 

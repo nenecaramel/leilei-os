@@ -75,6 +75,7 @@ export function createBackgroundMaintenancePulse(options: {
     milliseconds: number,
   ) => TimerHandle;
   clearSchedule?: (handle: TimerHandle) => void;
+  afterCycle?: () => Promise<void> | void;
 }): BackgroundMaintenancePulse {
   const subjectId = options.subjectId.trim();
   if (!subjectId) {
@@ -124,21 +125,30 @@ export function createBackgroundMaintenancePulse(options: {
           (kind): kind is SubjectStateMaintenanceKind =>
             kind !== null,
         );
-      if (kinds.length === 0) return 0;
 
-      const userIds = await options.source.listUserIds({
-        subjectId,
-        limit: options.config.userLimit,
-      });
-      for (const userId of userIds) {
-        try {
-          options.maintenance.schedule({
-            userId,
-            kinds,
-          });
-        } catch {
-          // One user's maintenance opportunity cannot block later users.
+      let userIds: string[] = [];
+      if (kinds.length > 0) {
+        userIds = await options.source.listUserIds({
+          subjectId,
+          limit: options.config.userLimit,
+        });
+        for (const userId of userIds) {
+          try {
+            options.maintenance.schedule({
+              userId,
+              kinds,
+            });
+          } catch {
+            // One user's maintenance opportunity cannot block later users.
+          }
         }
+      }
+
+      try {
+        await options.afterCycle?.();
+      } catch {
+        // Optional opportunity producers are fail-soft and share this pulse
+        // only as cadence; they never turn Subject maintenance into failure.
       }
       return userIds.length;
     })();

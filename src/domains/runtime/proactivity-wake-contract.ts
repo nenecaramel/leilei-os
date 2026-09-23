@@ -11,6 +11,7 @@ export type ProactivityWakeBlockReason =
   | "replay"
   | "disabled"
   | "foreground_active"
+  | "activity_changed"
   | "effect_unresolved"
   | "quiet_window"
   | "cooldown";
@@ -61,6 +62,7 @@ export type ProactivityWakeDecision = {
     | "gate_replay"
     | "gate_disabled"
     | "gate_foreground_active"
+    | "gate_activity_changed"
     | "gate_effect_unresolved"
     | "gate_quiet_window"
     | "gate_cooldown"
@@ -82,8 +84,16 @@ export type ProactivityDeliberationDraft =
 export function evaluateProactivityWakeGate(
   input: ProactivityWakeGateInput,
 ): ProactivityWakeGateResult {
+  return evaluateProactivityWakeGateAt(input, input.offeredAt);
+}
+
+export function evaluateProactivityWakeGateAt(
+  input: ProactivityWakeGateInput,
+  evaluatedAt: string,
+): ProactivityWakeGateResult {
   normalizeIdentity(input);
-  const offeredAt = requireIso(input.offeredAt, "offeredAt");
+  requireIso(input.offeredAt, "offeredAt");
+  const evaluationTime = requireIso(evaluatedAt, "evaluatedAt");
 
   if (input.mode === "replay") {
     return {
@@ -121,7 +131,7 @@ export function evaluateProactivityWakeGate(
     input.quietUntil === null
       ? null
       : requireIso(input.quietUntil, "quietUntil");
-  if (quietUntil !== null && quietUntil > offeredAt) {
+  if (quietUntil !== null && quietUntil > evaluationTime) {
     return {
       outcome: "blocked",
       reason: "quiet_window",
@@ -133,7 +143,7 @@ export function evaluateProactivityWakeGate(
     input.nextEligibleAt === null
       ? null
       : requireIso(input.nextEligibleAt, "nextEligibleAt");
-  if (nextEligibleAt !== null && nextEligibleAt > offeredAt) {
+  if (nextEligibleAt !== null && nextEligibleAt > evaluationTime) {
     return {
       outcome: "blocked",
       reason: "cooldown",
@@ -231,6 +241,8 @@ export function proactivityGateReasonCode(
       return "gate_disabled";
     case "foreground_active":
       return "gate_foreground_active";
+    case "activity_changed":
+      return "gate_activity_changed";
     case "effect_unresolved":
       return "gate_effect_unresolved";
     case "quiet_window":

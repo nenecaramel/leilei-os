@@ -93,6 +93,13 @@ const baseEnvSchema = z.object({
     z.coerce.number().min(0).max(1).optional(),
   NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD:
     z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_PROACTIVITY_ENABLED: booleanEnv.optional(),
+  NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS:
+    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS:
+    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_PROACTIVITY_USER_LIMIT:
+    z.coerce.number().int().positive().max(1_000).optional(),
 });
 
 const mcpGovernanceEnvSchema = z.object({
@@ -282,6 +289,12 @@ export type MemoryDecayConfig = {
   archiveThreshold: number;
 };
 
+export type ProactivityWakeOpportunityConfig = {
+  minIdleMs: number;
+  cooldownMs: number;
+  userLimit: number;
+};
+
 export function getBackgroundMaintenancePulseConfig(
   environment: Pick<
     RuntimeEnv,
@@ -296,6 +309,47 @@ export function getBackgroundMaintenancePulseConfig(
     userLimit:
       environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT
       ?? 64,
+  };
+}
+
+export function getProactivityWakeOpportunityConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_PROACTIVITY_ENABLED"
+    | "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS"
+    | "NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS"
+    | "NATIVE_LIVE_PROACTIVITY_USER_LIMIT"
+  >,
+): ProactivityWakeOpportunityConfig | undefined {
+  const enabled = environment.NATIVE_LIVE_PROACTIVITY_ENABLED;
+  const values = [
+    environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS,
+    environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS,
+    environment.NATIVE_LIVE_PROACTIVITY_USER_LIMIT,
+  ];
+
+  if (enabled !== true) {
+    if (values.some((value) => value !== undefined)) {
+      throw new Error(
+        "NATIVE_LIVE_PROACTIVITY_ENABLED=true is required when Proactivity policy values are configured.",
+      );
+    }
+    return undefined;
+  }
+
+  if (values.some((value) => value === undefined)) {
+    throw new Error(
+      "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS, NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS, and NATIVE_LIVE_PROACTIVITY_USER_LIMIT are required when Proactivity is enabled.",
+    );
+  }
+
+  return {
+    minIdleMs:
+      environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS! * 1_000,
+    cooldownMs:
+      environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS! * 1_000,
+    userLimit:
+      environment.NATIVE_LIVE_PROACTIVITY_USER_LIMIT!,
   };
 }
 

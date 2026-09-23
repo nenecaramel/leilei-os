@@ -10,6 +10,7 @@ import {
 } from "./claude-code-proactivity-wake-model.js";
 import {
   evaluateProactivityWakeGate,
+  evaluateProactivityWakeGateAt,
   type ProactivityWakeDecision,
   type ProactivityWakeGateInput,
 } from "./proactivity-wake-contract.js";
@@ -19,6 +20,7 @@ import {
 import {
   normalizeProactivityWakeContext,
   type ProactivityWakeContextSnapshot,
+  type ProactivityWakeGateRevalidator,
   type ProactivityWakePort,
   type ProactivityWakeRecord,
 } from "./proactivity-wake-state.js";
@@ -44,8 +46,12 @@ export class ProactivityWakeCrossDeviceCoordinator {
   constructor(
     private readonly queue: Queue,
     private readonly wakes: ProactivityWakePort,
+    private readonly revalidator:
+      ProactivityWakeGateRevalidator | null = null,
     private readonly decisions =
       new ProactivityWakeDecisionBuilder(),
+    private readonly now: () => string = () =>
+      new Date().toISOString(),
   ) {}
 
   async start(input: {
@@ -183,6 +189,39 @@ export class ProactivityWakeCrossDeviceCoordinator {
         taskId: job.id,
       });
       return decidedResult(durable);
+    }
+
+    if (this.revalidator) {
+      const evaluatedAt = this.now();
+      const revalidated = await this.revalidator.revalidate({
+        wake: durable,
+        evaluatedAt,
+      });
+      const gate = revalidated.activityChanged
+        ? {
+            outcome: "blocked" as const,
+            reason: "activity_changed" as const,
+            blockedUntil: null,
+          }
+        : evaluateProactivityWakeGateAt(
+            revalidated.gate,
+            evaluatedAt,
+          );
+      if (gate.outcome === "blocked") {
+        const completed = await this.wakes.completeDecision({
+          userId: durable.userId,
+          wakeId: durable.id,
+          decision: this.decisions.blocked(
+            durable.gate,
+            gate.reason,
+          ),
+        });
+        await this.queue.markConsumed({
+          userId: input.userId,
+          taskId: job.id,
+        });
+        return decidedResult(completed);
+      }
     }
 
     let decision: ProactivityWakeDecision;

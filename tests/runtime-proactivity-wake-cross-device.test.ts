@@ -162,6 +162,7 @@ function coordinator(
     coordinator: new ProactivityWakeCrossDeviceCoordinator(
       queue as never,
       wakes,
+      null,
       new ProactivityWakeDecisionBuilder(
         () => "2026-09-23T09:30:05.000Z",
         () => "decision-1",
@@ -297,4 +298,59 @@ test("model failure or invalid output fails closed to a durable quiet decision",
     );
     assert.ok(job.consumedAt);
   }
+});
+
+
+test("completed model output is discarded to quiet when backend activity changed after the wake snapshot", async () => {
+  const wakes = new WakeMemory();
+  const queue = new QueueMemory();
+  const coordinator =
+    new ProactivityWakeCrossDeviceCoordinator(
+      queue as never,
+      wakes,
+      {
+        async revalidate({ wake }) {
+          return {
+            gate: {
+              ...wake.gate,
+              quietUntil: "2026-09-23T12:00:00.000Z",
+            },
+            activityChanged: true,
+          };
+        },
+      },
+      new ProactivityWakeDecisionBuilder(
+        () => "2026-09-23T09:31:00.000Z",
+        () => "decision-stale",
+      ),
+      () => "2026-09-23T09:31:00.000Z",
+    );
+
+  await coordinator.start({
+    gate: baseGate(),
+    contactTarget: "conversation:c1",
+    context: {
+      version: 1,
+      contextManifestId: null,
+      capsule: "snapshot",
+      sourceConversationId: "c1",
+      sourceHeadMessageId: "head-1",
+      sourceActivityAt: offeredAt,
+    },
+  });
+
+  const job = queue.jobs[0]!;
+  job.status = "completed";
+  job.resultText =
+    '{"outcome":"contact_candidate","text":"stale candidate"}';
+
+  const result = await coordinator.advanceNextForUser({ userId });
+  assert.equal(result.outcome, "decided");
+  if (result.outcome !== "decided") return;
+  assert.equal(result.decision.outcome, "quiet");
+  assert.equal(
+    result.decision.reasonCode,
+    "gate_activity_changed",
+  );
+  assert.ok(job.consumedAt);
 });

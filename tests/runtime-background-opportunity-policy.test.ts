@@ -8,6 +8,7 @@ test("background opportunity policy keeps post-turn consolidation separate from 
   const policy = new BackgroundOpportunityPolicy({
     maintenancePulseIntervalMs: 3_600_000,
     decayEnabled: false,
+    proactivityWakeEnabled: false,
     topicResurfaceMinIntervalMs: 90_000,
   });
 
@@ -42,6 +43,7 @@ test("Decay is opt-in and Breath is not a schedulable background target", () => 
   const policy = new BackgroundOpportunityPolicy({
     maintenancePulseIntervalMs: 3_600_000,
     decayEnabled: true,
+    proactivityWakeEnabled: false,
     topicResurfaceMinIntervalMs: null,
   });
 
@@ -66,4 +68,31 @@ test("background opportunity policy rejects invalid source cadence", () => {
     }),
     /maintenance_pulse cadence/,
   );
+});
+
+
+test("Proactivity wake is an explicit maintenance-pulse opportunity, not a second cadence source", () => {
+  const policy = new BackgroundOpportunityPolicy({
+    maintenancePulseIntervalMs: 3_600_000,
+    decayEnabled: false,
+    proactivityWakeEnabled: true,
+    topicResurfaceMinIntervalMs: null,
+  });
+
+  assert.deepEqual(
+    policy.decide({ opportunity: "maintenance_pulse" }).targets.map(
+      (target) => target.kind,
+    ),
+    [
+      "thought_evolution",
+      "drive_evolution",
+      "topic_lifecycle",
+      "proactivity_wake",
+    ],
+  );
+  assert.equal(
+    policy.plan("maintenance_pulse", "proactivity_wake")?.priority,
+    "reflection",
+  );
+  assert.equal(policy.cadenceMs("maintenance_pulse"), 3_600_000);
 });

@@ -12,6 +12,9 @@ export type ProactivityWakeContextSnapshot = {
   version: 1;
   contextManifestId: string | null;
   capsule: string;
+  sourceConversationId?: string | null;
+  sourceHeadMessageId?: string | null;
+  sourceActivityAt?: string | null;
 };
 
 export type ProactivityWakeRecord = {
@@ -28,6 +31,18 @@ export type ProactivityWakeRecord = {
   updatedAt: string;
   decidedAt: string | null;
 };
+
+export type ProactivityWakeRevalidation = {
+  gate: ProactivityWakeGateInput;
+  activityChanged: boolean;
+};
+
+export interface ProactivityWakeGateRevalidator {
+  revalidate(input: {
+    wake: ProactivityWakeRecord;
+    evaluatedAt: string;
+  }): Promise<ProactivityWakeRevalidation>;
+}
 
 export interface ProactivityWakePort {
   createOrGet(input: {
@@ -85,9 +100,61 @@ export function normalizeProactivityWakeContext(
     );
   }
 
+  const sourceConversationId =
+    normalizeOptionalId(
+      input.sourceConversationId,
+      "sourceConversationId",
+    );
+  const sourceHeadMessageId =
+    normalizeOptionalId(
+      input.sourceHeadMessageId,
+      "sourceHeadMessageId",
+    );
+  const sourceActivityAt =
+    input.sourceActivityAt === undefined
+    || input.sourceActivityAt === null
+      ? null
+      : new Date(
+          requireTimestamp(
+            input.sourceActivityAt,
+            "sourceActivityAt",
+          ),
+        ).toISOString();
+
   return {
     version: 1,
     contextManifestId,
     capsule,
+    sourceConversationId,
+    sourceHeadMessageId,
+    sourceActivityAt,
   };
+}
+
+
+function normalizeOptionalId(
+  value: string | null | undefined,
+  field: string,
+): string | null {
+  if (value === undefined || value === null) return null;
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error(
+      "Proactivity wake context " + field + " must not be blank.",
+    );
+  }
+  return normalized;
+}
+
+function requireTimestamp(
+  value: string,
+  field: string,
+): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(
+      "Proactivity wake context " + field + " must be an ISO timestamp.",
+    );
+  }
+  return parsed;
 }

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   assertProactivityEffectDispatchAllowed,
   evaluateProactivityWakeGate,
+  evaluateProactivityWakeGateAt,
   hashProactivityMessagePayload,
   type ProactivityWakeGateInput,
 } from "../src/domains/runtime/proactivity-wake-contract.js";
@@ -299,5 +300,24 @@ test("deliberation failure and invalid contact output fail soft to quiet", async
       contactTarget: "conversation:c1",
     })).reasonCode,
     "invalid_deliberation_output",
+  );
+});
+
+
+test("wake gate can be re-evaluated against current backend time without changing the durable offeredAt", () => {
+  const snapshot = gate({
+    quietUntil: "2026-09-23T10:00:00.000Z",
+  });
+
+  assert.equal(
+    evaluateProactivityWakeGate(snapshot).outcome,
+    "blocked",
+  );
+  assert.deepEqual(
+    evaluateProactivityWakeGateAt(
+      snapshot,
+      "2026-09-23T10:01:00.000Z",
+    ),
+    { outcome: "eligible" },
   );
 });
