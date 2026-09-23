@@ -563,7 +563,7 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
-    ["append_todo_entries", "append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "search_todo", "update_todo_entry", "write_todo_paper"],
+    ["append_todo_entries", "append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "replace_todo_paper", "search_todo", "update_todo_entry", "write_todo_paper"],
   );
   for (const forbidden of [
     "get_day_space",
