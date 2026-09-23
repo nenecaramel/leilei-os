@@ -94,7 +94,7 @@ export function registerReadMemoryTool(
     {
       title: "Read Leilei's core memory",
       description:
-        MEMORY_DOMAIN_BOUNDARY + " Browse authorized Memory by category or exact key without a text query. Results are compact previews with stable IDs; use search_memory for text discovery and get_memory for authoritative bounded detail, continuing with its content cursor when needed. When has_more is true, continue this discovery list by passing next_cursor back as cursor with the same filters.",
+        MEMORY_DOMAIN_BOUNDARY + " Browse by category or exact key without text search. Returns compact previews with stable IDs. Use search_memory for text discovery and get_memory for bounded detail. If has_more, pass next_cursor back with the same filters.",
       inputSchema: readMemoryInputSchema,
       outputSchema: readMemoryOutputSchema,
       annotations: {
