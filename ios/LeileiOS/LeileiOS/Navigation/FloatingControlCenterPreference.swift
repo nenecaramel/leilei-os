@@ -2,7 +2,6 @@ import SwiftUI
 
 enum FloatingControlCenter {
     static let menu = "menu"
-    static let composer = "composer"
 }
 
 struct FloatingControlCenterPreferenceKey: PreferenceKey {
