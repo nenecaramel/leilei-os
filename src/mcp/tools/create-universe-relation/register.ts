@@ -5,13 +5,14 @@ import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { createUniverseRelationInputSchema } from "./schema.js";
 import { joinMcpContentLines } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 
 const relationOutputSchema = z.object({
   id: z.string().min(1).max(256), source: z.string().min(1).max(256), target: z.string().min(1).max(256),
   relationType: z.enum(["related_to", "supports", "contradicts", "extends", "part_of", "raises"]),
   strength: z.number().finite(), createdAt: z.string().datetime(),
 }).strict();
-const successDataSchema = z.object({ relation: relationOutputSchema, universe_version: z.number().int().nonnegative(), metadata: z.object({ created: z.boolean(), idempotent_replay: z.boolean() }).strict() }).strict();
+const successDataSchema = z.object({ relation: relationOutputSchema, universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict();
 const outputSchema = z.object({
   success: z.boolean(),
   data: successDataSchema.optional(),
@@ -46,7 +47,23 @@ export function registerCreateUniverseRelationTool(server: McpServer, dependenci
           content: [{ type: "text", text: joinMcpContentLines([
             `${data.metadata.idempotent_replay ? "Universe relation replayed" : "Universe relation created"}: ${data.relation.id} ${data.relation.source}->${data.relation.target}; version=${data.universe_version}`,
           ]) }],
-          structuredContent: { success: true as const, data },
+          structuredContent: {
+            success: true as const,
+            data: {
+              relation: data.relation,
+              universe_version: data.universe_version,
+              ...mcpMutationReceipt({
+                outcome: mcpMutationOutcomeFromReplay(
+                  data.metadata.idempotent_replay,
+                ),
+                entity_type: "universe_relation",
+                entity_id: data.relation.id,
+                revision: null,
+                detail_tool: "get_universe_relations",
+                detail_arguments: { node_id: data.relation.source },
+              }),
+            },
+          },
         };
       },
       mapError: (error) => safeUniverseWriteError(error, "Universe relation was not created."),
