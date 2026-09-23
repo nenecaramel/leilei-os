@@ -26,7 +26,7 @@ const listTodoDatesOutputSchema = z.object({
 }).strict();
 
 export interface ListTodoDatesToolService {
-  listDates(userId: string): Promise<string[]>;
+  listDates(userId: string, limit?: number, offset?: number): Promise<string[]>;
 }
 
 export type ListTodoDatesToolDependencies = {
@@ -59,9 +59,13 @@ export function registerListTodoDatesTool(
         const pageSize = limit ?? 50;
         const cursorContext = {};
         const offset = decodeMcpPaginationCursor(cursor, "list_todo_dates", cursorContext);
-        const allDates = await dependencies.todoService.listDates(userId);
+        const rows = await dependencies.todoService.listDates(
+          userId,
+          pageSize + 1,
+          offset,
+        );
         const page = paginateMcpRows({
-          rows: allDates.slice(offset, offset + pageSize + 1),
+          rows,
           pageSize,
           offset,
           tool: "list_todo_dates",
