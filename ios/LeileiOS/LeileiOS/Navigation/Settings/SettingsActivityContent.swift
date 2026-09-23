@@ -17,8 +17,7 @@ struct SettingsActivityContent: View {
 
                 case .unavailable:
                     SettingsSectionState(
-                        title: "Activity Unavailable",
-                        message: "Couldn’t load activity.",
+                        title: "Unavailable",
                         actionTitle: "Retry"
                     ) {
                         Task {
@@ -29,8 +28,7 @@ struct SettingsActivityContent: View {
                 case .loaded(let records):
                     if records.isEmpty {
                         SettingsSectionState(
-                            title: "No Activity Yet",
-                            message: "Activity will appear here when available."
+                            title: "Nothing here"
                         )
                     } else {
                         ForEach(records) { record in
@@ -55,7 +53,7 @@ struct SettingsActivityContent: View {
         do {
             loadState = .loaded(try await dataService.readActivity())
         } catch {
-            loadState = .unavailable("Couldn’t load activity.")
+            loadState = .unavailable("Unavailable")
         }
     }
 }
