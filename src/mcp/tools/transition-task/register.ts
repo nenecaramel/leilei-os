@@ -4,9 +4,10 @@ import { TaskDomainError, type AuthenticatedTaskContext, type TaskEntryResult, t
 import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { quoteMcpText } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const transitionTaskInputSchema = z.object({ id: z.string().trim().min(1), action: z.enum(["start", "complete", "cancel", "reopen"]) }).strict();
-const transitionTaskDataSchema = z.object({ id: z.string(), title: z.string(), description: z.string(), status: z.enum(["pending", "in_progress", "completed", "cancelled"]), priority: z.enum(["low", "normal", "high", "urgent"]), due_time: z.string().datetime().nullable(), timezone: z.string(), time_bucket: z.enum(["no_due_date", "overdue", "today", "next_7_days", "later"]), tags: z.array(z.string()), created_at: z.string().datetime(), updated_at: z.string().datetime(), completed_at: z.string().datetime().nullable(), allowed_actions: z.array(z.enum(["start", "complete", "cancel", "reopen"])), lifecycle_status: z.literal("active"), author: z.enum(["L", "G", "C"]).nullable() });
+const transitionTaskDataSchema = z.object({ id: z.string(), title: z.string(), description: z.string(), status: z.enum(["pending", "in_progress", "completed", "cancelled"]), priority: z.enum(["low", "normal", "high", "urgent"]), due_time: z.string().datetime().nullable(), timezone: z.string(), time_bucket: z.enum(["no_due_date", "overdue", "today", "next_7_days", "later"]), tags: z.array(z.string()), created_at: z.string().datetime(), updated_at: z.string().datetime(), completed_at: z.string().datetime().nullable(), allowed_actions: z.array(z.enum(["start", "complete", "cancel", "reopen"])), lifecycle_status: z.literal("active"), author: z.enum(["L", "G", "C"]).nullable(), ...mcpMutationReceiptFields });
 const transitionTaskOutputSchema = z.object({ success: z.boolean(), data: transitionTaskDataSchema.optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 
 export interface TransitionTaskToolService { transitionMcpTask(context: AuthenticatedTaskContext, input: TransitionMcpTaskInput): Promise<TaskEntryResult>; }
@@ -19,7 +20,21 @@ export function registerTransitionTaskTool(server: McpServer, dependencies: Tran
       const data = await dependencies.taskService.transitionMcpTask({ userId }, { id, action });
       return {
         content: [{ type: "text", text: `Task transitioned: ${quoteMcpText(data.title)} [id=${data.id}; action=${action}; status=${data.status}].` }],
-        structuredContent: { success: true as const, data: { ...data, lifecycle_status: "active" as const } },
+        structuredContent: {
+          success: true as const,
+          data: {
+            ...data,
+            lifecycle_status: "active" as const,
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "task",
+              entity_id: data.id,
+              revision: null,
+              detail_tool: "get_task",
+              detail_arguments: { id: data.id },
+            }),
+          },
+        },
       };
     }, mapError: toSafeToolError,
   }));
