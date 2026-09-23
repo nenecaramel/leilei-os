@@ -269,13 +269,13 @@ private struct DiaryList: View {
                 Section(group.title) {
                     ForEach(group.diaries) { diary in
                         DiaryRow(diary: diary)
-                            .listRowBackground(Color.clear)
+                            .listRowBackground(Color(.systemBackground))
                             .listRowSeparator(.visible)
                     }
                 }
             }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
     }
