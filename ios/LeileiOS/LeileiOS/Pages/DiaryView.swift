@@ -61,6 +61,8 @@ struct DiaryView: View {
             if #available(iOS 26.0, *) {
                 DefaultToolbarItem(kind: .search, placement: .bottomBar)
 
+                ToolbarSpacer(.fixed, placement: .bottomBar)
+
                 ToolbarItem(placement: .bottomBar) {
                     Button {
                     } label: {
@@ -151,33 +153,44 @@ private struct DiaryList: View {
 private struct DiaryRow: View {
     let diary: DiaryEntry
 
+    private var metadataText: String {
+        var parts: [String] = []
+
+        if let mood = diary.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !mood.isEmpty {
+            parts.append(mood)
+        }
+
+        if !diary.tags.isEmpty {
+            parts.append(diary.tags.map { "#\($0)" }.joined(separator: " "))
+        }
+
+        return parts.joined(separator: "  ")
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(diary.title)
-                .font(.headline)
+                .font(.body.weight(.semibold))
                 .lineLimit(1)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Text(DiaryDate.formatRow(diary.date))
+                    .fixedSize(horizontal: true, vertical: false)
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 8)
 
-                HStack(spacing: 6) {
-                    if let mood = diary.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !mood.isEmpty {
-                        Text(mood)
-                    }
-
-                    if !diary.tags.isEmpty {
-                        Text(diary.tags.map { "#\($0)" }.joined(separator: " "))
-                            .lineLimit(1)
-                    }
+                if !metadataText.isEmpty {
+                    Text(metadataText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
-            .font(.caption)
+            .font(.subheadline)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }
 
