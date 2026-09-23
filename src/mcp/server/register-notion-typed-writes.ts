@@ -400,7 +400,15 @@ function toNotionProperty(property: TypedProperty): Record<string, unknown> {
     case "checkbox":
       return { checkbox: property.value };
     case "date":
-      return { date: property.value };
+      return {
+        date: property.value === null
+          ? null
+          : {
+              start: property.value.start,
+              end: property.value.end ?? null,
+              time_zone: property.value.time_zone ?? null,
+            },
+      };
     case "select":
       return { select: property.value === null ? null : { name: property.value } };
     case "multi_select":
