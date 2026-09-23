@@ -128,13 +128,16 @@ export class DrizzleTodoRepository implements TodoRepository {
     return papers;
   }
 
-  async listContentDates(userId: string): Promise<string[]> {
-    const rows = await this.db
+  async listContentDates(userId: string, limit?: number, offset = 0): Promise<string[]> {
+    const query = this.db
       .selectDistinct({ date: todoPapers.businessDate })
       .from(todoPapers)
       .innerJoin(todoEntries, eq(todoEntries.paperId, todoPapers.id))
       .where(eq(todoPapers.userId, userId))
       .orderBy(asc(todoPapers.businessDate));
+    const rows = limit === undefined
+      ? await query
+      : await query.limit(limit).offset(offset);
     return rows.map((row) => row.date);
   }
 
