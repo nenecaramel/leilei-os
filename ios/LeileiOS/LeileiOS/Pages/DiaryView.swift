@@ -22,41 +22,38 @@ struct DiaryView: View {
                 DiaryListSkeleton()
 
             case .authRequired(let message):
-                ContentUnavailableView {
-                    Label("Sign In Required", systemImage: "person.crop.circle.badge.exclamationmark")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button("Sign In Again") {
-                        Task {
-                            await reauthorizeAndReload()
-                        }
+                AppStateSurface(
+                    title: "Sign In Required",
+                    systemImage: "person.crop.circle.badge.exclamationmark",
+                    message: message,
+                    actionTitle: "Sign In Again"
+                ) {
+                    Task {
+                        await reauthorizeAndReload()
                     }
                 }
 
             case .unavailable:
                 if isSearching {
-                    ContentUnavailableView {
-                        Label("Search Unavailable", systemImage: "magnifyingglass")
-                    } description: {
-                        Text("Couldn’t search your Diary.")
-                    } actions: {
-                        Button("Retry") {
-                            Task {
-                                await loadDiary()
-                            }
+                    AppStateSurface(
+                        title: "Search Unavailable",
+                        systemImage: "magnifyingglass",
+                        message: "Couldn’t search your Diary.",
+                        actionTitle: "Retry"
+                    ) {
+                        Task {
+                            await loadDiary()
                         }
                     }
                 } else {
-                    ContentUnavailableView {
-                        Label("Diary Unavailable", systemImage: "book.closed")
-                    } description: {
-                        Text("Couldn’t load your Diary.")
-                    } actions: {
-                        Button("Retry") {
-                            Task {
-                                await loadDiary()
-                            }
+                    AppStateSurface(
+                        title: "Diary Unavailable",
+                        systemImage: "book.closed",
+                        message: "Couldn’t load your Diary.",
+                        actionTitle: "Retry"
+                    ) {
+                        Task {
+                            await loadDiary()
                         }
                     }
                 }
@@ -65,17 +62,22 @@ struct DiaryView: View {
                 let visibleDiaries = filteredDiaries(diaries)
                 if visibleDiaries.isEmpty {
                     if isSearching {
-                        ContentUnavailableView {
-                            Label("No Results", systemImage: "magnifyingglass")
-                        } description: {
-                            Text("No diary entries match this search.")
-                        }
+                        AppStateSurface(
+                            title: "No Results",
+                            systemImage: "magnifyingglass",
+                            message: "No diary entries match this search."
+                        )
+                    } else if timeFilter == .anyTime {
+                        AppStateSurface(
+                            title: "No Diary Entries Yet",
+                            systemImage: "book.closed",
+                            message: "Your Diary is empty."
+                        )
                     } else {
-                        ContentUnavailableView(
-                            timeFilter == .anyTime
-                                ? "No Diary Entries Yet"
-                                : "No Results",
-                            systemImage: "book.closed"
+                        AppStateSurface(
+                            title: "No Results",
+                            systemImage: "calendar",
+                            message: "No diary entries match this time filter."
                         )
                     }
                 } else {
@@ -323,23 +325,23 @@ private struct DiaryArchiveView: View {
                 DiaryListSkeleton()
 
             case .unavailable:
-                ContentUnavailableView {
-                    Label("Archive Unavailable", systemImage: "archivebox")
-                } description: {
-                    Text("Couldn’t load archived diaries.")
-                } actions: {
-                    Button("Retry") {
-                        Task {
-                            await loadArchive()
-                        }
+                AppStateSurface(
+                    title: "Archive Unavailable",
+                    systemImage: "archivebox",
+                    message: "Couldn’t load archived diaries.",
+                    actionTitle: "Retry"
+                ) {
+                    Task {
+                        await loadArchive()
                     }
                 }
 
             case .loaded(let diaries):
                 if diaries.isEmpty {
-                    ContentUnavailableView(
-                        "No Archived Diaries Yet",
-                        systemImage: "archivebox"
+                    AppStateSurface(
+                        title: "No Archived Diaries Yet",
+                        systemImage: "archivebox",
+                        message: "Archived diary entries will appear here."
                     )
                 } else {
                     DiaryArchiveList(diaries: diaries) {
@@ -442,10 +444,10 @@ private struct DiaryArchivedDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             case .unavailable:
-                ContentUnavailableView(
-                    "Diary Unavailable",
+                AppStateSurface(
+                    title: "Diary Unavailable",
                     systemImage: "book.closed",
-                    description: Text("Couldn’t load this diary.")
+                    message: "Couldn’t load this diary."
                 )
 
             case .loaded(let diary):
@@ -801,10 +803,10 @@ private struct DiaryDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             case .unavailable:
-                ContentUnavailableView(
-                    "Diary Unavailable",
+                AppStateSurface(
+                    title: "Diary Unavailable",
                     systemImage: "book.closed",
-                    description: Text("Couldn’t load this diary.")
+                    message: "Couldn’t load this diary."
                 )
 
             case .loaded(let diary):
