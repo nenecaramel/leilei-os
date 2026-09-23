@@ -3,6 +3,7 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
+import { SharedPaperServiceError } from "../src/domains/shared-paper/shared-paper-service.js";
 import type { SharedPaperEdit, SharedPaperRecord } from "../src/domains/shared-paper/shared-paper-types.js";
 import type { SharedPaperToolService } from "../src/mcp/tools/shared-paper/register.js";
 
@@ -387,6 +388,58 @@ test("Shared Paper MCP lifecycle tools return authoritative state and idempotent
   assert.match(String(deletedReplay.content?.[0]?.text), /replayed/);
 });
 
+
+test("Shared Paper stale revision and ambiguous match errors provide exact readback recovery", async (t) => {
+  for (const [error, reason] of [
+    [
+      new SharedPaperServiceError(
+        "PAPER_REVISION_CONFLICT",
+        "Shared paper revision conflict.",
+      ),
+      "stale_revision",
+    ],
+    [
+      new SharedPaperServiceError(
+        "PAPER_EDIT_TARGET_AMBIGUOUS",
+        "The edit target is ambiguous.",
+      ),
+      "ambiguous_match",
+    ],
+  ] as const) {
+    const fixture = await connect(makeService({
+      editPaperByMatch: async () => { throw error; },
+    }));
+    t.after(async () => {
+      await fixture.client.close();
+      await fixture.server.close();
+    });
+
+    const result = await fixture.client.callTool({
+      name: "edit_shared_paper",
+      arguments: {
+        id,
+        expected_revision: 1,
+        author: "G",
+        match_text: "canonical",
+        replacement_text: "updated",
+        idempotency_key: `shared.paper:recovery-${reason}`,
+      },
+    });
+    assert.equal(result.isError, true);
+    assert.deepEqual(
+      (result.structuredContent as any).error,
+      {
+        code: error.code,
+        message: error.message,
+        retryable: false,
+        reason,
+        current_revision: null,
+        recommended_tool: "get_shared_paper",
+        recommended_arguments: { id },
+      },
+    );
+  }
+});
 
 test("Shared Paper MCP append is direct, revisioned, and idempotent-shaped", async (t) => {
   let received: Record<string, unknown> | undefined;
