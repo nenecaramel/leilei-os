@@ -66,8 +66,7 @@ struct SettingsRestoreContent: View {
             if let errorMessage {
                 Section {
                     SettingsSectionState(
-                        title: "Restore Failed",
-                        message: errorMessage
+                        title: "Failed"
                     )
                 }
             }
@@ -75,12 +74,9 @@ struct SettingsRestoreContent: View {
             if let outcomeMessage {
                 Section {
                     SettingsSectionState(
-                        title: outcomeMessage == "Restore completed."
-                            ? "Restore Completed"
-                            : "Restore Failed",
-                        message: outcomeMessage == "Restore completed."
-                            ? "Your data was restored."
-                            : outcomeMessage
+                        title: outcomeMessage == "Done"
+                            ? "Done"
+                            : "Failed"
                     )
                 }
             }
@@ -102,7 +98,7 @@ struct SettingsRestoreContent: View {
                     await previewRestore(fileURL: url)
                 }
             case .failure:
-                errorMessage = "Couldn’t open the selected export file."
+                errorMessage = "Failed"
             }
         }
     }
@@ -122,7 +118,7 @@ struct SettingsRestoreContent: View {
         do {
             preview = try await dataService.previewRestore(fileURL: fileURL)
         } catch {
-            errorMessage = "Couldn’t preview this export."
+            errorMessage = "Failed"
         }
     }
 
@@ -145,10 +141,10 @@ struct SettingsRestoreContent: View {
         do {
             let result = try await dataService.executeRestore(fileURL: selectedFileURL)
             outcomeMessage = result.completed
-                ? "Restore completed."
-                : "Couldn’t restore the data."
+                ? "Done"
+                : "Failed"
         } catch {
-            errorMessage = "Couldn’t restore the data."
+            errorMessage = "Failed"
         }
     }
 }
