@@ -315,7 +315,7 @@ test("Shared Paper MCP mutation receipts distinguish fresh commits from idempote
   currentPaper = { ...paper, revision: 5, content: "later canonical" };
   const editReplay = await fixture.client.callTool({ name: "edit_shared_paper", arguments: editArgs });
   const editReplayData = (editReplay.structuredContent as any).data;
-  assert.equal(editReplayData.metadata.idempotent_replay, true);
+  assert.equal(editReplayData.outcome, "replayed");
   assert.equal(editReplayData.edit_id, edited.structuredContent && (edited.structuredContent as any).data.edit_id);
   assert.equal(editReplayData.base_revision, 1);
   assert.equal(editReplayData.revision, 2);
@@ -373,7 +373,7 @@ test("Shared Paper MCP lifecycle tools return authoritative state and idempotent
   const archivedData = (archivedResult.structuredContent as any).data;
   assert.equal(archivedData.paper_id, id);
   assert.equal(archivedData.archived_at, "2026-01-02T00:00:00.000Z");
-  assert.equal(archivedData.metadata.idempotent_replay, false);
+  assert.equal(archivedData.outcome, "applied");
   assert.deepEqual(archivedData.detail_arguments, { id });
 
   const restoredResult = await fixture.client.callTool({ name: "restore_shared_paper", arguments: { id, idempotency_key: "shared.paper:restore-0001" } });
