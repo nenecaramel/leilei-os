@@ -19,49 +19,26 @@ struct SettingsSheetView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ZStack {
-                Color(red: 0.965, green: 0.965, blue: 0.97)
-                    .ignoresSafeArea()
-
-                ScrollView {
-                    SettingsHomeContent(
-                        appModel: appModel,
-                        onShowSummary: { showDetail(.summary) },
-                        onShowExport: { showDetail(.export) },
-                        onShowRestore: { showDetail(.restore) },
-                        onShowStatus: { showDetail(.status) },
-                        onShowActivity: { showDetail(.activity) },
-                        onShowAbout: { showDetail(.about) }
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 64)
-                }
-                .scrollEdgeEffectStyle(.automatic, for: .top)
-            }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
+            SettingsHomeContent(appModel: appModel)
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .accessibilityLabel("Close Settings")
                     }
-                    .accessibilityLabel("Close Settings")
                 }
-            }
-            .navigationDestination(for: SettingsDetailPage.self) { page in
-                SettingsDetailLayer(
-                    page: page,
-                    dataService: dataService
-                )
-            }
+                .navigationDestination(for: SettingsDetailPage.self) { page in
+                    SettingsDetailLayer(
+                        page: page,
+                        dataService: dataService
+                    )
+                }
         }
-    }
-
-    private func showDetail(_ page: SettingsDetailPage) {
-        path.append(page)
     }
 }
 
@@ -133,79 +110,185 @@ private struct SettingsDetailLayer: View {
 
 private struct SettingsHomeContent: View {
     @ObservedObject var appModel: AppModel
-    let onShowSummary: () -> Void
-    let onShowExport: () -> Void
-    let onShowRestore: () -> Void
-    let onShowStatus: () -> Void
-    let onShowActivity: () -> Void
-    let onShowAbout: () -> Void
+
+    @AppStorage("appearanceMode") private var appearanceModeRawValue = AppearanceMode.system.rawValue
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var showingSignOutConfirmation = false
+    @State private var authErrorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            SettingsSection(title: "Account") {
-                SettingsValueRow(
-                    title: "Email",
-                    value: appModel.accountEmail ?? (appModel.isAuthenticated ? "Signed in" : "Not signed in"),
-                    symbol: "envelope",
-                    iconSize: 16
-                )
-                SettingsDivider(leadingInset: 52)
-                SettingsValueRow(
-                    title: "Sign-in provider",
-                    value: "Auth0",
-                    symbol: "person.badge.key"
-                )
-                SettingsDivider(leadingInset: 52)
-                SettingsAuthRow(appModel: appModel)
+        Form {
+            Section("Account") {
+                LabeledContent {
+                    Text(
+                        appModel.accountEmail
+                            ?? (appModel.isAuthenticated ? "Signed in" : "Not signed in")
+                    )
+                    .foregroundStyle(.secondary)
+                } label: {
+                    Label("Email", systemImage: "envelope")
+                }
+
+                LabeledContent {
+                    Text("Auth0")
+                        .foregroundStyle(.secondary)
+                } label: {
+                    Label("Sign-in provider", systemImage: "person.badge.key")
+                }
+
+                if appModel.isAuthenticated {
+                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                        showingSignOutConfirmation = true
+                    }
+                } else {
+                    Button("Sign in", systemImage: "rectangle.portrait.and.arrow.forward") {
+                        Task {
+                            await signIn()
+                        }
+                    }
+                }
             }
 
-            SettingsSection(title: "Preference") {
-                SettingsAppearanceMenuRow()
-                SettingsDivider(leadingInset: 52)
-                SettingsNotificationsRow()
+            Section("Preference") {
+                Picker(selection: $appearanceModeRawValue) {
+                    ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
+                        Text(mode.title)
+                            .tag(mode.rawValue)
+                    }
+                } label: {
+                    Label("Appearance", systemImage: "circle.lefthalf.filled")
+                }
+                .pickerStyle(.menu)
+
+                Button {
+                    Task {
+                        await handleNotificationsTap()
+                    }
+                } label: {
+                    LabeledContent {
+                        Text(notificationStatusTitle)
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        Label("Notifications", systemImage: "bell")
+                    }
+                }
+                .foregroundStyle(.primary)
             }
 
-            SettingsSection(title: "Data") {
-                SettingsNavigationRow(
-                    title: "Summary",
-                    symbol: "chart.bar",
-                    iconSize: 16,
-                    action: onShowSummary
-                )
-                SettingsDivider(leadingInset: 52)
-                SettingsNavigationRow(
-                    title: "Export",
-                    symbol: "square.and.arrow.up",
-                    action: onShowExport
-                )
-                SettingsDivider(leadingInset: 52)
-                SettingsNavigationRow(
-                    title: "Restore",
-                    symbol: "square.and.arrow.down",
-                    action: onShowRestore
-                )
+            Section("Data") {
+                NavigationLink(value: SettingsDetailPage.summary) {
+                    Label("Summary", systemImage: "chart.bar")
+                }
+
+                NavigationLink(value: SettingsDetailPage.export) {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+
+                NavigationLink(value: SettingsDetailPage.restore) {
+                    Label("Restore", systemImage: "square.and.arrow.down")
+                }
             }
 
-            SettingsSection(title: "System") {
-                SettingsNavigationRow(
-                    title: "Status",
-                    symbol: "network",
-                    action: onShowStatus
-                )
-                SettingsDivider(leadingInset: 52)
-                SettingsNavigationRow(
-                    title: "Activity",
-                    symbol: "clock.arrow.circlepath",
-                    action: onShowActivity
-                )
-                SettingsDivider(leadingInset: 52)
-                SettingsNavigationRow(
-                    title: "About",
-                    symbol: "info.circle",
-                    action: onShowAbout
-                )
+            Section("System") {
+                NavigationLink(value: SettingsDetailPage.status) {
+                    Label("Status", systemImage: "network")
+                }
+
+                NavigationLink(value: SettingsDetailPage.activity) {
+                    Label("Activity", systemImage: "clock.arrow.circlepath")
+                }
+
+                NavigationLink(value: SettingsDetailPage.about) {
+                    Label("About", systemImage: "info.circle")
+                }
             }
         }
+        .formStyle(.grouped)
+        .task {
+            await refreshAuthorizationStatus()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task {
+                await refreshAuthorizationStatus()
+            }
+        }
+        .confirmationDialog(
+            "Sign Out?",
+            isPresented: $showingSignOutConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Sign Out", role: .destructive) {
+                Task {
+                    await signOut()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert(
+            "Authentication unavailable",
+            isPresented: Binding(
+                get: { authErrorMessage != nil },
+                set: { if !$0 { authErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(authErrorMessage ?? "")
+        }
+    }
+
+    private var notificationStatusTitle: String {
+        switch authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            "On"
+        case .denied:
+            "Off"
+        case .notDetermined:
+            "Not Set"
+        @unknown default:
+            "Not Set"
+        }
+    }
+
+    @MainActor
+    private func signIn() async {
+        do {
+            try await appModel.signIn()
+        } catch {
+            authErrorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func signOut() async {
+        do {
+            try await appModel.signOut()
+        } catch {
+            authErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func handleNotificationsTap() async {
+        if authorizationStatus == .notDetermined {
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(
+                options: [.alert, .sound, .badge]
+            )
+            await refreshAuthorizationStatus()
+            return
+        }
+
+        guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else {
+            return
+        }
+        await UIApplication.shared.open(url)
+    }
+
+    @MainActor
+    private func refreshAuthorizationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        authorizationStatus = settings.authorizationStatus
     }
 }
 
@@ -268,360 +351,6 @@ struct SettingsSection<Content: View>: View {
                 )
             )
         }
-    }
-}
-
-private struct SettingsValueRow: View {
-    let title: String
-    let value: String
-    let symbol: String
-    var iconSize: CGFloat = 20
-
-    var body: some View {
-        HStack(spacing: 16) {
-            SettingsRowIcon(symbol: symbol, size: iconSize)
-
-            Text(title)
-                .font(.system(size: 17, weight: .medium))
-
-            Spacer()
-
-            Text(value)
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.secondary)
-        }
-        .frame(height: 55)
-        .padding(.horizontal, 16)
-    }
-}
-
-private struct SettingsTextRow: View {
-    let title: String
-    let symbol: String
-    var iconSize: CGFloat = 20
-
-    var body: some View {
-        Button {
-        } label: {
-            HStack(spacing: 16) {
-                SettingsRowIcon(symbol: symbol, size: iconSize)
-
-                Text(title)
-                    .font(.system(size: 17, weight: .medium))
-
-                Spacer()
-            }
-            .frame(height: 55)
-            .padding(.horizontal, 16)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct SettingsAuthRow: View {
-    @ObservedObject var appModel: AppModel
-    @State private var alert: AuthAlert?
-
-    var body: some View {
-        Button {
-            if appModel.isAuthenticated {
-                alert = .confirmation
-            } else {
-                Task {
-                    await signIn()
-                }
-            }
-        } label: {
-            HStack(spacing: 16) {
-                SettingsRowIcon(
-                    symbol: appModel.isAuthenticated
-                        ? "rectangle.portrait.and.arrow.right"
-                        : "rectangle.portrait.and.arrow.forward",
-                    size: 17
-                )
-
-                Text(appModel.isAuthenticated ? "Sign out" : "Sign in")
-                    .font(.system(size: 17, weight: .medium))
-
-                Spacer()
-            }
-            .frame(height: 55)
-            .padding(.horizontal, 16)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .alert(item: $alert) { alert in
-            switch alert {
-            case .confirmation:
-                Alert(
-                    title: Text("Sign Out?"),
-                    primaryButton: .destructive(Text("Sign Out")) {
-                        Task {
-                            await signOut()
-                        }
-                    },
-                    secondaryButton: .cancel(Text("Cancel"))
-                )
-            case .error(let message):
-                Alert(
-                    title: Text("Authentication unavailable"),
-                    message: Text(message),
-                    dismissButton: .cancel(Text("OK"))
-                )
-            }
-        }
-    }
-
-    @MainActor
-    private func signIn() async {
-        do {
-            try await appModel.signIn()
-        } catch {
-            alert = .error(error.localizedDescription)
-        }
-    }
-
-    @MainActor
-    private func signOut() async {
-        do {
-            try await appModel.signOut()
-        } catch {
-            alert = .error(error.localizedDescription)
-        }
-    }
-}
-
-private enum AuthAlert: Identifiable {
-    case confirmation
-    case error(String)
-
-    var id: String {
-        switch self {
-        case .confirmation:
-            "confirmation"
-        case .error(let message):
-            "error-\(message)"
-        }
-    }
-}
-
-private struct SettingsNavigationRow: View {
-    let title: String
-    let symbol: String
-    var iconSize: CGFloat = 20
-    var action: () -> Void = {}
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                SettingsRowIcon(symbol: symbol, size: iconSize)
-
-                Text(title)
-                    .font(.system(size: 17, weight: .medium))
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(height: 55)
-            .padding(.horizontal, 16)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct SettingsAppearanceMenuRow: View {
-    @AppStorage("appearanceMode") private var appearanceModeRawValue = AppearanceMode.system.rawValue
-
-    var body: some View {
-        HStack(spacing: 16) {
-            SettingsRowIcon(symbol: "circle.lefthalf.filled")
-
-            Text("Appearance")
-                .font(.system(size: 17, weight: .medium))
-
-            Spacer()
-
-            Color.clear
-                .frame(width: 44, height: 55)
-        }
-        .frame(height: 55)
-        .padding(.horizontal, 16)
-        .contentShape(Rectangle())
-        .overlay {
-            SettingsAppearanceMenuHitArea(selection: $appearanceModeRawValue)
-        }
-    }
-}
-
-private struct SettingsAppearanceMenuHitArea: UIViewRepresentable {
-    @Binding var selection: String
-
-    func makeUIView(context: Context) -> AppearanceMenuHitContainer {
-        let container = AppearanceMenuHitContainer()
-        let button = container.menuButton
-        var configuration = UIButton.Configuration.plain()
-        configuration.image = UIImage(systemName: "chevron.up.chevron.down")
-        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
-            pointSize: 14,
-            weight: .semibold
-        )
-        configuration.baseForegroundColor = .secondaryLabel
-        button.configuration = configuration
-        button.showsMenuAsPrimaryAction = true
-        updateMenu(for: button)
-        return container
-    }
-
-    func updateUIView(_ uiView: AppearanceMenuHitContainer, context: Context) {
-        updateMenu(for: uiView.menuButton)
-    }
-
-    private func updateMenu(for button: UIButton) {
-        button.menu = UIMenu(
-            options: .displayInline,
-            children: AppearanceMode.allCases.map { mode in
-                UIAction(
-                    title: mode.title,
-                    state: selection == mode.rawValue ? .on : .off
-                ) { _ in
-                    selection = mode.rawValue
-                }
-            }
-        )
-    }
-}
-
-private final class AppearanceMenuHitContainer: UIView {
-    let menuButton = ExpandedHitMenuButton(type: .system)
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        menuButton.hitContainer = self
-        addSubview(menuButton)
-    }
-
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        menuButton.frame = CGRect(
-            x: bounds.maxX - 60,
-            y: 0,
-            width: 44,
-            height: bounds.height
-        )
-    }
-
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard bounds.contains(point), !isHidden, alpha > 0 else { return nil }
-        return menuButton
-    }
-}
-
-private final class ExpandedHitMenuButton: UIButton {
-    weak var hitContainer: UIView?
-
-    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        guard let hitContainer else {
-            return super.point(inside: point, with: event)
-        }
-        let pointInContainer = convert(point, to: hitContainer)
-        return hitContainer.bounds.contains(pointInContainer)
-    }
-}
-
-private struct SettingsNotificationsRow: View {
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
-
-    private var statusTitle: String {
-        switch authorizationStatus {
-        case .authorized, .provisional, .ephemeral:
-            "On"
-        case .denied:
-            "Off"
-        case .notDetermined:
-            "Not Set"
-        @unknown default:
-            "Not Set"
-        }
-    }
-
-    var body: some View {
-        Button {
-            Task {
-                await handleTap()
-            }
-        } label: {
-            HStack(spacing: 16) {
-                SettingsRowIcon(symbol: "bell", size: 18)
-
-                Text("Notifications")
-                    .font(.system(size: 17, weight: .medium))
-
-                Spacer()
-
-                Text(statusTitle)
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundStyle(.secondary)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(height: 55)
-            .padding(.horizontal, 16)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .task {
-            await refreshAuthorizationStatus()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else { return }
-            Task {
-                await refreshAuthorizationStatus()
-            }
-        }
-    }
-
-    private func handleTap() async {
-        if authorizationStatus == .notDetermined {
-            _ = try? await UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .sound, .badge]
-            )
-            await refreshAuthorizationStatus()
-            return
-        }
-
-        guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else {
-            return
-        }
-        await UIApplication.shared.open(url)
-    }
-
-    @MainActor
-    private func refreshAuthorizationStatus() async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        authorizationStatus = settings.authorizationStatus
-    }
-}
-
-private struct SettingsRowIcon: View {
-    let symbol: String
-    var size: CGFloat = 18
-
-    var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: size, weight: .medium))
-            .frame(width: 20, height: 20, alignment: .center)
     }
 }
 
