@@ -29,7 +29,7 @@ const getDiaryInputSchema = z
       .uuid()
       .describe("The exact Diary id returned by search_diary or global_search."),
     scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
-    ...boundedReadInputSchemaFields(z),
+    ...boundedReadInputSchemaFields,
   })
   .strict();
 
@@ -44,7 +44,7 @@ const getDiaryDataSchema = z.object({
   updated_at: z.string().datetime(),
   lifecycle_status: z.enum(["active", "archived"]),
   author: contentAuthorSchema.nullable(),
-  content_metadata: boundedReadMetadataSchema(z),
+  content_metadata: boundedReadMetadataSchema,
   comments_tool: z.literal("list_diary_comments"),
   comments_arguments: z.object({
     diary_id: z.string().uuid(),
