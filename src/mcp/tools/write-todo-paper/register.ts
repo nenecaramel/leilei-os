@@ -68,16 +68,36 @@ export type WriteTodoPaperToolDependencies = {
   getAuthenticatedUserId: () => string;
 };
 
+const REPLACE_TODO_PAPER_DESCRIPTION =
+  TODO_DOMAIN_BOUNDARY + " Replace one complete L, G, or C Todo paper. Use expected_revision from read_todo_day as the paper concurrency precondition, or null only when creating a missing paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding multiple entries in one user intent, prefer append_todo_entries; for one entry, prefer append_todo_entry; for editing, completing, or deleting one existing entry, prefer update_todo_entry or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.";
+
+export function registerReplaceTodoPaperTool(
+  server: McpServer,
+  dependencies: WriteTodoPaperToolDependencies,
+): void {
+  registerTodoPaperReplaceTool(server, dependencies, "replace_todo_paper", false);
+}
+
 export function registerWriteTodoPaperTool(
   server: McpServer,
   dependencies: WriteTodoPaperToolDependencies,
 ): void {
+  registerTodoPaperReplaceTool(server, dependencies, "write_todo_paper", true);
+}
+
+function registerTodoPaperReplaceTool(
+  server: McpServer,
+  dependencies: WriteTodoPaperToolDependencies,
+  toolName: "replace_todo_paper" | "write_todo_paper",
+  deprecated: boolean,
+): void {
   server.registerTool(
-    "write_todo_paper",
+    toolName,
     {
-      title: "Save one Todo paper",
-      description:
-        TODO_DOMAIN_BOUNDARY + " Replace one complete L, G, or C Todo paper. Use expected_revision from read_todo_day as the paper concurrency precondition, or null only when creating a missing paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding multiple entries in one user intent, prefer append_todo_entries; for one entry, prefer append_todo_entry; for editing, completing, or deleting one existing entry, prefer update_todo_entry or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
+      title: deprecated ? "Deprecated: replace Todo paper" : "Replace one Todo paper",
+      description: deprecated
+        ? "DEPRECATED: use replace_todo_paper. " + REPLACE_TODO_PAPER_DESCRIPTION
+        : REPLACE_TODO_PAPER_DESCRIPTION,
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {
@@ -89,7 +109,7 @@ export function registerWriteTodoPaperTool(
     },
     async ({ date, author, expected_revision, entries, idempotency_key }) =>
       invokeMcpWrite({
-        toolName: "write_todo_paper",
+        toolName,
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           const data = await dependencies.todoService.replacePaperIdempotently({
