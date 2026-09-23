@@ -76,7 +76,10 @@ function decidedWake(
   };
 }
 
-class EffectMemory implements RuntimeEffectPort {
+class EffectMemory implements Pick<
+  RuntimeEffectPort,
+  "createOrGet" | "getBySourceWake"
+> {
   record: RuntimeEffectRecord | null = null;
   calls: RuntimeEffectCreate[] = [];
 

@@ -104,6 +104,10 @@ import {
   ProactivityEffectMaterializer,
 } from "../domains/runtime/proactivity-effect-materializer.js";
 import {
+  DrizzleRuntimeEffectForegroundGuard,
+  RuntimeEffectDeliveryCoordinator,
+} from "../domains/runtime/runtime-effect-delivery-coordinator.js";
+import {
   DrizzleProactivityWakeOpportunitySource,
   ProactivityWakeOpportunityProducer,
 } from "../domains/runtime/proactivity-wake-opportunity.js";
@@ -187,6 +191,8 @@ export type ProcessRuntime = {
     DistillationCrossDeviceCoordinator;
   proactivityWakeCrossDeviceCoordinator:
     ProactivityWakeCrossDeviceCoordinator;
+  runtimeEffectDeliveryCoordinator:
+    RuntimeEffectDeliveryCoordinator;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
   startBackgroundWork(): void;
@@ -348,9 +354,16 @@ export function createProcessRuntime(
           proactivityWakeOpportunityConfig,
         )
       : null;
+  const runtimeEffectRepository =
+    new DrizzleRuntimeEffectRepository(db);
   const proactivityEffectMaterializer =
     new ProactivityEffectMaterializer(
-      new DrizzleRuntimeEffectRepository(db),
+      runtimeEffectRepository,
+    );
+  const runtimeEffectDeliveryCoordinator =
+    new RuntimeEffectDeliveryCoordinator(
+      runtimeEffectRepository,
+      new DrizzleRuntimeEffectForegroundGuard(db),
     );
   const proactivityWakeCrossDeviceCoordinator =
     new ProactivityWakeCrossDeviceCoordinator(
@@ -565,6 +578,7 @@ export function createProcessRuntime(
     topicResurfaceCrossDeviceCoordinator,
     distillationCrossDeviceCoordinator,
     proactivityWakeCrossDeviceCoordinator,
+    runtimeEffectDeliveryCoordinator,
     appDependencies: {
       logger,
       webMemoryService: memoryService,
