@@ -39,7 +39,6 @@ struct AppShell: View {
                 SidebarView(
                     selectedPage: $selectedPage,
                     menuButtonCenterY: floatingControlCenters[FloatingControlCenter.menu],
-                    searchControlCenterY: floatingControlCenters[FloatingControlCenter.search],
                     onSettings: {
                         settingsPresented = true
                     },
@@ -101,7 +100,6 @@ struct AppShell: View {
             SidebarView(
                 selectedPage: $selectedPage,
                 menuButtonCenterY: nil,
-                searchControlCenterY: nil,
                 onSettings: nil,
                 onSelect: {}
             )
