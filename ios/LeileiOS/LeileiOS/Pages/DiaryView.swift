@@ -479,9 +479,6 @@ private struct DiaryDetailView: View {
                                     ?? diary.comments?.count
                                     ?? 0,
                                 errorMessage: commentError,
-                                onAdd: {
-                                    commentEditorMode = .create
-                                },
                                 onEdit: { comment in
                                     commentEditorMode = .edit(comment)
                                 },
@@ -495,7 +492,7 @@ private struct DiaryDetailView: View {
                         }
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 2)
+                    .padding(.top, -6)
                     .padding(.bottom, 32)
                 }
                 .background(Color(.systemBackground))
@@ -525,6 +522,10 @@ private struct DiaryDetailView: View {
             } else {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button("Add Comment") {
+                            commentEditorMode = .create
+                        }
+
                         Button("Edit") {
                             beginEditing()
                         }
@@ -541,17 +542,16 @@ private struct DiaryDetailView: View {
                 }
             }
         }
-        .confirmationDialog(
+        .alert(
             "Archive this diary?",
-            isPresented: $showingArchiveConfirmation,
-            titleVisibility: .visible
+            isPresented: $showingArchiveConfirmation
         ) {
+            Button("Cancel", role: .cancel) {}
             Button("Archive", role: .destructive) {
                 Task {
                     await archiveDiary()
                 }
             }
-            Button("Cancel", role: .cancel) {}
         }
         .sheet(item: $commentEditorMode) { mode in
             DiaryCommentEditorSheet(
@@ -787,7 +787,6 @@ private struct DiaryCommentsSection: View {
     let comments: [DiaryComment]
     let count: Int
     let errorMessage: String?
-    let onAdd: () -> Void
     let onEdit: (DiaryComment) -> Void
     let onDelete: (DiaryComment) -> Void
 
@@ -851,30 +850,26 @@ private struct DiaryCommentsSection: View {
                 }
             }
 
-            Button("Add Comment", action: onAdd)
-                .font(.subheadline)
-
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
-        .confirmationDialog(
+        .alert(
             "Delete this comment?",
             isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
+            Button("Cancel", role: .cancel) {
+                pendingDelete = nil
+            }
             Button("Delete", role: .destructive) {
                 if let pendingDelete {
                     onDelete(pendingDelete)
                 }
-                pendingDelete = nil
-            }
-            Button("Cancel", role: .cancel) {
                 pendingDelete = nil
             }
         }
@@ -1072,24 +1067,6 @@ private struct DiaryEditorFields: View {
                     focusedField = .content
                 }
 
-            ZStack(alignment: .topLeading) {
-                if content.isEmpty {
-                    Text("Write something...")
-                        .font(.body)
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 8)
-                        .allowsHitTesting(false)
-                }
-
-                TextEditor(text: $content)
-                    .font(.body)
-                    .focused($focusedField, equals: .content)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 280)
-                    .padding(.horizontal, -5)
-            }
-            .padding(.top, 2)
-
             HStack(spacing: 8) {
                 Menu {
                     ForEach(["L", "G", "C"], id: \.self) { value in
@@ -1116,10 +1093,28 @@ private struct DiaryEditorFields: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
-            .padding(.top, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+
+            TextField(
+                "Write something...",
+                text: $content,
+                axis: .vertical
+            )
+            .font(.body)
+            .textFieldStyle(.plain)
+            .focused($focusedField, equals: .content)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: 300,
+                alignment: .topLeading
+            )
         }
         .task {
-            if autoFocusTitle {
+            guard autoFocusTitle else { return }
+            try? await Task.sleep(for: .milliseconds(250))
+            if !Task.isCancelled {
                 focusedField = .title
             }
         }
@@ -1162,7 +1157,7 @@ private struct DiaryCreateView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 2)
+            .padding(.top, -6)
             .padding(.bottom, 32)
         }
         .background(Color(.systemBackground))
