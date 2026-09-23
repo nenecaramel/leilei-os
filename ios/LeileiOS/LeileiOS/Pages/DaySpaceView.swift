@@ -152,7 +152,6 @@ struct DaySpaceView: View {
             } else if completeEmpty {
                 AppStateSurface(
                     title: "Nothing here",
-                    systemImage: "square.stack.3d.up"
                 )
                 .frame(
                     maxWidth: .infinity,
