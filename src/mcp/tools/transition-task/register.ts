@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TASK_DOMAIN_BOUNDARY } from "../model-language.js";
 import { TaskDomainError, type AuthenticatedTaskContext, type TaskEntryResult, type TransitionMcpTaskInput } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
@@ -14,7 +15,7 @@ export interface TransitionTaskToolService { transitionMcpTask(context: Authenti
 export type TransitionTaskToolDependencies = { taskService: TransitionTaskToolService; getAuthenticatedUserId: () => string };
 
 export function registerTransitionTaskTool(server: McpServer, dependencies: TransitionTaskToolDependencies): void {
-  server.registerTool("transition_task", { title: "Transition one Task", description: "Apply one explicit Task action through the existing Task state machine. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly repeat the same action.", inputSchema: transitionTaskInputSchema, outputSchema: transitionTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, action }) => invokeMcpWrite({
+  server.registerTool("transition_task", { title: "Transition one Task", description: TASK_DOMAIN_BOUNDARY + " Apply one explicit Task action through the existing Task state machine. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly repeat the same action.", inputSchema: transitionTaskInputSchema, outputSchema: transitionTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, action }) => invokeMcpWrite({
     toolName: "transition_task", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
       const data = await dependencies.taskService.transitionMcpTask({ userId }, { id, action });
