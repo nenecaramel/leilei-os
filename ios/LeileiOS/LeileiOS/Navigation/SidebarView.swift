@@ -46,7 +46,7 @@ struct SidebarView: View {
                     .padding(.bottom, 40)
                 }
                 .padding(.top, topContentOffset)
-            }
+
                 FloatingGlassButton(
                     symbol: "magnifyingglass",
                     accessibilityLabel: "Global Search"
