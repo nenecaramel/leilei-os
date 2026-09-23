@@ -17,6 +17,7 @@ import {
 } from "../tools/notion-write-shared.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../tools/error-contract.js";
 import {
@@ -254,7 +255,7 @@ export function registerNotionTypedWriteTools(
         });
         return pageReceipt(result, page_id, "Updated and verified Notion page properties.");
       } catch (error) {
-        return typedWriteError(error);
+        return typedWriteError(error, page_id);
       }
     },
   );
@@ -278,7 +279,7 @@ export function registerNotionTypedWriteTools(
         });
         return pageReceipt(result, page_id, "Appended and verified Notion page content.");
       } catch (error) {
-        return typedWriteError(error);
+        return typedWriteError(error, page_id);
       }
     },
   );
@@ -305,7 +306,7 @@ export function registerNotionTypedWriteTools(
         });
         return pageReceipt(result, page_id, "Replaced and verified Notion page content.");
       } catch (error) {
-        return typedWriteError(error);
+        return typedWriteError(error, page_id);
       }
     },
   );
@@ -484,7 +485,7 @@ function pageReceipt(
   };
 }
 
-function typedWriteError(error: unknown) {
+function typedWriteError(error: unknown, pageId?: string) {
   if (
     error instanceof NotionWriteAuthenticationError
     || isActiveUserAuthorizationError(error)
@@ -506,6 +507,19 @@ function typedWriteError(error: unknown) {
       : error.code === "INVALID_WRITE"
         ? "The requested Notion change is outside the allowed verified write surface."
         : "The Notion write completed but fresh readback verification failed.";
+    if (error.code === "UNCERTAIN_WRITE") {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "uncertain_outcome",
+          recommendedTool: pageId ? "read_notion_page" : null,
+          recommendedArguments: pageId ? { page_id: pageId } : null,
+        }),
+      );
+    }
     return createMcpToolError(error.code, message);
   }
   return createMcpToolError(
