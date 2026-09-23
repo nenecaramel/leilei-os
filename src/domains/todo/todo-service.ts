@@ -168,6 +168,7 @@ export class TodoService {
     date_from?: unknown;
     date_to?: unknown;
     limit?: unknown;
+    offset?: unknown;
   }): Promise<TodoSearchResult> {
     await this.requireActiveUser(input.userId);
     let query: string;
@@ -180,7 +181,9 @@ export class TodoService {
     const dateTo = searchDate(input.date_to);
     if (dateFrom && dateTo && dateFrom > dateTo) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
     const limit = input.limit === undefined ? 50 : input.limit;
-    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 50) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 51) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
+    const offset = input.offset === undefined ? 0 : input.offset;
+    if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
     if (!this.repository.searchEntries) throw new Error("Todo search persistence is unavailable.");
     const rows = await this.repository.searchEntries({
       userId: input.userId,
@@ -190,6 +193,7 @@ export class TodoService {
       dateFrom,
       dateTo,
       limit,
+      offset,
     });
     return {
       entries: rows.map((row) => ({
