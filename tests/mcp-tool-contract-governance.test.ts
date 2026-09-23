@@ -458,3 +458,47 @@ test("operational connectivity stays out of the model-visible tool inventory", a
   const names = tools.map((tool) => tool.name);
   assert.equal(names.includes("hello"), false);
 });
+
+test("global_search runtime defaults cannot reintroduce retired modules", async () => {
+  let captured: Record<string, unknown> | undefined;
+  const server = createMcpServer({
+    globalSearch: {
+      getAuthenticatedUserId: () => "00000000-0000-4000-8000-000000000099",
+      globalSearchService: {
+        async search(input: Record<string, unknown>) {
+          captured = input;
+          return {
+            results: [],
+            metadata: {
+              count: 0,
+              has_more: false,
+              next_cursor: null,
+              searched_modules: input.modules as ["diary", "todo", "universe"],
+              searched_scope: "active" as const,
+            },
+          };
+        },
+      },
+    },
+  } as never);
+
+  const client = new Client(
+    { name: "global-search-retirement-defaults", version: "1.0.0" },
+    { capabilities: {} },
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const result = await client.callTool({
+      name: "global_search",
+      arguments: { query: "needle" },
+    });
+    assert.notEqual(result.isError, true);
+    assert.deepEqual(captured?.modules, ["diary", "todo", "universe"]);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
