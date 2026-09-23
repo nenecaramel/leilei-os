@@ -7,10 +7,9 @@ import {
   type NotionExplicitWriteResult,
 } from "../../domains/notion/notion-explicit-write-service.js";
 import {
-  notionAuthErrorResult,
   notionBodySchema,
-  notionErrorResult,
   notionIdSchema,
+  notionWriteError,
   NotionWriteAuthenticationError,
 } from "../tools/notion-write-shared.js";
 import {
@@ -27,6 +26,11 @@ import {
   mcpMutationReceipt,
   mcpMutationReceiptFields,
 } from "../tools/mutation-contract.js";
+import {
+  createMcpToolError,
+  mcpErrorRecoveryHint,
+  mcpToolErrorDetailsSchema,
+} from "../tools/error-contract.js";
 
 export type NotionExplicitWriteServiceContract = {
   createPage(body: Record<string, unknown>): Promise<NotionExplicitWriteResult>;
@@ -91,45 +95,67 @@ const commentInputSchema = z.object({
 }).strict();
 
 const explicitReceiptOutputSchema = z.object({
-  success: z.literal(true),
+  success: z.boolean(),
   data: z.object({
     operation: z.string().min(1),
     target_id: z.string().min(1),
     verified: z.literal(true),
     discussion_id: z.string().nullable().optional(),
     ...mcpMutationReceiptFields,
-  }).strict(),
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
-function explicitWriteErrorResult(error: NotionExplicitWriteError) {
-  const text = error.code === "UNCERTAIN_WRITE"
+function explicitWriteErrorResult(
+  error: NotionExplicitWriteError,
+  pageId?: string,
+) {
+  const message = error.code === "UNCERTAIN_WRITE"
     ? "The Notion write outcome is uncertain. Fresh readback was attempted and the write was not retried."
     : error.code === "INVALID_WRITE"
       ? "The requested Notion change is outside the allowed explicit-write surface."
       : "The Notion write completed but fresh readback verification failed.";
-  return {
-    isError: true as const,
-    content: [{ type: "text" as const, text }],
-  };
+
+  if (error.code === "UNCERTAIN_WRITE") {
+    return createMcpToolError(
+      error.code,
+      message,
+      message,
+      mcpErrorRecoveryHint({
+        retryable: false,
+        reason: "uncertain_outcome",
+        recommendedTool: pageId ? "read_notion_page" : null,
+        recommendedArguments: pageId ? { page_id: pageId } : null,
+      }),
+    );
+  }
+  return createMcpToolError(error.code, message);
 }
 
 function invalidActionInput(toolName: string) {
-  return {
-    isError: true as const,
-    content: [{
-      type: "text" as const,
-      text: `The ${toolName} request is invalid for the selected action.`,
-    }],
-  };
+  return createMcpToolError(
+    "INVALID_ARGUMENT",
+    `The ${toolName} request is invalid for the selected action.`,
+  );
 }
 
-function handleWriteError(error: unknown) {
-  if (isActiveUserAuthorizationError(error)) {
-    return notionAuthErrorResult();
+function handleWriteError(error: unknown, pageId?: string) {
+  if (
+    isActiveUserAuthorizationError(error)
+    || error instanceof NotionWriteAuthenticationError
+  ) {
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to modify Notion.",
+    );
   }
-  if (error instanceof NotionWriteAuthenticationError) return notionAuthErrorResult();
-  if (error instanceof NotionExplicitWriteError) return explicitWriteErrorResult(error);
-  return notionErrorResult(error);
+  if (error instanceof NotionExplicitWriteError) {
+    return explicitWriteErrorResult(error, pageId);
+  }
+  return createMcpToolError(
+    "NOTION_WRITE_FAILED",
+    notionWriteError(error),
+  );
 }
 
 export function registerNotionExplicitWriteTools(
@@ -152,10 +178,14 @@ export function registerNotionExplicitWriteTools(
       },
     },
     async (args) => {
+      let recoveryPageId: string | undefined;
       try {
         const parsed = pageActionSchema.safeParse(args);
         if (!parsed.success) return invalidActionInput("write_notion_page");
         const actionArgs = parsed.data;
+        recoveryPageId = actionArgs.action === "create"
+          ? undefined
+          : actionArgs.page_id;
 
         if (actionArgs.action === "create") {
           const body = actionArgs.parent
@@ -194,7 +224,7 @@ export function registerNotionExplicitWriteTools(
           `Updated and verified Notion page content ${result.target_id}.`,
         );
       } catch (error) {
-        return handleWriteError(error);
+        return handleWriteError(error, recoveryPageId);
       }
     },
   );
