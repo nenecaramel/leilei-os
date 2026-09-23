@@ -12,6 +12,7 @@ const steps = [
   ["error recovery", ["test:mcp-error-recovery"]],
   ["revision / idempotency", ["test:mcp-revision-idempotency"]],
   ["domain / enum semantics", ["test:mcp-domain-semantics"]],
+  ["naming / deprecation", ["test:mcp-naming-deprecation"]],
   ["tool surface", ["test:mcp-tool-surface"]],
   ["native live minimal", ["test:native-live-minimal"]],
 ];
