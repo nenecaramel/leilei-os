@@ -41,6 +41,13 @@ import {
 import {
   DrizzleCuriosityTopicProjectionRuntimePort,
 } from "./curiosity-topic-projection-runtime-repository.js";
+import type {
+  BackgroundLoopOrchestrator,
+} from "./background-loop-orchestrator.js";
+import {
+  SubjectStateBackgroundMaintenance,
+  type SubjectStateBackgroundMaintenanceConfig,
+} from "./subject-state-background-maintenance.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -53,6 +60,36 @@ export const DEFAULT_DRIVE_EVOLUTION_POLICY: DriveEvolutionPolicy = {
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
+
+const DEFAULT_THOUGHT_EVOLUTION_POLICY = {
+  flitHalfLifeHours: 168,
+  baseStrength: 0.35,
+  reinforcementBoost: 0.25,
+  fixationThreshold: 0.75,
+  minEvolutionIntervalHours: 6,
+  maxReinforcementSources: 16,
+};
+
+const DEFAULT_TOPIC_EVOLUTION_POLICY = {
+  maxReinforcementSources: 16,
+  dormantAfterHours: 168,
+};
+
+export const DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG:
+  SubjectStateBackgroundMaintenanceConfig = {
+    thoughtEvolution: {
+      priority: "maintenance",
+      cost: 1,
+    },
+    driveEvolution: {
+      priority: "maintenance",
+      cost: 1,
+    },
+    topicLifecycle: {
+      priority: "maintenance",
+      cost: 1,
+    },
+  };
 
 export function createDefaultBackendMindRuntime(
   db: Database,
@@ -88,24 +125,14 @@ export function createDefaultBackendMindRuntime(
   );
   const thoughtEvolution = new ThoughtEvolutionService(
     new DrizzleThoughtEvolutionRuntimePort(db),
-    {
-      flitHalfLifeHours: 168,
-      baseStrength: 0.35,
-      reinforcementBoost: 0.25,
-      fixationThreshold: 0.75,
-      minEvolutionIntervalHours: 6,
-      maxReinforcementSources: 16,
-    },
+    DEFAULT_THOUGHT_EVOLUTION_POLICY,
   );
   const curiosityTopicProjection = new CuriosityTopicProjectionService(
     new DrizzleCuriosityTopicProjectionRuntimePort(db),
   );
   const topicEvolution = new TopicEvolutionService(
     new DrizzleTopicEvolutionRuntimePort(db),
-    {
-      maxReinforcementSources: 16,
-      dormantAfterHours: 168,
-    },
+    DEFAULT_TOPIC_EVOLUTION_POLICY,
   );
   const mind = new DefaultNativeLiveMindRuntime(loop, {
     subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
@@ -117,6 +144,33 @@ export function createDefaultBackendMindRuntime(
   return new DefaultNativeLiveBackendMindRuntime(conversations, mind);
 }
 
+export function createDefaultSubjectStateBackgroundMaintenance(
+  db: Database,
+  orchestrator: Pick<BackgroundLoopOrchestrator, "schedule">,
+): SubjectStateBackgroundMaintenance {
+  return new SubjectStateBackgroundMaintenance(
+    orchestrator,
+    DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+    {
+      thoughtEvolution: new ThoughtEvolutionService(
+        new DrizzleThoughtEvolutionRuntimePort(db),
+        DEFAULT_THOUGHT_EVOLUTION_POLICY,
+      ),
+      driveEvolution: new DriveEvolutionService(
+        new DrizzleDriveEvolutionRuntimePort(db),
+        DEFAULT_DRIVE_EVOLUTION_POLICY,
+      ),
+      curiosityTopicProjection: new CuriosityTopicProjectionService(
+        new DrizzleCuriosityTopicProjectionRuntimePort(db),
+      ),
+      topicEvolution: new TopicEvolutionService(
+        new DrizzleTopicEvolutionRuntimePort(db),
+        DEFAULT_TOPIC_EVOLUTION_POLICY,
+      ),
+    },
+    DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG,
+  );
+}
 
 export function createDefaultDriveSatisfactionService(
   db: Database,

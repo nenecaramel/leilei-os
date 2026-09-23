@@ -33,6 +33,7 @@ import { BridgeService } from "../domains/bridge/bridge-service.js";
 import {
   createDefaultBackendMindRuntime,
   createDefaultDriveSatisfactionService,
+  createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
 } from "../domains/runtime/default-backend-mind-runtime.js";
 import {
@@ -58,6 +59,12 @@ import {
 import type {
   DriveSatisfactionService,
 } from "../domains/runtime/drive-satisfaction-runtime-repository.js";
+import {
+  BackgroundLoopOrchestrator,
+} from "../domains/runtime/background-loop-orchestrator.js";
+import {
+  NativeLivePostTurnBackgroundOpportunity,
+} from "../domains/runtime/native-live-background-opportunity.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/native-live-backend-turn-coordinator.js";
 import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/native-live-backend-relay-prepare.js";
@@ -184,11 +191,28 @@ export function createProcessRuntime(
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
   const driveSatisfactionService =
     createDefaultDriveSatisfactionService(db);
+  const backgroundLoopOrchestrator = new BackgroundLoopOrchestrator({
+    maxRunsPerCycle: 4,
+    maxCostPerCycle: 4,
+    maxConcurrent: 2,
+  });
+  const subjectStateBackgroundMaintenance =
+    createDefaultSubjectStateBackgroundMaintenance(
+      db,
+      backgroundLoopOrchestrator,
+    );
+  const nativeLivePostTurnBackgroundOpportunity =
+    new NativeLivePostTurnBackgroundOpportunity(
+      null,
+      subjectStateBackgroundMaintenance,
+    );
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
   const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
     new DrizzleNativeLiveMindFollowUpRepository(db),
     nativeLiveTurnPort,
     nativeLiveBackendMind,
+    undefined,
+    nativeLivePostTurnBackgroundOpportunity,
   );
   const nativeLiveMindFollowUpScheduler =
     createNativeLiveMindFollowUpScheduler({
@@ -425,6 +449,10 @@ export function createProcessRuntime(
         nativeLiveMindFollowUpScheduler.drain(),
         nativeLiveSemanticScheduler.drain(),
       ]);
+      // A durable Mind follow-up may offer background work while it drains.
+      // Wait for that bounded cycle only after all opportunity producers above
+      // have quiesced, otherwise shutdown could close the DB under a new job.
+      await backgroundLoopOrchestrator.drain();
     },
     closeDatabase: database.close,
   };

@@ -11,6 +11,7 @@ import {
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { ClaudeCodeDistillationModel } from "../src/domains/runtime/claude-code-distillation-model.js";
+import { BackgroundLoopOrchestrator } from "../src/domains/runtime/background-loop-orchestrator.js";
 import { DistillationBackgroundTrigger } from "../src/domains/runtime/distillation-background-trigger.js";
 import { DrizzleDistillationRuntimePort } from "../src/domains/runtime/distillation-runtime-repository.js";
 import { DistillationService } from "../src/domains/runtime/distillation.js";
@@ -108,12 +109,22 @@ try {
   );
 
   const observed: unknown[] = [];
+  const backgroundLoops = new BackgroundLoopOrchestrator({
+    maxRunsPerCycle: 2,
+    maxCostPerCycle: 2,
+    maxConcurrent: 1,
+  });
   const trigger = new DistillationBackgroundTrigger(
+    backgroundLoops,
     {
       getConversation: (input) => conversationsService.getConversation(input),
     },
     distillation,
     "G",
+    {
+      priority: "consolidation",
+      cost: 1,
+    },
     (event) => observed.push(event),
   );
 

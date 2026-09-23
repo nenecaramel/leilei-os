@@ -10,7 +10,7 @@ import {
   type NativeLiveNormalizedEvent,
 } from "./native-live-conversation-orchestrator.js";
 import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
-import type { NativeLiveDistillationTrigger } from "../runtime/distillation-background-trigger.js";
+import type { NativeLiveBackgroundOpportunity } from "../runtime/native-live-background-opportunity.js";
 
 export type NativeLiveBranchTurnResult =
   | {
@@ -67,7 +67,7 @@ export class NativeLiveConversationBranchOrchestrator {
     private readonly conversations: NativeLiveConversationPort,
     private readonly runtime: NativeLiveClaudeRuntime,
     private readonly mind: NativeLiveMindRuntime | null = null,
-    private readonly distillation: NativeLiveDistillationTrigger | null = null,
+    private readonly backgroundOpportunity: NativeLiveBackgroundOpportunity | null = null,
   ) {}
 
   async retry(input: {
@@ -242,7 +242,7 @@ export class NativeLiveConversationBranchOrchestrator {
         });
       }
 
-      this.distillation?.schedule({
+      this.backgroundOpportunity?.schedule({
         userId: input.userId,
         conversationId: input.conversationId,
       });

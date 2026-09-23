@@ -7,6 +7,9 @@ import {
 import {
   SubjectStateBackgroundMaintenance,
 } from "../src/domains/runtime/subject-state-background-maintenance.js";
+import {
+  NativeLivePostTurnBackgroundOpportunity,
+} from "../src/domains/runtime/native-live-background-opportunity.js";
 
 test("Subject State maintenance adapts existing decay/evolution services onto one shared Subject mutex", async () => {
   const calls: string[] = [];
@@ -157,4 +160,33 @@ test("Subject State maintenance requires explicit plans instead of inventing cad
     ),
     /both runner and explicit plan/,
   );
+});
+
+
+test("post-turn opportunity fans out fail-soft and still schedules Subject maintenance when another target rejects", () => {
+  const calls: string[] = [];
+  const opportunity = new NativeLivePostTurnBackgroundOpportunity(
+    {
+      schedule() {
+        calls.push("distillation");
+        throw new Error("simulated scheduling failure");
+      },
+    },
+    {
+      schedule(input) {
+        calls.push("maintenance:" + input.userId);
+      },
+    },
+  );
+
+  assert.doesNotThrow(() => {
+    opportunity.schedule({
+      userId: "u1",
+      conversationId: "c1",
+    });
+  });
+  assert.deepEqual(calls, [
+    "distillation",
+    "maintenance:u1",
+  ]);
 });

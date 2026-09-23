@@ -1,4 +1,11 @@
 import type { NativeLiveConversation } from "../conversation/native-live-conversation-types.js";
+import {
+  CLAUDE_CODE_BACKGROUND_MUTEX,
+  conversationBackgroundMutexKey,
+  subjectStateBackgroundMutexKey,
+  type BackgroundLoopOrchestrator,
+  type BackgroundLoopPriority,
+} from "./background-loop-orchestrator.js";
 import type {
   DistillationRunResult,
   DistillationService,
@@ -39,28 +46,32 @@ export type DistillationBackgroundObserverEvent =
       errorName: string;
     };
 
+export type DistillationBackgroundLoopPlan = {
+  priority: BackgroundLoopPriority;
+  cost: number;
+};
+
 type DistillationRunner = Pick<DistillationService, "runOnce">;
 
 /**
- * Best-effort V1 background trigger.
+ * Adapts Distillation onto the shared BackgroundLoopOrchestrator.
  *
- * A completed foreground turn only schedules work; it never waits for
- * Distillation. The worker is globally serial and coalesces repeated triggers
- * per conversation. If a run fails, the foreground chat remains successful and
- * the watermark stays put, so a later trigger can safely retry the same source.
+ * Foreground completion only offers an opportunity; it never waits for model
+ * work. Same-conversation opportunities coalesce while pending. Distillation
+ * also shares the Subject State mutex with maintenance jobs and the global
+ * Claude Code background mutex with other model-backed background work.
  */
 export class DistillationBackgroundTrigger
 implements NativeLiveDistillationTrigger {
-  private readonly pending = new Map<
-    string,
-    NativeLiveDistillationScheduleInput
-  >();
-  private worker: Promise<void> | null = null;
-
   constructor(
+    private readonly orchestrator: Pick<
+      BackgroundLoopOrchestrator,
+      "schedule" | "drain"
+    >,
     private readonly conversations: DistillationConversationReader,
     private readonly distillation: DistillationRunner,
     private readonly subjectId: string,
+    private readonly plan: DistillationBackgroundLoopPlan,
     private readonly observe?: (
       event: DistillationBackgroundObserverEvent,
     ) => void,
@@ -68,84 +79,90 @@ implements NativeLiveDistillationTrigger {
     if (!subjectId.trim()) {
       throw new Error("Distillation background subjectId must not be blank.");
     }
+    if (!Number.isInteger(plan.cost) || plan.cost < 1) {
+      throw new Error(
+        "Distillation background cost must be a positive integer.",
+      );
+    }
   }
 
   schedule(input: NativeLiveDistillationScheduleInput): void {
-    this.pending.set(keyOf(input), input);
-    this.ensureWorker();
+    const userId = input.userId.trim();
+    const conversationId = input.conversationId.trim();
+    if (!userId || !conversationId) {
+      throw new Error(
+        "Distillation background identity must not be blank.",
+      );
+    }
+
+    this.orchestrator.schedule({
+      key:
+        "distillation:"
+        + userId
+        + ":\u0000:"
+        + conversationId,
+      kind: "distillation",
+      priority: this.plan.priority,
+      cost: this.plan.cost,
+      mutexKeys: [
+        subjectStateBackgroundMutexKey({
+          userId,
+          subjectId: this.subjectId,
+        }),
+        conversationBackgroundMutexKey({
+          userId,
+          conversationId,
+        }),
+        CLAUDE_CODE_BACKGROUND_MUTEX,
+      ],
+      run: async () => {
+        try {
+          const conversation = await this.conversations.getConversation({
+            userId,
+            conversationId,
+          });
+          if (!conversation) {
+            this.emit({
+              name: "distillation_background_missing_conversation",
+              userId,
+              conversationId,
+            });
+            return;
+          }
+
+          const result = await this.distillation.runOnce({
+            userId,
+            subjectId: this.subjectId,
+            conversation,
+          });
+          this.emit({
+            name: "distillation_background_run",
+            userId,
+            conversationId,
+            result,
+          });
+        } catch (error) {
+          this.emit({
+            name: "distillation_background_error",
+            userId,
+            conversationId,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          });
+          throw error;
+        }
+      },
+    });
   }
 
   async drain(): Promise<void> {
-    for (;;) {
-      const active = this.worker;
-      if (!active) {
-        if (this.pending.size === 0) return;
-        this.ensureWorker();
-        continue;
-      }
-      await active;
-    }
-  }
-
-  private ensureWorker(): void {
-    if (this.worker) return;
-    this.worker = Promise.resolve()
-      .then(() => this.runLoop())
-      .finally(() => {
-        this.worker = null;
-        if (this.pending.size > 0) this.ensureWorker();
-      });
-  }
-
-  private async runLoop(): Promise<void> {
-    while (this.pending.size > 0) {
-      const first = this.pending.entries().next().value as
-        | [string, NativeLiveDistillationScheduleInput]
-        | undefined;
-      if (!first) return;
-
-      const [key, input] = first;
-      this.pending.delete(key);
-
-      try {
-        const conversation = await this.conversations.getConversation(input);
-        if (!conversation) {
-          this.emit({
-            name: "distillation_background_missing_conversation",
-            ...input,
-          });
-          continue;
-        }
-
-        const result = await this.distillation.runOnce({
-          userId: input.userId,
-          subjectId: this.subjectId,
-          conversation,
-        });
-        this.emit({
-          name: "distillation_background_run",
-          ...input,
-          result,
-        });
-      } catch (error) {
-        this.emit({
-          name: "distillation_background_error",
-          ...input,
-          errorName: error instanceof Error ? error.name : "UnknownError",
-        });
-      }
-    }
+    await this.orchestrator.drain();
   }
 
   private emit(event: DistillationBackgroundObserverEvent): void {
     try {
       this.observe?.(event);
     } catch {
-      // Observability must never turn a background failure into chat failure.
+      // Observability must never turn background work into failure.
     }
   }
-}
-
-function keyOf(input: NativeLiveDistillationScheduleInput): string {
-  return `${input.userId}:\u0000:${input.conversationId}`;
 }

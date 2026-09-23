@@ -7,6 +7,9 @@ import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
 import type {
+  NativeLiveBackgroundOpportunity,
+} from "../runtime/native-live-background-opportunity.js";
+import type {
   NativeLiveBackendTurnPort,
   NativeLivePostFinalizeRunner,
 } from "./native-live-backend-turn-coordinator.js";
@@ -176,6 +179,8 @@ implements NativeLivePostFinalizeRunner {
     private readonly turns: Pick<NativeLiveBackendTurnPort, "getPreparation">,
     private readonly mind: NativeLiveBackendMindRuntime,
     workerId: string = randomUUID(),
+    private readonly backgroundOpportunity:
+      NativeLiveBackgroundOpportunity | null = null,
   ) {
     this.workerId = workerId;
   }
@@ -234,6 +239,17 @@ implements NativeLivePostFinalizeRunner {
       });
       if (!completed) {
         throw new Error("NativeLiveMindFollowUpCompletionLost");
+      }
+
+      try {
+        this.backgroundOpportunity?.schedule({
+          userId: job.userId,
+          conversationId: job.conversationId,
+        });
+      } catch {
+        // The durable Mind follow-up is already complete. A soft background
+        // opportunity must never reopen it or turn the foreground result into
+        // failure.
       }
     } catch (error) {
       await this.port.releaseFailure({

@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { NativeLiveConversation } from "../src/domains/conversation/native-live-conversation-types.js";
 import {
+  BackgroundLoopOrchestrator,
+} from "../src/domains/runtime/background-loop-orchestrator.js";
+import {
   DistillationBackgroundTrigger,
   type DistillationBackgroundObserverEvent,
 } from "../src/domains/runtime/distillation-background-trigger.js";
@@ -21,15 +24,25 @@ function conversation(id = "c1"): NativeLiveConversation {
   };
 }
 
-test("background trigger is non-blocking, globally serialized, and coalesces repeated conversation triggers", async () => {
+function createOrchestrator() {
+  return new BackgroundLoopOrchestrator({
+    maxRunsPerCycle: 8,
+    maxCostPerCycle: 8,
+    maxConcurrent: 4,
+  });
+}
+
+test("Distillation uses the shared orchestrator, stays globally model-serialized, and coalesces repeated pending conversation opportunities", async () => {
   const reads: string[] = [];
   const runs: string[] = [];
   let releaseFirst!: () => void;
   const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
+  const orchestrator = createOrchestrator();
 
   const trigger = new DistillationBackgroundTrigger(
+    orchestrator,
     {
       async getConversation(input) {
         reads.push(input.conversationId);
@@ -44,6 +57,10 @@ test("background trigger is non-blocking, globally serialized, and coalesces rep
       },
     },
     "G",
+    {
+      priority: "consolidation",
+      cost: 1,
+    },
   );
 
   trigger.schedule({ userId: "u1", conversationId: "c1" });
@@ -61,9 +78,11 @@ test("background trigger is non-blocking, globally serialized, and coalesces rep
   assert.deepEqual(reads, ["c1", "c1", "c2"]);
 });
 
-test("background model or repository failure is observed but never escapes drain", async () => {
+test("Distillation infrastructure failure is observed and counted fail-soft by the shared orchestrator", async () => {
   const observed: DistillationBackgroundObserverEvent[] = [];
+  const orchestrator = createOrchestrator();
   const trigger = new DistillationBackgroundTrigger(
+    orchestrator,
     {
       async getConversation() {
         return conversation();
@@ -75,12 +94,17 @@ test("background model or repository failure is observed but never escapes drain
       },
     },
     "G",
+    {
+      priority: "consolidation",
+      cost: 1,
+    },
     (event) => observed.push(event),
   );
 
   trigger.schedule({ userId: "u1", conversationId: "c1" });
-  await trigger.drain();
+  const summary = await orchestrator.drain();
 
+  assert.equal(summary?.failed, 1);
   assert.deepEqual(observed, [{
     name: "distillation_background_error",
     userId: "u1",
@@ -89,9 +113,11 @@ test("background model or repository failure is observed but never escapes drain
   }]);
 });
 
-test("missing conversation is a harmless background no-op", async () => {
+test("missing conversation remains a harmless completed background no-op", async () => {
   const observed: DistillationBackgroundObserverEvent[] = [];
+  const orchestrator = createOrchestrator();
   const trigger = new DistillationBackgroundTrigger(
+    orchestrator,
     {
       async getConversation() {
         return null;
@@ -103,12 +129,18 @@ test("missing conversation is a harmless background no-op", async () => {
       },
     },
     "G",
+    {
+      priority: "consolidation",
+      cost: 1,
+    },
     (event) => observed.push(event),
   );
 
   trigger.schedule({ userId: "u1", conversationId: "gone" });
-  await trigger.drain();
+  const summary = await orchestrator.drain();
 
+  assert.equal(summary?.completed, 1);
+  assert.equal(summary?.failed, 0);
   assert.deepEqual(observed, [{
     name: "distillation_background_missing_conversation",
     userId: "u1",

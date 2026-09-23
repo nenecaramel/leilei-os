@@ -114,7 +114,12 @@ class FakeMind implements NativeLiveBackendMindRuntime {
   }
 }
 
-function setup() {
+function setup(backgroundOpportunity: {
+  schedule(input: {
+    userId: string;
+    conversationId: string;
+  }): void;
+} | null = null) {
   const port = new FakePort();
   const mind = new FakeMind();
   const turns: Pick<NativeLiveBackendTurnPort, "getPreparation"> = {
@@ -127,6 +132,7 @@ function setup() {
     turns,
     mind,
     "77777777-7777-4777-8777-777777777777",
+    backgroundOpportunity,
   );
   return { port, mind, service };
 }
@@ -167,6 +173,27 @@ test("failed Mind follow-up is released for durable retry instead of fabricating
   );
   assert.equal(port.completeCalls.length, 0);
   assert.equal(port.releaseCalls.length, 1);
+});
+
+test("completed durable Mind follow-up offers one fail-soft post-turn background opportunity", async () => {
+  const scheduled: unknown[] = [];
+  const { port, service } = setup({
+    schedule(input) {
+      scheduled.push(input);
+      throw new Error("background scheduling stays soft");
+    },
+  });
+
+  assert.equal(
+    await service.processPreparation({ userId, prepareId }),
+    "processed",
+  );
+  assert.deepEqual(scheduled, [{
+    userId,
+    conversationId,
+  }]);
+  assert.equal(port.completeCalls.length, 1);
+  assert.equal(port.releaseCalls.length, 0);
 });
 
 test("Mind follow-up scheduler drains bounded work and never lets one failed job stop later work", async () => {
