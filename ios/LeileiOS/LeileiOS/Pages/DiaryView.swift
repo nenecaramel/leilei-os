@@ -975,7 +975,7 @@ private struct DiaryDetailView: View {
             )
             state = .loaded(response.data)
         } catch {
-            state = .unavailable(error.localizedDescription)
+            state = .unavailable("Couldn’t load this diary.")
         }
     }
 
