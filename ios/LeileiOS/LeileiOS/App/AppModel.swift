@@ -83,6 +83,15 @@ final class AppModel: ObservableObject {
         await refreshConnectivity()
     }
 
+    func reauthorize() async throws {
+        try await authSession.reauthorize()
+
+        isAuthenticated = true
+        accountEmail = authSession.userProfile()?.email
+
+        await refreshConnectivity()
+    }
+
     func signOut() async throws {
         do {
             try await authSession.signOut()
