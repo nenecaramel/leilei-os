@@ -138,14 +138,18 @@ private struct SettingsHomeContent: View {
                 }
 
                 if appModel.isAuthenticated {
-                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                    Button(role: .destructive) {
                         showingSignOutConfirmation = true
+                    } label: {
+                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } else {
-                    Button("Sign in", systemImage: "rectangle.portrait.and.arrow.forward") {
+                    Button {
                         Task {
                             await signIn()
                         }
+                    } label: {
+                        Label("Sign in", systemImage: "rectangle.portrait.and.arrow.forward")
                     }
                 }
             }
