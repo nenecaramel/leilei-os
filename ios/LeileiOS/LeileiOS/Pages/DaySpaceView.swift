@@ -271,8 +271,8 @@ struct DaySpaceView: View {
 
         selectedDate = date
         selection = nil
-        todoState = .loading(todoState.value)
-        diaryState = .loading(diaryState.value)
+        todoState = .loading(nil)
+        diaryState = .loading(nil)
 
         async let todo = readTodo(date: date)
         async let diaries = readDiaries(date: date)
@@ -508,6 +508,7 @@ private struct DaySpaceStage: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity)
         .frame(height: layout.stageHeight)
         .background {
             GeometryReader { proxy in
@@ -574,7 +575,6 @@ private struct DaySpacePaperCard: View {
             radius: 11,
             y: 8
         )
-        .clipped()
         .contentShape(Rectangle())
     }
 }
@@ -606,8 +606,8 @@ private struct DaySpaceTodoPreview: View {
                         .font(.system(size: 10.5))
                         .foregroundStyle(
                             entry.kind == .completed
-                                ? .tertiary
-                                : .secondary
+                                ? Color.secondary.opacity(0.6)
+                                : Color.secondary
                         )
                         .strikethrough(entry.kind == .completed)
                         .lineLimit(2)
@@ -734,8 +734,8 @@ private struct DaySpaceTodoEditorSheet: View {
                             .strikethrough(row.kind == .completed)
                             .foregroundStyle(
                                 row.kind == .completed
-                                    ? .secondary
-                                    : .primary
+                                    ? Color.secondary
+                                    : Color.primary
                             )
                             .onChange(of: row.text) { _, _ in
                                 ensureRowCapacity()
@@ -1011,7 +1011,7 @@ private struct DaySpaceDiaryEditorSheet: View {
     }
 }
 
-private enum DaySpaceDiscoveryState {
+private enum DaySpaceDiscoveryState: Equatable {
     case loading
     case ready
     case unavailable
