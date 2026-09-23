@@ -2,6 +2,14 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
+private extension Color {
+    static let settingsBackground = Color(
+        red: 0.965,
+        green: 0.965,
+        blue: 0.97
+    )
+}
+
 struct SettingsSheetView: View {
     let dataService: any SettingsDataService
     @ObservedObject var appModel: AppModel
@@ -75,7 +83,7 @@ private struct SettingsDetailLayer: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.965, green: 0.965, blue: 0.97)
+            Color.settingsBackground
                 .ignoresSafeArea()
 
             ScrollView {
@@ -210,6 +218,8 @@ private struct SettingsHomeContent: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
         .task {
             await refreshAuthorizationStatus()
         }
