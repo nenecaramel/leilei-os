@@ -23,24 +23,36 @@ struct SettingsSheetView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            SettingsPageContent(
-                title: "Settings",
-                leadingSymbol: "xmark",
-                leadingAccessibilityLabel: "Close Settings",
-                leadingAction: onDismiss,
-                resetTrigger: isPresented
-            ) {
-                SettingsHomeContent(
-                    appModel: appModel,
-                    onShowSummary: { showDetail(.summary) },
-                    onShowExport: { showDetail(.export) },
-                    onShowRestore: { showDetail(.restore) },
-                    onShowStatus: { showDetail(.status) },
-                    onShowActivity: { showDetail(.activity) },
-                    onShowAbout: { showDetail(.about) }
-                )
+            ZStack {
+                Color(red: 0.965, green: 0.965, blue: 0.97)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    SettingsHomeContent(
+                        appModel: appModel,
+                        onShowSummary: { showDetail(.summary) },
+                        onShowExport: { showDetail(.export) },
+                        onShowRestore: { showDetail(.restore) },
+                        onShowStatus: { showDetail(.status) },
+                        onShowActivity: { showDetail(.activity) },
+                        onShowAbout: { showDetail(.about) }
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 64)
+                }
+                .scrollEdgeEffectStyle(.automatic, for: .top)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close Settings")
+                }
+            }
             .navigationDestination(for: SettingsDetailPage.self) { page in
                 SettingsDetailLayer(
                     page: page,
@@ -118,102 +130,6 @@ private struct SettingsDetailLayer: View {
         case .about:
             SettingsAboutContent()
         }
-    }
-}
-
-private struct SettingsPageContent<Content: View>: View {
-    let title: String
-    let leadingSymbol: String
-    let leadingAccessibilityLabel: String
-    let leadingAction: () -> Void
-    let resetTrigger: Bool?
-    @State private var topEdgeHidden = true
-    @State private var userHasInteractedWithScroll = false
-    @ViewBuilder let content: Content
-
-    init(
-        title: String,
-        leadingSymbol: String,
-        leadingAccessibilityLabel: String,
-        leadingAction: @escaping () -> Void,
-        resetTrigger: Bool? = nil,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.leadingSymbol = leadingSymbol
-        self.leadingAccessibilityLabel = leadingAccessibilityLabel
-        self.leadingAction = leadingAction
-        self.resetTrigger = resetTrigger
-        self.content = content()
-    }
-
-    var body: some View {
-        ZStack {
-            Color(red: 0.965, green: 0.965, blue: 0.97)
-                .ignoresSafeArea()
-
-            ScrollView {
-                content
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 64)
-            }
-            .onScrollPhaseChange { _, newPhase, _ in
-                guard newPhase == .interacting else { return }
-                userHasInteractedWithScroll = true
-            }
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, normalizedOffset in
-                guard userHasInteractedWithScroll else { return }
-                topEdgeHidden = normalizedOffset <= 0.5
-            }
-            .scrollEdgeEffectStyle(.automatic, for: .top)
-            .safeAreaBar(edge: .top, spacing: 0) {
-                SettingsPageHeader(
-                    title: title,
-                    leadingSymbol: leadingSymbol,
-                    leadingAccessibilityLabel: leadingAccessibilityLabel,
-                    leadingAction: leadingAction
-                )
-            }
-            .scrollEdgeEffectHidden(topEdgeHidden, for: .top)
-        }
-        .onChange(of: resetTrigger) { _, newValue in
-            guard newValue == true else { return }
-            topEdgeHidden = true
-            userHasInteractedWithScroll = false
-        }
-    }
-}
-
-private struct SettingsPageHeader: View {
-    let title: String
-    let leadingSymbol: String
-    let leadingAccessibilityLabel: String
-    let leadingAction: () -> Void
-
-    var body: some View {
-        HStack {
-            FloatingGlassButton(
-                symbol: leadingSymbol,
-                accessibilityLabel: leadingAccessibilityLabel,
-                action: leadingAction
-            )
-
-            Spacer()
-
-            Text(title)
-                .font(.system(size: 18, weight: .semibold))
-
-            Spacer()
-
-            Color.clear
-                .frame(width: 44, height: 44)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 14)
     }
 }
 
