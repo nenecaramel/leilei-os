@@ -235,8 +235,29 @@ test("Diary comment MCP mutations bind authenticated identity and preserve revis
       idempotencyKey: "diary-comment-tool-0001",
     },
   });
+  assert.deepEqual(
+    (add.structuredContent as {
+      data: {
+        outcome: string;
+        entity_type: string;
+        entity_id: string;
+        revision: number | null;
+        detail_tool: string | null;
+        detail_arguments: unknown;
+      };
+    }).data,
+    {
+      comment: COMMENT,
+      outcome: "applied",
+      entity_type: "diary_comment",
+      entity_id: COMMENT_ID,
+      revision: 2,
+      detail_tool: "get_diary_comment",
+      detail_arguments: { id: COMMENT_ID, scope: "active" },
+    },
+  );
 
-  await pair.client.callTool({
+  const updated = await pair.client.callTool({
     name: "update_diary_comment",
     arguments: {
       id: COMMENT_ID,
@@ -251,7 +272,9 @@ test("Diary comment MCP mutations bind authenticated identity and preserve revis
     content: "改过的 comment。",
   });
 
-  await pair.client.callTool({
+  assert.equal((updated.structuredContent as { data: { outcome: string } }).data.outcome, "applied");
+
+  const deleted = await pair.client.callTool({
     name: "delete_diary_comment",
     arguments: {
       id: COMMENT_ID,
@@ -263,6 +286,28 @@ test("Diary comment MCP mutations bind authenticated identity and preserve revis
     id: COMMENT_ID,
     expectedRevision: 3,
   });
+  assert.deepEqual(
+    (deleted.structuredContent as {
+      data: {
+        outcome: string;
+        entity_type: string;
+        entity_id: string;
+        revision: number | null;
+        detail_tool: string | null;
+        detail_arguments: unknown;
+      };
+    }).data,
+    {
+      comment_id: COMMENT_ID,
+      deleted: true,
+      outcome: "applied",
+      entity_type: "diary_comment",
+      entity_id: COMMENT_ID,
+      revision: null,
+      detail_tool: null,
+      detail_arguments: null,
+    },
+  );
 });
 
 test("get_diary returns a comment pagination pointer without embedding comments", async (t) => {
