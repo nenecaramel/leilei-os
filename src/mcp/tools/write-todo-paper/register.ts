@@ -10,7 +10,7 @@ import {
   type ReplaceTodoPaperIdempotentlyServiceResult,
 } from "../../../domains/todo/todo-service.js";
 import { invokeMcpWrite } from "../write-context.js";
-import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 
@@ -142,12 +142,15 @@ export function registerWriteTodoPaperTool(
             },
           };
         },
-        mapError: toSafeWriteTodoPaperError,
+        mapError: (error) => toSafeWriteTodoPaperError(error, { date, author }),
       }),
   );
 }
 
-function toSafeWriteTodoPaperError(error: unknown) {
+function toSafeWriteTodoPaperError(
+  error: unknown,
+  context?: { date: string; author: "L" | "G" | "C" },
+) {
   if (error instanceof WriteTodoPaperAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",
@@ -160,6 +163,30 @@ function toSafeWriteTodoPaperError(error: unknown) {
       : error.code === "IDEMPOTENCY_CONFLICT"
         ? "This idempotency key was already used for different Todo content."
         : "The Todo request is invalid.";
+    if (error.code === "TODO_PAPER_CONFLICT" && context) {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "stale_revision",
+          recommendedTool: "read_todo_day",
+          recommendedArguments: context,
+        }),
+      );
+    }
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, text);
   }
   console.error(
