@@ -23,6 +23,7 @@ import {
   mcpMutationReceiptFields,
   mcpMutationOutcomeFromReplay,
 } from "../mutation-contract.js";
+import { mcpExpectedRevisionSchema, mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 
 const idSchema = z.string().trim().uuid();
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
@@ -53,7 +54,7 @@ const addInputSchema = z.object({
   diary_id: idSchema.describe("Exact Diary id returned by search_diary, get_diary, or global_search."),
   author: contentAuthorSchema.describe("Logical author of this comment: L, G, or C. Author is immutable after creation."),
   content: commentContentSchema.describe("Complete comment text. The server NFC-normalizes and trims it."),
-  idempotency_key: z.string().min(16).max(128).regex(/^[A-Za-z0-9._:-]+$/).describe("Stable unique key that prevents duplicate comment creation."),
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const addOutputSchema = z.object({
@@ -99,7 +100,7 @@ const listOutputSchema = z.object({
 
 const updateInputSchema = z.object({
   id: idSchema.describe("Exact Diary comment id."),
-  expected_revision: z.number().int().min(1).describe("Revision from the latest get_diary_comment or list_diary_comments read."),
+  expected_revision: mcpExpectedRevisionSchema,
   content: commentContentSchema.describe("Complete replacement comment text. Author cannot be changed."),
 }).strict();
 
@@ -111,7 +112,7 @@ const updateOutputSchema = z.object({
 
 const deleteInputSchema = z.object({
   id: idSchema.describe("Exact Diary comment id."),
-  expected_revision: z.number().int().min(1).describe("Revision from the latest authoritative comment read."),
+  expected_revision: mcpExpectedRevisionSchema,
 }).strict();
 
 const deleteOutputSchema = z.object({
