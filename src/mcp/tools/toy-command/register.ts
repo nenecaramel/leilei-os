@@ -13,7 +13,7 @@ import {
   TOY_MAX_DURATION_SECONDS,
 } from "../../../domains/toy/toy-command-types.js";
 import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
-import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines } from "../content-contract.js";
 import { mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 
@@ -241,6 +241,17 @@ function toSafeToolError(error: unknown, action: "set" | "stop") {
             ? "The toy command is invalid."
             : "The toy command could not be queued.";
 
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, message);
   }
 
