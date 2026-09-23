@@ -30,7 +30,7 @@ export type UpdateUniverseRelationToolDependencies = {
 export function registerUpdateUniverseRelationTool(server: McpServer, dependencies: UpdateUniverseRelationToolDependencies): void {
   server.registerTool("update_universe_relation", {
     title: "Update a Universe relation",
-    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Apply a partial update to one Universe relation. Only relation_type and strength may change; id, source, target, and createdAt remain unchanged. A stale global version is a conflict; fresh-read the relation and Universe version before deciding whether another action is needed, and never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Update relation_type and/or strength; identity/endpoints stay unchanged. On stale/uncertain state, fresh-read the relation and Universe version before retrying.",
     inputSchema: updateUniverseRelationInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
