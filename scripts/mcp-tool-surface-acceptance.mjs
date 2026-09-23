@@ -11,6 +11,7 @@ const steps = [
   ["mutation contract", ["test:mcp-mutation-contract"]],
   ["error recovery", ["test:mcp-error-recovery"]],
   ["revision / idempotency", ["test:mcp-revision-idempotency"]],
+  ["domain / enum semantics", ["test:mcp-domain-semantics"]],
   ["tool surface", ["test:mcp-tool-surface"]],
   ["native live minimal", ["test:native-live-minimal"]],
 ];
