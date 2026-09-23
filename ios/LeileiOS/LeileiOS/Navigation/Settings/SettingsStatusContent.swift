@@ -17,10 +17,18 @@ struct SettingsStatusContent: View {
                 LabeledContent("Internal MCP", value: status?.internalMCP ?? "Unavailable")
             }
 
-            if let errorMessage {
+            if errorMessage != nil {
                 Section {
-                    Text(errorMessage)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("Status Unavailable")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Retry") {
+                            Task {
+                                await loadStatus()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -28,13 +36,18 @@ struct SettingsStatusContent: View {
         .scrollContentBackground(.hidden)
         .background(Color.settingsBackground)
         .task {
-            do {
-                status = try await dataService.readRuntimeStatus()
-                errorMessage = nil
-            } catch {
-                status = nil
-                errorMessage = error.localizedDescription
-            }
+            await loadStatus()
+        }
+    }
+
+    @MainActor
+    private func loadStatus() async {
+        do {
+            status = try await dataService.readRuntimeStatus()
+            errorMessage = nil
+        } catch {
+            status = nil
+            errorMessage = "Couldn’t load system status."
         }
     }
 }
