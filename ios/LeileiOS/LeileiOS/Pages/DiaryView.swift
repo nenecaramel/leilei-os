@@ -4,6 +4,8 @@ struct DiaryView: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var query = ""
+    @State private var timePreset: GlobalSearchTimePreset = .anyTime
+    @State private var archivePresented = false
     @State private var state: DiaryLoadState = .loading
 
     var body: some View {
@@ -34,28 +36,48 @@ struct DiaryView: View {
                 )
 
             case .loaded(let diaries):
-                if diaries.isEmpty {
+                let visibleDiaries = filteredDiaries(diaries)
+                if visibleDiaries.isEmpty {
                     ContentUnavailableView(
                         query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            && timePreset == .anyTime
                             ? "No Diary Entries"
                             : "No Results",
                         systemImage: "book.closed"
                     )
                 } else {
-                    DiaryList(diaries: diaries)
+                    DiaryList(diaries: visibleDiaries)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.settingsBackground)
-        .searchable(text: $query, prompt: "Search Diary")
+        .background(Color(.systemBackground))
+        .searchable(text: $query, prompt: "Search")
+        .navigationDestination(isPresented: $archivePresented) {
+            DiaryArchivePlaceholder()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
+                Menu {
+                    Button {
+                        archivePresented = true
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                    }
+
+                    Picker("Time", selection: $timePreset) {
+                        ForEach(GlobalSearchTimePreset.allCases) { preset in
+                            Text(preset.title)
+                                .tag(preset)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .menuActionDismissBehavior(.disabled)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 18, weight: .medium))
                 }
+                .accessibilityLabel("Diary options")
             }
 
             if #available(iOS 26.0, *) {
@@ -129,6 +151,29 @@ struct DiaryView: View {
         ]
         return "/api/v1/diary?\(components.percentEncodedQuery ?? "")"
     }
+
+    private func filteredDiaries(_ diaries: [DiaryEntry]) -> [DiaryEntry] {
+        let range = timePreset.dateRange()
+
+        return diaries.filter { diary in
+            if let dateFrom = range.dateFrom, diary.date < dateFrom {
+                return false
+            }
+            if let dateTo = range.dateTo, diary.date > dateTo {
+                return false
+            }
+            return true
+        }
+    }
+}
+
+private struct DiaryArchivePlaceholder: View {
+    var body: some View {
+        Color(.systemBackground)
+            .ignoresSafeArea()
+            .navigationTitle("Archive")
+            .navigationBarTitleDisplayMode(.inline)
+    }
 }
 
 private struct DiaryList: View {
@@ -140,13 +185,14 @@ private struct DiaryList: View {
                 Section(group.title) {
                     ForEach(group.diaries) { diary in
                         DiaryRow(diary: diary)
+                            .listRowBackground(Color.settingsBackground)
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color.settingsBackground)
+        .background(Color(.systemBackground))
     }
 }
 
@@ -349,13 +395,11 @@ private enum DiaryDate {
     }
 
     static func formatRow(_ value: String) -> String {
-        guard let components = components(from: value),
-              let date = date(from: components)
-        else {
+        guard let components = components(from: value) else {
             return value
         }
 
-        return date.formatted(.dateTime.month(.abbreviated).day())
+        return "\(components.month)/\(components.day)"
     }
 
     static func formatDetail(_ value: String) -> String {
