@@ -4,7 +4,7 @@ import {
   TaskDomainError,
   type AuthenticatedTaskContext,
   type CreateTaskInput,
-  type CreateTaskResult,
+  type CreateTaskIdempotentResult,
 } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import {
@@ -107,7 +107,7 @@ export interface CreateTaskToolService {
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
     idempotencyKey: string,
-  ): Promise<CreateTaskResult>;
+  ): Promise<CreateTaskIdempotentResult>;
 }
 
 export type CreateTaskToolDependencies = {
