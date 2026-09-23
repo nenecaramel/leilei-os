@@ -170,7 +170,9 @@ test(
       subjectId: "G",
       conversationId: "11111111-1111-4111-8111-111111111111",
     });
-    const anchor = rows.find((state) => state.id === anchorId);
+    const anchor = rows.find(
+      (state) => readTopicEvolution(state.payload)?.role === "anchor",
+    );
     assert.ok(anchor);
     const topic = readTopicEvolution(anchor.payload);
     assert.ok(topic);
