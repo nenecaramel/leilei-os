@@ -9,6 +9,7 @@ import {
 import { invokeMcpWrite } from "../write-context.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
@@ -192,6 +193,17 @@ function toSafeToolError(error: unknown) {
           ? "This idempotency key was already used for a different task."
           : "The task request is invalid.";
 
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, message);
   }
 
