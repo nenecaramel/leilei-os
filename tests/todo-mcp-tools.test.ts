@@ -374,7 +374,7 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
     arguments: {
       date: DATE,
       author: "L",
-      revision: 3,
+      expected_revision: 3,
       entries: L_PAPER.entries,
       idempotency_key: "todo-paper-direct-20260813",
     },
@@ -414,7 +414,7 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
     arguments: {
       date: C_PAPER.date,
       author: "C",
-      revision: null,
+      expected_revision: null,
       entries: C_PAPER.entries,
       idempotency_key: "todo-paper-c-author-20260905",
     },
@@ -425,7 +425,7 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
     arguments: {
       date: C_PAPER.date,
       author: "Claude",
-      revision: null,
+      expected_revision: null,
       entries: C_PAPER.entries,
       idempotency_key: "todo-paper-claude-invalid-01",
     },
@@ -449,12 +449,12 @@ test("write_todo_paper strict schema rejects omissions and identity before authe
   });
 
   for (const argumentsValue of [
-    { date: DATE, revision: null, entries: [], idempotency_key: "todo-paper-missing-author-01" },
+    { date: DATE, expected_revision: null, entries: [], idempotency_key: "todo-paper-missing-author-01" },
     { date: DATE, author: "L", entries: [], idempotency_key: "todo-paper-missing-revision-1" },
     {
       date: DATE,
       author: "L",
-      revision: null,
+      expected_revision: null,
       entries: [],
       idempotency_key: "todo-paper-identity-20260813",
       user_id: "attacker",
@@ -462,7 +462,7 @@ test("write_todo_paper strict schema rejects omissions and identity before authe
     {
       date: DATE,
       author: "L",
-      revision: null,
+      expected_revision: null,
       entries: [{ id: "a", kind: "pending", text: "x", extra: true }],
       idempotency_key: "todo-paper-entry-extra-0001",
     },
@@ -483,7 +483,7 @@ test("write_todo_paper distinguishes bounded conflicts and sanitizes internal fa
     arguments: {
       date: DATE,
       author: "L",
-      revision: null,
+      expected_revision: null,
       entries: L_PAPER.entries,
       idempotency_key: "todo-paper-errors-20260813",
     },
@@ -598,11 +598,11 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   });
   assert.deepEqual(
     [...(write.inputSchema.required ?? [])].sort(),
-    ["date", "author", "revision", "entries", "idempotency_key"].sort(),
+    ["date", "author", "expected_revision", "entries", "idempotency_key"].sort(),
   );
   assert.deepEqual(
     Object.keys(write.inputSchema.properties ?? {}).sort(),
-    ["date", "author", "revision", "entries", "idempotency_key"].sort(),
+    ["date", "author", "expected_revision", "entries", "idempotency_key"].sort(),
   );
   assert.match(write.description ?? "", /complete ordered array/i);
   assert.match(write.description ?? "", /\{"id":"todo-1","kind":"pending","text":"\.\.\."\}/);
@@ -668,7 +668,7 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
     arguments: {
       date: DATE,
       author: "L",
-      revision: 3,
+      expected_revision: 3,
       entries: L_PAPER.entries,
       idempotency_key: "todo-paper-contract-20260813",
     },
