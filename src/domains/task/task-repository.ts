@@ -130,6 +130,7 @@ export interface TaskRepository {
     userId: string,
     limit: number,
     query?: TaskListQuery,
+    offset?: number,
   ): Promise<TaskRecord[]>;
 
   findTaskById(
@@ -207,6 +208,7 @@ export class DrizzleTaskRepository
     userId: string,
     limit: number,
     query: TaskListQuery = {},
+    offset = 0,
   ): Promise<TaskRecord[]> {
     const conditions = [eq(tasks.userId, userId), eq(tasks.lifecycleStatus, "active")];
 
@@ -260,7 +262,8 @@ export class DrizzleTaskRepository
         desc(tasks.createdAt),
         asc(tasks.id),
       )
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
   }
 
   async findTaskById(
