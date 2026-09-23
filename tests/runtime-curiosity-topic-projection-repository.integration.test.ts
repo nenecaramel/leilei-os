@@ -192,7 +192,8 @@ test(
 
     assert.equal(first.scanned, 1);
     assert.equal(first.projected, 1);
-    assert.equal(second.projected, 1);
+    assert.equal(second.scanned, 0);
+    assert.equal(second.projected, 0);
 
     const rows = await subjectStates.list({
       userId,

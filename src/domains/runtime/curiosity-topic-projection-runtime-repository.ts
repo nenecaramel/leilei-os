@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { runtimeSubjectStates } from "../../database/schema.js";
 import type { PersistentWriteEnvelope } from "./persistent-write-envelope.js";
@@ -46,6 +46,17 @@ implements CuriosityTopicProjectionRuntimePort {
           eq(runtimeSubjectStates.settlementStatus, "settled"),
           eq(runtimeSubjectStates.pathStatus, "current"),
           eq(runtimeSubjectStates.validityStatus, "valid"),
+          sql`NOT EXISTS (
+            SELECT 1
+            FROM runtime_subject_states projected
+            WHERE projected.user_id = ${input.userId}::uuid
+              AND projected.subject_id = ${input.subjectId}
+              AND projected.kind = 'topic'
+              AND projected.payload -> 'topic_seed_v1' ->> 'source_kind'
+                = 'curiosity'
+              AND projected.payload -> 'topic_seed_v1' ->> 'source_state_id'
+                = ${runtimeSubjectStates.id}::text
+          )`,
         ),
       )
       .orderBy(
