@@ -96,6 +96,7 @@ export type TaskEntryResult = {
 
 export type CreateTaskResult = {
   task: TaskEntryResult;
+  outcome: "applied" | "replayed";
 };
 
 export type ListTasksInput = {
@@ -272,7 +273,10 @@ export class TaskService {
       );
     }
 
-    return { task: this.toTaskResult(persisted.task, timezone) };
+    return {
+      task: this.toTaskResult(persisted.task, timezone),
+      outcome: persisted.outcome === "replayed" ? "replayed" : "applied",
+    };
   }
 
   async listTasks(
