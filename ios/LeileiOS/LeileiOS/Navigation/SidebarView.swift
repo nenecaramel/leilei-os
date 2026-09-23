@@ -63,16 +63,20 @@ struct SidebarView: View {
                     )
                 )
             }
-            .overlay(alignment: .bottomTrailing) {
-                FloatingGlassButton(
-                    symbol: "gearshape",
-                    accessibilityLabel: "Settings"
-                ) {
-                    if let onSettings {
-                        onSettings()
-                    } else {
-                        selectedPage = .account
-                        onSelect()
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                HStack {
+                    Spacer()
+
+                    FloatingGlassButton(
+                        symbol: "gearshape",
+                        accessibilityLabel: "Settings"
+                    ) {
+                        if let onSettings {
+                            onSettings()
+                        } else {
+                            selectedPage = .account
+                            onSelect()
+                        }
                     }
                 }
                 .padding(.trailing)
