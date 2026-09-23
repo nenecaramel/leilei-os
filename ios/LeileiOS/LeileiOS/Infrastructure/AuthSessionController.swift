@@ -116,12 +116,6 @@ final class AuthSessionController {
 
         try? credentialsManager.clear()
 
-        try? await Auth0
-            .webAuth(
-                clientId: clientID,
-                domain: domain
-            )
-            .logout()
 
         let credentials = try await Auth0
             .webAuth(
