@@ -112,6 +112,11 @@ import {
 } from "../domains/sentinel/sentinel-scheduler.js";
 import { McpSessionRegistry } from "../mcp/server/session-registry.js";
 import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
+import {
+  DEFAULT_INTERNAL_MCP_TOOL_PROFILES,
+  DEFAULT_PUBLIC_MCP_TOOL_PROFILES,
+  parseMcpToolProfiles,
+} from "../mcp/server/tool-profiles.js";
 import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
 import {
   createMcpLifecycleObserver,
@@ -320,7 +325,16 @@ export function createProcessRuntime(
     ],
     observe: createRetentionObserver(logger),
   });
-  const createMcpSessionServer = createProductionMcpSessionServerFactory({
+  const publicToolProfiles = parseMcpToolProfiles(
+    runtimeEnv.MCP_PUBLIC_TOOL_PROFILES,
+    DEFAULT_PUBLIC_MCP_TOOL_PROFILES,
+  );
+  const internalToolProfiles = parseMcpToolProfiles(
+    runtimeEnv.MCP_INTERNAL_TOOL_PROFILES,
+    DEFAULT_INTERNAL_MCP_TOOL_PROFILES,
+  );
+
+    const createMcpSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: memoryRepository,
     memoryService,
     diaryService,
@@ -338,6 +352,8 @@ export function createProcessRuntime(
     sentinelService,
     bridgeService,
     bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,
+    publicToolProfiles,
+    internalToolProfiles,
     logger,
   });
 

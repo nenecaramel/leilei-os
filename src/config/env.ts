@@ -75,6 +75,8 @@ const baseEnvSchema = z.object({
   MCP_SESSION_MAX_TOTAL: z.coerce.number().int().positive().default(32),
   MCP_IDEMPOTENCY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
+  MCP_PUBLIC_TOOL_PROFILES: z.string().optional(),
+  MCP_INTERNAL_TOOL_PROFILES: z.string().optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS:
     z.coerce.number().int().positive().optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:

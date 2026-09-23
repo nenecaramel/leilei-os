@@ -31,6 +31,13 @@ import { registerRenderThinkingBlockTool } from "../tools/render-thinking-block/
 import { registerRenderThinkingBlockResource } from "../tools/render-thinking-block/resource.js";
 import { registerGetHealthTool } from "../tools/get-health/register.js";
 import { registerGetCurrentTimeTool } from "../tools/get-current-time/register.js";
+import {
+  DEFAULT_INTERNAL_MCP_TOOL_PROFILES,
+  DEFAULT_PUBLIC_MCP_TOOL_PROFILES,
+  mcpToolSurfaceEnabled,
+  resolveMcpToolExposure,
+  type McpToolProfileName,
+} from "./tool-profiles.js";
 
 export type McpSessionServerFactory = (
   authenticatedUserId: string,
@@ -57,6 +64,8 @@ export function createProductionMcpSessionServerFactory(input: {
   bridgeAmbiguityAcceptanceEnabled?: boolean;
   logger?: SafeLogger;
   sentinelService?: SentinelService;
+  publicToolProfiles?: readonly McpToolProfileName[];
+  internalToolProfiles?: readonly McpToolProfileName[];
 }): McpSessionServerFactory {
   return (userId, namespace = "public") => {
     const activeUserAuthorization = createActiveUserAuthorizer(
@@ -64,6 +73,11 @@ export function createProductionMcpSessionServerFactory(input: {
       userId,
     );
     const getAuthenticatedUserId = () => userId;
+    const toolExposure = resolveMcpToolExposure(
+      namespace === "public"
+        ? (input.publicToolProfiles ?? DEFAULT_PUBLIC_MCP_TOOL_PROFILES)
+        : (input.internalToolProfiles ?? DEFAULT_INTERNAL_MCP_TOOL_PROFILES),
+    );
     const dependencies: McpServerDependencies = {
       activeUserAuthorization,
       memoryReads: {
@@ -131,7 +145,9 @@ export function createProductionMcpSessionServerFactory(input: {
           getAuthenticatedUserId,
         },
       } : {}),
-      includeConversationRecoveryTools: namespace === "internal" || input.conversationRecoveryVisibility !== "internal-only",
+      includeConversationRecoveryTools:
+        input.conversationRecoveryVisibility !== "internal-only"
+        || namespace === "internal",
       todoTools: {
         todoService: input.todoService,
         getAuthenticatedUserId,
@@ -158,13 +174,19 @@ export function createProductionMcpSessionServerFactory(input: {
         getAuthenticatedUserId,
       },
     };
-    const server = createMcpServer(dependencies, userId);
-    registerProductionNotionExplicitWriteTools(
-      server,
+    const server = createMcpServer(
+      dependencies,
       userId,
-      activeUserAuthorization,
+      toolExposure,
     );
-    if (namespace === "public") {
+    if (mcpToolSurfaceEnabled(toolExposure, "notion")) {
+      registerProductionNotionExplicitWriteTools(
+        server,
+        userId,
+        activeUserAuthorization,
+      );
+    }
+    if (mcpToolSurfaceEnabled(toolExposure, "device")) {
       registerGetHealthTool(server, {
         healthService: input.healthService,
         getAuthenticatedUserId,
@@ -172,17 +194,25 @@ export function createProductionMcpSessionServerFactory(input: {
       registerGetCurrentTimeTool(server, {
         requireActiveUser: activeUserAuthorization,
       });
+    }
+    if (mcpToolSurfaceEnabled(toolExposure, "ui")) {
       registerRenderThinkingBlockResource(server);
       registerRenderThinkingBlockTool(server);
     }
-    if (namespace === "public" && input.sentinelService) {
+    if (
+      mcpToolSurfaceEnabled(toolExposure, "runtime_internal")
+      && input.sentinelService
+    ) {
       registerSentinelTools(server, {
         sentinelService: input.sentinelService,
         getAuthenticatedUserId,
         requireActiveUser: activeUserAuthorization,
       });
     }
-    if (namespace === "public" && input.bridgeService) {
+    if (
+      mcpToolSurfaceEnabled(toolExposure, "runtime_internal")
+      && input.bridgeService
+    ) {
       registerBridgeListenerResource(server, {
         ambiguityAcceptanceEnabled: input.bridgeAmbiguityAcceptanceEnabled === true,
       });

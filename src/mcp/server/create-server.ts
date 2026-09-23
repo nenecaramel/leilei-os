@@ -149,6 +149,11 @@ import { registerDeleteUniverseDiarySourceTool, type DeleteUniverseDiarySourceTo
 import { UniverseAuthenticationError } from "../tools/universe/shared.js";
 import { registerSharedPaperTools, SharedPaperAuthenticationError, type SharedPaperToolDependencies, type SharedPaperToolService } from "../tools/shared-paper/register.js";
 import {
+  mcpToolSurfaceEnabled,
+  resolveMcpToolExposure,
+  type McpToolExposure,
+} from "./tool-profiles.js";
+import {
   ActiveUserAuthorizationError,
   requireActiveUser,
   type ActiveUserRepository,
@@ -540,6 +545,7 @@ export type McpServerDependencies = {
 export function createMcpServer(
   dependencies: McpServerDependencies = {},
   authenticatedUserId?: string,
+  toolExposure: McpToolExposure = resolveMcpToolExposure(["full"]),
 ): McpServer {
   const server = new McpServer({
     name: "leilei-os",
@@ -550,7 +556,11 @@ export function createMcpServer(
     dependencies.activeUserAuthorization ??
     createMissingActiveUserAuthorizer(authenticatedUserId);
 
-  registerGetWeatherContextTool(server)
+  if (mcpToolSurfaceEnabled(toolExposure, "device")) {
+    registerGetWeatherContextTool(server);
+  }
+
+  if (mcpToolSurfaceEnabled(toolExposure, "core")) {
   registerReadMemoryTool(
     server,
     dependencies.readMemory ?? dependencies.memoryReads ?? {
@@ -746,7 +756,12 @@ export function createMcpServer(
       return authenticatedUserId;
     },
   });
-  if (dependencies.includeConversationRecoveryTools !== false) {
+  }
+
+  if (
+    mcpToolSurfaceEnabled(toolExposure, "conversation_recovery")
+    && dependencies.includeConversationRecoveryTools !== false
+  ) {
     registerConversationRecoveryInspectionTools(server, dependencies.conversationRecoveryInspection ?? {
       ...productionConversationRecoveryInspectionDependencies,
       getAuthenticatedUserId: () => {
@@ -755,6 +770,7 @@ export function createMcpServer(
       },
     });
   }
+  if (mcpToolSurfaceEnabled(toolExposure, "core")) {
   const universeTools = dependencies.universeTools ?? {
     universeService: productionUniverseService,
     globalSearchService: productionUniverseService,
@@ -802,6 +818,9 @@ export function createMcpServer(
   registerGetUniverseDiarySourcesTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
   registerAddUniverseDiarySourceTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
   registerDeleteUniverseDiarySourceTool(server, { sourceService: universeProvenanceTools.sourceService, getAuthenticatedUserId: universeProvenanceTools.getAuthenticatedUserId });
+  }
+
+  if (mcpToolSurfaceEnabled(toolExposure, "notion")) {
   const notionTools = dependencies.notionTools
     ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
       ? { ...dependencies.notionTools, requireActiveUser: activeUserAuthorization }
@@ -832,6 +851,9 @@ export function createMcpServer(
   registerReadNotionDatabaseTool(server, notionRead);
   registerReadNotionDataSourceTool(server, notionRead);
   registerQueryNotionDataSourceTool(server, notionRead);
+  }
+
+  if (mcpToolSurfaceEnabled(toolExposure, "core")) {
   registerReadTodoDayTool(server, dependencies.todoTools ?? {
     todoService: productionTodoService,
     getAuthenticatedUserId: () => {
@@ -874,5 +896,7 @@ export function createMcpServer(
       return authenticatedUserId;
     },
   });
+  }
+
   return server;
 }
