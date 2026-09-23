@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TODO_DOMAIN_BOUNDARY } from "../model-language.js";
 import { TodoServiceError } from "../../../domains/todo/todo-service.js";
 import type { TodoSearchResult } from "../../../domains/todo/todo-types.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
@@ -15,7 +16,7 @@ const inputSchema = z.object({
     const normalized = value.normalize("NFC").trim().replace(/\s+/gu, " ");
     return normalized.length > 0 && [...normalized].length <= 200;
   }, "Query must contain 1 to 200 Unicode code points after normalization and trimming.").describe("Required text to search Todo entry text (1–200 Unicode code points after normalization)."),
-  author: authorSchema.optional().describe("Optional Todo paper author."),
+  author: authorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   kind: kindSchema.optional().describe("Optional entry kind filter."),
   date_from: dateSchema.optional().describe("Inclusive business-date lower bound."),
   date_to: dateSchema.optional().describe("Inclusive business-date upper bound."),
@@ -48,13 +49,13 @@ const outputSchema = z.object({ success: z.boolean(), data: dataSchema.optional(
 export interface SearchTodoToolService {
   search(input: {
     userId: string;
-    query: unknown;
-    author?: unknown;
-    kind?: unknown;
-    date_from?: unknown;
-    date_to?: unknown;
-    limit?: unknown;
-    offset?: unknown;
+    query: string;
+    author?: "L" | "G" | "C";
+    kind?: "pending" | "completed" | "record";
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+    offset?: number;
   }): Promise<TodoSearchResult>;
 }
 
@@ -63,7 +64,7 @@ export type SearchTodoToolDependencies = { todoService: SearchTodoToolService; g
 export function registerSearchTodoTool(server: McpServer, dependencies: SearchTodoToolDependencies): void {
   server.registerTool("search_todo", {
     title: "Search Todo entries",
-    description: "Search the authenticated user's Todo entry text across dates. Results are compact discovery records with date, author, kind, matched text, and a snippet; use read_todo_day with the returned date for the complete paper. Optional author, kind, and inclusive date filters narrow the search. With an author filter, metadata.author echoes that author even when no paper exists (count 0). When has_more is true, continue by passing next_cursor back as cursor with the same search filters.",
+    description: TODO_DOMAIN_BOUNDARY + " Search the authenticated user's Todo entry text across dates. Results are compact discovery records with date, author, kind, matched text, and a snippet; use read_todo_day with the returned date for the complete paper. Optional author, kind, and inclusive date filters narrow the search. With an author filter, metadata.author echoes that author even when no paper exists (count 0). When has_more is true, continue by passing next_cursor back as cursor with the same search filters.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
