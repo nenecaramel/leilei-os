@@ -7,6 +7,7 @@ import {
 import { ReadMemoryAuthenticationError } from "../read-memory/register.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
@@ -130,17 +131,27 @@ export function registerGetMemoryTool(
           },
         };
       } catch (error) {
-        return toSafeGetMemoryError(error);
+        return toSafeGetMemoryError(error, { id, scope });
       }
     },
   );
 }
 
-function toSafeGetMemoryError(error: unknown) {
+function toSafeGetMemoryError(
+  error: unknown,
+  context?: { id: string; scope: "active" | "archived" },
+) {
   if (error instanceof McpBoundedReadCursorError) {
     return createMcpToolError(
       "INVALID_CURSOR",
       "The Memory continuation cursor is invalid or stale. Read the Memory again without a cursor.",
+      "The Memory continuation cursor is invalid or stale. Read the Memory again without a cursor.",
+      mcpErrorRecoveryHint({
+        retryable: false,
+        reason: "invalid_cursor",
+        recommendedTool: context ? "get_memory" : null,
+        recommendedArguments: context,
+      }),
     );
   }
 
