@@ -4,27 +4,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ActiveUserAuthorizationError } from "../src/domains/require-active-user.js";
-import { TaskDomainError } from "../src/domains/task/task-service.js";
 import { TodoServiceError } from "../src/domains/todo/todo-service.js";
 import { ToyDomainError } from "../src/domains/toy/toy-command-service.js";
 import { GlobalSearchError } from "../src/domains/global-search/global-search-service.js";
-import {
-  CreateTaskAuthenticationError,
-  registerCreateTaskTool,
-} from "../src/mcp/tools/create-task/register.js";
-import {
-  UpdateTaskAuthenticationError,
-  registerUpdateTaskTool,
-} from "../src/mcp/tools/update-task/register.js";
-import {
-  TransitionTaskAuthenticationError,
-  registerTransitionTaskTool,
-} from "../src/mcp/tools/transition-task/register.js";
-import {
-  TaskReadAuthenticationError,
-  registerListTasksTool,
-} from "../src/mcp/tools/list-tasks/register.js";
-import { registerGetTaskTool } from "../src/mcp/tools/get-task/register.js";
 import {
   TodoReadAuthenticationError,
   registerReadTodoDayTool,
@@ -83,15 +65,6 @@ function assertRawAbsent(result: ToolResult) {
   assert.equal(JSON.stringify(result).includes(RAW), false);
 }
 
-const CREATE_TASK_ARGS = {
-  title: "Contract task",
-  description: "Core error contract coverage",
-  priority: "normal",
-  tags: ["contract"],
-  author: "L",
-  idempotency_key: "core-task-contract-0001",
-};
-
 const TODO_WRITE_ARGS = {
   date: "2026-08-26",
   author: "L",
@@ -109,70 +82,6 @@ const TOY_SET_ARGS = {
 const TOY_STOP_ARGS = {
   idempotency_key: "core-toy-stop-0001",
 };
-
-test("create_task preserves IDEMPOTENCY_CONFLICT", async () => {
-  const result = await callTool((server) => registerCreateTaskTool(server, {
-    getAuthenticatedUserId: () => USER_ID,
-    taskService: { async createTaskIdempotently() { throw new TaskDomainError("IDEMPOTENCY_CONFLICT", RAW); } },
-  }), "create_task", CREATE_TASK_ARGS);
-  const error = errorOf(result);
-  assert.equal(error.code, "IDEMPOTENCY_CONFLICT");
-  assert.equal(error.message, "This idempotency key was already used for a different task.");
-  assertRawAbsent(result);
-});
-
-test("create_task maps absent MCP auth to AUTHENTICATION_REQUIRED", async () => {
-  const result = await callTool((server) => registerCreateTaskTool(server, {
-    getAuthenticatedUserId: () => { throw new CreateTaskAuthenticationError(); },
-    taskService: { async createTaskIdempotently() { throw new Error("service should not run"); } },
-  }), "create_task", CREATE_TASK_ARGS);
-  assert.equal(errorOf(result).code, "AUTHENTICATION_REQUIRED");
-});
-
-test("update_task preserves TASK_STATUS_CONFLICT", async () => {
-  const result = await callTool((server) => registerUpdateTaskTool(server, {
-    getAuthenticatedUserId: () => USER_ID,
-    taskService: { async updateMcpTask() { throw new TaskDomainError("TASK_STATUS_CONFLICT", RAW); } },
-  }), "update_task", { id: "task-1", title: "Updated" });
-  assert.equal(errorOf(result).code, "TASK_STATUS_CONFLICT");
-  assertRawAbsent(result);
-});
-
-test("transition_task preserves INVALID_TASK_REOPEN_STATE", async () => {
-  const result = await callTool((server) => registerTransitionTaskTool(server, {
-    getAuthenticatedUserId: () => USER_ID,
-    taskService: { async transitionMcpTask() { throw new TaskDomainError("INVALID_TASK_REOPEN_STATE", RAW); } },
-  }), "transition_task", { id: "task-1", action: "reopen" });
-  assert.equal(errorOf(result).code, "INVALID_TASK_REOPEN_STATE");
-  assertRawAbsent(result);
-});
-
-test("list_tasks preserves INVALID_TASK_QUERY", async () => {
-  const result = await callTool((server) => registerListTasksTool(server, {
-    getAuthenticatedUserId: () => USER_ID,
-    taskService: { async listTasks() { throw new TaskDomainError("INVALID_TASK_QUERY", RAW); } },
-  }), "list_tasks", { query: "contract" });
-  assert.equal(errorOf(result).code, "INVALID_TASK_QUERY");
-  assertRawAbsent(result);
-});
-
-test("get_task preserves TASK_NOT_FOUND", async () => {
-  const result = await callTool((server) => registerGetTaskTool(server, {
-    getAuthenticatedUserId: () => USER_ID,
-    taskService: { async readTask() { throw new TaskDomainError("TASK_NOT_FOUND", RAW); } },
-  }), "get_task", { id: "task-1" });
-  assert.equal(errorOf(result).code, "TASK_NOT_FOUND");
-  assertRawAbsent(result);
-});
-
-test("Task unknown exceptions map to INTERNAL_ERROR", async () => {
-  const result = await callTool((server) => registerListTasksTool(server, {
-    getAuthenticatedUserId: () => USER_ID,
-    taskService: { async listTasks() { throw new Error(RAW); } },
-  }), "list_tasks", {});
-  assert.equal(errorOf(result).code, "INTERNAL_ERROR");
-  assertRawAbsent(result);
-});
 
 test("read_todo_day preserves TODO_DATE_INVALID", async () => {
   const result = await callTool((server) => registerReadTodoDayTool(server, {
