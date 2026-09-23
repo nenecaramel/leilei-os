@@ -134,7 +134,7 @@ struct DaySpaceView: View {
                 ContentUnavailableView {
                     Label("Day Space Unavailable", systemImage: "square.stack.3d.up")
                 } description: {
-                    Text("Unable to read Day Space.")
+                    Text("Couldn’t load Day Space.")
                 } actions: {
                     Button("Retry") {
                         Task {
@@ -149,14 +149,13 @@ struct DaySpaceView: View {
                 VStack(spacing: 6) {
                     Text("Nothing Here Yet")
                         .font(.subheadline.weight(.medium))
+
                     Text("No Todo or Diary entries for this day.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 64)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 64)
             } else if !papers.isEmpty {
                 DaySpaceStage(
                     dateKey: selectedDate,
@@ -427,9 +426,63 @@ private struct DaySpaceDateNavigationRow: View {
 
 private struct DaySpaceReadingState: View {
     var body: some View {
-        ProgressView("Loading…")
-            .frame(maxWidth: .infinity)
-            .padding(.top, 94)
+        GeometryReader { proxy in
+            let width = max(280, proxy.size.width)
+
+            ZStack(alignment: .topLeading) {
+                DaySpaceSkeletonPaper(width: min(158, width * 0.46), height: 112)
+                    .rotationEffect(.degrees(-2.4))
+                    .offset(x: 6, y: 18)
+
+                DaySpaceSkeletonPaper(width: min(186, width * 0.55), height: 134)
+                    .rotationEffect(.degrees(2.1))
+                    .offset(x: max(0, width - min(186, width * 0.55) - 4), y: 128)
+
+                DaySpaceSkeletonPaper(width: min(218, width * 0.64), height: 158)
+                    .rotationEffect(.degrees(-1.6))
+                    .offset(x: max(0, (width - min(218, width * 0.64)) * 0.3), y: 270)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(height: 470)
+        .accessibilityLabel("Loading…")
+    }
+}
+
+private struct DaySpaceSkeletonPaper: View {
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.primary.opacity(0.08))
+                .frame(width: width * 0.58, height: 10)
+
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.primary.opacity(0.06))
+                .frame(width: width * 0.78, height: 8)
+
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.primary.opacity(0.06))
+                .frame(width: width * 0.66, height: 8)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 15)
+        .frame(width: width, height: height, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(.systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(
+            color: .black.opacity(0.04),
+            radius: 10,
+            y: 7
+        )
     }
 }
 
@@ -763,7 +816,7 @@ private struct DaySpaceTodoEditorSheet: View {
                             .accessibilityLabel("Change todo status")
 
                             TextField(
-                                "Todo",
+                                "",
                                 text: $row.text,
                                 axis: .vertical
                             )
@@ -987,7 +1040,7 @@ private struct DaySpaceDiaryEditorSheet: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving..." : "Done") {
+                    Button(isSaving ? "Saving…" : "Done") {
                         Task {
                             await save()
                         }
@@ -1336,15 +1389,13 @@ private struct DaySpaceEditableTodoEntry: Identifiable {
             )
         }
 
-        while rows.count < max(24, entries.count + 1) {
-            rows.append(
-                DaySpaceEditableTodoEntry(
-                    id: UUID().uuidString.lowercased(),
-                    kind: .pending,
-                    text: ""
-                )
+        rows.append(
+            DaySpaceEditableTodoEntry(
+                id: UUID().uuidString.lowercased(),
+                kind: .pending,
+                text: ""
             )
-        }
+        )
 
         return rows
     }
