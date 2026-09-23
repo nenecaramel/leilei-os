@@ -311,7 +311,7 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
   const revisionedTools = [
-    "write_todo_paper",
+    "replace_todo_paper",
     "update_todo_entry",
     "delete_todo_entry",
     "edit_shared_paper",
@@ -334,8 +334,8 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
   }
 
   const idempotentTools = [
-    "write_memory",
-    "write_diary",
+    "create_memory",
+    "create_diary",
     "create_task",
     "replace_todo_paper",
     "append_todo_entries",
