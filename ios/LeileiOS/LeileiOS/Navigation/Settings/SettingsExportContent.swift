@@ -32,7 +32,7 @@ struct SettingsExportContent: View {
                     }
                 } label: {
                     HStack {
-                        Text("Create Export")
+                        Text(isExporting ? "Exporting…" : "Create Export")
                         Spacer()
                         if isExporting {
                             ProgressView()
@@ -75,7 +75,7 @@ struct SettingsExportContent: View {
                 )
             )
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn’t create the export."
         }
     }
 }
