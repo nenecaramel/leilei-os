@@ -525,7 +525,10 @@ private struct DiaryDetailView: View {
 
             guard case .loaded(var diary) = state else { return }
             var comments = diary.comments ?? []
-            if !comments.contains(where: { $0.id == response.data.comment.id }) {
+            let wasAlreadyVisible = comments.contains {
+                $0.id == response.data.comment.id
+            }
+            if !wasAlreadyVisible {
                 comments.append(response.data.comment)
             }
             comments.sort {
@@ -535,9 +538,10 @@ private struct DiaryDetailView: View {
                 return $0.createdAt < $1.createdAt
             }
             diary.comments = comments
-            let existingCount = diary.commentsMetadata?.count ?? max(0, comments.count - 1)
+            let existingCount = diary.commentsMetadata?.count
+                ?? max(0, comments.count - (wasAlreadyVisible ? 0 : 1))
             diary.commentsMetadata = DiaryCommentsMetadata(
-                count: existingCount + 1,
+                count: existingCount + (wasAlreadyVisible ? 0 : 1),
                 returned: comments.count,
                 truncated: diary.commentsMetadata?.truncated ?? false
             )
