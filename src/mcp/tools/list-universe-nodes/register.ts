@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
@@ -42,7 +43,7 @@ type Cursor = { updatedAt: string; id: string };
 export function registerListUniverseNodesTool(server: McpServer, dependencies: ListUniverseNodesToolDependencies): void {
   server.registerTool("list_universe_nodes", {
     title: "List Universe nodes",
-    description: "Browse the authenticated user's Universe nodes without a text query. Results are compact summaries with stable IDs; use search_universe for text discovery and get_universe_node for the complete content of a selected node.",
+    description: UNIVERSE_DOMAIN_BOUNDARY + " Browse the authenticated user's Universe nodes without a text query. Results are compact summaries with stable IDs; use search_universe for text discovery and get_universe_node for the complete content of a selected node.",
     inputSchema: z.object({ limit: z.number().int().min(1).max(50).default(25).optional().describe("Maximum nodes per page. Defaults to 25."), cursor: cursorSchema.optional() }).strict(),
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

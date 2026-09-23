@@ -1,23 +1,20 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import {
-  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
-  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
-  MCP_IDEMPOTENCY_KEY_PATTERN,
-} from "../../../domains/mcp-write/mcp-write-idempotency.js";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TODO_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TodoServiceError,
   type ReplaceTodoPaperIdempotentlyServiceResult,
 } from "../../../domains/todo/todo-service.js";
 import { invokeMcpWrite } from "../write-context.js";
-import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
-import { joinMcpContentLines } from "../content-contract.js";
+import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { formatMcpDetailPointer, joinMcpContentLines } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
+import { mcpExpectedNullableRevisionSchema, mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 
 const todoEntryInputSchema = z.object({
   id: z.string(),
   kind: z.enum(["pending", "completed", "record"]),
   text: z.string(),
-  revision: z.number().int().min(1).optional(),
 }).strict();
 
 const todoEntryOutputSchema = z.object({
@@ -30,7 +27,7 @@ const todoEntryOutputSchema = z.object({
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
 
 const todoPaperSchema = z.object({
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   date: z.string(),
   revision: z.number().int().nonnegative(),
   entries: z.array(todoEntryOutputSchema),
@@ -38,21 +35,15 @@ const todoPaperSchema = z.object({
 
 const writeTodoPaperInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  author: todoAuthorSchema,
-  revision: z.number().int().min(0).nullable(),
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
+  expected_revision: mcpExpectedNullableRevisionSchema,
   entries: z.array(todoEntryInputSchema),
-  idempotency_key: z.string()
-    .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-    .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-    .regex(MCP_IDEMPOTENCY_KEY_PATTERN),
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const writeTodoPaperDataSchema = z.object({
   paper: todoPaperSchema,
-  metadata: z.object({
-    committed: z.boolean(),
-    idempotent_replay: z.boolean(),
-  }),
+  ...mcpMutationReceiptFields,
 });
 
 const writeTodoPaperOutputSchema = z.object({
@@ -77,16 +68,36 @@ export type WriteTodoPaperToolDependencies = {
   getAuthenticatedUserId: () => string;
 };
 
+const REPLACE_TODO_PAPER_DESCRIPTION =
+  TODO_DOMAIN_BOUNDARY + " Replace one complete L/G/C paper using expected_revision from read_todo_day, or null only for a missing paper. Use only for creation or whole-paper reorder/replacement; prefer append_todo_entries, append_todo_entry, update_todo_entry, or delete_todo_entry for entry-level changes. Supply a complete ordered array like {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\".";
+
+export function registerReplaceTodoPaperTool(
+  server: McpServer,
+  dependencies: WriteTodoPaperToolDependencies,
+): void {
+  registerTodoPaperReplaceTool(server, dependencies, "replace_todo_paper", false);
+}
+
 export function registerWriteTodoPaperTool(
   server: McpServer,
   dependencies: WriteTodoPaperToolDependencies,
 ): void {
+  registerTodoPaperReplaceTool(server, dependencies, "write_todo_paper", true);
+}
+
+function registerTodoPaperReplaceTool(
+  server: McpServer,
+  dependencies: WriteTodoPaperToolDependencies,
+  toolName: "replace_todo_paper" | "write_todo_paper",
+  deprecated: boolean,
+): void {
   server.registerTool(
-    "write_todo_paper",
+    toolName,
     {
-      title: "Save one Todo paper",
-      description:
-        "Replace one complete L, G, or C Todo paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding, editing, completing, or deleting a single entry, prefer append_todo_entry, update_todo_entry, or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, the exact current paper revision returned by read_todo_day (or null only when creating a missing paper), and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
+      title: deprecated ? "Deprecated: replace Todo paper" : "Replace one Todo paper",
+      description: deprecated
+        ? "DEPRECATED: use replace_todo_paper. " + REPLACE_TODO_PAPER_DESCRIPTION
+        : REPLACE_TODO_PAPER_DESCRIPTION,
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {
@@ -96,7 +107,7 @@ export function registerWriteTodoPaperTool(
         openWorldHint: false,
       },
     },
-    async ({ date, author, revision, entries, idempotency_key }) =>
+    async ({ date, author, expected_revision, entries, idempotency_key }) =>
       invokeMcpWrite({
         toolName: "write_todo_paper",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
@@ -105,7 +116,7 @@ export function registerWriteTodoPaperTool(
             userId,
             date,
             author,
-            revision,
+            revision: expected_revision,
             entries,
             idempotencyKey: idempotency_key,
           });
@@ -117,17 +128,42 @@ export function registerWriteTodoPaperTool(
                   ? "The Todo paper was returned without applying a duplicate write."
                   : "The Todo paper was saved.",
                 `Todo ${data.paper.date} author=${data.paper.author} revision=${data.paper.revision}; entries=${data.paper.entries.length}.`,
+                formatMcpDetailPointer("read_todo_day", {
+                  date: data.paper.date,
+                  author: data.paper.author,
+                }),
               ]),
             }],
-            structuredContent: { success: true as const, data },
+            structuredContent: {
+              success: true as const,
+              data: {
+                paper: data.paper,
+                ...mcpMutationReceipt({
+                  outcome: mcpMutationOutcomeFromReplay(
+                    data.metadata.idempotent_replay,
+                  ),
+                  entity_type: "todo_paper",
+                  entity_id: `${data.paper.date}:${data.paper.author}`,
+                  revision: data.paper.revision,
+                  detail_tool: "read_todo_day",
+                  detail_arguments: {
+                    date: data.paper.date,
+                    author: data.paper.author,
+                  },
+                }),
+              },
+            },
           };
         },
-        mapError: toSafeWriteTodoPaperError,
+        mapError: (error) => toSafeWriteTodoPaperError(error, { date, author }),
       }),
   );
 }
 
-function toSafeWriteTodoPaperError(error: unknown) {
+function toSafeWriteTodoPaperError(
+  error: unknown,
+  context?: { date: string; author: "L" | "G" | "C" },
+) {
   if (error instanceof WriteTodoPaperAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",
@@ -140,6 +176,30 @@ function toSafeWriteTodoPaperError(error: unknown) {
       : error.code === "IDEMPOTENCY_CONFLICT"
         ? "This idempotency key was already used for different Todo content."
         : "The Todo request is invalid.";
+    if (error.code === "TODO_PAPER_CONFLICT" && context) {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "stale_revision",
+          recommendedTool: "read_todo_day",
+          recommendedArguments: context,
+        }),
+      );
+    }
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, text);
   }
   console.error(

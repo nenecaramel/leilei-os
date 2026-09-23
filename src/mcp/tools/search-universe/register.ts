@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   GlobalSearchError,
   type GlobalSearchInput,
@@ -56,7 +57,7 @@ export type SearchUniverseToolDependencies = {
 export function registerSearchUniverseTool(server: McpServer, dependencies: SearchUniverseToolDependencies): void {
   server.registerTool("search_universe", {
     title: "Search Universe",
-    description: "Search the authenticated user's active Universe nodes by text. Results are compact discovery records with stable IDs and pagination evidence; use list_universe_nodes for query-free browsing and get_universe_node for an exact selected node.",
+    description: UNIVERSE_DOMAIN_BOUNDARY + " Search the authenticated user's active Universe nodes by text. Results are compact discovery records with stable IDs and pagination evidence; use list_universe_nodes for query-free browsing and get_universe_node for an exact selected node.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

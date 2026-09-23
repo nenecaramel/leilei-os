@@ -6,6 +6,7 @@ export const MCP_WRITE_TOOL_NAMES = [
   "toy_stop",
   "write_todo_paper",
   "append_todo_entry",
+  "append_todo_entries",
   "update_todo_entry",
   "delete_todo_entry",
   "update_memory",

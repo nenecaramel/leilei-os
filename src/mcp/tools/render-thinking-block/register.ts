@@ -3,51 +3,105 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI,
+  CHATGPT_RENDER_WORKING_NOTE_RESOURCE_URI,
   RENDER_THINKING_BLOCK_RESOURCE_URI,
+  RENDER_WORKING_NOTE_RESOURCE_URI,
 } from "./resource.js";
 
-const styleSchema = z.enum(["deep_think", "relational"]);
-const effortSchema = z.enum(["low", "medium", "high"]);
-const skinSchema = z.enum(["botanical", "microglow"]);
+const workingNoteStyleSchema = z.enum(["analysis", "relational"]);
+const workingNoteDetailSchema = z.enum(["brief", "standard", "detailed"]);
 
-// Keep the advertised schema strict and skin-free, while accepting only the two
-// known legacy values at the MCP validation boundary for cached clients.
-const advertisedInputSchema = z.object({
-  style: styleSchema.describe(
+export const renderWorkingNoteInputSchema = z.object({
+  style: workingNoteStyleSchema.describe(
+    "Choose the user-visible note style. Use analysis for concise public reasoning summaries, evidence, assumptions, options, and next steps; use relational for user-visible interpersonal context or feelings without exposing private chain-of-thought.",
+  ),
+  note: z.string().describe(
+    "User-visible working note. Include only information that is appropriate to show directly to the user, such as conclusions, evidence, assumptions, options, uncertainties, and next steps. Do not output private chain-of-thought, hidden reasoning, internal scratchpad content, or a transcript of unrevealed intermediate reasoning.",
+  ),
+  detail: workingNoteDetailSchema.describe(
+    "How much user-visible detail to show: brief for a compact note, standard for normal context, detailed for a fuller public-facing explanation. This controls note presentation only and is not a hidden reasoning-effort setting.",
+  ),
+}).strict();
+
+const legacyStyleSchema = z.enum(["deep_think", "relational"]);
+const legacyEffortSchema = z.enum(["low", "medium", "high"]);
+const legacySkinSchema = z.enum(["botanical", "microglow"]);
+
+const advertisedLegacyInputSchema = z.object({
+  style: legacyStyleSchema.describe(
     "选择本轮思考块的文体。用户明确指定时严格服从；否则按本轮主要目的选择：分析、研究、判断、创作取舍和问题求解使用 deep_think，陪伴、亲密交流、情绪回应与个人感受使用 relational。",
   ),
   thinking: z.string().describe(
-    "在这里写本轮外置的工作文本。它不是最终回答，也不是模型原生隐藏 CoT。使用用户本轮的主要语言；严格按照 style 写作。style=deep_think：清楚展开问题、约束、证据、假设、备选路径、不确定性与取舍，写成连贯的分析叙述。style=relational：使用第一人称、自然流动且连贯的长段落，写出联想、感受、担心、克制与正在作出的取舍，不要写成第三人称的用户分析报告。这里是临时、可推翻的工作材料，最终回答不必保留其中的每个判断；旧 block 只属于当时回合，除非用户明确要求，否则不得在以后引用、继承其中的猜测，或把它当作权威记忆。",
+    "在这里写本轮外置的工作文本。它是用户可见的兼容字段，不是模型原生隐藏 CoT；旧客户端继续使用此字段，新调用请改用 render_working_note(note=...)。",
   ),
-  effort: effortSchema.describe(
-    "本轮思考块的长度目标：low 最多约 500 tokens；medium 约 700–1000 tokens；high 约 1200–2000 tokens。这里只是 prompt-level 目标，不做静默截断；不要为了凑长度重复或虚构复杂性。",
+  effort: legacyEffortSchema.describe(
+    "本轮兼容思考块的长度目标：low 最多约 500 tokens；medium 约 700–1000 tokens；high 约 1200–2000 tokens。新调用请改用 render_working_note(detail=...)。",
   ),
 }).strict();
 
-const legacyCompatibleInputSchema = advertisedInputSchema.extend({
-  skin: skinSchema.optional(),
+const legacyCompatibleInputSchema = advertisedLegacyInputSchema.extend({
+  skin: legacySkinSchema.optional(),
 }).strict();
 
-export const renderThinkingBlockInputSchema = advertisedInputSchema;
+export const renderThinkingBlockInputSchema = advertisedLegacyInputSchema;
 renderThinkingBlockInputSchema._parse = (input) => legacyCompatibleInputSchema._parse(input);
 
-const renderThinkingBlockOutputSchema = z.object({
+const renderWorkingNoteOutputSchema = z.object({
   success: z.literal(true),
   data: z.object({ status: z.literal("rendered") }).strict(),
 }).strict();
 
-const TOOL_DESCRIPTION =
-  "在正式回答前，把模型主动写入的外置工作文本显示在 LeileiOS MCP Apps 思考卡片中，然后继续正常回答。卡片内容不是模型原生隐藏 CoT，而是本次工具参数中的文本；它默认不落盘，也不会自动成为长期记忆。遇到不简单的问题时按本轮内容选择合适的 style 和 effort，不需要每一轮调用。";
+const WORKING_NOTE_DESCRIPTION =
+  "Render a user-visible working note in the LeileiOS MCP App before continuing the normal answer. The note is explicit display content supplied to this tool; it is not hidden reasoning, private chain-of-thought, or a request to reveal internal scratchpad content. Use it only when a visible intermediate note materially helps the user.";
+
+const LEGACY_DESCRIPTION =
+  "DEPRECATED: use render_working_note. 兼容旧客户端：把工具参数里的用户可见外置工作文本显示在 LeileiOS MCP App 中。它不是模型原生隐藏 CoT，也不提供任何 hidden reasoning / private chain-of-thought 访问。";
+
+export function registerRenderWorkingNoteTool(server: McpServer): void {
+  registerAppTool(
+    server,
+    "render_working_note",
+    {
+      title: "Render working note",
+      description: WORKING_NOTE_DESCRIPTION,
+      inputSchema: renderWorkingNoteInputSchema,
+      outputSchema: renderWorkingNoteOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          resourceUri: RENDER_WORKING_NOTE_RESOURCE_URI,
+          visibility: ["model", "app"] as ["model", "app"],
+        },
+        "openai/outputTemplate": CHATGPT_RENDER_WORKING_NOTE_RESOURCE_URI,
+        "openai/toolInvocation/invoking": "正在渲染工作笔记…",
+        "openai/toolInvocation/invoked": "工作笔记已渲染",
+      },
+    },
+    async ({ style, note, detail }) => ({
+      content: [{ type: "text", text: "Working note rendered." }],
+      structuredContent: {
+        success: true as const,
+        data: { status: "rendered" as const },
+      },
+      _meta: { style, note, detail },
+    }),
+  );
+}
 
 export function registerRenderThinkingBlockTool(server: McpServer): void {
   registerAppTool(
     server,
     "render_thinking_block",
     {
-      title: "渲染思考块",
-      description: TOOL_DESCRIPTION,
+      title: "Deprecated: render working note",
+      description: LEGACY_DESCRIPTION,
       inputSchema: renderThinkingBlockInputSchema,
-      outputSchema: renderThinkingBlockOutputSchema,
+      outputSchema: renderWorkingNoteOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -60,12 +114,12 @@ export function registerRenderThinkingBlockTool(server: McpServer): void {
           visibility: ["model", "app"] as ["model", "app"],
         },
         "openai/outputTemplate": CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI,
-        "openai/toolInvocation/invoking": "正在渲染思考块…",
-        "openai/toolInvocation/invoked": "思考块已渲染",
+        "openai/toolInvocation/invoking": "正在渲染兼容工作笔记…",
+        "openai/toolInvocation/invoked": "兼容工作笔记已渲染",
       },
     },
     async ({ style, thinking, effort }) => ({
-      content: [{ type: "text", text: "Thinking block rendered." }],
+      content: [{ type: "text", text: "Legacy working note rendered." }],
       structuredContent: {
         success: true as const,
         data: { status: "rendered" as const },

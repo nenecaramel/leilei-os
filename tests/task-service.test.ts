@@ -36,9 +36,18 @@ test("Task MCP creation forwards one normalized durable idempotency claim", asyn
     "task-client-request-0001",
   );
   assert.equal(first.task.id, "00000000-0000-4000-8000-000000000010");
+  assert.equal(first.outcome, "applied");
   assert.equal(repository.idempotentWrites.length, 1);
   assert.equal(repository.idempotentWrites[0]?.idempotencyKey, "task-client-request-0001");
   assert.match(repository.idempotentWrites[0]?.requestHash ?? "", /^[a-f0-9]{64}$/);
+
+  repository.idempotentOutcome = "replayed";
+  const replay = await service.createTaskIdempotently(
+    { userId: "user-1" },
+    VALID_INPUT,
+    "task-client-request-0001",
+  );
+  assert.equal(replay.outcome, "replayed");
 
   repository.idempotentOutcome = "conflict";
   await assert.rejects(

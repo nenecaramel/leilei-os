@@ -92,6 +92,7 @@ export type FindMemoriesInput = {
   tag?: string;
   ordering?: MemoryOrdering;
   limit: number;
+  offset?: number;
 };
 
 export type FindArchivedMemoriesInput = {
@@ -266,7 +267,8 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         ),
       )
       .orderBy(...ordering)
-      .limit(input.limit);
+      .limit(input.limit)
+      .offset(input.offset ?? 0);
   }
 
   async findActiveAssistantMemoryDirectory(
@@ -321,7 +323,8 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         tagFilter,
       ))
       .orderBy(...ordering)
-      .limit(input.limit);
+      .limit(input.limit)
+      .offset(input.offset ?? 0);
   }
 
   async findActiveAssistantMemorySearch(
@@ -368,7 +371,8 @@ export class DrizzleMemoryRepository implements MemoryRepository {
         tagFilter,
       ))
       .orderBy(desc(coreMemories.updatedAt), desc(coreMemories.id))
-      .limit(input.limit);
+      .limit(input.limit)
+      .offset(input.offset ?? 0);
   }
 
   async findActiveAssistantMemoryCategories(

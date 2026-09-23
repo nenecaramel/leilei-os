@@ -30,7 +30,7 @@ const ALLOWED_CATEGORIES = [
 ] as const satisfies readonly MemoryCategory[];
 
 const DEFAULT_MEMORY_LIMIT = 50;
-const MAX_MEMORY_LIMIT = 50;
+const MAX_MEMORY_LIMIT = 51;
 const MAX_SEARCH_LENGTH = 200;
 const MAX_CONTENT_LENGTH = MEMORY_CONTENT_MAX_LENGTH;
 const MAX_TAGS = MEMORY_TAGS_MAX_COUNT;
@@ -46,6 +46,7 @@ export type ReadMemoryInput = {
   ordering?: MemoryOrdering;
   includeSource?: boolean;
   limit?: number;
+  offset?: number;
 };
 
 export type CreateMemoryInput = {
@@ -211,6 +212,7 @@ export class MemoryService {
       tag,
       ordering: input.ordering ?? "default",
       limit,
+      offset: input.offset,
     });
 
     return {
@@ -248,6 +250,7 @@ export class MemoryService {
       tag,
       ordering: input.ordering ?? "default",
       limit,
+      offset: input.offset,
     });
 
     return {
@@ -270,6 +273,7 @@ export class MemoryService {
       tag,
       ordering: "updated_desc",
       limit,
+      offset: input.offset,
     });
 
     return {

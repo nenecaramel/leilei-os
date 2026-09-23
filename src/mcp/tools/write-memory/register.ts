@@ -1,23 +1,26 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, MEMORY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   MemoryDomainError,
   type AuthenticatedMemoryContext,
   type CreateMcpMemoryInput,
   type CreateMcpMemoryResult,
 } from "../../../domains/memory/memory-service.js";
-import {
-  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
-  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
-  MCP_IDEMPOTENCY_KEY_PATTERN,
-} from "../../../domains/mcp-write/mcp-write-idempotency.js";
 import { MEMORY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpIdempotencyKeySchema } from "../idempotency-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+  mcpMutationOutcomeFromReplay,
+} from "../mutation-contract.js";
 
 const memoryCategorySchema = z.enum(["profile", "preference", "goal", "project"]);
 const rawMemoryKeySchema = z.string().max(1_000);
@@ -29,11 +32,8 @@ const writeMemoryInputSchema = z.object({
   key: rawMemoryKeySchema,
   content: rawMemoryContentSchema,
   tags: z.array(rawMemoryTagSchema).max(20).optional(),
-  author: contentAuthorSchema,
-  idempotency_key: z.string()
-    .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-    .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-    .regex(MCP_IDEMPOTENCY_KEY_PATTERN),
+  author: contentAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const writeMemoryDataSchema = z.object({
@@ -48,15 +48,7 @@ const writeMemoryDataSchema = z.object({
     updated_at: z.string().datetime(),
     author: contentAuthorSchema.nullable(),
   }),
-  metadata: z.object({
-    created: z.boolean(),
-    idempotent_replay: z.boolean(),
-  }),
-  detail_tool: z.literal("get_memory"),
-  detail_arguments: z.object({
-    id: z.string().uuid(),
-    scope: z.enum(["active", "archived"]),
-  }).strict(),
+  ...mcpMutationReceiptFields,
 });
 
 const writeMemoryOutputSchema = z.object({
@@ -78,16 +70,36 @@ export type WriteMemoryToolDependencies = {
   getAuthenticatedUserId: () => string;
 };
 
+const CREATE_MEMORY_DESCRIPTION =
+  MEMORY_DOMAIN_BOUNDARY + " Create only after the user explicitly approves category, key, content, and tags. Never store model guesses, inferred facts, transient emotions, one-off details, or automatic summaries. The receipt points to get_memory; an archived replay must be read with scope=archived.";
+
+export function registerCreateMemoryTool(
+  server: McpServer,
+  dependencies: WriteMemoryToolDependencies,
+): void {
+  registerMemoryCreateTool(server, dependencies, "create_memory", false);
+}
+
 export function registerWriteMemoryTool(
   server: McpServer,
   dependencies: WriteMemoryToolDependencies,
 ): void {
+  registerMemoryCreateTool(server, dependencies, "write_memory", true);
+}
+
+function registerMemoryCreateTool(
+  server: McpServer,
+  dependencies: WriteMemoryToolDependencies,
+  toolName: "create_memory" | "write_memory",
+  deprecated: boolean,
+): void {
   server.registerTool(
-    "write_memory",
+    toolName,
     {
-      title: "Write a confirmed Memory record",
-      description:
-        "Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. The success result is a compact receipt; call get_memory with its returned detail_arguments for authoritative readback. For an archived idempotent replay, use get_memory with scope=archived; do not assume the active scope.",
+      title: deprecated ? "Deprecated: create Memory" : "Create a confirmed Memory record",
+      description: deprecated
+        ? "DEPRECATED: use create_memory. " + CREATE_MEMORY_DESCRIPTION
+        : CREATE_MEMORY_DESCRIPTION,
       inputSchema: writeMemoryInputSchema,
       outputSchema: writeMemoryOutputSchema,
       annotations: {
@@ -131,12 +143,19 @@ export function registerWriteMemoryTool(
               success: true as const,
               data: {
                 memory,
-                metadata: data.metadata,
-                detail_tool: "get_memory" as const,
-                detail_arguments: {
-                  id: memory.id,
-                  scope: memory.lifecycle_status,
-                },
+                ...mcpMutationReceipt({
+                  outcome: mcpMutationOutcomeFromReplay(
+                    data.metadata.idempotent_replay,
+                  ),
+                  entity_type: "memory",
+                  entity_id: memory.id,
+                  revision: null,
+                  detail_tool: "get_memory",
+                  detail_arguments: {
+                    id: memory.id,
+                    scope: memory.lifecycle_status,
+                  },
+                }),
               },
             },
           };
@@ -171,6 +190,17 @@ function toSafeToolError(error: unknown) {
         : error.code === "MEMORY_KEY_CONFLICT"
           ? "A Memory record already uses this key."
           : "The Memory request is invalid.";
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, text);
   }
   console.error("write_memory failed", error instanceof Error ? error.name : "UnknownError");

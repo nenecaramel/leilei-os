@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { TASK_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TaskDomainError,
   type ListTasksInput,
@@ -7,6 +8,11 @@ import {
 } from "../../../domains/task/task-service.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import {
+  decodeMcpPaginationCursor,
+  McpPaginationCursorError,
+  paginateMcpRows,
+} from "../pagination.js";
 
 const taskStatusSchema = z.enum([
   "pending",
@@ -43,6 +49,7 @@ const listTasksInputSchema = z
     due_from: z.string().trim().min(1).max(64).optional(),
     due_to: z.string().trim().min(1).max(64).optional(),
     limit: z.number().int().min(1).max(50).default(50).optional(),
+    cursor: z.string().min(1).max(2_048).optional(),
   })
   .strict();
 
@@ -66,7 +73,12 @@ const taskListItemSchema = z.object({
 
 const listTasksDataSchema = z.object({
   tasks: z.array(taskListItemSchema),
-  metadata: z.object({ count: z.number().int().nonnegative() }),
+  metadata: z.object({
+    count: z.number().int().nonnegative(),
+    returned: z.number().int().nonnegative(),
+    has_more: z.boolean(),
+    next_cursor: z.string().nullable(),
+  }),
 });
 
 const listTasksOutputSchema = z.object({
@@ -93,7 +105,7 @@ export function registerListTasksTool(
     {
       title: "List tasks",
       description:
-        "Browse or search the authenticated user's Tasks with optional text, status, priority, exact-tag, and due-time filters. Results are compact and intentionally omit descriptions; use each item's get_task detail pointer for full task detail.",
+        TASK_DOMAIN_BOUNDARY + " Browse/search by text, status, priority, exact tag, or due time. Results omit descriptions; use get_task for full detail. If has_more, pass next_cursor back with the same filters.",
       inputSchema: listTasksInputSchema,
       outputSchema: listTasksOutputSchema,
       annotations: {
@@ -103,12 +115,24 @@ export function registerListTasksTool(
         openWorldHint: false,
       },
     },
-    async ({ query, status, priority, tag, due, due_from, due_to, limit }) => {
+    async ({ query, status, priority, tag, due, due_from, due_to, limit, cursor }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
+        const pageSize = limit ?? 50;
+        const cursorContext = {
+          query: query ?? null,
+          status: status ?? null,
+          priority: priority ?? null,
+          tag: tag ?? null,
+          due: due ?? null,
+          due_from: due_from ?? null,
+          due_to: due_to ?? null,
+        };
+        const offset = decodeMcpPaginationCursor(cursor, "list_tasks", cursorContext);
         const result = await dependencies.taskService.listTasks({
           userId,
-          limit: limit ?? 50,
+          limit: pageSize + 1,
+          offset,
           query: {
             q: query,
             status,
@@ -119,8 +143,15 @@ export function registerListTasksTool(
             dueTo: due_to,
           },
         });
+        const page = paginateMcpRows({
+          rows: result.tasks,
+          pageSize,
+          offset,
+          tool: "list_tasks",
+          context: cursorContext,
+        });
         const data = {
-          tasks: result.tasks.map(
+          tasks: page.items.map(
             ({
               id,
               title,
@@ -153,7 +184,10 @@ export function registerListTasksTool(
               detail_arguments: { id },
             }),
           ),
-          metadata: result.metadata,
+          metadata: {
+            count: page.items.length,
+            ...page.metadata,
+          },
         };
 
         return {
@@ -169,7 +203,7 @@ export function registerListTasksTool(
   );
 }
 
-function taskListContent(data: { tasks: Array<{ id: string; title: string; status: string }>; metadata: { count: number } }): string {
+function taskListContent(data: { tasks: Array<{ id: string; title: string; status: string }>; metadata: { count: number; returned: number; has_more: boolean; next_cursor: string | null } }): string {
   const lines = [`Found ${data.metadata.count} tasks.`];
   for (const task of data.tasks) {
     const pointer = formatMcpDetailPointer("get_task", { id: task.id });
@@ -179,6 +213,9 @@ function taskListContent(data: { tasks: Array<{ id: string; title: string; statu
 }
 
 function toSafeListTasksError(error: unknown) {
+  if (error instanceof McpPaginationCursorError) {
+    return createMcpToolError("INVALID_CURSOR", "The Task continuation cursor is invalid for this request.");
+  }
   if (error instanceof TaskReadAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",

@@ -11,13 +11,29 @@ const explicitWriteRegistry = readFileSync(
   "src/mcp/server/register-notion-explicit-writes.ts",
   "utf8",
 );
+const typedWriteRegistry = readFileSync(
+  "src/mcp/server/register-notion-typed-writes.ts",
+  "utf8",
+);
 
-test("Phase 8.6.2 production MCP registers only the explicit Notion write gate", () => {
+test("production Notion profile uses typed facade while legacy explicit writes stay advanced-only", () => {
   assert.doesNotMatch(router, /registerProductionNotionExplicitWriteTools/);
+  assert.doesNotMatch(router, /registerProductionNotionTypedWriteTools/);
+  assert.match(productionFactory, /registerProductionNotionTypedWriteTools/);
   assert.match(productionFactory, /registerProductionNotionExplicitWriteTools/);
-  assert.match(productionFactory, /\.\/register-notion-explicit-writes\.js/);
-  assert.equal(router.includes("registerProductionNotionWriteTools"), false);
-  assert.equal(router.includes("./register-notion-writes.js"), false);
+  assert.match(productionFactory, /mcpToolSurfaceEnabled\(toolExposure, "notion"\)/);
+  assert.match(productionFactory, /mcpToolSurfaceEnabled\(toolExposure, "notion_advanced"\)/);
+
+  for (const name of [
+    "create_notion_page",
+    "update_notion_page_properties",
+    "append_notion_page_content",
+    "replace_notion_page_content",
+    "add_notion_comment",
+    "reply_notion_comment",
+  ]) {
+    assert.match(typedWriteRegistry, new RegExp(name));
+  }
 
   assert.match(explicitWriteRegistry, /write_notion_page/);
   assert.match(explicitWriteRegistry, /write_notion_comment/);

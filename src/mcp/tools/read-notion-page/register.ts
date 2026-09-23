@@ -10,12 +10,20 @@ import {
   isActiveUserAuthorizationError,
   type NotionUserAuthorizationDependencies,
 } from "../../server/notion-authorization.js";
-import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import {
+  boundedReadInputSchemaFields,
+  boundedReadMetadataSchema,
+  formatMcpBoundedReadHint,
+  McpBoundedReadCursorError,
+  sliceMcpBoundedContent,
+} from "../bounded-read.js";
 
 const inputSchema = z.object({
   page_id: z.string().trim().optional(),
   page_url: z.string().trim().url().optional(),
+  ...boundedReadInputSchemaFields,
 }).strict();
 
 const pageSchema = z.object({
@@ -32,6 +40,7 @@ const outputSchema = z.object({
     content: z.string().max(60_000),
     block_count: z.number().int().min(0).max(500),
     truncated: z.boolean(),
+    content_metadata: boundedReadMetadataSchema,
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -48,7 +57,7 @@ export function registerReadNotionPageTool(
 ): void {
   server.registerTool("read_notion_page", {
     title: "Read a Notion page",
-    description: "Read one selected accessible Notion page by exact page ID or URL after discovery. Returns page content and nested structural blocks; child pages and child databases are listed but not recursively expanded.",
+    description: "Read one selected accessible Notion page by exact page ID or URL using a bounded content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same page reference. The existing top-level truncated flag still reports upstream traversal/text caps; child pages and databases are listed but not recursively expanded.",
     inputSchema,
     outputSchema,
     annotations: {
@@ -75,6 +84,16 @@ export function registerReadNotionPageTool(
       await authorizeNotionUser(dependencies);
       const pageId = parseNotionPageReference(args.page_id ?? args.page_url ?? "");
       const data = await dependencies.notionService.readPage(pageId);
+      const window = sliceMcpBoundedContent({
+        content: data.content,
+        maxChars: args.max_chars,
+        cursor: args.cursor,
+        tool: "read_notion_page",
+        context: {
+          id: data.page.id,
+          last_edited_time: data.page.last_edited_time,
+        },
+      });
       const structuredData = {
         page: {
           id: data.page.id,
@@ -82,21 +101,42 @@ export function registerReadNotionPageTool(
           url: data.page.url,
           last_edited_time: data.page.last_edited_time,
         },
-        content: data.content,
+        content: window.content,
         block_count: data.block_count,
         truncated: data.truncated,
+        content_metadata: window.metadata,
       };
       return {
         content: [{
           type: "text" as const,
           text: joinMcpContentLines([
             `Notion page ${quoteMcpText(data.page.title)} [id=${data.page.id}]`,
-            data.content || "(empty)",
+            formatMcpBoundedReadHint(window.metadata),
+            window.content || "(empty)",
           ]),
         }],
         structuredContent: { success: true as const, data: structuredData },
       };
     } catch (error) {
+      if (error instanceof McpBoundedReadCursorError) {
+        const recommendedArguments = args.page_id
+          ? { page_id: args.page_id }
+          : args.page_url
+            ? { page_url: args.page_url }
+            : null;
+        return createMcpToolError(
+          "INVALID_CURSOR",
+          "The Notion page continuation cursor is invalid or stale. Read the page again without a cursor.",
+          "The Notion page continuation cursor is invalid or stale. Read the page again without a cursor.",
+          mcpErrorRecoveryHint({
+            retryable: false,
+            reason: "invalid_cursor",
+            recommendedTool: recommendedArguments ? "read_notion_page" : null,
+            recommendedArguments,
+          }),
+        );
+      }
+
       if (error instanceof ReadNotionPageAuthenticationError || isActiveUserAuthorizationError(error)) {
         return createMcpToolError(
           "AUTHENTICATION_REQUIRED",

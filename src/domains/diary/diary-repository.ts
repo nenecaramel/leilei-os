@@ -123,12 +123,14 @@ export interface DiaryRepository {
     userId: string,
     limit: number,
     query?: DiaryListQuery,
+    offset?: number,
   ): Promise<DiaryEntryRecord[]>;
 
   findDiaryEntriesCompact(
     userId: string,
     limit: number,
     query?: DiaryListQuery,
+    offset?: number,
   ): Promise<DiarySearchRecord[]>;
 
   /** All active business dates with content, newest first. */
@@ -245,6 +247,7 @@ export class DrizzleDiaryRepository implements DiaryRepository {
     userId: string,
     limit: number,
     query: DiaryListQuery = {},
+    offset = 0,
   ): Promise<DiaryEntryRecord[]> {
     const conditions = buildActiveDiaryConditions(userId, query);
 
@@ -265,14 +268,17 @@ export class DrizzleDiaryRepository implements DiaryRepository {
       .orderBy(
         desc(diaryEntries.date),
         desc(diaryEntries.createdAt),
+        desc(diaryEntries.id),
       )
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
   }
 
   async findDiaryEntriesCompact(
     userId: string,
     limit: number,
     query: DiaryListQuery = {},
+    offset = 0,
   ): Promise<DiarySearchRecord[]> {
     const bodyExcerpt = query.q
       ? sql<string>`substring(${diaryEntries.content} from greatest(1, strpos(lower(${diaryEntries.content}), lower(${query.q})) - 256) for 768)`
@@ -296,8 +302,9 @@ export class DrizzleDiaryRepository implements DiaryRepository {
       })
       .from(diaryEntries)
       .where(and(...buildActiveDiaryConditions(userId, query)))
-      .orderBy(desc(diaryEntries.date), desc(diaryEntries.createdAt))
-      .limit(limit);
+      .orderBy(desc(diaryEntries.date), desc(diaryEntries.createdAt), desc(diaryEntries.id))
+      .limit(limit)
+      .offset(offset);
   }
 
   async listActiveContentDates(userId: string): Promise<string[]> {

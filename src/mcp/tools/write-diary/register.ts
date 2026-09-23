@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import {
   DiaryDomainError,
   type AuthenticatedDiaryContext,
@@ -10,9 +11,16 @@ import { DIARY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpIdempotencyKeySchema } from "../idempotency-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+  mcpMutationOutcomeFromReplay,
+} from "../mutation-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
@@ -23,8 +31,8 @@ const writeDiaryInputSchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("The diary date in YYYY-MM-DD format; never use relative dates."),
     tags: z.array(z.string().min(1).max(50)).max(20).describe("Organizational labels for the diary entry; use an empty array when none apply."),
     mood: z.string().min(1).max(50).optional().describe("An optional concise mood label."),
-    author: contentAuthorSchema.describe("The logical content author: L, G, or C."),
-    idempotency_key: z.string().min(16).max(128).regex(/^[A-Za-z0-9._:-]+$/).describe("A stable unique key used to prevent duplicate diary creation."),
+    author: contentAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
+    idempotency_key: mcpIdempotencyKeySchema,
   })
   .strict();
 
@@ -38,10 +46,7 @@ const writeDiaryDataSchema = z.object({
     created_at: z.string().datetime(),
     author: contentAuthorSchema.nullable(),
   }),
-  metadata: z.object({
-    created: z.boolean(),
-    idempotent_replay: z.boolean(),
-  }),
+  ...mcpMutationReceiptFields,
 });
 
 const writeDiaryOutputSchema = z.object({
@@ -62,16 +67,36 @@ export type WriteDiaryToolDependencies = {
   getAuthenticatedUserId: () => string;
 };
 
+const CREATE_DIARY_DESCRIPTION =
+  DIARY_DOMAIN_BOUNDARY + " Create one dated Diary entry. Supply an exact YYYY-MM-DD date; authenticated user and source are server-owned.";
+
+export function registerCreateDiaryTool(
+  server: McpServer,
+  dependencies: WriteDiaryToolDependencies,
+): void {
+  registerDiaryCreateTool(server, dependencies, "create_diary", false);
+}
+
 export function registerWriteDiaryTool(
   server: McpServer,
   dependencies: WriteDiaryToolDependencies,
 ): void {
+  registerDiaryCreateTool(server, dependencies, "write_diary", true);
+}
+
+function registerDiaryCreateTool(
+  server: McpServer,
+  dependencies: WriteDiaryToolDependencies,
+  toolName: "create_diary" | "write_diary",
+  deprecated: boolean,
+): void {
   server.registerTool(
-    "write_diary",
+    toolName,
     {
-      title: "Write a personal diary entry",
-      description:
-        "Create one personal diary entry in Leilei OS. This is a persistent write operation. Supply an exact YYYY-MM-DD date and a stable idempotency key. The authenticated user and source are assigned by the server and cannot be selected by tool input.",
+      title: deprecated ? "Deprecated: create Diary" : "Create a personal diary entry",
+      description: deprecated
+        ? "DEPRECATED: use create_diary. " + CREATE_DIARY_DESCRIPTION
+        : CREATE_DIARY_DESCRIPTION,
       inputSchema: writeDiaryInputSchema,
       outputSchema: writeDiaryOutputSchema,
       annotations: {
@@ -98,7 +123,26 @@ export function registerWriteDiaryTool(
               idempotencyKey: idempotency_key,
             },
           );
-          const result = { success: true as const, data };
+          const receipt = mcpMutationReceipt({
+            outcome: mcpMutationOutcomeFromReplay(
+              data.metadata.idempotent_replay,
+            ),
+            entity_type: "diary",
+            entity_id: data.diary.id,
+            revision: null,
+            detail_tool: "get_diary",
+            detail_arguments: {
+              id: data.diary.id,
+              scope: "active",
+            },
+          });
+          const result = {
+            success: true as const,
+            data: {
+              diary: data.diary,
+              ...receipt,
+            },
+          };
           const message = data.metadata.idempotent_replay
             ? "The existing diary entry was returned without creating a duplicate."
             : "Diary entry created successfully.";
@@ -135,6 +179,17 @@ function toSafeToolError(error: unknown) {
           ? "This idempotency key was already used for different diary content."
           : "The diary request is invalid.";
 
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, message);
   }
 

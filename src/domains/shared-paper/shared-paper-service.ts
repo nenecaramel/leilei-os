@@ -31,15 +31,26 @@ export class SharedPaperServiceError extends Error {
 export class SharedPaperService {
   constructor(private readonly repository: SharedPaperRepository) {}
 
-  async listPapers(input: { userId: string; limit?: number; scope?: SharedPaperScope }): Promise<SharedPaperRecord[]> {
+  async listPapers(input: { userId: string; limit?: number; scope?: SharedPaperScope; offset?: number }): Promise<SharedPaperRecord[]> {
     await this.requireActive(input.userId);
-    return this.repository.listPapers({ userId: input.userId, limit: boundedLimit(input.limit), scope: normalizeScope(input.scope) });
+    return this.repository.listPapers({
+      userId: input.userId,
+      limit: boundedLimit(input.limit),
+      scope: normalizeScope(input.scope),
+      offset: boundedOffset(input.offset),
+    });
   }
 
-  async searchPapers(input: { userId: string; query: unknown; limit?: number; scope?: SharedPaperScope }): Promise<SharedPaperRecord[]> {
+  async searchPapers(input: { userId: string; query: unknown; limit?: number; scope?: SharedPaperScope; offset?: number }): Promise<SharedPaperRecord[]> {
     await this.requireActive(input.userId);
     const query = normalizeQuery(input.query);
-    return this.repository.searchPapers({ userId: input.userId, query, limit: boundedLimit(input.limit), scope: normalizeScope(input.scope) });
+    return this.repository.searchPapers({
+      userId: input.userId,
+      query,
+      limit: boundedLimit(input.limit),
+      scope: normalizeScope(input.scope),
+      offset: boundedOffset(input.offset),
+    });
   }
 
   async getPaper(input: { userId: string; paperId: string }): Promise<SharedPaperRecord> {
@@ -261,7 +272,14 @@ function normalizeScope(value: SharedPaperScope | undefined): SharedPaperScope {
   throw new SharedPaperServiceError("INVALID_SHARED_PAPER", "Shared paper scope is invalid.");
 }
 
-function boundedLimit(value: number | undefined): number { return value === undefined ? 50 : Math.max(1, Math.min(100, Math.trunc(value))); }
+function boundedLimit(value: number | undefined): number { return value === undefined ? 50 : Math.max(1, Math.min(101, Math.trunc(value))); }
+function boundedOffset(value: number | undefined): number {
+  if (value === undefined) return 0;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new SharedPaperServiceError("INVALID_SHARED_PAPER", "Shared paper pagination offset is invalid.");
+  }
+  return value;
+}
 
 function normalizeKey(value: string): string {
   try { return normalizeMcpIdempotencyKey(value); } catch { throw new SharedPaperServiceError("INVALID_IDEMPOTENCY_KEY", "The idempotency key is invalid."); }

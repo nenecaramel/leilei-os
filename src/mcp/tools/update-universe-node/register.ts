@@ -1,12 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import { UniverseServiceError, type UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { updateUniverseNodeInputSchema } from "./schema.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
-const successDataSchema = z.object({ node: z.object({ id: z.string().min(1).max(256), title: z.string(), type: z.string(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict(), universe_version: z.number().int().nonnegative(), detail_tool: z.literal("get_universe_node"), detail_arguments: z.object({ id: z.string().min(1).max(256) }).strict() }).strict();
+const successDataSchema = z.object({ node: z.object({ id: z.string().min(1).max(256), title: z.string(), type: z.string(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict();
 const outputSchema = z.object({
   success: z.boolean(),
   data: successDataSchema.optional(),
@@ -21,7 +23,7 @@ export type UpdateUniverseNodeToolDependencies = {
 export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: UpdateUniverseNodeToolDependencies): void {
   server.registerTool("update_universe_node", {
     title: "Update a Universe node",
-    description: "Apply a partial update to one Universe node using expected_version. Omitted fields remain unchanged. A stale version is a conflict; fresh-read authoritative state before deciding whether a new mutation is needed, and never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Partially update one node; omitted fields stay unchanged. On stale/uncertain state, fresh-read Universe before retrying.",
     inputSchema: updateUniverseNodeInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -67,13 +69,26 @@ export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: 
             data: {
               node: compactNode,
               universe_version: result.version,
-              detail_tool: "get_universe_node" as const,
-              detail_arguments: { id: compactNode.id },
+              ...mcpMutationReceipt({
+                outcome: "applied",
+                entity_type: "universe_node",
+                entity_id: compactNode.id,
+                revision: null,
+                detail_tool: "get_universe_node",
+                detail_arguments: { id: compactNode.id },
+              }),
             },
           },
         };
       },
-      mapError: (error) => safeUniverseWriteError(error, "Universe node was not updated."),
+      mapError: (error) => safeUniverseWriteError(
+        error,
+        "Universe node was not updated.",
+        {
+          recommendedTool: "get_universe_node",
+          recommendedArguments: { id },
+        },
+      ),
     }),
   );
 }

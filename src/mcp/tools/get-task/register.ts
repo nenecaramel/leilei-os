@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { TASK_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TaskDomainError,
   type ReadTaskInput,
@@ -81,7 +82,7 @@ export function registerGetTaskTool(
     {
       title: "Get one task",
       description:
-        "Read the full detail of one authenticated Task after its exact ID is known from list_tasks, global_search, or another trusted result. scope defaults to active; scope=active and scope=archived each enforce exact-ID ownership and lifecycle boundaries.",
+        TASK_DOMAIN_BOUNDARY + " Read full detail by exact Task ID. scope defaults to active; active/archived enforce ownership and lifecycle boundaries.",
       inputSchema: getTaskInputSchema,
       outputSchema: getTaskOutputSchema,
       annotations: {

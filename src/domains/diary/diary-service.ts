@@ -94,6 +94,7 @@ export type ListDiariesInput = {
   userId: string;
   limit?: number;
   query?: RawDiaryListQuery;
+  offset?: number;
 };
 
 export type RawDiaryListQuery = {
@@ -271,6 +272,7 @@ export class DiaryService {
         userId,
         limit,
         query,
+        input.offset,
       ),
       this.repository.countDiaryEntries(
         userId,
@@ -295,7 +297,7 @@ export class DiaryService {
     const limit = this.resolveLimit(input.limit);
     const query = this.normalizeListQuery(input.query ?? {});
     const [diaries, count] = await Promise.all([
-      this.repository.findDiaryEntriesCompact(userId, limit, query),
+      this.repository.findDiaryEntriesCompact(userId, limit, query, input.offset),
       this.repository.countDiaryEntries(userId, query),
     ]);
     return {

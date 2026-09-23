@@ -1,18 +1,22 @@
 export type McpToolSurface =
   | "core"
   | "notion"
-  | "conversation_recovery"
-  | "device"
-  | "ui"
-  | "runtime_internal";
-
-export type McpToolProfileName =
-  | "core"
-  | "notion"
+  | "notion_advanced"
   | "conversation_recovery"
   | "device"
   | "ui"
   | "runtime_internal"
+  | "legacy_aliases";
+
+export type McpToolProfileName =
+  | "core"
+  | "notion"
+  | "notion_advanced"
+  | "conversation_recovery"
+  | "device"
+  | "ui"
+  | "runtime_internal"
+  | "legacy_aliases"
   | "full";
 
 export type McpToolExposure = ReadonlySet<McpToolSurface>;
@@ -20,10 +24,12 @@ export type McpToolExposure = ReadonlySet<McpToolSurface>;
 const ALL_SURFACES: readonly McpToolSurface[] = [
   "core",
   "notion",
+  "notion_advanced",
   "conversation_recovery",
   "device",
   "ui",
   "runtime_internal",
+  "legacy_aliases",
 ];
 
 const PROFILE_SURFACES: Record<
@@ -32,10 +38,12 @@ const PROFILE_SURFACES: Record<
 > = {
   core: ["core"],
   notion: ["notion"],
+  notion_advanced: ["notion", "notion_advanced"],
   conversation_recovery: ["conversation_recovery"],
   device: ["device"],
   ui: ["ui"],
   runtime_internal: ["runtime_internal"],
+  legacy_aliases: ["legacy_aliases"],
   full: ALL_SURFACES,
 };
 

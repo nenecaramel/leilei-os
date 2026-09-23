@@ -11,7 +11,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createProductionMcpSessionServerFactory } from "../src/mcp/server/production-server-factory.js";
 import {
   CHATGPT_RENDER_THINKING_BLOCK_RESOURCE_URI,
+  CHATGPT_RENDER_WORKING_NOTE_RESOURCE_URI,
   RENDER_THINKING_BLOCK_RESOURCE_URI,
+  RENDER_WORKING_NOTE_RESOURCE_URI,
   createRenderThinkingBlockHtml,
   registerRenderThinkingBlockResource,
 } from "../src/mcp/tools/render-thinking-block/resource.js";
@@ -25,6 +27,7 @@ const TOOL_INPUT = {
 
 function createFactory() {
   return createProductionMcpSessionServerFactory({
+    publicToolProfiles: ["ui", "legacy_aliases"],
     activeUserRepository: { findUserById: async () => ({ status: "active" }) },
     memoryService: {} as never,
     diaryService: {} as never,
@@ -51,7 +54,7 @@ async function connect(server: McpServer, name: string) {
   return { client, server };
 }
 
-test("authenticated public tools/list exposes the Chinese render_thinking_block contract", async () => {
+test("explicit ui + legacy_aliases preserves the render_thinking_block compatibility contract", async () => {
   const pair = await connect(createFactory()("user-1", "public"), "thinking-contract");
   try {
     const result = await pair.client.listTools();
@@ -154,7 +157,7 @@ test("render_thinking_block resource has the versioned MCP Apps MIME and monochr
     assert.equal(content.uri, RENDER_THINKING_BLOCK_RESOURCE_URI);
     assert.equal(content.mimeType, "text/html;profile=mcp-app");
     const html = String(content.text);
-    assert.match(html, /Thinking/);
+    assert.match(html, /Working Note/);
     assert.doesNotMatch(html, /Thinking block|本轮外置工作文本/);
     assert.match(html, /data-thinking-toggle/);
     assert.match(html, /--card-background:\s*#FCFCFC/);
@@ -204,9 +207,18 @@ test("render_thinking_block exposes new v3 resources while retaining legacy v1/v
     const listed = await pair.client.listResources();
     assert.deepEqual(
       listed.resources.map((resource) => resource.uri).sort(),
-      [chatgptV3Uri, canonicalV3Uri, legacyV1Uri, legacyV2Uri].sort(),
+      [
+        CHATGPT_RENDER_WORKING_NOTE_RESOURCE_URI,
+        RENDER_WORKING_NOTE_RESOURCE_URI,
+        chatgptV3Uri,
+        canonicalV3Uri,
+        legacyV1Uri,
+        legacyV2Uri,
+      ].sort(),
     );
     const results = await Promise.all([
+      pair.client.readResource({ uri: CHATGPT_RENDER_WORKING_NOTE_RESOURCE_URI }),
+      pair.client.readResource({ uri: RENDER_WORKING_NOTE_RESOURCE_URI }),
       pair.client.readResource({ uri: chatgptV3Uri }),
       pair.client.readResource({ uri: canonicalV3Uri }),
       pair.client.readResource({ uri: legacyV1Uri }),
@@ -234,6 +246,35 @@ test("render_thinking_block compatibility keeps the committed standard browser r
   assert.match(bundle, /data-thinking-meta/);
   assert.doesNotMatch(bundle, /data-skin|skinBadge|botanical|microglow/);
   assert.match(bundle, /ontoolinput/);
+});
+
+test("working-note browser runtime prefers canonical note/detail fields", () => {
+  const dom = createCardDom({
+    toolInput: {
+      style: "analysis",
+      note: "Canonical visible note",
+      detail: "standard",
+    },
+  });
+  try {
+    assert.equal(
+      dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent,
+      "Canonical visible note",
+    );
+    assert.equal(
+      dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent,
+      "analysis · standard",
+    );
+    const card = dom.window.thinkingBlock;
+    assert.ok(card);
+    card?.handleToolInputPartial?.({ note: "Updated visible note" });
+    assert.equal(
+      dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent,
+      "Updated visible note",
+    );
+  } finally {
+    dom.window.close();
+  }
 });
 
 test("standard MCP Apps lifecycle renders authoritative input, result metadata, and host context", () => {

@@ -163,12 +163,16 @@ export function installThinkingBlockRuntime(
       fallbackInput,
       fallbackOutput,
     ];
-    const style = pick(sources, "style", "deep_think");
-    const effort = pick(sources, "effort", "");
-    const thinking = pick(sources, "thinking", "本轮没有提供外置工作文本。");
-    const normalizedStyle = style === "relational" || style === "deep_think" ? style : "deep_think";
-    meta.textContent = effort ? `${normalizedStyle} · ${effort}` : normalizedStyle;
-    content.textContent = thinking;
+    const style = pick(sources, "style", "analysis");
+    const detail = pick(sources, "detail", pick(sources, "effort", ""));
+    const note = pick(
+      sources,
+      "note",
+      pick(sources, "thinking", "本轮没有提供工作笔记。"),
+    );
+    const normalizedStyle = style === "relational" ? "relational" : "analysis";
+    meta.textContent = detail ? `${normalizedStyle} · ${detail}` : normalizedStyle;
+    content.textContent = note;
     applyHostContext();
     requestIntrinsicHeight(true);
   };
@@ -227,7 +231,7 @@ export function startThinkingBlockApp(
   documentRef: Document = document,
 ): ThinkingBlockController | null {
   const app = new App(
-    { name: "LeileiOS Thinking Block", version: "1.0.0" },
+    { name: "LeileiOS Working Note", version: "1.0.0" },
     {},
     { autoResize: true, strict: true },
   );

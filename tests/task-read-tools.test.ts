@@ -6,7 +6,7 @@ import {
   TaskDomainError,
   type AuthenticatedTaskContext,
   type CreateTaskInput,
-  type CreateTaskResult,
+  type CreateTaskIdempotentResult,
   type ListTasksInput,
   type ListTasksResult,
   type ReadTaskInput,
@@ -71,9 +71,10 @@ class MockTaskService {
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
     _idempotencyKey: string,
-  ): Promise<CreateTaskResult> {
+  ): Promise<CreateTaskIdempotentResult> {
     this.createCalls.push({ context, input });
     return {
+      outcome: "applied",
       task: {
         ...TASK,
         id: "00000000-0000-4000-8000-000000000010",
@@ -162,7 +163,8 @@ test("list_tasks maps identity, filters, and limit while omitting description", 
   });
   assert.deepEqual(service.listCalls, [{
     userId: USER_ID,
-    limit: 12,
+    limit: 13,
+    offset: 0,
     query: {
       q: "MCP",
       status: "in_progress",
@@ -196,7 +198,7 @@ test("list_tasks maps identity, filters, and limit while omitting description", 
         detail_tool: "get_task",
         detail_arguments: { id: TASK.id },
       }],
-      metadata: { count: 1 },
+      metadata: { count: 1, returned: 1, has_more: false, next_cursor: null },
     },
   });
 });
@@ -207,7 +209,8 @@ test("list_tasks defaults to limit 50 and rejects invalid schemas", async () => 
   await pair.client.callTool({ name: "list_tasks", arguments: {} });
   assert.deepEqual(service.listCalls[0], {
     userId: USER_ID,
-    limit: 50,
+    limit: 51,
+    offset: 0,
     query: {
       q: undefined,
       status: undefined,

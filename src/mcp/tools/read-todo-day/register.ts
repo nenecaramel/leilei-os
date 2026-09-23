@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TODO_DOMAIN_BOUNDARY } from "../model-language.js";
 import { TodoServiceError } from "../../../domains/todo/todo-service.js";
 import type { TodoDayPapers } from "../../../domains/todo/todo-types.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
@@ -15,7 +16,7 @@ const todoEntrySchema = z.object({
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
 
 const todoPaperSchema = z.object({
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   date: z.string(),
   revision: z.number().int().nonnegative(),
   entries: z.array(todoEntrySchema),
@@ -23,12 +24,12 @@ const todoPaperSchema = z.object({
 
 const readTodoDayInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  author: todoAuthorSchema.optional(),
+  author: todoAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
 }).strict();
 
 const readTodoDayDataSchema = z.object({
   date: z.string(),
-  author: todoAuthorSchema.optional(),
+  author: todoAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   papers: z.object({
     L: todoPaperSchema.nullable(),
     G: todoPaperSchema.nullable(),
@@ -63,7 +64,7 @@ export function registerReadTodoDayTool(
     {
       title: "Read one Todo day",
       description:
-        "Read Todo papers for one exact business date. Without author, return the complete L, G, and C papers; when the user specifies author (L, G, or C), return only that author's paper. Each persisted entry includes its entry revision; use that revision with update_todo_entry or delete_todo_entry. Empty or missing papers are returned as null.",
+        TODO_DOMAIN_BOUNDARY + " Read one exact business date. Without author, return L/G/C papers; with author, return only that paper. Entries include revisions for update_todo_entry/delete_todo_entry. Missing papers are null.",
       inputSchema: readTodoDayInputSchema,
       outputSchema: readTodoDayOutputSchema,
       annotations: {

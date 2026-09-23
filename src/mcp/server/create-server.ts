@@ -17,6 +17,7 @@ import {
   type GetMemoryToolDependencies,
 } from "../tools/get-memory/register.js";
 import {
+  registerCreateMemoryTool,
   registerWriteMemoryTool,
   WriteMemoryAuthenticationError,
   type WriteMemoryToolDependencies,
@@ -27,6 +28,7 @@ import {
   type UpdateMemoryToolDependencies,
 } from "../tools/update-memory/register.js";
 import {
+  registerCreateDiaryTool,
   registerWriteDiaryTool,
   WriteDiaryAuthenticationError,
   type WriteDiaryToolDependencies,
@@ -48,6 +50,7 @@ import {
 import {
   DiaryLifecycleAuthenticationError,
   registerDiaryLifecycleTools,
+  registerLegacyDeleteDiaryAlias,
   type DiaryLifecycleToolDependencies,
 } from "../tools/diary-lifecycle/register.js";
 import {
@@ -124,6 +127,7 @@ import {
   type ListTodoDatesToolDependencies,
 } from "../tools/list-todo-dates/register.js";
 import {
+  registerReplaceTodoPaperTool,
   registerWriteTodoPaperTool,
   WriteTodoPaperAuthenticationError,
   type WriteTodoPaperToolDependencies,
@@ -147,7 +151,7 @@ import { registerGetUniverseDiarySourcesTool, type GetUniverseDiarySourcesToolDe
 import { registerAddUniverseDiarySourceTool, type AddUniverseDiarySourceToolDependencies } from "../tools/add-universe-diary-source/register.js";
 import { registerDeleteUniverseDiarySourceTool, type DeleteUniverseDiarySourceToolDependencies } from "../tools/delete-universe-diary-source/register.js";
 import { UniverseAuthenticationError } from "../tools/universe/shared.js";
-import { registerSharedPaperTools, SharedPaperAuthenticationError, type SharedPaperToolDependencies, type SharedPaperToolService } from "../tools/shared-paper/register.js";
+import { registerLegacyDeleteSharedPaperAlias, registerSharedPaperTools, SharedPaperAuthenticationError, type SharedPaperToolDependencies, type SharedPaperToolService } from "../tools/shared-paper/register.js";
 import {
   mcpToolSurfaceEnabled,
   resolveMcpToolExposure,
@@ -429,6 +433,9 @@ const productionTodoService = {
   appendEntryIdempotently: (
     input: Parameters<TodoEntryWriteToolDependencies["todoService"]["appendEntryIdempotently"]>[0],
   ) => missingDatabaseService(),
+  appendEntriesIdempotently: (
+    input: Parameters<TodoEntryWriteToolDependencies["todoService"]["appendEntriesIdempotently"]>[0],
+  ) => missingDatabaseService(),
   updateEntryIdempotently: (
     input: Parameters<TodoEntryWriteToolDependencies["todoService"]["updateEntryIdempotently"]>[0],
   ) => missingDatabaseService(),
@@ -591,7 +598,7 @@ export function createMcpServer(
       },
     },
   );
-  registerWriteMemoryTool(
+  registerCreateMemoryTool(
     server,
     dependencies.writeMemory ?? {
       ...productionWriteMemoryDependencies,
@@ -611,7 +618,7 @@ export function createMcpServer(
       },
     },
   );
-  registerWriteDiaryTool(
+  registerCreateDiaryTool(
     server,
     dependencies.writeDiary ?? dependencies.diaryTools ?? {
       ...productionWriteDiaryDependencies,
@@ -640,6 +647,7 @@ export function createMcpServer(
         return authenticatedUserId;
       },
     },
+    { permanentDeleteName: "canonical" },
   );
   registerSearchDiaryTool(
     server,
@@ -656,12 +664,6 @@ export function createMcpServer(
       diaryService:
         dependencies.diaryTools?.diaryService ??
         productionGetDiaryDependencies.diaryService,
-      ...(dependencies.diaryComments
-        ? {
-            diaryCommentService:
-              dependencies.diaryComments.diaryCommentService,
-          }
-        : {}),
       getAuthenticatedUserId:
         dependencies.diaryTools?.getAuthenticatedUserId ??
         (() => {
@@ -835,6 +837,9 @@ export function createMcpServer(
       };
   registerSearchNotionTool(server, notionTools);
   registerReadNotionPageTool(server, notionTools);
+  }
+
+  if (mcpToolSurfaceEnabled(toolExposure, "notion_advanced")) {
   const notionRead = dependencies.notionRead
     ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
       ? { ...dependencies.notionRead, requireActiveUser: activeUserAuthorization }
@@ -868,7 +873,7 @@ export function createMcpServer(
       return authenticatedUserId;
     },
   });
-  registerWriteTodoPaperTool(server, dependencies.todoTools ?? {
+  registerReplaceTodoPaperTool(server, dependencies.todoTools ?? {
     todoService: productionTodoService,
     getAuthenticatedUserId: () => {
       if (!authenticatedUserId) throw new WriteTodoPaperAuthenticationError();
@@ -895,7 +900,55 @@ export function createMcpServer(
       if (!authenticatedUserId) throw new SharedPaperAuthenticationError();
       return authenticatedUserId;
     },
-  });
+  }, { permanentDeleteName: "canonical" });
+  }
+
+
+  if (mcpToolSurfaceEnabled(toolExposure, "legacy_aliases")) {
+    registerWriteMemoryTool(
+      server,
+      dependencies.writeMemory ?? {
+        ...productionWriteMemoryDependencies,
+        getAuthenticatedUserId: () => {
+          if (!authenticatedUserId) throw new WriteMemoryAuthenticationError();
+          return authenticatedUserId;
+        },
+      },
+    );
+    registerWriteDiaryTool(
+      server,
+      dependencies.writeDiary ?? dependencies.diaryTools ?? {
+        ...productionWriteDiaryDependencies,
+        getAuthenticatedUserId: () => {
+          if (!authenticatedUserId) throw new WriteDiaryAuthenticationError();
+          return authenticatedUserId;
+        },
+      },
+    );
+    registerWriteTodoPaperTool(server, dependencies.todoTools ?? {
+      todoService: productionTodoService,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new WriteTodoPaperAuthenticationError();
+        return authenticatedUserId;
+      },
+    });
+    registerLegacyDeleteDiaryAlias(
+      server,
+      dependencies.diaryLifecycle ?? {
+        ...productionDiaryLifecycleDependencies,
+        getAuthenticatedUserId: () => {
+          if (!authenticatedUserId) throw new DiaryLifecycleAuthenticationError();
+          return authenticatedUserId;
+        },
+      },
+    );
+    registerLegacyDeleteSharedPaperAlias(server, dependencies.sharedPaperTools ?? {
+      sharedPaperService: productionSharedPaperService,
+      getAuthenticatedUserId: () => {
+        if (!authenticatedUserId) throw new SharedPaperAuthenticationError();
+        return authenticatedUserId;
+      },
+    });
   }
 
   return server;

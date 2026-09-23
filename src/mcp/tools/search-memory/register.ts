@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MEMORY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   MemoryDomainError,
   type SearchMemoryDiscoveryResult,
@@ -13,6 +14,11 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import {
+  decodeMcpPaginationCursor,
+  McpPaginationCursorError,
+  paginateMcpRows,
+} from "../pagination.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -50,6 +56,7 @@ const searchMemoryInputSchema = z
       .default(50)
       .optional()
       .describe("Maximum number of search results to return. Defaults to 50."),
+    cursor: z.string().min(1).max(2_048).optional(),
   })
   .strict();
 
@@ -69,6 +76,9 @@ const searchMemoryDataSchema = z.object({
   ),
   metadata: z.object({
     count: z.number().int().nonnegative(),
+    returned: z.number().int().nonnegative(),
+    has_more: z.boolean(),
+    next_cursor: z.string().nullable(),
   }),
 });
 
@@ -97,7 +107,7 @@ export function registerSearchMemoryTool(
     {
       title: "Search Leilei's memory",
       description:
-        "Search authorized active Memory records by text, category, and exact tag. Use read_memory for category or exact-key browsing without a query. Results are compact and bounded; call get_memory for the complete content of a selected record.",
+        MEMORY_DOMAIN_BOUNDARY + " Search active Memory by text, category, or exact tag. Use read_memory for query-free category/key browsing and get_memory for bounded detail. If has_more, pass next_cursor back with the same filters.",
       inputSchema: searchMemoryInputSchema,
       outputSchema: searchMemoryOutputSchema,
       annotations: {
@@ -107,21 +117,44 @@ export function registerSearchMemoryTool(
         openWorldHint: false,
       },
     },
-    async ({ query, categories, tag, limit }) => {
+    async ({ query, categories, tag, limit, cursor }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
+        const pageSize = limit ?? 50;
+        const cursorContext = {
+          query,
+          categories: categories ?? null,
+          tag: tag ?? null,
+        };
+        const offset = decodeMcpPaginationCursor(cursor, "search_memory", cursorContext);
         const input = {
           userId,
           query,
           categories,
           tag,
           ordering: "updated_desc",
-          limit,
+          limit: pageSize + 1,
+          offset,
         } as ReadMemoryInput;
         const discovery = dependencies.memoryService.searchMemoryDiscovery
           ? await dependencies.memoryService.searchMemoryDiscovery(input)
           : compactFallback(await dependencies.memoryService.readMemory(input), query ?? "");
-        const data = withDetailPointers(discovery);
+        const withPointers = withDetailPointers(discovery);
+        const page = paginateMcpRows({
+          rows: withPointers.memories,
+          pageSize,
+          offset,
+          tool: "search_memory",
+          context: cursorContext,
+        });
+        const data = {
+          ...withPointers,
+          memories: page.items,
+          metadata: {
+            count: page.items.length,
+            ...page.metadata,
+          },
+        };
 
         return {
           content: [
@@ -181,6 +214,9 @@ function withDetailPointers(result: SearchMemoryDiscoveryResult): SearchMemoryDi
 }
 
 function toSafeSearchMemoryError(error: unknown) {
+  if (error instanceof McpPaginationCursorError) {
+    return createMcpToolError("INVALID_CURSOR", "The Memory continuation cursor is invalid for this search.");
+  }
   if (error instanceof ReadMemoryAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",

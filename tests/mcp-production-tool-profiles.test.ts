@@ -63,12 +63,18 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "search_diary",
     "list_tasks",
     "read_todo_day",
+    "append_todo_entries",
     "search_universe",
     "search_conversations",
     "list_shared_papers",
     "get_health",
     "get_current_time",
     "get_weather_context",
+    "create_memory",
+    "create_diary",
+    "replace_todo_paper",
+    "permanently_delete_diary",
+    "permanently_delete_shared_paper",
   ]) {
     assert.equal(
       names.includes(required),
@@ -90,7 +96,15 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "restore_conversation_exclusion",
     "get_notion_connection",
     "search_notion",
+    "create_notion_page",
+    "write_notion_page",
+    "render_working_note",
     "render_thinking_block",
+    "write_memory",
+    "write_diary",
+    "write_todo_paper",
+    "delete_diary",
+    "delete_shared_paper",
   ]) {
     assert.equal(
       names.includes(hidden),
@@ -114,12 +128,25 @@ test("production internal MCP defaults preserve full maintenance/runtime invento
 
   for (const required of [
     "global_search",
+    "create_notion_page",
+    "write_notion_page",
     "get_notion_connection",
     "list_conversation_exclusions",
     "sentinel_get_state",
     "bridge_listener_open",
     "bridge_event_claim",
+    "render_working_note",
     "render_thinking_block",
+    "create_memory",
+    "write_memory",
+    "create_diary",
+    "write_diary",
+    "replace_todo_paper",
+    "write_todo_paper",
+    "permanently_delete_diary",
+    "delete_diary",
+    "permanently_delete_shared_paper",
+    "delete_shared_paper",
   ]) {
     assert.equal(
       names.includes(required),
@@ -129,7 +156,7 @@ test("production internal MCP defaults preserve full maintenance/runtime invento
   }
 });
 
-test("production public MCP profile override can opt into Notion without exposing runtime internals", async () => {
+test("production public Notion profile exposes typed facade but hides raw advanced tools", async () => {
   const process = runtime({
     publicProfiles: "core,device,notion",
   });
@@ -143,8 +170,59 @@ test("production public MCP profile override can opt into Notion without exposin
     ),
   );
 
-  assert.equal(names.includes("search_notion"), true);
-  assert.equal(names.includes("get_notion_connection"), true);
+  for (const required of [
+    "search_notion",
+    "read_notion_page",
+    "create_notion_page",
+    "update_notion_page_properties",
+    "append_notion_page_content",
+    "replace_notion_page_content",
+    "add_notion_comment",
+    "reply_notion_comment",
+  ]) {
+    assert.equal(names.includes(required), true, `typed Notion profile must expose ${required}`);
+  }
+  for (const hidden of [
+    "get_notion_connection",
+    "read_notion_database",
+    "read_notion_data_source",
+    "query_notion_data_source",
+    "write_notion_page",
+    "write_notion_comment",
+    "sentinel_get_state",
+    "bridge_listener_open",
+  ]) {
+    assert.equal(names.includes(hidden), false, `typed Notion profile must hide ${hidden}`);
+  }
+});
+
+test("production public notion_advanced profile includes typed and legacy advanced Notion surfaces", async () => {
+  const process = runtime({
+    publicProfiles: "core,device,notion_advanced",
+  });
+  const factory = process.appDependencies.createMcpSessionServer;
+  assert.ok(factory);
+
+  const names = await listTools(
+    factory(
+      "11111111-1111-4111-8111-111111111111",
+      "public",
+    ),
+  );
+
+  for (const required of [
+    "search_notion",
+    "read_notion_page",
+    "create_notion_page",
+    "get_notion_connection",
+    "read_notion_database",
+    "read_notion_data_source",
+    "query_notion_data_source",
+    "write_notion_page",
+    "write_notion_comment",
+  ]) {
+    assert.equal(names.includes(required), true, `advanced Notion profile must expose ${required}`);
+  }
   assert.equal(names.includes("sentinel_get_state"), false);
   assert.equal(names.includes("bridge_listener_open"), false);
 });

@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, MEMORY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   MemoryDomainError,
   type AuthenticatedMemoryContext,
@@ -13,6 +14,7 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
@@ -22,7 +24,7 @@ const updateMemoryInputSchema = z.object({
   key: z.string().max(1_000).optional(),
   content: z.string().max(MEMORY_CONTENT_MAX_LENGTH).optional(),
   tags: z.array(z.string().max(500)).max(20).optional(),
-  author: contentAuthorSchema.optional(),
+  author: contentAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
 }).strict();
 
 const updateMemoryDataSchema = z.object({
@@ -34,8 +36,7 @@ const updateMemoryDataSchema = z.object({
   updated_at: z.string().datetime(),
   lifecycle_status: z.literal("active"),
   author: contentAuthorSchema.nullable(),
-  detail_tool: z.literal("get_memory"),
-  detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
+  ...mcpMutationReceiptFields,
 });
 
 const updateMemoryOutputSchema = z.object({
@@ -56,7 +57,7 @@ export type UpdateMemoryToolDependencies = {
 export function registerUpdateMemoryTool(server: McpServer, dependencies: UpdateMemoryToolDependencies): void {
   server.registerTool("update_memory", {
     title: "Update one Memory",
-    description: "Update only explicitly supplied fields on one active Memory record. If the outcome is uncertain, perform a readback with get_memory before deciding what to do next; never blindly retry.",
+    description: MEMORY_DOMAIN_BOUNDARY + " Update only supplied fields on one active Memory. If outcome is uncertain, read get_memory before retrying.",
     inputSchema: updateMemoryInputSchema,
     outputSchema: updateMemoryOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -80,8 +81,14 @@ export function registerUpdateMemoryTool(server: McpServer, dependencies: Update
         updated_at: data.updated_at,
         lifecycle_status: "active" as const,
         author: data.author,
-        detail_tool: "get_memory" as const,
-        detail_arguments: { id: data.id, scope: "active" as const },
+        ...mcpMutationReceipt({
+          outcome: "applied",
+          entity_type: "memory",
+          entity_id: data.id,
+          revision: null,
+          detail_tool: "get_memory",
+          detail_arguments: { id: data.id, scope: "active" },
+        }),
       };
       return {
         content: [{ type: "text", text: joinMcpContentLines([

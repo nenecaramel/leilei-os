@@ -1,22 +1,24 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TASK_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TaskDomainError,
   type AuthenticatedTaskContext,
   type CreateTaskInput,
-  type CreateTaskResult,
+  type CreateTaskIdempotentResult,
 } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import {
-  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
-  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
-  MCP_IDEMPOTENCY_KEY_PATTERN,
-} from "../../../domains/mcp-write/mcp-write-idempotency.js";
-import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpIdempotencyKeySchema } from "../idempotency-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+} from "../mutation-contract.js";
 
 const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const taskStatusSchema = z.enum([
@@ -57,13 +59,8 @@ const createTaskInputSchema = z
       .array(z.string().min(1).max(50))
       .max(20)
       .describe("Organizational labels; use an empty array when none apply."),
-    author: contentAuthorSchema.describe("The logical content author: L, G, or C."),
-    idempotency_key: z
-      .string()
-      .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-      .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-      .regex(MCP_IDEMPOTENCY_KEY_PATTERN)
-      .describe("A stable unique key used to prevent duplicate task creation."),
+    author: contentAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
+    idempotency_key: mcpIdempotencyKeySchema,
   })
   .strict();
 
@@ -89,6 +86,7 @@ const createTaskDataSchema = z.object({
     completed_at: z.string().datetime().nullable(),
     author: contentAuthorSchema.nullable(),
   }),
+  ...mcpMutationReceiptFields,
 });
 
 const createTaskOutputSchema = z.object({
@@ -102,7 +100,7 @@ export interface CreateTaskToolService {
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
     idempotencyKey: string,
-  ): Promise<CreateTaskResult>;
+  ): Promise<CreateTaskIdempotentResult>;
 }
 
 export type CreateTaskToolDependencies = {
@@ -119,7 +117,7 @@ export function registerCreateTaskTool(
     {
       title: "Create a personal task",
       description:
-        "Create one personal Task in Leilei OS as an idempotent write. Supply a stable idempotency_key to prevent duplicate creation on replay. The due time may be omitted or null; exact ISO instants remain supported and local date-times use the authenticated user's account timezone. The authenticated user and initial pending status are assigned by the server.",
+        TASK_DOMAIN_BOUNDARY + " Create one Task. due_time may be omitted/null; exact ISO instants are supported and local date-times use the account timezone. User identity and initial pending status are server-owned.",
       inputSchema: createTaskInputSchema,
       outputSchema: createTaskOutputSchema,
       annotations: {
@@ -147,14 +145,27 @@ export function registerCreateTaskTool(
             },
             idempotency_key,
           );
-          const result = { success: true as const, data };
+          const result = {
+            success: true as const,
+            data: {
+              task: data.task,
+              ...mcpMutationReceipt({
+                outcome: data.outcome,
+                entity_type: "task",
+                entity_id: data.task.id,
+                revision: null,
+                detail_tool: "get_task",
+                detail_arguments: { id: data.task.id },
+              }),
+            },
+          };
 
           return {
             content: [
               {
                 type: "text",
                 text: joinMcpContentLines([
-                  `Task created: ${quoteMcpText(data.task.title)} [id=${data.task.id}; status=${data.task.status}]`,
+                  `${data.outcome === "replayed" ? "Task replayed" : "Task created"}: ${quoteMcpText(data.task.title)} [id=${data.task.id}; status=${data.task.status}]`,
                   formatMcpDetailPointer("get_task", { id: data.task.id }),
                 ]),
               },
@@ -183,6 +194,17 @@ function toSafeToolError(error: unknown) {
           ? "This idempotency key was already used for a different task."
           : "The task request is invalid.";
 
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, message);
   }
 

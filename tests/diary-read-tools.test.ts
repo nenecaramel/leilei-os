@@ -142,7 +142,8 @@ test("search_diary maps filters and identity but omits content", async (t) => {
   });
   assert.deepEqual(service.listCalls, [{
     userId: USER_ID,
-    limit: 12,
+    limit: 13,
+    offset: 0,
     query: {
       q: "海边",
       tag: "旅行",
@@ -173,7 +174,7 @@ test("search_diary maps filters and identity but omits content", async (t) => {
         detail_tool: "get_diary",
         detail_arguments: { id: ENTRY.id, scope: "active" },
       }],
-      metadata: { count: 1 },
+      metadata: { count: 1, returned: 1, has_more: false, next_cursor: null },
     },
   });
 });
@@ -184,7 +185,8 @@ test("search_diary supports no filters and rejects invalid schemas", async () =>
   await pair.client.callTool({ name: "search_diary", arguments: {} });
   assert.deepEqual(service.listCalls[0], {
     userId: USER_ID,
-    limit: undefined,
+    limit: 51,
+    offset: 0,
     query: {
       q: undefined,
       tag: undefined,
@@ -266,7 +268,106 @@ test("get_diary injects identity and returns complete content", async (t) => {
     arguments: { id: `  ${ENTRY.id}  ` },
   });
   assert.deepEqual(service.readCalls, [{ userId: USER_ID, id: ENTRY.id }]);
-  assert.deepEqual(result.structuredContent, { success: true, data: { ...ENTRY, lifecycle_status: "active" } });
+  const data = (result.structuredContent as {
+    data: {
+      content: string;
+      lifecycle_status: string;
+      content_metadata: {
+        returned_chars: number;
+        total_chars: number;
+        truncated: boolean;
+        next_cursor: string | null;
+      };
+      comments_tool: string;
+      comments_arguments: { diary_id: string; scope: string };
+    };
+  }).data;
+  assert.equal(data.content, ENTRY.content);
+  assert.equal(data.lifecycle_status, "active");
+  assert.deepEqual(data.content_metadata, {
+    returned_chars: Array.from(ENTRY.content).length,
+    total_chars: Array.from(ENTRY.content).length,
+    truncated: false,
+    next_cursor: null,
+  });
+  assert.equal(data.comments_tool, "list_diary_comments");
+  assert.deepEqual(data.comments_arguments, { diary_id: ENTRY.id, scope: "active" });
+});
+
+test("get_diary continues bounded content without embedding comments", async (t) => {
+  const service = new MockDiaryService();
+  let updatedAt = ENTRY.updated_at;
+  service.readDiary = async (input) => {
+    service.readCalls.push(input);
+    return {
+      ...ENTRY,
+      content: "甲😀乙丙丁",
+      updated_at: updatedAt,
+    };
+  };
+  const { client, server } = await connect(service);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const first = await client.callTool({
+    name: "get_diary",
+    arguments: { id: ENTRY.id, max_chars: 2 },
+  });
+  const firstData = (first.structuredContent as {
+    data: {
+      content: string;
+      content_metadata: { next_cursor: string | null; truncated: boolean };
+      comments_tool: string;
+      comments_arguments: { diary_id: string; scope: string };
+    };
+  }).data;
+  assert.equal(firstData.content, "甲😀");
+  assert.equal(firstData.content_metadata.truncated, true);
+  assert.ok(firstData.content_metadata.next_cursor);
+  assert.equal(firstData.comments_tool, "list_diary_comments");
+  assert.deepEqual(firstData.comments_arguments, {
+    diary_id: ENTRY.id,
+    scope: "active",
+  });
+
+  const second = await client.callTool({
+    name: "get_diary",
+    arguments: {
+      id: ENTRY.id,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(
+    (second.structuredContent as { data: { content: string } }).data.content,
+    "乙丙",
+  );
+
+  updatedAt = "2026-07-31T08:00:00.000Z";
+  const stale = await client.callTool({
+    name: "get_diary",
+    arguments: {
+      id: ENTRY.id,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(stale.isError, true);
+  assert.match(textOf(stale), /cursor is invalid or stale/i);
+  assert.deepEqual(
+    (stale.structuredContent as any).error,
+    {
+      code: "INVALID_CURSOR",
+      message: "The Diary continuation cursor is invalid or stale. Read the Diary again without a cursor.",
+      retryable: false,
+      reason: "invalid_cursor",
+      current_revision: null,
+      recommended_tool: "get_diary",
+      recommended_arguments: { id: ENTRY.id, scope: "active" },
+    },
+  );
 });
 
 test("Diary search and detail preserve C author", async (t) => {

@@ -98,10 +98,15 @@ export type CreateTaskResult = {
   task: TaskEntryResult;
 };
 
+export type CreateTaskIdempotentResult = CreateTaskResult & {
+  outcome: "applied" | "replayed";
+};
+
 export type ListTasksInput = {
   userId: string;
   limit?: number;
   query?: RawTaskListQuery;
+  offset?: number;
 };
 
 export type RawTaskListQuery = {
@@ -226,7 +231,7 @@ export class TaskService {
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
     idempotencyKey: string,
-  ): Promise<CreateTaskResult> {
+  ): Promise<CreateTaskIdempotentResult> {
     const userId = await this.requireActiveUser(context.userId);
     const timezone = await this.getAccountTimezone(userId);
     const normalized = this.normalizeInput(userId, input, timezone);
@@ -271,7 +276,10 @@ export class TaskService {
       );
     }
 
-    return { task: this.toTaskResult(persisted.task, timezone) };
+    return {
+      task: this.toTaskResult(persisted.task, timezone),
+      outcome: persisted.outcome === "replayed" ? "replayed" : "applied",
+    };
   }
 
   async listTasks(
@@ -282,7 +290,7 @@ export class TaskService {
     const timezone = await this.getAccountTimezone(userId);
 
     const query = this.normalizeListQuery(input.query ?? {}, timezone);
-    const tasks = await this.repository.findTasks(userId, limit, query);
+    const tasks = await this.repository.findTasks(userId, limit, query, input.offset);
 
     return {
       tasks: tasks.map((task) =>

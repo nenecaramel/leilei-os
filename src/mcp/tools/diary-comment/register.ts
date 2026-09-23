@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import {
   DIARY_COMMENT_CONTENT_MAX_CODE_POINTS,
   DiaryCommentDomainError,
@@ -11,12 +12,19 @@ import {
 import { invokeMcpWrite } from "../write-context.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import {
   joinMcpContentLines,
   quoteMcpText,
 } from "../content-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+  mcpMutationOutcomeFromReplay,
+} from "../mutation-contract.js";
+import { mcpExpectedRevisionSchema, mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 
 const idSchema = z.string().trim().uuid();
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
@@ -45,19 +53,16 @@ const commentSchema = z.object({
 
 const addInputSchema = z.object({
   diary_id: idSchema.describe("Exact Diary id returned by search_diary, get_diary, or global_search."),
-  author: contentAuthorSchema.describe("Logical author of this comment: L, G, or C. Author is immutable after creation."),
+  author: contentAuthorSchema.describe(`${MCP_CONTENT_AUTHOR_DESCRIPTION} Author is immutable after creation.`),
   content: commentContentSchema.describe("Complete comment text. The server NFC-normalizes and trims it."),
-  idempotency_key: z.string().min(16).max(128).regex(/^[A-Za-z0-9._:-]+$/).describe("Stable unique key that prevents duplicate comment creation."),
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const addOutputSchema = z.object({
   success: z.boolean(),
   data: z.object({
     comment: commentSchema,
-    metadata: z.object({
-      created: z.boolean(),
-      idempotent_replay: z.boolean(),
-    }).strict(),
+    ...mcpMutationReceiptFields,
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -96,19 +101,19 @@ const listOutputSchema = z.object({
 
 const updateInputSchema = z.object({
   id: idSchema.describe("Exact Diary comment id."),
-  expected_revision: z.number().int().min(1).describe("Revision from the latest get_diary_comment, list_diary_comments, or get_diary read."),
+  expected_revision: mcpExpectedRevisionSchema,
   content: commentContentSchema.describe("Complete replacement comment text. Author cannot be changed."),
 }).strict();
 
 const updateOutputSchema = z.object({
   success: z.boolean(),
-  data: commentSchema.optional(),
+  data: commentSchema.extend(mcpMutationReceiptFields).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
 const deleteInputSchema = z.object({
   id: idSchema.describe("Exact Diary comment id."),
-  expected_revision: z.number().int().min(1).describe("Revision from the latest authoritative comment read."),
+  expected_revision: mcpExpectedRevisionSchema,
 }).strict();
 
 const deleteOutputSchema = z.object({
@@ -116,6 +121,7 @@ const deleteOutputSchema = z.object({
   data: z.object({
     comment_id: idSchema,
     deleted: z.literal(true),
+    ...mcpMutationReceiptFields,
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -169,7 +175,7 @@ export function registerDiaryCommentTools(
     {
       title: "Add a Diary comment",
       description:
-        "Create one independent canonical comment on an active Diary entry. The comment does not modify Diary content, Diary author, Diary updated_at, or Diary ordering. Author is immutable after creation. Supply a stable idempotency key; if the outcome is uncertain, read back before retrying.",
+        DIARY_DOMAIN_BOUNDARY + " Create one independent canonical comment on an active Diary entry. The comment does not modify Diary content, Diary author, Diary updated_at, or Diary ordering. Author is immutable after creation. Supply a stable idempotency key; if the outcome is uncertain, read back before retrying.",
       inputSchema: addInputSchema,
       outputSchema: addOutputSchema,
       annotations: {
@@ -206,7 +212,20 @@ export function registerDiaryCommentTools(
             }],
             structuredContent: {
               success: true as const,
-              data,
+              data: {
+                comment: data.comment,
+                ...mcpMutationReceipt({
+                  outcome: mcpMutationOutcomeFromReplay(replay),
+                  entity_type: "diary_comment",
+                  entity_id: data.comment.id,
+                  revision: data.comment.revision,
+                  detail_tool: "get_diary_comment",
+                  detail_arguments: {
+                    id: data.comment.id,
+                    scope: "active",
+                  },
+                }),
+              },
             },
           };
         },
@@ -219,7 +238,7 @@ export function registerDiaryCommentTools(
     {
       title: "Get one Diary comment",
       description:
-        "Read one canonical Diary comment by exact id. scope defaults to active and must match the lifecycle state of the parent Diary.",
+        DIARY_DOMAIN_BOUNDARY + " Read one canonical Diary comment by exact id. scope defaults to active and must match the lifecycle state of the parent Diary.",
       inputSchema: getInputSchema,
       outputSchema: getOutputSchema,
       annotations: {
@@ -260,7 +279,7 @@ export function registerDiaryCommentTools(
     {
       title: "List Diary comments",
       description:
-        "List canonical comments attached to one Diary entry. The page is returned in chronological reading order. Use metadata.next_before to load older comments. scope defaults to active.",
+        DIARY_DOMAIN_BOUNDARY + " List canonical comments attached to one Diary entry. The page is returned in chronological reading order. Use metadata.next_before to load older comments. scope defaults to active.",
       inputSchema: listInputSchema,
       outputSchema: listOutputSchema,
       annotations: {
@@ -315,7 +334,7 @@ export function registerDiaryCommentTools(
     {
       title: "Update one Diary comment",
       description:
-        "Replace the content of one comment on an active Diary without changing its immutable author. Requires the exact current revision. On a conflict or uncertain outcome, call get_diary_comment before deciding whether to retry.",
+        DIARY_DOMAIN_BOUNDARY + " Replace the content of one comment on an active Diary without changing its immutable author. Requires the exact current revision. On a conflict or uncertain outcome, call get_diary_comment before deciding whether to retry.",
       inputSchema: updateInputSchema,
       outputSchema: updateOutputSchema,
       annotations: {
@@ -344,11 +363,21 @@ export function registerDiaryCommentTools(
             }],
             structuredContent: {
               success: true as const,
-              data,
+              data: {
+                ...data,
+                ...mcpMutationReceipt({
+                  outcome: "applied",
+                  entity_type: "diary_comment",
+                  entity_id: data.id,
+                  revision: data.revision,
+                  detail_tool: "get_diary_comment",
+                  detail_arguments: { id: data.id, scope: "active" },
+                }),
+              },
             },
           };
         },
-        mapError: toSafeCommentError,
+        mapError: (error) => toSafeCommentError(error, { id }),
       }),
   );
 
@@ -357,7 +386,7 @@ export function registerDiaryCommentTools(
     {
       title: "Delete one Diary comment",
       description:
-        "Permanently delete one comment from an active Diary. This does not modify or delete the Diary itself. Requires the exact current revision. On an uncertain outcome, read back with get_diary_comment before deciding whether to retry.",
+        DIARY_DOMAIN_BOUNDARY + " Permanently delete one comment from an active Diary. This does not modify or delete the Diary itself. Requires the exact current revision. On an uncertain outcome, read back with get_diary_comment before deciding whether to retry.",
       inputSchema: deleteInputSchema,
       outputSchema: deleteOutputSchema,
       annotations: {
@@ -385,16 +414,29 @@ export function registerDiaryCommentTools(
             }],
             structuredContent: {
               success: true as const,
-              data,
+              data: {
+                ...data,
+                ...mcpMutationReceipt({
+                  outcome: "applied",
+                  entity_type: "diary_comment",
+                  entity_id: data.comment_id,
+                  revision: null,
+                  detail_tool: null,
+                  detail_arguments: null,
+                }),
+              },
             },
           };
         },
-        mapError: toSafeCommentError,
+        mapError: (error) => toSafeCommentError(error, { id }),
       }),
   );
 }
 
-function toSafeCommentError(error: unknown) {
+function toSafeCommentError(
+  error: unknown,
+  recoveryContext?: { id: string },
+) {
   if (error instanceof DiaryCommentAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",
@@ -417,6 +459,33 @@ function toSafeCommentError(error: unknown) {
                 : error.code === "IDEMPOTENCY_CONFLICT"
                   ? "This idempotency key was already used for a different Diary comment."
                   : "The Diary comment request is invalid.";
+    if (error.code === "COMMENT_REVISION_CONFLICT" && recoveryContext) {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "stale_revision",
+          recommendedTool: "get_diary_comment",
+          recommendedArguments: {
+            id: recoveryContext.id,
+            scope: "active",
+          },
+        }),
+      );
+    }
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, message);
   }
 

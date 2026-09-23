@@ -222,7 +222,19 @@ test("update Universe relation forwards an explicit partial patch and returns th
   assert.equal(result.isError, undefined);
   assert.deepEqual(result, {
     content: [{ type: "text", text: "Universe relation updated." }],
-    structuredContent: { success: true, data: { relation: updatedRelation, universe_version: 5 } },
+    structuredContent: {
+      success: true,
+      data: {
+        relation: updatedRelation,
+        universe_version: 5,
+        outcome: "applied",
+        entity_type: "universe_relation",
+        entity_id: updatedRelation.id,
+        revision: null,
+        detail_tool: "get_universe_relations",
+        detail_arguments: { node_id: updatedRelation.source },
+      },
+    },
   });
   assert.deepEqual(calls, [["user-1", relation.id, { relationType: "extends", strength: 0.25 }, 4]]);
 });
@@ -339,7 +351,10 @@ test("create Universe node forwards boundary positions and never accepts caller 
       data: {
         node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
         universe_version: 1,
-        metadata: { created: true, idempotent_replay: false },
+        outcome: "applied",
+        entity_type: "universe_node",
+        entity_id: node.id,
+        revision: null,
         detail_tool: "get_universe_node",
         detail_arguments: { id: node.id },
       },
@@ -386,6 +401,10 @@ test("update Universe node is a partial patch and rejects an empty or hidden pat
       data: {
         node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
         universe_version: 2,
+        outcome: "applied",
+        entity_type: "universe_node",
+        entity_id: node.id,
+        revision: null,
         detail_tool: "get_universe_node",
         detail_arguments: { id: node.id },
       },
@@ -422,7 +441,16 @@ test("create Universe relation enforces self-link and strength boundaries before
     content: [{ type: "text", text: "Universe relation created: edge-generated node-a->node-b; version=3" }],
     structuredContent: {
       success: true,
-      data: { relation, universe_version: 3, metadata: { created: true, idempotent_replay: false } },
+      data: {
+        relation,
+        universe_version: 3,
+        outcome: "applied",
+        entity_type: "universe_relation",
+        entity_id: relation.id,
+        revision: null,
+        detail_tool: "get_universe_relations",
+        detail_arguments: { node_id: relation.source },
+      },
     },
   });
   assert.equal(calls.length, 1);
@@ -452,6 +480,11 @@ test("Universe mutation errors remain safe and distinguish stale versions", asyn
     error: {
       code: "VERSION_CONFLICT",
       message: "Universe changed since expected_version; fresh-read before deciding whether to retry.",
+      retryable: false,
+      reason: "stale_version",
+      current_revision: null,
+      recommended_tool: "list_universe_nodes",
+      recommended_arguments: {},
     },
   });
   assert.match(JSON.stringify(stale.content), /VERSION_CONFLICT/);
@@ -621,7 +654,10 @@ test("preserves idempotent replay metadata in a successful Universe write", asyn
       data: {
         node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
         universe_version: 9,
-        metadata: { created: false, idempotent_replay: true },
+        outcome: "replayed",
+        entity_type: "universe_node",
+        entity_id: node.id,
+        revision: null,
         detail_tool: "get_universe_node",
         detail_arguments: { id: node.id },
       },

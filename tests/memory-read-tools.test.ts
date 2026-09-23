@@ -150,7 +150,8 @@ test("search_memory injects identity and forces updated ordering without source"
       categories: ["project"],
       tag: "MCP",
       ordering: "updated_desc",
-      limit: 12,
+      limit: 13,
+      offset: 0,
     },
   ]);
   assert.equal("includeSource" in service.readCalls[0], false);
@@ -170,7 +171,7 @@ test("search_memory injects identity and forces updated ordering without source"
           detail_arguments: { id: MEMORY_ID, scope: "active" },
         },
       ],
-      metadata: { count: 1 },
+      metadata: { count: 1, returned: 1, has_more: false, next_cursor: null },
     },
   });
   assert.equal(
@@ -255,20 +256,103 @@ test("get_memory injects identity, trims id, and returns only safe fields", asyn
   assert.deepEqual(service.detailCalls, [
     { userId: USER_ID, id: MEMORY_ID },
   ]);
-  assert.deepEqual(result.structuredContent, {
-    success: true,
+  const data = (result.structuredContent as {
     data: {
+      id: string;
+      content: string;
+      lifecycle_status: string;
+      content_metadata: {
+        returned_chars: number;
+        total_chars: number;
+        truncated: boolean;
+        next_cursor: string | null;
+      };
+    };
+  }).data;
+  assert.equal(data.id, MEMORY_ID);
+  assert.equal(data.content, "Complete active Memory detail.");
+  assert.equal(data.lifecycle_status, "active");
+  assert.deepEqual(data.content_metadata, {
+    returned_chars: Array.from("Complete active Memory detail.").length,
+    total_chars: Array.from("Complete active Memory detail.").length,
+    truncated: false,
+    next_cursor: null,
+  });
+});
+
+test("get_memory continues Unicode-safe windows and rejects stale cursors", async (t) => {
+  const service = new MockMemoryReadService();
+  let updatedAt = UPDATED_AT;
+  service.readMemoryDetail = async (input) => {
+    service.detailCalls.push(input);
+    return {
       id: MEMORY_ID,
       category: "project",
-      key: "leilei-os",
-      content: "Complete active Memory detail.",
-      tags: ["MCP", "Memory"],
+      key: "bounded",
+      content: "甲😀乙丙丁",
+      tags: [],
       source: "web",
-      updated_at: UPDATED_AT,
+      updated_at: updatedAt,
       lifecycle_status: "active",
       author: null,
+    };
+  };
+  const { client, server } = await connect(service);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const first = await client.callTool({
+    name: "get_memory",
+    arguments: { id: MEMORY_ID, max_chars: 2 },
+  });
+  const firstData = (first.structuredContent as {
+    data: {
+      content: string;
+      content_metadata: { next_cursor: string | null; truncated: boolean };
+    };
+  }).data;
+  assert.equal(firstData.content, "甲😀");
+  assert.equal(firstData.content_metadata.truncated, true);
+  assert.ok(firstData.content_metadata.next_cursor);
+
+  const second = await client.callTool({
+    name: "get_memory",
+    arguments: {
+      id: MEMORY_ID,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
     },
   });
+  assert.equal(
+    (second.structuredContent as { data: { content: string } }).data.content,
+    "乙丙",
+  );
+
+  updatedAt = "2026-07-30T08:00:00.000Z";
+  const stale = await client.callTool({
+    name: "get_memory",
+    arguments: {
+      id: MEMORY_ID,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(stale.isError, true);
+  assert.match(textOf(stale), /cursor is invalid or stale/i);
+  assert.deepEqual(
+    (stale.structuredContent as any).error,
+    {
+      code: "INVALID_CURSOR",
+      message: "The Memory continuation cursor is invalid or stale. Read the Memory again without a cursor.",
+      retryable: false,
+      reason: "invalid_cursor",
+      current_revision: null,
+      recommended_tool: "get_memory",
+      recommended_arguments: { id: MEMORY_ID, scope: "active" },
+    },
+  );
 });
 
 test("Memory read tools preserve a C author in structured responses", async (t) => {
@@ -392,7 +476,7 @@ test("both new tools fail safely without authenticated MCP context", async (t) =
   assert.equal(service.detailCalls.length, 0);
 });
 
-test("legacy read_memory contract and default ordering remain unchanged", async (t) => {
+test("read_memory preserves default ordering while adding pagination", async (t) => {
   const service = new MockMemoryReadService();
   const { client, server } = await connect(service);
   t.after(async () => {
@@ -414,6 +498,8 @@ test("legacy read_memory contract and default ordering remain unchanged", async 
       userId: USER_ID,
       categories: ["project"],
       keys: ["leilei-os"],
+      limit: 51,
+      offset: 0,
     },
   ]);
   assert.deepEqual(result.structuredContent, {
@@ -433,7 +519,7 @@ test("legacy read_memory contract and default ordering remain unchanged", async 
           detail_arguments: { id: MEMORY_ID, scope: "active" },
         },
       ],
-      metadata: { count: 1 },
+      metadata: { count: 1, returned: 1, has_more: false, next_cursor: null },
     },
   });
 });

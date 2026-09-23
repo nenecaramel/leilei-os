@@ -26,9 +26,10 @@ import {
   type McpServerDependencies,
 } from "./create-server.js";
 import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
+import { registerProductionNotionTypedWriteTools } from "./register-notion-typed-writes.js";
 import { registerSentinelTools } from "../tools/sentinel/register.js";
-import { registerRenderThinkingBlockTool } from "../tools/render-thinking-block/register.js";
-import { registerRenderThinkingBlockResource } from "../tools/render-thinking-block/resource.js";
+import { registerRenderThinkingBlockTool, registerRenderWorkingNoteTool } from "../tools/render-thinking-block/register.js";
+import { registerWorkingNoteResource } from "../tools/render-thinking-block/resource.js";
 import { registerGetHealthTool } from "../tools/get-health/register.js";
 import { registerGetCurrentTimeTool } from "../tools/get-current-time/register.js";
 import {
@@ -180,6 +181,13 @@ export function createProductionMcpSessionServerFactory(input: {
       toolExposure,
     );
     if (mcpToolSurfaceEnabled(toolExposure, "notion")) {
+      registerProductionNotionTypedWriteTools(
+        server,
+        userId,
+        activeUserAuthorization,
+      );
+    }
+    if (mcpToolSurfaceEnabled(toolExposure, "notion_advanced")) {
       registerProductionNotionExplicitWriteTools(
         server,
         userId,
@@ -196,8 +204,11 @@ export function createProductionMcpSessionServerFactory(input: {
       });
     }
     if (mcpToolSurfaceEnabled(toolExposure, "ui")) {
-      registerRenderThinkingBlockResource(server);
-      registerRenderThinkingBlockTool(server);
+      registerWorkingNoteResource(server);
+      registerRenderWorkingNoteTool(server);
+      if (mcpToolSurfaceEnabled(toolExposure, "legacy_aliases")) {
+        registerRenderThinkingBlockTool(server);
+      }
     }
     if (
       mcpToolSurfaceEnabled(toolExposure, "runtime_internal")

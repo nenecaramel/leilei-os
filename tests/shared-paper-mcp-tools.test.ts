@@ -3,6 +3,7 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
+import { SharedPaperServiceError } from "../src/domains/shared-paper/shared-paper-service.js";
 import type { SharedPaperEdit, SharedPaperRecord } from "../src/domains/shared-paper/shared-paper-types.js";
 import type { SharedPaperToolService } from "../src/mcp/tools/shared-paper/register.js";
 
@@ -58,12 +59,12 @@ async function connect(sharedPaperService: SharedPaperToolService = makeService(
   return { client, server };
 }
 
-test("Shared Paper MCP exposes ten strict tools without user_id", async () => {
+test("Shared Paper MCP full inventory exposes canonical and legacy delete names without user_id", async () => {
   const fixture = await connect();
   const result = await fixture.client.listTools();
   await fixture.client.close(); await fixture.server.close();
-  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "append_shared_paper", "list_shared_paper_edits", "archive_shared_paper", "restore_shared_paper", "delete_shared_paper"].includes(tool.name));
-  assert.deepEqual(selected.map((tool) => tool.name).sort(), ["append_shared_paper", "archive_shared_paper", "create_shared_paper", "delete_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "restore_shared_paper", "search_shared_papers"]);
+  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "append_shared_paper", "list_shared_paper_edits", "archive_shared_paper", "restore_shared_paper", "permanently_delete_shared_paper", "delete_shared_paper"].includes(tool.name));
+  assert.deepEqual(selected.map((tool) => tool.name).sort(), ["append_shared_paper", "archive_shared_paper", "create_shared_paper", "delete_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "permanently_delete_shared_paper", "restore_shared_paper", "search_shared_papers"]);
   for (const tool of selected) {
     const schema = tool.inputSchema as { type?: string; properties?: Record<string, unknown> };
     assert.equal(schema.type, "object");
@@ -93,6 +94,8 @@ test("Shared Paper MCP schemas enforce Unicode code-point bounds with host-visib
   const byName = new Map(listed.tools.map((tool) => [tool.name, tool]));
   assert.equal((byName.get("list_shared_papers")?.inputSchema.properties?.scope as { default?: string }).default, "active");
   assert.equal((byName.get("search_shared_papers")?.inputSchema.properties?.scope as { default?: string }).default, "active");
+  assert.ok(byName.get("list_shared_papers")?.inputSchema.properties?.cursor);
+  assert.ok(byName.get("search_shared_papers")?.inputSchema.properties?.cursor);
   assert.equal((byName.get("create_shared_paper")?.inputSchema.properties?.title as { maxLength?: number }).maxLength, 400);
   assert.equal((byName.get("create_shared_paper")?.inputSchema.properties?.content as { maxLength?: number }).maxLength, 200_000);
   assert.equal((byName.get("search_shared_papers")?.inputSchema.properties?.query as { maxLength?: number }).maxLength, 400);
@@ -168,6 +171,57 @@ test("Shared Paper detail text exposes revision and authors before canonical con
     updated_at: detailedPaper.updatedAt.toISOString(),
     archived_at: null,
   });
+});
+
+test("get_shared_paper continues bounded content and rejects a stale revision cursor", async (t) => {
+  let revision = 3;
+  const fixture = await connect(makeService({
+    getPaper: async () => ({
+      ...paper,
+      revision,
+      content: "甲😀乙丙丁",
+    }),
+  }));
+  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
+
+  const first = await fixture.client.callTool({
+    name: "get_shared_paper",
+    arguments: { id, max_chars: 2 },
+  });
+  const firstData = (first.structuredContent as {
+    data: {
+      paper: { content: string };
+      content_metadata: { next_cursor: string | null; truncated: boolean };
+    };
+  }).data;
+  assert.equal(firstData.paper.content, "甲😀");
+  assert.equal(firstData.content_metadata.truncated, true);
+  assert.ok(firstData.content_metadata.next_cursor);
+
+  const second = await fixture.client.callTool({
+    name: "get_shared_paper",
+    arguments: {
+      id,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(
+    (second.structuredContent as { data: { paper: { content: string } } }).data.paper.content,
+    "乙丙",
+  );
+
+  revision = 4;
+  const stale = await fixture.client.callTool({
+    name: "get_shared_paper",
+    arguments: {
+      id,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(stale.isError, true);
+  assert.match(JSON.stringify(stale), /cursor is invalid or stale/i);
 });
 
 test("Shared Paper edit history text exposes ordered author and revision summaries", async (t) => {
@@ -252,9 +306,9 @@ test("Shared Paper MCP mutation receipts distinguish fresh commits from idempote
   const createArgs = { title: "Shared", content: "canonical", author: "L", idempotency_key: "shared.paper:receipt-0001" };
   const created = await fixture.client.callTool({ name: "create_shared_paper", arguments: createArgs });
   const createdReplay = await fixture.client.callTool({ name: "create_shared_paper", arguments: createArgs });
-  assert.equal((created.structuredContent as any).data.metadata.idempotent_replay, false);
-  assert.equal((createdReplay.structuredContent as any).data.metadata.idempotent_replay, true);
-  assert.match(String(created.content?.[0]?.text), /committed/);
+  assert.equal((created.structuredContent as any).data.outcome, "applied");
+  assert.equal((createdReplay.structuredContent as any).data.outcome, "replayed");
+  assert.match(String(created.content?.[0]?.text), /applied/);
   assert.match(String(createdReplay.content?.[0]?.text), /replayed/);
 
   const editArgs = { id, expected_revision: 1, author: "G", match_text: "canonical", replacement_text: "updated", idempotency_key: "shared.paper:receipt-0002" };
@@ -262,7 +316,7 @@ test("Shared Paper MCP mutation receipts distinguish fresh commits from idempote
   currentPaper = { ...paper, revision: 5, content: "later canonical" };
   const editReplay = await fixture.client.callTool({ name: "edit_shared_paper", arguments: editArgs });
   const editReplayData = (editReplay.structuredContent as any).data;
-  assert.equal(editReplayData.metadata.idempotent_replay, true);
+  assert.equal(editReplayData.outcome, "replayed");
   assert.equal(editReplayData.edit_id, edited.structuredContent && (edited.structuredContent as any).data.edit_id);
   assert.equal(editReplayData.base_revision, 1);
   assert.equal(editReplayData.revision, 2);
@@ -297,7 +351,11 @@ test("Shared Paper MCP defaults discovery scope to active and accepts archived s
   await fixture.client.callTool({ name: "list_shared_papers", arguments: {} });
   await fixture.client.callTool({ name: "search_shared_papers", arguments: { query: "shared", scope: "archived" } });
   assert.equal(received[0]?.scope, "active");
+  assert.equal(received[0]?.limit, 51);
+  assert.equal(received[0]?.offset, 0);
   assert.equal(received[1]?.scope, "archived");
+  assert.equal(received[1]?.limit, 51);
+  assert.equal(received[1]?.offset, 0);
 });
 
 test("Shared Paper MCP lifecycle tools return authoritative state and idempotent receipts", async (t) => {
@@ -316,7 +374,7 @@ test("Shared Paper MCP lifecycle tools return authoritative state and idempotent
   const archivedData = (archivedResult.structuredContent as any).data;
   assert.equal(archivedData.paper_id, id);
   assert.equal(archivedData.archived_at, "2026-01-02T00:00:00.000Z");
-  assert.equal(archivedData.metadata.idempotent_replay, false);
+  assert.equal(archivedData.outcome, "applied");
   assert.deepEqual(archivedData.detail_arguments, { id });
 
   const restoredResult = await fixture.client.callTool({ name: "restore_shared_paper", arguments: { id, idempotency_key: "shared.paper:restore-0001" } });
@@ -325,11 +383,63 @@ test("Shared Paper MCP lifecycle tools return authoritative state and idempotent
   const deletedResult = await fixture.client.callTool({ name: "delete_shared_paper", arguments: { id, idempotency_key: "shared.paper:delete-0001" } });
   const deletedReplay = await fixture.client.callTool({ name: "delete_shared_paper", arguments: { id, idempotency_key: "shared.paper:delete-0001" } });
   assert.equal((deletedResult.structuredContent as any).data.deleted, true);
-  assert.equal((deletedReplay.structuredContent as any).data.metadata.idempotent_replay, true);
+  assert.equal((deletedReplay.structuredContent as any).data.outcome, "replayed");
   assert.equal((deletedReplay.structuredContent as any).data.paper_id, id);
   assert.match(String(deletedReplay.content?.[0]?.text), /replayed/);
 });
 
+
+test("Shared Paper stale revision and ambiguous match errors provide exact readback recovery", async (t) => {
+  for (const [error, reason] of [
+    [
+      new SharedPaperServiceError(
+        "PAPER_REVISION_CONFLICT",
+        "Shared paper revision conflict.",
+      ),
+      "stale_revision",
+    ],
+    [
+      new SharedPaperServiceError(
+        "PAPER_EDIT_TARGET_AMBIGUOUS",
+        "The edit target is ambiguous.",
+      ),
+      "ambiguous_match",
+    ],
+  ] as const) {
+    const fixture = await connect(makeService({
+      editPaperByMatch: async () => { throw error; },
+    }));
+    t.after(async () => {
+      await fixture.client.close();
+      await fixture.server.close();
+    });
+
+    const result = await fixture.client.callTool({
+      name: "edit_shared_paper",
+      arguments: {
+        id,
+        expected_revision: 1,
+        author: "G",
+        match_text: "canonical",
+        replacement_text: "updated",
+        idempotency_key: `shared.paper:recovery-${reason}`,
+      },
+    });
+    assert.equal(result.isError, true);
+    assert.deepEqual(
+      (result.structuredContent as any).error,
+      {
+        code: error.code,
+        message: error.message,
+        retryable: false,
+        reason,
+        current_revision: null,
+        recommended_tool: "get_shared_paper",
+        recommended_arguments: { id },
+      },
+    );
+  }
+});
 
 test("Shared Paper MCP append is direct, revisioned, and idempotent-shaped", async (t) => {
   let received: Record<string, unknown> | undefined;

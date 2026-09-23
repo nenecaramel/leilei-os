@@ -1,19 +1,22 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { joinMcpContentLines } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
+import { universeExpectedVersionSchema } from "../idempotency-contract.js";
 
 const inputSchema = z.object({
   node_id: z.string().trim().min(1).max(256),
   diary_id: z.string().uuid(),
-  expected_version: z.number().int().nonnegative(),
+  expected_version: universeExpectedVersionSchema,
 }).strict();
 
 const outputSchema = z.object({
   success: z.boolean(),
-  data: z.object({ node_id: z.string().min(1).max(256), diary_id: z.string().uuid(), universe_version: z.number().int().nonnegative() }).strict().optional(),
+  data: z.object({ node_id: z.string().min(1).max(256), diary_id: z.string().uuid(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict().optional(),
   error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 
@@ -25,7 +28,7 @@ export type AddUniverseDiarySourceToolDependencies = {
 export function registerAddUniverseDiarySourceTool(server: McpServer, dependencies: AddUniverseDiarySourceToolDependencies): void {
   server.registerTool("add_universe_diary_source", {
     title: "Add a Universe Diary source",
-    description: "Attach one active or archived Diary to an authenticated Universe node. This is a non-idempotent provenance mutation. If the transport outcome is uncertain, fresh-read the node's sources and Universe version before deciding whether another mutation is needed; never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Attach one active/archived Diary as node provenance. Non-idempotent; on uncertain outcome, fresh-read sources and Universe version; never blindly retry.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -38,7 +41,22 @@ export function registerAddUniverseDiarySourceTool(server: McpServer, dependenci
         content: [{ type: "text", text: joinMcpContentLines([
           `Universe Diary source added: node=${node_id}; diary=${diary_id}; version=${result.version}`,
         ]) }],
-        structuredContent: { success: true as const, data: { node_id, diary_id, universe_version: result.version } },
+        structuredContent: {
+          success: true as const,
+          data: {
+            node_id,
+            diary_id,
+            universe_version: result.version,
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "universe_diary_source",
+              entity_id: `${node_id}:${diary_id}`,
+              revision: null,
+              detail_tool: "get_universe_diary_sources",
+              detail_arguments: { node_id },
+            }),
+          },
+        },
       };
     },
     mapError: (error) => safeUniverseWriteError(error, "Universe Diary source was not added."),

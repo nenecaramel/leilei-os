@@ -10,12 +10,13 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const diaryIdSchema = z
   .string()
   .trim()
   .uuid()
-  .describe("The exact Diary id returned by write_diary, search_diary, global_search, or get_diary.");
+  .describe("The exact Diary id returned by create_diary, search_diary, global_search, or get_diary.");
 
 const lifecycleInputSchema = z.object({
   id: diaryIdSchema,
@@ -24,11 +25,7 @@ const lifecycleInputSchema = z.object({
 const lifecycleDataSchema = z.object({
   diary_id: z.string().uuid(),
   lifecycle_status: z.enum(["active", "archived"]),
-  detail_tool: z.literal("get_diary"),
-  detail_arguments: z.object({
-    id: z.string().uuid(),
-    scope: z.enum(["active", "archived"]),
-  }).strict(),
+  ...mcpMutationReceiptFields,
 }).strict();
 
 const lifecycleOutputSchema = z.object({
@@ -40,6 +37,7 @@ const lifecycleOutputSchema = z.object({
 const deleteDataSchema = z.object({
   diary_id: z.string().uuid(),
   deleted: z.literal(true),
+  ...mcpMutationReceiptFields,
 }).strict();
 
 const deleteOutputSchema = z.object({
@@ -80,6 +78,7 @@ export class DiaryLifecycleAuthenticationError extends Error {
 export function registerDiaryLifecycleTools(
   server: McpServer,
   dependencies: DiaryLifecycleToolDependencies,
+  options: { permanentDeleteName?: "legacy" | "canonical" } = {},
 ): void {
   server.registerTool(
     "archive_diary",
@@ -108,11 +107,17 @@ export function registerDiaryLifecycleTools(
           const data = {
             diary_id: id,
             lifecycle_status: "archived" as const,
-            detail_tool: "get_diary" as const,
-            detail_arguments: {
-              id,
-              scope: "archived" as const,
-            },
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "diary",
+              entity_id: id,
+              revision: null,
+              detail_tool: "get_diary",
+              detail_arguments: {
+                id,
+                scope: "archived",
+              },
+            }),
           };
           return {
             content: [{
@@ -159,11 +164,17 @@ export function registerDiaryLifecycleTools(
           const data = {
             diary_id: id,
             lifecycle_status: "active" as const,
-            detail_tool: "get_diary" as const,
-            detail_arguments: {
-              id,
-              scope: "active" as const,
-            },
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "diary",
+              entity_id: id,
+              revision: null,
+              detail_tool: "get_diary",
+              detail_arguments: {
+                id,
+                scope: "active",
+              },
+            }),
           };
           return {
             content: [{
@@ -183,12 +194,41 @@ export function registerDiaryLifecycleTools(
       }),
   );
 
+  registerPermanentDeleteDiaryTool(
+    server,
+    dependencies,
+    options.permanentDeleteName === "canonical"
+      ? "permanently_delete_diary"
+      : "delete_diary",
+    options.permanentDeleteName !== "canonical",
+  );
+
+}
+
+export function registerLegacyDeleteDiaryAlias(
+  server: McpServer,
+  dependencies: DiaryLifecycleToolDependencies,
+): void {
+  registerPermanentDeleteDiaryTool(server, dependencies, "delete_diary", true);
+}
+
+function registerPermanentDeleteDiaryTool(
+  server: McpServer,
+  dependencies: DiaryLifecycleToolDependencies,
+  toolName: "permanently_delete_diary" | "delete_diary",
+  deprecated: boolean,
+): void {
+  const description =
+    "Permanently delete one archived Diary entry. The Diary must already be archived. This also removes canonical Diary comments owned by that Diary through the existing Diary lifecycle cascade. This is destructive. If the outcome is uncertain, read archived scope first; if the Diary is already absent, do not blindly retry.";
   server.registerTool(
-    "delete_diary",
+    toolName,
     {
-      title: "Permanently delete one archived Diary entry",
-      description:
-        "Permanently delete one archived Diary entry. The Diary must already be archived. This also removes canonical Diary comments owned by that Diary through the existing Diary lifecycle cascade. This is destructive. If the outcome is uncertain, read archived scope first; if the Diary is already absent, do not blindly retry.",
+      title: deprecated
+        ? "Deprecated: permanently delete Diary"
+        : "Permanently delete one archived Diary entry",
+      description: deprecated
+        ? "DEPRECATED: use permanently_delete_diary. " + description
+        : description,
       inputSchema: lifecycleInputSchema,
       outputSchema: deleteOutputSchema,
       annotations: {
@@ -217,6 +257,14 @@ export function registerDiaryLifecycleTools(
               data: {
                 diary_id: id,
                 deleted: true as const,
+                ...mcpMutationReceipt({
+                  outcome: "applied",
+                  entity_type: "diary",
+                  entity_id: id,
+                  revision: null,
+                  detail_tool: null,
+                  detail_arguments: null,
+                }),
               },
             },
           };

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { todoEntries, todoPapers, users } from "../../database/schema.js";
 import {
@@ -12,6 +12,7 @@ import { MAX_TODO_ENTRIES } from "../resource-limits.js";
 import { CONTENT_AUTHORS, isContentAuthor, type ContentAuthor } from "../content-author.js";
 import type {
   AppendTodoEntryIdempotentlyInput,
+  AppendTodoEntriesIdempotentlyInput,
   DeleteTodoEntryIdempotentlyInput,
   ReplaceTodoPaperInput,
   ReplaceTodoPaperIdempotentlyInput,
@@ -127,13 +128,16 @@ export class DrizzleTodoRepository implements TodoRepository {
     return papers;
   }
 
-  async listContentDates(userId: string): Promise<string[]> {
-    const rows = await this.db
+  async listContentDates(userId: string, limit?: number, offset = 0): Promise<string[]> {
+    const query = this.db
       .selectDistinct({ date: todoPapers.businessDate })
       .from(todoPapers)
       .innerJoin(todoEntries, eq(todoEntries.paperId, todoPapers.id))
       .where(eq(todoPapers.userId, userId))
       .orderBy(asc(todoPapers.businessDate));
+    const rows = limit === undefined
+      ? await query
+      : await query.limit(limit).offset(offset);
     return rows.map((row) => row.date);
   }
 
@@ -160,7 +164,8 @@ export class DrizzleTodoRepository implements TodoRepository {
       .innerJoin(todoPapers, eq(todoEntries.paperId, todoPapers.id))
       .where(and(...conditions))
       .orderBy(desc(todoPapers.businessDate), desc(todoPapers.updatedAt), asc(todoEntries.position), asc(todoEntries.id))
-      .limit(input.limit);
+      .limit(input.limit)
+      .offset(input.offset ?? 0);
     return rows as TodoSearchRow[];
   }
 
@@ -324,6 +329,124 @@ export class DrizzleTodoRepository implements TodoRepository {
         resourceId: inserted.id,
       });
       return { outcome: "committed" as const, entry: inserted, paperRevision };
+    });
+  }
+
+  async appendEntriesIdempotently(input: AppendTodoEntriesIdempotentlyInput) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const idempotency = await lockAndReadMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "append_todo_entry",
+        idempotencyKey: input.idempotencyKey,
+      });
+      if (idempotency) {
+        if (idempotency.requestHash !== input.requestHash || idempotency.resourceType !== "todo_entry") {
+          return { outcome: "idempotency_conflict" as const };
+        }
+        const paper = await this.lockPaperByIdentity(
+          transaction as unknown as Database,
+          input.userId,
+          input.date,
+          input.author,
+        );
+        if (!paper) return { outcome: "entry_not_found" as const };
+        const entryIds = todoBatchEntryIds(idempotency.resourceId, input.entries.length);
+        const entries = await this.readEntriesByExternalIds(
+          transaction as unknown as Database,
+          paper.id,
+          entryIds,
+        );
+        return entries
+          ? { outcome: "replayed" as const, entries, paperRevision: paper.revision }
+          : { outcome: "entry_not_found" as const };
+      }
+
+      let paper = await this.lockPaperByIdentity(
+        transaction as unknown as Database,
+        input.userId,
+        input.date,
+        input.author,
+      );
+      let createdPaper = false;
+      if (!paper) {
+        const [insertedPaper] = await transaction
+          .insert(todoPapers)
+          .values({
+            userId: input.userId,
+            businessDate: input.date,
+            author: input.author,
+            revision: 1,
+          })
+          .onConflictDoNothing({
+            target: [todoPapers.userId, todoPapers.businessDate, todoPapers.author],
+          })
+          .returning({ id: todoPapers.id });
+        createdPaper = Boolean(insertedPaper);
+        paper = await this.lockPaperByIdentity(
+          transaction as unknown as Database,
+          input.userId,
+          input.date,
+          input.author,
+        );
+        if (!paper) throw new Error("Todo paper creation failed.");
+      }
+
+      const stats = await this.entryStats(transaction as unknown as Database, paper.id);
+      if (stats.count + input.entries.length > MAX_TODO_ENTRIES) {
+        return { outcome: "entry_limit" as const };
+      }
+
+      const seedEntryId = randomUUID();
+      const entryIds = todoBatchEntryIds(seedEntryId, input.entries.length);
+      const inserted = await transaction
+        .insert(todoEntries)
+        .values(input.entries.map((entry, index) => ({
+          paperId: paper!.id,
+          entryId: entryIds[index]!,
+          kind: entry.kind,
+          text: entry.text,
+          revision: 1,
+          position: (stats.maxPosition ?? -1) + index + 1,
+        })))
+        .returning({
+          id: todoEntries.entryId,
+          kind: todoEntries.kind,
+          text: todoEntries.text,
+          revision: todoEntries.revision,
+        });
+      if (inserted.length !== input.entries.length) {
+        throw new Error("Todo batch append failed.");
+      }
+      const insertedById = new Map(inserted.map((entry) => [entry.id, entry]));
+      const orderedEntries = entryIds.map((entryId) => insertedById.get(entryId));
+      if (orderedEntries.some((entry) => !entry)) {
+        throw new Error("Todo batch append returned incomplete entries.");
+      }
+
+      let paperRevision = paper.revision;
+      if (!createdPaper) {
+        paperRevision = paper.revision + 1;
+        await transaction
+          .update(todoPapers)
+          .set({ revision: paperRevision, updatedAt: new Date() })
+          .where(eq(todoPapers.id, paper.id));
+      }
+
+      await recordMcpIdempotency(transaction, {
+        userId: input.userId,
+        toolName: "append_todo_entry",
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
+        resourceType: "todo_entry",
+        resourceId: seedEntryId,
+      });
+
+      return {
+        outcome: "committed" as const,
+        entries: orderedEntries as TodoEntry[],
+        paperRevision,
+      };
     });
   }
 
@@ -513,6 +636,29 @@ export class DrizzleTodoRepository implements TodoRepository {
     return entry ?? null;
   }
 
+  private async readEntriesByExternalIds(
+    database: Database,
+    paperId: string,
+    entryIds: string[],
+  ): Promise<TodoEntry[] | null> {
+    if (entryIds.length === 0) return [];
+    const rows = await database
+      .select({
+        id: todoEntries.entryId,
+        kind: todoEntries.kind,
+        text: todoEntries.text,
+        revision: todoEntries.revision,
+      })
+      .from(todoEntries)
+      .where(and(
+        eq(todoEntries.paperId, paperId),
+        inArray(todoEntries.entryId, entryIds),
+      ));
+    const byId = new Map(rows.map((entry) => [entry.id, entry]));
+    const ordered = entryIds.map((entryId) => byId.get(entryId));
+    return ordered.some((entry) => !entry) ? null : ordered as TodoEntry[];
+  }
+
   private async entryStats(database: Database, paperId: string): Promise<{ count: number; maxPosition: number | null }> {
     const [row] = await database
       .select({
@@ -630,6 +776,13 @@ export class DrizzleTodoRepository implements TodoRepository {
       },
     };
   }
+}
+
+function todoBatchEntryIds(seedEntryId: string, count: number): string[] {
+  return Array.from(
+    { length: count },
+    (_, index) => index === 0 ? seedEntryId : `${seedEntryId}:${index}`,
+  );
 }
 
 function escapeLike(value: string): string { return value.replace(/[\\%_]/gu, "\\$&"); }

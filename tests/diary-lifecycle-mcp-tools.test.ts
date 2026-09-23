@@ -116,6 +116,10 @@ test("Diary lifecycle MCP mutations bind authenticated identity and return exact
     {
       diary_id: DIARY_ID,
       lifecycle_status: "archived",
+      outcome: "applied",
+      entity_type: "diary",
+      entity_id: DIARY_ID,
+      revision: null,
       detail_tool: "get_diary",
       detail_arguments: { id: DIARY_ID, scope: "archived" },
     },
@@ -138,6 +142,10 @@ test("Diary lifecycle MCP mutations bind authenticated identity and return exact
     {
       diary_id: DIARY_ID,
       lifecycle_status: "active",
+      outcome: "applied",
+      entity_type: "diary",
+      entity_id: DIARY_ID,
+      revision: null,
       detail_tool: "get_diary",
       detail_arguments: { id: DIARY_ID, scope: "active" },
     },
@@ -152,7 +160,16 @@ test("Diary lifecycle MCP mutations bind authenticated identity and return exact
     (deleted.structuredContent as {
       data: { diary_id: string; deleted: boolean };
     }).data,
-    { diary_id: DIARY_ID, deleted: true },
+    {
+      diary_id: DIARY_ID,
+      deleted: true,
+      outcome: "applied",
+      entity_type: "diary",
+      entity_id: DIARY_ID,
+      revision: null,
+      detail_tool: null,
+      detail_arguments: null,
+    },
   );
 
   assert.deepEqual(calls, [

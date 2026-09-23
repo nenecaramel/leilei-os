@@ -176,8 +176,89 @@ test("read_notion_page authenticates first and returns bounded page content", as
       content: "# 主线规划\nPhase 7",
       block_count: 2,
       truncated: false,
+      content_metadata: {
+        returned_chars: Array.from("# 主线规划\nPhase 7").length,
+        total_chars: Array.from("# 主线规划\nPhase 7").length,
+        truncated: false,
+        next_cursor: null,
+      },
     },
   });
+});
+
+test("read_notion_page continues bounded Unicode content and rejects a stale page cursor", async (t) => {
+  const fixture = await connect();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  let lastEdited = "2026-08-13T08:00:00.000Z";
+  fixture.notion.readPage = async (pageId: string) => {
+    fixture.notion.readCalls.push(pageId);
+    return {
+      page: {
+        id: PAGE_ID,
+        title: "主线规划",
+        url: "https://www.notion.so/main",
+        last_edited_time: lastEdited,
+      },
+      content: "甲😀乙丙丁",
+      block_count: 5,
+      truncated: false,
+    };
+  };
+
+  const first = await fixture.client.callTool({
+    name: "read_notion_page",
+    arguments: { page_id: PAGE_ID, max_chars: 2 },
+  });
+  const firstData = (first.structuredContent as {
+    data: {
+      content: string;
+      content_metadata: { next_cursor: string | null; truncated: boolean };
+    };
+  }).data;
+  assert.equal(firstData.content, "甲😀");
+  assert.equal(firstData.content_metadata.truncated, true);
+  assert.ok(firstData.content_metadata.next_cursor);
+
+  const second = await fixture.client.callTool({
+    name: "read_notion_page",
+    arguments: {
+      page_id: PAGE_ID,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(
+    (second.structuredContent as { data: { content: string } }).data.content,
+    "乙丙",
+  );
+
+  lastEdited = "2026-08-13T09:00:00.000Z";
+  const stale = await fixture.client.callTool({
+    name: "read_notion_page",
+    arguments: {
+      page_id: PAGE_ID,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(stale.isError, true);
+  assert.match(JSON.stringify(stale), /cursor is invalid or stale/i);
+  assert.deepEqual(
+    (stale.structuredContent as any).error,
+    {
+      code: "INVALID_CURSOR",
+      message: "The Notion page continuation cursor is invalid or stale. Read the page again without a cursor.",
+      retryable: false,
+      reason: "invalid_cursor",
+      current_revision: null,
+      recommended_tool: "read_notion_page",
+      recommended_arguments: { page_id: PAGE_ID },
+    },
+  );
 });
 
 test("read_notion_page accepts an official Notion URL as an exact page reference", async (t) => {

@@ -1,10 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { createUniverseNodeInputSchema } from "./schema.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 
 const nodeOutputSchema = z.object({
   id: z.string().min(1).max(256),
@@ -17,9 +19,7 @@ const nodeOutputSchema = z.object({
 const successDataSchema = z.object({
     node: nodeOutputSchema,
     universe_version: z.number().int().nonnegative(),
-    metadata: z.object({ created: z.boolean(), idempotent_replay: z.boolean() }).strict(),
-    detail_tool: z.literal("get_universe_node"),
-    detail_arguments: z.object({ id: z.string().min(1).max(256) }).strict(),
+    ...mcpMutationReceiptFields,
 }).strict();
 const outputSchema = z.object({
   success: z.boolean(),
@@ -38,7 +38,7 @@ export function registerCreateUniverseNodeTool(
 ): void {
   server.registerTool("create_universe_node", {
     title: "Create a Universe node",
-    description: "Create one Universe node at an explicit 0..100 position. The server owns the node ID and timestamps. Every mutation requires expected_version and a unique idempotency_key. If the outcome is uncertain, fresh-read Universe state before deciding whether a new mutation is needed; never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Create one node at an explicit 0..100 position; server owns ID/timestamps. If outcome is uncertain, fresh-read Universe state before retrying.",
     inputSchema: createUniverseNodeInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -70,9 +70,16 @@ export function registerCreateUniverseNodeTool(
             data: {
               node,
               universe_version: data.universe_version,
-              metadata: data.metadata,
-              detail_tool: "get_universe_node" as const,
-              detail_arguments: { id: node.id },
+              ...mcpMutationReceipt({
+                outcome: mcpMutationOutcomeFromReplay(
+                  data.metadata.idempotent_replay,
+                ),
+                entity_type: "universe_node",
+                entity_id: node.id,
+                revision: null,
+                detail_tool: "get_universe_node",
+                detail_arguments: { id: node.id },
+              }),
             },
           },
         };
