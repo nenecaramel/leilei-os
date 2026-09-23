@@ -7,12 +7,13 @@ import {
   registerNotionTypedWriteTools,
   type NotionTypedWriteServiceContract,
 } from "../src/mcp/server/register-notion-typed-writes.js";
+import { NotionExplicitWriteError } from "../src/domains/notion/notion-explicit-write-service.js";
 
 const PAGE_ID = "11111111-1111-4111-8111-111111111111";
 const COMMENT_ID = "22222222-2222-4222-8222-222222222222";
 const DISCUSSION_ID = "33333333-3333-4333-8333-333333333333";
 
-async function connect() {
+async function connect(overrides: Partial<NotionTypedWriteServiceContract> = {}) {
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const result = (operation: string, targetId: string, discussionId?: string) => ({
     operation,
@@ -41,6 +42,7 @@ async function connect() {
       calls.push({ method: "replyComment", args: [pageId, discussionId, body] });
       return result("comment.reply", COMMENT_ID, discussionId);
     },
+    ...overrides,
   };
 
   const server = new McpServer({
@@ -285,6 +287,44 @@ test("update_notion_page_properties maps typed values and rejects duplicate name
   assert.equal(duplicate.isError, true);
   assert.match(JSON.stringify(duplicate), /supplied more than once/i);
   assert.equal(fixture.calls.length, 1);
+});
+
+test("typed Notion uncertain page writes point to authoritative page readback", async (t) => {
+  const fixture = await connect({
+    async updatePage() {
+      throw new NotionExplicitWriteError(
+        "UNCERTAIN_WRITE",
+        "private transport uncertainty",
+      );
+    },
+  });
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const response = await fixture.client.callTool({
+    name: "update_notion_page_properties",
+    arguments: {
+      page_id: PAGE_ID,
+      properties: [{ name: "Done", type: "checkbox", value: true }],
+    },
+  });
+
+  assert.equal(response.isError, true);
+  assert.deepEqual(
+    (response.structuredContent as any).error,
+    {
+      code: "UNCERTAIN_WRITE",
+      message: "The Notion write outcome is uncertain. Fresh readback was attempted and the write was not retried.",
+      retryable: false,
+      reason: "uncertain_outcome",
+      current_revision: null,
+      recommended_tool: "read_notion_page",
+      recommended_arguments: { page_id: PAGE_ID },
+    },
+  );
+  assert.doesNotMatch(JSON.stringify(response), /private transport uncertainty/);
 });
 
 test("typed content tools map append and replace to enhanced Markdown operations", async (t) => {
