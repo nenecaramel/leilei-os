@@ -51,6 +51,7 @@ class MockTaskToolService {
         completed_at: null,
         author: input.author ?? null,
       },
+      outcome: "applied",
     };
   }
 }
