@@ -78,6 +78,7 @@ export class DiaryLifecycleAuthenticationError extends Error {
 export function registerDiaryLifecycleTools(
   server: McpServer,
   dependencies: DiaryLifecycleToolDependencies,
+  options: { permanentDeleteName?: "legacy" | "canonical" } = {},
 ): void {
   server.registerTool(
     "archive_diary",
@@ -193,12 +194,41 @@ export function registerDiaryLifecycleTools(
       }),
   );
 
+  registerPermanentDeleteDiaryTool(
+    server,
+    dependencies,
+    options.permanentDeleteName === "canonical"
+      ? "permanently_delete_diary"
+      : "delete_diary",
+    options.permanentDeleteName !== "canonical",
+  );
+
+}
+
+export function registerLegacyDeleteDiaryAlias(
+  server: McpServer,
+  dependencies: DiaryLifecycleToolDependencies,
+): void {
+  registerPermanentDeleteDiaryTool(server, dependencies, "delete_diary", true);
+}
+
+function registerPermanentDeleteDiaryTool(
+  server: McpServer,
+  dependencies: DiaryLifecycleToolDependencies,
+  toolName: "permanently_delete_diary" | "delete_diary",
+  deprecated: boolean,
+): void {
+  const description =
+    "Permanently delete one archived Diary entry. The Diary must already be archived. This also removes canonical Diary comments owned by that Diary through the existing Diary lifecycle cascade. This is destructive. If the outcome is uncertain, read archived scope first; if the Diary is already absent, do not blindly retry.";
   server.registerTool(
-    "delete_diary",
+    toolName,
     {
-      title: "Permanently delete one archived Diary entry",
-      description:
-        "Permanently delete one archived Diary entry. The Diary must already be archived. This also removes canonical Diary comments owned by that Diary through the existing Diary lifecycle cascade. This is destructive. If the outcome is uncertain, read archived scope first; if the Diary is already absent, do not blindly retry.",
+      title: deprecated
+        ? "Deprecated: permanently delete Diary"
+        : "Permanently delete one archived Diary entry",
+      description: deprecated
+        ? "DEPRECATED: use permanently_delete_diary. " + description
+        : description,
       inputSchema: lifecycleInputSchema,
       outputSchema: deleteOutputSchema,
       annotations: {
@@ -210,7 +240,7 @@ export function registerDiaryLifecycleTools(
     },
     async ({ id }) =>
       invokeMcpWrite({
-        toolName: "delete_diary",
+        toolName,
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           await dependencies.diaryService.permanentlyDeleteMcpDiary(
