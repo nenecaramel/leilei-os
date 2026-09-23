@@ -70,16 +70,36 @@ export type WriteMemoryToolDependencies = {
   getAuthenticatedUserId: () => string;
 };
 
+const CREATE_MEMORY_DESCRIPTION =
+  MEMORY_DOMAIN_BOUNDARY + " Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. The success result is a compact receipt; call get_memory with its returned detail_arguments for authoritative readback. For an archived idempotent replay, use get_memory with scope=archived; do not assume the active scope.";
+
+export function registerCreateMemoryTool(
+  server: McpServer,
+  dependencies: WriteMemoryToolDependencies,
+): void {
+  registerMemoryCreateTool(server, dependencies, "create_memory", false);
+}
+
 export function registerWriteMemoryTool(
   server: McpServer,
   dependencies: WriteMemoryToolDependencies,
 ): void {
+  registerMemoryCreateTool(server, dependencies, "write_memory", true);
+}
+
+function registerMemoryCreateTool(
+  server: McpServer,
+  dependencies: WriteMemoryToolDependencies,
+  toolName: "create_memory" | "write_memory",
+  deprecated: boolean,
+): void {
   server.registerTool(
-    "write_memory",
+    toolName,
     {
-      title: "Write a confirmed Memory record",
-      description:
-        MEMORY_DOMAIN_BOUNDARY + " Create one durable Memory record only after the user explicitly approves the exact category, key, content, and tags. Never write model guesses, inferred facts, temporary emotions, one-off conversation details, or automatic summaries. The success result is a compact receipt; call get_memory with its returned detail_arguments for authoritative readback. For an archived idempotent replay, use get_memory with scope=archived; do not assume the active scope.",
+      title: deprecated ? "Deprecated: create Memory" : "Create a confirmed Memory record",
+      description: deprecated
+        ? "DEPRECATED: use create_memory. " + CREATE_MEMORY_DESCRIPTION
+        : CREATE_MEMORY_DESCRIPTION,
       inputSchema: writeMemoryInputSchema,
       outputSchema: writeMemoryOutputSchema,
       annotations: {
@@ -91,7 +111,7 @@ export function registerWriteMemoryTool(
     },
     async ({ category, key, content, tags, author, idempotency_key }) =>
       invokeMcpWrite({
-        toolName: "write_memory",
+        toolName,
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           const data = await dependencies.memoryService.createMcpMemory(
