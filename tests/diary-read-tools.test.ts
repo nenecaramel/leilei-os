@@ -356,6 +356,18 @@ test("get_diary continues bounded content without embedding comments", async (t)
   });
   assert.equal(stale.isError, true);
   assert.match(textOf(stale), /cursor is invalid or stale/i);
+  assert.deepEqual(
+    (stale.structuredContent as any).error,
+    {
+      code: "INVALID_CURSOR",
+      message: "The Diary continuation cursor is invalid or stale. Read the Diary again without a cursor.",
+      retryable: false,
+      reason: "invalid_cursor",
+      current_revision: null,
+      recommended_tool: "get_diary",
+      recommended_arguments: { id: ENTRY.id, scope: "active" },
+    },
+  );
 });
 
 test("Diary search and detail preserve C author", async (t) => {
