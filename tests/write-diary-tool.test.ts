@@ -203,7 +203,15 @@ test("write_diary calls the mock service with authenticated context", async (t) 
         author: "G",
         created_at: "2026-07-22T08:00:00.000Z",
       },
-      metadata: { created: true, idempotent_replay: false },
+      outcome: "applied",
+      entity_type: "diary",
+      entity_id: "00000000-0000-4000-8000-000000000001",
+      revision: null,
+      detail_tool: "get_diary",
+      detail_arguments: {
+        id: "00000000-0000-4000-8000-000000000001",
+        scope: "active",
+      },
     },
   });
 });
