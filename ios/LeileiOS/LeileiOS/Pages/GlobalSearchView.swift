@@ -28,11 +28,19 @@ struct GlobalSearchView: View {
                 }
                 .listStyle(.plain)
             case .noResults:
-                AppStateSurface(title: "Nothing here")
-            case .unavailable:
-                AppStateSurface(title: "Unavailable")
-            case .error:
-                AppStateSurface(title: "Unavailable")
+                ContentUnavailableView.search(text: query)
+            case .unavailable(let message):
+                ContentUnavailableView(
+                    "Global Search Unavailable",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
+                )
+            case .error(let message):
+                ContentUnavailableView(
+                    "Search Failed",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
