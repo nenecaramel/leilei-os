@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { codePointLength, sliceCodePoints } from "../../shared/unicode.js";
 
 export const DEFAULT_MCP_BOUNDED_READ_CHARS = 12_000;
@@ -26,28 +27,24 @@ export class McpBoundedReadCursorError extends Error {
   }
 }
 
-export function boundedReadInputSchemaFields(zod: typeof import("zod").z) {
-  return {
-    max_chars: zod.number().int().min(1).max(MAX_MCP_BOUNDED_READ_CHARS)
-      .default(DEFAULT_MCP_BOUNDED_READ_CHARS)
-      .optional()
-      .describe(
-        `Maximum Unicode code points to return from the body in this call. Defaults to ${DEFAULT_MCP_BOUNDED_READ_CHARS}; maximum ${MAX_MCP_BOUNDED_READ_CHARS}.`,
-      ),
-    cursor: zod.string().min(1).max(MCP_BOUNDED_READ_CURSOR_MAX_LENGTH)
-      .optional()
-      .describe("Opaque continuation cursor returned by the previous bounded read of the same unchanged record."),
-  };
-}
+export const boundedReadInputSchemaFields = {
+  max_chars: z.number().int().min(1).max(MAX_MCP_BOUNDED_READ_CHARS)
+    .default(DEFAULT_MCP_BOUNDED_READ_CHARS)
+    .optional()
+    .describe(
+      `Maximum Unicode code points to return from the body in this call. Defaults to ${DEFAULT_MCP_BOUNDED_READ_CHARS}; maximum ${MAX_MCP_BOUNDED_READ_CHARS}.`,
+    ),
+  cursor: z.string().min(1).max(MCP_BOUNDED_READ_CURSOR_MAX_LENGTH)
+    .optional()
+    .describe("Opaque continuation cursor returned by the previous bounded read of the same unchanged record."),
+};
 
-export function boundedReadMetadataSchema(zod: typeof import("zod").z) {
-  return zod.object({
-    returned_chars: zod.number().int().nonnegative(),
-    total_chars: zod.number().int().nonnegative(),
-    truncated: zod.boolean(),
-    next_cursor: zod.string().nullable(),
-  }).strict();
-}
+export const boundedReadMetadataSchema = z.object({
+  returned_chars: z.number().int().nonnegative(),
+  total_chars: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  next_cursor: z.string().nullable(),
+}).strict();
 
 export function sliceMcpBoundedContent(input: {
   content: string;
