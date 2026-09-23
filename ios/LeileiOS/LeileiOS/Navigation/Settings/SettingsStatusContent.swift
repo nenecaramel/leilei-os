@@ -30,8 +30,7 @@ struct SettingsStatusContent: View {
             if errorMessage != nil {
                 Section {
                     SettingsSectionState(
-                        title: "Status Unavailable",
-                        message: "Couldn’t load system status.",
+                        title: "Unavailable",
                         actionTitle: "Retry"
                     ) {
                         Task {
@@ -59,7 +58,7 @@ struct SettingsStatusContent: View {
             errorMessage = nil
         } catch {
             status = nil
-            errorMessage = "Couldn’t load system status."
+            errorMessage = "Unavailable"
         }
     }
 }
