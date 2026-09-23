@@ -294,6 +294,70 @@ test("get_diary injects identity and returns complete content", async (t) => {
   assert.deepEqual(data.comments_arguments, { diary_id: ENTRY.id, scope: "active" });
 });
 
+test("get_diary continues bounded content without embedding comments", async (t) => {
+  const service = new MockDiaryService();
+  let updatedAt = ENTRY.updated_at;
+  service.readDiary = async (input) => {
+    service.readCalls.push(input);
+    return {
+      ...ENTRY,
+      content: "甲😀乙丙丁",
+      updated_at: updatedAt,
+    };
+  };
+  const { client, server } = await connect(service);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const first = await client.callTool({
+    name: "get_diary",
+    arguments: { id: ENTRY.id, max_chars: 2 },
+  });
+  const firstData = (first.structuredContent as {
+    data: {
+      content: string;
+      content_metadata: { next_cursor: string | null; truncated: boolean };
+      comments_tool: string;
+      comments_arguments: { diary_id: string; scope: string };
+    };
+  }).data;
+  assert.equal(firstData.content, "甲😀");
+  assert.equal(firstData.content_metadata.truncated, true);
+  assert.ok(firstData.content_metadata.next_cursor);
+  assert.equal(firstData.comments_tool, "list_diary_comments");
+  assert.deepEqual(firstData.comments_arguments, {
+    diary_id: ENTRY.id,
+    scope: "active",
+  });
+
+  const second = await client.callTool({
+    name: "get_diary",
+    arguments: {
+      id: ENTRY.id,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(
+    (second.structuredContent as { data: { content: string } }).data.content,
+    "乙丙",
+  );
+
+  updatedAt = "2026-07-31T08:00:00.000Z";
+  const stale = await client.callTool({
+    name: "get_diary",
+    arguments: {
+      id: ENTRY.id,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(stale.isError, true);
+  assert.match(textOf(stale), /cursor is invalid or stale/i);
+});
+
 test("Diary search and detail preserve C author", async (t) => {
   const service = new MockDiaryService();
   const cEntry = { ...ENTRY, author: "C" as const };
