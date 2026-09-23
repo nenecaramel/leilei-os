@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import { UniverseServiceError, type UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
@@ -27,7 +28,7 @@ export type CreateUniverseRelationToolDependencies = {
 export function registerCreateUniverseRelationTool(server: McpServer, dependencies: CreateUniverseRelationToolDependencies): void {
   server.registerTool("create_universe_relation", {
     title: "Create a Universe relation",
-    description: "expected_version is the global Universe snapshot version, not an entity revision. Create one directional Universe relation with strength 0..1. The server owns the relation ID and timestamp. Supply a unique idempotency_key for this logical create; reuse it only to replay the exact same request. If the outcome is uncertain, fresh-read Universe state before deciding whether a new mutation is needed; never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Create one directional Universe relation with strength 0..1. The server owns the relation ID and timestamp. Supply a unique idempotency_key for this logical create; reuse it only to replay the exact same request. If the outcome is uncertain, fresh-read Universe state before deciding whether a new mutation is needed; never blindly retry.",
     inputSchema: createUniverseRelationInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
