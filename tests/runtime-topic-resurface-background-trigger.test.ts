@@ -1,11 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  BackgroundLoopOrchestrator,
+} from "../src/domains/runtime/background-loop-orchestrator.js";
+import {
   TopicResurfaceBackgroundTrigger,
   type TopicResurfaceBackgroundObserverEvent,
 } from "../src/domains/runtime/topic-resurface-background-trigger.js";
 
-test("Topic resurface background trigger is non-blocking, globally serial and coalesces pending identity", async () => {
+function orchestrator() {
+  return new BackgroundLoopOrchestrator({
+    maxRunsPerCycle: 8,
+    maxCostPerCycle: 8,
+    maxConcurrent: 4,
+  });
+}
+
+const plan = {
+  priority: "reflection" as const,
+  cost: 1,
+};
+
+test("Topic resurface background trigger is non-blocking, globally serial and coalesces pending identity through the shared orchestrator", async () => {
   const calls: Array<{
     userId: string;
     subjectId: string;
@@ -16,8 +32,10 @@ test("Topic resurface background trigger is non-blocking, globally serial and co
   const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
+  const loops = orchestrator();
 
   const trigger = new TopicResurfaceBackgroundTrigger(
+    loops,
     {
       async runOnce(input) {
         calls.push(input);
@@ -30,6 +48,7 @@ test("Topic resurface background trigger is non-blocking, globally serial and co
       },
     },
     7,
+    plan,
     () => "2026-09-23T02:15:00+00:00",
   );
 
@@ -66,21 +85,25 @@ test("Topic resurface background trigger is non-blocking, globally serial and co
   ]);
 });
 
-test("Topic resurface background runner failure is observed and never escapes drain", async () => {
+test("Topic resurface background runner failure is observed and counted fail-soft by the shared orchestrator", async () => {
   const observed: TopicResurfaceBackgroundObserverEvent[] = [];
+  const loops = orchestrator();
   const trigger = new TopicResurfaceBackgroundTrigger(
+    loops,
     {
       async runOnce() {
         throw new TypeError("background failed");
       },
     },
     3,
+    plan,
     () => "2026-09-23T02:16:00.000Z",
     (event) => observed.push(event),
   );
 
   trigger.schedule({ userId: "u1", subjectId: "G" });
   await trigger.drain();
+  const summary = await loops.drain();
 
   assert.deepEqual(observed, [{
     name: "topic_resurface_background_error",
@@ -88,13 +111,15 @@ test("Topic resurface background runner failure is observed and never escapes dr
     subjectId: "G",
     errorName: "TypeError",
   }]);
+  assert.equal(summary?.failed, 1);
 });
 
 test("Topic resurface background publishes internal run result without changing its meaning", async () => {
   const observed: TopicResurfaceBackgroundObserverEvent[] = [];
   const trigger = new TopicResurfaceBackgroundTrigger(
+    orchestrator(),
     {
-      async runOnce(input) {
+      async runOnce() {
         return {
           outcome: "materialized" as const,
           stateId: "11111111-1111-8111-8111-111111111111",
@@ -102,6 +127,7 @@ test("Topic resurface background publishes internal run result without changing 
       },
     },
     2,
+    plan,
     () => "2026-09-23T02:17:00.000Z",
     (event) => observed.push(event),
   );
@@ -120,18 +146,39 @@ test("Topic resurface background publishes internal run result without changing 
   }]);
 });
 
-test("Topic resurface background requires explicit positive candidate bound and valid identity", async () => {
+test("Topic resurface background requires explicit positive bounds, cost and valid identity", async () => {
+  const loops = orchestrator();
+  const runner = {
+    async runOnce() {
+      return { outcome: "source_ineligible" as const };
+    },
+  };
+
   assert.throws(
     () => new TopicResurfaceBackgroundTrigger(
-      { async runOnce() { return { outcome: "source_ineligible" as const }; } },
+      loops,
+      runner,
       0,
+      plan,
     ),
     /positive integer/,
   );
 
+  assert.throws(
+    () => new TopicResurfaceBackgroundTrigger(
+      loops,
+      runner,
+      1,
+      { priority: "reflection", cost: 0 },
+    ),
+    /cost/,
+  );
+
   const trigger = new TopicResurfaceBackgroundTrigger(
-    { async runOnce() { return { outcome: "source_ineligible" as const }; } },
+    loops,
+    runner,
     1,
+    plan,
   );
   assert.throws(
     () => trigger.schedule({ userId: " ", subjectId: "G" }),

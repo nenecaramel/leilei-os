@@ -10,6 +10,9 @@ import {
   createTopicResurfaceBackgroundPipeline,
 } from "../src/domains/runtime/topic-resurface-background-pipeline.js";
 import {
+  BackgroundLoopOrchestrator,
+} from "../src/domains/runtime/background-loop-orchestrator.js";
+import {
   TopicResurfaceBackgroundTrigger,
   type TopicResurfaceBackgroundObserverEvent,
 } from "../src/domains/runtime/topic-resurface-background-trigger.js";
@@ -193,9 +196,19 @@ test(
     });
 
     const observed: TopicResurfaceBackgroundObserverEvent[] = [];
+    const backgroundLoops = new BackgroundLoopOrchestrator({
+      maxRunsPerCycle: 2,
+      maxCostPerCycle: 2,
+      maxConcurrent: 1,
+    });
     const trigger = new TopicResurfaceBackgroundTrigger(
+      backgroundLoops,
       pipeline,
       5,
+      {
+        priority: "reflection",
+        cost: 1,
+      },
       () => "2026-09-23T02:20:00.000Z",
       (event) => observed.push(event),
     );

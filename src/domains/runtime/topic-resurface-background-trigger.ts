@@ -1,3 +1,9 @@
+import {
+  CLAUDE_CODE_BACKGROUND_MUTEX,
+  subjectStateBackgroundMutexKey,
+  type BackgroundLoopOrchestrator,
+  type BackgroundLoopPriority,
+} from "./background-loop-orchestrator.js";
 import type {
   TopicResurfaceThoughtMaterializationResult,
   TopicResurfaceThoughtMaterializationService,
@@ -6,6 +12,11 @@ import type {
 export type TopicResurfaceBackgroundScheduleInput = {
   userId: string;
   subjectId: string;
+};
+
+export type TopicResurfaceBackgroundLoopPlan = {
+  priority: BackgroundLoopPriority;
+  cost: number;
 };
 
 export type TopicResurfaceBackgroundObserverEvent =
@@ -26,24 +37,26 @@ type TopicResurfaceRunner =
   Pick<TopicResurfaceThoughtMaterializationService, "runOnce">;
 
 /**
- * Non-blocking orchestration boundary for Topic resurfacing.
+ * Adapts local model-backed Topic resurfacing onto the shared
+ * BackgroundLoopOrchestrator.
  *
- * This class intentionally does not define cadence. Callers may schedule runs
- * from a future heartbeat/wake policy, but transport polling intervals are not
- * interpreted as mental timing. Work is globally serialized because all model
- * stages share the local Claude Code subscription runtime, and repeated pending
- * requests for the same user+subject are coalesced.
+ * This class intentionally does not define cadence. External opportunities may
+ * schedule work, but the shared orchestrator owns coalescing, bounded-cycle
+ * budget, Subject State serialization, and the global Claude Code mutex.
+ *
+ * Cross-device Topic resurfacing uses a different execution boundary: the
+ * backend opportunity only creates durable workflow/model-queue work, while
+ * the Mac daemon executes that queue after foreground Native Live work.
  */
 export class TopicResurfaceBackgroundTrigger {
-  private readonly pending = new Map<
-    string,
-    TopicResurfaceBackgroundScheduleInput
-  >();
-  private worker: Promise<void> | null = null;
-
   constructor(
+    private readonly orchestrator: Pick<
+      BackgroundLoopOrchestrator,
+      "schedule" | "drain"
+    >,
     private readonly runner: TopicResurfaceRunner,
     private readonly candidateLimit: number,
+    private readonly plan: TopicResurfaceBackgroundLoopPlan,
     private readonly now: () => string = () => new Date().toISOString(),
     private readonly observe?: (
       event: TopicResurfaceBackgroundObserverEvent,
@@ -54,88 +67,70 @@ export class TopicResurfaceBackgroundTrigger {
         "Topic resurface background candidateLimit must be a positive integer.",
       );
     }
+    if (!Number.isInteger(plan.cost) || plan.cost < 1) {
+      throw new Error(
+        "Topic resurface background cost must be a positive integer.",
+      );
+    }
   }
 
   schedule(input: TopicResurfaceBackgroundScheduleInput): void {
-    if (!input.userId.trim() || !input.subjectId.trim()) {
+    const userId = input.userId.trim();
+    const subjectId = input.subjectId.trim();
+    if (!userId || !subjectId) {
       throw new Error(
         "Topic resurface background identity must not be blank.",
       );
     }
-    this.pending.set(keyOf(input), {
-      userId: input.userId.trim(),
-      subjectId: input.subjectId.trim(),
+
+    this.orchestrator.schedule({
+      key: "topic-resurface:" + userId + ":\u0000:" + subjectId,
+      kind: "topic_resurface",
+      priority: this.plan.priority,
+      cost: this.plan.cost,
+      mutexKeys: [
+        subjectStateBackgroundMutexKey({ userId, subjectId }),
+        CLAUDE_CODE_BACKGROUND_MUTEX,
+      ],
+      run: async () => {
+        try {
+          const result = await this.runner.runOnce({
+            userId,
+            subjectId,
+            now: normalizeIso(this.now()),
+            candidateLimit: this.candidateLimit,
+          });
+          this.emit({
+            name: "topic_resurface_background_run",
+            userId,
+            subjectId,
+            result,
+          });
+        } catch (error) {
+          this.emit({
+            name: "topic_resurface_background_error",
+            userId,
+            subjectId,
+            errorName:
+              error instanceof Error ? error.name : "UnknownError",
+          });
+          throw error;
+        }
+      },
     });
-    this.ensureWorker();
   }
 
   async drain(): Promise<void> {
-    for (;;) {
-      const active = this.worker;
-      if (!active) {
-        if (this.pending.size === 0) return;
-        this.ensureWorker();
-        continue;
-      }
-      await active;
-    }
-  }
-
-  private ensureWorker(): void {
-    if (this.worker) return;
-    this.worker = Promise.resolve()
-      .then(() => this.runLoop())
-      .finally(() => {
-        this.worker = null;
-        if (this.pending.size > 0) this.ensureWorker();
-      });
-  }
-
-  private async runLoop(): Promise<void> {
-    while (this.pending.size > 0) {
-      const first = this.pending.entries().next().value as
-        | [string, TopicResurfaceBackgroundScheduleInput]
-        | undefined;
-      if (!first) return;
-
-      const [key, input] = first;
-      this.pending.delete(key);
-
-      try {
-        const result = await this.runner.runOnce({
-          userId: input.userId,
-          subjectId: input.subjectId,
-          now: normalizeIso(this.now()),
-          candidateLimit: this.candidateLimit,
-        });
-        this.emit({
-          name: "topic_resurface_background_run",
-          ...input,
-          result,
-        });
-      } catch (error) {
-        this.emit({
-          name: "topic_resurface_background_error",
-          ...input,
-          errorName: error instanceof Error
-            ? error.name
-            : "UnknownError",
-        });
-      }
-    }
+    await this.orchestrator.drain();
   }
 
   private emit(event: TopicResurfaceBackgroundObserverEvent): void {
     try {
       this.observe?.(event);
     } catch {
-      // Background observability must not turn an internal run into failure.
+      // Observability must never turn background work into failure.
     }
   }
-}
-
-function keyOf(input: TopicResurfaceBackgroundScheduleInput): string {
-  return `${input.userId}:\u0000:${input.subjectId}`;
 }
 
 function normalizeIso(value: string): string {

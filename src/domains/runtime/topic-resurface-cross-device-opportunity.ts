@@ -23,6 +23,14 @@ export type TopicResurfaceCrossDeviceOpportunityResult =
 
 type Coordinator = Pick<TopicResurfaceCrossDeviceCoordinator, "start">;
 
+/**
+ * Idle-opportunity producer for the durable cross-device Topic workflow.
+ *
+ * This intentionally stays outside the in-process BackgroundLoopOrchestrator:
+ * coordinator.start() creates backend-owned durable queue work; it does not run
+ * Claude locally. The Mac daemon gives foreground Native Live work priority and
+ * only reserves background-model jobs while foreground is idle.
+ */
 export class TopicResurfaceCrossDeviceOpportunity {
   private readonly lastAttemptAt = new Map<string, string>();
   private readonly inFlight = new Map<
