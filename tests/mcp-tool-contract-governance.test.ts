@@ -156,6 +156,44 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
   assert.match(byName.get("delete_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
 });
 
+test("large detail reads expose one bounded continuation contract", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+  for (const name of [
+    "get_memory",
+    "get_diary",
+    "get_shared_paper",
+    "read_notion_page",
+  ] as const) {
+    const tool = byName.get(name);
+    assert.ok(tool, `${name} must stay registered`);
+    assert.equal(property(tool, "max_chars").default, 12_000);
+    assert.ok(property(tool, "cursor"));
+
+    const dataProperties = (tool.outputSchema as {
+      properties?: {
+        data?: {
+          properties?: Record<string, {
+            properties?: Record<string, unknown>;
+          }>;
+        };
+      };
+    }).properties?.data?.properties;
+    assert.ok(dataProperties, `${name} must expose structured data`);
+    const metadata = dataProperties.content_metadata?.properties;
+    assert.ok(metadata, `${name} must expose content_metadata`);
+    for (const field of [
+      "returned_chars",
+      "total_chars",
+      "truncated",
+      "next_cursor",
+    ]) {
+      assert.ok(field in metadata, `${name} content_metadata must expose ${field}`);
+    }
+  }
+});
+
 test("operational connectivity stays out of the model-visible tool inventory", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const names = tools.map((tool) => tool.name);
