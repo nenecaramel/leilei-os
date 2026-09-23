@@ -179,7 +179,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Append one Todo entry",
       description:
-        TODO_DOMAIN_BOUNDARY + " Append one entry without resending the paper. The server creates id/revision=1; this does not require the paper revision, so independent appends do not overwrite each other.",
+        TODO_DOMAIN_BOUNDARY + " Append one entry without resending the paper. The server creates the entry id and revision=1; this does not require the paper revision, so independent appends do not overwrite each other.",
       inputSchema: appendInputSchema,
       outputSchema: mutationOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
