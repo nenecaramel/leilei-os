@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import type {
+  SubjectStateEvolutionRunMode,
+} from "./subject-state-evolution-contract.js";
 
 export type DrivePhase = "active" | "satisfied";
 export type DriveRole = "anchor" | "reinforcement";
@@ -84,6 +87,7 @@ export class DriveEvolutionService {
     subjectId: string;
     now: string;
     limit?: number;
+    mode?: SubjectStateEvolutionRunMode;
   }): Promise<DriveEvolutionRunResult> {
     const now = normalizeIso(input.now, "now");
     const candidates = await this.port.listCandidates({
@@ -103,10 +107,18 @@ export class DriveEvolutionService {
       else satisfied += 1;
     }
 
+    const selectedUpdates =
+      input.mode === "settlement_catch_up"
+        ? updates.filter((update) =>
+            update.reason === "initialize"
+          || update.reason === "reinforce"
+          )
+        : updates;
+
     const committed = await this.port.applyUpdates({
       userId: input.userId,
       subjectId: input.subjectId,
-      updates,
+      updates: selectedUpdates,
     });
 
     return {
@@ -114,9 +126,9 @@ export class DriveEvolutionService {
       threads: groups.size,
       applied: committed.applied,
       conflicts: committed.conflicts,
-      initialized: updates.filter((update) => update.reason === "initialize").length,
-      reinforced: updates.filter((update) => update.reason === "reinforce").length,
-      recalculated: updates.filter((update) => update.reason === "recalculate").length,
+      initialized: selectedUpdates.filter((update) => update.reason === "initialize").length,
+      reinforced: selectedUpdates.filter((update) => update.reason === "reinforce").length,
+      recalculated: selectedUpdates.filter((update) => update.reason === "recalculate").length,
       active,
       satisfied,
     };

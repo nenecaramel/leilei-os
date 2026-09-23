@@ -81,6 +81,9 @@ class Reader {
 
 class Mind implements NativeLiveMindRuntime {
   calls: string[] = [];
+  transitions: Awaited<
+    ReturnType<NativeLiveMindRuntime["reconcileSelectedPath"]>
+  > = [];
 
   async prepareUserTurn(input: {
     surfaceHeadMessageId: string | null;
@@ -109,14 +112,32 @@ class Mind implements NativeLiveMindRuntime {
     conversation: NativeLiveConversation;
   }) {
     this.calls.push(`reconcile:${input.conversation.currentHeadMessageId}`);
-    return [];
+    return this.transitions;
   }
 }
 
-test("send preparation settles the continued path before assembling context", async () => {
+test("send preparation settles the continued path, runs targeted catch-up, then assembles context", async () => {
   const reader = new Reader();
   const mind = new Mind();
-  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+  mind.transitions = [{
+    stateId: "thought-1",
+    stateKind: "thought",
+    reason: "user_continued_current_path",
+    settlementStatus: "settled",
+    pathStatus: "current",
+    validityStatus: "valid",
+    promoteScopeToGlobal: true,
+  }];
+  const catchUpCalls: unknown[] = [];
+  const runtime = new DefaultNativeLiveBackendMindRuntime(
+    reader,
+    mind,
+    {
+      async run(input) {
+        catchUpCalls.push(input);
+      },
+    },
+  );
 
   const prompt = await runtime.preparePrompt({
     userId,
@@ -128,6 +149,10 @@ test("send preparation settles the continued path before assembling context", as
     `reconcile:${userMessageId}`,
     `prepare:${parentId}:hello`,
   ]);
+  assert.deepEqual(catchUpCalls, [{
+    userId,
+    transitions: mind.transitions,
+  }]);
 });
 
 test("retry preparation uses the historical parent without pre-reconciling the selected path", async () => {

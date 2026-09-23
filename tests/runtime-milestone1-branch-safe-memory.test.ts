@@ -198,6 +198,7 @@ test("Milestone 1 positive path: explicit Memory settles and Breath injects it l
   assert.deepEqual(transitions, [
     {
       stateId: "mind-1",
+      stateKind: "memory",
       reason: "user_continued_current_path",
       settlementStatus: "settled",
       pathStatus: "current",
@@ -267,6 +268,7 @@ test("Milestone 1 abandoned branch: Retry sibling invalidates provisional Memory
   assert.deepEqual(transitions, [
     {
       stateId: "old-1",
+      stateKind: "memory",
       reason: "path_superseded",
       pathStatus: "superseded",
       validityStatus: "invalidated",

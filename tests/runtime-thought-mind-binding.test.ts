@@ -15,22 +15,17 @@ import {
 const now = "2026-09-22T15:30:00.000Z";
 
 class Port implements SubjectStateRuntimePort {
+  listCalls = 0;
+  saved = 0;
+
   async list() {
+    this.listCalls += 1;
     return [];
   }
   async append() {}
   async transition() {}
-  async saveContextManifest() {}
-}
-
-class Evolution {
-  calls: unknown[] = [];
-  shouldFail = false;
-
-  async runOnce(input: unknown) {
-    this.calls.push(input);
-    if (this.shouldFail) throw new Error("simulated thought evolution failure");
-    return {};
+  async saveContextManifest() {
+    this.saved += 1;
   }
 }
 
@@ -69,14 +64,9 @@ function conversation(): NativeLiveConversation {
   };
 }
 
-function createMind(
-  thoughtEvolution: Evolution,
-  driveEvolution: Evolution | null = null,
-  topicEvolution: Evolution | null = null,
-  curiosityTopicProjection: Evolution | null = null,
-) {
+function createMind(port: Port) {
   const service = new NativeLiveMindLoopService(
-    new Port(),
+    port,
     {
       assemblyVersion: "assembly-v1",
       promptContractVersion: "prompt-v1",
@@ -96,81 +86,12 @@ function createMind(
     now: () => now,
     createManifestId: () =>
       "44444444-4444-4444-8444-444444444444",
-    thoughtEvolution,
-    driveEvolution,
-    curiosityTopicProjection,
-    topicEvolution,
   });
 }
 
-test("fresh Mind preparation evolves Drive, Thought, Curiosity projection and Topic state before Context Assembly", async () => {
-  const thoughtEvolution = new Evolution();
-  const driveEvolution = new Evolution();
-  const topicEvolution = new Evolution();
-  const curiosityTopicProjection = new Evolution();
-  const mind = createMind(
-    thoughtEvolution,
-    driveEvolution,
-    topicEvolution,
-    curiosityTopicProjection,
-  );
-  const user = userMessage();
-
-  await mind.prepareUserTurn({
-    userId: "u1",
-    conversation: conversation(),
-    userMessage: user,
-    userText: "hello",
-    surfaceHeadMessageId: null,
-  });
-
-  assert.equal(driveEvolution.calls.length, 1);
-  assert.equal(thoughtEvolution.calls.length, 1);
-  assert.equal(curiosityTopicProjection.calls.length, 1);
-  assert.equal(topicEvolution.calls.length, 1);
-  assert.deepEqual(driveEvolution.calls[0], {
-    userId: "u1",
-    subjectId: "G",
-    now,
-  });
-  assert.deepEqual(curiosityTopicProjection.calls[0], {
-    userId: "u1",
-    subjectId: "G",
-    now,
-  });
-  assert.deepEqual(topicEvolution.calls[0], {
-    userId: "u1",
-    subjectId: "G",
-    now,
-  });
-});
-
-test("fresh Mind preparation evolves settled Thoughts before Context Assembly", async () => {
-  const evolution = new Evolution();
-  const mind = createMind(evolution);
-  const user = userMessage();
-
-  const prompt = await mind.prepareUserTurn({
-    userId: "u1",
-    conversation: conversation(),
-    userMessage: user,
-    userText: "hello",
-    surfaceHeadMessageId: null,
-  });
-
-  assert.equal(evolution.calls.length, 1);
-  assert.deepEqual(evolution.calls[0], {
-    userId: "u1",
-    subjectId: "G",
-    now,
-  });
-  assert.equal(prompt.includes("<user_message>hello</user_message>"), true);
-});
-
-test("Thought evolution maintenance failure is fail-soft for the user turn", async () => {
-  const evolution = new Evolution();
-  evolution.shouldFail = true;
-  const mind = createMind(evolution);
+test("foreground Mind binding now owns Context Assembly only, not general Subject evolution", async () => {
+  const port = new Port();
+  const mind = createMind(port);
   const user = userMessage();
 
   const prompt = await mind.prepareUserTurn({
@@ -182,11 +103,13 @@ test("Thought evolution maintenance failure is fail-soft for the user turn", asy
   });
 
   assert.equal(prompt.includes("<user_message>hello</user_message>"), true);
+  assert.equal(port.listCalls, 1);
+  assert.equal(port.saved, 1);
 });
 
-test("semantic planning evolves Thoughts once and completion reuses that snapshot without re-evolving", async () => {
-  const evolution = new Evolution();
-  const mind = createMind(evolution);
+test("semantic planning remains independent from Background Loop maintenance", async () => {
+  const port = new Port();
+  const mind = createMind(port);
   const user = userMessage();
 
   const plan = await mind.planSemanticUserTurn({
@@ -198,5 +121,6 @@ test("semantic planning evolves Thoughts once and completion reuses that snapsho
   });
 
   assert.equal(plan, null);
-  assert.equal(evolution.calls.length, 1);
+  assert.equal(port.listCalls, 0);
+  assert.equal(port.saved, 0);
 });

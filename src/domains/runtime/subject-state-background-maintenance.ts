@@ -1,18 +1,14 @@
 
 import type { BackgroundLoopOrchestrator } from "./background-loop-orchestrator.js";
+import type {
+  SubjectStateEvolutionRunner,
+} from "./subject-state-evolution-contract.js";
 import {
   subjectStateBackgroundMutexKey,
   type BackgroundLoopPriority,
 } from "./background-loop-orchestrator.js";
 
-export interface SubjectStateBackgroundRunner {
-  runOnce(input: {
-    userId: string;
-    subjectId: string;
-    now: string;
-    limit?: number;
-  }): Promise<unknown>;
-}
+export type SubjectStateBackgroundRunner = SubjectStateEvolutionRunner;
 
 export type SubjectStateBackgroundLoopPlan = {
   priority: BackgroundLoopPriority;

@@ -34,6 +34,7 @@ import { canonicalPathToHead } from "./surface-projector.js";
 
 export type SubjectStateTransition = {
   stateId: string;
+  stateKind: SubjectStateWrite["kind"];
   reason:
     | "user_continued_current_path"
     | "path_superseded";
@@ -137,6 +138,7 @@ export class NativeLiveMindLoopService {
       if (decision.action === "settle") {
         transitions.push({
           stateId: state.id,
+          stateKind: state.kind,
           reason: decision.reason,
           settlementStatus: "settled",
           pathStatus: "current",
@@ -146,6 +148,7 @@ export class NativeLiveMindLoopService {
       } else if (decision.action === "invalidate") {
         transitions.push({
           stateId: state.id,
+          stateKind: state.kind,
           reason: decision.reason,
           pathStatus: "superseded",
           validityStatus: "invalidated",

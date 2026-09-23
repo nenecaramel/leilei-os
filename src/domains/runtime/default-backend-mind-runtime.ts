@@ -48,6 +48,9 @@ import {
   SubjectStateBackgroundMaintenance,
   type SubjectStateBackgroundMaintenanceConfig,
 } from "./subject-state-background-maintenance.js";
+import {
+  SubjectStateSettlementCatchUp,
+} from "./subject-state-settlement-catch-up.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -136,12 +139,21 @@ export function createDefaultBackendMindRuntime(
   );
   const mind = new DefaultNativeLiveMindRuntime(loop, {
     subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-    driveEvolution,
-    thoughtEvolution,
-    curiosityTopicProjection,
-    topicEvolution,
   });
-  return new DefaultNativeLiveBackendMindRuntime(conversations, mind);
+  const settlementCatchUp = new SubjectStateSettlementCatchUp(
+    DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+    {
+      driveEvolution,
+      thoughtEvolution,
+      curiosityTopicProjection,
+      topicEvolution,
+    },
+  );
+  return new DefaultNativeLiveBackendMindRuntime(
+    conversations,
+    mind,
+    settlementCatchUp,
+  );
 }
 
 export function createDefaultSubjectStateBackgroundMaintenance(

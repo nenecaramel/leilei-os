@@ -10,6 +10,9 @@ import type {
   NativeLiveMindSemanticPlan,
 } from "../runtime/native-live-mind-runtime.js";
 import type { NativeLivePreparedTurn } from "./native-live-backend-turn-coordinator.js";
+import type {
+  SubjectStateSettlementCatchUp,
+} from "../runtime/subject-state-settlement-catch-up.js";
 
 export interface NativeLiveBackendMindConversationReader {
   getConversation(input: {
@@ -75,6 +78,10 @@ implements NativeLiveBackendMindRuntime {
   constructor(
     private readonly conversations: NativeLiveBackendMindConversationReader,
     private readonly mind: NativeLiveMindRuntime,
+    private readonly settlementCatchUp: Pick<
+      SubjectStateSettlementCatchUp,
+      "run"
+    > | null = null,
   ) {}
 
   async preparePrompt(input: {
@@ -91,13 +98,14 @@ implements NativeLiveBackendMindRuntime {
     );
 
     if (input.preparation.operation === "send") {
-      await this.mind.reconcileSelectedPath({
+      const transitions = await this.mind.reconcileSelectedPath({
         userId: input.userId,
         conversation: {
           ...conversation,
           currentHeadMessageId: userMessage.id,
         },
       });
+      await this.runSettlementCatchUp(input.userId, transitions);
     }
 
     return this.mind.prepareUserTurn({
@@ -125,13 +133,14 @@ implements NativeLiveBackendMindRuntime {
     );
 
     if (input.preparation.operation === "send") {
-      await this.mind.reconcileSelectedPath({
+      const transitions = await this.mind.reconcileSelectedPath({
         userId: input.userId,
         conversation: {
           ...conversation,
           currentHeadMessageId: userMessage.id,
         },
       });
+      await this.runSettlementCatchUp(input.userId, transitions);
     }
 
     return this.mind.planSemanticUserTurn({
@@ -206,6 +215,24 @@ implements NativeLiveBackendMindRuntime {
       userId: input.userId,
       conversation,
     });
+  }
+
+  private async runSettlementCatchUp(
+    userId: string,
+    transitions: Awaited<
+      ReturnType<NativeLiveMindRuntime["reconcileSelectedPath"]>
+    >,
+  ): Promise<void> {
+    if (!this.settlementCatchUp || transitions.length === 0) return;
+    try {
+      await this.settlementCatchUp.run({
+        userId,
+        transitions,
+      });
+    } catch {
+      // Derived catch-up must never turn a valid foreground preparation into
+      // failure. Shared Background Loops remain the eventual fallback.
+    }
   }
 
   private async requireConversation(

@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import type {
+  SubjectStateEvolutionRunMode,
+} from "./subject-state-evolution-contract.js";
 
 export type ThoughtEvolutionStage = "flit" | "fixation";
 export type ThoughtEvolutionRole = "anchor" | "reinforcement";
@@ -84,6 +87,7 @@ export class ThoughtEvolutionService {
     subjectId: string;
     now: string;
     limit?: number;
+    mode?: SubjectStateEvolutionRunMode;
   }): Promise<ThoughtEvolutionRunResult> {
     const now = normalizeIso(input.now, "now");
     const candidates = await this.port.listCandidates({
@@ -102,10 +106,17 @@ export class ThoughtEvolutionService {
       if (evaluated.stage === "fixation") fixations += 1;
     }
 
+    const selectedUpdates =
+      input.mode === "settlement_catch_up"
+        ? updates.filter((update) =>
+            update.reason !== "decay"
+          )
+        : updates;
+
     const committed = await this.port.applyUpdates({
       userId: input.userId,
       subjectId: input.subjectId,
-      updates,
+      updates: selectedUpdates,
     });
 
     return {
@@ -113,10 +124,10 @@ export class ThoughtEvolutionService {
       threads: grouped.size,
       applied: committed.applied,
       conflicts: committed.conflicts,
-      initialized: updates.filter((update) => update.reason === "initialize").length,
-      reinforced: updates.filter((update) => update.reason === "reinforce").length,
-      promoted: updates.filter((update) => update.reason === "promote").length,
-      decayed: updates.filter((update) => update.reason === "decay").length,
+      initialized: selectedUpdates.filter((update) => update.reason === "initialize").length,
+      reinforced: selectedUpdates.filter((update) => update.reason === "reinforce").length,
+      promoted: selectedUpdates.filter((update) => update.reason === "promote").length,
+      decayed: selectedUpdates.filter((update) => update.reason === "decay").length,
       fixations,
     };
   }

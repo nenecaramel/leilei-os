@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import type {
+  SubjectStateEvolutionRunMode,
+} from "./subject-state-evolution-contract.js";
 
 export type TopicPhase = "active" | "dormant";
 export type TopicRole = "anchor" | "reinforcement";
@@ -95,6 +98,7 @@ export class TopicEvolutionService {
     subjectId: string;
     now: string;
     limit?: number;
+    mode?: SubjectStateEvolutionRunMode;
   }): Promise<TopicEvolutionRunResult> {
     const now = normalizeIso(input.now, "now");
     const candidates = await this.port.listCandidates({
@@ -114,10 +118,17 @@ export class TopicEvolutionService {
       else dormant += 1;
     }
 
+    const selectedUpdates =
+      input.mode === "settlement_catch_up"
+        ? updates.filter((update) =>
+            update.reason !== "dormant"
+          )
+        : updates;
+
     const committed = await this.port.applyUpdates({
       userId: input.userId,
       subjectId: input.subjectId,
-      updates,
+      updates: selectedUpdates,
     });
 
     return {
@@ -125,12 +136,12 @@ export class TopicEvolutionService {
       threads: groups.size,
       applied: committed.applied,
       conflicts: committed.conflicts,
-      initialized: updates.filter((update) => update.reason === "initialize").length,
-      reinforced: updates.filter((update) => update.reason === "reinforce").length,
+      initialized: selectedUpdates.filter((update) => update.reason === "initialize").length,
+      reinforced: selectedUpdates.filter((update) => update.reason === "reinforce").length,
       dormantTransitions:
-        updates.filter((update) => update.reason === "dormant").length,
+        selectedUpdates.filter((update) => update.reason === "dormant").length,
       reactivated:
-        updates.filter((update) => update.reason === "reactivate").length,
+        selectedUpdates.filter((update) => update.reason === "reactivate").length,
       active,
       dormant,
     };
