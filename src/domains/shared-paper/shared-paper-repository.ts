@@ -67,7 +67,7 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
 
   async listPapers(input: SharedPaperListInput): Promise<SharedPaperRecord[]> {
     const archiveCondition = input.scope === "archived" ? isNotNull(sharedPapers.archivedAt) : isNull(sharedPapers.archivedAt);
-    const rows = await this.db.select().from(sharedPapers).where(and(eq(sharedPapers.userId, input.userId), archiveCondition)).orderBy(desc(sharedPapers.updatedAt), desc(sharedPapers.id)).limit(input.limit ?? 50);
+    const rows = await this.db.select().from(sharedPapers).where(and(eq(sharedPapers.userId, input.userId), archiveCondition)).orderBy(desc(sharedPapers.updatedAt), desc(sharedPapers.id)).limit(input.limit ?? 50).offset(input.offset ?? 0);
     return rows.map(toPaper);
   }
 
@@ -75,7 +75,7 @@ export class DrizzleSharedPaperRepository implements SharedPaperRepository {
     const query = `%${escapeLike(input.query)}%`;
     const normalized = sql`regexp_replace(lower(normalize(${sharedPapers.title} || ' ' || ${sharedPapers.content}, NFC)), '\\s+', ' ', 'g')`;
     const archiveCondition = input.scope === "archived" ? isNotNull(sharedPapers.archivedAt) : isNull(sharedPapers.archivedAt);
-    const rows = await this.db.select().from(sharedPapers).where(and(eq(sharedPapers.userId, input.userId), archiveCondition, sql`${normalized} like ${query} escape '\\'`)).orderBy(desc(sharedPapers.updatedAt), desc(sharedPapers.id)).limit(input.limit ?? 50);
+    const rows = await this.db.select().from(sharedPapers).where(and(eq(sharedPapers.userId, input.userId), archiveCondition, sql`${normalized} like ${query} escape '\\'`)).orderBy(desc(sharedPapers.updatedAt), desc(sharedPapers.id)).limit(input.limit ?? 50).offset(input.offset ?? 0);
     return rows.map(toPaper);
   }
 
