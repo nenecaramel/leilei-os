@@ -11,6 +11,9 @@ import type {
 import {
   createNativeLiveApiRouter,
 } from "../src/web-api/native-live-router.js";
+import type {
+  NativeLiveCurrentPathSnapshot,
+} from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import {
   createNativeLiveRelayInternalRouter,
 } from "../src/web-api/native-live-relay-internal-router.js";
@@ -83,6 +86,43 @@ class FakeTurnReader {
         }],
       },
     };
+  }
+}
+
+class FakeCurrentPathReader {
+  calls: unknown[] = [];
+  result: NativeLiveCurrentPathSnapshot | null = {
+    conversationId,
+    title: "Native chat",
+    currentHeadMessageId:
+      "77777777-7777-4777-8777-777777777777",
+    updatedAt: "2026-09-23T12:00:00.000Z",
+    syncToken:
+      "head:77777777-7777-4777-8777-777777777777",
+    truncated: false,
+    messages: [{
+      id: "77777777-7777-4777-8777-777777777777",
+      conversationId,
+      parentMessageId: userMessageId,
+      role: "assistant",
+      status: "completed",
+      createdAt: "2026-09-23T11:59:59.000Z",
+      completedAt: "2026-09-23T12:00:00.000Z",
+      blocks: [{
+        id: "99999999-9999-4999-8999-999999999999",
+        ordinal: 0,
+        kind: "text",
+        rawType: "runtime_proactivity",
+        text: "VISIBLE PROACTIVE",
+        payload: null,
+        createdAt: "2026-09-23T12:00:00.000Z",
+      }],
+    }],
+  };
+
+  async readCurrentPath(input: unknown) {
+    this.calls.push(input);
+    return this.result;
   }
 }
 
@@ -308,6 +348,156 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
       assert.equal(readPayload.data.dispatchStatus, "completed");
       assert.equal(readPayload.data.assistantMessage?.blocks[0]?.text, "VISIBLE");
       assert.deepEqual(turnReader.calls, [{ userId, prepareId }]);
+    },
+  );
+});
+
+test("web current-path endpoint is authenticated, bounded, and supports head ETag refresh", async () => {
+  const coordinator = new FakeCoordinator();
+  const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
+  const currentPathReader = new FakeCurrentPathReader();
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        if (request.header("x-test-user") === "owner") {
+          request.webUserId = userId;
+        }
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({
+          coordinator,
+          relayService,
+          turnReader,
+          currentPathReader,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const unauthenticated = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path`,
+      );
+      assert.equal(unauthenticated.status, 401);
+
+      const invalidId = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/not-a-uuid/current-path`,
+        { headers: { "x-test-user": "owner" } },
+      );
+      assert.equal(invalidId.status, 400);
+
+      const invalidLimit = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path?limit=201`,
+        { headers: { "x-test-user": "owner" } },
+      );
+      assert.equal(invalidLimit.status, 400);
+
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path?limit=2`,
+        { headers: { "x-test-user": "owner" } },
+      );
+      assert.equal(response.status, 200);
+      assert.equal(
+        response.headers.get("etag"),
+        '"head:77777777-7777-4777-8777-777777777777:limit:2"',
+      );
+      const payload = await response.json() as {
+        data: {
+          conversationId: string;
+          currentHeadMessageId: string | null;
+          syncToken: string;
+          truncated: boolean;
+          messages: Array<{
+            blocks: Array<{ text: string | null }>;
+          }>;
+        };
+      };
+      assert.equal(payload.data.conversationId, conversationId);
+      assert.equal(
+        payload.data.currentHeadMessageId,
+        "77777777-7777-4777-8777-777777777777",
+      );
+      assert.equal(
+        payload.data.syncToken,
+        "head:77777777-7777-4777-8777-777777777777",
+      );
+      assert.equal(payload.data.truncated, false);
+      assert.equal(
+        payload.data.messages[0]?.blocks[0]?.text,
+        "VISIBLE PROACTIVE",
+      );
+      assert.deepEqual(currentPathReader.calls, [{
+        userId,
+        conversationId,
+        limit: 2,
+      }]);
+
+      const unchanged = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path?limit=2`,
+        {
+          headers: {
+            "x-test-user": "owner",
+            "if-none-match":
+              '"head:77777777-7777-4777-8777-777777777777:limit:2"',
+          },
+        },
+      );
+      assert.equal(unchanged.status, 304);
+      assert.equal(
+        currentPathReader.calls.length,
+        2,
+      );
+
+      const widerWindow = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path?limit=3`,
+        {
+          headers: {
+            "x-test-user": "owner",
+            "if-none-match":
+              '"head:77777777-7777-4777-8777-777777777777:limit:2"',
+          },
+        },
+      );
+      assert.equal(widerWindow.status, 200);
+      assert.equal(
+        widerWindow.headers.get("etag"),
+        '"head:77777777-7777-4777-8777-777777777777:limit:3"',
+      );
+      assert.deepEqual(
+        currentPathReader.calls[2],
+        { userId, conversationId, limit: 3 },
+      );
+    },
+  );
+});
+
+test("web current-path endpoint returns 404 for a missing user-owned native conversation", async () => {
+  const currentPathReader = new FakeCurrentPathReader();
+  currentPathReader.result = null;
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.webUserId = userId;
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({
+          coordinator: new FakeCoordinator(),
+          relayService: new FakeRelayService(),
+          turnReader: new FakeTurnReader(),
+          currentPathReader,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path`,
+      );
+      assert.equal(response.status, 404);
     },
   );
 });

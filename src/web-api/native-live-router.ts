@@ -8,6 +8,12 @@ import type {
 import type {
   NativeLiveBackendRelayService,
 } from "../domains/bridge/native-live-backend-relay.js";
+import {
+  DEFAULT_NATIVE_LIVE_CURRENT_PATH_LIMIT,
+  MAX_NATIVE_LIVE_CURRENT_PATH_LIMIT,
+  nativeLiveCurrentPathEtag,
+  type NativeLiveCurrentPathReader,
+} from "../domains/conversation/native-live-current-path-read-repository.js";
 
 export type NativeLiveApiDependencies = {
   coordinator: {
@@ -23,6 +29,7 @@ export type NativeLiveApiDependencies = {
       prepareId: string;
     }): Promise<NativeLiveBackendTurnReadModel | null>;
   };
+  currentPathReader?: NativeLiveCurrentPathReader;
 };
 
 export function createNativeLiveApiRouter(
@@ -31,6 +38,12 @@ export function createNativeLiveApiRouter(
   const router = Router();
   router.post("/prepare", prepareNativeLiveTurnHandler(dependencies));
   router.get("/turns/:prepareId", readNativeLiveTurnHandler(dependencies));
+  if (dependencies.currentPathReader) {
+    router.get(
+      "/conversations/:conversationId/current-path",
+      readNativeLiveCurrentPathHandler(dependencies),
+    );
+  }
   return router;
 }
 
@@ -212,6 +225,141 @@ export function readNativeLiveTurnHandler(
       });
     }
   };
+}
+
+export function readNativeLiveCurrentPathHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const conversationId =
+      routeParam(request.params.conversationId);
+    if (!UUID_PATTERN.test(conversationId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
+          message: "Native live conversation id is invalid.",
+        },
+      });
+      return;
+    }
+
+    const limit = parseCurrentPathLimit(request.query.limit);
+    if (limit === null) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CURRENT_PATH_LIMIT",
+          message:
+            `Current path limit must be an integer from 1 to ${MAX_NATIVE_LIVE_CURRENT_PATH_LIMIT}.`,
+        },
+      });
+      return;
+    }
+
+    const reader = dependencies.currentPathReader;
+    if (!reader) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CURRENT_PATH_UNAVAILABLE",
+          message:
+            "Native live current path is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const snapshot = await reader.readCurrentPath({
+        userId: request.webUserId,
+        conversationId,
+        limit,
+      });
+      if (!snapshot) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_NOT_FOUND",
+            message: "Native live conversation was not found.",
+          },
+        });
+        return;
+      }
+
+      const etag = nativeLiveCurrentPathEtag(
+        snapshot.syncToken,
+        limit,
+      );
+      response.setHeader("ETag", etag);
+      if (ifNoneMatchContains(request.header("if-none-match"), etag)) {
+        response.status(304).end();
+        return;
+      }
+
+      response.json({
+        success: true,
+        data: {
+          conversationId: snapshot.conversationId,
+          title: snapshot.title,
+          currentHeadMessageId:
+            snapshot.currentHeadMessageId,
+          updatedAt: snapshot.updatedAt,
+          syncToken: snapshot.syncToken,
+          truncated: snapshot.truncated,
+          messages: snapshot.messages,
+        },
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CURRENT_PATH_UNAVAILABLE",
+          message:
+            "Native live current path is temporarily unavailable.",
+        },
+      });
+    }
+  };
+}
+
+function parseCurrentPathLimit(
+  value: unknown,
+): number | null {
+  if (value === undefined) {
+    return DEFAULT_NATIVE_LIVE_CURRENT_PATH_LIMIT;
+  }
+  if (
+    typeof value !== "string"
+    || !/^[1-9][0-9]{0,2}$/u.test(value)
+  ) {
+    return null;
+  }
+  const parsed = Number(value);
+  return (
+    Number.isInteger(parsed)
+    && parsed >= 1
+    && parsed <= MAX_NATIVE_LIVE_CURRENT_PATH_LIMIT
+  )
+    ? parsed
+    : null;
+}
+
+function ifNoneMatchContains(
+  value: string | undefined,
+  etag: string,
+): boolean {
+  if (!value) return false;
+  return value
+    .split(",")
+    .map((candidate) => candidate.trim())
+    .some((candidate) =>
+      candidate === "*"
+      || candidate === etag
+      || candidate === `W/${etag}`
+    );
 }
 
 const UUID_PATTERN =
