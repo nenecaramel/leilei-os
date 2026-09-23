@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   env,
   getBackgroundMaintenancePulseConfig,
@@ -108,6 +109,14 @@ import {
   RuntimeEffectDeliveryCoordinator,
 } from "../domains/runtime/runtime-effect-delivery-coordinator.js";
 import {
+  RuntimeMessageEffectDeliveryAdapter,
+} from "../domains/runtime/runtime-message-effect-delivery-adapter.js";
+import {
+  DrizzleRuntimeEffectDeliveryUserSource,
+  RuntimeEffectDeliveryRecovery,
+  RuntimeEffectDeliveryWorker,
+} from "../domains/runtime/runtime-effect-delivery-worker.js";
+import {
   DrizzleProactivityWakeOpportunitySource,
   ProactivityWakeOpportunityProducer,
 } from "../domains/runtime/proactivity-wake-opportunity.js";
@@ -193,6 +202,8 @@ export type ProcessRuntime = {
     ProactivityWakeCrossDeviceCoordinator;
   runtimeEffectDeliveryCoordinator:
     RuntimeEffectDeliveryCoordinator;
+  runtimeEffectDeliveryWorker:
+    RuntimeEffectDeliveryWorker;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
   startBackgroundWork(): void;
@@ -365,6 +376,24 @@ export function createProcessRuntime(
       runtimeEffectRepository,
       new DrizzleRuntimeEffectForegroundGuard(db),
     );
+  const runtimeMessageEffectDeliveryAdapter =
+    new RuntimeMessageEffectDeliveryAdapter(db);
+  const runtimeEffectDeliveryWorker =
+    new RuntimeEffectDeliveryWorker(
+      backgroundLoopOrchestrator,
+      runtimeEffectRepository,
+      runtimeEffectDeliveryCoordinator,
+      runtimeMessageEffectDeliveryAdapter,
+      randomUUID(),
+    );
+  const runtimeEffectDeliveryRecovery =
+    proactivityWakeOpportunityConfig
+      ? new RuntimeEffectDeliveryRecovery(
+          new DrizzleRuntimeEffectDeliveryUserSource(db),
+          runtimeEffectDeliveryWorker,
+          proactivityWakeOpportunityConfig.userLimit,
+        )
+      : null;
   const proactivityWakeCrossDeviceCoordinator =
     new ProactivityWakeCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
@@ -373,6 +402,9 @@ export function createProcessRuntime(
       undefined,
       undefined,
       proactivityEffectMaterializer,
+      proactivityWakeOpportunityConfig
+        ? runtimeEffectDeliveryWorker
+        : null,
     );
   const proactivityWakePlan =
     proactivityWakeOpportunityConfig
@@ -402,13 +434,17 @@ export function createProcessRuntime(
       config: {
         userLimit: maintenancePulseConfig.userLimit,
       },
-      ...(proactivityWakeOpportunityProducer
-        ? {
-            afterCycle: async () => {
-              await proactivityWakeOpportunityProducer.schedulePulse();
-            },
-          }
-        : {}),
+      ...(
+        runtimeEffectDeliveryRecovery
+        || proactivityWakeOpportunityProducer
+          ? {
+              afterCycle: async () => {
+                await runtimeEffectDeliveryRecovery?.schedulePulse();
+                await proactivityWakeOpportunityProducer?.schedulePulse();
+              },
+            }
+          : {}
+      ),
     });
   const topicResurfaceCrossDeviceCoordinator =
     new TopicResurfaceCrossDeviceCoordinator(
@@ -579,6 +615,7 @@ export function createProcessRuntime(
     distillationCrossDeviceCoordinator,
     proactivityWakeCrossDeviceCoordinator,
     runtimeEffectDeliveryCoordinator,
+    runtimeEffectDeliveryWorker,
     appDependencies: {
       logger,
       webMemoryService: memoryService,

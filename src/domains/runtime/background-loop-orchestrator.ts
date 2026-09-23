@@ -6,7 +6,8 @@ export type BackgroundLoopKind =
   | "drive_evolution"
   | "topic_lifecycle"
   | "topic_resurface"
-  | "proactivity_wake";
+  | "proactivity_wake"
+  | "effect_delivery";
 
 export type BackgroundLoopPriority =
   | "consolidation"

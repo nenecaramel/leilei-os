@@ -441,7 +441,8 @@ function parseDecision(
 function isEffectStatus(value: unknown): value is EffectStatus {
   return (
     value === "pending"
-    || value === "dispatched"
+    || value === "reserved"
+    || value === "dispatching"
     || value === "observed"
     || value === "failed"
     || value === "unknown"

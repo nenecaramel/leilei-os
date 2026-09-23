@@ -81,6 +81,14 @@ export interface RuntimeEffectPort {
     sourceWakeId: string;
   }): Promise<RuntimeEffectRecord | null>;
 
+  findNextUnknown(input: {
+    userId: string;
+  }): Promise<RuntimeEffectRecord | null>;
+
+  findNextRetryableFailed(input: {
+    userId: string;
+  }): Promise<RuntimeEffectRecord | null>;
+
   reserveNext(input: {
     userId: string;
     workerInstanceId: string;
@@ -223,6 +231,53 @@ implements RuntimeEffectPort {
           eq(runtimeEffects.userId, input.userId),
           eq(runtimeEffects.sourceWakeId, input.sourceWakeId),
         ),
+      )
+      .limit(1);
+    const id = rows[0]?.id;
+    return id
+      ? this.getWithExecutor(this.db, input.userId, id)
+      : null;
+  }
+
+  async findNextUnknown(input: {
+    userId: string;
+  }): Promise<RuntimeEffectRecord | null> {
+    const rows = await this.db
+      .select({ id: runtimeEffects.id })
+      .from(runtimeEffects)
+      .where(
+        and(
+          eq(runtimeEffects.userId, input.userId),
+          eq(runtimeEffects.status, "unknown"),
+        ),
+      )
+      .orderBy(
+        runtimeEffects.updatedAt,
+        runtimeEffects.id,
+      )
+      .limit(1);
+    const id = rows[0]?.id;
+    return id
+      ? this.getWithExecutor(this.db, input.userId, id)
+      : null;
+  }
+
+  async findNextRetryableFailed(input: {
+    userId: string;
+  }): Promise<RuntimeEffectRecord | null> {
+    const rows = await this.db
+      .select({ id: runtimeEffects.id })
+      .from(runtimeEffects)
+      .where(
+        and(
+          eq(runtimeEffects.userId, input.userId),
+          eq(runtimeEffects.status, "failed"),
+          eq(runtimeEffects.retryable, true),
+        ),
+      )
+      .orderBy(
+        runtimeEffects.updatedAt,
+        runtimeEffects.id,
       )
       .limit(1);
     const id = rows[0]?.id;

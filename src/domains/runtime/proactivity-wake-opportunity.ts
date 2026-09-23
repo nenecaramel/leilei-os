@@ -49,7 +49,7 @@ type SurfaceRow = {
   id: string;
   role: string;
   display_text: string;
-  current_path_index: number | null;
+  depth: number;
 };
 
 type StateRow = {
@@ -227,14 +227,39 @@ implements ProactivityWakeOpportunitySource {
         activity.created_at AS latest_user_activity_at
       FROM conversations AS c
       JOIN LATERAL (
-        SELECT m.created_at
-        FROM conversation_messages AS m
-        WHERE m.user_id = c.user_id
-          AND m.conversation_id = c.id
-          AND m.role = 'user'
-          AND m.status = 'completed'
-          AND m.is_current_path = true
-        ORDER BY m.current_path_index DESC, m.created_at DESC, m.id DESC
+        WITH RECURSIVE current_path AS (
+          SELECT
+            m.id,
+            m.parent_message_id,
+            m.role,
+            m.status,
+            m.created_at,
+            0 AS depth
+          FROM conversation_messages AS m
+          WHERE m.id = c.current_head_message_id
+            AND m.user_id = c.user_id
+            AND m.conversation_id = c.id
+
+          UNION ALL
+
+          SELECT
+            parent.id,
+            parent.parent_message_id,
+            parent.role,
+            parent.status,
+            parent.created_at,
+            path.depth + 1
+          FROM conversation_messages AS parent
+          JOIN current_path AS path
+            ON parent.id = path.parent_message_id
+          WHERE parent.user_id = c.user_id
+            AND parent.conversation_id = c.id
+        )
+        SELECT created_at
+        FROM current_path
+        WHERE role = 'user'
+          AND status = 'completed'
+        ORDER BY depth ASC
         LIMIT 1
       ) AS activity ON true
       WHERE c.user_id = ${input.userId}::uuid
@@ -351,15 +376,61 @@ implements ProactivityWakeOpportunitySource {
   }): Promise<string> {
     const [surfaceRows, stateRows] = await Promise.all([
       this.db.execute<SurfaceRow>(sql`
-        SELECT id, role, display_text, current_path_index
-        FROM conversation_messages
-        WHERE user_id = ${input.userId}::uuid
-          AND conversation_id = ${input.conversationId}::uuid
-          AND is_current_path = true
-          AND status = 'completed'
-          AND role IN ('user', 'assistant')
-          AND char_length(btrim(display_text)) > 0
-        ORDER BY current_path_index DESC, created_at DESC, id DESC
+        WITH RECURSIVE current_path AS (
+          SELECT
+            m.id,
+            m.parent_message_id,
+            m.role,
+            m.status,
+            0 AS depth
+          FROM conversation_messages AS m
+          WHERE m.id = ${input.headMessageId}::uuid
+            AND m.user_id = ${input.userId}::uuid
+            AND m.conversation_id = ${input.conversationId}::uuid
+
+          UNION ALL
+
+          SELECT
+            parent.id,
+            parent.parent_message_id,
+            parent.role,
+            parent.status,
+            path.depth + 1
+          FROM conversation_messages AS parent
+          JOIN current_path AS path
+            ON parent.id = path.parent_message_id
+          WHERE parent.user_id = ${input.userId}::uuid
+            AND parent.conversation_id = ${input.conversationId}::uuid
+        )
+        SELECT
+          path.id,
+          path.role,
+          COALESCE(
+            string_agg(
+              block.text,
+              E'\\n'
+              ORDER BY block.ordinal
+            ) FILTER (
+              WHERE block.kind = 'text'
+                AND block.text IS NOT NULL
+                AND char_length(btrim(block.text)) > 0
+            ),
+            ''
+          ) AS display_text,
+          path.depth
+        FROM current_path AS path
+        LEFT JOIN conversation_content_blocks AS block
+          ON block.message_id = path.id
+         AND block.user_id = ${input.userId}::uuid
+        WHERE path.status = 'completed'
+          AND path.role IN ('user', 'assistant')
+        GROUP BY path.id, path.role, path.depth
+        HAVING count(*) FILTER (
+          WHERE block.kind = 'text'
+            AND block.text IS NOT NULL
+            AND char_length(btrim(block.text)) > 0
+        ) > 0
+        ORDER BY path.depth ASC
         LIMIT 6
       `),
       this.db.execute<StateRow>(sql`

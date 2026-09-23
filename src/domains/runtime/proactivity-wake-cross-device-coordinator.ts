@@ -59,6 +59,9 @@ export class ProactivityWakeCrossDeviceCoordinator {
       ProactivityEffectMaterializer,
       "materialize"
     > | null = null,
+    private readonly effectDeliveryScheduler: {
+      scheduleUser(userId: string): void;
+    } | null = null,
   ) {}
 
   async start(input: {
@@ -278,7 +281,20 @@ export class ProactivityWakeCrossDeviceCoordinator {
     wake: ProactivityWakeRecord,
   ): Promise<void> {
     if (!this.effectMaterializer) return;
-    await this.effectMaterializer.materialize(wake);
+    const effect =
+      await this.effectMaterializer.materialize(wake);
+    if (
+      effect
+      && this.effectDeliveryScheduler
+      && (
+        effect.status === "pending"
+        || effect.status === "reserved"
+        || effect.status === "dispatching"
+        || effect.status === "unknown"
+      )
+    ) {
+      this.effectDeliveryScheduler.scheduleUser(wake.userId);
+    }
   }
 }
 
