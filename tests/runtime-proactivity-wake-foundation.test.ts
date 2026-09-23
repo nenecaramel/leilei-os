@@ -59,16 +59,23 @@ test("wake gate is deterministic and foreground-first", () => {
       blockedUntil: null,
     },
   );
-  assert.deepEqual(
-    evaluateProactivityWakeGate(gate({
-      outstandingEffectStatus: "unknown",
-    })),
-    {
-      outcome: "blocked",
-      reason: "effect_unresolved",
-      blockedUntil: null,
-    },
-  );
+  for (const status of [
+    "pending",
+    "reserved",
+    "dispatching",
+    "unknown",
+  ] as const) {
+    assert.deepEqual(
+      evaluateProactivityWakeGate(gate({
+        outstandingEffectStatus: status,
+      })),
+      {
+        outcome: "blocked",
+        reason: "effect_unresolved",
+        blockedUntil: null,
+      },
+    );
+  }
   assert.deepEqual(
     evaluateProactivityWakeGate(gate({
       quietUntil: "2026-09-23T10:00:00.000Z",

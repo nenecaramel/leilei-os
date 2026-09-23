@@ -421,6 +421,13 @@
       "when": 1790160960000,
       "tag": "0059_runtime_effect_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1790162280000,
+      "tag": "0060_runtime_effect_message_delivery",
+      "breakpoints": true
     }
   ]
 }

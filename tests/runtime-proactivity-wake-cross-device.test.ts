@@ -410,3 +410,76 @@ test("effect materialization happens before background model job consumption and
   assert.equal(materializeCalls, 2);
   assert.ok(job.consumedAt);
 });
+
+
+test("persisted pending effect schedules immediate delivery only after materialization succeeds", async () => {
+  const wakes = new WakeMemory();
+  const queue = new QueueMemory();
+  const scheduled: string[] = [];
+  const coordinator =
+    new ProactivityWakeCrossDeviceCoordinator(
+      queue as never,
+      wakes,
+      null,
+      new ProactivityWakeDecisionBuilder(
+        () => "2026-09-23T09:31:00.000Z",
+        () => "decision-delivery",
+      ),
+      () => "2026-09-23T09:31:00.000Z",
+      {
+        async materialize() {
+          return {
+            effectId:
+              "77777777-7777-4777-8777-777777777777",
+            userId,
+            subjectId: "G",
+            sourceWakeId: wakeId,
+            decisionId: "decision-delivery",
+            idempotencyKey: "a".repeat(64),
+            effectType: "message_send",
+            target:
+              "conversation:55555555-5555-4555-8555-555555555555",
+            payload: { text: "candidate" },
+            payloadHash: "b".repeat(64),
+            status: "pending" as const,
+            attempt: 0,
+            retryable: true,
+            reservedBy: null,
+            reservedAt: null,
+            reservationExpiresAt: null,
+            dispatchStartedAt: null,
+            createdAt:
+              "2026-09-23T09:31:00.000Z",
+            updatedAt:
+              "2026-09-23T09:31:00.000Z",
+            observedAt: null,
+            failureCode: null,
+          };
+        },
+      },
+      {
+        scheduleUser(value) {
+          scheduled.push(value);
+        },
+      },
+    );
+
+  await coordinator.start({
+    gate: baseGate(),
+    contactTarget:
+      "conversation:55555555-5555-4555-8555-555555555555",
+    context: {
+      version: 1,
+      contextManifestId: null,
+      capsule: "{}",
+    },
+  });
+  const job = queue.jobs[0]!;
+  job.status = "completed";
+  job.resultText =
+    '{"outcome":"contact_candidate","text":"candidate"}';
+
+  await coordinator.advanceNextForUser({ userId });
+  assert.deepEqual(scheduled, [userId]);
+  assert.ok(job.consumedAt);
+});

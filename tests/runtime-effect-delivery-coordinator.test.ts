@@ -65,6 +65,21 @@ class EffectMemory implements RuntimeEffectPort {
     return this.current;
   }
 
+  async findNextUnknown() {
+    return this.current?.status === "unknown"
+      ? this.current
+      : null;
+  }
+
+  async findNextRetryableFailed() {
+    return (
+      this.current?.status === "failed"
+      && this.current.retryable
+    )
+      ? this.current
+      : null;
+  }
+
   async reserveNext(input: {
     userId: string;
     workerInstanceId: string;

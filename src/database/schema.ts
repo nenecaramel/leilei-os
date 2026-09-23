@@ -1863,6 +1863,10 @@ export const runtimeEffects = pgTable(
     failureCode: varchar("failure_code", { length: 128 }),
   },
   (table) => [
+    unique("runtime_effects_id_user_unique").on(
+      table.id,
+      table.userId,
+    ),
     foreignKey({
       columns: [table.sourceWakeId, table.userId],
       foreignColumns: [
@@ -1976,6 +1980,56 @@ export const runtimeEffects = pgTable(
           AND ${table.retryable} = false
           AND ${table.attempt} > 0)`,
     ),
+  ],
+);
+
+export const runtimeEffectMessageDeliveries = pgTable(
+  "runtime_effect_message_deliveries",
+  {
+    effectId: uuid("effect_id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    messageId: uuid("message_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.effectId, table.userId],
+      foreignColumns: [
+        runtimeEffects.id,
+        runtimeEffects.userId,
+      ],
+      name: "runtime_effect_message_deliveries_effect_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [
+        conversations.id,
+        conversations.userId,
+      ],
+      name: "runtime_effect_message_deliveries_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [
+        table.messageId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_effect_message_deliveries_message_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex(
+      "runtime_effect_message_deliveries_message_uidx",
+    ).on(table.messageId),
+    index(
+      "runtime_effect_message_deliveries_user_created_idx",
+    ).on(table.userId, table.createdAt, table.effectId),
   ],
 );
 
