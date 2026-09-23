@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
@@ -27,7 +28,7 @@ export type DeleteUniverseDiarySourceToolDependencies = {
 export function registerDeleteUniverseDiarySourceTool(server: McpServer, dependencies: DeleteUniverseDiarySourceToolDependencies): void {
   server.registerTool("delete_universe_diary_source", {
     title: "Delete a Universe Diary source",
-    description: "expected_version is the global Universe snapshot version, not an entity revision. Remove exactly one Diary provenance binding from an authenticated Universe node; the Diary itself is never deleted. This is a destructive, non-idempotent mutation. If the transport outcome is uncertain, fresh-read the node's sources and Universe version before deciding whether another mutation is needed; never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Remove exactly one Diary provenance binding from an authenticated Universe node; the Diary itself is never deleted. This is a destructive, non-idempotent mutation. If the transport outcome is uncertain, fresh-read the node's sources and Universe version before deciding whether another mutation is needed; never blindly retry.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
