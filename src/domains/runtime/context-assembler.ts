@@ -12,6 +12,7 @@ import type { SubjectStateWrite } from "./subject-state-contract.js";
 import { isConsolidationEligible } from "./runtime-status-axes.js";
 import { readDriveEvolution } from "./drive-evolution.js";
 import { readThoughtEvolution } from "./thought-evolution.js";
+import { readTopicEvolution } from "./topic-evolution.js";
 
 export type AssembledTurnContext = {
   manifest: InitialContextManifest;
@@ -110,7 +111,7 @@ function selectWithinBudget(
 
 /**
  * First Non-style Context Assembly slice:
- * current user message + settled Bedrock + active Drive + active Fixation + canonical Surface + bounded Breath.
+ * current user message + settled Bedrock + active Drive + active Fixation + active Topic + canonical Surface + bounded Breath.
  * Selection order is deterministic; exact budget values are supplied by the
  * caller/runtime config rather than hard-coded here.
  */
@@ -135,6 +136,7 @@ export function assembleTurnContext(input: {
   breathSemanticScores?: ReadonlyMap<string, number>;
   driveLimit?: number;
   fixationLimit?: number;
+  topicLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
   surfaceHeadMessageId?: string | null;
@@ -287,6 +289,55 @@ export function assembleTurnContext(input: {
       );
     });
 
+  const topicLimit = input.topicLimit ?? 0;
+  if (!Number.isInteger(topicLimit) || topicLimit < 0) {
+    throw new Error("Topic limit must be a nonnegative integer.");
+  }
+
+  const topics = input.subjectStates
+    .filter((state) => {
+      if (
+        state.kind !== "topic"
+        || !stateApplies(state, {
+          userId: input.userId,
+          subjectId: input.subjectId,
+          conversationId: input.conversation.id,
+          currentPathMessageIds,
+        })
+      ) {
+        return false;
+      }
+
+      try {
+        const evolution = readTopicEvolution(state.payload);
+        return Boolean(
+          evolution
+          && evolution.phase === "active"
+          && evolution.role === "anchor",
+        );
+      } catch {
+        return false;
+      }
+    })
+    .sort((left, right) => {
+      const leftEvolution = readTopicEvolution(left.payload)!;
+      const rightEvolution = readTopicEvolution(right.payload)!;
+      return (
+        rightEvolution.reinforcementCount
+          - leftEvolution.reinforcementCount
+        || Date.parse(rightEvolution.lastReinforcedAt)
+          - Date.parse(leftEvolution.lastReinforcedAt)
+        || left.id.localeCompare(right.id)
+      );
+    })
+    .slice(0, topicLimit)
+    .map((state, index) =>
+      subjectStateToContextItem(
+        state,
+        selection("active_topic", 175 + index),
+      ),
+    );
+
   const surfaceItems: ContextManifestItem[] = [...surface]
     .reverse()
     .map((entry, index) => ({
@@ -329,7 +380,15 @@ export function assembleTurnContext(input: {
   );
 
   const selected = selectWithinBudget(
-    [userItem, ...bedrock, ...drives, ...fixations, ...surfaceItems, ...breathItems],
+    [
+      userItem,
+      ...bedrock,
+      ...drives,
+      ...fixations,
+      ...topics,
+      ...surfaceItems,
+      ...breathItems,
+    ],
     {
       maxItems: input.maxContextItems,
       maxChars: input.maxContextChars,

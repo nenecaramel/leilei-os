@@ -39,6 +39,7 @@ export type NativeLiveMindRuntimeBindingOptions = {
   committerId?: string;
   thoughtEvolution?: NativeLiveSubjectEvolutionRuntime | null;
   driveEvolution?: NativeLiveSubjectEvolutionRuntime | null;
+  topicEvolution?: NativeLiveSubjectEvolutionRuntime | null;
 };
 
 export interface NativeLiveMindRuntime {
@@ -103,6 +104,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
   private readonly committerId: string;
   private readonly thoughtEvolution: NativeLiveSubjectEvolutionRuntime | null;
   private readonly driveEvolution: NativeLiveSubjectEvolutionRuntime | null;
+  private readonly topicEvolution: NativeLiveSubjectEvolutionRuntime | null;
 
   constructor(
     private readonly service: NativeLiveMindLoopService,
@@ -116,6 +118,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     this.committerId = options.committerId ?? "leileios-runtime";
     this.thoughtEvolution = options.thoughtEvolution ?? null;
     this.driveEvolution = options.driveEvolution ?? null;
+    this.topicEvolution = options.topicEvolution ?? null;
   }
 
   async prepareUserTurn(input: {
@@ -262,7 +265,11 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userId: string,
     now: string,
   ): Promise<void> {
-    for (const process of [this.driveEvolution, this.thoughtEvolution]) {
+    for (const process of [
+      this.driveEvolution,
+      this.thoughtEvolution,
+      this.topicEvolution,
+    ]) {
       if (!process) continue;
       try {
         await process.runOnce({

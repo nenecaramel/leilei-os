@@ -24,6 +24,9 @@ import {
 import {
   writeThoughtEvolution,
 } from "../src/domains/runtime/thought-evolution.js";
+import {
+  writeTopicEvolution,
+} from "../src/domains/runtime/topic-evolution.js";
 
 const now = "2026-09-22T08:00:00.000Z";
 const settledStatus = {
@@ -195,6 +198,7 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
       "<memory>今天把 Runtime 接起来了</memory>",
       "<drive>我还想把这条 runtime 主线继续推进</drive>",
       "<thought>下一步验证 recall</thought>",
+      "<topic>下次继续看 Topic Pool</topic>",
       "<unknown>别动我</unknown>",
       "<memory></memory>",
     ].join("\n"),
@@ -207,10 +211,12 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
       ["memory", "今天把 Runtime 接起来了"],
       ["drive", "我还想把这条 runtime 主线继续推进"],
       ["thought", "下一步验证 recall"],
+      ["topic", "下次继续看 Topic Pool"],
     ],
   );
   assert.equal(parsed.visibleText.includes("<feel>"), false);
   assert.equal(parsed.visibleText.includes("<drive>"), false);
+  assert.equal(parsed.visibleText.includes("<topic>"), false);
   assert.equal(parsed.visibleText.includes("<unknown>别动我</unknown>"), true);
   assert.equal(parsed.visibleText.includes("<memory></memory>"), true);
 });
@@ -689,4 +695,64 @@ test("explicit Mind write can move from emitted intent to settled Breath recall"
     limit: 3,
   });
   assert.deepEqual(hits.map((hit) => hit.state.id), [settled.id]);
+});
+
+
+test("Context Assembly injects only active Topic anchors and drops reinforcement copies", () => {
+  const anchor = state(
+    "99999999-9999-4999-8999-999999999999",
+    "topic",
+    "下次继续研究 Topic Pool",
+  );
+  anchor.payload = writeTopicEvolution(anchor.payload, {
+    phase: "active",
+    role: "anchor",
+    threadKey: "topic-thread-active",
+    anchorStateId: anchor.id,
+    reinforcementCount: 2,
+    reinforcementSources: ["m1", "m2"],
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+  });
+
+  const reinforcement = state(
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "topic",
+    "下次继续研究 Topic Pool",
+  );
+  reinforcement.payload = writeTopicEvolution(reinforcement.payload, {
+    phase: "active",
+    role: "reinforcement",
+    threadKey: "topic-thread-active",
+    anchorStateId: anchor.id,
+    reinforcementCount: 2,
+    reinforcementSources: ["m1", "m2"],
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+  });
+
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-topic",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-topic",
+    userText: "继续",
+    subjectStates: [anchor, reinforcement],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v1",
+    surfaceLimit: 4,
+    breathLimit: 3,
+    topicLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  const topicItems = assembled.manifest.items.filter(
+    (item) => item.selection.reason === "active_topic",
+  );
+  assert.deepEqual(topicItems.map((item) => item.sourceId), [anchor.id]);
+  assert.equal(assembled.prompt.includes("下次继续研究 Topic Pool"), true);
 });

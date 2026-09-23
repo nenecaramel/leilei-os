@@ -3,7 +3,8 @@ export type MindWriteIntentKind =
   | "memory"
   | "dream"
   | "drive"
-  | "thought";
+  | "thought"
+  | "topic";
 
 export type MindWriteIntent = {
   kind: MindWriteIntentKind;
@@ -18,8 +19,8 @@ export type ParsedMindIntents = {
   intents: MindWriteIntent[];
 };
 
-const TAG_PATTERN = /<(feel|memory|dream|drive|thought)>([\s\S]*?)<\/\1>/gi;
-const NESTED_TAG_PATTERN = /<\/?(feel|memory|dream|drive|thought)>/i;
+const TAG_PATTERN = /<(feel|memory|dream|drive|thought|topic)>([\s\S]*?)<\/\1>/gi;
+const NESTED_TAG_PATTERN = /<\/?(feel|memory|dream|drive|thought|topic)>/i;
 
 /**
  * Parses only explicit subject-authored write intents.

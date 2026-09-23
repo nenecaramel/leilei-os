@@ -29,6 +29,12 @@ import {
 import {
   DrizzleThoughtEvolutionRuntimePort,
 } from "./thought-evolution-runtime-repository.js";
+import {
+  TopicEvolutionService,
+} from "./topic-evolution.js";
+import {
+  DrizzleTopicEvolutionRuntimePort,
+} from "./topic-evolution-runtime-repository.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -64,6 +70,7 @@ export function createDefaultBackendMindRuntime(
       breathSemanticCandidateMaxChars: 2_000,
       driveLimit: 3,
       fixationLimit: 3,
+      topicLimit: 3,
       maxContextItems: 16,
       maxContextChars: 8_000,
     },
@@ -84,10 +91,17 @@ export function createDefaultBackendMindRuntime(
       maxReinforcementSources: 16,
     },
   );
+  const topicEvolution = new TopicEvolutionService(
+    new DrizzleTopicEvolutionRuntimePort(db),
+    {
+      maxReinforcementSources: 16,
+    },
+  );
   const mind = new DefaultNativeLiveMindRuntime(loop, {
     subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
     driveEvolution,
     thoughtEvolution,
+    topicEvolution,
   });
   return new DefaultNativeLiveBackendMindRuntime(conversations, mind);
 }

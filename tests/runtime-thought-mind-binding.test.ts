@@ -72,6 +72,7 @@ function conversation(): NativeLiveConversation {
 function createMind(
   thoughtEvolution: Evolution,
   driveEvolution: Evolution | null = null,
+  topicEvolution: Evolution | null = null,
 ) {
   const service = new NativeLiveMindLoopService(
     new Port(),
@@ -96,13 +97,15 @@ function createMind(
       "44444444-4444-4444-8444-444444444444",
     thoughtEvolution,
     driveEvolution,
+    topicEvolution,
   });
 }
 
-test("fresh Mind preparation evolves Drive and Thought state before Context Assembly", async () => {
+test("fresh Mind preparation evolves Drive, Thought and Topic state before Context Assembly", async () => {
   const thoughtEvolution = new Evolution();
   const driveEvolution = new Evolution();
-  const mind = createMind(thoughtEvolution, driveEvolution);
+  const topicEvolution = new Evolution();
+  const mind = createMind(thoughtEvolution, driveEvolution, topicEvolution);
   const user = userMessage();
 
   await mind.prepareUserTurn({
@@ -115,7 +118,13 @@ test("fresh Mind preparation evolves Drive and Thought state before Context Asse
 
   assert.equal(driveEvolution.calls.length, 1);
   assert.equal(thoughtEvolution.calls.length, 1);
+  assert.equal(topicEvolution.calls.length, 1);
   assert.deepEqual(driveEvolution.calls[0], {
+    userId: "u1",
+    subjectId: "G",
+    now,
+  });
+  assert.deepEqual(topicEvolution.calls[0], {
     userId: "u1",
     subjectId: "G",
     now,
