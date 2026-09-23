@@ -57,7 +57,7 @@ export type UpdateMemoryToolDependencies = {
 export function registerUpdateMemoryTool(server: McpServer, dependencies: UpdateMemoryToolDependencies): void {
   server.registerTool("update_memory", {
     title: "Update one Memory",
-    description: MEMORY_DOMAIN_BOUNDARY + " Update only explicitly supplied fields on one active Memory record. If the outcome is uncertain, perform a readback with get_memory before deciding what to do next; never blindly retry.",
+    description: MEMORY_DOMAIN_BOUNDARY + " Update only supplied fields on one active Memory. If outcome is uncertain, read get_memory before retrying.",
     inputSchema: updateMemoryInputSchema,
     outputSchema: updateMemoryOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
