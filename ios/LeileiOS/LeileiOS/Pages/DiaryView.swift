@@ -13,6 +13,19 @@ struct DiaryView: View {
                 ProgressView("Loading Diary…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            case .authRequired(let message):
+                ContentUnavailableView {
+                    Label("Sign In Required", systemImage: "person.crop.circle.badge.exclamationmark")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Sign In") {
+                        Task {
+                            await signInAndReload()
+                        }
+                    }
+                }
+
             case .unavailable(let message):
                 ContentUnavailableView(
                     "Diary Unavailable",
@@ -59,6 +72,23 @@ struct DiaryView: View {
                 path: diaryPath(for: query)
             )
             state = .loaded(response.data.diaries)
+        } catch LeileiAPIError.missingAccessToken {
+            state = .authRequired("Sign in to view your Diary.")
+        } catch LeileiAPIError.unauthorized {
+            await appModel.refreshConnectivity()
+            state = .authRequired("Your sign-in session needs to be renewed.")
+        } catch {
+            state = .unavailable(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func signInAndReload() async {
+        state = .loading
+
+        do {
+            try await appModel.signIn()
+            await loadDiary()
         } catch {
             state = .unavailable(error.localizedDescription)
         }
@@ -196,6 +226,7 @@ private struct DiaryMetadata: View {
 
 private enum DiaryLoadState {
     case loading
+    case authRequired(String)
     case unavailable(String)
     case loaded([DiaryEntry])
 }
