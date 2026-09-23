@@ -51,6 +51,16 @@ import {
 import {
   SubjectStateSettlementCatchUp,
 } from "./subject-state-settlement-catch-up.js";
+import {
+  MemoryLifecycleService,
+  type MemoryLifecyclePolicy,
+} from "./memory-lifecycle.js";
+import {
+  DrizzleMemoryLifecycleRuntimePort,
+} from "./memory-lifecycle-runtime-repository.js";
+import {
+  DEFAULT_BACKGROUND_TARGET_PLANS,
+} from "./background-opportunity-policy.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -82,16 +92,19 @@ const DEFAULT_TOPIC_EVOLUTION_POLICY = {
 export const DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG:
   SubjectStateBackgroundMaintenanceConfig = {
     thoughtEvolution: {
-      priority: "maintenance",
-      cost: 1,
+      priority:
+        DEFAULT_BACKGROUND_TARGET_PLANS.thoughtEvolution.priority,
+      cost: DEFAULT_BACKGROUND_TARGET_PLANS.thoughtEvolution.cost,
     },
     driveEvolution: {
-      priority: "maintenance",
-      cost: 1,
+      priority:
+        DEFAULT_BACKGROUND_TARGET_PLANS.driveEvolution.priority,
+      cost: DEFAULT_BACKGROUND_TARGET_PLANS.driveEvolution.cost,
     },
     topicLifecycle: {
-      priority: "maintenance",
-      cost: 1,
+      priority:
+        DEFAULT_BACKGROUND_TARGET_PLANS.topicLifecycle.priority,
+      cost: DEFAULT_BACKGROUND_TARGET_PLANS.topicLifecycle.cost,
     },
   };
 
@@ -160,11 +173,20 @@ export function createDefaultBackendMindRuntime(
 export function createDefaultSubjectStateBackgroundMaintenance(
   db: Database,
   orchestrator: Pick<BackgroundLoopOrchestrator, "schedule">,
+  decayPolicy?: MemoryLifecyclePolicy,
 ): SubjectStateBackgroundMaintenance {
   return new SubjectStateBackgroundMaintenance(
     orchestrator,
     DEFAULT_NATIVE_LIVE_SUBJECT_ID,
     {
+      ...(decayPolicy
+        ? {
+            decay: new MemoryLifecycleService(
+              new DrizzleMemoryLifecycleRuntimePort(db),
+              decayPolicy,
+            ),
+          }
+        : {}),
       thoughtEvolution: new ThoughtEvolutionService(
         new DrizzleThoughtEvolutionRuntimePort(db),
         DEFAULT_THOUGHT_EVOLUTION_POLICY,
@@ -181,7 +203,17 @@ export function createDefaultSubjectStateBackgroundMaintenance(
         DEFAULT_TOPIC_EVOLUTION_POLICY,
       ),
     },
-    DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG,
+    {
+      ...(decayPolicy
+        ? {
+            decay: {
+              priority: DEFAULT_BACKGROUND_TARGET_PLANS.decay.priority,
+              cost: DEFAULT_BACKGROUND_TARGET_PLANS.decay.cost,
+            },
+          }
+        : {}),
+      ...DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG,
+    },
   );
 }
 

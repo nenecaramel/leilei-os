@@ -81,6 +81,18 @@ const baseEnvSchema = z.object({
     z.coerce.number().int().positive().optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
     z.coerce.number().int().positive().max(25).optional(),
+  NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS:
+    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT:
+    z.coerce.number().int().positive().max(1_000).optional(),
+  NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD:
+    z.coerce.number().min(0).max(1).optional(),
 });
 
 const mcpGovernanceEnvSchema = z.object({
@@ -255,6 +267,83 @@ export type TopicResurfaceOpportunityConfig = {
   minIntervalMs: number;
   candidateLimit: number;
 };
+
+export type BackgroundMaintenancePulseConfig = {
+  intervalMs: number;
+  userLimit: number;
+};
+
+export type MemoryDecayConfig = {
+  halfLifeHours: {
+    memory: number;
+    feel: number;
+  };
+  fadingThreshold: number;
+  archiveThreshold: number;
+};
+
+export function getBackgroundMaintenancePulseConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS"
+    | "NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT"
+  >,
+): BackgroundMaintenancePulseConfig {
+  return {
+    intervalMs:
+      (environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS
+        ?? 3_600) * 1_000,
+    userLimit:
+      environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT
+      ?? 64,
+  };
+}
+
+export function getMemoryDecayConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS"
+    | "NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS"
+    | "NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD"
+    | "NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD"
+  >,
+): MemoryDecayConfig | undefined {
+  const values = [
+    environment.NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS,
+    environment.NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS,
+    environment.NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD,
+    environment.NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD,
+  ];
+  if (values.every((value) => value === undefined)) {
+    return undefined;
+  }
+  if (values.some((value) => value === undefined)) {
+    throw new Error(
+      "All NATIVE_LIVE_MEMORY_DECAY_* settings must be configured together.",
+    );
+  }
+
+  const fadingThreshold =
+    environment.NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD!;
+  const archiveThreshold =
+    environment.NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD!;
+  if (archiveThreshold >= fadingThreshold) {
+    throw new Error(
+      "Memory decay thresholds must satisfy archive < fading.",
+    );
+  }
+
+  return {
+    halfLifeHours: {
+      memory:
+        environment.NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS!,
+      feel:
+        environment.NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS!,
+    },
+    fadingThreshold,
+    archiveThreshold,
+  };
+}
 
 export function getTopicResurfaceOpportunityConfig(
   environment: Pick<

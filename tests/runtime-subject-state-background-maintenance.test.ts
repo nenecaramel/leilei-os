@@ -10,6 +10,9 @@ import {
 import {
   NativeLivePostTurnBackgroundOpportunity,
 } from "../src/domains/runtime/native-live-background-opportunity.js";
+import {
+  BackgroundOpportunityPolicy,
+} from "../src/domains/runtime/background-opportunity-policy.js";
 
 test("Subject State maintenance adapts existing decay/evolution services onto one shared Subject mutex", async () => {
   const calls: string[] = [];
@@ -163,7 +166,7 @@ test("Subject State maintenance requires explicit plans instead of inventing cad
 });
 
 
-test("post-turn opportunity fans out fail-soft and still schedules Subject maintenance when another target rejects", () => {
+test("post-turn opportunity is Distillation-only and remains fail-soft", () => {
   const calls: string[] = [];
   const opportunity = new NativeLivePostTurnBackgroundOpportunity(
     {
@@ -172,11 +175,11 @@ test("post-turn opportunity fans out fail-soft and still schedules Subject maint
         throw new Error("simulated scheduling failure");
       },
     },
-    {
-      schedule(input) {
-        calls.push("maintenance:" + input.userId);
-      },
-    },
+    new BackgroundOpportunityPolicy({
+      maintenancePulseIntervalMs: 3_600_000,
+      decayEnabled: false,
+      topicResurfaceMinIntervalMs: null,
+    }),
   );
 
   assert.doesNotThrow(() => {
@@ -185,8 +188,43 @@ test("post-turn opportunity fans out fail-soft and still schedules Subject maint
       conversationId: "c1",
     });
   });
-  assert.deepEqual(calls, [
-    "distillation",
-    "maintenance:u1",
-  ]);
+  assert.deepEqual(calls, ["distillation"]);
+});
+
+test("Subject State maintenance can schedule only the pulse-selected loop kinds", async () => {
+  const calls: string[] = [];
+  const orchestrator = new BackgroundLoopOrchestrator({
+    maxRunsPerCycle: 4,
+    maxCostPerCycle: 4,
+    maxConcurrent: 1,
+  });
+  const runner = (name: string) => ({
+    async runOnce() {
+      calls.push(name);
+    },
+  });
+  const maintenance = new SubjectStateBackgroundMaintenance(
+    orchestrator,
+    "G",
+    {
+      decay: runner("decay"),
+      thoughtEvolution: runner("thought"),
+      driveEvolution: runner("drive"),
+      topicEvolution: runner("topic"),
+    },
+    {
+      decay: { priority: "maintenance", cost: 1 },
+      thoughtEvolution: { priority: "maintenance", cost: 1 },
+      driveEvolution: { priority: "maintenance", cost: 1 },
+      topicLifecycle: { priority: "maintenance", cost: 1 },
+    },
+  );
+
+  maintenance.schedule({
+    userId: "u1",
+    kinds: ["thought_evolution", "topic_lifecycle"],
+  });
+  await orchestrator.drain();
+
+  assert.deepEqual(calls, ["thought", "topic"]);
 });

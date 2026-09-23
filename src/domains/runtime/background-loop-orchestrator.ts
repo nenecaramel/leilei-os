@@ -1,6 +1,5 @@
 
 export type BackgroundLoopKind =
-  | "breath"
   | "decay"
   | "distillation"
   | "thought_evolution"

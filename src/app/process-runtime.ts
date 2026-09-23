@@ -1,6 +1,8 @@
 import {
   env,
+  getBackgroundMaintenancePulseConfig,
   getMcpGovernanceConfig,
+  getMemoryDecayConfig,
   getTopicResurfaceOpportunityConfig,
   type RuntimeEnv,
 } from "../config/env.js";
@@ -66,6 +68,13 @@ import {
 import {
   NativeLivePostTurnBackgroundOpportunity,
 } from "../domains/runtime/native-live-background-opportunity.js";
+import {
+  BackgroundOpportunityPolicy,
+} from "../domains/runtime/background-opportunity-policy.js";
+import {
+  createBackgroundMaintenancePulse,
+  DrizzleBackgroundMaintenanceUserSource,
+} from "../domains/runtime/background-maintenance-pulse.js";
 import {
   DistillationCrossDeviceCoordinator,
 } from "../domains/runtime/distillation-cross-device-coordinator.js";
@@ -217,6 +226,26 @@ export function createProcessRuntime(
     maxCostPerCycle: 4,
     maxConcurrent: 2,
   });
+  const topicResurfaceOpportunityConfig =
+    getTopicResurfaceOpportunityConfig(runtimeEnv);
+  const maintenancePulseConfig =
+    getBackgroundMaintenancePulseConfig(runtimeEnv);
+  const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
+  const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
+    maintenancePulseIntervalMs: maintenancePulseConfig.intervalMs,
+    decayEnabled: Boolean(memoryDecayConfig),
+    topicResurfaceMinIntervalMs:
+      topicResurfaceOpportunityConfig?.minIntervalMs ?? null,
+  });
+  const distillationPlan = backgroundOpportunityPolicy.plan(
+    "post_turn",
+    "distillation",
+  );
+  if (!distillationPlan) {
+    throw new Error(
+      "Production background policy must allow post-turn Distillation.",
+    );
+  }
   const nativeLiveBackgroundModelService =
     new NativeLiveBackgroundModelQueueService(
       new DrizzleNativeLiveBackgroundModelQueueRepository(db),
@@ -250,19 +279,30 @@ export function createProcessRuntime(
       distillationCrossDeviceCoordinator,
       DEFAULT_NATIVE_LIVE_SUBJECT_ID,
       {
-        priority: "consolidation",
-        cost: 1,
+        priority: distillationPlan.priority,
+        cost: distillationPlan.cost,
       },
     );
   const subjectStateBackgroundMaintenance =
     createDefaultSubjectStateBackgroundMaintenance(
       db,
       backgroundLoopOrchestrator,
+      memoryDecayConfig,
     );
+  const backgroundMaintenancePulse =
+    createBackgroundMaintenancePulse({
+      source: new DrizzleBackgroundMaintenanceUserSource(db),
+      maintenance: subjectStateBackgroundMaintenance,
+      policy: backgroundOpportunityPolicy,
+      subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+      config: {
+        userLimit: maintenancePulseConfig.userLimit,
+      },
+    });
   const nativeLivePostTurnBackgroundOpportunity =
     new NativeLivePostTurnBackgroundOpportunity(
       distillationCrossDeviceBackgroundTrigger,
-      subjectStateBackgroundMaintenance,
+      backgroundOpportunityPolicy,
     );
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
   const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
@@ -313,14 +353,20 @@ export function createProcessRuntime(
       distillationCrossDeviceCoordinator,
       topicResurfaceCrossDeviceCoordinator,
     ]);
-  const topicResurfaceOpportunityConfig =
-    getTopicResurfaceOpportunityConfig(runtimeEnv);
   const topicResurfaceCrossDeviceOpportunity =
     topicResurfaceOpportunityConfig
+      && backgroundOpportunityPolicy.plan(
+        "mac_idle",
+        "topic_resurface",
+      )
       ? new TopicResurfaceCrossDeviceOpportunity(
           topicResurfaceCrossDeviceCoordinator,
           DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-          topicResurfaceOpportunityConfig,
+          {
+            ...topicResurfaceOpportunityConfig,
+            minIntervalMs:
+              backgroundOpportunityPolicy.cadenceMs("mac_idle")!,
+          },
         )
       : undefined;
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
@@ -495,12 +541,14 @@ export function createProcessRuntime(
       sentinelScheduler.start();
       nativeLiveMindFollowUpScheduler.start();
       nativeLiveSemanticScheduler.start();
+      backgroundMaintenancePulse.start();
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
       sentinelScheduler.stopScheduling();
       nativeLiveMindFollowUpScheduler.stopScheduling();
       nativeLiveSemanticScheduler.stopScheduling();
+      backgroundMaintenancePulse.stopScheduling();
     },
     drainBackgroundWork: async () => {
       await Promise.all([
@@ -508,8 +556,10 @@ export function createProcessRuntime(
         sentinelScheduler.drain(),
         nativeLiveMindFollowUpScheduler.drain(),
         nativeLiveSemanticScheduler.drain(),
+        backgroundMaintenancePulse.drain(),
       ]);
-      // A durable Mind follow-up may offer background work while it drains.
+      // Durable follow-ups and the maintenance pulse may offer background
+      // work while producers drain.
       // Wait for that bounded cycle only after all opportunity producers above
       // have quiesced, otherwise shutdown could close the DB under a new job.
       await backgroundLoopOrchestrator.drain();

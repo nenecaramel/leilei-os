@@ -3,8 +3,8 @@ import type {
   NativeLiveDistillationTrigger,
 } from "./distillation-background-trigger.js";
 import type {
-  SubjectStateBackgroundMaintenance,
-} from "./subject-state-background-maintenance.js";
+  BackgroundOpportunityPolicy,
+} from "./background-opportunity-policy.js";
 
 export type NativeLiveBackgroundOpportunityInput =
   NativeLiveDistillationScheduleInput;
@@ -14,12 +14,12 @@ export interface NativeLiveBackgroundOpportunity {
 }
 
 /**
- * One post-turn opportunity fan-out.
+ * One durable post-turn opportunity.
  *
- * It is deliberately not a scheduler: no timer, cadence, retries, or durable
- * history live here. Each target owns its own coalescing / budget semantics in
- * the shared BackgroundLoopOrchestrator. Scheduling failures are fail-soft so
- * a completed foreground turn cannot be converted into failure.
+ * Immediate Subject State correctness is owned by settlement catch-up. Time
+ * based Thought / Drive / Topic maintenance is therefore not scheduled here;
+ * it belongs to maintenance_pulse. Post-turn is currently only a
+ * consolidation opportunity for Distillation.
  */
 export class NativeLivePostTurnBackgroundOpportunity
 implements NativeLiveBackgroundOpportunity {
@@ -28,23 +28,26 @@ implements NativeLiveBackgroundOpportunity {
       NativeLiveDistillationTrigger,
       "schedule"
     > | null,
-    private readonly subjectMaintenance: Pick<
-      SubjectStateBackgroundMaintenance,
-      "schedule"
-    > | null,
+    private readonly policy: Pick<
+      BackgroundOpportunityPolicy,
+      "decide"
+    >,
   ) {}
 
   schedule(input: NativeLiveBackgroundOpportunityInput): void {
-    try {
-      this.distillation?.schedule(input);
-    } catch {
-      // Background opportunity scheduling never changes foreground outcome.
+    const decision = this.policy.decide({
+      opportunity: "post_turn",
+    });
+    if (
+      !decision.targets.some(
+        (target) => target.kind === "distillation",
+      )
+    ) {
+      return;
     }
 
     try {
-      this.subjectMaintenance?.schedule({
-        userId: input.userId,
-      });
+      this.distillation?.schedule(input);
     } catch {
       // Background opportunity scheduling never changes foreground outcome.
     }

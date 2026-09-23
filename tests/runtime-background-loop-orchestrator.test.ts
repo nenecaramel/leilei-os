@@ -249,7 +249,7 @@ test("Background Loop Orchestrator validates operational budgets and jobs", () =
   assert.throws(
     () => orchestrator.schedule({
       key: "",
-      kind: "breath",
+      kind: "decay",
       priority: "consolidation",
       cost: 1,
       mutexKeys: [],
@@ -260,7 +260,7 @@ test("Background Loop Orchestrator validates operational budgets and jobs", () =
   assert.throws(
     () => orchestrator.schedule({
       key: "bad-cost",
-      kind: "breath",
+      kind: "decay",
       priority: "consolidation",
       cost: 0,
       mutexKeys: [],

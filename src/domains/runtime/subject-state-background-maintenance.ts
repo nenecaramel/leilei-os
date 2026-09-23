@@ -10,6 +10,12 @@ import {
 
 export type SubjectStateBackgroundRunner = SubjectStateEvolutionRunner;
 
+export type SubjectStateMaintenanceKind =
+  | "decay"
+  | "thought_evolution"
+  | "drive_evolution"
+  | "topic_lifecycle";
+
 export type SubjectStateBackgroundLoopPlan = {
   priority: BackgroundLoopPriority;
   cost: number;
@@ -70,7 +76,10 @@ export class SubjectStateBackgroundMaintenance {
     validateTopicPlan(config.topicLifecycle, runners);
   }
 
-  schedule(input: { userId: string }): void {
+  schedule(input: {
+    userId: string;
+    kinds?: readonly SubjectStateMaintenanceKind[];
+  }): void {
     const userId = input.userId.trim();
     if (!userId) {
       throw new Error(
@@ -81,8 +90,21 @@ export class SubjectStateBackgroundMaintenance {
       userId,
       subjectId: this.subjectId,
     });
+    const selected = new Set(
+      input.kinds
+        ?? [
+          "decay",
+          "thought_evolution",
+          "drive_evolution",
+          "topic_lifecycle",
+        ],
+    );
 
-    if (this.config.decay && this.runners.decay) {
+    if (
+      selected.has("decay")
+      && this.config.decay
+      && this.runners.decay
+    ) {
       this.scheduleOne({
         userId,
         mutex,
@@ -93,7 +115,8 @@ export class SubjectStateBackgroundMaintenance {
       });
     }
     if (
-      this.config.thoughtEvolution
+      selected.has("thought_evolution")
+      && this.config.thoughtEvolution
       && this.runners.thoughtEvolution
     ) {
       this.scheduleOne({
@@ -106,7 +129,8 @@ export class SubjectStateBackgroundMaintenance {
       });
     }
     if (
-      this.config.driveEvolution
+      selected.has("drive_evolution")
+      && this.config.driveEvolution
       && this.runners.driveEvolution
     ) {
       this.scheduleOne({
@@ -119,7 +143,8 @@ export class SubjectStateBackgroundMaintenance {
       });
     }
     if (
-      this.config.topicLifecycle
+      selected.has("topic_lifecycle")
+      && this.config.topicLifecycle
       && (
         this.runners.curiosityTopicProjection
         || this.runners.topicEvolution
