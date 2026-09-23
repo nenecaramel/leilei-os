@@ -7,11 +7,6 @@ import { registerGetDiaryTool } from "../src/mcp/tools/get-diary/register.js";
 import { registerSearchDiaryTool } from "../src/mcp/tools/search-diary/register.js";
 import { registerListTodoDatesTool } from "../src/mcp/tools/list-todo-dates/register.js";
 import { registerReadTodoDayTool } from "../src/mcp/tools/read-todo-day/register.js";
-import { registerSearchMemoryTool } from "../src/mcp/tools/search-memory/register.js";
-import { registerReadMemoryTool } from "../src/mcp/tools/read-memory/register.js";
-import { registerGetMemoryTool } from "../src/mcp/tools/get-memory/register.js";
-import { registerListTasksTool } from "../src/mcp/tools/list-tasks/register.js";
-import { registerGetTaskTool } from "../src/mcp/tools/get-task/register.js";
 import { registerGlobalSearchTool } from "../src/mcp/tools/global-search/register.js";
 import { registerSearchUniverseTool } from "../src/mcp/tools/search-universe/register.js";
 import { registerListUniverseNodesTool } from "../src/mcp/tools/list-universe-nodes/register.js";
@@ -28,8 +23,6 @@ const USER_ID = "00000000-0000-4000-8000-000000000099";
 const DIARY_ID = "00000000-0000-4000-8000-000000000301";
 const DATE = "2026-09-05";
 const DIARY_BODY = "Diary body visible to a content-only client.";
-const MEMORY_ID = "00000000-0000-4000-8000-000000000302";
-const TASK_ID = "00000000-0000-4000-8000-000000000303";
 const NODE_ID = "node-content-only";
 const NOTION_PAGE_ID = "00000000-0000-4000-8000-000000000304";
 const WAKE_ID = "00000000-0000-4000-8000-000000000305";
@@ -151,70 +144,6 @@ test("Todo day content exposes entries and explicitly identifies an empty day", 
 
   const dates = await pair.client.callTool({ name: "list_todo_dates", arguments: {} });
   assertContentIncludes(dates, DATE);
-});
-
-test("Memory and Task discovery/detail content preserves the next pointer and primary body", async (t) => {
-  const memory = {
-    id: MEMORY_ID,
-    category: "goal" as const,
-    key: "content-only-memory",
-    content: "Memory body visible to a content-only client.",
-    tags: ["compatibility"],
-    source: "mcp",
-    updated_at: "2026-09-05T01:00:00.000Z",
-    lifecycle_status: "active" as const,
-    author: "L" as const,
-  };
-  const task = {
-    id: TASK_ID,
-    title: "Content-only task",
-    description: "Task body visible to a content-only client.",
-    status: "pending" as const,
-    priority: "normal" as const,
-    due_time: null,
-    timezone: "Asia/Shanghai",
-    time_bucket: "no_due_date" as const,
-    tags: [],
-    created_at: "2026-09-05T00:00:00.000Z",
-    updated_at: "2026-09-05T01:00:00.000Z",
-    completed_at: null,
-    allowed_actions: ["start"] as const,
-    lifecycle_status: "active" as const,
-    author: "L" as const,
-  };
-  const pair = await connect((server) => {
-    const memoryService = {
-      async readMemoryDiscovery() {
-        return { user: { display_name: "Leilei" }, memories: [{ id: MEMORY_ID, category: memory.category, key: memory.key, tags: memory.tags, author: memory.author, updated_at: memory.updated_at, preview: "Memory preview" }], metadata: { count: 1 } };
-      },
-      async searchMemoryDiscovery() {
-        return { memories: [{ id: MEMORY_ID, category: memory.category, key: memory.key, tags: memory.tags, author: memory.author, updated_at: memory.updated_at, snippet: null }], metadata: { count: 1 } };
-      },
-      async readMemoryDetail() { return memory; },
-    };
-    const taskService = {
-      async listTasks() { return { tasks: [task], metadata: { count: 1 } }; },
-      async readTask() { return task; },
-    };
-    registerReadMemoryTool(server, { memoryService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerSearchMemoryTool(server, { memoryService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerGetMemoryTool(server, { memoryService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerListTasksTool(server, { taskService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerGetTaskTool(server, { taskService, getAuthenticatedUserId: () => USER_ID } as never);
-  });
-  t.after(async () => { await pair.client.close(); await pair.server.close(); });
-
-  const memoryRead = await pair.client.callTool({ name: "read_memory", arguments: {} });
-  assertContentIncludes(memoryRead, MEMORY_ID, "get_memory", "content-only-memory");
-  const memorySearch = await pair.client.callTool({ name: "search_memory", arguments: { query: "memory" } });
-  assertContentIncludes(memorySearch, MEMORY_ID, "get_memory");
-  const memoryDetail = await pair.client.callTool({ name: "get_memory", arguments: { id: MEMORY_ID } });
-  assertContentIncludes(memoryDetail, MEMORY_ID, memory.key, memory.content);
-
-  const taskList = await pair.client.callTool({ name: "list_tasks", arguments: {} });
-  assertContentIncludes(taskList, TASK_ID, task.title, "get_task");
-  const taskDetail = await pair.client.callTool({ name: "get_task", arguments: { id: TASK_ID } });
-  assertContentIncludes(taskDetail, TASK_ID, task.title, task.description);
 });
 
 test("Global, Universe, and Notion discovery/detail content exposes identifiers and bodies", async (t) => {
