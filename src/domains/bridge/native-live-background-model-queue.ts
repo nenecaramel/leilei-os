@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
@@ -97,8 +98,10 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       || existing.command.prompt_contract_version
         !== command.prompt_contract_version
       || existing.command.prompt !== command.prompt
-      || JSON.stringify(existing.workflow)
-        !== JSON.stringify(input.workflow ?? null)
+      || !isDeepStrictEqual(
+        existing.workflow,
+        input.workflow ?? null,
+      )
     ) {
       throw new NativeLiveBackgroundModelQueueError(
         "TASK_CONFLICT",
