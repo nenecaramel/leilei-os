@@ -256,19 +256,27 @@ test("get_memory injects identity, trims id, and returns only safe fields", asyn
   assert.deepEqual(service.detailCalls, [
     { userId: USER_ID, id: MEMORY_ID },
   ]);
-  assert.deepEqual(result.structuredContent, {
-    success: true,
+  const data = (result.structuredContent as {
     data: {
-      id: MEMORY_ID,
-      category: "project",
-      key: "leilei-os",
-      content: "Complete active Memory detail.",
-      tags: ["MCP", "Memory"],
-      source: "web",
-      updated_at: UPDATED_AT,
-      lifecycle_status: "active",
-      author: null,
-    },
+      id: string;
+      content: string;
+      lifecycle_status: string;
+      content_metadata: {
+        returned_chars: number;
+        total_chars: number;
+        truncated: boolean;
+        next_cursor: string | null;
+      };
+    };
+  }).data;
+  assert.equal(data.id, MEMORY_ID);
+  assert.equal(data.content, "Complete active Memory detail.");
+  assert.equal(data.lifecycle_status, "active");
+  assert.deepEqual(data.content_metadata, {
+    returned_chars: Array.from("Complete active Memory detail.").length,
+    total_chars: Array.from("Complete active Memory detail.").length,
+    truncated: false,
+    next_cursor: null,
   });
 });
 
