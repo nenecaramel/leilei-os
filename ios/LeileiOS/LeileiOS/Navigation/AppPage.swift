@@ -3,11 +3,8 @@ import SwiftUI
 enum AppPage: String, Identifiable {
     case home = "Home"
     case chat = "Chat"
-    case memory = "Memory"
     case diary = "Diary"
-    case task = "Task"
     case daySpace = "Day Space"
-    case sharedPaper = "Shared Paper"
     case conversations = "Conversations"
     case universe = "Universe"
     case sentinel = "Sentinel"
