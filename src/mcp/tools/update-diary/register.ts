@@ -8,6 +8,7 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
@@ -31,8 +32,7 @@ const updateDiaryDataSchema = z.object({
   updated_at: z.string().datetime(),
   lifecycle_status: z.literal("active"),
   author: contentAuthorSchema.nullable(),
-  detail_tool: z.literal("get_diary"),
-  detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
+  ...mcpMutationReceiptFields,
 });
 
 const updateDiaryOutputSchema = z.object({
@@ -68,8 +68,14 @@ export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateD
         updated_at: data.updated_at,
         lifecycle_status: "active" as const,
         author: data.author,
-        detail_tool: "get_diary" as const,
-        detail_arguments: { id: data.id, scope: "active" as const },
+        ...mcpMutationReceipt({
+          outcome: "applied",
+          entity_type: "diary",
+          entity_id: data.id,
+          revision: null,
+          detail_tool: "get_diary",
+          detail_arguments: { id: data.id, scope: "active" },
+        }),
       };
       return {
         content: [{ type: "text", text: joinMcpContentLines([
