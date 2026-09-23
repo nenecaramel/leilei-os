@@ -22,7 +22,7 @@ import {
 const inputSchema = z.object({
   page_id: z.string().trim().optional(),
   page_url: z.string().trim().url().optional(),
-  ...boundedReadInputSchemaFields(z),
+  ...boundedReadInputSchemaFields,
 }).strict();
 
 const pageSchema = z.object({
@@ -39,7 +39,7 @@ const outputSchema = z.object({
     content: z.string().max(60_000),
     block_count: z.number().int().min(0).max(500),
     truncated: z.boolean(),
-    content_metadata: boundedReadMetadataSchema(z),
+    content_metadata: boundedReadMetadataSchema,
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
