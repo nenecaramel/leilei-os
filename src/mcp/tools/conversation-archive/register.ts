@@ -374,7 +374,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("search_conversations", {
     title: "Search Conversation Archive",
-    description: "Search the authenticated user's current canonical Conversation Archive when the target domain is known to be past ChatGPT or Claude conversations. Results come from canonical messages after LeileiOS pruning/deletion, never directly from immutable raw exports. Each hit points to read_conversation for bounded model-readable context. Use global_search instead when the target domain is unknown.",
+    description: "Search canonical past ChatGPT/Claude conversations after pruning/deletion. Hits point to read_conversation for bounded context; raw exports are not searched directly. Use global_search when the target domain is unknown.",
     inputSchema: searchInputSchema,
     outputSchema: searchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -437,7 +437,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("read_conversation", {
     title: "Read Conversation",
-    description: "Read a bounded canonical Conversation transcript after an exact Conversation id is known. mode defaults to compact: a normal model-readable transcript with role, model, timestamps, and message identity, without canonical payloads or attachments. Use mode=full only when blocks, raw types, payloads, attachments, and provider metadata are needed. It reflects current LeileiOS state after conversation or branch deletion/pruning; immutable raw export blobs are not read. With message_id, returns context around the exact hit; otherwise page with offset/limit.",
+    description: "Read a bounded canonical Conversation by exact id. compact is the default model-readable transcript; use full only for blocks, payloads, attachments, or provider metadata. Reads current post-pruning/deletion state, not raw exports. message_id returns context around that hit; otherwise use offset/limit.",
     inputSchema: readInputSchema,
     outputSchema: readOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
