@@ -66,7 +66,9 @@ implements TopicResurfaceCandidatePort {
           )`,
         ),
       )
-      // Stable identity order only. This is not a preference/ranking signal.\n      // A Topic generation that already produced its derived Thought is\n      // ineligible before LIMIT, so completed rows cannot starve later work.
+      // Stable identity order only. This is not a preference/ranking signal.
+      // A Topic generation that already produced its derived Thought is
+      // ineligible before LIMIT, so completed rows cannot starve later work.
       .orderBy(asc(runtimeSubjectStates.id))
       .limit(input.limit);
 

@@ -85,5 +85,9 @@ export function isTerminalSubjectStateDisposition(
 export function requiresFullSubjectStatePayload(
   value: SubjectStateLifecycleDisposition,
 ): boolean {
-  return value !== "purged";
+  return (
+    value === "active"
+    || value === "fading"
+    || value === "archived"
+  );
 }

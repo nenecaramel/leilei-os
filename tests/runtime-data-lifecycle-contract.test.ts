@@ -87,6 +87,6 @@ test("archived is explicitly non-terminal while forgotten and purged are termina
   assert.equal(isTerminalSubjectStateDisposition("purged"), true);
 
   assert.equal(requiresFullSubjectStatePayload("archived"), true);
-  assert.equal(requiresFullSubjectStatePayload("forgotten"), true);
+  assert.equal(requiresFullSubjectStatePayload("forgotten"), false);
   assert.equal(requiresFullSubjectStatePayload("purged"), false);
 });
