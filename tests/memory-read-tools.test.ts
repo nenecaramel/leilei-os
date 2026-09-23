@@ -280,6 +280,69 @@ test("get_memory injects identity, trims id, and returns only safe fields", asyn
   });
 });
 
+test("get_memory continues Unicode-safe windows and rejects stale cursors", async (t) => {
+  const service = new MockMemoryReadService();
+  let updatedAt = UPDATED_AT;
+  service.readMemoryDetail = async (input) => {
+    service.detailCalls.push(input);
+    return {
+      id: MEMORY_ID,
+      category: "project",
+      key: "bounded",
+      content: "甲😀乙丙丁",
+      tags: [],
+      source: "web",
+      updated_at: updatedAt,
+      lifecycle_status: "active",
+      author: null,
+    };
+  };
+  const { client, server } = await connect(service);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const first = await client.callTool({
+    name: "get_memory",
+    arguments: { id: MEMORY_ID, max_chars: 2 },
+  });
+  const firstData = (first.structuredContent as {
+    data: {
+      content: string;
+      content_metadata: { next_cursor: string | null; truncated: boolean };
+    };
+  }).data;
+  assert.equal(firstData.content, "甲😀");
+  assert.equal(firstData.content_metadata.truncated, true);
+  assert.ok(firstData.content_metadata.next_cursor);
+
+  const second = await client.callTool({
+    name: "get_memory",
+    arguments: {
+      id: MEMORY_ID,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(
+    (second.structuredContent as { data: { content: string } }).data.content,
+    "乙丙",
+  );
+
+  updatedAt = "2026-07-30T08:00:00.000Z";
+  const stale = await client.callTool({
+    name: "get_memory",
+    arguments: {
+      id: MEMORY_ID,
+      max_chars: 2,
+      cursor: firstData.content_metadata.next_cursor,
+    },
+  });
+  assert.equal(stale.isError, true);
+  assert.match(textOf(stale), /cursor is invalid or stale/i);
+});
+
 test("Memory read tools preserve a C author in structured responses", async (t) => {
   const service = new MockMemoryReadService();
   service.author = "C";
