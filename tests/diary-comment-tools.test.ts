@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type {
-  AddDiaryCommentResult,
-  DiaryCommentResult,
-  ListDiaryCommentsResult,
+import {
+  DiaryCommentDomainError,
+  type AddDiaryCommentResult,
+  type DiaryCommentResult,
+  type ListDiaryCommentsResult,
 } from "../src/domains/diary/diary-comment-service.js";
 import type {
   AuthenticatedDiaryContext,
@@ -308,6 +309,45 @@ test("Diary comment MCP mutations bind authenticated identity and preserve revis
       detail_arguments: null,
     },
   );
+});
+
+test("Diary comment revision conflicts point to exact comment readback", async (t) => {
+  const comments = new CommentService();
+  comments.updateComment = async () => {
+    throw new DiaryCommentDomainError(
+      "COMMENT_REVISION_CONFLICT",
+      "private stale comment detail",
+    );
+  };
+  const pair = await connect(comments);
+  t.after(async () => {
+    await pair.client.close();
+    await pair.server.close();
+  });
+
+  const result = await pair.client.callTool({
+    name: "update_diary_comment",
+    arguments: {
+      id: COMMENT_ID,
+      expected_revision: 2,
+      content: "changed",
+    },
+  });
+
+  assert.equal(result.isError, true);
+  assert.deepEqual(
+    (result.structuredContent as any).error,
+    {
+      code: "COMMENT_REVISION_CONFLICT",
+      message: "Diary comment revision changed. Read the comment again before retrying.",
+      retryable: false,
+      reason: "stale_revision",
+      current_revision: null,
+      recommended_tool: "get_diary_comment",
+      recommended_arguments: { id: COMMENT_ID, scope: "active" },
+    },
+  );
+  assert.doesNotMatch(JSON.stringify(result), /private stale comment detail/);
 });
 
 test("get_diary returns a comment pagination pointer without embedding comments", async (t) => {
