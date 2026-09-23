@@ -506,6 +506,24 @@ test("write_todo_paper distinguishes bounded conflicts and sanitizes internal fa
     await fixture.server.close();
     assert.equal(response.isError, true);
     assert.match(JSON.stringify(response), expected);
+    if (error instanceof TodoServiceError && error.code === "TODO_PAPER_CONFLICT") {
+      assert.deepEqual(
+        (response.structuredContent as any).error,
+        {
+          code: "TODO_PAPER_CONFLICT",
+          message: "The Todo paper changed. Read the current paper and retry with its revision.",
+          retryable: false,
+          reason: "stale_revision",
+          current_revision: null,
+          recommended_tool: "read_todo_day",
+          recommended_arguments: { date: DATE, author: "L" },
+        },
+      );
+    }
+    if (error instanceof TodoServiceError && error.code === "IDEMPOTENCY_CONFLICT") {
+      assert.equal((response.structuredContent as any).error.reason, "idempotency_conflict");
+      assert.equal((response.structuredContent as any).error.retryable, false);
+    }
     assert.doesNotMatch(JSON.stringify(response), /private conflict|private entry|private SQL|Todo text/);
   }
 
