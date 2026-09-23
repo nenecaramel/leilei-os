@@ -11,6 +11,7 @@ import {
 import { invokeMcpWrite } from "../write-context.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import {
@@ -226,7 +227,7 @@ export function registerDiaryCommentTools(
             },
           };
         },
-        mapError: toSafeCommentError,
+        mapError: (error) => toSafeCommentError(error, { id }),
       }),
   );
 
@@ -374,7 +375,7 @@ export function registerDiaryCommentTools(
             },
           };
         },
-        mapError: toSafeCommentError,
+        mapError: (error) => toSafeCommentError(error, { id }),
       }),
   );
 
@@ -425,12 +426,15 @@ export function registerDiaryCommentTools(
             },
           };
         },
-        mapError: toSafeCommentError,
+        mapError: (error) => toSafeCommentError(error, { id }),
       }),
   );
 }
 
-function toSafeCommentError(error: unknown) {
+function toSafeCommentError(
+  error: unknown,
+  recoveryContext?: { id: string },
+) {
   if (error instanceof DiaryCommentAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",
@@ -453,6 +457,33 @@ function toSafeCommentError(error: unknown) {
                 : error.code === "IDEMPOTENCY_CONFLICT"
                   ? "This idempotency key was already used for a different Diary comment."
                   : "The Diary comment request is invalid.";
+    if (error.code === "COMMENT_REVISION_CONFLICT" && recoveryContext) {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "stale_revision",
+          recommendedTool: "get_diary_comment",
+          recommendedArguments: {
+            id: recoveryContext.id,
+            scope: "active",
+          },
+        }),
+      );
+    }
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, message);
   }
 
