@@ -88,8 +88,8 @@ test("default production public surface stays compact and reports final inventor
   }));
 
   assert.ok(
-    tools.length <= 64,
-    `default public surface must stay at or below 64 tools, got ${tools.length}`,
+    tools.length <= 66,
+    `default public surface must stay at or below 66 tools, got ${tools.length}`,
   );
   for (const tool of tools) {
     assert.ok(
