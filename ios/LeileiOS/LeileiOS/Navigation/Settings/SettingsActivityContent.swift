@@ -10,29 +10,27 @@ struct SettingsActivityContent: View {
             Section("Activity") {
                 switch loadState {
                 case .loading:
-                    HStack {
-                        Text("Loading…")
-                        Spacer()
-                        ProgressView()
-                    }
+                    SettingsSectionState(
+                        title: "Loading…",
+                        isLoading: true
+                    )
 
                 case .unavailable:
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Activity Unavailable")
-                        Text("Couldn’t load activity.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Retry") {
-                            Task {
-                                await loadActivity()
-                            }
+                    SettingsSectionState(
+                        title: "Activity Unavailable",
+                        message: "Couldn’t load activity.",
+                        actionTitle: "Retry"
+                    ) {
+                        Task {
+                            await loadActivity()
                         }
                     }
 
                 case .loaded(let records):
                     if records.isEmpty {
-                        Text("No Activity Yet")
-                            .foregroundStyle(.secondary)
+                        SettingsSectionState(
+                            title: "No Activity Yet"
+                        )
                     } else {
                         ForEach(records) { record in
                             SettingsActivityRow(record: record)
