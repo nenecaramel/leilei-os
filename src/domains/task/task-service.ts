@@ -102,6 +102,7 @@ export type ListTasksInput = {
   userId: string;
   limit?: number;
   query?: RawTaskListQuery;
+  offset?: number;
 };
 
 export type RawTaskListQuery = {
@@ -282,7 +283,7 @@ export class TaskService {
     const timezone = await this.getAccountTimezone(userId);
 
     const query = this.normalizeListQuery(input.query ?? {}, timezone);
-    const tasks = await this.repository.findTasks(userId, limit, query);
+    const tasks = await this.repository.findTasks(userId, limit, query, input.offset);
 
     return {
       tasks: tasks.map((task) =>
