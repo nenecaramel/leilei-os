@@ -16,9 +16,9 @@ struct SidebarView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
                         Text("Leilei OS")
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
                             .padding(.top, 18)
-                            .offset(x: titleHorizontalOffset, y: 16)
+                            .offset(x: titleHorizontalOffset, y: 18)
 
                         SidebarSection(
                             title: nil,
