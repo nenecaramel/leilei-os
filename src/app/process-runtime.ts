@@ -29,6 +29,11 @@ import {
   createDefaultBackendMindRuntime,
   createDefaultDriveSatisfactionService,
 } from "../domains/runtime/default-backend-mind-runtime.js";
+import {
+  deleteExpiredNativeLiveBackgroundModelJobsBatch,
+  DrizzleNativeLiveBackgroundModelQueueRepository,
+  NativeLiveBackgroundModelQueueService,
+} from "../domains/bridge/native-live-background-model-queue.js";
 import type {
   DriveSatisfactionService,
 } from "../domains/runtime/drive-satisfaction-runtime-repository.js";
@@ -55,7 +60,10 @@ import {
 } from "../mcp/server/idempotency-retention.js";
 import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
 import { createRetentionCoordinator } from "../domains/retention/retention-coordinator.js";
-import { DATA_IMPORT_RETENTION_DAYS } from "../domains/retention/retention-policy.js";
+import {
+  DATA_IMPORT_RETENTION_DAYS,
+  NATIVE_LIVE_BACKGROUND_MODEL_RETENTION_DAYS,
+} from "../domains/retention/retention-policy.js";
 import { DrizzleSentinelRepository } from "../domains/sentinel/sentinel-repository.js";
 import { SentinelService } from "../domains/sentinel/sentinel-service.js";
 import { DrizzleHealthRepository } from "../domains/health-v2/health-repository.js";
@@ -168,6 +176,10 @@ export function createProcessRuntime(
     new DrizzleNativeLiveBackendRelayRepository(db),
     nativeLiveTurnCoordinator,
   );
+  const nativeLiveBackgroundModelService =
+    new NativeLiveBackgroundModelQueueService(
+      new DrizzleNativeLiveBackgroundModelQueueRepository(db),
+    );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),
     nativeLiveTurnPort,
@@ -238,6 +250,18 @@ export function createProcessRuntime(
         retentionMs: BRIDGE_TERMINAL_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
         deleteBatch: (cutoff, limit) => deleteExpiredBridgeEventsBatch(db, cutoff, limit),
       },
+      {
+        policy: "native_live_background_model_jobs",
+        retentionMs:
+          NATIVE_LIVE_BACKGROUND_MODEL_RETENTION_DAYS
+          * 24 * 60 * 60 * 1_000,
+        deleteBatch: (cutoff, limit) =>
+          deleteExpiredNativeLiveBackgroundModelJobsBatch(
+            db,
+            cutoff,
+            limit,
+          ),
+      },
     ],
     observe: createRetentionObserver(logger),
   });
@@ -284,6 +308,7 @@ export function createProcessRuntime(
       webNativeLiveTurnReader: nativeLiveTurnPort,
       nativeLiveRelayService,
       nativeLiveSemanticService,
+      nativeLiveBackgroundModelService,
       webSentinelService: sentinelService,
       webSharedPaperService: sharedPaperService,
       webConversationImportService: conversationImportService,

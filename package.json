@@ -41,7 +41,7 @@
     "smoke:runtime-breath-e5-calibration": "tsx scripts/runtime-breath-e5-calibration.ts",
     "smoke:runtime-breath-e5-mind": "tsx scripts/runtime-breath-e5-mind-smoke.ts",
     "test:native-live-turn-db": "RUN_NATIVE_LIVE_TURN_DATABASE_TEST=1 tsx --test tests/native-live-backend-turn-repository.integration.test.ts",
-    "test:native-live-relay-db": "RUN_NATIVE_LIVE_RELAY_DATABASE_TEST=1 tsx --test tests/native-live-backend-relay.integration.test.ts",
+    "test:native-live-relay-db": "RUN_NATIVE_LIVE_RELAY_DATABASE_TEST=1 tsx --test tests/native-live-backend-relay.integration.test.ts tests/native-live-background-model-queue.integration.test.ts",
     "runtime:native-live-mac-daemon": "tsx scripts/native-live-mac-daemon.ts",
     "test:native-live-http-db": "RUN_NATIVE_LIVE_HTTP_DATABASE_TEST=1 tsx --test tests/native-live-http-relay.integration.test.ts",
     "test:native-live-followup-db": "RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST=1 tsx --test tests/native-live-mind-followup.integration.test.ts",
@@ -52,7 +52,7 @@
     "test:runtime-topic-db": "RUN_RUNTIME_TOPIC_DATABASE_TEST=1 tsx --test tests/runtime-topic-evolution-repository.integration.test.ts tests/runtime-curiosity-topic-projection-repository.integration.test.ts tests/runtime-topic-resurface-candidate-repository.integration.test.ts",
     "test:runtime-topic-resurface-eval": "tsx --test tests/runtime-topic-resurface-candidates.test.ts tests/runtime-topic-resurface-evaluation.test.ts tests/claude-code-topic-resurface-evaluator.test.ts tests/runtime-topic-resurface-internal-loop.test.ts tests/claude-code-topic-resurface-deliberator.test.ts tests/runtime-topic-resurface-retention-gate.test.ts tests/claude-code-topic-resurface-retention-evaluator.test.ts tests/runtime-topic-resurface-thought-materialization.test.ts tests/runtime-topic-resurface-background-trigger.test.ts",
     "test:runtime-topic-resurface-background": "tsx --test tests/runtime-topic-resurface-background-trigger.test.ts tests/runtime-topic-resurface-cadence.test.ts tests/runtime-topic-resurface-idle-opportunity.test.ts tests/native-live-mac-daemon-loop.test.ts tests/native-live-background-model-protocol.test.ts tests/native-live-mac-background-model-executor.test.ts",
-    "test:runtime-data-lifecycle": "tsx --test tests/runtime-data-lifecycle-contract.test.ts"
+    "test:runtime-data-lifecycle": "tsx --test tests/runtime-data-lifecycle-contract.test.ts tests/data-retention-policy.test.ts tests/data-retention-coordinator.test.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",

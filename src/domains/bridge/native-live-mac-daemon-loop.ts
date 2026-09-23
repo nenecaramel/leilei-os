@@ -9,12 +9,21 @@ import type {
   NativeLiveSemanticFallbackCode,
   NativeLiveSemanticScoringReservation,
 } from "./native-live-semantic-handshake.js";
+import type {
+  NativeLiveBackgroundModelCommand,
+  NativeLiveBackgroundModelExecutionResult,
+} from "./native-live-background-model-protocol.js";
 
 export type NativeLiveDaemonLeaseState = "acquired" | "renewed" | "busy";
 
 export type NativeLiveDaemonReservation = {
   reservationId: string;
   command: NativeLiveRuntimeCommand;
+};
+
+export type NativeLiveBackgroundModelReservation = {
+  reservationId: string;
+  command: NativeLiveBackgroundModelCommand;
 };
 
 export type NativeLiveDaemonRejectCode =
@@ -46,9 +55,30 @@ export type NativeLiveDaemonRunOutcome =
       outcome: "delivery_unknown";
       reservationId: string;
       result: NativeLiveRuntimeExecutionResult;
+    }
+  | {
+      outcome: "background_completed";
+      reservationId: string;
+      result: NativeLiveBackgroundModelExecutionResult;
+    }
+  | {
+      outcome: "background_delivery_unknown";
+      reservationId: string;
+      result: NativeLiveBackgroundModelExecutionResult;
     };
 
 export interface NativeLiveMacDaemonRelayClient {
+  reserveBackgroundModel?(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }): Promise<NativeLiveBackgroundModelReservation | null>;
+
+  submitBackgroundModelResult?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    result: NativeLiveBackgroundModelExecutionResult;
+  }): Promise<void>;
+
   reserveSemanticScoring?(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
@@ -107,6 +137,12 @@ export interface NativeLiveDaemonIdleOpportunity {
   offer(): void | Promise<void>;
 }
 
+export interface NativeLiveBackgroundModelExecutor {
+  execute(
+    command: unknown,
+  ): Promise<NativeLiveBackgroundModelExecutionResult>;
+}
+
 export class NativeLiveMacDaemonLoop {
   private running = false;
 
@@ -117,6 +153,8 @@ export class NativeLiveMacDaemonLoop {
     private readonly semanticScorer: BreathSemanticScorer | null = null,
     private readonly idleOpportunity:
       NativeLiveDaemonIdleOpportunity | null = null,
+    private readonly backgroundModelExecutor:
+      NativeLiveBackgroundModelExecutor | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -199,6 +237,43 @@ export class NativeLiveMacDaemonLoop {
             reservationId: semanticReservationId,
           };
         }
+
+        if (
+          this.backgroundModelExecutor
+          && this.relay.reserveBackgroundModel
+          && this.relay.submitBackgroundModelResult
+        ) {
+          const background =
+            await this.relay.reserveBackgroundModel({
+              listenerInstanceId: this.listenerInstanceId,
+              dispatchTarget: "claude_code",
+            });
+          if (background) {
+            const result =
+              await this.backgroundModelExecutor.execute(
+                background.command,
+              );
+            try {
+              await this.relay.submitBackgroundModelResult({
+                listenerInstanceId: this.listenerInstanceId,
+                reservationId: background.reservationId,
+                result,
+              });
+            } catch {
+              return {
+                outcome: "background_delivery_unknown",
+                reservationId: background.reservationId,
+                result,
+              };
+            }
+            return {
+              outcome: "background_completed",
+              reservationId: background.reservationId,
+              result,
+            };
+          }
+        }
+
         await this.bestEffortIdleOpportunity();
         return { outcome: "idle" };
       }

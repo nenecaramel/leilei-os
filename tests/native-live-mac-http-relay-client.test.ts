@@ -223,3 +223,67 @@ test("Mac HTTP relay client treats non-success responses as transport failures w
     /Native live relay request failed/u,
   );
 });
+
+
+test("Mac HTTP relay client transports background model reservations without user identity", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const responses = [
+    {
+      success: true,
+      data: {
+        reservationId: prepareId,
+        command: {
+          protocol_version: 1,
+          task_id: prepareId,
+          task_kind: "topic_resurface_retention",
+          prompt_contract_version: "topic-resurface-retention-v1",
+          prompt: "retain?",
+        },
+      },
+    },
+    { success: true, data: { accepted: true } },
+  ];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const reservation = await client.reserveBackgroundModel({
+    listenerInstanceId: listenerId,
+    dispatchTarget: "claude_code",
+  });
+  assert.equal(reservation?.reservationId, prepareId);
+  assert.equal("userId" in reservation!.command, false);
+
+  await client.submitBackgroundModelResult({
+    listenerInstanceId: listenerId,
+    reservationId: prepareId,
+    result: {
+      protocol_version: 1,
+      task_id: prepareId,
+      task_kind: "topic_resurface_retention",
+      status: "success",
+      final_text: '{"decision":"discard"}',
+    },
+  });
+
+  assert.deepEqual(calls.map((call) => call.url), [
+    "https://relay.example/internal/native-live-relay/background-model/reserve",
+    `https://relay.example/internal/native-live-relay/background-model/reservations/${prepareId}/result`,
+  ]);
+  assert.deepEqual(calls[0]?.body, {
+    listener_instance_id: listenerId,
+    dispatch_target: "claude_code",
+  });
+});

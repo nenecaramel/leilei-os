@@ -12,6 +12,10 @@ import type {
   NativeLiveSemanticFallbackCode,
   NativeLiveSemanticScoringReservation,
 } from "./native-live-semantic-handshake.js";
+import {
+  parseNativeLiveBackgroundModelCommand,
+  type NativeLiveBackgroundModelExecutionResult,
+} from "./native-live-background-model-protocol.js";
 
 type FetchLike = typeof fetch;
 
@@ -93,6 +97,43 @@ implements NativeLiveMacDaemonRelayClient {
       {
         listener_instance_id: input.listenerInstanceId,
         code: input.code,
+      },
+    );
+  }
+
+  async reserveBackgroundModel(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }) {
+    const data = await this.post("/background-model/reserve", {
+      listener_instance_id: input.listenerInstanceId,
+      dispatch_target: input.dispatchTarget,
+    });
+    if (data === null) return null;
+    const record = readRecord(data);
+    if (typeof record.reservationId !== "string") {
+      throw new Error(
+        "Native live background model reservation id is invalid.",
+      );
+    }
+    return {
+      reservationId: record.reservationId,
+      command: parseNativeLiveBackgroundModelCommand(
+        record.command,
+      ),
+    };
+  }
+
+  async submitBackgroundModelResult(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    result: NativeLiveBackgroundModelExecutionResult;
+  }): Promise<void> {
+    await this.post(
+      `/background-model/reservations/${encodeURIComponent(input.reservationId)}/result`,
+      {
+        listener_instance_id: input.listenerInstanceId,
+        result: input.result,
       },
     );
   }

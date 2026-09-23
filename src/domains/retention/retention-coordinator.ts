@@ -48,6 +48,20 @@ export type RetentionCoordinatorEvent =
       policy: "bridge_events";
       batches: number;
       durationMs: number;
+    }
+  | {
+      name: "native_live_background_model_jobs_cleanup_completed";
+      policy: "native_live_background_model_jobs";
+      deletedRows: number;
+      batches: number;
+      capped: boolean;
+      durationMs: number;
+    }
+  | {
+      name: "native_live_background_model_jobs_cleanup_failed";
+      policy: "native_live_background_model_jobs";
+      batches: number;
+      durationMs: number;
     };
 
 export type RetentionCoordinatorOptions = {
@@ -103,7 +117,9 @@ export function createRetentionCoordinator(
         ? "mcp_idempotency_cleanup_completed"
         : policy.policy === "data_import_runs"
           ? "data_import_runs_cleanup_completed"
-          : "bridge_events_cleanup_completed";
+          : policy.policy === "bridge_events"
+            ? "bridge_events_cleanup_completed"
+            : "native_live_background_model_jobs_cleanup_completed";
       emit({
         name: completedName,
         policy: policy.policy,
@@ -118,7 +134,9 @@ export function createRetentionCoordinator(
           ? "mcp_idempotency_cleanup_failed"
           : policy.policy === "data_import_runs"
             ? "data_import_runs_cleanup_failed"
-            : "bridge_events_cleanup_failed",
+            : policy.policy === "bridge_events"
+              ? "bridge_events_cleanup_failed"
+              : "native_live_background_model_jobs_cleanup_failed",
         policy: policy.policy,
         batches,
         durationMs: Math.max(0, now() - startedAt),

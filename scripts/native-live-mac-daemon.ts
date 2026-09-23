@@ -10,6 +10,9 @@ import {
   NativeLiveMacRuntimeExecutor,
 } from "../src/domains/bridge/native-live-mac-runtime-executor.js";
 import {
+  NativeLiveMacBackgroundModelExecutor,
+} from "../src/domains/bridge/native-live-mac-background-model-executor.js";
+import {
   LocalE5BreathSemanticScorer,
 } from "../src/domains/runtime/local-e5-embedding.js";
 
@@ -40,12 +43,16 @@ const relay = new NativeLiveMacHttpRelayClient(
 );
 const runtime = new HeadlessClaudeTransport();
 const executor = new NativeLiveMacRuntimeExecutor(runtime);
+const backgroundModelExecutor =
+  new NativeLiveMacBackgroundModelExecutor(runtime);
 const semanticScorer = new LocalE5BreathSemanticScorer();
 const loop = new NativeLiveMacDaemonLoop(
   listenerInstanceId,
   relay,
   executor,
   semanticScorer,
+  null,
+  backgroundModelExecutor,
 );
 
 let stopping = false;
@@ -76,6 +83,7 @@ while (!stopping) {
     if (
       outcome.outcome === "completed"
       || outcome.outcome === "semantic_completed"
+      || outcome.outcome === "background_completed"
     ) {
       continue;
     }

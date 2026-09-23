@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveMacDaemonLoop,
+  type NativeLiveBackgroundModelExecutor,
   type NativeLiveMacDaemonRelayClient,
   type NativeLivePreparedCommandExecutor,
 } from "../src/domains/bridge/native-live-mac-daemon-loop.js";
@@ -83,6 +84,35 @@ class FakeRelay implements NativeLiveMacDaemonRelayClient {
   }
 }
 
+class FakeBackgroundRelay extends FakeRelay {
+  backgroundReservation = {
+    reservationId: prepareId,
+    command: {
+      protocol_version: 1 as const,
+      task_id: prepareId,
+      task_kind: "topic_resurface_evaluate" as const,
+      prompt_contract_version: "topic-resurface-eval-v1",
+      prompt: "evaluate",
+    },
+  };
+  backgroundSubmitError: Error | null = null;
+
+  async reserveBackgroundModel(input: unknown) {
+    this.calls.push({ name: "reserveBackgroundModel", input });
+    return this.backgroundReservation;
+  }
+
+  async submitBackgroundModelResult(input: unknown) {
+    this.calls.push({
+      name: "submitBackgroundModelResult",
+      input,
+    });
+    if (this.backgroundSubmitError) {
+      throw this.backgroundSubmitError;
+    }
+  }
+}
+
 class FakeSemanticRelay extends FakeRelay {
   semanticReservation = {
     reservationId: prepareId,
@@ -142,6 +172,22 @@ class FakeExecutor implements NativeLivePreparedCommandExecutor {
     this.calls.push(input);
     if (this.error) throw this.error;
     return this.value;
+  }
+}
+
+class FakeBackgroundExecutor
+implements NativeLiveBackgroundModelExecutor {
+  calls: unknown[] = [];
+
+  async execute(input: unknown) {
+    this.calls.push(input);
+    return {
+      protocol_version: 1 as const,
+      task_id: prepareId,
+      task_kind: "topic_resurface_evaluate" as const,
+      status: "success" as const,
+      final_text: '{"decision":"quiet"}',
+    };
   }
 }
 
@@ -249,6 +295,76 @@ test("foreground or semantic work suppresses idle background opportunity", async
   );
   assert.equal((await semantic.runOnce()).outcome, "semantic_completed");
   assert.equal(offers, 0);
+});
+
+test("background model runs only after foreground and semantic queues are empty", async () => {
+  const relay = new FakeBackgroundRelay();
+  relay.reservation = null;
+  const foreground = new FakeExecutor();
+  const background = new FakeBackgroundExecutor();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    foreground,
+    null,
+    null,
+    background,
+  );
+
+  const outcome = await loop.runOnce();
+  assert.equal(outcome.outcome, "background_completed");
+  assert.equal(foreground.calls.length, 0);
+  assert.equal(background.calls.length, 1);
+  assert.deepEqual(
+    relay.calls.map((entry) => entry.name),
+    [
+      "renewLease",
+      "reserveNext",
+      "reserveBackgroundModel",
+      "submitBackgroundModelResult",
+    ],
+  );
+});
+
+test("foreground reservation suppresses background model reservation", async () => {
+  const relay = new FakeBackgroundRelay();
+  const background = new FakeBackgroundExecutor();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new FakeExecutor(),
+    null,
+    null,
+    background,
+  );
+
+  assert.equal((await loop.runOnce()).outcome, "completed");
+  assert.equal(
+    relay.calls.some(
+      (entry) => entry.name === "reserveBackgroundModel",
+    ),
+    false,
+  );
+  assert.equal(background.calls.length, 0);
+});
+
+test("background result callback ambiguity is surfaced without re-executing in the same cycle", async () => {
+  const relay = new FakeBackgroundRelay();
+  relay.reservation = null;
+  relay.backgroundSubmitError = new Error("timeout after write");
+  const background = new FakeBackgroundExecutor();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new FakeExecutor(),
+    null,
+    null,
+    background,
+  );
+
+  const outcome = await loop.runOnce();
+  assert.equal(outcome.outcome, "background_delivery_unknown");
+  assert.equal(background.calls.length, 1);
 });
 
 test("reserved command is marked started, executed once, then submitted once", async () => {

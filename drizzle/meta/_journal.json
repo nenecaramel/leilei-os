@@ -379,6 +379,13 @@
       "when": 1790089200000,
       "tag": "0053_runtime_drive_satisfaction",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790133600000,
+      "tag": "0054_native_live_background_model_jobs",
+      "breakpoints": true
     }
   ]
 }
