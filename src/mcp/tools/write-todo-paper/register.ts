@@ -109,7 +109,7 @@ function registerTodoPaperReplaceTool(
     },
     async ({ date, author, expected_revision, entries, idempotency_key }) =>
       invokeMcpWrite({
-        toolName,
+        toolName: "write_todo_paper",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           const data = await dependencies.todoService.replacePaperIdempotently({
