@@ -177,6 +177,80 @@ test("empty targeted queue returns idle without invoking Claude", async () => {
   );
 });
 
+test("pure idle daemon cycle offers one background opportunity", async () => {
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const executor = new FakeExecutor();
+  let offers = 0;
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    executor,
+    null,
+    {
+      async offer() {
+        offers += 1;
+      },
+    },
+  );
+
+  assert.deepEqual(await loop.runOnce(), { outcome: "idle" });
+  assert.equal(offers, 1);
+  assert.deepEqual(executor.calls, []);
+});
+
+test("idle opportunity failure is fail-soft and still returns idle", async () => {
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const executor = new FakeExecutor();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    executor,
+    null,
+    {
+      async offer() {
+        throw new Error("background unavailable");
+      },
+    },
+  );
+
+  assert.deepEqual(await loop.runOnce(), { outcome: "idle" });
+  assert.deepEqual(executor.calls, []);
+});
+
+test("foreground or semantic work suppresses idle background opportunity", async () => {
+  let offers = 0;
+  const opportunity = {
+    async offer() {
+      offers += 1;
+    },
+  };
+
+  const foregroundRelay = new FakeRelay();
+  const foreground = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    foregroundRelay,
+    new FakeExecutor(),
+    null,
+    opportunity,
+  );
+  assert.equal((await foreground.runOnce()).outcome, "completed");
+  assert.equal(offers, 0);
+
+  const semanticRelay = new FakeSemanticRelay();
+  semanticRelay.reservation = null;
+  const semantic = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    semanticRelay,
+    new FakeExecutor(),
+    new FakeSemanticScorer(),
+    opportunity,
+  );
+  assert.equal((await semantic.runOnce()).outcome, "semantic_completed");
+  assert.equal(offers, 0);
+});
+
 test("reserved command is marked started, executed once, then submitted once", async () => {
   const { relay, executor, loop } = setup();
 

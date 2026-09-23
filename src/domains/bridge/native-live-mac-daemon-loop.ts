@@ -103,6 +103,10 @@ export interface NativeLivePreparedCommandExecutor {
   execute(command: unknown): Promise<NativeLiveRuntimeExecutionResult>;
 }
 
+export interface NativeLiveDaemonIdleOpportunity {
+  offer(): void | Promise<void>;
+}
+
 export class NativeLiveMacDaemonLoop {
   private running = false;
 
@@ -111,6 +115,8 @@ export class NativeLiveMacDaemonLoop {
     private readonly relay: NativeLiveMacDaemonRelayClient,
     private readonly executor: NativeLivePreparedCommandExecutor,
     private readonly semanticScorer: BreathSemanticScorer | null = null,
+    private readonly idleOpportunity:
+      NativeLiveDaemonIdleOpportunity | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -187,12 +193,14 @@ export class NativeLiveMacDaemonLoop {
         dispatchTarget: "claude_code",
       });
       if (!reservation) {
-        return semanticReservationId
-          ? {
-              outcome: "semantic_completed",
-              reservationId: semanticReservationId,
-            }
-          : { outcome: "idle" };
+        if (semanticReservationId) {
+          return {
+            outcome: "semantic_completed",
+            reservationId: semanticReservationId,
+          };
+        }
+        await this.bestEffortIdleOpportunity();
+        return { outcome: "idle" };
       }
 
       try {
@@ -246,6 +254,15 @@ export class NativeLiveMacDaemonLoop {
       };
     } finally {
       this.running = false;
+    }
+  }
+
+  private async bestEffortIdleOpportunity(): Promise<void> {
+    try {
+      await this.idleOpportunity?.offer();
+    } catch {
+      // Background opportunity failure must never turn an idle poll into
+      // foreground Native Live failure.
     }
   }
 
