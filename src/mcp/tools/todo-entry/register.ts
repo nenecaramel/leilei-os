@@ -15,6 +15,7 @@ import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { MAX_TODO_ENTRIES } from "../../../domains/resource-limits.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
 const todoKindSchema = z.enum(["pending", "completed", "record"]);
@@ -77,15 +78,7 @@ const mutationOutputSchema = z.object({
   data: z.object({
     entry: entrySchema,
     paper_revision: z.number().int().min(1),
-    metadata: z.object({
-      committed: z.boolean(),
-      idempotent_replay: z.boolean(),
-    }).strict(),
-    detail_tool: z.literal("read_todo_day"),
-    detail_arguments: z.object({
-      date: dateSchema,
-      author: todoAuthorSchema,
-    }).strict(),
+    ...mcpMutationReceiptFields,
   }).optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -99,15 +92,7 @@ const batchMutationOutputSchema = z.object({
       }).strict(),
     ).min(1).max(MAX_TODO_ENTRIES),
     paper_revision: z.number().int().min(1),
-    metadata: z.object({
-      committed: z.boolean(),
-      idempotent_replay: z.boolean(),
-    }).strict(),
-    detail_tool: z.literal("read_todo_day"),
-    detail_arguments: z.object({
-      date: dateSchema,
-      author: todoAuthorSchema,
-    }).strict(),
+    ...mcpMutationReceiptFields,
   }).optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -118,15 +103,7 @@ const deleteOutputSchema = z.object({
     entry_id: z.string(),
     deleted: z.literal(true),
     paper_revision: z.number().int().min(1),
-    metadata: z.object({
-      committed: z.boolean(),
-      idempotent_replay: z.boolean(),
-    }).strict(),
-    detail_tool: z.literal("read_todo_day"),
-    detail_arguments: z.object({
-      date: dateSchema,
-      author: todoAuthorSchema,
-    }).strict(),
+    ...mcpMutationReceiptFields,
   }).optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -295,9 +272,16 @@ export function registerTodoEntryWriteTools(
             entry_id: result.entryId,
             deleted: true as const,
             paper_revision: result.paperRevision,
-            metadata: result.metadata,
-            detail_tool: "read_todo_day" as const,
-            detail_arguments: detailArguments,
+            ...mcpMutationReceipt({
+              outcome: mcpMutationOutcomeFromReplay(
+                result.metadata.idempotent_replay,
+              ),
+              entity_type: "todo_entry",
+              entity_id: result.entryId,
+              revision: null,
+              detail_tool: "read_todo_day",
+              detail_arguments: detailArguments,
+            }),
           };
           return {
             content: [{
@@ -331,9 +315,16 @@ function batchMutationSuccess(
       outcome: entry.outcome,
     })),
     paper_revision: result.paperRevision,
-    metadata: result.metadata,
-    detail_tool: "read_todo_day" as const,
-    detail_arguments: detailArguments,
+    ...mcpMutationReceipt({
+      outcome: mcpMutationOutcomeFromReplay(
+        result.metadata.idempotent_replay,
+      ),
+      entity_type: "todo_paper",
+      entity_id: `${date}:${author}`,
+      revision: result.paperRevision,
+      detail_tool: "read_todo_day",
+      detail_arguments: detailArguments,
+    }),
   };
   return {
     content: [{
@@ -363,9 +354,16 @@ function mutationSuccess(
       revision: result.entry.revision ?? 1,
     },
     paper_revision: result.paperRevision,
-    metadata: result.metadata,
-    detail_tool: "read_todo_day" as const,
-    detail_arguments: detailArguments,
+    ...mcpMutationReceipt({
+      outcome: mcpMutationOutcomeFromReplay(
+        result.metadata.idempotent_replay,
+      ),
+      entity_type: "todo_entry",
+      entity_id: result.entry.id,
+      revision: result.entry.revision ?? 1,
+      detail_tool: "read_todo_day",
+      detail_arguments: detailArguments,
+    }),
   };
   return {
     content: [{
