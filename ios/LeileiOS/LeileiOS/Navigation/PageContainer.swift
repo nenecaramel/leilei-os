@@ -11,6 +11,8 @@ struct PageContainer: View {
                     ChatView()
                 } else if selectedPage == .globalSearch {
                     GlobalSearchView()
+                } else if selectedPage == .diary {
+                    DiaryView()
                 } else {
                     PlaceholderPage(page: selectedPage)
                 }
@@ -30,7 +32,7 @@ struct PageContainer: View {
                 }
 
 
-                if selectedPage != .globalSearch {
+                if selectedPage != .globalSearch && selectedPage != .diary {
                     ToolbarItem(placement: .topBarTrailing) {
                         if selectedPage == .chat {
                             Button {
