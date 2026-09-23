@@ -107,6 +107,24 @@ test("typed Notion facade exposes intent-specific tools without action/body wrap
     ]) {
       assert.ok(field in dataProperties, `${tool.name} must expose ${field}`);
     }
+
+    const errorProperties = (tool.outputSchema as {
+      properties?: {
+        error?: {
+          properties?: Record<string, unknown>;
+        };
+      };
+    }).properties?.error?.properties;
+    assert.ok(errorProperties, `${tool.name} must expose structured errors`);
+    for (const field of [
+      "retryable",
+      "reason",
+      "current_revision",
+      "recommended_tool",
+      "recommended_arguments",
+    ]) {
+      assert.ok(field in errorProperties, `${tool.name} error must expose ${field}`);
+    }
   }
   assert.equal(
     tools.find((tool) => tool.name === "replace_notion_page_content")
