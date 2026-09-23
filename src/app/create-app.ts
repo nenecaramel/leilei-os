@@ -100,6 +100,8 @@ export type AppDependencies = {
   webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
   webNativeLiveCoordinator?: NativeLiveApiDependencies["coordinator"];
   webNativeLiveTurnReader?: NativeLiveApiDependencies["turnReader"];
+  webNativeLiveCurrentPathReader?:
+    NativeLiveApiDependencies["currentPathReader"];
   nativeLiveRelayService?:
     NativeLiveRelayInternalDependencies["relayService"]
     & NativeLiveApiDependencies["relayService"];
@@ -343,6 +345,8 @@ export function createApp(
     const webConversationImportHistoryService = dependencies.webConversationImportHistoryService;
     const webNativeLiveCoordinator = dependencies.webNativeLiveCoordinator;
     const webNativeLiveTurnReader = dependencies.webNativeLiveTurnReader;
+    const webNativeLiveCurrentPathReader =
+      dependencies.webNativeLiveCurrentPathReader;
 
     if (
       !webMemoryService ||
@@ -425,6 +429,12 @@ export function createApp(
                 coordinator: webNativeLiveCoordinator,
                 relayService: dependencies.nativeLiveRelayService,
                 turnReader: webNativeLiveTurnReader,
+                ...(webNativeLiveCurrentPathReader
+                  ? {
+                      currentPathReader:
+                        webNativeLiveCurrentPathReader,
+                    }
+                  : {}),
               },
             }
           : {}),
