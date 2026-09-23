@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TODO_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TodoServiceError,
   type ReplaceTodoPaperIdempotentlyServiceResult,
@@ -26,7 +27,7 @@ const todoEntryOutputSchema = z.object({
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
 
 const todoPaperSchema = z.object({
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   date: z.string(),
   revision: z.number().int().nonnegative(),
   entries: z.array(todoEntryOutputSchema),
@@ -34,7 +35,7 @@ const todoPaperSchema = z.object({
 
 const writeTodoPaperInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   expected_revision: mcpExpectedNullableRevisionSchema,
   entries: z.array(todoEntryInputSchema),
   idempotency_key: mcpIdempotencyKeySchema,
@@ -76,7 +77,7 @@ export function registerWriteTodoPaperTool(
     {
       title: "Save one Todo paper",
       description:
-        "Replace one complete L, G, or C Todo paper. Use expected_revision from read_todo_day as the paper concurrency precondition, or null only when creating a missing paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding multiple entries in one user intent, prefer append_todo_entries; for one entry, prefer append_todo_entry; for editing, completing, or deleting one existing entry, prefer update_todo_entry or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
+        TODO_DOMAIN_BOUNDARY + " Replace one complete L, G, or C Todo paper. Use expected_revision from read_todo_day as the paper concurrency precondition, or null only when creating a missing paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding multiple entries in one user intent, prefer append_todo_entries; for one entry, prefer append_todo_entry; for editing, completing, or deleting one existing entry, prefer update_todo_entry or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {
