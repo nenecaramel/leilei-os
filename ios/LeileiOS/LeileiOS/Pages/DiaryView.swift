@@ -58,6 +58,7 @@ struct DiaryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .searchable(text: $query, prompt: "Search")
+        .reportingSystemSearchControlCenter()
         .navigationDestination(isPresented: $archivePresented) {
             DiaryArchivePlaceholder()
         }
@@ -273,6 +274,7 @@ private struct DiaryList: View {
                             .listRowSeparator(.visible)
                     }
                 }
+                .listSectionSeparator(.hidden, edges: .top)
             }
         }
         .listStyle(.insetGrouped)
