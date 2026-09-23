@@ -129,6 +129,10 @@ test(
     });
     assert.equal(completed.status, "completed");
     assert.equal(completed.resultText, result.final_text);
+    assert.ok(
+      completed.consumedAt instanceof Date,
+      "generic terminal jobs are immediately consumed for TTL",
+    );
 
     const replay = await service.submitResult({
       userId,
@@ -138,10 +142,12 @@ test(
     });
     assert.equal(replay.status, "completed");
 
+    const expiredAt = new Date("2026-09-01T00:00:00.000Z");
     await database.db
       .update(nativeLiveBackgroundModelJobs)
       .set({
-        completedAt: new Date("2026-09-01T00:00:00.000Z"),
+        completedAt: expiredAt,
+        consumedAt: expiredAt,
       })
       .where(eq(nativeLiveBackgroundModelJobs.id, taskId));
 
