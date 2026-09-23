@@ -1566,6 +1566,10 @@ export const nativeLiveBackgroundModelJobs = pgTable(
         onUpdate: "cascade",
       }),
     subjectId: text("subject_id").notNull(),
+    workflowKind: varchar("workflow_kind", { length: 64 }),
+    workflowRunId: uuid("workflow_run_id"),
+    workflowPayload: jsonb("workflow_payload")
+      .$type<Record<string, unknown> | null>(),
     taskKind: varchar("task_kind", { length: 64 }).notNull(),
     promptContractVersion: varchar("prompt_contract_version", {
       length: 128,
@@ -1589,6 +1593,7 @@ export const nativeLiveBackgroundModelJobs = pgTable(
       .defaultNow()
       .notNull(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
   },
   (table) => [
     index("native_live_background_model_jobs_queue_idx").on(
@@ -1602,9 +1607,34 @@ export const nativeLiveBackgroundModelJobs = pgTable(
       table.completedAt,
       table.id,
     ),
+    index("native_live_background_model_jobs_workflow_idx").on(
+      table.userId,
+      table.subjectId,
+      table.workflowKind,
+      table.consumedAt,
+      table.createdAt,
+      table.id,
+    ),
+    uniqueIndex("native_live_background_model_jobs_run_stage_uidx").on(
+      table.workflowRunId,
+      table.taskKind,
+    ),
     check(
       "native_live_background_model_jobs_subject_not_blank",
       sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "native_live_background_model_jobs_workflow_consistency",
+      sql`(
+        ${table.workflowKind} IS NULL
+        AND ${table.workflowRunId} IS NULL
+        AND ${table.workflowPayload} IS NULL
+      ) OR (
+        ${table.workflowKind} = 'topic_resurface'
+        AND ${table.workflowRunId} IS NOT NULL
+        AND ${table.workflowPayload} IS NOT NULL
+        AND jsonb_typeof(${table.workflowPayload}) = 'object'
+      )`,
     ),
     check(
       "native_live_background_model_jobs_task_kind_allowed",
@@ -1621,6 +1651,11 @@ export const nativeLiveBackgroundModelJobs = pgTable(
     check(
       "native_live_background_model_jobs_status_allowed",
       sql`${table.status} IN ('pending', 'reserved', 'completed', 'failed')`,
+    ),
+    check(
+      "native_live_background_model_jobs_consumed_consistency",
+      sql`${table.consumedAt} IS NULL
+        OR ${table.status} IN ('completed', 'failed')`,
     ),
     check(
       "native_live_background_model_jobs_state_consistency",

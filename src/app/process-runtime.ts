@@ -34,6 +34,18 @@ import {
   DrizzleNativeLiveBackgroundModelQueueRepository,
   NativeLiveBackgroundModelQueueService,
 } from "../domains/bridge/native-live-background-model-queue.js";
+import {
+  TopicResurfaceCrossDeviceCoordinator,
+} from "../domains/runtime/topic-resurface-cross-device-coordinator.js";
+import {
+  DrizzleTopicResurfaceCandidatePort,
+} from "../domains/runtime/topic-resurface-candidate-runtime-repository.js";
+import {
+  TopicResurfaceCandidateService,
+} from "../domains/runtime/topic-resurface-candidates.js";
+import {
+  DrizzleTopicResurfaceThoughtMaterializationPort,
+} from "../domains/runtime/topic-resurface-thought-materialization-runtime-repository.js";
 import type {
   DriveSatisfactionService,
 } from "../domains/runtime/drive-satisfaction-runtime-repository.js";
@@ -103,6 +115,8 @@ type DatabaseResource = ReturnType<typeof createDatabase>;
 export type ProcessRuntime = {
   appDependencies: AppDependencies;
   driveSatisfactionService: DriveSatisfactionService;
+  topicResurfaceCrossDeviceCoordinator:
+    TopicResurfaceCrossDeviceCoordinator;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
   startBackgroundWork(): void;
@@ -179,6 +193,28 @@ export function createProcessRuntime(
   const nativeLiveBackgroundModelService =
     new NativeLiveBackgroundModelQueueService(
       new DrizzleNativeLiveBackgroundModelQueueRepository(db),
+    );
+  const topicResurfaceCrossDeviceCoordinator =
+    new TopicResurfaceCrossDeviceCoordinator(
+      nativeLiveBackgroundModelService,
+      new TopicResurfaceCandidateService(
+        new DrizzleTopicResurfaceCandidatePort(db),
+      ),
+      new DrizzleTopicResurfaceThoughtMaterializationPort(db),
+      {
+        ruleVersion: "topic-resurface-thought-v1",
+        processVersion: "topic-resurface-thought-materialization-v1",
+        deliberationPromptContractVersion:
+          "topic-resurface-deliberation-v1",
+        retentionPromptContractVersion:
+          "topic-resurface-retention-v1",
+        model: {
+          provider: "claude_code",
+          model: "runtime-selected",
+          configVersion: "cross-device-v1",
+          promptContractVersion: "topic-resurface-v1",
+        },
+      },
     );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),
@@ -290,6 +326,7 @@ export function createProcessRuntime(
     mcpSessionRegistry,
     logger,
     driveSatisfactionService,
+    topicResurfaceCrossDeviceCoordinator,
     appDependencies: {
       logger,
       webMemoryService: memoryService,
@@ -309,6 +346,8 @@ export function createProcessRuntime(
       nativeLiveRelayService,
       nativeLiveSemanticService,
       nativeLiveBackgroundModelService,
+      nativeLiveBackgroundModelCoordinator:
+        topicResurfaceCrossDeviceCoordinator,
       webSentinelService: sentinelService,
       webSharedPaperService: sharedPaperService,
       webConversationImportService: conversationImportService,

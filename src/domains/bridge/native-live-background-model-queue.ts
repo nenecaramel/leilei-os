@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   nativeLiveBackgroundModelJobs,
@@ -24,15 +24,23 @@ export type NativeLiveBackgroundModelReservation = {
   command: NativeLiveBackgroundModelCommand;
 };
 
+export type NativeLiveBackgroundModelWorkflow = {
+  kind: "topic_resurface";
+  runId: string;
+  payload: Record<string, unknown>;
+};
+
 export type NativeLiveBackgroundModelJob = {
   id: string;
   userId: string;
   subjectId: string;
+  workflow: NativeLiveBackgroundModelWorkflow | null;
   command: NativeLiveBackgroundModelCommand;
   status: "pending" | "reserved" | "completed" | "failed";
   reservedBy: string | null;
   resultText: string | null;
   errorCode: string | null;
+  consumedAt: Date | null;
 };
 
 export class NativeLiveBackgroundModelQueueError extends Error {
@@ -54,6 +62,7 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
     userId: string;
     subjectId: string;
     command: NativeLiveBackgroundModelCommand;
+    workflow?: NativeLiveBackgroundModelWorkflow;
   }): Promise<NativeLiveBackgroundModelJob> {
     const command = parseNativeLiveBackgroundModelCommand(input.command);
     const subjectId = input.subjectId.trim();
@@ -67,6 +76,9 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
         id: command.task_id,
         userId: input.userId,
         subjectId,
+        workflowKind: input.workflow?.kind ?? null,
+        workflowRunId: input.workflow?.runId ?? null,
+        workflowPayload: input.workflow?.payload ?? null,
         taskKind: command.task_kind,
         promptContractVersion: command.prompt_contract_version,
         prompt: command.prompt,
@@ -85,6 +97,8 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       || existing.command.prompt_contract_version
         !== command.prompt_contract_version
       || existing.command.prompt !== command.prompt
+      || JSON.stringify(existing.workflow)
+        !== JSON.stringify(input.workflow ?? null)
     ) {
       throw new NativeLiveBackgroundModelQueueError(
         "TASK_CONFLICT",
@@ -253,6 +267,7 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
                 resultText: parsedResult.final_text,
                 errorCode: null,
                 completedAt,
+                consumedAt: current.workflow ? null : completedAt,
                 updatedAt: completedAt,
               }
             : {
@@ -263,6 +278,7 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
                 resultText: null,
                 errorCode: parsedResult.error_code,
                 completedAt,
+                consumedAt: current.workflow ? null : completedAt,
                 updatedAt: completedAt,
               },
         )
@@ -308,6 +324,9 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
         id: nativeLiveBackgroundModelJobs.id,
         userId: nativeLiveBackgroundModelJobs.userId,
         subjectId: nativeLiveBackgroundModelJobs.subjectId,
+        workflowKind: nativeLiveBackgroundModelJobs.workflowKind,
+        workflowRunId: nativeLiveBackgroundModelJobs.workflowRunId,
+        workflowPayload: nativeLiveBackgroundModelJobs.workflowPayload,
         taskKind: nativeLiveBackgroundModelJobs.taskKind,
         promptContractVersion:
           nativeLiveBackgroundModelJobs.promptContractVersion,
@@ -316,6 +335,7 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
         reservedBy: nativeLiveBackgroundModelJobs.reservedBy,
         resultText: nativeLiveBackgroundModelJobs.resultText,
         errorCode: nativeLiveBackgroundModelJobs.errorCode,
+        consumedAt: nativeLiveBackgroundModelJobs.consumedAt,
       })
       .from(nativeLiveBackgroundModelJobs)
       .where(
@@ -335,6 +355,16 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       id: row.id,
       userId: row.userId,
       subjectId: row.subjectId,
+      workflow:
+        row.workflowKind === "topic_resurface"
+        && row.workflowRunId
+        && row.workflowPayload
+          ? {
+              kind: "topic_resurface",
+              runId: row.workflowRunId,
+              payload: row.workflowPayload,
+            }
+          : null,
       command: parseNativeLiveBackgroundModelCommand({
         protocol_version: 1,
         task_id: row.id,
@@ -346,7 +376,91 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       reservedBy: row.reservedBy,
       resultText: row.resultText,
       errorCode: row.errorCode,
+      consumedAt: row.consumedAt,
     };
+  }
+
+  async findOpenTopicResurface(input: {
+    userId: string;
+    subjectId: string;
+  }): Promise<NativeLiveBackgroundModelJob | null> {
+    const [row] = await this.db
+      .select({ id: nativeLiveBackgroundModelJobs.id })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(
+        and(
+          eq(nativeLiveBackgroundModelJobs.userId, input.userId),
+          eq(nativeLiveBackgroundModelJobs.subjectId, input.subjectId),
+          eq(nativeLiveBackgroundModelJobs.workflowKind, "topic_resurface"),
+          or(
+            eq(nativeLiveBackgroundModelJobs.status, "pending"),
+            eq(nativeLiveBackgroundModelJobs.status, "reserved"),
+            and(
+              or(
+                eq(nativeLiveBackgroundModelJobs.status, "completed"),
+                eq(nativeLiveBackgroundModelJobs.status, "failed"),
+              ),
+              isNull(nativeLiveBackgroundModelJobs.consumedAt),
+            ),
+          ),
+        ),
+      )
+      .orderBy(
+        asc(nativeLiveBackgroundModelJobs.createdAt),
+        asc(nativeLiveBackgroundModelJobs.id),
+      )
+      .limit(1);
+    return row
+      ? this.get({ userId: input.userId, taskId: row.id })
+      : null;
+  }
+
+  async findNextUnconsumedTerminal(input: {
+    userId: string;
+  }): Promise<NativeLiveBackgroundModelJob | null> {
+    const [row] = await this.db
+      .select({ id: nativeLiveBackgroundModelJobs.id })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(
+        and(
+          eq(nativeLiveBackgroundModelJobs.userId, input.userId),
+          eq(nativeLiveBackgroundModelJobs.workflowKind, "topic_resurface"),
+          isNull(nativeLiveBackgroundModelJobs.consumedAt),
+          or(
+            eq(nativeLiveBackgroundModelJobs.status, "completed"),
+            eq(nativeLiveBackgroundModelJobs.status, "failed"),
+          ),
+        ),
+      )
+      .orderBy(
+        asc(nativeLiveBackgroundModelJobs.completedAt),
+        asc(nativeLiveBackgroundModelJobs.id),
+      )
+      .limit(1);
+    return row
+      ? this.get({ userId: input.userId, taskId: row.id })
+      : null;
+  }
+
+  async markConsumed(input: {
+    userId: string;
+    taskId: string;
+  }): Promise<void> {
+    const consumedAt = new Date();
+    await this.db
+      .update(nativeLiveBackgroundModelJobs)
+      .set({ consumedAt, updatedAt: consumedAt })
+      .where(
+        and(
+          eq(nativeLiveBackgroundModelJobs.userId, input.userId),
+          eq(nativeLiveBackgroundModelJobs.id, input.taskId),
+          isNull(nativeLiveBackgroundModelJobs.consumedAt),
+          or(
+            eq(nativeLiveBackgroundModelJobs.status, "completed"),
+            eq(nativeLiveBackgroundModelJobs.status, "failed"),
+          ),
+        ),
+      );
   }
 }
 
@@ -360,6 +474,7 @@ export class NativeLiveBackgroundModelQueueService {
     userId: string;
     subjectId: string;
     command: NativeLiveBackgroundModelCommand;
+    workflow?: NativeLiveBackgroundModelWorkflow;
   }): Promise<NativeLiveBackgroundModelJob> {
     return this.repository.stage(input);
   }
@@ -378,6 +493,26 @@ export class NativeLiveBackgroundModelQueueService {
     result: NativeLiveBackgroundModelExecutionResult;
   }): Promise<NativeLiveBackgroundModelJob> {
     return this.repository.submitResult(input);
+  }
+
+  findOpenTopicResurface(input: {
+    userId: string;
+    subjectId: string;
+  }): Promise<NativeLiveBackgroundModelJob | null> {
+    return this.repository.findOpenTopicResurface(input);
+  }
+
+  findNextUnconsumedTerminal(input: {
+    userId: string;
+  }): Promise<NativeLiveBackgroundModelJob | null> {
+    return this.repository.findNextUnconsumedTerminal(input);
+  }
+
+  markConsumed(input: {
+    userId: string;
+    taskId: string;
+  }): Promise<void> {
+    return this.repository.markConsumed(input);
   }
 }
 
@@ -401,8 +536,9 @@ export async function deleteExpiredNativeLiveBackgroundModelJobsBatch(
       SELECT id
       FROM native_live_background_model_jobs
       WHERE status IN ('completed', 'failed')
-        AND completed_at < ${cutoff.toISOString()}::timestamptz
-      ORDER BY completed_at ASC, id ASC
+        AND consumed_at IS NOT NULL
+        AND consumed_at < ${cutoff.toISOString()}::timestamptz
+      ORDER BY consumed_at ASC, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     `);

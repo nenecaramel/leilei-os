@@ -22,6 +22,9 @@ import {
   parseNativeLiveBackgroundModelExecutionResult,
   type NativeLiveBackgroundModelExecutionResult,
 } from "../domains/bridge/native-live-background-model-protocol.js";
+import type {
+  TopicResurfaceCrossDeviceCoordinator,
+} from "../domains/runtime/topic-resurface-cross-device-coordinator.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -40,6 +43,10 @@ export type NativeLiveRelayInternalDependencies = {
   backgroundModelService?: Pick<
     NativeLiveBackgroundModelQueueService,
     "reserveNext" | "submitResult"
+  >;
+  backgroundModelCoordinator?: Pick<
+    TopicResurfaceCrossDeviceCoordinator,
+    "advanceNextForUser"
   >;
 };
 
@@ -218,6 +225,10 @@ function reserveBackgroundModelHandler(
     }
 
     try {
+      await bestEffortAdvanceBackgroundWorkflow(
+        dependencies,
+        userId,
+      );
       const reservation =
         await dependencies.backgroundModelService.reserveNext({
           userId,
@@ -254,6 +265,10 @@ function submitBackgroundModelResultHandler(
         taskId: reservationId,
         result: body.result,
       });
+      await bestEffortAdvanceBackgroundWorkflow(
+        dependencies,
+        userId,
+      );
       response.json({
         success: true,
         data: { accepted: true },
@@ -649,6 +664,20 @@ function sendSemanticError(
       message: "Native live semantic scoring is temporarily unavailable.",
     },
   });
+}
+
+async function bestEffortAdvanceBackgroundWorkflow(
+  dependencies: NativeLiveRelayInternalDependencies,
+  userId: string,
+): Promise<void> {
+  try {
+    await dependencies.backgroundModelCoordinator?.advanceNextForUser({
+      userId,
+    });
+  } catch {
+    // A terminal result is already durable. Recovery happens on the next
+    // reserve call; workflow advancement must not turn delivery into failure.
+  }
 }
 
 function sendBackgroundModelError(
