@@ -11,7 +11,7 @@ import {
   type TodoEntryDeleteServiceResult,
   type TodoEntryMutationServiceResult,
 } from "../../../domains/todo/todo-service.js";
-import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { MAX_TODO_ENTRIES } from "../../../domains/resource-limits.js";
@@ -177,7 +177,7 @@ export function registerTodoEntryWriteTools(
           });
           return batchMutationSuccess(date, author, result);
         },
-        mapError: toSafeTodoEntryWriteError,
+        mapError: (error) => toSafeTodoEntryWriteError(error, { date, author }),
       }),
   );
 
@@ -206,7 +206,7 @@ export function registerTodoEntryWriteTools(
           });
           return mutationSuccess("append", date, author, result);
         },
-        mapError: toSafeTodoEntryWriteError,
+        mapError: (error) => toSafeTodoEntryWriteError(error, { date, author }),
       }),
   );
 
@@ -240,7 +240,7 @@ export function registerTodoEntryWriteTools(
           });
           return mutationSuccess("update", date, author, result);
         },
-        mapError: toSafeTodoEntryWriteError,
+        mapError: (error) => toSafeTodoEntryWriteError(error, { date, author }),
       }),
   );
 
@@ -295,7 +295,7 @@ export function registerTodoEntryWriteTools(
             structuredContent: { success: true as const, data },
           };
         },
-        mapError: toSafeTodoEntryWriteError,
+        mapError: (error) => toSafeTodoEntryWriteError(error, { date, author }),
       }),
   );
 }
@@ -378,7 +378,10 @@ function mutationSuccess(
   };
 }
 
-function toSafeTodoEntryWriteError(error: unknown) {
+function toSafeTodoEntryWriteError(
+  error: unknown,
+  context?: { date: string; author: "L" | "G" | "C" },
+) {
   if (error instanceof TodoEntryWriteAuthenticationError) {
     return createMcpToolError("AUTHENTICATION_REQUIRED", "Authentication is required to write Todo.");
   }
@@ -393,6 +396,30 @@ function toSafeTodoEntryWriteError(error: unknown) {
             : error.code === "IDEMPOTENCY_CONFLICT"
               ? "This idempotency key was already used for a different Todo entry mutation."
               : "The Todo entry request is invalid.";
+    if (error.code === "TODO_ENTRY_CONFLICT" && context) {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "stale_revision",
+          recommendedTool: "read_todo_day",
+          recommendedArguments: context,
+        }),
+      );
+    }
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
     return createMcpToolError(error.code, text);
   }
   console.error(
