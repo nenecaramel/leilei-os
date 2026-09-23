@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import {
   DiaryDomainError,
   type SearchDiaryDiscoveryResult,
@@ -30,7 +31,7 @@ const searchDiaryInputSchema = z
     query: z.string().trim().max(200).optional(),
     tag: z.string().trim().min(1).max(50).optional(),
     mood: z.string().trim().min(1).max(50).optional(),
-    author: contentAuthorSchema.optional(),
+    author: contentAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
     date_from: dateSchema.optional(),
     date_to: dateSchema.optional(),
     limit: z.number().int().min(1).max(50).default(50).optional(),
@@ -87,7 +88,7 @@ export function registerSearchDiaryTool(
     {
       title: "Search diary entries",
       description:
-        "Discover or search authorized Diary entries using optional text, exact tag, mood, author, and inclusive calendar-date filters. Results are compact and omit Diary body content; use get_diary for authoritative bounded detail and continue with its content cursor when needed. When has_more is true, continue this result set by passing next_cursor back as cursor with the same filters.",
+        DIARY_DOMAIN_BOUNDARY + " Discover or search authorized Diary entries using optional text, exact tag, mood, author, and inclusive calendar-date filters. Results are compact and omit Diary body content; use get_diary for authoritative bounded detail and continue with its content cursor when needed. When has_more is true, continue this result set by passing next_cursor back as cursor with the same filters.",
       inputSchema: searchDiaryInputSchema,
       outputSchema: searchDiaryOutputSchema,
       annotations: {
