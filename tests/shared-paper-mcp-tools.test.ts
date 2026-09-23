@@ -307,7 +307,7 @@ test("Shared Paper MCP mutation receipts distinguish fresh commits from idempote
   const createdReplay = await fixture.client.callTool({ name: "create_shared_paper", arguments: createArgs });
   assert.equal((created.structuredContent as any).data.outcome, "applied");
   assert.equal((createdReplay.structuredContent as any).data.outcome, "replayed");
-  assert.match(String(created.content?.[0]?.text), /committed/);
+  assert.match(String(created.content?.[0]?.text), /applied/);
   assert.match(String(createdReplay.content?.[0]?.text), /replayed/);
 
   const editArgs = { id, expected_revision: 1, author: "G", match_text: "canonical", replacement_text: "updated", idempotency_key: "shared.paper:receipt-0002" };
