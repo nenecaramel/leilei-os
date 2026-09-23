@@ -146,7 +146,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search only for cross-domain discovery when the target domain is unknown or genuinely spans LeileiOS domains. It does not replace domain-specific detail or mutation tools. Defaults remain Memory, Diary, Task, Todo, Universe, and Shared Paper; Conversation Archive is supported but opt-in via modules=['conversation', ...] so its large message corpus does not change default six-domain search. When the domain is known, prefer that domain's dedicated browse/search/detail tool; use search_conversations for past ChatGPT/Claude messages. Conversation results point to read_conversation with the exact canonical message and saved view. Use scope=all only for explicit historical/all-record intent. No results means nothing was found: never invent an answer.",
+    description: "Use global_search for cross-domain discovery when the target domain is unknown or spans domains. It does not replace domain-specific detail or mutation tools. Defaults: Memory, Diary, Task, Todo, Universe, Shared Paper; Conversation is opt-in via modules. When the domain is known, prefer that domain's dedicated tools; use search_conversations for past ChatGPT/Claude messages. Use scope=all only for explicit historical intent. No results means nothing was found: never invent an answer.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
