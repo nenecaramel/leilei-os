@@ -65,7 +65,11 @@ struct DiaryView: View {
         .background(Color(.systemBackground))
         .searchable(text: $query, prompt: "Search")
         .navigationDestination(isPresented: $archivePresented) {
-            DiaryArchivePlaceholder()
+            DiaryArchiveView {
+                Task {
+                    await loadDiary()
+                }
+            }
         }
         .navigationDestination(isPresented: $createPresented) {
             DiaryCreateView {
@@ -275,39 +279,293 @@ private struct DiaryCustomDateRangeSheet: View {
     }
 }
 
-private struct DiaryArchivePlaceholder: View {
+private struct DiaryArchiveView: View {
+    let onActiveDiaryChanged: () -> Void
+
     @EnvironmentObject private var appModel: AppModel
+    @State private var state: DiaryArchiveLoadState = .loading
     @State private var diaryCount: Int?
 
     var body: some View {
-        Color(.systemBackground)
-            .ignoresSafeArea()
-            .navigationTitle("Archive")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    DiaryNavigationTitle(
-                        title: "Archive",
-                        count: diaryCount
+        Group {
+            switch state {
+            case .loading:
+                ProgressView("Loading Archive…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            case .unavailable(let message):
+                ContentUnavailableView(
+                    "Archive Unavailable",
+                    systemImage: "archivebox",
+                    description: Text(message)
+                )
+
+            case .loaded(let diaries):
+                if diaries.isEmpty {
+                    ContentUnavailableView(
+                        "No Archived Diaries",
+                        systemImage: "archivebox"
                     )
+                } else {
+                    DiaryArchiveList(diaries: diaries) {
+                        Task {
+                            await loadArchive()
+                        }
+                        onActiveDiaryChanged()
+                    }
                 }
             }
-            .task {
-                await loadCount()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+        .navigationTitle("Archive")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                DiaryNavigationTitle(
+                    title: "Archive",
+                    count: diaryCount
+                )
             }
+        }
+        .task {
+            await loadArchive()
+        }
+        .refreshable {
+            await loadArchive()
+        }
     }
 
     @MainActor
-    private func loadCount() async {
+    private func loadArchive() async {
+        state = .loading
+
         do {
             let response: DiaryListEnvelope = try await appModel.api.request(
                 path: "/api/v1/diary/archived"
             )
             diaryCount = response.data.metadata.count
+            state = .loaded(response.data.diaries)
         } catch {
-            diaryCount = nil
+            state = .unavailable(error.localizedDescription)
         }
     }
+}
+
+private struct DiaryArchiveList: View {
+    let diaries: [DiaryEntry]
+    let onChanged: () -> Void
+
+    var body: some View {
+        List {
+            ForEach(DiaryMonthGroup.make(from: diaries)) { group in
+                Section(group.title) {
+                    ForEach(Array(group.diaries.enumerated()), id: \.element.id) { index, diary in
+                        NavigationLink {
+                            DiaryArchivedDetailView(
+                                diaryID: diary.id,
+                                onChanged: onChanged
+                            )
+                        } label: {
+                            DiaryRow(diary: diary)
+                        }
+                        .listRowBackground(Color(.systemBackground))
+                        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                        .listRowSeparator(
+                            index == group.diaries.count - 1 ? .hidden : .visible,
+                            edges: .bottom
+                        )
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+    }
+}
+
+private struct DiaryArchivedDetailView: View {
+    let diaryID: String
+    let onChanged: () -> Void
+
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var state: DiaryDetailLoadState = .loading
+    @State private var isRestoring = false
+    @State private var showingRestoreConfirmation = false
+    @State private var actionError: String?
+
+    var body: some View {
+        Group {
+            switch state {
+            case .loading:
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            case .unavailable(let message):
+                ContentUnavailableView(
+                    "Diary Unavailable",
+                    systemImage: "book.closed",
+                    description: Text(message)
+                )
+
+            case .loaded(let diary):
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        DiaryReadingContent(diary: diary)
+
+                        DiaryArchivedCommentsSection(
+                            comments: diary.comments ?? [],
+                            count: diary.commentsMetadata?.count
+                                ?? diary.comments?.count
+                                ?? 0
+                        )
+                        .padding(.top, 24)
+
+                        if let actionError {
+                            Text(actionError)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 12)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 32)
+                }
+                .background(Color(.systemBackground))
+            }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                if case .loaded(let diary) = state {
+                    Text(DiaryDate.formatDetail(diary.date))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Restore") {
+                        showingRestoreConfirmation = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 18, weight: .medium))
+                }
+                .accessibilityLabel("Archived diary actions")
+                .disabled(isRestoring)
+            }
+        }
+        .alert(
+            "Restore this diary?",
+            isPresented: $showingRestoreConfirmation
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button("Restore") {
+                Task {
+                    await restoreDiary()
+                }
+            }
+        }
+        .task(id: diaryID) {
+            await loadDetail()
+        }
+    }
+
+    @MainActor
+    private func loadDetail() async {
+        state = .loading
+
+        do {
+            let response: DiaryEntryEnvelope = try await appModel.api.request(
+                path: "/api/v1/diary/archived/\(diaryID)"
+            )
+            state = .loaded(response.data)
+        } catch {
+            state = .unavailable(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func restoreDiary() async {
+        guard !isRestoring else { return }
+
+        isRestoring = true
+        actionError = nil
+        defer { isRestoring = false }
+
+        do {
+            let _: DiarySuccessEnvelope = try await appModel.api.request(
+                path: "/api/v1/diary/archived/\(diaryID)/restore",
+                method: "POST"
+            )
+            onChanged()
+            dismiss()
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+}
+
+private struct DiaryArchivedCommentsSection: View {
+    let comments: [DiaryComment]
+    let count: Int
+
+    var body: some View {
+        if count > 0 {
+            VStack(alignment: .leading, spacing: 16) {
+                Divider()
+
+                HStack(spacing: 6) {
+                    Text("Comments")
+                        .font(.headline)
+
+                    Text("\(count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(comments) { comment in
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 5) {
+                            Text(comment.author)
+                                .font(.caption.weight(.medium))
+
+                            Text("·")
+                                .foregroundStyle(.tertiary)
+
+                            Text(DiaryCommentDate.format(comment.createdAt))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            if comment.updatedAt != comment.createdAt {
+                                Text("Edited")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+
+                        Text(comment.content)
+                            .font(.body)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private enum DiaryArchiveLoadState {
+    case loading
+    case unavailable(String)
+    case loaded([DiaryEntry])
 }
 
 private struct DiaryNavigationTitle: View {
