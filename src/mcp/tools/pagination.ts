@@ -113,7 +113,9 @@ function canonicalize(value: unknown): string {
     if (typeof value === "number" && !Number.isFinite(value)) {
       throw new McpPaginationCursorError();
     }
-    return JSON.stringify(value);
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) throw new McpPaginationCursorError();
+    return serialized;
   }
   if (Array.isArray(value)) {
     return `[${value.map(canonicalize).join(",")}]`;
