@@ -13,6 +13,11 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+  mcpMutationOutcomeFromReplay,
+} from "../mutation-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
@@ -38,10 +43,7 @@ const writeDiaryDataSchema = z.object({
     created_at: z.string().datetime(),
     author: contentAuthorSchema.nullable(),
   }),
-  metadata: z.object({
-    created: z.boolean(),
-    idempotent_replay: z.boolean(),
-  }),
+  ...mcpMutationReceiptFields,
 });
 
 const writeDiaryOutputSchema = z.object({
@@ -98,7 +100,26 @@ export function registerWriteDiaryTool(
               idempotencyKey: idempotency_key,
             },
           );
-          const result = { success: true as const, data };
+          const receipt = mcpMutationReceipt({
+            outcome: mcpMutationOutcomeFromReplay(
+              data.metadata.idempotent_replay,
+            ),
+            entity_type: "diary",
+            entity_id: data.diary.id,
+            revision: null,
+            detail_tool: "get_diary",
+            detail_arguments: {
+              id: data.diary.id,
+              scope: "active",
+            },
+          });
+          const result = {
+            success: true as const,
+            data: {
+              diary: data.diary,
+              ...receipt,
+            },
+          };
           const message = data.metadata.idempotent_replay
             ? "The existing diary entry was returned without creating a duplicate."
             : "Diary entry created successfully.";
