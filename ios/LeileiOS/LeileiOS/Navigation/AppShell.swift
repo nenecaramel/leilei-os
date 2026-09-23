@@ -21,6 +21,15 @@ struct AppShell: View {
         .onPreferenceChange(FloatingControlCenterPreferenceKey.self) {
             floatingControlCenters = $0
         }
+        .sheet(isPresented: $settingsPresented) {
+            SettingsSheetView(
+                isPresented: settingsPresented,
+                onDismiss: {
+                    settingsPresented = false
+                },
+                appModel: appModel
+            )
+        }
     }
 
     private var iPhoneLayout: some View {
@@ -38,9 +47,7 @@ struct AppShell: View {
                     menuButtonCenterY: floatingControlCenters[FloatingControlCenter.menu],
                     composerControlsCenterY: floatingControlCenters[FloatingControlCenter.composer],
                     onSettings: {
-                        withAnimation(.snappy) {
-                            settingsPresented = true
-                        }
+                        settingsPresented = true
                     },
                     onSelect: {
                         withAnimation(.snappy) {
@@ -90,23 +97,6 @@ struct AppShell: View {
                 }
                 .offset(x: menuOpen ? revealOffset : 0)
 
-                Color.black
-                    .opacity(settingsPresented ? 0.12 : 0)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-
-                SettingsSheetView(
-                    isPresented: settingsPresented,
-                    onDismiss: {
-                        withAnimation(.snappy) {
-                            settingsPresented = false
-                        }
-                    },
-                    appModel: appModel
-                )
-                .offset(y: settingsPresented ? 0 : proxy.size.height)
-                .allowsHitTesting(settingsPresented)
-                .zIndex(10)
             }
         }
         .ignoresSafeArea()
