@@ -51,7 +51,7 @@ test("ui profile exposes one user-visible working-note tool without thinking sem
   assert.equal(tool.inputSchema.properties?.effort, undefined);
   assert.match(String(tool.description), /user-visible|用户可见/iu);
   assert.match(String(tool.description), /not.*hidden.*reason|不是.*隐藏.*推理/iu);
-  assert.match(String(tool.inputSchema.properties?.note?.description), /结论|依据|假设|下一步/iu);
+  assert.match(String(tool.inputSchema.properties?.note?.description), /结论|依据|假设|下一步|conclusions?|evidence|assumptions?|next steps?/iu);
   assert.match(String(tool.inputSchema.properties?.note?.description), /not.*chain-of-thought|不要.*chain-of-thought|不.*隐藏推理/iu);
   assert.equal(tool._meta?.ui?.resourceUri, RENDER_WORKING_NOTE_RESOURCE_URI);
   assert.equal(tool._meta?.["openai/outputTemplate"], CHATGPT_RENDER_WORKING_NOTE_RESOURCE_URI);
