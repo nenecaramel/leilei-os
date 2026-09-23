@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, MEMORY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   MemoryDomainError,
   type AuthenticatedMemoryContext,
@@ -31,7 +32,7 @@ const writeMemoryInputSchema = z.object({
   key: rawMemoryKeySchema,
   content: rawMemoryContentSchema,
   tags: z.array(rawMemoryTagSchema).max(20).optional(),
-  author: contentAuthorSchema,
+  author: contentAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
