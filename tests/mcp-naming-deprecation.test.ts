@@ -29,11 +29,8 @@ async function listTools(server: McpServer): Promise<ListedTool[]> {
 }
 
 const RENAMES = [
-  ["create_memory", "write_memory"],
   ["create_diary", "write_diary"],
   ["replace_todo_paper", "write_todo_paper"],
-  ["permanently_delete_diary", "delete_diary"],
-  ["permanently_delete_shared_paper", "delete_shared_paper"],
 ] as const;
 
 test("core exposes canonical names and hides deprecated aliases", async () => {
