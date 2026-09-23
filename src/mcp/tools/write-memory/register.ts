@@ -18,6 +18,11 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+  mcpMutationOutcomeFromReplay,
+} from "../mutation-contract.js";
 
 const memoryCategorySchema = z.enum(["profile", "preference", "goal", "project"]);
 const rawMemoryKeySchema = z.string().max(1_000);
@@ -48,15 +53,7 @@ const writeMemoryDataSchema = z.object({
     updated_at: z.string().datetime(),
     author: contentAuthorSchema.nullable(),
   }),
-  metadata: z.object({
-    created: z.boolean(),
-    idempotent_replay: z.boolean(),
-  }),
-  detail_tool: z.literal("get_memory"),
-  detail_arguments: z.object({
-    id: z.string().uuid(),
-    scope: z.enum(["active", "archived"]),
-  }).strict(),
+  ...mcpMutationReceiptFields,
 });
 
 const writeMemoryOutputSchema = z.object({
@@ -131,12 +128,19 @@ export function registerWriteMemoryTool(
               success: true as const,
               data: {
                 memory,
-                metadata: data.metadata,
-                detail_tool: "get_memory" as const,
-                detail_arguments: {
-                  id: memory.id,
-                  scope: memory.lifecycle_status,
-                },
+                ...mcpMutationReceipt({
+                  outcome: mcpMutationOutcomeFromReplay(
+                    data.metadata.idempotent_replay,
+                  ),
+                  entity_type: "memory",
+                  entity_id: memory.id,
+                  revision: null,
+                  detail_tool: "get_memory",
+                  detail_arguments: {
+                    id: memory.id,
+                    scope: memory.lifecycle_status,
+                  },
+                }),
               },
             },
           };
