@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { SharedPaperServiceError } from "../../../domains/shared-paper/shared-paper-service.js";
 import type { SharedPaperEdit, SharedPaperRecord } from "../../../domains/shared-paper/shared-paper-types.js";
-import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 import { MCP_IDEMPOTENCY_KEY_MAX_LENGTH, MCP_IDEMPOTENCY_KEY_MIN_LENGTH, MCP_IDEMPOTENCY_KEY_PATTERN } from "../../../domains/mcp-write/mcp-write-idempotency.js";
@@ -90,10 +90,10 @@ export function registerSharedPaperTools(server: McpServer, dependencies: Shared
       query,
     );
   });
-  server.registerTool("get_shared_paper", { title: "Read a shared paper", description: "Read one shared paper by exact id using a bounded canonical content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id. A cursor becomes invalid when the paper revision changes.", inputSchema: getInput, outputSchema: getOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, max_chars, cursor }) => runDetail(() => dependencies.sharedPaperService.getPaper({ userId: dependencies.getAuthenticatedUserId(), paperId: id }), max_chars, cursor));
-  server.registerTool("create_shared_paper", { title: "Create a shared paper", description: "Create one shared paper with a single canonical content body. L, G, and C are provenance authors only; provide a stable idempotency_key for safe replay.", inputSchema: createInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ title, content, author, idempotency_key }) => runMutation(() => dependencies.sharedPaperService.createPaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), title, content, author, idempotencyKey: idempotency_key }), dependencies));
-  server.registerTool("edit_shared_paper", { title: "Edit a shared paper", description: "Apply one unique exact match replacement to the shared paper's canonical content or title. target defaults to content. Supply the expected revision and stable idempotency_key; stale revisions are rejected and no automatic merge occurs.", inputSchema: editInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, expected_revision, author, target, match_text, replacement_text, idempotency_key }) => runMutation(async () => { const result = await dependencies.sharedPaperService.editPaperByMatch({ userId: dependencies.getAuthenticatedUserId(), paperId: id, expectedRevision: expected_revision, author, target: target ?? "content", matchText: match_text, replacementText: replacement_text, idempotencyKey: idempotency_key }); return { ...result, edit: result.edit }; }, dependencies));
-  server.registerTool("append_shared_paper", { title: "Append to a shared paper", description: "Append text directly to the end of canonical content without reading or resending the existing body. Supply expected_revision and a stable idempotency_key; stale revisions are rejected and replay never appends twice.", inputSchema: appendInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, expected_revision, author, text, idempotency_key }) => runMutation(() => dependencies.sharedPaperService.appendPaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), paperId: id, expectedRevision: expected_revision, author, text, idempotencyKey: idempotency_key }), dependencies));
+  server.registerTool("get_shared_paper", { title: "Read a shared paper", description: "Read one shared paper by exact id using a bounded canonical content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id. A cursor becomes invalid when the paper revision changes.", inputSchema: getInput, outputSchema: getOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, max_chars, cursor }) => runDetail(() => dependencies.sharedPaperService.getPaper({ userId: dependencies.getAuthenticatedUserId(), paperId: id }), max_chars, cursor, id));
+  server.registerTool("create_shared_paper", { title: "Create a shared paper", description: "Create one shared paper with a single canonical content body. L, G, and C are provenance authors only; provide a stable idempotency_key for safe replay.", inputSchema: createInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ title, content, author, idempotency_key }) => runMutation(() => dependencies.sharedPaperService.createPaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), title, content, author, idempotencyKey: idempotency_key })));
+  server.registerTool("edit_shared_paper", { title: "Edit a shared paper", description: "Apply one unique exact match replacement to the shared paper's canonical content or title. target defaults to content. Supply the expected revision and stable idempotency_key; stale revisions are rejected and no automatic merge occurs.", inputSchema: editInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, expected_revision, author, target, match_text, replacement_text, idempotency_key }) => runMutation(async () => { const result = await dependencies.sharedPaperService.editPaperByMatch({ userId: dependencies.getAuthenticatedUserId(), paperId: id, expectedRevision: expected_revision, author, target: target ?? "content", matchText: match_text, replacementText: replacement_text, idempotencyKey: idempotency_key }); return { ...result, edit: result.edit }; }, { id }));
+  server.registerTool("append_shared_paper", { title: "Append to a shared paper", description: "Append text directly to the end of canonical content without reading or resending the existing body. Supply expected_revision and a stable idempotency_key; stale revisions are rejected and replay never appends twice.", inputSchema: appendInput, outputSchema: mutationOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, expected_revision, author, text, idempotency_key }) => runMutation(() => dependencies.sharedPaperService.appendPaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), paperId: id, expectedRevision: expected_revision, author, text, idempotencyKey: idempotency_key }), { id }));
   server.registerTool("list_shared_paper_edits", { title: "List shared paper edits", description: "List committed save-level deltas for one shared paper. Use before_revision to continue with older revisions.", inputSchema: editsInput, outputSchema: editsOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, limit, before_revision }) => runEdits(() => dependencies.sharedPaperService.listEdits({ userId: dependencies.getAuthenticatedUserId(), paperId: id, limit, beforeRevision: before_revision }), dependencies));
   server.registerTool("archive_shared_paper", { title: "Archive a shared paper", description: "Archive one shared paper without changing canonical content or revision. Provide a stable idempotency_key for safe replay.", inputSchema: lifecycleInput, outputSchema: lifecycleOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, idempotency_key }) => runLifecycleMutation(() => dependencies.sharedPaperService.archivePaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), paperId: id, idempotencyKey: idempotency_key })));
   server.registerTool("restore_shared_paper", { title: "Restore a shared paper", description: "Restore one archived shared paper to the active list without changing canonical content or revision. Provide a stable idempotency_key for safe replay.", inputSchema: lifecycleInput, outputSchema: lifecycleOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, idempotency_key }) => runLifecycleMutation(() => dependencies.sharedPaperService.restorePaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), paperId: id, idempotencyKey: idempotency_key })));
@@ -141,6 +141,7 @@ async function runDetail(
   read: () => Promise<SharedPaperRecord>,
   maxChars: number | undefined,
   cursor: string | undefined,
+  paperId: string,
 ) {
   try {
     const paper = await read();
@@ -173,6 +174,13 @@ async function runDetail(
       return createMcpToolError(
         "INVALID_CURSOR",
         "The Shared Paper continuation cursor is invalid or stale. Read the paper again without a cursor.",
+        "The Shared Paper continuation cursor is invalid or stale. Read the paper again without a cursor.",
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "invalid_cursor",
+          recommendedTool: "get_shared_paper",
+          recommendedArguments: { id: paperId },
+        }),
       );
     }
     return sharedError(error, "get_shared_paper");
@@ -184,7 +192,7 @@ async function runMutation(
     edit?: SharedPaperEdit;
     outcome?: "committed" | "replayed";
   }>,
-  _dependencies: SharedPaperToolDependencies,
+  recoveryContext?: { id: string },
 ) {
   try {
     const result = await mutate();
@@ -215,7 +223,7 @@ async function runMutation(
       structuredContent: { success: true as const, data },
     };
   } catch (error) {
-    return sharedError(error, "shared_paper_mutation");
+    return sharedError(error, "shared_paper_mutation", recoveryContext);
   }
 }
 
@@ -331,7 +339,82 @@ function sharedPaperContent(summaries: ReturnType<typeof toSummary>[]) {
 function toSummary(paper: SharedPaperRecord, query?: string) { return { id: paper.id, title: paper.title, preview: createLeadingPreview(paper.content), snippet: query === undefined ? null : createBodyMatchSnippet(paper.content, query), revision: paper.revision, created_by: paper.createdBy, updated_by: paper.updatedBy, created_at: paper.createdAt.toISOString(), updated_at: paper.updatedAt.toISOString(), archived_at: paper.archivedAt?.toISOString() ?? null, detail_tool: "get_shared_paper" as const, detail_arguments: { id: paper.id } }; }
 function toDetail(paper: SharedPaperRecord) { return { id: paper.id, title: paper.title, content: paper.content, revision: paper.revision, created_by: paper.createdBy, updated_by: paper.updatedBy, created_at: paper.createdAt.toISOString(), updated_at: paper.updatedAt.toISOString(), archived_at: paper.archivedAt?.toISOString() ?? null }; }
 function toEdit(edit: SharedPaperEdit) { return { id: edit.id, paper_id: edit.paperId, base_revision: edit.baseRevision, revision: edit.revision, author: edit.author, target: edit.target, start_offset: edit.startOffset, end_offset: edit.endOffset, deleted_text: edit.deletedText, inserted_text: edit.insertedText, created_at: edit.createdAt.toISOString() }; }
-function sharedError(error: unknown, _tool: string) { if (error instanceof SharedPaperAuthenticationError) return createMcpToolError("AUTHENTICATION_REQUIRED", "Authentication is required for shared papers."); if (error instanceof SharedPaperServiceError) { const status = error.code === "USER_NOT_FOUND" || error.code === "USER_DISABLED" ? "AUTHENTICATION_REQUIRED" : error.code; return createMcpToolError(status, status === "AUTHENTICATION_REQUIRED" ? "Authentication is required for shared papers." : error.message); } return createMcpToolError("INTERNAL_ERROR", "Shared paper service is temporarily unavailable."); }
+function sharedError(
+  error: unknown,
+  _tool: string,
+  recoveryContext?: { id: string },
+) {
+  if (error instanceof SharedPaperAuthenticationError) {
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required for shared papers.",
+    );
+  }
+  if (error instanceof SharedPaperServiceError) {
+    const status = error.code === "USER_NOT_FOUND" || error.code === "USER_DISABLED"
+      ? "AUTHENTICATION_REQUIRED"
+      : error.code;
+    const message = status === "AUTHENTICATION_REQUIRED"
+      ? "Authentication is required for shared papers."
+      : error.message;
+
+    if (recoveryContext && error.code === "PAPER_REVISION_CONFLICT") {
+      return createMcpToolError(
+        status,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "stale_revision",
+          recommendedTool: "get_shared_paper",
+          recommendedArguments: { id: recoveryContext.id },
+        }),
+      );
+    }
+    if (recoveryContext && error.code === "PAPER_EDIT_TARGET_AMBIGUOUS") {
+      return createMcpToolError(
+        status,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "ambiguous_match",
+          recommendedTool: "get_shared_paper",
+          recommendedArguments: { id: recoveryContext.id },
+        }),
+      );
+    }
+    if (recoveryContext && error.code === "PAPER_EDIT_TARGET_NOT_FOUND") {
+      return createMcpToolError(
+        status,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "missing_match",
+          recommendedTool: "get_shared_paper",
+          recommendedArguments: { id: recoveryContext.id },
+        }),
+      );
+    }
+    if (error.code === "IDEMPOTENCY_CONFLICT") {
+      return createMcpToolError(
+        status,
+        message,
+        message,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "idempotency_conflict",
+        }),
+      );
+    }
+    return createMcpToolError(status, message);
+  }
+  return createMcpToolError(
+    "INTERNAL_ERROR",
+    "Shared paper service is temporarily unavailable.",
+  );
+}
 
 function boundedCodePointString(rawMax: number, codePointMax: number, min = 0) {
   return z.string().min(min).max(rawMax).refine((value) => codePointLength(value) <= codePointMax, { message: `Value must contain at most ${codePointMax} Unicode code points.` });
