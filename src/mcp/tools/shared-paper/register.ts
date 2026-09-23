@@ -66,7 +66,7 @@ export class SharedPaperAuthenticationError extends Error {
   constructor() { super("Authenticated MCP user context is unavailable."); this.name = "SharedPaperAuthenticationError"; }
 }
 
-export function registerSharedPaperTools(server: McpServer, dependencies: SharedPaperToolDependencies): void {
+export function registerSharedPaperTools(server: McpServer, dependencies: SharedPaperToolDependencies, options: { permanentDeleteName?: "legacy" | "canonical" } = {}): void {
   server.registerTool("list_shared_papers", { title: "List shared papers", description: SHARED_PAPER_DOMAIN_BOUNDARY + " List shared papers owned by the authenticated user. scope defaults to active; pass archived to browse the archive. Results are compact discovery records; use get_shared_paper for bounded canonical detail and continue with its content cursor when needed. When has_more is true, pass next_cursor back as cursor with the same scope.", inputSchema: listInput, outputSchema: listOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ limit, cursor, scope }) => {
     const pageSize = limit ?? 50;
     const resolvedScope = scope ?? "active";
@@ -97,7 +97,63 @@ export function registerSharedPaperTools(server: McpServer, dependencies: Shared
   server.registerTool("list_shared_paper_edits", { title: "List shared paper edits", description: SHARED_PAPER_DOMAIN_BOUNDARY + " List committed save-level deltas for one shared paper. Use before_revision to continue with older revisions.", inputSchema: editsInput, outputSchema: editsOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, limit, before_revision }) => runEdits(() => dependencies.sharedPaperService.listEdits({ userId: dependencies.getAuthenticatedUserId(), paperId: id, limit, beforeRevision: before_revision }), dependencies));
   server.registerTool("archive_shared_paper", { title: "Archive a shared paper", description: SHARED_PAPER_DOMAIN_BOUNDARY + " Archive one shared paper without changing canonical content or revision. Provide a stable idempotency_key for safe replay.", inputSchema: lifecycleInput, outputSchema: lifecycleOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, idempotency_key }) => runLifecycleMutation(() => dependencies.sharedPaperService.archivePaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), paperId: id, idempotencyKey: idempotency_key })));
   server.registerTool("restore_shared_paper", { title: "Restore a shared paper", description: SHARED_PAPER_DOMAIN_BOUNDARY + " Restore one archived shared paper to the active list without changing canonical content or revision. Provide a stable idempotency_key for safe replay.", inputSchema: lifecycleInput, outputSchema: lifecycleOutput, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ id, idempotency_key }) => runLifecycleMutation(() => dependencies.sharedPaperService.restorePaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), paperId: id, idempotencyKey: idempotency_key })));
-  server.registerTool("delete_shared_paper", { title: "Permanently delete a shared paper", description: SHARED_PAPER_DOMAIN_BOUNDARY + " Permanently delete an archived shared paper and its edit journal. The paper must already be archived. Provide a stable idempotency_key for safe replay.", inputSchema: lifecycleInput, outputSchema: deleteOutput, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } }, async ({ id, idempotency_key }) => runDeleteMutation(() => dependencies.sharedPaperService.deletePaperIdempotently({ userId: dependencies.getAuthenticatedUserId(), paperId: id, idempotencyKey: idempotency_key })));
+  registerPermanentDeleteSharedPaperTool(
+    server,
+    dependencies,
+    options.permanentDeleteName === "canonical"
+      ? "permanently_delete_shared_paper"
+      : "delete_shared_paper",
+    options.permanentDeleteName !== "canonical",
+  );
+}
+
+export function registerLegacyDeleteSharedPaperAlias(
+  server: McpServer,
+  dependencies: SharedPaperToolDependencies,
+): void {
+  registerPermanentDeleteSharedPaperTool(
+    server,
+    dependencies,
+    "delete_shared_paper",
+    true,
+  );
+}
+
+function registerPermanentDeleteSharedPaperTool(
+  server: McpServer,
+  dependencies: SharedPaperToolDependencies,
+  toolName: "permanently_delete_shared_paper" | "delete_shared_paper",
+  deprecated: boolean,
+): void {
+  const description =
+    SHARED_PAPER_DOMAIN_BOUNDARY + " Permanently delete an archived shared paper and its edit journal. The paper must already be archived. Provide a stable idempotency_key for safe replay.";
+  server.registerTool(
+    toolName,
+    {
+      title: deprecated
+        ? "Deprecated: permanently delete shared paper"
+        : "Permanently delete a shared paper",
+      description: deprecated
+        ? "DEPRECATED: use permanently_delete_shared_paper. " + description
+        : description,
+      inputSchema: lifecycleInput,
+      outputSchema: deleteOutput,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ id, idempotency_key }) =>
+      runDeleteMutation(() =>
+        dependencies.sharedPaperService.deletePaperIdempotently({
+          userId: dependencies.getAuthenticatedUserId(),
+          paperId: id,
+          idempotencyKey: idempotency_key,
+        }),
+      ),
+  );
 }
 
 async function runRead(
