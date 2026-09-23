@@ -11,18 +11,26 @@ struct SettingsActivityContent: View {
                 switch loadState {
                 case .loading:
                     HStack {
-                        Text("Loading")
+                        Text("Loading…")
                         Spacer()
                         ProgressView()
                     }
 
-                case .unavailable(let message):
-                    Text(message)
-                        .foregroundStyle(.secondary)
+                case .unavailable:
+                    HStack {
+                        Text("Activity Unavailable")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Retry") {
+                            Task {
+                                await loadActivity()
+                            }
+                        }
+                    }
 
                 case .loaded(let records):
                     if records.isEmpty {
-                        Text("No Activity")
+                        Text("No Activity Yet")
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(records) { record in
@@ -36,11 +44,18 @@ struct SettingsActivityContent: View {
         .scrollContentBackground(.hidden)
         .background(Color.settingsBackground)
         .task {
-            do {
-                loadState = .loaded(try await dataService.readActivity())
-            } catch {
-                loadState = .unavailable(error.localizedDescription)
-            }
+            await loadActivity()
+        }
+    }
+
+    @MainActor
+    private func loadActivity() async {
+        loadState = .loading
+
+        do {
+            loadState = .loaded(try await dataService.readActivity())
+        } catch {
+            loadState = .unavailable("Couldn’t load activity.")
         }
     }
 }
