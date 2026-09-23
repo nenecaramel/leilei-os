@@ -1,11 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
-  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
-  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
-  MCP_IDEMPOTENCY_KEY_PATTERN,
-} from "../../../domains/mcp-write/mcp-write-idempotency.js";
-import {
   TodoServiceError,
   type TodoEntriesMutationServiceResult,
   type TodoEntryDeleteServiceResult,
@@ -15,6 +10,7 @@ import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } f
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { MAX_TODO_ENTRIES } from "../../../domains/resource-limits.js";
+import { mcpExpectedRevisionSchema, mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
@@ -33,7 +29,7 @@ const appendInputSchema = z.object({
   author: todoAuthorSchema,
   kind: todoKindSchema,
   text: entryTextSchema,
-  idempotency_key: idempotencyKeySchema,
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const appendBatchInputSchema = z.object({
@@ -45,25 +41,25 @@ const appendBatchInputSchema = z.object({
       text: entryTextSchema,
     }).strict(),
   ).min(1).max(MAX_TODO_ENTRIES),
-  idempotency_key: idempotencyKeySchema,
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const updateInputSchema = z.object({
   date: dateSchema,
   author: todoAuthorSchema,
   entry_id: entryIdSchema,
-  expected_revision: entryRevisionSchema,
+  expected_revision: mcpExpectedRevisionSchema,
   kind: todoKindSchema.optional(),
   text: entryTextSchema.optional(),
-  idempotency_key: idempotencyKeySchema,
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const deleteInputSchema = z.object({
   date: dateSchema,
   author: todoAuthorSchema,
   entry_id: entryIdSchema,
-  expected_revision: entryRevisionSchema,
-  idempotency_key: idempotencyKeySchema,
+  expected_revision: mcpExpectedRevisionSchema,
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const entrySchema = z.object({
