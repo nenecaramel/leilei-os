@@ -468,8 +468,8 @@ function pageReceipt(
       entity_type: isComment ? "notion_comment" : "notion_page",
       entity_id: result.target_id,
       revision: null,
-      detail_tool: "read_notion_page",
-      detail_arguments: { page_id: pageId },
+      detail_tool: isComment ? null : "read_notion_page",
+      detail_arguments: isComment ? null : { page_id: pageId },
     }),
   };
   return {
