@@ -31,8 +31,8 @@ export type SharedPaperEdit = {
   createdAt: Date;
 };
 
-export type SharedPaperListInput = { userId: string; limit?: number; scope?: SharedPaperScope };
-export type SharedPaperSearchInput = { userId: string; query: string; limit?: number; scope?: SharedPaperScope };
+export type SharedPaperListInput = { userId: string; limit?: number; scope?: SharedPaperScope; offset?: number };
+export type SharedPaperSearchInput = { userId: string; query: string; limit?: number; scope?: SharedPaperScope; offset?: number };
 
 export type SharedPaperCreateInput = {
   userId: string;
