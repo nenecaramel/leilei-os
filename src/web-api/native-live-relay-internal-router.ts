@@ -25,6 +25,9 @@ import {
 import type {
   TopicResurfaceCrossDeviceCoordinator,
 } from "../domains/runtime/topic-resurface-cross-device-coordinator.js";
+import type {
+  TopicResurfaceCrossDeviceOpportunity,
+} from "../domains/runtime/topic-resurface-cross-device-opportunity.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -47,6 +50,10 @@ export type NativeLiveRelayInternalDependencies = {
   backgroundModelCoordinator?: Pick<
     TopicResurfaceCrossDeviceCoordinator,
     "advanceNextForUser"
+  >;
+  backgroundModelOpportunity?: Pick<
+    TopicResurfaceCrossDeviceOpportunity,
+    "offer"
   >;
 };
 
@@ -84,6 +91,10 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/background-model/reservations/:reservationId/result",
       submitBackgroundModelResultHandler(dependencies),
+    );
+    router.post(
+      "/background-model/topic-resurface/opportunity",
+      topicResurfaceOpportunityHandler(dependencies),
     );
   }
   router.post("/reserve", reserveNextHandler(dependencies));
@@ -208,6 +219,48 @@ function submitSemanticFallbackHandler(
       response.json({ success: true, data: { accepted: true } });
     } catch (error) {
       sendSemanticError(response, error);
+    }
+  };
+}
+
+function topicResurfaceOpportunityHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.backgroundModelService) return;
+    const body = parseListenerBody(request.body);
+    if (!body) {
+      sendInvalid(response);
+      return;
+    }
+
+    if (!dependencies.backgroundModelOpportunity) {
+      response.json({
+        success: true,
+        data: { outcome: "disabled" },
+      });
+      return;
+    }
+
+    try {
+      const result =
+        await dependencies.backgroundModelOpportunity.offer({
+          userId,
+        });
+      response.json({
+        success: true,
+        data: result,
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_TOPIC_RESURFACE_OPPORTUNITY_UNAVAILABLE",
+          message:
+            "Topic resurface background opportunity is temporarily unavailable.",
+        },
+      });
     }
   };
 }

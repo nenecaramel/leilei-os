@@ -168,6 +168,21 @@ class FakeBackgroundModelService {
   }
 }
 
+class FakeBackgroundOpportunity {
+  calls: unknown[] = [];
+  result: unknown = {
+    outcome: "attempted",
+    attemptedAt: "2026-09-23T04:00:00.000Z",
+    nextEligibleAt: "2026-09-23T04:01:00.000Z",
+    result: { outcome: "idle" },
+  };
+
+  async offer(input: unknown) {
+    this.calls.push(input);
+    return this.result;
+  }
+}
+
 class FakeSemanticService {
   calls: Array<{ name: string; input: unknown }> = [];
 
@@ -606,6 +621,81 @@ test("internal relay background model endpoints preserve authenticated user scop
           },
         },
       });
+    },
+  );
+});
+
+
+test("internal relay Topic resurface opportunity uses authenticated user scope and supports disabled mode", async () => {
+  const relayService = new FakeRelayService();
+  const backgroundModelService = new FakeBackgroundModelService();
+  const opportunity = new FakeBackgroundOpportunity();
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          backgroundModelService,
+          backgroundModelOpportunity: opportunity,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/internal/native-live-relay/background-model/topic-resurface/opportunity`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+          }),
+        },
+      );
+      assert.equal(response.status, 200);
+      const payload = await response.json() as { data: unknown };
+      assert.deepEqual(payload.data, opportunity.result);
+      assert.deepEqual(opportunity.calls, [{ userId }]);
+    },
+  );
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          backgroundModelService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/internal/native-live-relay/background-model/topic-resurface/opportunity`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+          }),
+        },
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        (await response.json() as { data: unknown }).data,
+        { outcome: "disabled" },
+      );
     },
   );
 });

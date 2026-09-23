@@ -287,3 +287,53 @@ test("Mac HTTP relay client transports background model reservations without use
     dispatch_target: "claude_code",
   });
 });
+
+
+test("Mac HTTP relay client offers Topic resurface opportunity without user identity", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        outcome: "not_due",
+        lastAttemptAt: "2026-09-23T04:00:00.000Z",
+        nextEligibleAt: "2026-09-23T04:01:00.000Z",
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const result = await client.offerTopicResurfaceOpportunity({
+    listenerInstanceId: listenerId,
+    dispatchTarget: "claude_code",
+  });
+
+  assert.deepEqual(result, {
+    outcome: "not_due",
+    lastAttemptAt: "2026-09-23T04:00:00.000Z",
+    nextEligibleAt: "2026-09-23T04:01:00.000Z",
+  });
+  assert.deepEqual(calls, [{
+    url:
+      "https://relay.example/internal/native-live-relay/background-model/topic-resurface/opportunity",
+    body: {
+      listener_instance_id: listenerId,
+      dispatch_target: "claude_code",
+    },
+  }]);
+  assert.equal(
+    JSON.stringify(calls[0]?.body).includes("user"),
+    false,
+  );
+});

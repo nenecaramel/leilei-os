@@ -51,7 +51,14 @@ const loop = new NativeLiveMacDaemonLoop(
   relay,
   executor,
   semanticScorer,
-  null,
+  {
+    async offer() {
+      await relay.offerTopicResurfaceOpportunity({
+        listenerInstanceId,
+        dispatchTarget: "claude_code",
+      });
+    },
+  },
   backgroundModelExecutor,
 );
 

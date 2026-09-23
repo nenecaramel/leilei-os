@@ -75,6 +75,10 @@ const baseEnvSchema = z.object({
   MCP_SESSION_MAX_TOTAL: z.coerce.number().int().positive().default(32),
   MCP_IDEMPOTENCY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
+  NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS:
+    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
+    z.coerce.number().int().positive().max(25).optional(),
 });
 
 const mcpGovernanceEnvSchema = z.object({
@@ -244,6 +248,37 @@ export type McpGovernanceConfig = {
   idempotencyRetentionDays: number;
   idempotencyCleanupIntervalHours: number;
 };
+
+export type TopicResurfaceOpportunityConfig = {
+  minIntervalMs: number;
+  candidateLimit: number;
+};
+
+export function getTopicResurfaceOpportunityConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS"
+    | "NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT"
+  >,
+): TopicResurfaceOpportunityConfig | undefined {
+  const interval =
+    environment.NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS;
+  const limit =
+    environment.NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT;
+
+  if (interval === undefined && limit === undefined) {
+    return undefined;
+  }
+  if (interval === undefined || limit === undefined) {
+    throw new Error(
+      "NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS and NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT must be configured together.",
+    );
+  }
+  return {
+    minIntervalMs: interval * 1_000,
+    candidateLimit: limit,
+  };
+}
 
 export function getMcpGovernanceConfig(
   values: Partial<Record<

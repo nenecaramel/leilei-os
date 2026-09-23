@@ -138,6 +138,19 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
+  async offerTopicResurfaceOpportunity(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }): Promise<unknown> {
+    return this.post(
+      "/background-model/topic-resurface/opportunity",
+      {
+        listener_instance_id: input.listenerInstanceId,
+        dispatch_target: input.dispatchTarget,
+      },
+    );
+  }
+
   async renewLease(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";

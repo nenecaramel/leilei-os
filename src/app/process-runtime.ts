@@ -1,4 +1,9 @@
-import { env, getMcpGovernanceConfig, type RuntimeEnv } from "../config/env.js";
+import {
+  env,
+  getMcpGovernanceConfig,
+  getTopicResurfaceOpportunityConfig,
+  type RuntimeEnv,
+} from "../config/env.js";
 import { createDatabase } from "../database/client.js";
 import type { AppDependencies } from "./create-app.js";
 import { DrizzleMemoryRepository } from "../domains/memory/memory-repository.js";
@@ -28,6 +33,7 @@ import { BridgeService } from "../domains/bridge/bridge-service.js";
 import {
   createDefaultBackendMindRuntime,
   createDefaultDriveSatisfactionService,
+  DEFAULT_NATIVE_LIVE_SUBJECT_ID,
 } from "../domains/runtime/default-backend-mind-runtime.js";
 import {
   deleteExpiredNativeLiveBackgroundModelJobsBatch,
@@ -37,6 +43,9 @@ import {
 import {
   TopicResurfaceCrossDeviceCoordinator,
 } from "../domains/runtime/topic-resurface-cross-device-coordinator.js";
+import {
+  TopicResurfaceCrossDeviceOpportunity,
+} from "../domains/runtime/topic-resurface-cross-device-opportunity.js";
 import {
   DrizzleTopicResurfaceCandidatePort,
 } from "../domains/runtime/topic-resurface-candidate-runtime-repository.js";
@@ -216,6 +225,16 @@ export function createProcessRuntime(
         },
       },
     );
+  const topicResurfaceOpportunityConfig =
+    getTopicResurfaceOpportunityConfig(runtimeEnv);
+  const topicResurfaceCrossDeviceOpportunity =
+    topicResurfaceOpportunityConfig
+      ? new TopicResurfaceCrossDeviceOpportunity(
+          topicResurfaceCrossDeviceCoordinator,
+          DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+          topicResurfaceOpportunityConfig,
+        )
+      : undefined;
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),
     nativeLiveTurnPort,
@@ -348,6 +367,12 @@ export function createProcessRuntime(
       nativeLiveBackgroundModelService,
       nativeLiveBackgroundModelCoordinator:
         topicResurfaceCrossDeviceCoordinator,
+      ...(topicResurfaceCrossDeviceOpportunity
+        ? {
+            nativeLiveBackgroundModelOpportunity:
+              topicResurfaceCrossDeviceOpportunity,
+          }
+        : {}),
       webSentinelService: sentinelService,
       webSharedPaperService: sharedPaperService,
       webConversationImportService: conversationImportService,
