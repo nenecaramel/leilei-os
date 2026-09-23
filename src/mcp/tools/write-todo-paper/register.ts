@@ -86,7 +86,7 @@ export function registerWriteTodoPaperTool(
     {
       title: "Save one Todo paper",
       description:
-        "Replace one complete L, G, or C Todo paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding, editing, completing, or deleting a single entry, prefer append_todo_entry, update_todo_entry, or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, the exact current paper revision returned by read_todo_day (or null only when creating a missing paper), and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
+        "Replace one complete L, G, or C Todo paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding multiple entries in one user intent, prefer append_todo_entries; for one entry, prefer append_todo_entry; for editing, completing, or deleting one existing entry, prefer update_todo_entry or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, the exact current paper revision returned by read_todo_day (or null only when creating a missing paper), and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {
