@@ -248,6 +248,35 @@ test("render_thinking_block compatibility keeps the committed standard browser r
   assert.match(bundle, /ontoolinput/);
 });
 
+test("working-note browser runtime prefers canonical note/detail fields", () => {
+  const dom = createCardDom({
+    toolInput: {
+      style: "analysis",
+      note: "Canonical visible note",
+      detail: "standard",
+    },
+  });
+  try {
+    assert.equal(
+      dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent,
+      "Canonical visible note",
+    );
+    assert.equal(
+      dom.window.document.querySelector<HTMLElement>("[data-thinking-meta]")?.textContent,
+      "analysis · standard",
+    );
+    const card = dom.window.thinkingBlock;
+    assert.ok(card);
+    card?.handleToolInputPartial?.({ note: "Updated visible note" });
+    assert.equal(
+      dom.window.document.querySelector<HTMLElement>("[data-thinking-content]")?.textContent,
+      "Updated visible note",
+    );
+  } finally {
+    dom.window.close();
+  }
+});
+
 test("standard MCP Apps lifecycle renders authoritative input, result metadata, and host context", () => {
   const dom = createCardDom({
     toolInput: { style: "deep_think", thinking: "fallback", effort: "low" },
