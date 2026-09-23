@@ -49,7 +49,7 @@ struct DaySpaceView: View {
 
                 if discoveryIncomplete, selectedDate != nil {
                     DaySpaceWarning(
-                        text: "Some dates are unavailable. Showing the latest available date."
+                        text: "Some dates unavailable"
                     )
                     .padding(.bottom, 8)
                 }
@@ -118,9 +118,8 @@ struct DaySpaceView: View {
             DaySpaceReadingState()
         } else if discoveryState == .unavailable {
             AppStateSurface(
-                title: "Day Space Unavailable",
+                title: "Unavailable",
                 systemImage: "square.stack.3d.up",
-                message: "Couldn’t load Day Space.",
                 actionTitle: "Retry"
             ) {
                 Task {
@@ -137,9 +136,8 @@ struct DaySpaceView: View {
 
             if bothModulesFailed {
                 AppStateSurface(
-                    title: "Day Space Unavailable",
+                    title: "Unavailable",
                     systemImage: "square.stack.3d.up",
-                    message: "Couldn’t load Day Space.",
                     actionTitle: "Retry"
                 ) {
                     Task {
@@ -155,9 +153,8 @@ struct DaySpaceView: View {
                 DaySpaceReadingState()
             } else if completeEmpty {
                 AppStateSurface(
-                    title: "Nothing Here Yet",
-                    systemImage: "square.stack.3d.up",
-                    message: "No Todo or Diary entries for this day."
+                    title: "Nothing here",
+                    systemImage: "square.stack.3d.up"
                 )
                 .frame(
                     maxWidth: .infinity,
@@ -515,7 +512,7 @@ private struct DaySpacePartialFailure: View {
     var body: some View {
         VStack(spacing: 6) {
             Label(
-                "Some Day Space content is unavailable.",
+                "Unavailable",
                 systemImage: "exclamationmark.triangle"
             )
             .font(.caption)
@@ -970,9 +967,9 @@ private struct DaySpaceTodoEditorSheet: View {
             onSaved(response.data)
             dismiss()
         } catch LeileiAPIError.backend(_, let code, _) where code == "TODO_PAPER_CONFLICT" {
-            errorMessage = "Couldn’t save this Todo paper because it changed on another device. Reopen it and try again."
+            errorMessage = "Failed"
         } catch {
-            errorMessage = "Couldn’t save this Todo paper."
+            errorMessage = "Failed"
         }
     }
 }
@@ -1129,7 +1126,7 @@ private struct DaySpaceDiaryEditorSheet: View {
             onSaved(response.data)
             dismiss()
         } catch {
-            errorMessage = "Couldn’t save this diary."
+            errorMessage = "Failed"
         }
     }
 }
