@@ -51,8 +51,7 @@ struct SettingsExportContent: View {
             if let errorMessage {
                 Section {
                     SettingsSectionState(
-                        title: "Export Failed",
-                        message: errorMessage
+                        title: "Failed"
                     )
                 }
             }
@@ -77,7 +76,7 @@ struct SettingsExportContent: View {
                 )
             )
         } catch {
-            errorMessage = "Couldn’t create the export."
+            errorMessage = "Failed"
         }
     }
 }
