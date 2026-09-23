@@ -26,7 +26,7 @@ export type TopicResurfaceThoughtSource = {
   visibility: SubjectStateWrite["envelope"]["scope"]["visibility"];
   sensitivity: SubjectStateWrite["envelope"]["scope"]["sensitivity"];
   audience: string[];
-  causedBy: string;
+  evidenceSourceId: string;
 };
 
 export type TopicResurfaceThoughtMaterializationPortResult =
@@ -117,13 +117,20 @@ export class TopicResurfaceThoughtMaterializationService {
 
 export function topicResurfaceThoughtStateId(
   topicStateId: string,
+  evidenceSourceId: string,
 ): string {
   if (!topicStateId.trim()) {
     throw new Error("Topic state id must not be blank.");
   }
+  if (!evidenceSourceId.trim()) {
+    throw new Error("Topic evidence source id must not be blank.");
+  }
   const digest = createHash("sha256")
     .update(
-      "leileios:topic-resurface-thought:v1:" + topicStateId,
+      "leileios:topic-resurface-thought:v1:"
+      + topicStateId
+      + "\u0000"
+      + evidenceSourceId,
       "utf8",
     )
     .digest();
@@ -157,7 +164,10 @@ export function topicResurfaceToThought(input: {
   const evaluatedAt = normalizeIso(input.evaluatedAt, "evaluatedAt");
 
   return {
-    id: topicResurfaceThoughtStateId(input.source.stateId),
+    id: topicResurfaceThoughtStateId(
+      input.source.stateId,
+      input.source.evidenceSourceId,
+    ),
     kind: "thought",
     text,
     payload: {
@@ -165,6 +175,7 @@ export function topicResurfaceToThought(input: {
         source_kind: "topic_resurface",
         source_state_id: input.source.stateId,
         source_thread_key: input.source.threadKey,
+        source_evidence_id: input.source.evidenceSourceId,
         evaluated_at: evaluatedAt,
         deliberation_prompt_contract_version:
           input.config.deliberationPromptContractVersion,
@@ -206,7 +217,7 @@ export function topicResurfaceToThought(input: {
           kind: "persistent_state",
           id: input.source.stateId,
         }],
-        causedBy: input.source.causedBy,
+        causedBy: input.source.evidenceSourceId,
         derivedFrom: [input.source.stateId],
         decisionId: null,
         processRunId: null,

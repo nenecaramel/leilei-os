@@ -222,7 +222,10 @@ test(
       now: "2026-09-23T01:00:00.000Z",
       candidateLimit: 5,
     });
-    const derivedThoughtId = topicResurfaceThoughtStateId(topicId);
+    const derivedThoughtId = topicResurfaceThoughtStateId(
+      topicId,
+      causedBy,
+    );
     assert.deepEqual(firstResult, {
       outcome: "materialized",
       stateId: derivedThoughtId,
@@ -337,7 +340,10 @@ test(
     assert.equal(
       afterStale.some(
         (state) =>
-          state.id === topicResurfaceThoughtStateId(activeTopicId),
+          state.id === topicResurfaceThoughtStateId(
+            activeTopicId,
+            "assistant-message-source-2",
+          ),
       ),
       false,
     );

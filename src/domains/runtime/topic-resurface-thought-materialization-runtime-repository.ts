@@ -23,30 +23,7 @@ implements TopicResurfaceThoughtMaterializationPort {
   async materialize(
     input: Parameters<TopicResurfaceThoughtMaterializationPort["materialize"]>[0],
   ): Promise<TopicResurfaceThoughtMaterializationPortResult> {
-    const stateId =
-      topicResurfaceThoughtStateId(input.sourceTopicStateId);
-
     return this.db.transaction(async (transaction) => {
-      const [existing] = await transaction
-        .select({ id: runtimeSubjectStates.id })
-        .from(runtimeSubjectStates)
-        .where(
-          and(
-            eq(runtimeSubjectStates.id, stateId),
-            eq(runtimeSubjectStates.userId, input.userId),
-            eq(runtimeSubjectStates.subjectId, input.subjectId),
-            eq(runtimeSubjectStates.kind, "thought"),
-          ),
-        )
-        .limit(1);
-
-      if (existing) {
-        return {
-          outcome: "already_materialized",
-          stateId,
-        } as const;
-      }
-
       const [sourceRow] = await transaction
         .select({
           id: runtimeSubjectStates.id,
@@ -72,29 +49,6 @@ implements TopicResurfaceThoughtMaterializationPort {
 
       if (!sourceRow) return { outcome: "source_ineligible" } as const;
 
-      // The source row lock serializes concurrent materializers for one Topic.
-      // Re-check the deterministic target after acquiring that lock so two
-      // simultaneous runs converge on one Thought instead of racing the PK.
-      const [existingAfterLock] = await transaction
-        .select({ id: runtimeSubjectStates.id })
-        .from(runtimeSubjectStates)
-        .where(
-          and(
-            eq(runtimeSubjectStates.id, stateId),
-            eq(runtimeSubjectStates.userId, input.userId),
-            eq(runtimeSubjectStates.subjectId, input.subjectId),
-            eq(runtimeSubjectStates.kind, "thought"),
-          ),
-        )
-        .limit(1);
-
-      if (existingAfterLock) {
-        return {
-          outcome: "already_materialized",
-          stateId,
-        } as const;
-      }
-
       let topic;
       try {
         topic = readTopicEvolution(sourceRow.payload);
@@ -110,12 +64,41 @@ implements TopicResurfaceThoughtMaterializationPort {
         return { outcome: "source_ineligible" } as const;
       }
 
-      const envelope =
-        sourceRow.envelope as unknown as PersistentWriteEnvelope;
-      const causedBy = envelope.provenance.causedBy?.trim();
-      if (!causedBy) {
+      const evidenceSourceId =
+        topic.reinforcementSources[topic.reinforcementSources.length - 1]?.trim();
+      if (!evidenceSourceId) {
         return { outcome: "source_ineligible" } as const;
       }
+      const stateId = topicResurfaceThoughtStateId(
+        sourceRow.id,
+        evidenceSourceId,
+      );
+
+      // Locking the source Topic serializes materialization for one evidence
+      // generation. Re-check the deterministic target while holding that lock
+      // so concurrent runs converge on exactly one derived Thought.
+      const [existing] = await transaction
+        .select({ id: runtimeSubjectStates.id })
+        .from(runtimeSubjectStates)
+        .where(
+          and(
+            eq(runtimeSubjectStates.id, stateId),
+            eq(runtimeSubjectStates.userId, input.userId),
+            eq(runtimeSubjectStates.subjectId, input.subjectId),
+            eq(runtimeSubjectStates.kind, "thought"),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        return {
+          outcome: "already_materialized",
+          stateId,
+        } as const;
+      }
+
+      const envelope =
+        sourceRow.envelope as unknown as PersistentWriteEnvelope;
 
       const thought = topicResurfaceToThought({
         userId: input.userId,
@@ -126,7 +109,7 @@ implements TopicResurfaceThoughtMaterializationPort {
           visibility: envelope.scope.visibility,
           sensitivity: envelope.scope.sensitivity,
           audience: [...envelope.scope.audience],
-          causedBy,
+          evidenceSourceId,
         },
         text: input.text,
         evaluatedAt: input.evaluatedAt,

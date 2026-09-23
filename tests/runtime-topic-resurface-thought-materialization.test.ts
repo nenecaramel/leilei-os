@@ -32,15 +32,27 @@ const candidate: TopicResurfaceCandidate = {
   dormantAt: "2026-09-23T00:00:00.000Z",
 };
 
-test("Topic resurface Thought id is deterministic per source Topic", () => {
-  const first = topicResurfaceThoughtStateId(candidate.stateId);
-  const second = topicResurfaceThoughtStateId(candidate.stateId);
-  const other = topicResurfaceThoughtStateId(
+test("Topic resurface Thought id is deterministic per Topic evidence generation", () => {
+  const first = topicResurfaceThoughtStateId(
+    candidate.stateId,
+    "assistant-message-1",
+  );
+  const second = topicResurfaceThoughtStateId(
+    candidate.stateId,
+    "assistant-message-1",
+  );
+  const otherTopic = topicResurfaceThoughtStateId(
     "22222222-2222-4222-8222-222222222222",
+    "assistant-message-1",
+  );
+  const newerEvidence = topicResurfaceThoughtStateId(
+    candidate.stateId,
+    "assistant-message-2",
   );
 
   assert.equal(first, second);
-  assert.notEqual(first, other);
+  assert.notEqual(first, otherTopic);
+  assert.notEqual(first, newerEvidence);
   assert.match(
     first,
     /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
@@ -57,14 +69,20 @@ test("Topic resurface Thought keeps derived authority, hidden presentation, sour
       visibility: "subject_private",
       sensitivity: "sensitive",
       audience: ["G"],
-      causedBy: "assistant-message-1",
+      evidenceSourceId: "assistant-message-1",
     },
     text: "  我注意到真正持续的是边界问题。  ",
     evaluatedAt: "2026-09-23T01:00:00+00:00",
     config,
   });
 
-  assert.equal(state.id, topicResurfaceThoughtStateId(candidate.stateId));
+  assert.equal(
+    state.id,
+    topicResurfaceThoughtStateId(
+      candidate.stateId,
+      "assistant-message-1",
+    ),
+  );
   assert.equal(state.kind, "thought");
   assert.equal(state.text, "我注意到真正持续的是边界问题。");
   assert.equal(state.envelope.authority, "derived");
@@ -90,6 +108,7 @@ test("Topic resurface Thought keeps derived authority, hidden presentation, sour
       source_kind: "topic_resurface",
       source_state_id: candidate.stateId,
       source_thread_key: candidate.threadKey,
+      source_evidence_id: "assistant-message-1",
       evaluated_at: "2026-09-23T01:00:00.000Z",
       deliberation_prompt_contract_version:
         "topic-resurface-deliberation-v1",
@@ -157,7 +176,10 @@ test("Topic resurface Thought materializer only calls persistence after retentio
         assert.deepEqual(input.config, config);
         return {
           outcome: "materialized" as const,
-          stateId: topicResurfaceThoughtStateId(candidate.stateId),
+          stateId: topicResurfaceThoughtStateId(
+            candidate.stateId,
+            "assistant-message-1",
+          ),
         };
       },
     },
@@ -173,7 +195,10 @@ test("Topic resurface Thought materializer only calls persistence after retentio
     }),
     {
       outcome: "materialized",
-      stateId: topicResurfaceThoughtStateId(candidate.stateId),
+      stateId: topicResurfaceThoughtStateId(
+        candidate.stateId,
+        "assistant-message-1",
+      ),
     },
   );
   assert.equal(materializeCalls, 1);
