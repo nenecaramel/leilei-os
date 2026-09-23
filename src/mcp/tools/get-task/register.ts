@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TASK_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TaskDomainError,
   type ReadTaskInput,
