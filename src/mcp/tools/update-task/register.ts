@@ -29,7 +29,7 @@ export interface UpdateTaskToolService { updateMcpTask(context: AuthenticatedTas
 export type UpdateTaskToolDependencies = { taskService: UpdateTaskToolService; getAuthenticatedUserId: () => string };
 
 export function registerUpdateTaskTool(server: McpServer, dependencies: UpdateTaskToolDependencies): void {
-  server.registerTool("update_task", { title: "Update one Task", description: TASK_DOMAIN_BOUNDARY + " Update only explicitly supplied ordinary fields on one active Task. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly retry.", inputSchema: updateTaskInputSchema, outputSchema: updateTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, title, description, priority, due_time, tags, author }) => invokeMcpWrite({
+  server.registerTool("update_task", { title: "Update one Task", description: TASK_DOMAIN_BOUNDARY + " Update only supplied ordinary fields on one active Task. If outcome is uncertain, read get_task before retrying.", inputSchema: updateTaskInputSchema, outputSchema: updateTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, title, description, priority, due_time, tags, author }) => invokeMcpWrite({
     toolName: "update_task", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
       if (title === undefined && description === undefined && priority === undefined && due_time === undefined && tags === undefined && author === undefined) {
