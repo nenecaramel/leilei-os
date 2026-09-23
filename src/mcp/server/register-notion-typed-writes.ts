@@ -121,11 +121,6 @@ const typedPropertySchema = z.discriminatedUnion("type", [
     type: z.literal("relation"),
     value: z.array(notionIdSchema).max(100),
   }).strict(),
-  z.object({
-    name: propertyNameSchema,
-    type: z.literal("people"),
-    value: z.array(notionIdSchema).max(100),
-  }).strict(),
 ]);
 
 const createPageInputSchema = z.object({
@@ -238,7 +233,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Update Notion page properties",
       description:
-        "Update selected Notion page properties using typed values instead of raw Notion JSON. Supported property types: title, rich_text, number, checkbox, date, select, multi_select, status, url, email, phone_number, relation, and people. The write is fresh-read and verified.",
+        "Update selected Notion page properties using typed values instead of raw Notion JSON. Supported property types: title, rich_text, number, checkbox, date, select, multi_select, status, url, email, phone_number, and relation. The write is fresh-read and verified.",
       inputSchema: updatePropertiesInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -420,8 +415,6 @@ function toNotionProperty(property: TypedProperty): Record<string, unknown> {
       return { phone_number: property.value };
     case "relation":
       return { relation: property.value.map((id) => ({ id })) };
-    case "people":
-      return { people: property.value.map((id) => ({ id })) };
   }
 }
 
