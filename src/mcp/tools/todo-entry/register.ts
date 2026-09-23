@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TODO_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TodoServiceError,
   type TodoEntriesMutationServiceResult,
@@ -22,7 +23,7 @@ const entryTextSchema = z.string().min(1).max(4_000);
 
 const appendInputSchema = z.object({
   date: dateSchema,
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   kind: todoKindSchema,
   text: entryTextSchema,
   idempotency_key: mcpIdempotencyKeySchema,
@@ -30,7 +31,7 @@ const appendInputSchema = z.object({
 
 const appendBatchInputSchema = z.object({
   date: dateSchema,
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   entries: z.array(
     z.object({
       kind: todoKindSchema,
@@ -42,7 +43,7 @@ const appendBatchInputSchema = z.object({
 
 const updateInputSchema = z.object({
   date: dateSchema,
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   entry_id: entryIdSchema,
   expected_revision: mcpExpectedRevisionSchema,
   kind: todoKindSchema.optional(),
@@ -52,7 +53,7 @@ const updateInputSchema = z.object({
 
 const deleteInputSchema = z.object({
   date: dateSchema,
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   entry_id: entryIdSchema,
   expected_revision: mcpExpectedRevisionSchema,
   idempotency_key: mcpIdempotencyKeySchema,
@@ -150,7 +151,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Append multiple Todo entries",
       description:
-        "Append 1-200 entries atomically to one exact L, G, or C Todo paper in a single model operation. The whole batch shares one idempotency_key and either commits together or not at all. The server creates entry ids/revision=1, returns each entry's id/revision/outcome, and does not require the paper revision.",
+        TODO_DOMAIN_BOUNDARY + " Append 1-200 entries atomically to one exact L, G, or C Todo paper in a single model operation. The whole batch shares one idempotency_key and either commits together or not at all. The server creates entry ids/revision=1, returns each entry's id/revision/outcome, and does not require the paper revision.",
       inputSchema: appendBatchInputSchema,
       outputSchema: batchMutationOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -178,7 +179,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Append one Todo entry",
       description:
-        "Append one entry to an exact L, G, or C Todo paper without resending the whole paper. The server creates the entry id and entry revision=1. This operation does not require the paper revision, so independent appends do not overwrite other entries. Use a stable idempotency_key for safe replay.",
+        TODO_DOMAIN_BOUNDARY + " Append one entry to an exact L, G, or C Todo paper without resending the whole paper. The server creates the entry id and entry revision=1. This operation does not require the paper revision, so independent appends do not overwrite other entries. Use a stable idempotency_key for safe replay.",
       inputSchema: appendInputSchema,
       outputSchema: mutationOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -207,7 +208,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Update one Todo entry",
       description:
-        "Update one exact Todo entry by entry_id. Supply expected_revision from read_todo_day; only that entry revision is compared. Other entries may change independently without causing this update to fail. kind and text are partial fields; provide at least one. Use a stable idempotency_key for safe replay.",
+        TODO_DOMAIN_BOUNDARY + " Update one exact Todo entry by entry_id. Supply expected_revision from read_todo_day; only that entry revision is compared. Other entries may change independently without causing this update to fail. kind and text are partial fields; provide at least one. Use a stable idempotency_key for safe replay.",
       inputSchema: updateInputSchema,
       outputSchema: mutationOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -241,7 +242,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Delete one Todo entry",
       description:
-        "Delete one exact Todo entry by entry_id. Supply expected_revision from read_todo_day; only that entry revision is compared. Other entries may change independently without causing this delete to fail. Use a stable idempotency_key for safe replay.",
+        TODO_DOMAIN_BOUNDARY + " Delete one exact Todo entry by entry_id. Supply expected_revision from read_todo_day; only that entry revision is compared. Other entries may change independently without causing this delete to fail. Use a stable idempotency_key for safe replay.",
       inputSchema: deleteInputSchema,
       outputSchema: deleteOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
