@@ -14,7 +14,6 @@ const todoEntryInputSchema = z.object({
   id: z.string(),
   kind: z.enum(["pending", "completed", "record"]),
   text: z.string(),
-  revision: z.number().int().min(1).optional(),
 }).strict();
 
 const todoEntryOutputSchema = z.object({
