@@ -7,7 +7,7 @@ struct ChatComposer: View {
     var isFocused: FocusState<Bool>.Binding
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             TextField(
                 "",
                 text: $text,
