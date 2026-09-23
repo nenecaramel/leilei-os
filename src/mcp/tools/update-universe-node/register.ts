@@ -23,7 +23,7 @@ export type UpdateUniverseNodeToolDependencies = {
 export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: UpdateUniverseNodeToolDependencies): void {
   server.registerTool("update_universe_node", {
     title: "Update a Universe node",
-    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Apply a partial update to one Universe node. Omitted fields remain unchanged. A stale global version is a conflict; fresh-read authoritative state before deciding whether a new mutation is needed, and never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Partially update one node; omitted fields stay unchanged. On stale/uncertain state, fresh-read Universe before retrying.",
     inputSchema: updateUniverseNodeInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
