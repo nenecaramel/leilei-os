@@ -92,6 +92,24 @@ function curiosityState(input: {
   };
 }
 
+function manualTopicState(input: {
+  id: string;
+  userId: string;
+  text: string;
+  sourceId: string;
+}): SubjectStateWrite {
+  return {
+    ...curiosityState({
+      id: input.id,
+      userId: input.userId,
+      text: input.text,
+      sourceId: input.sourceId,
+      settled: true,
+    }),
+    kind: "topic",
+  };
+}
+
 test(
   "settled Curiosity projects idempotently into a derived Topic and provisional Curiosity does not",
   { skip: !enabled },
@@ -130,6 +148,7 @@ test(
     const subjectStates = new DrizzleSubjectStateRuntimePort(database.db);
     const settledId = "11111111-1111-4111-8111-111111111111";
     const provisionalId = "22222222-2222-4222-8222-222222222222";
+    const manualTopicId = "33333333-3333-4333-8333-333333333333";
     await subjectStates.append({
       userId,
       subjectId: "G",
@@ -147,6 +166,12 @@ test(
           text: "这条还在未确认分支",
           sourceId: "assistant-message-2",
           settled: false,
+        }),
+        manualTopicState({
+          id: manualTopicId,
+          userId,
+          text: "为什么 dormant Topic 会重新活跃",
+          sourceId: "assistant-message-1",
         }),
       ],
     });
@@ -176,10 +201,9 @@ test(
     });
     const derivedId = curiosityTopicStateId(settledId);
     const topics = rows.filter((state) => state.kind === "topic");
-    assert.equal(topics.length, 1);
-    const [topic] = topics;
+    assert.equal(topics.length, 2);
+    const topic = topics.find((state) => state.id === derivedId);
     assert.ok(topic);
-    assert.equal(topic.id, derivedId);
     assert.equal(topic.envelope.authority, "derived");
     assert.equal(
       topic.envelope.provenance.causedBy,
@@ -217,7 +241,13 @@ test(
       conversationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     });
     const activeTopic = evolved.find((state) => state.id === derivedId);
+    const manualTopic = evolved.find((state) => state.id === manualTopicId);
     assert.ok(activeTopic);
+    assert.ok(manualTopic);
     assert.equal(readTopicEvolution(activeTopic.payload)?.phase, "active");
+    assert.equal(
+      readTopicEvolution(manualTopic.payload)?.reinforcementCount,
+      1,
+    );
   },
 );
