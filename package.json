@@ -63,7 +63,8 @@
     "test:mcp-revision-idempotency": "tsx --test tests/write-memory-tool.test.ts tests/write-diary-tool.test.ts tests/create-task-tool.test.ts tests/todo-entry-mcp-tools.test.ts tests/todo-mcp-tools.test.ts tests/shared-paper-mcp-tools.test.ts tests/diary-comment-tools.test.ts tests/mcp-universe-write-tools.test.ts tests/mcp-universe-provenance-tools.test.ts tests/toy-command-tool.test.ts tests/mcp-tool-contract-governance.test.ts",
     "test:mcp-tool-surface-acceptance": "node scripts/mcp-tool-surface-acceptance.mjs",
     "test:runtime-topic-opportunity-db": "RUN_RUNTIME_TOPIC_OPPORTUNITY_DATABASE_TEST=1 tsx --test tests/runtime-topic-resurface-cross-device-opportunity.integration.test.ts",
-    "test:mcp-domain-semantics": "tsx --test tests/mcp-tool-contract-governance.test.ts"
+    "test:mcp-domain-semantics": "tsx --test tests/mcp-tool-contract-governance.test.ts",
+    "test:mcp-naming-deprecation": "tsx --test tests/mcp-naming-deprecation.test.ts tests/mcp-tool-profiles.test.ts tests/mcp-production-tool-profiles.test.ts tests/mcp-tool-contract-governance.test.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
