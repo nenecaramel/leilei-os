@@ -118,9 +118,9 @@ test(
     userId = user.id;
 
     const statePort = new DrizzleSubjectStateRuntimePort(database.db);
-    const anchorId = "33333333-3333-4333-8333-333333333333";
-    const reinforcementId = "44444444-4444-4444-8444-444444444444";
-    const provisionalId = "55555555-5555-4555-8555-555555555555";
+    const anchorId = crypto.randomUUID();
+    const reinforcementId = crypto.randomUUID();
+    const provisionalId = crypto.randomUUID();
     await statePort.append({
       userId,
       subjectId: "G",

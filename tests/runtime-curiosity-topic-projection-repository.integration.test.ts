@@ -146,9 +146,9 @@ test(
     userId = user.id;
 
     const subjectStates = new DrizzleSubjectStateRuntimePort(database.db);
-    const settledId = "11111111-1111-4111-8111-111111111111";
-    const provisionalId = "22222222-2222-4222-8222-222222222222";
-    const manualTopicId = "33333333-3333-4333-8333-333333333333";
+    const settledId = crypto.randomUUID();
+    const provisionalId = crypto.randomUUID();
+    const manualTopicId = crypto.randomUUID();
     await subjectStates.append({
       userId,
       subjectId: "G",
