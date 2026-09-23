@@ -51,7 +51,8 @@ struct SettingsExportContent: View {
             if let errorMessage {
                 Section {
                     SettingsSectionState(
-                        title: errorMessage
+                        title: "Export Failed",
+                        message: errorMessage
                     )
                 }
             }
