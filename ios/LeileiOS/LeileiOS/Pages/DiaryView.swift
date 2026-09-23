@@ -53,7 +53,11 @@ struct DiaryView: View {
                         systemImage: "book.closed"
                     )
                 } else {
-                    DiaryList(diaries: visibleDiaries)
+                    DiaryList(diaries: visibleDiaries) {
+                        Task {
+                            await loadDiary()
+                        }
+                    }
                 }
             }
         }
@@ -334,6 +338,7 @@ private struct DiaryNavigationTitle: View {
 
 private struct DiaryList: View {
     let diaries: [DiaryEntry]
+    let onChanged: () -> Void
 
     var body: some View {
         List {
@@ -341,7 +346,10 @@ private struct DiaryList: View {
                 Section(group.title) {
                     ForEach(Array(group.diaries.enumerated()), id: \.element.id) { index, diary in
                         NavigationLink {
-                            DiaryDetailView(diaryID: diary.id)
+                            DiaryDetailView(
+                                diaryID: diary.id,
+                                onChanged: onChanged
+                            )
                         } label: {
                             DiaryRow(diary: diary)
                         }
@@ -407,13 +415,26 @@ private struct DiaryRow: View {
 
 private struct DiaryDetailView: View {
     let diaryID: String
+    let onChanged: () -> Void
 
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
     @State private var state: DiaryDetailLoadState = .loading
-    @State private var commentText = ""
-    @State private var commentAuthor = "L"
-    @State private var isSavingComment = false
+    @State private var isEditing = false
+    @State private var draftTitle = ""
+    @State private var draftContent = ""
+    @State private var draftDate = Date.now
+    @State private var draftMood = ""
+    @State private var draftTags = ""
+    @State private var draftAuthor = "L"
+    @State private var isSavingDiary = false
+    @State private var editError: String?
+
+    @State private var commentEditorMode: DiaryCommentEditorMode?
     @State private var commentError: String?
+    @State private var isArchiving = false
+    @State private var showingArchiveConfirmation = false
 
     var body: some View {
         Group {
@@ -432,47 +453,49 @@ private struct DiaryDetailView: View {
             case .loaded(let diary):
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(DiaryDate.formatDetail(diary.date))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.bottom, 18)
+                        if isEditing {
+                            DiaryEditorFields(
+                                title: $draftTitle,
+                                content: $draftContent,
+                                date: $draftDate,
+                                mood: $draftMood,
+                                tags: $draftTags,
+                                author: $draftAuthor,
+                                autoFocusTitle: false
+                            )
 
-                        Text(diary.title)
-                            .font(.title2.weight(.semibold))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        if let content = diary.content, !content.isEmpty {
-                            Text(content)
-                                .font(.body)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 12)
-                        }
-
-                        if diary.mood != nil || !diary.tags.isEmpty || diary.author != nil {
-                            DiaryMetadata(diary: diary)
-                                .padding(.top, 18)
-                        }
-
-                        DiaryCommentsSection(
-                            comments: diary.comments ?? [],
-                            count: diary.commentsMetadata?.count ?? diary.comments?.count ?? 0,
-                            commentText: $commentText,
-                            commentAuthor: $commentAuthor,
-                            isSaving: isSavingComment,
-                            errorMessage: commentError,
-                            onSend: {
-                                Task {
-                                    await addComment()
-                                }
+                            if let editError {
+                                Text(editError)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 12)
                             }
-                        )
-                        .padding(.top, 28)
+                        } else {
+                            DiaryReadingContent(diary: diary)
+
+                            DiaryCommentsSection(
+                                comments: diary.comments ?? [],
+                                count: diary.commentsMetadata?.count
+                                    ?? diary.comments?.count
+                                    ?? 0,
+                                errorMessage: commentError,
+                                onAdd: {
+                                    commentEditorMode = .create
+                                },
+                                onEdit: { comment in
+                                    commentEditorMode = .edit(comment)
+                                },
+                                onDelete: { comment in
+                                    Task {
+                                        await deleteComment(comment)
+                                    }
+                                }
+                            )
+                            .padding(.top, 24)
+                        }
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 14)
+                    .padding(.top, 2)
                     .padding(.bottom, 32)
                 }
                 .background(Color(.systemBackground))
@@ -480,9 +503,85 @@ private struct DiaryDetailView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isEditing)
+        .toolbar {
+            if isEditing {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        isEditing = false
+                        editError = nil
+                    }
+                    .disabled(isSavingDiary)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(isSavingDiary ? "Saving..." : "Done") {
+                        Task {
+                            await saveDiaryEdit()
+                        }
+                    }
+                    .disabled(!canSaveEdit || isSavingDiary)
+                }
+            } else {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Edit") {
+                            beginEditing()
+                        }
+
+                        Button("Archive", role: .destructive) {
+                            showingArchiveConfirmation = true
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 18, weight: .medium))
+                    }
+                    .accessibilityLabel("Diary actions")
+                    .disabled(isArchiving)
+                }
+            }
+        }
+        .confirmationDialog(
+            "Archive this diary?",
+            isPresented: $showingArchiveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Archive", role: .destructive) {
+                Task {
+                    await archiveDiary()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $commentEditorMode) { mode in
+            DiaryCommentEditorSheet(
+                diaryID: diaryID,
+                mode: mode
+            ) { comment, isNew in
+                applySavedComment(comment, isNew: isNew)
+            }
+        }
         .task(id: diaryID) {
             await loadDetail()
         }
+    }
+
+    private var canSaveEdit: Bool {
+        !draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func beginEditing() {
+        guard case .loaded(let diary) = state else { return }
+
+        draftTitle = diary.title
+        draftContent = diary.content ?? ""
+        draftDate = DiaryDate.parse(diary.date) ?? .now
+        draftMood = diary.mood ?? ""
+        draftTags = diary.tags.joined(separator: ", ")
+        draftAuthor = diary.author ?? "L"
+        editError = nil
+        isEditing = true
     }
 
     @MainActor
@@ -500,48 +599,115 @@ private struct DiaryDetailView: View {
     }
 
     @MainActor
-    private func addComment() async {
-        let content = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty, !isSavingComment else { return }
+    private func saveDiaryEdit() async {
+        guard canSaveEdit, !isSavingDiary else { return }
+        guard case .loaded(let current) = state else { return }
 
-        isSavingComment = true
-        commentError = nil
-        defer { isSavingComment = false }
+        isSavingDiary = true
+        editError = nil
+        defer { isSavingDiary = false }
 
         do {
-            let payload = DiaryCommentCreateRequest(
-                author: commentAuthor,
-                content: content,
-                idempotencyKey: "ios:diary-comment:\(UUID().uuidString)"
+            let payload = DiaryCreateRequest(
+                title: draftTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                content: draftContent.trimmingCharacters(in: .whitespacesAndNewlines),
+                date: DiaryDate.apiDate(draftDate),
+                tags: DiaryCreateRequest.parseTags(draftTags),
+                mood: DiaryCreateRequest.normalizedOptional(draftMood),
+                author: draftAuthor
             )
             let body = try JSONEncoder().encode(payload)
-            let response: DiaryCommentCreateEnvelope = try await appModel.api.request(
-                path: "/api/v1/diary/\(diaryID)/comments",
-                method: "POST",
+            let response: DiaryEntryEnvelope = try await appModel.api.request(
+                path: "/api/v1/diary/\(diaryID)",
+                method: "PATCH",
                 body: body
             )
 
-            commentText = ""
+            var updated = response.data
+            updated.comments = current.comments
+            updated.commentsMetadata = current.commentsMetadata
+            state = .loaded(updated)
+            isEditing = false
+            onChanged()
+        } catch {
+            editError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func archiveDiary() async {
+        guard !isArchiving else { return }
+
+        isArchiving = true
+        defer { isArchiving = false }
+
+        do {
+            let _: DiarySuccessEnvelope = try await appModel.api.request(
+                path: "/api/v1/diary/\(diaryID)",
+                method: "DELETE"
+            )
+            onChanged()
+            dismiss()
+        } catch {
+            editError = error.localizedDescription
+        }
+    }
+
+    private func applySavedComment(
+        _ comment: DiaryComment,
+        isNew: Bool
+    ) {
+        guard case .loaded(var diary) = state else { return }
+
+        var comments = diary.comments ?? []
+        if let index = comments.firstIndex(where: { $0.id == comment.id }) {
+            comments[index] = comment
+        } else {
+            comments.append(comment)
+        }
+        comments.sort {
+            if $0.createdAt == $1.createdAt {
+                return $0.id < $1.id
+            }
+            return $0.createdAt < $1.createdAt
+        }
+
+        let oldCount = diary.commentsMetadata?.count
+            ?? max(0, comments.count - (isNew ? 1 : 0))
+        diary.comments = comments
+        diary.commentsMetadata = DiaryCommentsMetadata(
+            count: oldCount + (isNew ? 1 : 0),
+            returned: comments.count,
+            truncated: diary.commentsMetadata?.truncated ?? false
+        )
+        commentError = nil
+        state = .loaded(diary)
+    }
+
+    @MainActor
+    private func deleteComment(_ comment: DiaryComment) async {
+        commentError = nil
+
+        do {
+            let payload = DiaryCommentDeleteRequest(
+                expectedRevision: comment.revision
+            )
+            let body = try JSONEncoder().encode(payload)
+            let _: DiaryCommentDeleteEnvelope = try await appModel.api.request(
+                path: "/api/v1/diary/\(diaryID)/comments/\(comment.id)",
+                method: "DELETE",
+                body: body
+            )
 
             guard case .loaded(var diary) = state else { return }
-            var comments = diary.comments ?? []
-            let wasAlreadyVisible = comments.contains {
-                $0.id == response.data.comment.id
+            let comments = (diary.comments ?? []).filter {
+                $0.id != comment.id
             }
-            if !wasAlreadyVisible {
-                comments.append(response.data.comment)
-            }
-            comments.sort {
-                if $0.createdAt == $1.createdAt {
-                    return $0.id < $1.id
-                }
-                return $0.createdAt < $1.createdAt
-            }
+            let oldCount = diary.commentsMetadata?.count
+                ?? (comments.count + 1)
             diary.comments = comments
-            let existingCount = diary.commentsMetadata?.count
-                ?? max(0, comments.count - (wasAlreadyVisible ? 0 : 1))
             diary.commentsMetadata = DiaryCommentsMetadata(
-                count: existingCount + (wasAlreadyVisible ? 0 : 1),
+                count: max(0, oldCount - 1),
                 returned: comments.count,
                 truncated: diary.commentsMetadata?.truncated ?? false
             )
@@ -552,17 +718,83 @@ private struct DiaryDetailView: View {
     }
 }
 
+private struct DiaryReadingContent: View {
+    let diary: DiaryEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(DiaryDate.formatDetail(diary.date))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 10)
+
+            Text(diary.title)
+                .font(.title2.weight(.semibold))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let content = diary.content, !content.isEmpty {
+                Text(content)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 10)
+            }
+
+            DiaryMetadataLine(diary: diary)
+                .padding(.top, 18)
+        }
+    }
+}
+
+private struct DiaryMetadataLine: View {
+    let diary: DiaryEntry
+
+    private var parts: [String] {
+        var result: [String] = []
+
+        if let author = diary.author,
+           !author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result.append(author)
+        }
+
+        if let mood = diary.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !mood.isEmpty {
+            result.append(mood)
+        }
+
+        if !diary.tags.isEmpty {
+            result.append(
+                diary.tags.map { "#\($0)" }.joined(separator: " ")
+            )
+        }
+
+        return result
+    }
+
+    var body: some View {
+        if !parts.isEmpty {
+            Text(parts.joined(separator: " · "))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 private struct DiaryCommentsSection: View {
     let comments: [DiaryComment]
     let count: Int
-    @Binding var commentText: String
-    @Binding var commentAuthor: String
-    let isSaving: Bool
     let errorMessage: String?
-    let onSend: () -> Void
+    let onAdd: () -> Void
+    let onEdit: (DiaryComment) -> Void
+    let onDelete: (DiaryComment) -> Void
+
+    @State private var pendingDelete: DiaryComment?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             Divider()
 
             HStack(spacing: 6) {
@@ -592,6 +824,24 @@ private struct DiaryCommentsSection: View {
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
+
+                        Spacer(minLength: 8)
+
+                        Menu {
+                            Button("Edit") {
+                                onEdit(comment)
+                            }
+
+                            Button("Delete", role: .destructive) {
+                                pendingDelete = comment
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24, height: 24)
+                        }
+                        .accessibilityLabel("Comment actions")
                     }
 
                     Text(comment.content)
@@ -599,49 +849,278 @@ private struct DiaryCommentsSection: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
-                .padding(.vertical, 3)
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                Menu {
-                    ForEach(["L", "G", "C"], id: \.self) { author in
-                        Button(author) {
-                            commentAuthor = author
-                        }
-                    }
-                } label: {
-                    Text(commentAuthor)
-                        .font(.caption.weight(.semibold))
-                        .frame(width: 28, height: 28)
-                        .background(.thinMaterial, in: Circle())
-                }
-
-                TextField("Add a comment...", text: $commentText, axis: .vertical)
-                    .lineLimit(1...5)
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
-
-                Button(action: onSend) {
-                    if isSaving {
-                        ProgressView()
-                            .frame(width: 28, height: 28)
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 27))
-                    }
-                }
-                .disabled(
-                    isSaving ||
-                    commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
-            }
+            Button("Add Comment", action: onAdd)
+                .font(.subheadline)
 
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .confirmationDialog(
+            "Delete this comment?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let pendingDelete {
+                    onDelete(pendingDelete)
+                }
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDelete = nil
+            }
+        }
+    }
+}
+
+private enum DiaryCommentEditorMode: Identifiable {
+    case create
+    case edit(DiaryComment)
+
+    var id: String {
+        switch self {
+        case .create:
+            return "create"
+        case .edit(let comment):
+            return "edit:\(comment.id)"
+        }
+    }
+
+    var comment: DiaryComment? {
+        switch self {
+        case .create:
+            return nil
+        case .edit(let comment):
+            return comment
+        }
+    }
+}
+
+private struct DiaryCommentEditorSheet: View {
+    let diaryID: String
+    let mode: DiaryCommentEditorMode
+    let onSaved: (DiaryComment, Bool) -> Void
+
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var content: String
+    @State private var author: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @FocusState private var isFocused: Bool
+
+    init(
+        diaryID: String,
+        mode: DiaryCommentEditorMode,
+        onSaved: @escaping (DiaryComment, Bool) -> Void
+    ) {
+        self.diaryID = diaryID
+        self.mode = mode
+        self.onSaved = onSaved
+        _content = State(initialValue: mode.comment?.content ?? "")
+        _author = State(initialValue: mode.comment?.author ?? "L")
+    }
+
+    var body: some View {
+        NavigationStack {
+            TextEditor(text: $content)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .focused($isFocused)
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                .background(Color(.systemBackground))
+                .navigationTitle(mode.comment == nil ? "Add Comment" : "Edit Comment")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                        .disabled(isSaving)
+                    }
+
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(
+                            isSaving
+                                ? "Saving..."
+                                : (mode.comment == nil ? "Add" : "Done")
+                        ) {
+                            Task {
+                                await save()
+                            }
+                        }
+                        .disabled(
+                            isSaving ||
+                            content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+                    }
+
+                    if mode.comment == nil {
+                        ToolbarItem(placement: .bottomBar) {
+                            Menu {
+                                ForEach(["L", "G", "C"], id: \.self) { value in
+                                    Button(value) {
+                                        author = value
+                                    }
+                                }
+                            } label: {
+                                Text("Author \(author)")
+                            }
+                        }
+                    }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.systemBackground))
+                    }
+                }
+        }
+        .task {
+            isFocused = true
+        }
+    }
+
+    @MainActor
+    private func save() async {
+        let normalized = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty, !isSaving else { return }
+
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            if let comment = mode.comment {
+                let payload = DiaryCommentUpdateRequest(
+                    expectedRevision: comment.revision,
+                    content: normalized
+                )
+                let body = try JSONEncoder().encode(payload)
+                let response: DiaryCommentEnvelope = try await appModel.api.request(
+                    path: "/api/v1/diary/\(diaryID)/comments/\(comment.id)",
+                    method: "PATCH",
+                    body: body
+                )
+                onSaved(response.data, false)
+            } else {
+                let payload = DiaryCommentCreateRequest(
+                    author: author,
+                    content: normalized,
+                    idempotencyKey: "ios:diary-comment:\(UUID().uuidString)"
+                )
+                let body = try JSONEncoder().encode(payload)
+                let response: DiaryCommentCreateEnvelope = try await appModel.api.request(
+                    path: "/api/v1/diary/\(diaryID)/comments",
+                    method: "POST",
+                    body: body
+                )
+                onSaved(response.data.comment, true)
+            }
+
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct DiaryEditorFields: View {
+    @Binding var title: String
+    @Binding var content: String
+    @Binding var date: Date
+    @Binding var mood: String
+    @Binding var tags: String
+    @Binding var author: String
+
+    let autoFocusTitle: Bool
+
+    @FocusState private var focusedField: DiaryEditorField?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DatePicker(
+                "",
+                selection: $date,
+                displayedComponents: .date
+            )
+            .labelsHidden()
+            .datePickerStyle(.compact)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.bottom, 10)
+
+            TextField("Title", text: $title, axis: .vertical)
+                .font(.title2.weight(.semibold))
+                .focused($focusedField, equals: .title)
+                .submitLabel(.next)
+                .onSubmit {
+                    focusedField = .content
+                }
+
+            ZStack(alignment: .topLeading) {
+                if content.isEmpty {
+                    Text("Write something...")
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 8)
+                        .allowsHitTesting(false)
+                }
+
+                TextEditor(text: $content)
+                    .font(.body)
+                    .focused($focusedField, equals: .content)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 280)
+                    .padding(.horizontal, -5)
+            }
+            .padding(.top, 2)
+
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach(["L", "G", "C"], id: \.self) { value in
+                        Button(value) {
+                            author = value
+                        }
+                    }
+                } label: {
+                    Text(author)
+                }
+
+                Text("·")
+                    .foregroundStyle(.tertiary)
+
+                TextField("Mood", text: $mood)
+                    .textFieldStyle(.plain)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                Text("·")
+                    .foregroundStyle(.tertiary)
+
+                TextField("Tags", text: $tags)
+                    .textFieldStyle(.plain)
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .padding(.top, 14)
+        }
+        .task {
+            if autoFocusTitle {
+                focusedField = .title
             }
         }
     }
@@ -661,74 +1140,19 @@ private struct DiaryCreateView: View {
     @State private var author = "L"
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @FocusState private var focusedField: DiaryCreateField?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                DatePicker(
-                    "",
-                    selection: $date,
-                    displayedComponents: .date
+                DiaryEditorFields(
+                    title: $title,
+                    content: $content,
+                    date: $date,
+                    mood: $mood,
+                    tags: $tags,
+                    author: $author,
+                    autoFocusTitle: true
                 )
-                .labelsHidden()
-                .datePickerStyle(.compact)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 18)
-
-                TextField("Title", text: $title, axis: .vertical)
-                    .font(.title2.weight(.semibold))
-                    .focused($focusedField, equals: .title)
-                    .submitLabel(.next)
-                    .onSubmit {
-                        focusedField = .content
-                    }
-
-                ZStack(alignment: .topLeading) {
-                    if content.isEmpty {
-                        Text("Write something...")
-                            .font(.body)
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 8)
-                            .allowsHitTesting(false)
-                    }
-
-                    TextEditor(text: $content)
-                        .font(.body)
-                        .focused($focusedField, equals: .content)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 280)
-                        .padding(.horizontal, -5)
-                }
-                .padding(.top, 4)
-
-                Divider()
-                    .padding(.vertical, 14)
-
-                HStack(spacing: 10) {
-                    TextField("Mood", text: $mood)
-                        .font(.subheadline)
-                        .textFieldStyle(.plain)
-
-                    Text("·")
-                        .foregroundStyle(.tertiary)
-
-                    TextField("Tags", text: $tags)
-                        .font(.subheadline)
-                        .textFieldStyle(.plain)
-
-                    Spacer(minLength: 8)
-
-                    Menu(author) {
-                        ForEach(["L", "G", "C"], id: \.self) { value in
-                            Button(value) {
-                                author = value
-                            }
-                        }
-                    }
-                    .font(.subheadline)
-                }
-                .foregroundStyle(.secondary)
 
                 if let errorMessage {
                     Text(errorMessage)
@@ -738,7 +1162,7 @@ private struct DiaryCreateView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 14)
+            .padding(.top, 2)
             .padding(.bottom, 32)
         }
         .background(Color(.systemBackground))
@@ -759,9 +1183,6 @@ private struct DiaryCreateView: View {
                 }
                 .disabled(!canSave || isSaving)
             }
-        }
-        .task {
-            focusedField = .title
         }
     }
 
@@ -801,7 +1222,7 @@ private struct DiaryCreateView: View {
     }
 }
 
-private enum DiaryCreateField {
+private enum DiaryEditorField {
     case title
     case content
 }
@@ -848,6 +1269,48 @@ private struct DiaryCommentCreateData: Decodable {
     let comment: DiaryComment
 }
 
+private struct DiaryCommentEnvelope: Decodable {
+    let success: Bool
+    let data: DiaryComment
+}
+
+private struct DiaryCommentUpdateRequest: Encodable {
+    let expectedRevision: Int
+    let content: String
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case expectedRevision = "expected_revision"
+    }
+}
+
+private struct DiaryCommentDeleteRequest: Encodable {
+    let expectedRevision: Int
+
+    enum CodingKeys: String, CodingKey {
+        case expectedRevision = "expected_revision"
+    }
+}
+
+private struct DiaryCommentDeleteEnvelope: Decodable {
+    let success: Bool
+    let data: DiaryCommentDeleteData
+}
+
+private struct DiaryCommentDeleteData: Decodable {
+    let commentID: String
+    let deleted: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case deleted
+        case commentID = "comment_id"
+    }
+}
+
+private struct DiarySuccessEnvelope: Decodable {
+    let success: Bool
+}
+
 private enum DiaryDetailLoadState {
     case loading
     case unavailable(String)
@@ -868,31 +1331,6 @@ private enum DiaryCommentDate {
                 .hour()
                 .minute()
         )
-    }
-}
-
-private struct DiaryMetadata: View {
-    let diary: DiaryEntry
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let mood = diary.mood?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !mood.isEmpty {
-                LabeledContent("Mood", value: mood)
-            }
-
-            if !diary.tags.isEmpty {
-                LabeledContent(
-                    "Tags",
-                    value: diary.tags.map { "#\($0)" }.joined(separator: " ")
-                )
-            }
-
-            if let author = diary.author {
-                LabeledContent("Author", value: author)
-            }
-        }
-        .font(.subheadline)
     }
 }
 
@@ -1030,6 +1468,13 @@ private enum DiaryDate {
         }
 
         return "\(components.month)/\(components.day)"
+    }
+
+    static func parse(_ value: String) -> Date? {
+        guard let components = components(from: value) else {
+            return nil
+        }
+        return date(from: components)
     }
 
     static func apiDate(_ date: Date) -> String {
