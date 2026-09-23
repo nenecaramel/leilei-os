@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TASK_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   TaskDomainError,
   type AuthenticatedTaskContext,
@@ -58,7 +59,7 @@ const createTaskInputSchema = z
       .array(z.string().min(1).max(50))
       .max(20)
       .describe("Organizational labels; use an empty array when none apply."),
-    author: contentAuthorSchema.describe("The logical content author: L, G, or C."),
+    author: contentAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
     idempotency_key: mcpIdempotencyKeySchema,
   })
   .strict();
@@ -116,7 +117,7 @@ export function registerCreateTaskTool(
     {
       title: "Create a personal task",
       description:
-        "Create one personal Task in Leilei OS as an idempotent write. Supply a stable idempotency_key to prevent duplicate creation on replay. The due time may be omitted or null; exact ISO instants remain supported and local date-times use the authenticated user's account timezone. The authenticated user and initial pending status are assigned by the server.",
+        TASK_DOMAIN_BOUNDARY + " Create one personal Task in Leilei OS as an idempotent write. Supply a stable idempotency_key to prevent duplicate creation on replay. The due time may be omitted or null; exact ISO instants remain supported and local date-times use the authenticated user's account timezone. The authenticated user and initial pending status are assigned by the server.",
       inputSchema: createTaskInputSchema,
       outputSchema: createTaskOutputSchema,
       annotations: {
