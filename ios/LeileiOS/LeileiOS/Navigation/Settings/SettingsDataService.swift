@@ -56,31 +56,20 @@ struct UnavailableSettingsAuthService: SettingsAuthService {
 
 enum SettingsExportScope: String, CaseIterable, Identifiable, Hashable {
     case all
-    case memory
     case diary
-    case task
     case todo
-    case sharedPaper
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .all: "All"
-        case .memory: "Memory"
         case .diary: "Diary"
-        case .task: "Task"
         case .todo: "Todo"
-        case .sharedPaper: "Shared Paper"
         }
     }
 
-    var backendScope: String {
-        switch self {
-        case .sharedPaper: "shared_paper"
-        default: rawValue
-        }
-    }
+    var backendScope: String { rawValue }
 }
 
 struct SettingsExportRequest {
