@@ -71,7 +71,7 @@ export type WriteMemoryToolDependencies = {
 };
 
 const CREATE_MEMORY_DESCRIPTION =
-  MEMORY_DOMAIN_BOUNDARY + " Create only after explicit user approval of category, key, content, and tags. Never store model guesses, inferred facts, transient emotions, one-off details, or automatic summaries. The receipt points to get_memory; an archived replay must be read with scope=archived.";
+  MEMORY_DOMAIN_BOUNDARY + " Create only after the user explicitly approves category, key, content, and tags. Never store model guesses, inferred facts, transient emotions, one-off details, or automatic summaries. The receipt points to get_memory; an archived replay must be read with scope=archived.";
 
 export function registerCreateMemoryTool(
   server: McpServer,
