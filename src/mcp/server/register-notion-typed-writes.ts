@@ -214,6 +214,11 @@ export function registerNotionTypedWriteTools(
     async ({ parent, title, title_property = "title", properties = [] }) => {
       try {
         await authorizeNotionUser(dependencies);
+        if (properties.some((property) => property.type === "title")) {
+          throw new NotionTypedInputError(
+            "create_notion_page uses title/title_property for the title; do not add another title property.",
+          );
+        }
         const body = {
           parent: toNotionParent(parent),
           properties: buildTypedProperties(properties, {
