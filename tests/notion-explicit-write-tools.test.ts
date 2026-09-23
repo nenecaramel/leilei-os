@@ -80,6 +80,26 @@ test("Phase 8.6.2 registrar exposes only page and comment writes with frozen act
   assert.deepEqual(actionEnum(comment.inputSchema), ["create", "reply"]);
   assert.equal(page.annotations?.destructiveHint, false);
   assert.equal(comment.annotations?.destructiveHint, false);
+  for (const tool of [page, comment]) {
+    const dataProperties = (tool.outputSchema as {
+      properties?: {
+        data?: {
+          properties?: Record<string, unknown>;
+        };
+      };
+    }).properties?.data?.properties;
+    assert.ok(dataProperties);
+    for (const field of [
+      "outcome",
+      "entity_type",
+      "entity_id",
+      "revision",
+      "detail_tool",
+      "detail_arguments",
+    ]) {
+      assert.ok(field in dataProperties, `${tool.name} must expose ${field}`);
+    }
+  }
 });
 
 test("write_notion_page exposed schema documents action-specific required and forbidden fields", async (t) => {
@@ -120,6 +140,33 @@ test("minimal registrar routes allowed page and comment actions only", async (t)
   assert.equal(pageResult.isError, undefined);
   assert.equal(commentResult.isError, undefined);
   assert.deepEqual(fixture.calls.map((call) => call.method), ["updatePage", "replyComment"]);
+  const pageData = (pageResult.structuredContent as {
+    data: {
+      outcome: string;
+      entity_type: string;
+      entity_id: string;
+      detail_tool: string | null;
+      detail_arguments: unknown;
+    };
+  }).data;
+  assert.equal(pageData.outcome, "applied");
+  assert.equal(pageData.entity_type, "notion_page");
+  assert.equal(pageData.entity_id, PAGE_ID);
+  assert.equal(pageData.detail_tool, "read_notion_page");
+  assert.deepEqual(pageData.detail_arguments, { page_id: PAGE_ID });
+
+  const commentData = (commentResult.structuredContent as {
+    data: {
+      outcome: string;
+      entity_type: string;
+      detail_tool: string | null;
+      detail_arguments: unknown;
+    };
+  }).data;
+  assert.equal(commentData.outcome, "applied");
+  assert.equal(commentData.entity_type, "notion_comment");
+  assert.equal(commentData.detail_tool, "read_notion_page");
+  assert.deepEqual(commentData.detail_arguments, { page_id: PAGE_ID });
 });
 
 test("destructive or non-native actions are rejected by the public tool schema", async (t) => {
