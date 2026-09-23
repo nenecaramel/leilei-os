@@ -70,6 +70,11 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "get_health",
     "get_current_time",
     "get_weather_context",
+    "create_memory",
+    "create_diary",
+    "replace_todo_paper",
+    "permanently_delete_diary",
+    "permanently_delete_shared_paper",
   ]) {
     assert.equal(
       names.includes(required),
@@ -94,6 +99,11 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "create_notion_page",
     "write_notion_page",
     "render_thinking_block",
+    "write_memory",
+    "write_diary",
+    "write_todo_paper",
+    "delete_diary",
+    "delete_shared_paper",
   ]) {
     assert.equal(
       names.includes(hidden),
@@ -125,6 +135,16 @@ test("production internal MCP defaults preserve full maintenance/runtime invento
     "bridge_listener_open",
     "bridge_event_claim",
     "render_thinking_block",
+    "create_memory",
+    "write_memory",
+    "create_diary",
+    "write_diary",
+    "replace_todo_paper",
+    "write_todo_paper",
+    "permanently_delete_diary",
+    "delete_diary",
+    "permanently_delete_shared_paper",
+    "delete_shared_paper",
   ]) {
     assert.equal(
       names.includes(required),
