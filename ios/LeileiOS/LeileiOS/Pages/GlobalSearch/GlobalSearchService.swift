@@ -28,7 +28,7 @@ enum GlobalSearchModule: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-enum GlobalSearchScope: String, CaseIterable, Identifiable {
+enum GlobalSearchScope: String, CaseIterable, Identifiable, Hashable {
     case all
     case active
     case archived
@@ -38,7 +38,7 @@ enum GlobalSearchScope: String, CaseIterable, Identifiable {
     var title: String { rawValue.capitalized }
 }
 
-enum GlobalSearchTimePreset: String, CaseIterable, Identifiable {
+enum GlobalSearchTimePreset: String, CaseIterable, Identifiable, Hashable {
     case anyTime
     case today
     case past7Days
