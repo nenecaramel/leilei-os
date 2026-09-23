@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeUniverseReadError } from "../universe/shared.js";
