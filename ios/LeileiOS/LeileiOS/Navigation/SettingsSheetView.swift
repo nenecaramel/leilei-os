@@ -40,6 +40,7 @@ struct SettingsSheetView: View {
                     onShowAbout: { showDetail(.about) }
                 )
             }
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: SettingsDetailPage.self) { page in
                 SettingsDetailLayer(
                     page: page,
@@ -47,7 +48,6 @@ struct SettingsSheetView: View {
                 )
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func showDetail(_ page: SettingsDetailPage) {
@@ -100,7 +100,6 @@ private struct SettingsDetailLayer: View {
         }
         .navigationTitle(page.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
     }
 
     @ViewBuilder
