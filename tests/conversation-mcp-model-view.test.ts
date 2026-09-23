@@ -124,20 +124,6 @@ class ConversationReads {
   }
 }
 
-class ConversationPruning {
-  calls: Array<{ name: string; input: Record<string, unknown> }> = [];
-  async listDeletedBranches(input: Record<string, unknown>) { this.calls.push({ name: "list", input }); return { total: 0, items: [] }; }
-  async archiveConversation(input: Record<string, unknown>) { this.calls.push({ name: "archive", input }); return { archived: true as const }; }
-  async deleteConversation(input: Record<string, unknown>) { this.calls.push({ name: "deleteConversation", input }); return { provider: "chatgpt" as const, sourceConversationId: "provider", deletedMessages: 1, rawSourcePreserved: true as const }; }
-  async deleteBranch(input: Record<string, unknown>) { this.calls.push({ name: "deleteBranch", input }); return { provider: "chatgpt" as const, sourceConversationId: "provider", sourceNodeId: "node", deletedMessages: 1, remainingMessages: 1, currentLeafSourceNodeId: "leaf", rawSourcePreserved: true as const }; }
-  async restoreConversation(input: Record<string, unknown>) { this.calls.push({ name: "restoreArchived", input }); return { restored: true as const }; }
-  async restoreDeletedConversation(input: Record<string, unknown>) { this.calls.push({ name: "restoreDeleted", input }); return { restored: true as const }; }
-  async restoreBranch(input: Record<string, unknown>) { this.calls.push({ name: "restoreBranch", input }); return { restored: true as const }; }
-  async permanentlyDeleteConversation(input: Record<string, unknown>) { this.calls.push({ name: "permanentConversation", input }); return { deleted: true as const, rawSourcePreserved: true as const }; }
-  async permanentlyDeleteBranch(input: Record<string, unknown>) { this.calls.push({ name: "permanentBranch", input }); return { deleted: true as const, rawSourcePreserved: true as const }; }
-}
-
-
 class RecoveryReads {
   listCalls: Array<Record<string, unknown>> = [];
   candidateCalls: Array<Record<string, unknown>> = [];
@@ -226,11 +212,9 @@ class RecoveryReads {
 
 async function connect() {
   const reads = new ConversationReads();
-  const pruning = new ConversationPruning();
   const server = createMcpServer({
     conversationArchiveTools: {
       conversationArchiveReadService: reads as never,
-      conversationPruningService: pruning as never,
       getAuthenticatedUserId: () => USER_ID,
     },
   });
@@ -241,7 +225,7 @@ async function connect() {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  return { client, server, reads, pruning };
+  return { client, server, reads };
 }
 
 test("Conversation MCP inventory exposes dedicated read-only search and model-view tools", async (t) => {
@@ -529,11 +513,6 @@ test("Conversation product tools reject both user identity spellings before call
     { name: "list_conversations", arguments: {} },
     { name: "search_conversations", arguments: { query: "needle" } },
     { name: "read_conversation", arguments: { conversation_id: CONVERSATION_ID } },
-    { name: "list_deleted_conversation_branches", arguments: {} },
-    { name: "archive_conversation", arguments: { conversation_id: CONVERSATION_ID } },
-    { name: "delete_conversation_item", arguments: { target: { kind: "conversation", conversation_id: CONVERSATION_ID } } },
-    { name: "restore_conversation_item", arguments: { target: { kind: "conversation", conversation_id: CONVERSATION_ID, scope: "archived" } } },
-    { name: "permanently_delete_conversation_item", arguments: { target: { kind: "conversation", conversation_id: CONVERSATION_ID, scope: "deleted" } } },
   ];
 
   for (const field of ["user_id", "userId"] as const) {
@@ -548,10 +527,9 @@ test("Conversation product tools reject both user identity spellings before call
   assert.equal(fixture.reads.listCalls.length, 0);
   assert.equal(fixture.reads.searchCalls.length, 0);
   assert.equal(fixture.reads.readCalls.length, 0);
-  assert.equal(fixture.pruning.calls.length, 0);
 });
 
-test("Conversation product surface exposes browse, lifecycle, and compact reads without client identity", async (t) => {
+test("Conversation product surface exposes browse and compact reads without client identity", async (t) => {
   const fixture = await connect();
   t.after(async () => {
     await fixture.client.close();
@@ -563,11 +541,6 @@ test("Conversation product surface exposes browse, lifecycle, and compact reads 
     "list_conversations",
     "search_conversations",
     "read_conversation",
-    "list_deleted_conversation_branches",
-    "archive_conversation",
-    "delete_conversation_item",
-    "restore_conversation_item",
-    "permanently_delete_conversation_item",
   ]) {
     const tool = inventory.tools.find((candidate) => candidate.name === name);
     assert.ok(tool, `${name} should be registered`);
@@ -589,9 +562,8 @@ test("Conversation product surface exposes browse, lifecycle, and compact reads 
   assert.equal("provider_metadata" in data.conversation, false);
 
   const readTool = inventory.tools.find((candidate) => candidate.name === "read_conversation");
-  assert.match(readTool?.description ?? "", /mode defaults to compact/i);
-  assert.match(readTool?.description ?? "", /without canonical payloads or attachments/i);
-  assert.match(readTool?.description ?? "", /mode=full/i);
+  assert.match(readTool?.description ?? "", /compact is the default/i);
+  assert.match(readTool?.description ?? "", /use full/i);
 });
 
 test("read_conversation continuation preserves the complete selected lifecycle state", async (t) => {
@@ -613,17 +585,14 @@ test("read_conversation continuation preserves the complete selected lifecycle s
   }
 });
 
-test("new Conversation browse and lifecycle tools advertise structured output contracts", async (t) => {
+test("Conversation browse tools advertise structured output contracts", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
   const inventory = await fixture.client.listTools();
   for (const name of [
     "list_conversations",
-    "list_deleted_conversation_branches",
-    "archive_conversation",
-    "delete_conversation_item",
-    "restore_conversation_item",
-    "permanently_delete_conversation_item",
+    "search_conversations",
+    "read_conversation",
   ]) {
     const tool = inventory.tools.find((candidate) => candidate.name === name);
     assert.ok(tool, `${name} should be registered`);
@@ -631,22 +600,4 @@ test("new Conversation browse and lifecycle tools advertise structured output co
     assert.ok(tool.outputSchema?.properties?.success, `${name} must expose success`);
     assert.ok(tool.outputSchema?.properties?.data, `${name} must expose data`);
   }
-});
-
-test("Conversation lifecycle tools use the exact authenticated target identities", async (t) => {
-  const fixture = await connect();
-  t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
-  await fixture.client.callTool({ name: "archive_conversation", arguments: { conversation_id: CONVERSATION_ID } });
-  await fixture.client.callTool({ name: "delete_conversation_item", arguments: { target: { kind: "branch", conversation_id: CONVERSATION_ID, message_id: MESSAGE_ID } } });
-  await fixture.client.callTool({ name: "restore_conversation_item", arguments: { target: { kind: "conversation", conversation_id: CONVERSATION_ID, scope: "deleted" } } });
-  await fixture.client.callTool({ name: "permanently_delete_conversation_item", arguments: { target: { kind: "branch", conversation_id: CONVERSATION_ID, branch_id: EXCLUSION_ID } } });
-  assert.deepEqual(fixture.pruning.calls, [
-    { name: "archive", input: { userId: USER_ID, conversationId: CONVERSATION_ID } },
-    { name: "deleteBranch", input: { userId: USER_ID, conversationId: CONVERSATION_ID, messageId: MESSAGE_ID } },
-    { name: "restoreDeleted", input: { userId: USER_ID, conversationId: CONVERSATION_ID } },
-    { name: "permanentBranch", input: { userId: USER_ID, conversationId: CONVERSATION_ID, branchId: EXCLUSION_ID } },
-  ]);
-  const rejected = await fixture.client.callTool({ name: "archive_conversation", arguments: { conversation_id: CONVERSATION_ID, user_id: "attacker" } });
-  assert.equal(rejected.isError, true);
-  assert.equal(fixture.pruning.calls.length, 4);
 });
