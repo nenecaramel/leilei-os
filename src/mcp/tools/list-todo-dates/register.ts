@@ -43,7 +43,7 @@ export function registerListTodoDatesTool(
     {
       title: "List Todo dates",
       description:
-        "Browse the authenticated user's business dates that contain persisted Todo entries. Use read_todo_day with an exact returned date to read the complete L, G, and C papers.",
+        "Browse the authenticated user's business dates that contain persisted Todo entries. Use read_todo_day with an exact returned date to read the complete L, G, and C papers. When has_more is true, continue by passing next_cursor back as cursor.",
       inputSchema: listTodoDatesInputSchema,
       outputSchema: listTodoDatesOutputSchema,
       annotations: {
