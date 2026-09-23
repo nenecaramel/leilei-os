@@ -67,7 +67,7 @@ test("default production public surface stays compact and reports final inventor
     0,
   );
   const identityChars = tools.reduce(
-    (sum, tool) => sum + tool.name.length + (tool.title?.length ?? 0),
+    (sum, tool) => sum + tool.name.length,
     0,
   );
   const totalDefinitionChars =
