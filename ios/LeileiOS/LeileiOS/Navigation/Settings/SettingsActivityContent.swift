@@ -9,19 +9,25 @@ struct SettingsActivityContent: View {
         Group {
             switch loadState {
             case .loading:
-                ProgressView()
-                    .frame(maxWidth: .infinity)
+                ProgressView("Loading Activity…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.settingsBackground)
             case .unavailable(let message):
-                SettingsDetailCard {
-                    SettingsUnavailableState(message: message)
-                }
+                ContentUnavailableView(
+                    "Activity Unavailable",
+                    systemImage: "clock.arrow.circlepath",
+                    description: Text(message)
+                )
+                .background(Color.settingsBackground)
             case .loaded(let records):
                 if records.isEmpty {
-                    SettingsDetailCard {
-                        SettingsUnavailableState(message: "No Activity")
-                    }
+                    ContentUnavailableView(
+                        "No Activity",
+                        systemImage: "clock.arrow.circlepath"
+                    )
+                    .background(Color.settingsBackground)
                 } else {
-                    ActivityGroups(records: records)
+                    ActivityList(records: records)
                 }
             }
         }
@@ -41,7 +47,7 @@ private enum ActivityLoadState {
     case loaded([SettingsActivityRecord])
 }
 
-private struct ActivityGroups: View {
+private struct ActivityList: View {
     let records: [SettingsActivityRecord]
 
     private var groupedRecords: [(String, [SettingsActivityRecord])] {
@@ -58,56 +64,44 @@ private struct ActivityGroups: View {
             return formatter.string(from: record.timestamp)
         }
         .sorted { lhs, rhs in
-            records.first(where: { record in
-                let day = calendar.startOfDay(for: record.timestamp)
-                let key = day == startOfToday ? "Today" : day == startOfYesterday ? "Yesterday" : formatter.string(from: record.timestamp)
-                return key == lhs.key
-            })?.timestamp ?? .distantPast > records.first(where: { record in
-                let day = calendar.startOfDay(for: record.timestamp)
-                let key = day == startOfToday ? "Today" : day == startOfYesterday ? "Yesterday" : formatter.string(from: record.timestamp)
-                return key == rhs.key
-            })?.timestamp ?? .distantPast
+            let left = lhs.value.map(\.timestamp).max() ?? .distantPast
+            let right = rhs.value.map(\.timestamp).max() ?? .distantPast
+            return left > right
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
+        List {
             ForEach(groupedRecords, id: \.0) { title, groupedRecords in
-                SettingsSection(title: title) {
-                    ForEach(Array(groupedRecords.enumerated()), id: \.element.id) { index, record in
-                        SettingsActivityRow(record: record)
-                        if index < groupedRecords.count - 1 {
-                            SettingsDivider()
+                Section(title) {
+                    ForEach(groupedRecords) { record in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(record.label)
+                                Spacer()
+                                Text(
+                                    record.timestamp.formatted(
+                                        date: .omitted,
+                                        time: .shortened
+                                    )
+                                )
+                                .foregroundStyle(.secondary)
+                            }
+
+                            HStack {
+                                Text(record.source)
+                                Spacer()
+                                Text(record.result)
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
         }
-    }
-}
-
-private struct SettingsActivityRow: View {
-    let record: SettingsActivityRecord
-
-    var body: some View {
-        VStack(spacing: 4) {
-            HStack {
-                Text(record.label)
-                    .font(.system(size: 17, weight: .medium))
-                Spacer()
-                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                Text(record.source)
-                Spacer()
-                Text(record.result)
-            }
-            .font(.system(size: 15, weight: .regular))
-            .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
     }
 }
