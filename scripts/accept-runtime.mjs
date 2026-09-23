@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 const stages = [
   { label: "typecheck", script: "typecheck" },
   { label: "runtime-background-loops", script: "test:runtime-background-loops" },
+  { label: "runtime-proactivity", script: "test:runtime-proactivity" },
   { label: "native-live-minimal", script: "test:native-live-minimal" },
 ];
 
