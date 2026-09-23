@@ -1,6 +1,7 @@
 export type MindWriteIntentKind =
   | "feel"
   | "memory"
+  | "dream"
   | "drive"
   | "thought"
   | "curiosity"

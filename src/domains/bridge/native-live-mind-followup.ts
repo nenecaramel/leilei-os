@@ -394,6 +394,7 @@ function parseIntents(value: unknown): MindWriteIntent[] {
     if (
       (record.kind !== "feel"
         && record.kind !== "memory"
+        && record.kind !== "dream"
         && record.kind !== "drive"
         && record.kind !== "thought"
         && record.kind !== "curiosity"
