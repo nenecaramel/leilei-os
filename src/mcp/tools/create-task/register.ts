@@ -8,15 +8,11 @@ import {
 } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import {
-  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
-  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
-  MCP_IDEMPOTENCY_KEY_PATTERN,
-} from "../../../domains/mcp-write/mcp-write-idempotency.js";
-import {
   createMcpToolError,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 import {
   mcpMutationReceipt,
   mcpMutationReceiptFields,
@@ -62,12 +58,7 @@ const createTaskInputSchema = z
       .max(20)
       .describe("Organizational labels; use an empty array when none apply."),
     author: contentAuthorSchema.describe("The logical content author: L, G, or C."),
-    idempotency_key: z
-      .string()
-      .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-      .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-      .regex(MCP_IDEMPOTENCY_KEY_PATTERN)
-      .describe("A stable unique key used to prevent duplicate task creation."),
+    idempotency_key: mcpIdempotencyKeySchema,
   })
   .strict();
 
