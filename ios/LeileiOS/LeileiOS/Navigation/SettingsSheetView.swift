@@ -43,12 +43,7 @@ struct SettingsSheetView: View {
             .navigationDestination(for: SettingsDetailPage.self) { page in
                 SettingsDetailLayer(
                     page: page,
-                    dataService: dataService,
-                    onBack: {
-                        if !path.isEmpty {
-                            path.removeLast()
-                        }
-                    }
+                    dataService: dataService
                 )
             }
         }
@@ -89,29 +84,40 @@ private enum SettingsDetailPage: Hashable {
 private struct SettingsDetailLayer: View {
     let page: SettingsDetailPage
     let dataService: any SettingsDataService
-    let onBack: () -> Void
 
     var body: some View {
-        SettingsPageContent(
-            title: page.title,
-            leadingSymbol: "chevron.left",
-            leadingAccessibilityLabel: "Back to Settings",
-            leadingAction: onBack
-        ) {
-            switch page {
-            case .summary:
-                SettingsSummaryContent()
-            case .export:
-                SettingsExportContent(dataService: dataService)
-            case .restore:
-                SettingsRestoreContent(dataService: dataService)
-            case .status:
-                SettingsStatusContent(dataService: dataService)
-            case .activity:
-                SettingsActivityContent(dataService: dataService)
-            case .about:
-                SettingsAboutContent()
+        ZStack {
+            Color(red: 0.965, green: 0.965, blue: 0.97)
+                .ignoresSafeArea()
+
+            ScrollView {
+                detailContent
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 64)
             }
+            .scrollEdgeEffectStyle(.automatic, for: .top)
+        }
+        .navigationTitle(page.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        switch page {
+        case .summary:
+            SettingsSummaryContent()
+        case .export:
+            SettingsExportContent(dataService: dataService)
+        case .restore:
+            SettingsRestoreContent(dataService: dataService)
+        case .status:
+            SettingsStatusContent(dataService: dataService)
+        case .activity:
+            SettingsActivityContent(dataService: dataService)
+        case .about:
+            SettingsAboutContent()
         }
     }
 }
