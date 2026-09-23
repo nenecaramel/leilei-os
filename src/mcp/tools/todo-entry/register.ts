@@ -15,10 +15,6 @@ import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromRep
 
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
 const todoKindSchema = z.enum(["pending", "completed", "record"]);
-const idempotencyKeySchema = z.string()
-  .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-  .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-  .regex(MCP_IDEMPOTENCY_KEY_PATTERN);
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const entryIdSchema = z.string().min(1).max(128);
 const entryRevisionSchema = z.number().int().min(1);
