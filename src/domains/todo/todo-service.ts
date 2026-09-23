@@ -155,9 +155,15 @@ export class TodoService {
     return { date, papers: await this.repository.readDay(userId, date) };
   }
 
-  async listDates(userId: string): Promise<string[]> {
+  async listDates(userId: string, limit?: number, offset?: number): Promise<string[]> {
     await this.requireActiveUser(userId);
-    return this.repository.listContentDates(userId);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 101)) {
+      throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo date pagination limit is invalid.");
+    }
+    if (offset !== undefined && (!Number.isInteger(offset) || offset < 0)) {
+      throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo date pagination offset is invalid.");
+    }
+    return this.repository.listContentDates(userId, limit, offset);
   }
 
   async search(input: {
