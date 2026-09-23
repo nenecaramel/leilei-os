@@ -240,7 +240,7 @@ function registerPermanentDeleteDiaryTool(
     },
     async ({ id }) =>
       invokeMcpWrite({
-        toolName,
+        toolName: "delete_diary",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
         operation: async ({ userId }) => {
           await dependencies.diaryService.permanentlyDeleteMcpDiary(
