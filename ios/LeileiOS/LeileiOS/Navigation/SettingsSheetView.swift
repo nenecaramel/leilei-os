@@ -21,11 +21,14 @@ struct SettingsSectionState: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
 
                 Spacer()
 
                 if isLoading {
                     ProgressView()
+                        .controlSize(.small)
                 }
             }
 
@@ -38,12 +41,12 @@ struct SettingsSectionState: View {
             if let actionTitle,
                let action {
                 Button(actionTitle, action: action)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.medium))
             }
         }
         .frame(
             maxWidth: .infinity,
-            minHeight: 44,
+            minHeight: 52,
             alignment: .leading
         )
         .padding(.vertical, 2)
