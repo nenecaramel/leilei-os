@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MEMORY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   MemoryDomainError,
   type ReadMemoryDetailResult,
@@ -80,7 +81,7 @@ export function registerGetMemoryTool(
     {
       title: "Get one Memory",
       description:
-        "Read one authenticated Memory by exact ID using a bounded authoritative content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id/scope. A cursor becomes invalid if the Memory changes. This is not the primary discovery tool.",
+        MEMORY_DOMAIN_BOUNDARY + " Read one authenticated Memory by exact ID using a bounded authoritative content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id/scope. A cursor becomes invalid if the Memory changes. This is not the primary discovery tool.",
       inputSchema: getMemoryInputSchema,
       outputSchema: getMemoryOutputSchema,
       annotations: {
