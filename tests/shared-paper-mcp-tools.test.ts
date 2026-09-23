@@ -59,12 +59,12 @@ async function connect(sharedPaperService: SharedPaperToolService = makeService(
   return { client, server };
 }
 
-test("Shared Paper MCP exposes ten strict tools without user_id", async () => {
+test("Shared Paper MCP full inventory exposes canonical and legacy delete names without user_id", async () => {
   const fixture = await connect();
   const result = await fixture.client.listTools();
   await fixture.client.close(); await fixture.server.close();
-  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "append_shared_paper", "list_shared_paper_edits", "archive_shared_paper", "restore_shared_paper", "delete_shared_paper"].includes(tool.name));
-  assert.deepEqual(selected.map((tool) => tool.name).sort(), ["append_shared_paper", "archive_shared_paper", "create_shared_paper", "delete_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "restore_shared_paper", "search_shared_papers"]);
+  const selected = result.tools.filter((tool) => ["list_shared_papers", "search_shared_papers", "get_shared_paper", "create_shared_paper", "edit_shared_paper", "append_shared_paper", "list_shared_paper_edits", "archive_shared_paper", "restore_shared_paper", "permanently_delete_shared_paper", "delete_shared_paper"].includes(tool.name));
+  assert.deepEqual(selected.map((tool) => tool.name).sort(), ["append_shared_paper", "archive_shared_paper", "create_shared_paper", "delete_shared_paper", "edit_shared_paper", "get_shared_paper", "list_shared_paper_edits", "list_shared_papers", "permanently_delete_shared_paper", "restore_shared_paper", "search_shared_papers"]);
   for (const tool of selected) {
     const schema = tool.inputSchema as { type?: string; properties?: Record<string, unknown> };
     assert.equal(schema.type, "object");
