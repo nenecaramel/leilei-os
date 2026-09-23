@@ -5,7 +5,8 @@ export type McpToolSurface =
   | "conversation_recovery"
   | "device"
   | "ui"
-  | "runtime_internal";
+  | "runtime_internal"
+  | "legacy_aliases";
 
 export type McpToolProfileName =
   | "core"
@@ -15,6 +16,7 @@ export type McpToolProfileName =
   | "device"
   | "ui"
   | "runtime_internal"
+  | "legacy_aliases"
   | "full";
 
 export type McpToolExposure = ReadonlySet<McpToolSurface>;
@@ -27,6 +29,7 @@ const ALL_SURFACES: readonly McpToolSurface[] = [
   "device",
   "ui",
   "runtime_internal",
+  "legacy_aliases",
 ];
 
 const PROFILE_SURFACES: Record<
@@ -40,6 +43,7 @@ const PROFILE_SURFACES: Record<
   device: ["device"],
   ui: ["ui"],
   runtime_internal: ["runtime_internal"],
+  legacy_aliases: ["legacy_aliases"],
   full: ALL_SURFACES,
 };
 
