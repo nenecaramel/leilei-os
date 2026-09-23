@@ -55,6 +55,7 @@
     "test:runtime-data-lifecycle": "tsx --test tests/runtime-data-lifecycle-contract.test.ts tests/data-retention-policy.test.ts tests/data-retention-coordinator.test.ts",
     "test:mcp-tool-surface": "tsx --test tests/mcp-tool-profiles.test.ts tests/mcp-production-tool-profiles.test.ts tests/mcp-tool-contract-governance.test.ts",
     "test:mcp-todo-batch": "tsx --test tests/todo-entry-service.test.ts tests/todo-entry-mcp-tools.test.ts tests/mcp-tool-contract-governance.test.ts",
+    "test:mcp-pagination": "tsx --test tests/mcp-pagination-contract.test.ts tests/memory-read-tools.test.ts tests/diary-read-tools.test.ts tests/task-read-tools.test.ts tests/todo-mcp-tools.test.ts tests/todo-search.test.ts tests/shared-paper-mcp-tools.test.ts tests/mcp-tool-contract-governance.test.ts",
     "test:runtime-topic-opportunity-db": "RUN_RUNTIME_TOPIC_OPPORTUNITY_DATABASE_TEST=1 tsx --test tests/runtime-topic-resurface-cross-device-opportunity.integration.test.ts"
   },
   "dependencies": {
