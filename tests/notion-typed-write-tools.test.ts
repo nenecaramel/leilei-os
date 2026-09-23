@@ -142,6 +142,29 @@ test("create_notion_page maps typed parent/title/properties to provider payload"
   );
 });
 
+test("create_notion_page rejects a second typed title property before provider mutation", async (t) => {
+  const fixture = await connect();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const response = await fixture.client.callTool({
+    name: "create_notion_page",
+    arguments: {
+      parent: { type: "page", id: PAGE_ID },
+      title: "Primary title",
+      properties: [
+        { name: "Other Title", type: "title", value: "ambiguous" },
+      ],
+    },
+  });
+
+  assert.equal(response.isError, true);
+  assert.match(JSON.stringify(response), /do not add another title property/i);
+  assert.equal(fixture.calls.length, 0);
+});
+
 test("update_notion_page_properties maps typed values and rejects duplicate names", async (t) => {
   const fixture = await connect();
   t.after(async () => {
