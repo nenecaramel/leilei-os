@@ -47,7 +47,7 @@ struct DaySpaceView: View {
 
                 if discoveryIncomplete, selectedDate != nil {
                     DaySpaceWarning(
-                        text: "Latest-date discovery is incomplete. This date is still available."
+                        text: "Some dates are unavailable. Showing the latest available date."
                     )
                     .padding(.bottom, 8)
                 }
@@ -118,7 +118,7 @@ struct DaySpaceView: View {
             ContentUnavailableView {
                 Label("Day Space Unavailable", systemImage: "square.stack.3d.up")
             } description: {
-                Text("Unable to read Day Space.")
+                Text("Couldn’t load Day Space.")
             } actions: {
                 Button("Retry") {
                     Task {
@@ -146,7 +146,13 @@ struct DaySpaceView: View {
             } else if todoState.isLoading && diaryState.isLoading && papers.isEmpty {
                 DaySpaceReadingState()
             } else if completeEmpty {
-                Text("这一天还没有内容")
+                VStack(spacing: 6) {
+                    Text("Nothing Here Yet")
+                        .font(.subheadline.weight(.medium))
+                    Text("No Todo or Diary entries for this day.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
@@ -395,7 +401,7 @@ private struct DaySpaceDateNavigationRow: View {
             Button(action: onSelectDate) {
                 Text(
                     selectedDate.map(DaySpaceDate.fullLabel)
-                        ?? "Reading…"
+                        ?? "Loading…"
                 )
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(.secondary)
@@ -421,7 +427,7 @@ private struct DaySpaceDateNavigationRow: View {
 
 private struct DaySpaceReadingState: View {
     var body: some View {
-        ProgressView("Reading…")
+        ProgressView("Loading…")
             .frame(maxWidth: .infinity)
             .padding(.top, 94)
     }
@@ -809,7 +815,7 @@ private struct DaySpaceTodoEditorSheet: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving..." : "Done") {
+                    Button(isSaving ? "Saving…" : "Done") {
                         Task {
                             await save()
                         }
@@ -879,9 +885,9 @@ private struct DaySpaceTodoEditorSheet: View {
             onSaved(response.data)
             dismiss()
         } catch LeileiAPIError.backend(_, let code, _) where code == "TODO_PAPER_CONFLICT" {
-            errorMessage = "This paper changed on another device. Reopen it and try again."
+            errorMessage = "Couldn’t save this Todo paper because it changed on another device. Reopen it and try again."
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn’t save this Todo paper."
         }
     }
 }
@@ -1038,7 +1044,7 @@ private struct DaySpaceDiaryEditorSheet: View {
             onSaved(response.data)
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn’t save this diary."
         }
     }
 }
