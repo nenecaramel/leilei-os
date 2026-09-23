@@ -118,7 +118,7 @@ function createFixture(failure?: Error) {
           todoCalls.push({ operation: "append_many", input });
           if (failure) throw failure;
           return {
-            entries: [{ id: "todo-entry-batch", kind: "pending" as const, text: "Batch", revision: 1 }],
+            entries: [{ id: "todo-entry-batch", kind: "pending" as const, text: "Batch", revision: 1, outcome: "applied" as const }],
             paperRevision: 2,
             metadata: { committed: true, idempotent_replay: false },
           };
