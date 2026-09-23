@@ -5,29 +5,37 @@ struct SettingsStatusContent: View {
 
     @State private var status: SettingsRuntimeStatus?
     @State private var errorMessage: String?
+    @State private var isLoading = true
 
     var body: some View {
         Form {
             Section("Status") {
-                LabeledContent("Web API", value: status?.webAPI ?? "Unavailable")
+                LabeledContent(
+                    "Web API",
+                    value: status?.webAPI
+                        ?? (isLoading ? "Loading…" : "Unavailable")
+                )
                 LabeledContent(
                     "ChatGPT / Claude MCP",
-                    value: status?.chatGPTClaudeMCP ?? "Unavailable"
+                    value: status?.chatGPTClaudeMCP
+                        ?? (isLoading ? "Loading…" : "Unavailable")
                 )
-                LabeledContent("Internal MCP", value: status?.internalMCP ?? "Unavailable")
+                LabeledContent(
+                    "Internal MCP",
+                    value: status?.internalMCP
+                        ?? (isLoading ? "Loading…" : "Unavailable")
+                )
             }
 
             if errorMessage != nil {
                 Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Status Unavailable")
-                        Text("Couldn’t load system status.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Retry") {
-                            Task {
-                                await loadStatus()
-                            }
+                    SettingsSectionState(
+                        title: "Status Unavailable",
+                        message: "Couldn’t load system status.",
+                        actionTitle: "Retry"
+                    ) {
+                        Task {
+                            await loadStatus()
                         }
                     }
                 }
@@ -43,6 +51,9 @@ struct SettingsStatusContent: View {
 
     @MainActor
     private func loadStatus() async {
+        isLoading = true
+        defer { isLoading = false }
+
         do {
             status = try await dataService.readRuntimeStatus()
             errorMessage = nil
