@@ -12,44 +12,33 @@ extension Color {
 
 struct SettingsSectionState: View {
     let title: String
-    var message: String? = nil
     var actionTitle: String? = nil
     var isLoading = false
     var action: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
+        HStack {
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.secondary)
 
-                Spacer()
+            Spacer()
 
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-
-            if let message {
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
             }
 
             if let actionTitle,
                let action {
                 Button(actionTitle, action: action)
-                    .font(.subheadline.weight(.medium))
             }
         }
         .frame(
             maxWidth: .infinity,
-            minHeight: 52,
+            minHeight: 44,
             alignment: .leading
         )
-        .padding(.vertical, 2)
     }
 }
 
@@ -274,15 +263,13 @@ private struct SettingsHomeContent: View {
             Button("Cancel", role: .cancel) {}
         }
         .alert(
-            "Authentication Unavailable",
+            "Unavailable",
             isPresented: Binding(
                 get: { authErrorMessage != nil },
                 set: { if !$0 { authErrorMessage = nil } }
             )
         ) {
             Button("OK", role: .cancel) {}
-        } message: {
-            Text("Couldn’t complete the authentication request. Please try again.")
         }
     }
 
@@ -304,7 +291,7 @@ private struct SettingsHomeContent: View {
         do {
             try await appModel.signIn()
         } catch {
-            authErrorMessage = "Couldn’t complete the authentication request."
+            authErrorMessage = "Unavailable"
         }
     }
 
@@ -313,7 +300,7 @@ private struct SettingsHomeContent: View {
         do {
             try await appModel.signOut()
         } catch {
-            authErrorMessage = "Couldn’t complete the authentication request."
+            authErrorMessage = "Unavailable"
         }
     }
 
