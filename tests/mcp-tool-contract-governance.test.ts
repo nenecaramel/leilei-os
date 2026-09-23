@@ -194,6 +194,72 @@ test("large detail reads expose one bounded continuation contract", async () => 
   }
 });
 
+test("core mutation tools expose one model-readable receipt contract", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+  const mutationTools = [
+    "write_memory",
+    "update_memory",
+    "write_diary",
+    "update_diary",
+    "archive_diary",
+    "restore_diary",
+    "delete_diary",
+    "add_diary_comment",
+    "update_diary_comment",
+    "delete_diary_comment",
+    "create_task",
+    "update_task",
+    "transition_task",
+    "write_todo_paper",
+    "append_todo_entries",
+    "append_todo_entry",
+    "update_todo_entry",
+    "delete_todo_entry",
+    "create_shared_paper",
+    "edit_shared_paper",
+    "append_shared_paper",
+    "archive_shared_paper",
+    "restore_shared_paper",
+    "delete_shared_paper",
+    "create_universe_node",
+    "update_universe_node",
+    "create_universe_relation",
+    "update_universe_relation",
+    "delete_universe_relation",
+    "add_universe_diary_source",
+    "delete_universe_diary_source",
+  ] as const;
+
+  for (const name of mutationTools) {
+    const tool = byName.get(name);
+    assert.ok(tool, `${name} must stay registered`);
+    const data = (tool.outputSchema as {
+      properties?: {
+        data?: {
+          properties?: Record<string, unknown>;
+        };
+      };
+    }).properties?.data?.properties;
+    assert.ok(data, `${name} must expose structured mutation data`);
+    for (const field of [
+      "outcome",
+      "entity_type",
+      "entity_id",
+      "revision",
+      "detail_tool",
+      "detail_arguments",
+    ]) {
+      assert.ok(field in data, `${name} must expose mutation field ${field}`);
+    }
+    assert.equal(
+      "metadata" in data,
+      false,
+      `${name} must not require model interpretation of legacy mutation metadata`,
+    );
+  }
+});
+
 test("operational connectivity stays out of the model-visible tool inventory", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const names = tools.map((tool) => tool.name);
