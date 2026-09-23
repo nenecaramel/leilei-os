@@ -299,7 +299,7 @@ private struct SettingsHomeContent: View {
 private struct SettingsSummaryContent: View {
     var body: some View {
         Form {
-            Section {
+            Section("Summary") {
                 LabeledContent("Memory", value: "Loading…")
                 LabeledContent("Diary", value: "Loading…")
                 LabeledContent("Task", value: "Loading…")
