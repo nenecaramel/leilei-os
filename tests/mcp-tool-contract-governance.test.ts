@@ -257,6 +257,27 @@ test("core mutation tools expose one model-readable receipt contract", async () 
       false,
       `${name} must not require model interpretation of legacy mutation metadata`,
     );
+
+    const errorProperties = (tool.outputSchema as {
+      properties?: {
+        error?: {
+          properties?: Record<string, unknown>;
+        };
+      };
+    }).properties?.error?.properties;
+    assert.ok(errorProperties, `${name} must expose structured error data`);
+    for (const field of [
+      "retryable",
+      "reason",
+      "current_revision",
+      "recommended_tool",
+      "recommended_arguments",
+    ]) {
+      assert.ok(
+        field in errorProperties,
+        `${name} error schema must expose recovery field ${field}`,
+      );
+    }
   }
 });
 
