@@ -713,7 +713,7 @@ test("Todo tool schemas reject identity injection before authentication or servi
       arguments: {
         date: DATE,
         author: "L",
-        revision: null,
+        expected_revision: null,
         entries: L_PAPER.entries,
         idempotency_key: "todo-paper-attacker-20260813",
         user_id: "attacker",
@@ -724,7 +724,7 @@ test("Todo tool schemas reject identity injection before authentication or servi
       arguments: {
         date: DATE,
         author: "L",
-        revision: null,
+        expected_revision: null,
         entries: "[{\"id\":\"a\",\"kind\":\"pending\",\"text\":\"x\"}]",
         idempotency_key: "todo-paper-string-entries-20260813",
       },
