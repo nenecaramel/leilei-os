@@ -4,13 +4,24 @@ import {
   toSafeTodoReadError,
   type ReadTodoDayToolDependencies,
 } from "../read-todo-day/register.js";
-import { mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines } from "../content-contract.js";
+import { decodeMcpPaginationCursor, McpPaginationCursorError, paginateMcpRows } from "../pagination.js";
 
-const listTodoDatesInputSchema = z.object({}).strict();
+const listTodoDatesInputSchema = z.object({
+  limit: z.number().int().min(1).max(100).default(50).optional(),
+  cursor: z.string().min(1).max(2_048).optional(),
+}).strict();
 const listTodoDatesOutputSchema = z.object({
   success: z.boolean(),
-  data: z.object({ dates: z.array(z.string()) }).optional(),
+  data: z.object({
+    dates: z.array(z.string()),
+    metadata: z.object({
+      returned: z.number().int().nonnegative(),
+      has_more: z.boolean(),
+      next_cursor: z.string().nullable(),
+    }),
+  }).optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
@@ -42,10 +53,21 @@ export function registerListTodoDatesTool(
         openWorldHint: false,
       },
     },
-    async () => {
+    async ({ limit, cursor }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
-        const dates = await dependencies.todoService.listDates(userId);
+        const pageSize = limit ?? 50;
+        const cursorContext = {};
+        const offset = decodeMcpPaginationCursor(cursor, "list_todo_dates", cursorContext);
+        const allDates = await dependencies.todoService.listDates(userId);
+        const page = paginateMcpRows({
+          rows: allDates.slice(offset, offset + pageSize + 1),
+          pageSize,
+          offset,
+          tool: "list_todo_dates",
+          context: cursorContext,
+        });
+        const dates = page.items;
         return {
           content: [{
             type: "text",
@@ -56,10 +78,13 @@ export function registerListTodoDatesTool(
           }],
           structuredContent: {
             success: true as const,
-            data: { dates },
+            data: { dates, metadata: page.metadata },
           },
         };
       } catch (error) {
+        if (error instanceof McpPaginationCursorError) {
+          return createMcpToolError("INVALID_CURSOR", "The Todo date continuation cursor is invalid for this request.");
+        }
         return toSafeTodoReadError(error, "list_todo_dates");
       }
     },
