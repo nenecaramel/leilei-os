@@ -9,17 +9,13 @@ import type {
 } from "../../../domains/toy/toy-command-types.js";
 import { invokeMcpWrite } from "../write-context.js";
 import {
-  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
-  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
-  MCP_IDEMPOTENCY_KEY_PATTERN,
-} from "../../../domains/mcp-write/mcp-write-idempotency.js";
-import {
   TOY_DEFAULT_DURATION_SECONDS,
   TOY_MAX_DURATION_SECONDS,
 } from "../../../domains/toy/toy-command-types.js";
 import { ActiveUserAuthorizationError } from "../../../domains/require-active-user.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { joinMcpContentLines } from "../content-contract.js";
+import { mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 
 const toyCommandStatusSchema = z.enum([
   "pending",
@@ -44,23 +40,13 @@ const toySetInputSchema = z
       .max(TOY_MAX_DURATION_SECONDS)
       .default(TOY_DEFAULT_DURATION_SECONDS)
       .describe("How long the device may run after local execution, in seconds (1-1200)."),
-    idempotency_key: z
-      .string()
-      .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-      .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-      .regex(MCP_IDEMPOTENCY_KEY_PATTERN)
-      .describe("A stable unique key used to prevent duplicate toy commands."),
+    idempotency_key: mcpIdempotencyKeySchema,
   })
   .strict();
 
 const toyStopInputSchema = z
   .object({
-    idempotency_key: z
-      .string()
-      .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-      .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-      .regex(MCP_IDEMPOTENCY_KEY_PATTERN)
-      .describe("A stable unique key used to prevent duplicate stop commands."),
+    idempotency_key: mcpIdempotencyKeySchema,
   })
   .strict();
 
