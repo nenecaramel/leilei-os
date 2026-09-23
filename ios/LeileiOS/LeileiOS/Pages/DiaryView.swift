@@ -78,29 +78,15 @@ struct DiaryView: View {
                         archivePresented = true
                     }
 
-                    Menu("Time") {
-                        Button {
-                            timeFilter = .anyTime
-                        } label: {
-                            if timeFilter == .anyTime {
-                                Label("Any Time", systemImage: "checkmark")
-                            } else {
-                                Text("Any Time")
-                            }
-                        }
+                    Picker("Time", selection: timeSelection) {
+                        Text("Any Time")
+                            .tag(DiaryTimeFilter.anyTime)
 
-                        Button {
-                            draftCustomStartDate = customStartDate
-                            draftCustomEndDate = customEndDate
-                            customDateRangePresented = true
-                        } label: {
-                            if timeFilter == .custom {
-                                Label("Custom", systemImage: "checkmark")
-                            } else {
-                                Text("Custom")
-                            }
-                        }
+                        Text("Custom")
+                            .tag(DiaryTimeFilter.custom)
                     }
+                    .pickerStyle(.menu)
+                    .menuActionDismissBehavior(.disabled)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 18, weight: .medium))
@@ -178,6 +164,22 @@ struct DiaryView: View {
             URLQueryItem(name: "q", value: normalized)
         ]
         return "/api/v1/diary?\(components.percentEncodedQuery ?? "")"
+    }
+
+    private var timeSelection: Binding<DiaryTimeFilter> {
+        Binding(
+            get: { timeFilter },
+            set: { selection in
+                switch selection {
+                case .anyTime:
+                    timeFilter = .anyTime
+                case .custom:
+                    draftCustomStartDate = customStartDate
+                    draftCustomEndDate = customEndDate
+                    customDateRangePresented = true
+                }
+            }
+        )
     }
 
     private func filteredDiaries(_ diaries: [DiaryEntry]) -> [DiaryEntry] {
@@ -267,12 +269,13 @@ private struct DiaryList: View {
                 Section(group.title) {
                     ForEach(group.diaries) { diary in
                         DiaryRow(diary: diary)
-                            .listRowBackground(Color(red: 0.98, green: 0.98, blue: 0.98))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.visible)
                     }
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
     }
