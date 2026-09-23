@@ -659,12 +659,6 @@ export function createMcpServer(
       diaryService:
         dependencies.diaryTools?.diaryService ??
         productionGetDiaryDependencies.diaryService,
-      ...(dependencies.diaryComments
-        ? {
-            diaryCommentService:
-              dependencies.diaryComments.diaryCommentService,
-          }
-        : {}),
       getAuthenticatedUserId:
         dependencies.diaryTools?.getAuthenticatedUserId ??
         (() => {
