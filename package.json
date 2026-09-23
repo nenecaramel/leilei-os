@@ -53,7 +53,8 @@
     "test:runtime-topic-resurface-eval": "tsx --test tests/runtime-topic-resurface-candidates.test.ts tests/runtime-topic-resurface-evaluation.test.ts tests/claude-code-topic-resurface-evaluator.test.ts tests/runtime-topic-resurface-internal-loop.test.ts tests/claude-code-topic-resurface-deliberator.test.ts tests/runtime-topic-resurface-retention-gate.test.ts tests/claude-code-topic-resurface-retention-evaluator.test.ts tests/runtime-topic-resurface-thought-materialization.test.ts tests/runtime-topic-resurface-background-trigger.test.ts",
     "test:runtime-topic-resurface-background": "tsx --test tests/runtime-topic-resurface-background-trigger.test.ts tests/runtime-topic-resurface-cadence.test.ts tests/runtime-topic-resurface-idle-opportunity.test.ts tests/runtime-topic-resurface-cross-device-opportunity.test.ts tests/runtime-topic-resurface-cross-device-coordinator.test.ts tests/topic-resurface-opportunity-config.test.ts tests/native-live-mac-daemon-loop.test.ts tests/native-live-background-model-protocol.test.ts tests/native-live-mac-background-model-executor.test.ts",
     "test:runtime-data-lifecycle": "tsx --test tests/runtime-data-lifecycle-contract.test.ts tests/data-retention-policy.test.ts tests/data-retention-coordinator.test.ts",
-    "test:mcp-tool-surface": "tsx --test tests/mcp-tool-profiles.test.ts tests/mcp-production-tool-profiles.test.ts tests/mcp-tool-contract-governance.test.ts"
+    "test:mcp-tool-surface": "tsx --test tests/mcp-tool-profiles.test.ts tests/mcp-production-tool-profiles.test.ts tests/mcp-tool-contract-governance.test.ts",
+    "test:runtime-topic-opportunity-db": "RUN_RUNTIME_TOPIC_OPPORTUNITY_DATABASE_TEST=1 tsx --test tests/runtime-topic-resurface-cross-device-opportunity.integration.test.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
