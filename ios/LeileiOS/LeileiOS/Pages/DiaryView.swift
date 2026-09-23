@@ -4,8 +4,13 @@ struct DiaryView: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var query = ""
-    @State private var timePreset: GlobalSearchTimePreset = .anyTime
+    @State private var timeFilter: DiaryTimeFilter = .anyTime
     @State private var archivePresented = false
+    @State private var customDateRangePresented = false
+    @State private var customStartDate = DiaryTimeFilter.defaultStartDate
+    @State private var customEndDate = Date.now
+    @State private var draftCustomStartDate = DiaryTimeFilter.defaultStartDate
+    @State private var draftCustomEndDate = Date.now
     @State private var state: DiaryLoadState = .loading
 
     var body: some View {
@@ -40,7 +45,7 @@ struct DiaryView: View {
                 if visibleDiaries.isEmpty {
                     ContentUnavailableView(
                         query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            && timePreset == .anyTime
+                            && timeFilter == .anyTime
                             ? "No Diary Entries"
                             : "No Results",
                         systemImage: "book.closed"
@@ -56,23 +61,46 @@ struct DiaryView: View {
         .navigationDestination(isPresented: $archivePresented) {
             DiaryArchivePlaceholder()
         }
+        .sheet(isPresented: $customDateRangePresented) {
+            DiaryCustomDateRangeSheet(
+                startDate: $draftCustomStartDate,
+                endDate: $draftCustomEndDate
+            ) {
+                customStartDate = draftCustomStartDate
+                customEndDate = draftCustomEndDate
+                timeFilter = .custom
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button {
+                    Button("Archive") {
                         archivePresented = true
-                    } label: {
-                        Label("Archive", systemImage: "archivebox")
                     }
 
-                    Picker("Time", selection: $timePreset) {
-                        ForEach(GlobalSearchTimePreset.allCases) { preset in
-                            Text(preset.title)
-                                .tag(preset)
+                    Menu("Time") {
+                        Button {
+                            timeFilter = .anyTime
+                        } label: {
+                            if timeFilter == .anyTime {
+                                Label("Any Time", systemImage: "checkmark")
+                            } else {
+                                Text("Any Time")
+                            }
+                        }
+
+                        Button {
+                            draftCustomStartDate = customStartDate
+                            draftCustomEndDate = customEndDate
+                            customDateRangePresented = true
+                        } label: {
+                            if timeFilter == .custom {
+                                Label("Custom", systemImage: "checkmark")
+                            } else {
+                                Text("Custom")
+                            }
                         }
                     }
-                    .pickerStyle(.menu)
-                    .menuActionDismissBehavior(.disabled)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 18, weight: .medium))
@@ -153,17 +181,71 @@ struct DiaryView: View {
     }
 
     private func filteredDiaries(_ diaries: [DiaryEntry]) -> [DiaryEntry] {
-        let range = timePreset.dateRange()
+        guard timeFilter == .custom else { return diaries }
+
+        let dateFrom = DiaryDate.apiDate(customStartDate)
+        let dateTo = DiaryDate.apiDate(customEndDate)
 
         return diaries.filter { diary in
-            if let dateFrom = range.dateFrom, diary.date < dateFrom {
-                return false
-            }
-            if let dateTo = range.dateTo, diary.date > dateTo {
-                return false
-            }
-            return true
+            diary.date >= dateFrom && diary.date <= dateTo
         }
+    }
+}
+
+private enum DiaryTimeFilter {
+    case anyTime
+    case custom
+
+    static var defaultStartDate: Date {
+        Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
+    }
+}
+
+private struct DiaryCustomDateRangeSheet: View {
+    @Binding var startDate: Date
+    @Binding var endDate: Date
+
+    let onApply: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker(
+                    "Start",
+                    selection: $startDate,
+                    in: ...endDate,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+
+                DatePicker(
+                    "End",
+                    selection: $endDate,
+                    in: startDate...,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+            }
+            .navigationTitle("Custom Range")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onApply()
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
@@ -185,7 +267,7 @@ private struct DiaryList: View {
                 Section(group.title) {
                     ForEach(group.diaries) { diary in
                         DiaryRow(diary: diary)
-                            .listRowBackground(Color.settingsBackground)
+                            .listRowBackground(Color(red: 0.98, green: 0.98, blue: 0.98))
                     }
                 }
             }
@@ -400,6 +482,15 @@ private enum DiaryDate {
         }
 
         return "\(components.month)/\(components.day)"
+    }
+
+    static func apiDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 
     static func formatDetail(_ value: String) -> String {
