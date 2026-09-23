@@ -271,6 +271,10 @@ private struct DiaryList: View {
                         DiaryRow(diary: diary)
                             .listRowBackground(Color(.systemBackground))
                             .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                            .listRowSeparator(
+                                index == group.diaries.count - 1 ? .hidden : .visible,
+                                edges: .bottom
+                            )
                     }
                 }
             }
