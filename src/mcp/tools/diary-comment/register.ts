@@ -17,6 +17,11 @@ import {
   joinMcpContentLines,
   quoteMcpText,
 } from "../content-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+  mcpMutationOutcomeFromReplay,
+} from "../mutation-contract.js";
 
 const idSchema = z.string().trim().uuid();
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
@@ -54,10 +59,7 @@ const addOutputSchema = z.object({
   success: z.boolean(),
   data: z.object({
     comment: commentSchema,
-    metadata: z.object({
-      created: z.boolean(),
-      idempotent_replay: z.boolean(),
-    }).strict(),
+    ...mcpMutationReceiptFields,
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -102,7 +104,7 @@ const updateInputSchema = z.object({
 
 const updateOutputSchema = z.object({
   success: z.boolean(),
-  data: commentSchema.optional(),
+  data: commentSchema.extend(mcpMutationReceiptFields).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
 
@@ -116,6 +118,7 @@ const deleteOutputSchema = z.object({
   data: z.object({
     comment_id: idSchema,
     deleted: z.literal(true),
+    ...mcpMutationReceiptFields,
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -206,7 +209,20 @@ export function registerDiaryCommentTools(
             }],
             structuredContent: {
               success: true as const,
-              data,
+              data: {
+                comment: data.comment,
+                ...mcpMutationReceipt({
+                  outcome: mcpMutationOutcomeFromReplay(replay),
+                  entity_type: "diary_comment",
+                  entity_id: data.comment.id,
+                  revision: data.comment.revision,
+                  detail_tool: "get_diary_comment",
+                  detail_arguments: {
+                    id: data.comment.id,
+                    scope: "active",
+                  },
+                }),
+              },
             },
           };
         },
@@ -344,7 +360,17 @@ export function registerDiaryCommentTools(
             }],
             structuredContent: {
               success: true as const,
-              data,
+              data: {
+                ...data,
+                ...mcpMutationReceipt({
+                  outcome: "applied",
+                  entity_type: "diary_comment",
+                  entity_id: data.id,
+                  revision: data.revision,
+                  detail_tool: "get_diary_comment",
+                  detail_arguments: { id: data.id, scope: "active" },
+                }),
+              },
             },
           };
         },
@@ -385,7 +411,17 @@ export function registerDiaryCommentTools(
             }],
             structuredContent: {
               success: true as const,
-              data,
+              data: {
+                ...data,
+                ...mcpMutationReceipt({
+                  outcome: "applied",
+                  entity_type: "diary_comment",
+                  entity_id: data.comment_id,
+                  revision: null,
+                  detail_tool: null,
+                  detail_arguments: null,
+                }),
+              },
             },
           };
         },
