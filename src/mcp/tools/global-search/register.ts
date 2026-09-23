@@ -142,7 +142,7 @@ export function registerGlobalSearchTool(server: McpServer, dependencies: Global
   }, async (args) => {
     try {
       const userId = dependencies.getAuthenticatedUserId();
-      const data = await dependencies.globalSearchService.search({ userId, ...args });
+      const data = await dependencies.globalSearchService.search({ userId, ...args, modules: args.modules ?? [...DEFAULT_GLOBAL_SEARCH_MODULES] });
       return {
         content: [{ type: "text", text: globalSearchContent(data) }],
         structuredContent: { success: true as const, data },
