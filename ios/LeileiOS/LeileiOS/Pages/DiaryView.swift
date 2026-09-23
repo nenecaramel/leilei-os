@@ -267,32 +267,18 @@ private struct DiaryMonthGroup: Identifiable {
 }
 
 private enum DiaryDate {
-    private static let sourceFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-
     static func monthKey(_ value: String) -> String {
-        guard let date = sourceFormatter.date(from: value) else {
+        guard let components = components(from: value) else {
             return "unknown:\(value)"
         }
 
-        let components = Calendar(identifier: .gregorian)
-            .dateComponents([.year, .month], from: date)
-
-        guard let year = components.year, let month = components.month else {
-            return "unknown:\(value)"
-        }
-
-        return String(format: "%04d-%02d", year, month)
+        return String(format: "%04d-%02d", components.year, components.month)
     }
 
     static func formatMonth(_ key: String) -> String {
         guard !key.hasPrefix("unknown:"),
-              let date = sourceFormatter.date(from: "\(key)-01")
+              let components = components(from: "\(key)-01"),
+              let date = date(from: components)
         else {
             return "Unknown Date"
         }
@@ -301,7 +287,9 @@ private enum DiaryDate {
     }
 
     static func formatRow(_ value: String) -> String {
-        guard let date = sourceFormatter.date(from: value) else {
+        guard let components = components(from: value),
+              let date = date(from: components)
+        else {
             return value
         }
 
@@ -309,10 +297,37 @@ private enum DiaryDate {
     }
 
     static func formatDetail(_ value: String) -> String {
-        guard let date = sourceFormatter.date(from: value) else {
+        guard let components = components(from: value),
+              let date = date(from: components)
+        else {
             return value
         }
 
         return date.formatted(.dateTime.year().month(.wide).day())
+    }
+
+    private static func components(from value: String) -> (year: Int, month: Int, day: Int)? {
+        let parts = value.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 3,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2]),
+              (1...12).contains(month),
+              (1...31).contains(day)
+        else {
+            return nil
+        }
+
+        return (year, month, day)
+    }
+
+    private static func date(from components: (year: Int, month: Int, day: Int)) -> Date? {
+        Calendar(identifier: .gregorian).date(
+            from: DateComponents(
+                year: components.year,
+                month: components.month,
+                day: components.day
+            )
+        )
     }
 }
