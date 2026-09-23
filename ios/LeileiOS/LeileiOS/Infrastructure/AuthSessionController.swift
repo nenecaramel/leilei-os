@@ -103,6 +103,44 @@ final class AuthSessionController {
         }
     }
 
+    func reauthorize() async throws {
+        guard
+            let clientID,
+            let domain,
+            let audience,
+            let scope,
+            let credentialsManager
+        else {
+            throw AuthSessionError.notConfigured
+        }
+
+        try? credentialsManager.clear()
+
+        try? await Auth0
+            .webAuth(
+                clientId: clientID,
+                domain: domain
+            )
+            .logout()
+
+        let credentials = try await Auth0
+            .webAuth(
+                clientId: clientID,
+                domain: domain
+            )
+            .useCredentialsManager(credentialsManager)
+            .audience(audience)
+            .scope("openid profile email offline_access \(scope)")
+            .parameters(["prompt": "login"])
+            .useEphemeralSession()
+            .start()
+
+        guard credentials.refreshToken != nil else {
+            try? credentialsManager.clear()
+            throw AuthSessionError.missingRefreshToken
+        }
+    }
+
     func signOut() async throws {
         guard
             let clientID,
