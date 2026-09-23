@@ -24,7 +24,6 @@ struct DiaryView: View {
             case .authRequired:
                 AppStateSurface(
                     title: "Sign in",
-                    systemImage: "person.crop.circle",
                     actionTitle: "Sign In"
                 ) {
                     Task {
@@ -36,7 +35,6 @@ struct DiaryView: View {
                 if isSearching {
                     AppStateSurface(
                         title: "Unavailable",
-                        systemImage: "magnifyingglass",
                         actionTitle: "Retry"
                     ) {
                         Task {
@@ -46,7 +44,6 @@ struct DiaryView: View {
                 } else {
                     AppStateSurface(
                         title: "Unavailable",
-                        systemImage: "book.closed",
                         actionTitle: "Retry"
                     ) {
                         Task {
@@ -321,7 +318,6 @@ private struct DiaryArchiveView: View {
             case .unavailable:
                 AppStateSurface(
                     title: "Unavailable",
-                    systemImage: "archivebox",
                     actionTitle: "Retry"
                 ) {
                     Task {
