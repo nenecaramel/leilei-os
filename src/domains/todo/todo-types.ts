@@ -31,6 +31,7 @@ export type TodoSearchInput = {
   dateFrom?: string;
   dateTo?: string;
   limit: number;
+  offset?: number;
 };
 export type TodoSearchEntry = {
   entry_id: string;
