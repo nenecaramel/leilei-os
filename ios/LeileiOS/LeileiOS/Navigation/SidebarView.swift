@@ -47,29 +47,35 @@ struct SidebarView: View {
                 }
                 .padding(.top, topContentOffset)
             }
+                FloatingGlassButton(
+                    symbol: "magnifyingglass",
+                    accessibilityLabel: "Global Search"
+                ) {
+                    selectedPage = .globalSearch
+                    onSelect()
+                }
+                .position(
+                    x: proxy.size.width - 40,
+                    y: localY(
+                        menuButtonCenterY,
+                        in: proxy,
+                        fallback: proxy.safeAreaInsets.top + 22
+                    )
+                )
+            }
             .overlay(alignment: .bottomTrailing) {
-                HStack(spacing: 8) {
-                    FloatingGlassButton(
-                        symbol: "magnifyingglass",
-                        accessibilityLabel: "Global Search"
-                    ) {
-                        selectedPage = .globalSearch
+                FloatingGlassButton(
+                    symbol: "gearshape",
+                    accessibilityLabel: "Settings"
+                ) {
+                    if let onSettings {
+                        onSettings()
+                    } else {
+                        selectedPage = .account
                         onSelect()
                     }
-
-                    FloatingGlassButton(
-                        symbol: "gearshape",
-                        accessibilityLabel: "Settings"
-                    ) {
-                        if let onSettings {
-                            onSettings()
-                        } else {
-                            selectedPage = .account
-                            onSelect()
-                        }
-                    }
                 }
-                .padding()
+                .padding(.trailing)
             }
         }
     }
