@@ -24,6 +24,7 @@ test("public MCP defaults expose core + device but hide maintenance/runtime surf
     mcpToolSurfaceEnabled(exposure, "runtime_internal"),
     false,
   );
+  assert.equal(mcpToolSurfaceEnabled(exposure, "legacy_aliases"), false);
   assert.equal(mcpToolSurfaceEnabled(exposure, "ui"), false);
 });
 
@@ -39,6 +40,7 @@ test("internal MCP defaults preserve full surface for dedicated maintenance/runt
     "device",
     "ui",
     "runtime_internal",
+    "legacy_aliases",
   ] as const) {
     assert.equal(mcpToolSurfaceEnabled(exposure, surface), true);
   }
@@ -54,10 +56,10 @@ test("notion_advanced profile includes the typed Notion surface plus advanced to
 test("MCP tool profile parser supports explicit composable surfaces and rejects unknown profiles", () => {
   assert.deepEqual(
     parseMcpToolProfiles(
-      "core,notion,notion_advanced,conversation_recovery",
+      "core,notion,notion_advanced,conversation_recovery,legacy_aliases",
       DEFAULT_PUBLIC_MCP_TOOL_PROFILES,
     ),
-    ["core", "notion", "notion_advanced", "conversation_recovery"],
+    ["core", "notion", "notion_advanced", "conversation_recovery", "legacy_aliases"],
   );
   assert.throws(
     () => parseMcpToolProfiles("core,unknown", []),
