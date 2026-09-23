@@ -17,10 +17,11 @@ struct SettingsActivityContent: View {
                     }
 
                 case .unavailable:
-                    HStack {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("Activity Unavailable")
+                        Text("Couldn’t load activity.")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Spacer()
                         Button("Retry") {
                             Task {
                                 await loadActivity()
