@@ -306,7 +306,7 @@ test("surviving fixture writes resolve server identity once and invoke their ser
   assert.equal(diaryCalls.length, 1);
   assert.equal(toyCalls.length, 2);
   assert.equal(todoCalls.length, 5);
-  assert.deepEqual((diaryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID, toolName: "write_diary", actorType: "user", channel: "mcp", source: "mcp" });
+  assert.deepEqual((diaryCalls[0] as { context: unknown }).context, { userId: AUTHENTICATED_USER_ID });
   assert.deepEqual(toyCalls.map((call) => (call as { userId: string }).userId), [
     AUTHENTICATED_USER_ID,
     AUTHENTICATED_USER_ID,
