@@ -58,17 +58,14 @@ struct DiaryView: View {
                     if isSearching {
                         AppStateSurface(
                             title: "Nothing here",
-                            systemImage: "magnifyingglass"
                         )
                     } else if timeFilter == .anyTime {
                         AppStateSurface(
                             title: "Nothing here",
-                            systemImage: "book.closed"
                         )
                     } else {
                         AppStateSurface(
                             title: "Nothing here",
-                            systemImage: "calendar"
                         )
                     }
                 } else {
@@ -329,7 +326,6 @@ private struct DiaryArchiveView: View {
                 if diaries.isEmpty {
                     AppStateSurface(
                         title: "Nothing here",
-                        systemImage: "archivebox"
                     )
                 } else {
                     DiaryArchiveList(diaries: diaries) {
@@ -434,7 +430,6 @@ private struct DiaryArchivedDetailView: View {
             case .unavailable:
                 AppStateSurface(
                     title: "Unavailable",
-                    systemImage: "book.closed"
                 )
 
             case .loaded(let diary):
@@ -792,7 +787,6 @@ private struct DiaryDetailView: View {
             case .unavailable:
                 AppStateSurface(
                     title: "Unavailable",
-                    systemImage: "book.closed"
                 )
 
             case .loaded(let diary):
