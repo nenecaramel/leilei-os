@@ -429,6 +429,9 @@ const productionTodoService = {
   appendEntryIdempotently: (
     input: Parameters<TodoEntryWriteToolDependencies["todoService"]["appendEntryIdempotently"]>[0],
   ) => missingDatabaseService(),
+  appendEntriesIdempotently: (
+    input: Parameters<TodoEntryWriteToolDependencies["todoService"]["appendEntriesIdempotently"]>[0],
+  ) => missingDatabaseService(),
   updateEntryIdempotently: (
     input: Parameters<TodoEntryWriteToolDependencies["todoService"]["updateEntryIdempotently"]>[0],
   ) => missingDatabaseService(),
