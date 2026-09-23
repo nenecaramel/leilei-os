@@ -832,6 +832,9 @@ export function createMcpServer(
       };
   registerSearchNotionTool(server, notionTools);
   registerReadNotionPageTool(server, notionTools);
+  }
+
+  if (mcpToolSurfaceEnabled(toolExposure, "notion_advanced")) {
   const notionRead = dependencies.notionRead
     ? (dependencies.activeUserAuthorization || authenticatedUserId !== undefined)
       ? { ...dependencies.notionRead, requireActiveUser: activeUserAuthorization }
