@@ -15,7 +15,7 @@ export interface TransitionTaskToolService { transitionMcpTask(context: Authenti
 export type TransitionTaskToolDependencies = { taskService: TransitionTaskToolService; getAuthenticatedUserId: () => string };
 
 export function registerTransitionTaskTool(server: McpServer, dependencies: TransitionTaskToolDependencies): void {
-  server.registerTool("transition_task", { title: "Transition one Task", description: TASK_DOMAIN_BOUNDARY + " Apply one explicit Task action through the existing Task state machine. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly repeat the same action.", inputSchema: transitionTaskInputSchema, outputSchema: transitionTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, action }) => invokeMcpWrite({
+  server.registerTool("transition_task", { title: "Transition one Task", description: TASK_DOMAIN_BOUNDARY + " Apply one explicit state-machine action. If outcome is uncertain, read get_task before repeating the action.", inputSchema: transitionTaskInputSchema, outputSchema: transitionTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, action }) => invokeMcpWrite({
     toolName: "transition_task", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
       const data = await dependencies.taskService.transitionMcpTask({ userId }, { id, action });
