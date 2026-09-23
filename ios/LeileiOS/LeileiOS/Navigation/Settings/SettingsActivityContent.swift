@@ -29,7 +29,8 @@ struct SettingsActivityContent: View {
                 case .loaded(let records):
                     if records.isEmpty {
                         SettingsSectionState(
-                            title: "No Activity Yet"
+                            title: "No Activity Yet",
+                            message: "Activity will appear here when available."
                         )
                     } else {
                         ForEach(records) { record in
