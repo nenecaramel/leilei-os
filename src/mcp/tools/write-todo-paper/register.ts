@@ -11,7 +11,7 @@ import {
 } from "../../../domains/todo/todo-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
-import { joinMcpContentLines } from "../content-contract.js";
+import { formatMcpDetailPointer, joinMcpContentLines } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 
 const todoEntryInputSchema = z.object({
@@ -115,6 +115,10 @@ export function registerWriteTodoPaperTool(
                   ? "The Todo paper was returned without applying a duplicate write."
                   : "The Todo paper was saved.",
                 `Todo ${data.paper.date} author=${data.paper.author} revision=${data.paper.revision}; entries=${data.paper.entries.length}.`,
+                formatMcpDetailPointer("read_todo_day", {
+                  date: data.paper.date,
+                  author: data.paper.author,
+                }),
               ]),
             }],
             structuredContent: {
