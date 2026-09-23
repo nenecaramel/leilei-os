@@ -16,6 +16,35 @@ struct DaySpaceView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
+                DaySpaceDateNavigationRow(
+                    selectedDate: selectedDate,
+                    onPrevious: {
+                        guard let selectedDate else { return }
+                        selectDate(
+                            DaySpaceDate.shift(
+                                selectedDate,
+                                by: -1
+                            )
+                        )
+                    },
+                    onSelectDate: {
+                        datePickerDraft = selectedDate
+                            .flatMap(DaySpaceDate.date)
+                            ?? .now
+                        datePickerPresented = true
+                    },
+                    onNext: {
+                        guard let selectedDate else { return }
+                        selectDate(
+                            DaySpaceDate.shift(
+                                selectedDate,
+                                by: 1
+                            )
+                        )
+                    }
+                )
+                .padding(.bottom, 8)
+
                 if discoveryIncomplete, selectedDate != nil {
                     DaySpaceWarning(
                         text: "Latest-date discovery is incomplete. This date is still available."
@@ -52,11 +81,6 @@ struct DaySpaceView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(.systemBackground))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                dateMenu
-            }
-        }
         .sheet(isPresented: $datePickerPresented) {
             DaySpaceDatePickerSheet(
                 date: $datePickerDraft
@@ -136,42 +160,6 @@ struct DaySpaceView: View {
                 }
             }
         }
-    }
-
-    @ViewBuilder
-    private var dateMenu: some View {
-        Menu {
-            Button("Previous Day") {
-                guard let selectedDate else { return }
-                selectDate(DaySpaceDate.shift(selectedDate, by: -1))
-            }
-
-            Button("Today") {
-                selectDate(DaySpaceDate.businessDate(.now))
-            }
-
-            Button("Next Day") {
-                guard let selectedDate else { return }
-                selectDate(DaySpaceDate.shift(selectedDate, by: 1))
-            }
-
-            Divider()
-
-            Button("Choose Date…") {
-                datePickerDraft = selectedDate
-                    .flatMap(DaySpaceDate.date)
-                    ?? .now
-                datePickerPresented = true
-            }
-        } label: {
-            Text(
-                selectedDate.map(DaySpaceDate.toolbarLabel)
-                    ?? "Reading…"
-            )
-            .font(.subheadline)
-        }
-        .disabled(selectedDate == nil)
-        .accessibilityLabel("Day Space date")
     }
 
     private var hasPartialFailure: Bool {
@@ -384,6 +372,50 @@ struct DaySpaceView: View {
         }
 
         diaryState = .ready(diaries)
+    }
+}
+
+private struct DaySpaceDateNavigationRow: View {
+    let selectedDate: String?
+    let onPrevious: () -> Void
+    let onSelectDate: () -> Void
+    let onNext: () -> Void
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Button(action: onPrevious) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .regular))
+                    .frame(width: 32, height: 34)
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedDate == nil)
+            .accessibilityLabel("Previous Day")
+
+            Button(action: onSelectDate) {
+                Text(
+                    selectedDate.map(DaySpaceDate.fullLabel)
+                        ?? "Reading…"
+                )
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 138, minHeight: 34)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedDate == nil)
+            .accessibilityLabel("Choose Day Space date")
+
+            Button(action: onNext) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .regular))
+                    .frame(width: 32, height: 34)
+            }
+            .buttonStyle(.plain)
+            .disabled(selectedDate == nil)
+            .accessibilityLabel("Next Day")
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
