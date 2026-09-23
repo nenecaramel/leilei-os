@@ -12,6 +12,11 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import {
+  decodeMcpPaginationCursor,
+  McpPaginationCursorError,
+  paginateMcpRows,
+} from "../pagination.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -33,6 +38,8 @@ const readMemoryInputSchema = z
       .max(50)
       .optional()
       .describe("Optional exact memory keys to include."),
+    limit: z.number().int().min(1).max(50).default(50).optional(),
+    cursor: z.string().min(1).max(2_048).optional(),
   })
   .strict();
 
@@ -55,6 +62,9 @@ const readMemoryDataSchema = z.object({
   ),
   metadata: z.object({
     count: z.number().int().nonnegative(),
+    returned: z.number().int().nonnegative(),
+    has_more: z.boolean(),
+    next_cursor: z.string().nullable(),
   }),
 });
 
@@ -93,18 +103,41 @@ export function registerReadMemoryTool(
         openWorldHint: false,
       },
     },
-    async ({ categories, keys }) => {
+    async ({ categories, keys, limit, cursor }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
+        const pageSize = limit ?? 50;
+        const cursorContext = {
+          categories: categories ?? null,
+          keys: keys ?? null,
+        };
+        const offset = decodeMcpPaginationCursor(cursor, "read_memory", cursorContext);
         const input = {
           userId,
           categories,
           keys,
+          limit: pageSize + 1,
+          offset,
         };
         const discovery = dependencies.memoryService.readMemoryDiscovery
           ? await dependencies.memoryService.readMemoryDiscovery(input)
           : compactFallback(await dependencies.memoryService.readMemory(input));
-        const data = withDetailPointers(discovery);
+        const withPointers = withDetailPointers(discovery);
+        const page = paginateMcpRows({
+          rows: withPointers.memories,
+          pageSize,
+          offset,
+          tool: "read_memory",
+          context: cursorContext,
+        });
+        const data = {
+          ...withPointers,
+          memories: page.items,
+          metadata: {
+            count: page.items.length,
+            ...page.metadata,
+          },
+        };
         const result = {
           success: true as const,
           data,
@@ -165,6 +198,9 @@ function withDetailPointers(result: ReadMemoryDiscoveryResult): ReadMemoryDiscov
 }
 
 function toSafeToolError(error: unknown) {
+  if (error instanceof McpPaginationCursorError) {
+    return createMcpToolError("INVALID_CURSOR", "The Memory continuation cursor is invalid for this request.");
+  }
   if (error instanceof ReadMemoryAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",
