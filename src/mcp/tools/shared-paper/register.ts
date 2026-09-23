@@ -59,7 +59,7 @@ export class SharedPaperAuthenticationError extends Error {
 }
 
 export function registerSharedPaperTools(server: McpServer, dependencies: SharedPaperToolDependencies): void {
-  server.registerTool("list_shared_papers", { title: "List shared papers", description: "List shared papers owned by the authenticated user. scope defaults to active; pass archived to browse the archive. Results are compact discovery records; use get_shared_paper for full content.", inputSchema: listInput, outputSchema: listOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ limit, cursor, scope }) => {
+  server.registerTool("list_shared_papers", { title: "List shared papers", description: "List shared papers owned by the authenticated user. scope defaults to active; pass archived to browse the archive. Results are compact discovery records; use get_shared_paper for full content. When has_more is true, pass next_cursor back as cursor with the same scope.", inputSchema: listInput, outputSchema: listOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ limit, cursor, scope }) => {
     const pageSize = limit ?? 50;
     const resolvedScope = scope ?? "active";
     return runRead(
@@ -70,7 +70,7 @@ export function registerSharedPaperTools(server: McpServer, dependencies: Shared
       { scope: resolvedScope },
     );
   });
-  server.registerTool("search_shared_papers", { title: "Search shared papers", description: "Search the authenticated user's shared paper titles and canonical content using normalized substring matching. scope defaults to active; pass archived to search the archive. Results are compact; use get_shared_paper for full content.", inputSchema: searchInput, outputSchema: searchOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ query, limit, cursor, scope }) => {
+  server.registerTool("search_shared_papers", { title: "Search shared papers", description: "Search the authenticated user's shared paper titles and canonical content using normalized substring matching. scope defaults to active; pass archived to search the archive. Results are compact; use get_shared_paper for full content. When has_more is true, pass next_cursor back as cursor with the same query and scope.", inputSchema: searchInput, outputSchema: searchOutput, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ query, limit, cursor, scope }) => {
     const pageSize = limit ?? 50;
     const resolvedScope = scope ?? "active";
     return runRead(
