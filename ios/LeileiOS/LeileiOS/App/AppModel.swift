@@ -65,6 +65,11 @@ final class AppModel: ObservableObject {
 
             #if DEBUG
             print("LeileiOS Auth0 renewable session:", authSession.canRenew)
+            if let profile = authSession.userProfile() {
+                print("LeileiOS Auth0 identity: sub=\(profile.sub) email=\(profile.email ?? "-")")
+            } else {
+                print("LeileiOS Auth0 identity: unavailable")
+            }
             #endif
         } catch {
             isAuthenticated = false
@@ -80,6 +85,12 @@ final class AppModel: ObservableObject {
         isAuthenticated = true
         accountEmail = authSession.userProfile()?.email
 
+        #if DEBUG
+        if let profile = authSession.userProfile() {
+            print("LeileiOS Auth0 identity after sign-in: sub=\(profile.sub) email=\(profile.email ?? "-")")
+        }
+        #endif
+
         await refreshConnectivity()
     }
 
@@ -88,6 +99,12 @@ final class AppModel: ObservableObject {
 
         isAuthenticated = true
         accountEmail = authSession.userProfile()?.email
+
+        #if DEBUG
+        if let profile = authSession.userProfile() {
+            print("LeileiOS Auth0 identity after reauth: sub=\(profile.sub) email=\(profile.email ?? "-")")
+        }
+        #endif
 
         await refreshConnectivity()
     }
