@@ -91,6 +91,12 @@ import {
   NativeLiveBackgroundWorkflowCoordinator,
 } from "../domains/bridge/native-live-background-workflow-coordinator.js";
 import {
+  ProactivityWakeCrossDeviceCoordinator,
+} from "../domains/runtime/proactivity-wake-cross-device-coordinator.js";
+import {
+  DrizzleProactivityWakeRepository,
+} from "../domains/runtime/proactivity-wake-repository.js";
+import {
   DrizzleNativeLiveConversationRepository,
 } from "../domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
@@ -168,6 +174,8 @@ export type ProcessRuntime = {
     TopicResurfaceCrossDeviceCoordinator;
   distillationCrossDeviceCoordinator:
     DistillationCrossDeviceCoordinator;
+  proactivityWakeCrossDeviceCoordinator:
+    ProactivityWakeCrossDeviceCoordinator;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
   startBackgroundWork(): void;
@@ -326,6 +334,11 @@ export function createProcessRuntime(
     new DrizzleNativeLiveBackendRelayRepository(db),
     nativeLiveTurnCoordinator,
   );
+  const proactivityWakeCrossDeviceCoordinator =
+    new ProactivityWakeCrossDeviceCoordinator(
+      nativeLiveBackgroundModelService,
+      new DrizzleProactivityWakeRepository(db),
+    );
   const topicResurfaceCrossDeviceCoordinator =
     new TopicResurfaceCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
@@ -351,6 +364,7 @@ export function createProcessRuntime(
   const nativeLiveBackgroundWorkflowCoordinator =
     new NativeLiveBackgroundWorkflowCoordinator([
       distillationCrossDeviceCoordinator,
+      proactivityWakeCrossDeviceCoordinator,
       topicResurfaceCrossDeviceCoordinator,
     ]);
   const topicResurfaceCrossDeviceOpportunity =
@@ -492,6 +506,7 @@ export function createProcessRuntime(
     driveSatisfactionService,
     topicResurfaceCrossDeviceCoordinator,
     distillationCrossDeviceCoordinator,
+    proactivityWakeCrossDeviceCoordinator,
     appDependencies: {
       logger,
       webMemoryService: memoryService,

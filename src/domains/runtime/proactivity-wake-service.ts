@@ -6,6 +6,7 @@ import {
   proactivityGateReasonCode,
   requireProactivityIso,
   type ProactivityDeliberationDraft,
+  type ProactivityWakeBlockReason,
   type ProactivityWakeDecision,
   type ProactivityWakeGateInput,
 } from "./proactivity-wake-contract.js";
@@ -19,71 +20,44 @@ export interface ProactivityWakeDeliberator {
   }): Promise<ProactivityDeliberationDraft>;
 }
 
-/**
- * First Proactivity / wake execution boundary.
- *
- * This service is intentionally effect-silent. It can produce a bound
- * contact_candidate, but it never creates, persists, dispatches, retries, or
- * observes an external effect. A later effect layer must materialize a
- * DurableEffect and pass assertProactivityEffectDispatchAllowed().
- *
- * Model-backed deliberation is also abstract here so production can route it
- * through the existing durable backend -> Mac model queue rather than running
- * Claude locally on Railway.
- */
-export class ProactivityWakeService {
+export class ProactivityWakeDecisionBuilder {
   constructor(
-    private readonly deliberator: ProactivityWakeDeliberator,
     private readonly now: () => string = () =>
       new Date().toISOString(),
     private readonly createDecisionId: () => string = randomUUID,
   ) {}
 
-  async run(input: {
+  blocked(
+    gate: ProactivityWakeGateInput,
+    reason: ProactivityWakeBlockReason,
+  ): ProactivityWakeDecision {
+    return this.quiet(
+      gate,
+      proactivityGateReasonCode(reason),
+    );
+  }
+
+  failure(
+    gate: ProactivityWakeGateInput,
+    reason:
+      | "deliberation_failed"
+      | "invalid_deliberation_output",
+  ): ProactivityWakeDecision {
+    return this.quiet(gate, reason);
+  }
+
+  fromDraft(input: {
     gate: ProactivityWakeGateInput;
     contactTarget: string | null;
-  }): Promise<ProactivityWakeDecision> {
-    const gate = evaluateProactivityWakeGate(input.gate);
-    if (gate.outcome === "blocked") {
-      return this.quietDecision(
-        input.gate,
-        proactivityGateReasonCode(gate.reason),
-      );
-    }
-
-    let rawDraft: ProactivityDeliberationDraft;
-    try {
-      rawDraft = await this.deliberator.decide({
-        wakeId: input.gate.wakeId,
-        userId: input.gate.userId,
-        subjectId: input.gate.subjectId,
-        offeredAt: requireProactivityIso(
-          input.gate.offeredAt,
-          "offeredAt",
-        ),
-      });
-    } catch {
-      return this.quietDecision(
-        input.gate,
-        "deliberation_failed",
-      );
-    }
-
-    let draft: ProactivityDeliberationDraft;
-    try {
-      draft = normalizeProactivityDeliberationDraft(rawDraft);
-    } catch {
-      return this.quietDecision(
-        input.gate,
-        "invalid_deliberation_output",
-      );
-    }
+    draft: ProactivityDeliberationDraft;
+  }): ProactivityWakeDecision {
+    const draft = normalizeProactivityDeliberationDraft(input.draft);
 
     if (draft.outcome === "quiet") {
-      return this.quietDecision(input.gate, "model_quiet");
+      return this.quiet(input.gate, "model_quiet");
     }
     if (draft.outcome === "reflect") {
-      return this.baseDecision(input.gate, {
+      return this.base(input.gate, {
         outcome: "reflect",
         reasonCode: "model_reflect",
         contactText: null,
@@ -93,29 +67,30 @@ export class ProactivityWakeService {
 
     const target = input.contactTarget?.trim() ?? "";
     if (!target) {
-      return this.quietDecision(
+      return this.quiet(
         input.gate,
         "contact_target_unavailable",
       );
     }
 
-    return this.baseDecision(input.gate, {
+    return this.base(input.gate, {
       outcome: "contact_candidate",
       reasonCode: "model_contact_candidate",
       contactText: draft.text,
       effectIntent: {
         effectType: "message_send",
         target,
-        payloadHash: hashProactivityMessagePayload(draft.text),
+        payloadHash:
+          hashProactivityMessagePayload(draft.text),
       },
     });
   }
 
-  private quietDecision(
-    input: ProactivityWakeGateInput,
+  private quiet(
+    gate: ProactivityWakeGateInput,
     reasonCode: ProactivityWakeDecision["reasonCode"],
   ): ProactivityWakeDecision {
-    return this.baseDecision(input, {
+    return this.base(gate, {
       outcome: "quiet",
       reasonCode,
       contactText: null,
@@ -123,7 +98,7 @@ export class ProactivityWakeService {
     });
   }
 
-  private baseDecision(
+  private base(
     input: ProactivityWakeGateInput,
     body: Pick<
       ProactivityWakeDecision,
@@ -152,5 +127,69 @@ export class ProactivityWakeService {
       ),
       ...body,
     };
+  }
+}
+
+/**
+ * Synchronous-model adapter kept for local/unit use.
+ *
+ * Production Proactivity deliberation must use the durable cross-device
+ * coordinator instead, so Railway owns wake/decision state while Mac only
+ * performs the pure model transform.
+ */
+export class ProactivityWakeService {
+  private readonly decisions: ProactivityWakeDecisionBuilder;
+
+  constructor(
+    private readonly deliberator: ProactivityWakeDeliberator,
+    now: () => string = () => new Date().toISOString(),
+    createDecisionId: () => string = randomUUID,
+  ) {
+    this.decisions =
+      new ProactivityWakeDecisionBuilder(now, createDecisionId);
+  }
+
+  async run(input: {
+    gate: ProactivityWakeGateInput;
+    contactTarget: string | null;
+  }): Promise<ProactivityWakeDecision> {
+    const gate = evaluateProactivityWakeGate(input.gate);
+    if (gate.outcome === "blocked") {
+      return this.decisions.blocked(
+        input.gate,
+        gate.reason,
+      );
+    }
+
+    let rawDraft: ProactivityDeliberationDraft;
+    try {
+      rawDraft = await this.deliberator.decide({
+        wakeId: input.gate.wakeId,
+        userId: input.gate.userId,
+        subjectId: input.gate.subjectId,
+        offeredAt: requireProactivityIso(
+          input.gate.offeredAt,
+          "offeredAt",
+        ),
+      });
+    } catch {
+      return this.decisions.failure(
+        input.gate,
+        "deliberation_failed",
+      );
+    }
+
+    try {
+      return this.decisions.fromDraft({
+        gate: input.gate,
+        contactTarget: input.contactTarget,
+        draft: rawDraft,
+      });
+    } catch {
+      return this.decisions.failure(
+        input.gate,
+        "invalid_deliberation_output",
+      );
+    }
   }
 }

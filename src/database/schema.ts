@@ -802,6 +802,10 @@ export type NativeLiveBackgroundModelJobStatus =
   | "reserved"
   | "completed"
   | "failed";
+export type RuntimeProactivityWakeStatus =
+  | "created"
+  | "waiting_model"
+  | "decided";
 export type RuntimeDriveSatisfactionEvidenceKind =
   | "user_message"
   | "tool_result";
@@ -1645,11 +1649,17 @@ export const nativeLiveBackgroundModelJobs = pgTable(
         AND ${table.workflowPayload} IS NOT NULL
         AND jsonb_typeof(${table.workflowPayload}) = 'object'
         AND ${table.taskKind} = 'distillation'
+      ) OR (
+        ${table.workflowKind} = 'proactivity_wake'
+        AND ${table.workflowRunId} IS NOT NULL
+        AND ${table.workflowPayload} IS NOT NULL
+        AND jsonb_typeof(${table.workflowPayload}) = 'object'
+        AND ${table.taskKind} = 'proactivity_deliberate'
       )`,
     ),
     check(
       "native_live_background_model_jobs_task_kind_allowed",
-      sql`${table.taskKind} IN ('distillation', 'topic_resurface_evaluate', 'topic_resurface_deliberate', 'topic_resurface_retention')`,
+      sql`${table.taskKind} IN ('distillation', 'proactivity_deliberate', 'topic_resurface_evaluate', 'topic_resurface_deliberate', 'topic_resurface_retention')`,
     ),
     check(
       "native_live_background_model_jobs_prompt_contract_not_blank",
@@ -1700,6 +1710,91 @@ export const nativeLiveBackgroundModelJobs = pgTable(
           AND ${table.errorCode} IS NOT NULL
           AND char_length(btrim(${table.errorCode})) > 0
           AND ${table.completedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const runtimeProactivityWakes = pgTable(
+  "runtime_proactivity_wakes",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    subjectId: text("subject_id").notNull(),
+    gate: jsonb("gate")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    contactTarget: text("contact_target"),
+    contextSnapshot: jsonb("context_snapshot")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<RuntimeProactivityWakeStatus>()
+      .default("created")
+      .notNull(),
+    modelTaskId: uuid("model_task_id"),
+    decision: jsonb("decision")
+      .$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("runtime_proactivity_wakes_user_status_created_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    index("runtime_proactivity_wakes_subject_created_idx").on(
+      table.userId,
+      table.subjectId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "runtime_proactivity_wakes_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_proactivity_wakes_gate_object",
+      sql`jsonb_typeof(${table.gate}) = 'object'`,
+    ),
+    check(
+      "runtime_proactivity_wakes_context_object",
+      sql`jsonb_typeof(${table.contextSnapshot}) = 'object'`,
+    ),
+    check(
+      "runtime_proactivity_wakes_target_not_blank",
+      sql`${table.contactTarget} IS NULL
+        OR char_length(btrim(${table.contactTarget})) > 0`,
+    ),
+    check(
+      "runtime_proactivity_wakes_status_allowed",
+      sql`${table.status} IN ('created', 'waiting_model', 'decided')`,
+    ),
+    check(
+      "runtime_proactivity_wakes_state_consistency",
+      sql`(${table.status} = 'created'
+          AND ${table.modelTaskId} IS NULL
+          AND ${table.decision} IS NULL
+          AND ${table.decidedAt} IS NULL)
+        OR (${table.status} = 'waiting_model'
+          AND ${table.modelTaskId} IS NOT NULL
+          AND ${table.decision} IS NULL
+          AND ${table.decidedAt} IS NULL)
+        OR (${table.status} = 'decided'
+          AND ${table.decision} IS NOT NULL
+          AND jsonb_typeof(${table.decision}) = 'object'
+          AND ${table.decidedAt} IS NOT NULL)`,
     ),
   ],
 );

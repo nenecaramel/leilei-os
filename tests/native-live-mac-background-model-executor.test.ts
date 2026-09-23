@@ -168,3 +168,44 @@ test("Mac background executor runs Distillation through the same pure-model queu
   );
   assert.deepEqual(prompts, ["distill settled transcript"]);
 });
+
+
+test("Mac background executor runs Proactivity deliberation through the same pure-model contract", async () => {
+  const taskId =
+    "44444444-4444-4444-8444-444444444444";
+  const prompts: string[] = [];
+  const executor = new NativeLiveMacBackgroundModelExecutor({
+    async sendNew(prompt: string) {
+      prompts.push(prompt);
+      return {
+        providerSessionId: "provider-private",
+        normalizedEvents: [{
+          type: "result" as const,
+          payload: {
+            status: "success",
+            final_text: '{"outcome":"reflect"}',
+          },
+        }],
+      };
+    },
+  });
+
+  assert.deepEqual(
+    await executor.execute({
+      protocol_version: 1,
+      task_id: taskId,
+      task_kind: "proactivity_deliberate",
+      prompt_contract_version:
+        "proactivity-wake-deliberation-v1",
+      prompt: "pure deliberation",
+    }),
+    {
+      protocol_version: 1,
+      task_id: taskId,
+      task_kind: "proactivity_deliberate",
+      status: "success",
+      final_text: '{"outcome":"reflect"}',
+    },
+  );
+  assert.deepEqual(prompts, ["pure deliberation"]);
+});

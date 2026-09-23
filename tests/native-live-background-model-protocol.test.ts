@@ -113,3 +113,26 @@ test("background model protocol accepts Distillation as a bounded pure-model tas
     () => assertBackgroundModelResultMatchesCommand(parsed, result),
   );
 });
+
+
+test("background model protocol accepts Proactivity deliberation as pure-model work", () => {
+  const parsed = parseNativeLiveBackgroundModelCommand({
+    protocol_version: 1,
+    task_id: "33333333-3333-4333-8333-333333333333",
+    task_kind: "proactivity_deliberate",
+    prompt_contract_version: "proactivity-wake-deliberation-v1",
+    prompt: "decide whether to stay quiet",
+  });
+  assert.equal(parsed.task_kind, "proactivity_deliberate");
+
+  const result = parseNativeLiveBackgroundModelExecutionResult({
+    protocol_version: 1,
+    task_id: parsed.task_id,
+    task_kind: "proactivity_deliberate",
+    status: "success",
+    final_text: '{"outcome":"quiet"}',
+  });
+  assert.doesNotThrow(
+    () => assertBackgroundModelResultMatchesCommand(parsed, result),
+  );
+});
