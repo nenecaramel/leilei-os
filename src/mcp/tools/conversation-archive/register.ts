@@ -79,7 +79,7 @@ const readInputSchema = z.object({
     .describe("default uses the ChatGPT authoritative current path and Claude branch-inclusive canonical view. Use all to inspect saved branches."),
   scope: lifecycleScopeSchema.default("active").optional(),
   branch_id: z.string().uuid().optional()
-    .describe("Deleted branch id from list_deleted_conversation_branches. Only valid with scope=deleted."),
+    .describe("Optional saved/deleted branch id. Only valid with scope=deleted."),
   mode: readModeSchema.default("compact").optional()
     .describe("compact returns a bounded transcript. full includes canonical blocks, payloads, attachments, and provider metadata."),
   context: z.number().int().min(0).max(50).default(20).optional()
@@ -96,25 +96,6 @@ const listInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(50).optional(),
   offset: z.number().int().min(0).max(100_000).default(0).optional(),
 }).strict();
-
-const deletedBranchesInputSchema = z.object({
-  limit: z.number().int().min(1).max(100).default(50).optional(),
-  offset: z.number().int().min(0).max(100_000).default(0).optional(),
-}).strict();
-
-const archiveInputSchema = z.object({ conversation_id: z.string().uuid() }).strict();
-const conversationTargetSchema = z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid() }).strict();
-const branchDeleteTargetSchema = z.object({ kind: z.literal("branch"), conversation_id: z.string().uuid(), message_id: z.string().uuid() }).strict();
-const branchTargetSchema = z.object({ kind: z.literal("branch"), conversation_id: z.string().uuid(), branch_id: z.string().uuid() }).strict();
-const deleteInputSchema = z.object({ target: z.discriminatedUnion("kind", [conversationTargetSchema, branchDeleteTargetSchema]) }).strict();
-const restoreInputSchema = z.object({ target: z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid(), scope: z.enum(["archived", "deleted"]) }).strict(),
-  branchTargetSchema,
-]) }).strict();
-const permanentDeleteInputSchema = z.object({ target: z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid(), scope: z.literal("deleted") }).strict(),
-  branchTargetSchema,
-]) }).strict();
 
 const paginationSchema = z.object({
   count: z.number().int().min(0),
@@ -152,80 +133,6 @@ const listOutputSchema = z.object({
   data: z.object({
     items: z.array(listItemSchema),
     metadata: paginationSchema,
-  }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const deletedBranchItemSchema = z.object({
-  branch_id: z.string().uuid(),
-  conversation_id: z.string().uuid(),
-  provider: providerSchema,
-  title: z.string().nullable(),
-  deleted_at: z.string().datetime().nullable(),
-  root_role: z.enum(["user", "assistant", "system", "tool", "reasoning", "unknown"]).nullable(),
-  root_source_created_at: z.string().datetime().nullable(),
-  root_snippet: z.string().nullable(),
-  detail_tool: z.literal("read_conversation"),
-  detail_arguments: z.object({
-    conversation_id: z.string().uuid(),
-    branch_id: z.string().uuid(),
-    scope: z.literal("deleted"),
-    view: z.literal("all"),
-  }).strict(),
-}).strict();
-
-const deletedBranchesOutputSchema = z.object({
-  success: z.boolean(),
-  data: z.object({
-    items: z.array(deletedBranchItemSchema),
-    metadata: paginationSchema,
-  }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const lifecycleTargetOutputSchema = z.union([
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid(), scope: z.enum(["archived", "deleted"]) }).strict(),
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid(), scope: z.literal("deleted") }).strict(),
-  z.object({ kind: z.literal("branch"), conversation_id: z.string().uuid(), message_id: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal("branch"), conversation_id: z.string().uuid(), branch_id: z.string().uuid() }).strict(),
-]);
-
-const lifecycleResultSchema = z.object({
-  provider: providerSchema,
-  sourceConversationId: z.string(),
-  sourceNodeId: z.string().optional(),
-  deletedMessages: z.number().int().min(0),
-  remainingMessages: z.number().int().min(0).optional(),
-  currentLeafSourceNodeId: z.string().nullable().optional(),
-  deletedAt: z.string().datetime().optional(),
-  rawSourcePreserved: z.literal(true),
-}).strict();
-
-const archiveOutputSchema = z.object({
-  success: z.boolean(),
-  data: z.object({ conversation_id: z.string().uuid(), archived: z.literal(true) }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const deleteOutputSchema = z.object({
-  success: z.boolean(),
-  data: lifecycleResultSchema.extend({ target: lifecycleTargetOutputSchema }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const restoreOutputSchema = z.object({
-  success: z.boolean(),
-  data: z.object({ target: lifecycleTargetOutputSchema, restored: z.literal(true) }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const permanentDeleteOutputSchema = z.object({
-  success: z.boolean(),
-  data: z.object({
-    target: lifecycleTargetOutputSchema,
-    deleted: z.literal(true),
-    rawSourcePreserved: z.literal(true),
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
