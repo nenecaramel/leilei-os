@@ -22,13 +22,7 @@ struct AppShell: View {
             floatingControlCenters = $0
         }
         .sheet(isPresented: $settingsPresented) {
-            SettingsSheetView(
-                isPresented: settingsPresented,
-                onDismiss: {
-                    settingsPresented = false
-                },
-                appModel: appModel
-            )
+            SettingsSheetView(appModel: appModel)
         }
     }
 
