@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MEMORY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   MemoryDomainError,
   type ReadMemoryDiscoveryResult,
@@ -93,7 +94,7 @@ export function registerReadMemoryTool(
     {
       title: "Read Leilei's core memory",
       description:
-        "Browse authorized Memory by category or exact key without a text query. Results are compact previews with stable IDs; use search_memory for text discovery and get_memory for authoritative bounded detail, continuing with its content cursor when needed. When has_more is true, continue this discovery list by passing next_cursor back as cursor with the same filters.",
+        MEMORY_DOMAIN_BOUNDARY + " Browse authorized Memory by category or exact key without a text query. Results are compact previews with stable IDs; use search_memory for text discovery and get_memory for authoritative bounded detail, continuing with its content cursor when needed. When has_more is true, continue this discovery list by passing next_cursor back as cursor with the same filters.",
       inputSchema: readMemoryInputSchema,
       outputSchema: readMemoryOutputSchema,
       annotations: {
