@@ -96,6 +96,9 @@ export type TaskEntryResult = {
 
 export type CreateTaskResult = {
   task: TaskEntryResult;
+};
+
+export type CreateTaskIdempotentResult = CreateTaskResult & {
   outcome: "applied" | "replayed";
 };
 
@@ -228,7 +231,7 @@ export class TaskService {
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
     idempotencyKey: string,
-  ): Promise<CreateTaskResult> {
+  ): Promise<CreateTaskIdempotentResult> {
     const userId = await this.requireActiveUser(context.userId);
     const timezone = await this.getAccountTimezone(userId);
     const normalized = this.normalizeInput(userId, input, timezone);
