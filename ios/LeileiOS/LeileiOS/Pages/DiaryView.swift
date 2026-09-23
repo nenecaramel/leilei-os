@@ -457,7 +457,6 @@ private struct DiaryDetailView: View {
                             DiaryEditorFields(
                                 title: $draftTitle,
                                 content: $draftContent,
-                                date: $draftDate,
                                 mood: $draftMood,
                                 tags: $draftTags,
                                 author: $draftAuthor,
@@ -492,7 +491,7 @@ private struct DiaryDetailView: View {
                         }
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, -6)
+                    .padding(.top, 12)
                     .padding(.bottom, 32)
                 }
                 .background(Color(.systemBackground))
@@ -511,6 +510,16 @@ private struct DiaryDetailView: View {
                     .disabled(isSavingDiary)
                 }
 
+                ToolbarItem(placement: .principal) {
+                    DatePicker(
+                        "",
+                        selection: $draftDate,
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(isSavingDiary ? "Saving..." : "Done") {
                         Task {
@@ -520,14 +529,22 @@ private struct DiaryDetailView: View {
                     .disabled(!canSaveEdit || isSavingDiary)
                 }
             } else {
+                ToolbarItem(placement: .principal) {
+                    if case .loaded(let diary) = state {
+                        Text(DiaryDate.formatDetail(diary.date))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button("Add Comment") {
-                            commentEditorMode = .create
-                        }
-
                         Button("Edit") {
                             beginEditing()
+                        }
+
+                        Button("Comment") {
+                            commentEditorMode = .create
                         }
 
                         Button("Archive", role: .destructive) {
@@ -723,27 +740,21 @@ private struct DiaryReadingContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(DiaryDate.formatDetail(diary.date))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 10)
-
             Text(diary.title)
                 .font(.title2.weight(.semibold))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            DiaryMetadataLine(diary: diary)
+                .padding(.top, 8)
 
             if let content = diary.content, !content.isEmpty {
                 Text(content)
                     .font(.body)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 10)
+                    .padding(.top, 12)
             }
-
-            DiaryMetadataLine(diary: diary)
-                .padding(.top, 18)
         }
     }
 }
@@ -1038,7 +1049,6 @@ private struct DiaryCommentEditorSheet: View {
 private struct DiaryEditorFields: View {
     @Binding var title: String
     @Binding var content: String
-    @Binding var date: Date
     @Binding var mood: String
     @Binding var tags: String
     @Binding var author: String
@@ -1049,16 +1059,6 @@ private struct DiaryEditorFields: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DatePicker(
-                "",
-                selection: $date,
-                displayedComponents: .date
-            )
-            .labelsHidden()
-            .datePickerStyle(.compact)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.bottom, 10)
-
             TextField("Title", text: $title, axis: .vertical)
                 .font(.title2.weight(.semibold))
                 .focused($focusedField, equals: .title)
@@ -1142,7 +1142,6 @@ private struct DiaryCreateView: View {
                 DiaryEditorFields(
                     title: $title,
                     content: $content,
-                    date: $date,
                     mood: $mood,
                     tags: $tags,
                     author: $author,
@@ -1157,7 +1156,7 @@ private struct DiaryCreateView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, -6)
+            .padding(.top, 12)
             .padding(.bottom, 32)
         }
         .background(Color(.systemBackground))
@@ -1168,6 +1167,16 @@ private struct DiaryCreateView: View {
                 Button("Cancel") {
                     dismiss()
                 }
+            }
+
+            ToolbarItem(placement: .principal) {
+                DatePicker(
+                    "",
+                    selection: $date,
+                    displayedComponents: .date
+                )
+                .labelsHidden()
+                .datePickerStyle(.compact)
             }
 
             ToolbarItem(placement: .confirmationAction) {
