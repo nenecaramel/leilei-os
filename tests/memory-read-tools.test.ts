@@ -341,6 +341,18 @@ test("get_memory continues Unicode-safe windows and rejects stale cursors", asyn
   });
   assert.equal(stale.isError, true);
   assert.match(textOf(stale), /cursor is invalid or stale/i);
+  assert.deepEqual(
+    (stale.structuredContent as any).error,
+    {
+      code: "INVALID_CURSOR",
+      message: "The Memory continuation cursor is invalid or stale. Read the Memory again without a cursor.",
+      retryable: false,
+      reason: "invalid_cursor",
+      current_revision: null,
+      recommended_tool: "get_memory",
+      recommended_arguments: { id: MEMORY_ID, scope: "active" },
+    },
+  );
 });
 
 test("Memory read tools preserve a C author in structured responses", async (t) => {
