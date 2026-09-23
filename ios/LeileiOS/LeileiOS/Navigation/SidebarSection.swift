@@ -18,6 +18,7 @@ struct SidebarSection: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
+                    .offset(y: 2)
             }
 
             ForEach(pages) { page in
@@ -27,8 +28,8 @@ struct SidebarSection: View {
                 } label: {
                     HStack {
                         Text(page.rawValue)
-                            .font(.system(size: 17.5, weight: .semibold))
-                            .offset(x: textLeadingOffset)
+                            .font(.body.weight(.medium))
+                            .offset(x: textLeadingOffset, y: 2)
 
                         Spacer()
                     }
