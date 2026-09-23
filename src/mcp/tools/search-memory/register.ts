@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MEMORY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   MemoryDomainError,
   type SearchMemoryDiscoveryResult,
@@ -106,7 +107,7 @@ export function registerSearchMemoryTool(
     {
       title: "Search Leilei's memory",
       description:
-        "Search authorized active Memory records by text, category, and exact tag. Use read_memory for category or exact-key browsing without a query. Results are compact and bounded; call get_memory for authoritative bounded detail, continuing with its content cursor when needed. When has_more is true, continue this result set by passing next_cursor back as cursor with the same search filters.",
+        MEMORY_DOMAIN_BOUNDARY + " Search authorized active Memory records by text, category, and exact tag. Use read_memory for category or exact-key browsing without a query. Results are compact and bounded; call get_memory for authoritative bounded detail, continuing with its content cursor when needed. When has_more is true, continue this result set by passing next_cursor back as cursor with the same search filters.",
       inputSchema: searchMemoryInputSchema,
       outputSchema: searchMemoryOutputSchema,
       annotations: {
