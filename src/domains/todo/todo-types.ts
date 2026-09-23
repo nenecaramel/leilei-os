@@ -147,7 +147,7 @@ export type TodoEntryDeleteResult =
 export interface TodoRepository {
   findUserById(userId: string): Promise<TodoUserRecord | null>;
   readDay(userId: string, date: string): Promise<TodoDayPapers>;
-  listContentDates(userId: string): Promise<string[]>;
+  listContentDates(userId: string, limit?: number, offset?: number): Promise<string[]>;
   searchEntries?(input: TodoSearchInput): Promise<TodoSearchRow[]>;
   replacePaper(input: ReplaceTodoPaperInput): Promise<ReplaceTodoPaperResult>;
   replacePaperIdempotently?(
