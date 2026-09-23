@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { homedir, hostname } from "node:os";
 
 const UUID_PATTERN =
@@ -16,16 +17,22 @@ export function resolveNativeLiveMacDaemonConfig(
     hostname: () => string;
     homedir: () => string;
   } = { hostname, homedir },
+  railwayVariablesLoader: () => Record<string, string> =
+    loadRailwayProductionVariables,
 ): NativeLiveMacDaemonConfig {
-  const relayBaseUrl = firstNonBlank(
-    environment.LEILEI_NATIVE_LIVE_RELAY_URL,
-    environment.MCP_SERVER_URL,
-  );
-  if (!relayBaseUrl) {
-    throw new Error(
-      "Native Live relay URL is required. Set LEILEI_NATIVE_LIVE_RELAY_URL or MCP_SERVER_URL.",
-    );
-  }
+  let railwayVariables: Record<string, string> | null = null;
+  const readRailwayVariables = () => {
+    railwayVariables ??= railwayVariablesLoader();
+    return railwayVariables;
+  };
+
+  const relayBaseUrl =
+    firstNonBlank(
+      environment.LEILEI_NATIVE_LIVE_RELAY_URL,
+      environment.MCP_SERVER_URL,
+    )
+    ?? firstNonBlank(readRailwayVariables().MCP_SERVER_URL)
+    ?? "https://leilei-os-production.up.railway.app";
 
   let parsedUrl: URL;
   try {
@@ -37,13 +44,15 @@ export function resolveNativeLiveMacDaemonConfig(
     throw new Error("Native Live relay URL must use http or https.");
   }
 
-  const relayToken = firstNonBlank(
-    environment.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
-    environment.MCP_AUTH_TOKEN,
-  );
+  const relayToken =
+    firstNonBlank(
+      environment.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
+      environment.MCP_AUTH_TOKEN,
+    )
+    ?? firstNonBlank(readRailwayVariables().MCP_AUTH_TOKEN);
   if (!relayToken) {
     throw new Error(
-      "Native Live relay token is required. Set LEILEI_NATIVE_LIVE_RELAY_TOKEN or MCP_AUTH_TOKEN.",
+      "Native Live relay token is required. Set LEILEI_NATIVE_LIVE_RELAY_TOKEN or MCP_AUTH_TOKEN, or authenticate/link the Railway CLI so production variables can be loaded.",
     );
   }
 
@@ -89,6 +98,77 @@ export function stableListenerInstanceId(
     hex.slice(16, 20),
     hex.slice(20, 32),
   ].join("-");
+}
+
+export function loadRailwayProductionVariables(): Record<string, string> {
+  try {
+    const output = execFileSync(
+      "railway",
+      [
+        "variable",
+        "list",
+        "--service",
+        "leilei-os",
+        "--environment",
+        "production",
+        "--json",
+      ],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    return extractRailwayVariables(JSON.parse(output));
+  } catch {
+    return {};
+  }
+}
+
+function extractRailwayVariables(value: unknown): Record<string, string> {
+  const result: Record<string, string> = {};
+  collectRailwayVariables(value, result);
+  return result;
+}
+
+function collectRailwayVariables(
+  value: unknown,
+  result: Record<string, string>,
+): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectRailwayVariables(item, result);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["MCP_SERVER_URL", "MCP_AUTH_TOKEN"]) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim()) {
+      result[key] = candidate.trim();
+    }
+  }
+
+  const name =
+    typeof record.name === "string"
+      ? record.name
+      : typeof record.key === "string"
+        ? record.key
+        : null;
+  const variableValue =
+    typeof record.value === "string" ? record.value : null;
+  if (
+    name
+    && variableValue
+    && (name === "MCP_SERVER_URL" || name === "MCP_AUTH_TOKEN")
+  ) {
+    result[name] = variableValue.trim();
+  }
+
+  for (const nested of Object.values(record)) {
+    if (nested && typeof nested === "object") {
+      collectRailwayVariables(nested, result);
+    }
+  }
 }
 
 function firstNonBlank(...values: Array<string | undefined>): string | null {

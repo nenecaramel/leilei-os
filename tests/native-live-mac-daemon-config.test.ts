@@ -53,15 +53,56 @@ test("stable listener id changes across machines", () => {
   );
 });
 
-test("Mac daemon config still fails closed when neither relay nor MCP auth exists", () => {
-  assert.throws(
-    () => resolveNativeLiveMacDaemonConfig({}),
-    /relay URL is required/,
-  );
-  assert.throws(
-    () => resolveNativeLiveMacDaemonConfig({
-      MCP_SERVER_URL: "https://leilei-os.example",
+test("Mac daemon config bootstraps production relay from Railway variables when local env is absent", () => {
+  const config = resolveNativeLiveMacDaemonConfig(
+    {},
+    {
+      hostname: () => "Leilei-Mac",
+      homedir: () => "/Users/leilei",
+    },
+    () => ({
+      MCP_SERVER_URL: "https://railway-production.example",
+      MCP_AUTH_TOKEN: "railway-token",
     }),
+  );
+
+  assert.equal(
+    config.relayBaseUrl,
+    "https://railway-production.example",
+  );
+  assert.equal(config.relayToken, "railway-token");
+});
+
+test("Mac daemon config does not invoke Railway loader when local env is complete", () => {
+  let calls = 0;
+  const config = resolveNativeLiveMacDaemonConfig(
+    {
+      MCP_SERVER_URL: "https://local.example",
+      MCP_AUTH_TOKEN: "local-token",
+    },
+    {
+      hostname: () => "Leilei-Mac",
+      homedir: () => "/Users/leilei",
+    },
+    () => {
+      calls += 1;
+      return {};
+    },
+  );
+  assert.equal(config.relayToken, "local-token");
+  assert.equal(calls, 0);
+});
+
+test("Mac daemon config uses the known production URL but fails closed without any relay token", () => {
+  assert.throws(
+    () => resolveNativeLiveMacDaemonConfig(
+      {},
+      {
+        hostname: () => "Leilei-Mac",
+        homedir: () => "/Users/leilei",
+      },
+      () => ({}),
+    ),
     /relay token is required/,
   );
 });
