@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TASK_DOMAIN_BOUNDARY } from "../model-language.js";
 import { TaskDomainError, type AuthenticatedTaskContext, type TaskEntryResult, type UpdateMcpTaskInput } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
@@ -13,7 +14,7 @@ const updateTaskInputSchema = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   due_time: z.string().trim().min(1).max(64).nullable().optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
-  author: z.enum(["L", "G", "C"]).optional(),
+  author: z.enum(["L", "G", "C"]).optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
 }).strict();
 
 const taskStatusSchema = z.enum(["pending", "in_progress", "completed", "cancelled"]);
@@ -28,7 +29,7 @@ export interface UpdateTaskToolService { updateMcpTask(context: AuthenticatedTas
 export type UpdateTaskToolDependencies = { taskService: UpdateTaskToolService; getAuthenticatedUserId: () => string };
 
 export function registerUpdateTaskTool(server: McpServer, dependencies: UpdateTaskToolDependencies): void {
-  server.registerTool("update_task", { title: "Update one Task", description: "Update only explicitly supplied ordinary fields on one active Task. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly retry.", inputSchema: updateTaskInputSchema, outputSchema: updateTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, title, description, priority, due_time, tags, author }) => invokeMcpWrite({
+  server.registerTool("update_task", { title: "Update one Task", description: TASK_DOMAIN_BOUNDARY + " Update only explicitly supplied ordinary fields on one active Task. If the outcome is uncertain, perform a readback with get_task before deciding what to do next; never blindly retry.", inputSchema: updateTaskInputSchema, outputSchema: updateTaskOutputSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } }, async ({ id, title, description, priority, due_time, tags, author }) => invokeMcpWrite({
     toolName: "update_task", getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
     operation: async ({ userId }) => {
       if (title === undefined && description === undefined && priority === undefined && due_time === undefined && tags === undefined && author === undefined) {
