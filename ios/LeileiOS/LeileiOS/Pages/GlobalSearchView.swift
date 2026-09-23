@@ -46,7 +46,6 @@ struct GlobalSearchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .searchable(text: $query, prompt: "Search")
-        .reportingSystemSearchControlCenter()
         .onChange(of: query) { _, _ in scheduleSearch() }
         .onChange(of: modules) { _, _ in scheduleSearch() }
         .onChange(of: timePreset) { _, _ in scheduleSearch() }
