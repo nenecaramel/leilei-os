@@ -46,6 +46,14 @@ export const boundedReadMetadataSchema = z.object({
   next_cursor: z.string().nullable(),
 }).strict();
 
+export function formatMcpBoundedReadHint(
+  metadata: McpBoundedReadMetadata,
+): string {
+  return metadata.truncated
+    ? `Content window: returned ${metadata.returned_chars} of ${metadata.total_chars} Unicode code points. Continue with content_metadata.next_cursor as cursor.`
+    : `Content window complete: returned ${metadata.returned_chars} of ${metadata.total_chars} Unicode code points.`;
+}
+
 export function sliceMcpBoundedContent(input: {
   content: string;
   maxChars?: number;
