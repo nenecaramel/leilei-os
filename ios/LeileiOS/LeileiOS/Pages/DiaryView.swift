@@ -58,7 +58,6 @@ struct DiaryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .searchable(text: $query, prompt: "Search")
-        .reportingSystemSearchControlCenter()
         .navigationDestination(isPresented: $archivePresented) {
             DiaryArchivePlaceholder()
         }
@@ -268,13 +267,12 @@ private struct DiaryList: View {
         List {
             ForEach(DiaryMonthGroup.make(from: diaries)) { group in
                 Section(group.title) {
-                    ForEach(group.diaries) { diary in
+                    ForEach(Array(group.diaries.enumerated()), id: \.element.id) { index, diary in
                         DiaryRow(diary: diary)
                             .listRowBackground(Color(.systemBackground))
-                            .listRowSeparator(.visible)
+                            .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                     }
                 }
-                .listSectionSeparator(.hidden, edges: .top)
             }
         }
         .listStyle(.insetGrouped)
