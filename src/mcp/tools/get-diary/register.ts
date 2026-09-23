@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DIARY_DOMAIN_BOUNDARY } from "../model-language.js";
 import {
   DiaryDomainError,
   type DiaryEntryResult,
@@ -79,7 +80,7 @@ export function registerGetDiaryTool(
     {
       title: "Get one diary entry",
       description:
-        "Read one authenticated Diary entry by exact ID using a bounded authoritative content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id/scope. A cursor becomes invalid if the Diary changes. Comments are not embedded; use the returned list_diary_comments pointer.",
+        DIARY_DOMAIN_BOUNDARY + " Read one authenticated Diary entry by exact ID using a bounded authoritative content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id/scope. A cursor becomes invalid if the Diary changes. Comments are not embedded; use the returned list_diary_comments pointer.",
       inputSchema: getDiaryInputSchema,
       outputSchema: getDiaryOutputSchema,
       annotations: {
