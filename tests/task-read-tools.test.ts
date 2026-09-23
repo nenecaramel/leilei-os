@@ -6,7 +6,7 @@ import {
   TaskDomainError,
   type AuthenticatedTaskContext,
   type CreateTaskInput,
-  type CreateTaskResult,
+  type CreateTaskIdempotentResult,
   type ListTasksInput,
   type ListTasksResult,
   type ReadTaskInput,
@@ -71,9 +71,10 @@ class MockTaskService {
     context: AuthenticatedTaskContext,
     input: CreateTaskInput,
     _idempotencyKey: string,
-  ): Promise<CreateTaskResult> {
+  ): Promise<CreateTaskIdempotentResult> {
     this.createCalls.push({ context, input });
     return {
+      outcome: "applied",
       task: {
         ...TASK,
         id: "00000000-0000-4000-8000-000000000010",
