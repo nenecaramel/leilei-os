@@ -16,7 +16,7 @@ const diaryIdSchema = z
   .string()
   .trim()
   .uuid()
-  .describe("The exact Diary id returned by write_diary, search_diary, global_search, or get_diary.");
+  .describe("The exact Diary id returned by create_diary, search_diary, global_search, or get_diary.");
 
 const lifecycleInputSchema = z.object({
   id: diaryIdSchema,
