@@ -119,7 +119,6 @@ struct DaySpaceView: View {
         } else if discoveryState == .unavailable {
             AppStateSurface(
                 title: "Unavailable",
-                systemImage: "square.stack.3d.up",
                 actionTitle: "Retry"
             ) {
                 Task {
@@ -137,7 +136,6 @@ struct DaySpaceView: View {
             if bothModulesFailed {
                 AppStateSurface(
                     title: "Unavailable",
-                    systemImage: "square.stack.3d.up",
                     actionTitle: "Retry"
                 ) {
                     Task {
@@ -495,7 +493,7 @@ private struct DaySpaceWarning: View {
     let text: String
 
     var body: some View {
-        Label(text, systemImage: "exclamationmark.triangle")
+        Text(text)
             .font(.caption)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
@@ -511,11 +509,8 @@ private struct DaySpacePartialFailure: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Label(
-                "Unavailable",
-                systemImage: "exclamationmark.triangle"
-            )
-            .font(.caption)
+            Text("Unavailable")
+                .font(.caption)
             .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
