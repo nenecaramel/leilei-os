@@ -27,7 +27,7 @@ export type CreateUniverseRelationToolDependencies = {
 export function registerCreateUniverseRelationTool(server: McpServer, dependencies: CreateUniverseRelationToolDependencies): void {
   server.registerTool("create_universe_relation", {
     title: "Create a Universe relation",
-    description: "Create one directional Universe relation with strength 0..1. The server owns the relation ID and timestamp. Every mutation requires expected_version and a unique idempotency_key. If the outcome is uncertain, fresh-read Universe state before deciding whether a new mutation is needed; never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. Create one directional Universe relation with strength 0..1. The server owns the relation ID and timestamp. Supply a unique idempotency_key for this logical create; reuse it only to replay the exact same request. If the outcome is uncertain, fresh-read Universe state before deciding whether a new mutation is needed; never blindly retry.",
     inputSchema: createUniverseRelationInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
