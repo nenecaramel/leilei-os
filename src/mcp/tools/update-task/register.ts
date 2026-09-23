@@ -4,6 +4,7 @@ import { TaskDomainError, type AuthenticatedTaskContext, type TaskEntryResult, t
 import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { quoteMcpText } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const updateTaskInputSchema = z.object({
   id: z.string().trim().min(1),
@@ -19,6 +20,7 @@ const taskStatusSchema = z.enum(["pending", "in_progress", "completed", "cancell
 const taskActionSchema = z.enum(["start", "complete", "cancel", "reopen"]);
 const taskOutputDataSchema = z.object({
   id: z.string(), title: z.string(), description: z.string(), status: taskStatusSchema, priority: z.enum(["low", "normal", "high", "urgent"]), due_time: z.string().datetime().nullable(), timezone: z.string(), time_bucket: z.enum(["no_due_date", "overdue", "today", "next_7_days", "later"]), tags: z.array(z.string()), created_at: z.string().datetime(), updated_at: z.string().datetime(), completed_at: z.string().datetime().nullable(), allowed_actions: z.array(taskActionSchema), lifecycle_status: z.literal("active"), author: z.enum(["L", "G", "C"]).nullable(),
+  ...mcpMutationReceiptFields,
 });
 const updateTaskOutputSchema = z.object({ success: z.boolean(), data: taskOutputDataSchema.optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 
@@ -35,7 +37,21 @@ export function registerUpdateTaskTool(server: McpServer, dependencies: UpdateTa
       const data = await dependencies.taskService.updateMcpTask({ userId }, { id, ...(title === undefined ? {} : { title }), ...(description === undefined ? {} : { description }), ...(priority === undefined ? {} : { priority }), ...(due_time === undefined ? {} : { dueTime: due_time }), ...(tags === undefined ? {} : { tags }), ...(author === undefined ? {} : { author }) });
       return {
         content: [{ type: "text", text: `Task updated: ${quoteMcpText(data.title)} [id=${data.id}; status=${data.status}].` }],
-        structuredContent: { success: true as const, data: { ...data, lifecycle_status: "active" as const } },
+        structuredContent: {
+          success: true as const,
+          data: {
+            ...data,
+            lifecycle_status: "active" as const,
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "task",
+              entity_id: data.id,
+              revision: null,
+              detail_tool: "get_task",
+              detail_arguments: { id: data.id },
+            }),
+          },
+        },
       };
     }, mapError: toSafeToolError,
   }));
