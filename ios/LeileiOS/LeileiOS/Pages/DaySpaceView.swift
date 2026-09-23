@@ -49,7 +49,7 @@ struct DaySpaceView: View {
 
                 if discoveryIncomplete, selectedDate != nil {
                     DaySpaceWarning(
-                        text: "Some dates unavailable"
+                        text: "Unavailable"
                     )
                     .padding(.bottom, 8)
                 }
