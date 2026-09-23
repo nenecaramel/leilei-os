@@ -11,7 +11,7 @@ struct ChatComposer: View {
             TextField(
                 "",
                 text: $text,
-                prompt: Text("Chat with Claude")
+                prompt: Text("Write a message...")
                     .foregroundStyle(Color.primary.opacity(0.64)),
                 axis: .vertical
             )
