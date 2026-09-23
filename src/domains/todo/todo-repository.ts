@@ -161,7 +161,8 @@ export class DrizzleTodoRepository implements TodoRepository {
       .innerJoin(todoPapers, eq(todoEntries.paperId, todoPapers.id))
       .where(and(...conditions))
       .orderBy(desc(todoPapers.businessDate), desc(todoPapers.updatedAt), asc(todoEntries.position), asc(todoEntries.id))
-      .limit(input.limit);
+      .limit(input.limit)
+      .offset(input.offset ?? 0);
     return rows as TodoSearchRow[];
   }
 
