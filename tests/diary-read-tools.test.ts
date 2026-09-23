@@ -268,7 +268,30 @@ test("get_diary injects identity and returns complete content", async (t) => {
     arguments: { id: `  ${ENTRY.id}  ` },
   });
   assert.deepEqual(service.readCalls, [{ userId: USER_ID, id: ENTRY.id }]);
-  assert.deepEqual(result.structuredContent, { success: true, data: { ...ENTRY, lifecycle_status: "active" } });
+  const data = (result.structuredContent as {
+    data: {
+      content: string;
+      lifecycle_status: string;
+      content_metadata: {
+        returned_chars: number;
+        total_chars: number;
+        truncated: boolean;
+        next_cursor: string | null;
+      };
+      comments_tool: string;
+      comments_arguments: { diary_id: string; scope: string };
+    };
+  }).data;
+  assert.equal(data.content, ENTRY.content);
+  assert.equal(data.lifecycle_status, "active");
+  assert.deepEqual(data.content_metadata, {
+    returned_chars: Array.from(ENTRY.content).length,
+    total_chars: Array.from(ENTRY.content).length,
+    truncated: false,
+    next_cursor: null,
+  });
+  assert.equal(data.comments_tool, "list_diary_comments");
+  assert.deepEqual(data.comments_arguments, { diary_id: ENTRY.id, scope: "active" });
 });
 
 test("Diary search and detail preserve C author", async (t) => {
