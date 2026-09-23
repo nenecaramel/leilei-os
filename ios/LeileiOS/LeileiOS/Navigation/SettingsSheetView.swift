@@ -300,11 +300,8 @@ private struct SettingsSummaryContent: View {
     var body: some View {
         Form {
             Section("Summary") {
-                LabeledContent("Memory", value: "Loading…")
                 LabeledContent("Diary", value: "Loading…")
-                LabeledContent("Task", value: "Loading…")
                 LabeledContent("Todo", value: "Loading…")
-                LabeledContent("Shared Paper", value: "Loading…")
             }
         }
         .formStyle(.grouped)
