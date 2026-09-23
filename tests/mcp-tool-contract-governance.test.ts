@@ -201,6 +201,8 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
     "add_diary_comment",
     "create_universe_node",
     "create_universe_relation",
+    "toy_set",
+    "toy_stop",
   ] as const;
 
   for (const name of idempotentTools) {
