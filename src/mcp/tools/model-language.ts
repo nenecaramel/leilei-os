@@ -5,20 +5,13 @@ export const MCP_CONTENT_AUTHOR_DESCRIPTION =
 
 export const mcpContentAuthorSchema = z.enum(["L", "G", "C"]);
 
-export const TASK_DOMAIN_BOUNDARY =
-  "Task is a durable actionable item with status, priority, and optional due time; not a date-scoped Todo.";
-
 export const TODO_DOMAIN_BOUNDARY =
-  "Todo is a date-scoped paper of lightweight entries; not the Task system.";
-
-export const MEMORY_DOMAIN_BOUNDARY =
-  "Memory stores durable distilled facts, preferences, goals, and projects; not a dated Diary.";
+  "Todo is a date-scoped paper of lightweight entries.";
 
 export const DIARY_DOMAIN_BOUNDARY =
-  "Diary stores dated authored journal entries; not distilled Memory.";
+  "Diary stores dated authored journal entries.";
 
 export const UNIVERSE_DOMAIN_BOUNDARY =
-  "Universe is a graph of concepts, relations, and provenance; not a Shared Paper.";
+  "Universe is a graph of concepts, relations, and provenance.";
 
-export const SHARED_PAPER_DOMAIN_BOUNDARY =
-  "Shared Paper is a canonical long-form document with edit history; not the Universe graph.";
+ not the Universe graph.";
