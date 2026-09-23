@@ -39,7 +39,7 @@ struct DiaryView: View {
                     ContentUnavailableView {
                         Label("Search Unavailable", systemImage: "magnifyingglass")
                     } description: {
-                        Text("We couldn’t search your Diary. Please try again.")
+                        Text("Couldn’t search your Diary.")
                     } actions: {
                         Button("Retry") {
                             Task {
@@ -73,7 +73,7 @@ struct DiaryView: View {
                     } else {
                         ContentUnavailableView(
                             timeFilter == .anyTime
-                                ? "No Diary Entries"
+                                ? "No Diary Entries Yet"
                                 : "No Results",
                             systemImage: "book.closed"
                         )
@@ -193,7 +193,7 @@ struct DiaryView: View {
             await appModel.refreshConnectivity()
             state = .authRequired("Your sign-in session needs to be renewed.")
         } catch {
-            state = .unavailable(error.localizedDescription)
+            state = .unavailable("Couldn’t load this diary.")
         }
     }
 
@@ -205,7 +205,7 @@ struct DiaryView: View {
             try await appModel.reauthorize()
             await loadDiary()
         } catch {
-            state = .unavailable(error.localizedDescription)
+            state = .unavailable("Couldn’t load this diary.")
         }
     }
 
@@ -338,7 +338,7 @@ private struct DiaryArchiveView: View {
             case .loaded(let diaries):
                 if diaries.isEmpty {
                     ContentUnavailableView(
-                        "No Archived Diaries",
+                        "No Archived Diaries Yet",
                         systemImage: "archivebox"
                     )
                 } else {
@@ -441,11 +441,11 @@ private struct DiaryArchivedDetailView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            case .unavailable(let message):
+            case .unavailable:
                 ContentUnavailableView(
                     "Diary Unavailable",
                     systemImage: "book.closed",
-                    description: Text(message)
+                    description: Text("Couldn’t load this diary.")
                 )
 
             case .loaded(let diary):
@@ -562,7 +562,7 @@ private struct DiaryArchivedDetailView: View {
             onChanged()
             dismiss()
         } catch {
-            actionError = error.localizedDescription
+            actionError = "Couldn’t restore this diary."
         }
     }
 
@@ -582,7 +582,7 @@ private struct DiaryArchivedDetailView: View {
             onChanged()
             dismiss()
         } catch {
-            actionError = error.localizedDescription
+            actionError = "Couldn’t delete this diary."
         }
     }
 }
@@ -800,11 +800,11 @@ private struct DiaryDetailView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            case .unavailable(let message):
+            case .unavailable:
                 ContentUnavailableView(
                     "Diary Unavailable",
                     systemImage: "book.closed",
-                    description: Text(message)
+                    description: Text("Couldn’t load this diary.")
                 )
 
             case .loaded(let diary):
@@ -845,6 +845,13 @@ private struct DiaryDetailView: View {
                                 }
                             )
                             .padding(.top, 24)
+
+                            if let editError {
+                                Text(editError)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 12)
+                            }
                         }
                     }
                     .padding(.horizontal, 20)
@@ -878,7 +885,7 @@ private struct DiaryDetailView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(isSavingDiary ? "Saving..." : "Done") {
+                    Button(isSavingDiary ? "Saving…" : "Done") {
                         Task {
                             await saveDiaryEdit()
                         }
@@ -1004,7 +1011,7 @@ private struct DiaryDetailView: View {
             isEditing = false
             onChanged()
         } catch {
-            editError = error.localizedDescription
+            editError = "Couldn’t save this diary."
         }
     }
 
@@ -1012,6 +1019,7 @@ private struct DiaryDetailView: View {
     private func archiveDiary() async {
         guard !isArchiving else { return }
 
+        editError = nil
         isArchiving = true
         defer { isArchiving = false }
 
@@ -1023,7 +1031,7 @@ private struct DiaryDetailView: View {
             onChanged()
             dismiss()
         } catch {
-            editError = error.localizedDescription
+            editError = "Couldn’t archive this diary."
         }
     }
 
@@ -1087,7 +1095,7 @@ private struct DiaryDetailView: View {
             )
             state = .loaded(diary)
         } catch {
-            commentError = error.localizedDescription
+            commentError = "Couldn’t delete this comment."
         }
     }
 }
@@ -1315,7 +1323,7 @@ private struct DiaryCommentEditorSheet: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(
                             isSaving
-                                ? "Saving..."
+                                ? "Saving…"
                                 : (mode.comment == nil ? "Add" : "Done")
                         ) {
                             Task {
@@ -1398,7 +1406,7 @@ private struct DiaryCommentEditorSheet: View {
 
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn’t save this comment."
         }
     }
 }
@@ -1537,7 +1545,7 @@ private struct DiaryCreateView: View {
             }
 
             ToolbarItem(placement: .confirmationAction) {
-                Button(isSaving ? "Saving..." : "Done") {
+                Button(isSaving ? "Saving…" : "Done") {
                     Task {
                         await save()
                     }
@@ -1578,7 +1586,7 @@ private struct DiaryCreateView: View {
             onCreated()
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn’t save this diary."
         }
     }
 }
