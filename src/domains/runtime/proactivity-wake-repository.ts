@@ -370,6 +370,21 @@ function parseContext(
       && typeof value.contextManifestId !== "string"
     )
     || typeof value.capsule !== "string"
+    || (
+      value.sourceConversationId !== undefined
+      && value.sourceConversationId !== null
+      && typeof value.sourceConversationId !== "string"
+    )
+    || (
+      value.sourceHeadMessageId !== undefined
+      && value.sourceHeadMessageId !== null
+      && typeof value.sourceHeadMessageId !== "string"
+    )
+    || (
+      value.sourceActivityAt !== undefined
+      && value.sourceActivityAt !== null
+      && typeof value.sourceActivityAt !== "string"
+    )
   ) {
     throw new Error(
       "Proactivity wake context snapshot is invalid.",
@@ -379,6 +394,12 @@ function parseContext(
     version: 1,
     contextManifestId: value.contextManifestId,
     capsule: value.capsule,
+    sourceConversationId:
+      value.sourceConversationId as string | null | undefined,
+    sourceHeadMessageId:
+      value.sourceHeadMessageId as string | null | undefined,
+    sourceActivityAt:
+      value.sourceActivityAt as string | null | undefined,
   });
 }
 

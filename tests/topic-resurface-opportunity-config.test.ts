@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   getBackgroundMaintenancePulseConfig,
   getMemoryDecayConfig,
+  getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
 } from "../src/config/env.js";
 
@@ -108,5 +109,52 @@ test("Memory Decay stays disabled unless every semantic policy knob is explicit"
       NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD: 0.1,
     }),
     /archive < fading/,
+  );
+});
+
+
+test("Proactivity wake production opportunity is disabled by default and requires explicit policy", () => {
+  assert.equal(
+    getProactivityWakeOpportunityConfig({
+      NATIVE_LIVE_PROACTIVITY_ENABLED: undefined,
+      NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: undefined,
+      NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
+      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: undefined,
+    }),
+    undefined,
+  );
+
+  assert.throws(
+    () => getProactivityWakeOpportunityConfig({
+      NATIVE_LIVE_PROACTIVITY_ENABLED: undefined,
+      NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
+      NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
+      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: undefined,
+    }),
+    /PROACTIVITY_ENABLED=true/,
+  );
+
+  assert.throws(
+    () => getProactivityWakeOpportunityConfig({
+      NATIVE_LIVE_PROACTIVITY_ENABLED: true,
+      NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
+      NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
+      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: 16,
+    }),
+    /are required when Proactivity is enabled/,
+  );
+
+  assert.deepEqual(
+    getProactivityWakeOpportunityConfig({
+      NATIVE_LIVE_PROACTIVITY_ENABLED: true,
+      NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
+      NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: 21_600,
+      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: 16,
+    }),
+    {
+      minIdleMs: 7_200_000,
+      cooldownMs: 21_600_000,
+      userLimit: 16,
+    },
   );
 });

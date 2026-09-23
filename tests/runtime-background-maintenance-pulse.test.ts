@@ -149,3 +149,37 @@ test("maintenance pulse owns one coarse timer, runs immediately on start, and dr
   assert.equal(clearCalls, 1);
   assert.equal(await pulse.runNow(), 0);
 });
+
+
+test("maintenance pulse shares cadence with an optional Proactivity producer without making it part of Subject maintenance", async () => {
+  const calls: string[] = [];
+  const pulse = createBackgroundMaintenancePulse({
+    source: {
+      async listUserIds() {
+        return ["u1"];
+      },
+    },
+    maintenance: {
+      schedule(input) {
+        calls.push("maintenance:" + input.kinds?.join(","));
+      },
+    },
+    policy: new BackgroundOpportunityPolicy({
+      maintenancePulseIntervalMs: 60_000,
+      decayEnabled: false,
+      proactivityWakeEnabled: true,
+      topicResurfaceMinIntervalMs: null,
+    }),
+    subjectId: "G",
+    config: { userLimit: 4 },
+    async afterCycle() {
+      calls.push("proactivity");
+    },
+  });
+
+  await pulse.runNow();
+  assert.deepEqual(calls, [
+    "maintenance:thought_evolution,drive_evolution,topic_lifecycle",
+    "proactivity",
+  ]);
+});

@@ -3,6 +3,7 @@ import {
   getBackgroundMaintenancePulseConfig,
   getMcpGovernanceConfig,
   getMemoryDecayConfig,
+  getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
   type RuntimeEnv,
 } from "../config/env.js";
@@ -96,6 +97,10 @@ import {
 import {
   DrizzleProactivityWakeRepository,
 } from "../domains/runtime/proactivity-wake-repository.js";
+import {
+  DrizzleProactivityWakeOpportunitySource,
+  ProactivityWakeOpportunityProducer,
+} from "../domains/runtime/proactivity-wake-opportunity.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../domains/conversation/native-live-conversation-repository.js";
@@ -239,9 +244,13 @@ export function createProcessRuntime(
   const maintenancePulseConfig =
     getBackgroundMaintenancePulseConfig(runtimeEnv);
   const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
+  const proactivityWakeOpportunityConfig =
+    getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
     maintenancePulseIntervalMs: maintenancePulseConfig.intervalMs,
     decayEnabled: Boolean(memoryDecayConfig),
+    proactivityWakeEnabled:
+      Boolean(proactivityWakeOpportunityConfig),
     topicResurfaceMinIntervalMs:
       topicResurfaceOpportunityConfig?.minIntervalMs ?? null,
   });
@@ -297,16 +306,6 @@ export function createProcessRuntime(
       backgroundLoopOrchestrator,
       memoryDecayConfig,
     );
-  const backgroundMaintenancePulse =
-    createBackgroundMaintenancePulse({
-      source: new DrizzleBackgroundMaintenanceUserSource(db),
-      maintenance: subjectStateBackgroundMaintenance,
-      policy: backgroundOpportunityPolicy,
-      subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-      config: {
-        userLimit: maintenancePulseConfig.userLimit,
-      },
-    });
   const nativeLivePostTurnBackgroundOpportunity =
     new NativeLivePostTurnBackgroundOpportunity(
       distillationCrossDeviceBackgroundTrigger,
@@ -334,11 +333,57 @@ export function createProcessRuntime(
     new DrizzleNativeLiveBackendRelayRepository(db),
     nativeLiveTurnCoordinator,
   );
+  const proactivityWakeRepository =
+    new DrizzleProactivityWakeRepository(db);
+  const proactivityWakeOpportunitySource =
+    proactivityWakeOpportunityConfig
+      ? new DrizzleProactivityWakeOpportunitySource(
+          db,
+          proactivityWakeOpportunityConfig,
+        )
+      : null;
   const proactivityWakeCrossDeviceCoordinator =
     new ProactivityWakeCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
-      new DrizzleProactivityWakeRepository(db),
+      proactivityWakeRepository,
+      proactivityWakeOpportunitySource,
     );
+  const proactivityWakePlan =
+    proactivityWakeOpportunityConfig
+      ? backgroundOpportunityPolicy.plan(
+          "maintenance_pulse",
+          "proactivity_wake",
+        )
+      : null;
+  const proactivityWakeOpportunityProducer =
+    proactivityWakeOpportunityConfig
+      && proactivityWakeOpportunitySource
+      && proactivityWakePlan
+      ? new ProactivityWakeOpportunityProducer(
+          backgroundLoopOrchestrator,
+          proactivityWakeOpportunitySource,
+          proactivityWakeCrossDeviceCoordinator,
+          DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+          proactivityWakePlan,
+        )
+      : null;
+  const backgroundMaintenancePulse =
+    createBackgroundMaintenancePulse({
+      source: new DrizzleBackgroundMaintenanceUserSource(db),
+      maintenance: subjectStateBackgroundMaintenance,
+      policy: backgroundOpportunityPolicy,
+      subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+      config: {
+        userLimit: maintenancePulseConfig.userLimit,
+      },
+      ...(proactivityWakeOpportunityProducer
+        ? {
+            afterCycle: async () => {
+              await proactivityWakeOpportunityProducer.schedulePulse();
+            },
+          }
+        : {}),
+    });
   const topicResurfaceCrossDeviceCoordinator =
     new TopicResurfaceCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
