@@ -4,6 +4,7 @@ import type { UniverseService } from "../../../domains/universe/universe-service
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { joinMcpContentLines } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const inputSchema = z.object({
   node_id: z.string().trim().min(1).max(256),
@@ -13,7 +14,7 @@ const inputSchema = z.object({
 
 const outputSchema = z.object({
   success: z.boolean(),
-  data: z.object({ node_id: z.string().min(1).max(256), diary_id: z.string().uuid(), universe_version: z.number().int().nonnegative() }).strict().optional(),
+  data: z.object({ node_id: z.string().min(1).max(256), diary_id: z.string().uuid(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict().optional(),
   error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 
@@ -38,7 +39,22 @@ export function registerAddUniverseDiarySourceTool(server: McpServer, dependenci
         content: [{ type: "text", text: joinMcpContentLines([
           `Universe Diary source added: node=${node_id}; diary=${diary_id}; version=${result.version}`,
         ]) }],
-        structuredContent: { success: true as const, data: { node_id, diary_id, universe_version: result.version } },
+        structuredContent: {
+          success: true as const,
+          data: {
+            node_id,
+            diary_id,
+            universe_version: result.version,
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "universe_diary_source",
+              entity_id: `${node_id}:${diary_id}`,
+              revision: null,
+              detail_tool: "get_universe_diary_sources",
+              detail_arguments: { node_id },
+            }),
+          },
+        },
       };
     },
     mapError: (error) => safeUniverseWriteError(error, "Universe Diary source was not added."),
