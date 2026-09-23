@@ -67,6 +67,7 @@ const steps = [
   ["domain / enum semantics", ["test:mcp-domain-semantics"]],
   ["naming / deprecation", ["test:mcp-naming-deprecation"]],
   ["UI working note", ["test:mcp-ui-working-note"]],
+  ["final surface audit", ["test:mcp-final-audit"]],
   ["tool surface", ["test:mcp-tool-surface"]],
   ["native live minimal", ["test:native-live-minimal"]],
 ];
