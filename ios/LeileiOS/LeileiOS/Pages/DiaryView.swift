@@ -19,9 +19,9 @@ struct DiaryView: View {
                 } description: {
                     Text(message)
                 } actions: {
-                    Button("Sign In") {
+                    Button("Sign In Again") {
                         Task {
-                            await signInAndReload()
+                            await reauthorizeAndReload()
                         }
                     }
                 }
@@ -83,11 +83,11 @@ struct DiaryView: View {
     }
 
     @MainActor
-    private func signInAndReload() async {
+    private func reauthorizeAndReload() async {
         state = .loading
 
         do {
-            try await appModel.signIn()
+            try await appModel.reauthorize()
             await loadDiary()
         } catch {
             state = .unavailable(error.localizedDescription)
