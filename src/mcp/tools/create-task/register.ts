@@ -17,6 +17,10 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+} from "../mutation-contract.js";
 
 const taskPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const taskStatusSchema = z.enum([
@@ -89,6 +93,7 @@ const createTaskDataSchema = z.object({
     completed_at: z.string().datetime().nullable(),
     author: contentAuthorSchema.nullable(),
   }),
+  ...mcpMutationReceiptFields,
 });
 
 const createTaskOutputSchema = z.object({
@@ -147,14 +152,27 @@ export function registerCreateTaskTool(
             },
             idempotency_key,
           );
-          const result = { success: true as const, data };
+          const result = {
+            success: true as const,
+            data: {
+              task: data.task,
+              ...mcpMutationReceipt({
+                outcome: data.outcome,
+                entity_type: "task",
+                entity_id: data.task.id,
+                revision: null,
+                detail_tool: "get_task",
+                detail_arguments: { id: data.task.id },
+              }),
+            },
+          };
 
           return {
             content: [
               {
                 type: "text",
                 text: joinMcpContentLines([
-                  `Task created: ${quoteMcpText(data.task.title)} [id=${data.task.id}; status=${data.task.status}]`,
+                  `${data.outcome === "replayed" ? "Task replayed" : "Task created"}: ${quoteMcpText(data.task.title)} [id=${data.task.id}; status=${data.task.status}]`,
                   formatMcpDetailPointer("get_task", { id: data.task.id }),
                 ]),
               },
