@@ -203,7 +203,10 @@ test("Todo read tool implementations delegate once and preserve exact server tru
   });
   assert.deepEqual(dates.structuredContent, {
     success: true,
-    data: { dates: ["2026-08-11", DATE] },
+    data: {
+      dates: ["2026-08-11", DATE],
+      metadata: { returned: 2, has_more: false, next_cursor: null },
+    },
   });
   assert.deepEqual((fixture.todo as TodoToolService).readCalls, [{ userId: USER_ID, date: DATE }]);
   assert.deepEqual((fixture.todo as TodoToolService).listCalls, [USER_ID]);
@@ -523,11 +526,11 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
-  assert.equal(tools.length, 61, "the MCP surface must contain the complete production core surface including Shared Paper append and Todo entry writes");
+  assert.equal(tools.length, 62, "the MCP surface must contain the complete production core surface including Shared Paper append and Todo batch/entry writes");
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
-    ["append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "search_todo", "update_todo_entry", "write_todo_paper"],
+    ["append_todo_entries", "append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "search_todo", "update_todo_entry", "write_todo_paper"],
   );
   for (const forbidden of [
     "get_day_space",
@@ -556,7 +559,7 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   assert.equal(read?.inputSchema.properties?.author?.enum?.join(","), "L,G,C");
 
   const dates = tools.find((tool) => tool.name === "list_todo_dates");
-  assert.deepEqual(Object.keys(dates?.inputSchema.properties ?? {}), []);
+  assert.deepEqual(Object.keys(dates?.inputSchema.properties ?? {}).sort(), ["cursor", "limit"]);
 
   const write = tools.find((tool) => tool.name === "write_todo_paper");
   assert.ok(write);
@@ -627,7 +630,10 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
   });
   assert.deepEqual(dates.structuredContent, {
     success: true,
-    data: { dates: ["2026-08-11", DATE] },
+    data: {
+      dates: ["2026-08-11", DATE],
+      metadata: { returned: 2, has_more: false, next_cursor: null },
+    },
   });
 
   const write = await fixture.client.callTool({
