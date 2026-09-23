@@ -37,7 +37,7 @@ export function registerCreateUniverseNodeTool(
 ): void {
   server.registerTool("create_universe_node", {
     title: "Create a Universe node",
-    description: "Create one Universe node at an explicit 0..100 position. The server owns the node ID and timestamps. Every mutation requires expected_version and a unique idempotency_key. If the outcome is uncertain, fresh-read Universe state before deciding whether a new mutation is needed; never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. Create one Universe node at an explicit 0..100 position. The server owns the node ID and timestamps. Supply a unique idempotency_key for this logical create; reuse it only to replay the exact same request. If the outcome is uncertain, fresh-read Universe state before deciding whether a new mutation is needed; never blindly retry.",
     inputSchema: createUniverseNodeInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
