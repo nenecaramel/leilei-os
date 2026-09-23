@@ -15,6 +15,7 @@ import {
 import {
   boundedReadInputSchemaFields,
   boundedReadMetadataSchema,
+  formatMcpBoundedReadHint,
   McpBoundedReadCursorError,
   sliceMcpBoundedContent,
 } from "../bounded-read.js";
@@ -153,7 +154,10 @@ async function runDetail(
     return {
       content: [{
         type: "text" as const,
-        text: sharedPaperDetailContent(boundedPaper),
+        text: joinMcpContentLines([
+          formatMcpBoundedReadHint(window.metadata),
+          sharedPaperDetailContent(boundedPaper),
+        ]),
       }],
       structuredContent: {
         success: true as const,
