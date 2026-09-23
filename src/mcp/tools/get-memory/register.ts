@@ -10,6 +10,12 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import {
+  boundedReadInputSchemaFields,
+  boundedReadMetadataSchema,
+  McpBoundedReadCursorError,
+  sliceMcpBoundedContent,
+} from "../bounded-read.js";
 
 const memoryCategorySchema = z.enum([
   "profile",
@@ -27,6 +33,7 @@ const getMemoryInputSchema = z
       .min(1)
       .describe("The exact Memory id returned by read_memory, search_memory, or global_search."),
     scope: z.enum(["active", "archived"]).default("active").optional().describe("Defaults to active. active reads only active records; archived reads only archived records."),
+    ...boundedReadInputSchemaFields(z),
   })
   .strict();
 
@@ -40,6 +47,7 @@ const getMemoryDataSchema = z.object({
   updated_at: z.string().datetime(),
   lifecycle_status: z.enum(["active", "archived"]),
   author: contentAuthorSchema.nullable(),
+  content_metadata: boundedReadMetadataSchema(z),
 });
 
 const getMemoryOutputSchema = z.object({
@@ -70,7 +78,7 @@ export function registerGetMemoryTool(
     {
       title: "Get one Memory",
       description:
-        "Read the full authoritative content of one authenticated Memory after an exact ID is known from read_memory, search_memory, global_search, or a write receipt. This is not the primary discovery tool. scope defaults to active; scope=active and scope=archived each enforce exact-ID ownership and assistant visibility.",
+        "Read one authenticated Memory by exact ID using a bounded authoritative content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same id/scope. A cursor becomes invalid if the Memory changes. This is not the primary discovery tool.",
       inputSchema: getMemoryInputSchema,
       outputSchema: getMemoryOutputSchema,
       annotations: {
@@ -80,13 +88,29 @@ export function registerGetMemoryTool(
         openWorldHint: false,
       },
     },
-    async ({ id, scope = "active" }) => {
+    async ({ id, scope = "active", max_chars, cursor }) => {
       try {
         const userId = dependencies.getAuthenticatedUserId();
         const detail = scope === "archived"
           ? await dependencies.memoryService.readArchivedMemoryDetail?.({ userId, id }) ?? (() => { throw new Error("Archived Memory reads are unavailable."); })()
           : await dependencies.memoryService.readMemoryDetail({ userId, id });
-        const data = { ...detail, lifecycle_status: scope };
+        const window = sliceMcpBoundedContent({
+          content: detail.content,
+          maxChars: max_chars,
+          cursor,
+          tool: "get_memory",
+          context: {
+            id: detail.id,
+            scope,
+            updated_at: detail.updated_at,
+          },
+        });
+        const data = {
+          ...detail,
+          content: window.content,
+          lifecycle_status: scope,
+          content_metadata: window.metadata,
+        };
 
         return {
           content: [
@@ -111,6 +135,13 @@ export function registerGetMemoryTool(
 }
 
 function toSafeGetMemoryError(error: unknown) {
+  if (error instanceof McpBoundedReadCursorError) {
+    return createMcpToolError(
+      "INVALID_CURSOR",
+      "The Memory continuation cursor is invalid or stale. Read the Memory again without a cursor.",
+    );
+  }
+
   if (error instanceof ReadMemoryAuthenticationError) {
     return createMcpToolError(
       "AUTHENTICATION_REQUIRED",
