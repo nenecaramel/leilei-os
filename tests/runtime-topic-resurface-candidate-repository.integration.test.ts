@@ -16,6 +16,9 @@ import {
   TopicResurfaceCandidateService,
 } from "../src/domains/runtime/topic-resurface-candidates.js";
 import {
+  topicResurfaceToThought,
+} from "../src/domains/runtime/topic-resurface-thought-materialization.js";
+import {
   topicThreadKey,
   writeTopicEvolution,
 } from "../src/domains/runtime/topic-evolution.js";
@@ -165,7 +168,8 @@ test(
       settled: false,
     });
 
-    await new DrizzleSubjectStateRuntimePort(database.db).append({
+    const subjectStates = new DrizzleSubjectStateRuntimePort(database.db);
+    await subjectStates.append({
       userId,
       subjectId: "G",
       states: [
@@ -205,5 +209,81 @@ test(
       .where(eq(runtimeSubjectStates.id, dormantAnchor.id));
     assert.equal(rows.length, 1);
     assert.deepEqual(rows[0]?.payload, dormantAnchor.payload);
+
+    const firstEvidenceId = `source-${dormantAnchor.id}`;
+    const derivedThought = topicResurfaceToThought({
+      userId,
+      subjectId: "G",
+      source: {
+        stateId: dormantAnchor.id,
+        threadKey: topicThreadKey("Dormant anchor"),
+        visibility: "subject_private",
+        sensitivity: "normal",
+        audience: ["G"],
+        evidenceSourceId: firstEvidenceId,
+      },
+      text: "Derived reflection for the first evidence generation",
+      evaluatedAt: "2026-09-30T01:00:00.000Z",
+      config: {
+        ruleVersion: "topic-resurface-thought-v1",
+        processVersion: "topic-resurface-thought-materialization-v1",
+        deliberationPromptContractVersion:
+          "topic-resurface-deliberation-v1",
+        retentionPromptContractVersion:
+          "topic-resurface-retention-v1",
+        model: {
+          provider: "claude_code",
+          model: "subscription-test",
+          promptContractVersion: "topic-resurface-v1",
+        },
+      },
+    });
+    await subjectStates.append({
+      userId,
+      subjectId: "G",
+      states: [derivedThought],
+    });
+
+    assert.deepEqual(
+      await service.list({
+        userId,
+        subjectId: "G",
+        limit: 10,
+      }),
+      { candidates: [] },
+      "a completed evidence generation must be filtered before model evaluation",
+    );
+
+    const nextEvidenceId = "source-new-independent-evidence";
+    await database.db
+      .update(runtimeSubjectStates)
+      .set({
+        payload: writeTopicEvolution(dormantAnchor.payload, {
+          phase: "dormant",
+          role: "anchor",
+          threadKey: topicThreadKey("Dormant anchor"),
+          anchorStateId: dormantAnchor.id,
+          reinforcementCount: 2,
+          reinforcementSources: [
+            firstEvidenceId,
+            nextEvidenceId,
+          ],
+          lastEvolvedAt: "2026-10-01T00:00:00.000Z",
+          lastReinforcedAt: "2026-10-01T00:00:00.000Z",
+          dormantAt: "2026-10-01T01:00:00.000Z",
+        }),
+      })
+      .where(eq(runtimeSubjectStates.id, dormantAnchor.id));
+
+    const nextGeneration = await service.list({
+      userId,
+      subjectId: "G",
+      limit: 10,
+    });
+    assert.deepEqual(
+      nextGeneration.candidates.map((candidate) => candidate.stateId),
+      [dormantAnchor.id],
+      "new independent evidence must make the next generation eligible again",
+    );
   },
 );

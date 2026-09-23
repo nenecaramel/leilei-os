@@ -43,9 +43,30 @@ implements TopicResurfaceCandidatePort {
             = 'dormant'`,
           sql`${runtimeSubjectStates.payload} -> 'topic_v1' ->> 'role'
             = 'anchor'`,
+          sql`NOT EXISTS (
+            SELECT 1
+            FROM runtime_subject_states materialized
+            WHERE materialized.user_id = ${input.userId}::uuid
+              AND materialized.subject_id = ${input.subjectId}
+              AND materialized.kind = 'thought'
+              AND materialized.payload
+                -> 'thought_seed_v1' ->> 'source_kind'
+                = 'topic_resurface'
+              AND materialized.payload
+                -> 'thought_seed_v1' ->> 'source_state_id'
+                = ${runtimeSubjectStates.id}::text
+              AND materialized.payload
+                -> 'thought_seed_v1' ->> 'source_evidence_id'
+                = (
+                  ${runtimeSubjectStates.payload}
+                    -> 'topic_v1'
+                    -> 'reinforcementSources'
+                    ->> -1
+                )
+          )`,
         ),
       )
-      // Stable identity order only. This is not a preference/ranking signal.
+      // Stable identity order only. This is not a preference/ranking signal.\n      // A Topic generation that already produced its derived Thought is\n      // ineligible before LIMIT, so completed rows cannot starve later work.
       .orderBy(asc(runtimeSubjectStates.id))
       .limit(input.limit);
 
