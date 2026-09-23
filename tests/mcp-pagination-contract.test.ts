@@ -52,14 +52,15 @@ test("list_todo_dates continues without overlap using the returned cursor", asyn
   const server = new McpServer({ name: "pagination-test", version: "1.0.0" });
   registerListTodoDatesTool(server, {
     todoService: {
-      async listDates() {
-        return [
+      async listDates(_userId, limit, offset = 0) {
+        const dates = [
           "2026-09-19",
           "2026-09-20",
           "2026-09-21",
           "2026-09-22",
           "2026-09-23",
         ];
+        return limit === undefined ? dates : dates.slice(offset, offset + limit);
       },
     },
     getAuthenticatedUserId: () => "00000000-0000-4000-8000-000000000099",
