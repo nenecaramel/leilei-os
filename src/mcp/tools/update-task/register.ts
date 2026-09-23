@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { TaskDomainError, type AuthenticatedTaskContext, type TaskEntryResult, type UpdateMcpTaskInput } from "../../../domains/task/task-service.js";
 import { invokeMcpWrite } from "../write-context.js";
-import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
+import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { quoteMcpText } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
@@ -53,14 +53,27 @@ export function registerUpdateTaskTool(server: McpServer, dependencies: UpdateTa
           },
         },
       };
-    }, mapError: toSafeToolError,
+    }, mapError: (error) => toSafeToolError(error, id),
   }));
 }
 
-function toSafeToolError(error: unknown) {
+function toSafeToolError(error: unknown, taskId?: string) {
   if (error instanceof UpdateTaskAuthenticationError) return createMcpToolError("AUTHENTICATION_REQUIRED", "Authentication is required to update Task.");
   if (error instanceof TaskDomainError) {
     const text = error.code === "USER_DISABLED" || error.code === "USER_NOT_FOUND" ? "Task updating is unavailable for the authenticated user." : error.code === "TASK_NOT_FOUND" ? "Task was not found." : error.code === "TASK_STATUS_CONFLICT" ? "Task status changed concurrently; read it again before retrying." : "The Task update request is invalid.";
+    if (error.code === "TASK_STATUS_CONFLICT" && taskId) {
+      return createMcpToolError(
+        error.code,
+        text,
+        text,
+        mcpErrorRecoveryHint({
+          retryable: false,
+          reason: "status_conflict",
+          recommendedTool: "get_task",
+          recommendedArguments: { id: taskId },
+        }),
+      );
+    }
     return createMcpToolError(error.code, text);
   }
   console.error("update_task failed", error instanceof Error ? error.name : "UnknownError");
