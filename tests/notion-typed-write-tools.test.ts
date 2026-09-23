@@ -88,6 +88,25 @@ test("typed Notion facade exposes intent-specific tools without action/body wrap
       ?? {};
     assert.equal("action" in properties, false);
     assert.equal("body" in properties, false);
+
+    const dataProperties = (tool.outputSchema as {
+      properties?: {
+        data?: {
+          properties?: Record<string, unknown>;
+        };
+      };
+    }).properties?.data?.properties;
+    assert.ok(dataProperties, `${tool.name} must expose structured mutation data`);
+    for (const field of [
+      "outcome",
+      "entity_type",
+      "entity_id",
+      "revision",
+      "detail_tool",
+      "detail_arguments",
+    ]) {
+      assert.ok(field in dataProperties, `${tool.name} must expose ${field}`);
+    }
   }
   assert.equal(
     tools.find((tool) => tool.name === "replace_notion_page_content")
@@ -135,11 +154,22 @@ test("create_notion_page maps typed parent/title/properties to provider payload"
       },
     }],
   }]);
-  assert.deepEqual(
-    (response.structuredContent as { data: { detail_arguments: unknown } })
-      .data.detail_arguments,
-    { page_id: PAGE_ID },
-  );
+  const receipt = (response.structuredContent as {
+    data: {
+      outcome: string;
+      entity_type: string;
+      entity_id: string;
+      revision: number | null;
+      detail_tool: string | null;
+      detail_arguments: unknown;
+    };
+  }).data;
+  assert.equal(receipt.outcome, "applied");
+  assert.equal(receipt.entity_type, "notion_page");
+  assert.equal(receipt.entity_id, PAGE_ID);
+  assert.equal(receipt.revision, null);
+  assert.equal(receipt.detail_tool, "read_notion_page");
+  assert.deepEqual(receipt.detail_arguments, { page_id: PAGE_ID });
 });
 
 test("create_notion_page rejects a second typed title property before provider mutation", async (t) => {
