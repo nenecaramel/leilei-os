@@ -4,6 +4,7 @@ import { SharedPaperServiceError } from "../../../domains/shared-paper/shared-pa
 import type { SharedPaperEdit, SharedPaperRecord } from "../../../domains/shared-paper/shared-paper-types.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 import { MCP_IDEMPOTENCY_KEY_MAX_LENGTH, MCP_IDEMPOTENCY_KEY_MIN_LENGTH, MCP_IDEMPOTENCY_KEY_PATTERN } from "../../../domains/mcp-write/mcp-write-idempotency.js";
 import { createBodyMatchSnippet, createLeadingPreview } from "../../../domains/compact-text.js";
 import { codePointLength } from "../../../shared/unicode.js";
@@ -41,10 +42,10 @@ const lifecycleInput = z.object({ id: idSchema, idempotency_key: idempotencyKeyS
 const listOutput = z.object({ success: z.boolean(), data: z.object({ papers: z.array(paperSummarySchema), count: z.number().int().nonnegative(), metadata: z.object({ returned: z.number().int().nonnegative(), has_more: z.boolean(), next_cursor: z.string().nullable() }).strict() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 const searchOutput = listOutput;
 const getOutput = z.object({ success: z.boolean(), data: z.object({ paper: paperDetailSchema, content_metadata: boundedReadMetadataSchema }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
-const mutationOutput = z.object({ success: z.boolean(), data: z.object({ paper_id: idSchema, revision: z.number().int().min(1), edit_id: idSchema.optional(), base_revision: z.number().int().min(1).optional(), author: authorSchema.optional(), created_at: z.string().datetime().optional(), metadata: z.object({ idempotent_replay: z.boolean() }).strict(), detail_tool: z.literal("get_shared_paper"), detail_arguments: z.object({ id: idSchema }).strict() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
+const mutationOutput = z.object({ success: z.boolean(), data: z.object({ paper_id: idSchema, edit_id: idSchema.optional(), base_revision: z.number().int().min(1).optional(), author: authorSchema.optional(), created_at: z.string().datetime().optional(), ...mcpMutationReceiptFields }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 const editsOutput = z.object({ success: z.boolean(), data: z.object({ edits: z.array(editSchema), count: z.number().int().nonnegative() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
-const lifecycleOutput = z.object({ success: z.boolean(), data: z.object({ paper_id: idSchema, archived_at: z.string().datetime().nullable(), metadata: z.object({ idempotent_replay: z.boolean() }).strict(), detail_tool: z.literal("get_shared_paper"), detail_arguments: z.object({ id: idSchema }).strict() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
-const deleteOutput = z.object({ success: z.boolean(), data: z.object({ paper_id: idSchema, deleted: z.literal(true), metadata: z.object({ idempotent_replay: z.boolean() }).strict() }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
+const lifecycleOutput = z.object({ success: z.boolean(), data: z.object({ paper_id: idSchema, archived_at: z.string().datetime().nullable(), ...mcpMutationReceiptFields }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
+const deleteOutput = z.object({ success: z.boolean(), data: z.object({ paper_id: idSchema, deleted: z.literal(true), ...mcpMutationReceiptFields }).optional(), error: mcpToolErrorDetailsSchema.optional() }).strict();
 
 export interface SharedPaperToolService {
   listPapers(input: { userId: string; limit?: number; scope?: "active" | "archived"; offset?: number }): Promise<SharedPaperRecord[]>;
@@ -177,27 +178,112 @@ async function runDetail(
     return sharedError(error, "get_shared_paper");
   }
 }
-async function runMutation(mutate: () => Promise<{ paper: SharedPaperRecord; edit?: SharedPaperEdit; outcome?: "committed" | "replayed" }>, _dependencies: SharedPaperToolDependencies) { try { const result = await mutate(); const replayed = result.outcome === "replayed"; const data = { paper_id: result.paper.id, revision: result.edit?.revision ?? result.paper.revision, ...(result.edit ? { edit_id: result.edit.id, base_revision: result.edit.baseRevision, author: result.edit.author, created_at: result.edit.createdAt.toISOString() } : {}), metadata: { idempotent_replay: replayed }, detail_tool: "get_shared_paper" as const, detail_arguments: { id: result.paper.id } }; return { content: [{ type: "text" as const, text: `Shared paper ${replayed ? "replayed" : "committed"} at revision ${data.revision}.\n${formatMcpDetailPointer("get_shared_paper", data.detail_arguments)}` }], structuredContent: { success: true as const, data } }; } catch (error) { return sharedError(error, "shared_paper_mutation"); } }
-async function runLifecycleMutation(mutate: () => Promise<{ paper: SharedPaperRecord; outcome: "committed" | "replayed" }>) {
+async function runMutation(
+  mutate: () => Promise<{
+    paper: SharedPaperRecord;
+    edit?: SharedPaperEdit;
+    outcome?: "committed" | "replayed";
+  }>,
+  _dependencies: SharedPaperToolDependencies,
+) {
   try {
     const result = await mutate();
+    const revision = result.edit?.revision ?? result.paper.revision;
+    const detailArguments = { id: result.paper.id };
+    const data = {
+      paper_id: result.paper.id,
+      ...(result.edit ? {
+        edit_id: result.edit.id,
+        base_revision: result.edit.baseRevision,
+        author: result.edit.author,
+        created_at: result.edit.createdAt.toISOString(),
+      } : {}),
+      ...mcpMutationReceipt({
+        outcome: mcpMutationOutcomeFromReplay(result.outcome === "replayed"),
+        entity_type: "shared_paper",
+        entity_id: result.paper.id,
+        revision,
+        detail_tool: "get_shared_paper",
+        detail_arguments: detailArguments,
+      }),
+    };
+    return {
+      content: [{
+        type: "text" as const,
+        text: `Shared paper ${data.outcome} at revision ${revision}.\n${formatMcpDetailPointer("get_shared_paper", detailArguments)}`,
+      }],
+      structuredContent: { success: true as const, data },
+    };
+  } catch (error) {
+    return sharedError(error, "shared_paper_mutation");
+  }
+}
+
+async function runLifecycleMutation(
+  mutate: () => Promise<{
+    paper: SharedPaperRecord;
+    outcome: "committed" | "replayed";
+  }>,
+) {
+  try {
+    const result = await mutate();
+    const detailArguments = { id: result.paper.id };
     const data = {
       paper_id: result.paper.id,
       archived_at: result.paper.archivedAt?.toISOString() ?? null,
-      metadata: { idempotent_replay: result.outcome === "replayed" },
-      detail_tool: "get_shared_paper" as const,
-      detail_arguments: { id: result.paper.id },
+      ...mcpMutationReceipt({
+        outcome: mcpMutationOutcomeFromReplay(result.outcome === "replayed"),
+        entity_type: "shared_paper",
+        entity_id: result.paper.id,
+        revision: result.paper.revision,
+        detail_tool: "get_shared_paper",
+        detail_arguments: detailArguments,
+      }),
     };
-    return { content: [{ type: "text" as const, text: `Shared paper lifecycle ${result.outcome}; archived_at=${data.archived_at ?? "null"}.\n${formatMcpDetailPointer("get_shared_paper", data.detail_arguments)}` }], structuredContent: { success: true as const, data } };
-  } catch (error) { return sharedError(error, "shared_paper_lifecycle"); }
+    return {
+      content: [{
+        type: "text" as const,
+        text: `Shared paper lifecycle ${data.outcome}; archived_at=${data.archived_at ?? "null"}.\n${formatMcpDetailPointer("get_shared_paper", detailArguments)}`,
+      }],
+      structuredContent: { success: true as const, data },
+    };
+  } catch (error) {
+    return sharedError(error, "shared_paper_lifecycle");
+  }
 }
-async function runDeleteMutation(mutate: () => Promise<{ paperId: string; outcome: "committed" | "replayed" }>) {
+
+async function runDeleteMutation(
+  mutate: () => Promise<{
+    paperId: string;
+    outcome: "committed" | "replayed";
+  }>,
+) {
   try {
     const result = await mutate();
-    const data = { paper_id: result.paperId, deleted: true as const, metadata: { idempotent_replay: result.outcome === "replayed" } };
-    return { content: [{ type: "text" as const, text: `Shared paper deletion ${result.outcome}; paper_id=${result.paperId}.` }], structuredContent: { success: true as const, data } };
-  } catch (error) { return sharedError(error, "delete_shared_paper"); }
+    const data = {
+      paper_id: result.paperId,
+      deleted: true as const,
+      ...mcpMutationReceipt({
+        outcome: mcpMutationOutcomeFromReplay(result.outcome === "replayed"),
+        entity_type: "shared_paper",
+        entity_id: result.paperId,
+        revision: null,
+        detail_tool: null,
+        detail_arguments: null,
+      }),
+    };
+    return {
+      content: [{
+        type: "text" as const,
+        text: `Shared paper deletion ${data.outcome}; paper_id=${result.paperId}.`,
+      }],
+      structuredContent: { success: true as const, data },
+    };
+  } catch (error) {
+    return sharedError(error, "delete_shared_paper");
+  }
 }
+
 async function runEdits(read: () => Promise<SharedPaperEdit[]>, _dependencies: SharedPaperToolDependencies) { try { const edits = await read(); const data = { edits: edits.map(toEdit), count: edits.length }; return { content: [{ type: "text" as const, text: sharedPaperEditsContent(edits) }], structuredContent: { success: true as const, data } }; } catch (error) { return sharedError(error, "list_shared_paper_edits"); } }
 function sharedPaperDetailContent(paper: SharedPaperRecord): string {
   const metadata = joinMcpContentLines([
