@@ -31,7 +31,7 @@ struct SettingsRestoreContent: View {
 
                 if isPreviewing {
                     HStack {
-                        Text("Preview")
+                        Text("Loading…")
                         Spacer()
                         ProgressView()
                     }
@@ -54,7 +54,7 @@ struct SettingsRestoreContent: View {
                     }
                 } label: {
                     HStack {
-                        Text("Restore")
+                        Text(isRestoring ? "Restoring…" : "Restore")
                         Spacer()
                         if isRestoring {
                             ProgressView()
@@ -94,8 +94,8 @@ struct SettingsRestoreContent: View {
                 Task {
                     await previewRestore(fileURL: url)
                 }
-            case .failure(let error):
-                errorMessage = error.localizedDescription
+            case .failure:
+                errorMessage = "Couldn’t open the selected export file."
             }
         }
     }
@@ -115,7 +115,7 @@ struct SettingsRestoreContent: View {
         do {
             preview = try await dataService.previewRestore(fileURL: fileURL)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn’t preview this export."
         }
     }
 
@@ -139,9 +139,9 @@ struct SettingsRestoreContent: View {
             let result = try await dataService.executeRestore(fileURL: selectedFileURL)
             outcomeMessage = result.completed
                 ? "Restore completed."
-                : "Restore did not complete."
+                : "Couldn’t restore the data."
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Couldn’t restore the data."
         }
     }
 }
