@@ -38,7 +38,7 @@ export function registerCreateUniverseNodeTool(
 ): void {
   server.registerTool("create_universe_node", {
     title: "Create a Universe node",
-    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Create one node at an explicit 0..100 position; server owns ID/timestamps. If outcome is uncertain, fresh-read Universe state before retrying.",
+    description: UNIVERSE_DOMAIN_BOUNDARY + " Create one node at an explicit 0..100 position; server owns ID and timestamps.",
     inputSchema: createUniverseNodeInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

@@ -107,7 +107,7 @@ export function registerToyCommandTools(
     {
       title: "Set toy intensity",
       description:
-        "Queue one short-lived toy intensity command in Leilei OS. Percent must be an integer from 1 to 50 and duration_seconds must be 1 to 1200 (default 60). The authenticated user and device binding are assigned by the server. This tool never accepts BLE bytes, URLs, scripts, or arbitrary payloads.",
+        "Queue a short-lived intensity command for the bound toy. User and device identity are server-owned.",
       inputSchema: toySetInputSchema,
       outputSchema: toySetOutputSchema,
       annotations: {
@@ -164,7 +164,7 @@ export function registerToyCommandTools(
     {
       title: "Stop toy",
       description:
-        "Queue one short-lived stop command for the bound toy in Leilei OS. Requires a stable idempotency_key and never accepts BLE bytes, URLs, scripts, or arbitrary payloads.",
+        "Queue a stop command for the bound toy.",
       inputSchema: toyStopInputSchema,
       outputSchema: toyStopOutputSchema,
       annotations: {

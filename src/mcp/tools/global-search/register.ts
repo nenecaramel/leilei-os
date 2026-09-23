@@ -19,7 +19,7 @@ const inputSchema = z.object({
   modules: z.array(globalSearchModuleSchema).min(1).max(4)
     .default([...DEFAULT_GLOBAL_SEARCH_MODULES])
     .optional()
-    .describe("Modules to search. Defaults to Diary, Todo, and Universe. Add conversation explicitly when searching archived ChatGPT/Claude messages."),
+    .describe("Domains to search. Defaults to Diary, Todo, and Universe; add Conversation explicitly."),
   scope: z.enum(["active", "archived", "all"]).default("active").optional(),
   mode: z.enum(["normal", "phrase"]).default("normal").optional(),
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -135,7 +135,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search for cross-domain discovery when the target domain is unknown or spans domains. It does not replace domain-specific detail or mutation tools. Defaults: Diary, Todo, Universe; Conversation is opt-in via modules. When the domain is known, prefer that domain's dedicated tools; use search_conversations for past ChatGPT/Claude messages. Use scope=all only for explicit historical intent. No results means nothing was found: never invent an answer.",
+    description: "Search across selected LeileiOS domains. Defaults to Diary, Todo, and Universe; Conversation is opt-in. Prefer a domain-specific search when the domain is known. Use scope=all only for explicit historical search.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

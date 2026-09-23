@@ -251,7 +251,7 @@ export function registerConversationArchiveTools(
 ): void {
   server.registerTool("list_conversations", {
     title: "List Conversations",
-    description: "List authenticated canonical Conversations in one lifecycle scope. Use read_conversation with each exact detail pointer.",
+    description: "List canonical Conversations in one lifecycle scope; use read_conversation for detail.",
     inputSchema: listInputSchema,
     outputSchema: listOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -276,7 +276,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("search_conversations", {
     title: "Search Conversation Archive",
-    description: "Search canonical past ChatGPT/Claude conversations after pruning/deletion. Hits point to read_conversation for bounded context; raw exports are not searched directly. Use global_search when the target domain is unknown.",
+    description: "Search canonical ChatGPT/Claude messages. Hits point to read_conversation for bounded context.",
     inputSchema: searchInputSchema,
     outputSchema: searchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -339,7 +339,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("read_conversation", {
     title: "Read Conversation",
-    description: "Read a bounded canonical Conversation by exact id. compact is the default model-readable transcript; use full only for blocks, payloads, attachments, or provider metadata. Reads current post-pruning/deletion state, not raw exports. message_id returns context around that hit; otherwise use offset/limit.",
+    description: "Read a bounded canonical Conversation. compact is the default; use full for blocks, payloads, attachments, or provider metadata. With message_id, returns context around that message.",
     inputSchema: readInputSchema,
     outputSchema: readOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

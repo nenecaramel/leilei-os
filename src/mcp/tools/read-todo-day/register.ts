@@ -64,7 +64,7 @@ export function registerReadTodoDayTool(
     {
       title: "Read one Todo day",
       description:
-        TODO_DOMAIN_BOUNDARY + " Read one exact business date. Without author, return L/G/C papers; with author, return only that paper. Entries include revisions for update_todo_entry/delete_todo_entry. Missing papers are null.",
+        TODO_DOMAIN_BOUNDARY + " Read one exact date. Without author returns L/G/C papers; with author returns one paper. Entries include revisions.",
       inputSchema: readTodoDayInputSchema,
       outputSchema: readTodoDayOutputSchema,
       annotations: {

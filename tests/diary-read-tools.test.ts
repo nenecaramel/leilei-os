@@ -95,7 +95,7 @@ function textOf(result: Awaited<ReturnType<Client["callTool"]>>): string {
   return first && "text" in first ? String(first.text) : "";
 }
 
-test("Diary reads are registered read-only without changing write_diary", async (t) => {
+test("Diary reads are registered read-only alongside create_diary", async (t) => {
   const { client, server } = await connect(new MockDiaryService());
   t.after(async () => {
     await client.close();
@@ -115,7 +115,7 @@ test("Diary reads are registered read-only without changing write_diary", async 
     assert.equal("user_id" in (tool.inputSchema.properties ?? {}), false);
   }
   assert.equal(
-    tools.tools.find((tool) => tool.name === "write_diary")?.annotations
+    tools.tools.find((tool) => tool.name === "create_diary")?.annotations
       ?.readOnlyHint,
     false,
   );
@@ -453,7 +453,7 @@ test("get_diary maps unavailable and unexpected failures safely", async () => {
   }
 });
 
-test("Diary reads require auth and shared write_diary remains compatible", async () => {
+test("Diary reads require auth and canonical create_diary remains compatible", async () => {
   const unauthenticated = new MockDiaryService();
   const unauthPair = await connect(unauthenticated, () => {
     throw new DiaryReadAuthenticationError();
@@ -473,7 +473,7 @@ test("Diary reads require auth and shared write_diary remains compatible", async
   const service = new MockDiaryService();
   const pair = await connect(service);
   const write = await pair.client.callTool({
-    name: "write_diary",
+    name: "create_diary",
     arguments: {
       title: "原写入工具",
       content: "现有写入契约保持不变。",

@@ -65,7 +65,6 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "update_diary",
     "read_todo_day",
     "append_todo_entries",
-    "search_universe",
     "search_conversations",
     "read_conversation",
     "get_health",
@@ -94,6 +93,7 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "search_notion",
     "create_notion_page",
     "write_notion_page",
+    "render_note_card",
     "render_working_note",
     "render_thinking_block",
     "write_diary",
@@ -114,7 +114,7 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
   }
 });
 
-test("production internal MCP defaults preserve full maintenance/runtime inventory", async () => {
+test("production internal MCP defaults preserve current maintenance/runtime inventory", async () => {
   const process = runtime();
   const factory = process.appDependencies.createMcpSessionServer;
   assert.ok(factory);
@@ -135,12 +135,9 @@ test("production internal MCP defaults preserve full maintenance/runtime invento
     "sentinel_get_state",
     "bridge_listener_open",
     "bridge_event_claim",
-    "render_working_note",
-    "render_thinking_block",
+    "render_note_card",
     "create_diary",
-    "write_diary",
     "replace_todo_paper",
-    "write_todo_paper",
   ]) {
     assert.equal(
       names.includes(required),
@@ -190,7 +187,7 @@ test("production public Notion profile exposes typed facade but hides raw advanc
   }
 });
 
-test("production public notion_advanced profile includes typed and legacy advanced Notion surfaces", async () => {
+test("production public notion_advanced profile includes typed and explicit advanced Notion surfaces", async () => {
   const process = runtime({
     publicProfiles: "core,device,notion_advanced",
   });

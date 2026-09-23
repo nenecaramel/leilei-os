@@ -5,7 +5,6 @@ import { NotionIntegration } from "../../domains/notion/notion-read-integration.
 import { registerGetWeatherContextTool } from "../tools/get-weather-context/register.js";
 import {
   registerCreateDiaryTool,
-  registerWriteDiaryTool,
   WriteDiaryAuthenticationError,
   type WriteDiaryToolDependencies,
 } from "../tools/write-diary/register.js";
@@ -74,7 +73,6 @@ import {
 } from "../tools/list-todo-dates/register.js";
 import {
   registerReplaceTodoPaperTool,
-  registerWriteTodoPaperTool,
   WriteTodoPaperAuthenticationError,
   type WriteTodoPaperToolDependencies,
 } from "../tools/write-todo-paper/register.js";
@@ -84,7 +82,6 @@ import {
   type TodoEntryWriteToolDependencies,
 } from "../tools/todo-entry/register.js";
 import { registerSearchTodoTool, type SearchTodoToolDependencies } from "../tools/search-todo/register.js";
-import { registerSearchUniverseTool, type SearchUniverseToolDependencies } from "../tools/search-universe/register.js";
 import { registerGetUniverseNodeTool, type GetUniverseNodeToolDependencies } from "../tools/get-universe-node/register.js";
 import { registerListUniverseNodesTool, type ListUniverseNodesToolDependencies } from "../tools/list-universe-nodes/register.js";
 import { registerGetUniverseRelationsTool, type GetUniverseRelationsToolDependencies } from "../tools/get-universe-relations/register.js";
@@ -237,14 +234,12 @@ const productionConversationRecoveryInspectionDependencies: ConversationRecovery
   getAuthenticatedUserId: () => { throw new ConversationArchiveAuthenticationError(); },
 };
 
-const productionUniverseService: SearchUniverseToolDependencies["globalSearchService"] &
-  GetUniverseNodeToolDependencies["universeService"] & ListUniverseNodesToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
+const productionUniverseService: GetUniverseNodeToolDependencies["universeService"] & ListUniverseNodesToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
   CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] &
   CreateUniverseRelationToolDependencies["universeService"] & DeleteUniverseRelationToolDependencies["relationService"] &
   UpdateUniverseRelationToolDependencies["universeService"] &
   GetUniverseDiarySourcesToolDependencies["sourceService"] & AddUniverseDiarySourceToolDependencies["sourceService"] &
   DeleteUniverseDiarySourceToolDependencies["sourceService"] = {
-  search: (input) => missingDatabaseService(),
   loadUniverse: (userId) => missingDatabaseService(),
   readUniverseNode: (userId, nodeId) => missingDatabaseService(),
   listUniverseNodes: (userId, limit, after) => missingDatabaseService(),
@@ -308,7 +303,6 @@ type NotionReadDependencies =
 
 type UniverseToolsDependencies = {
   universeService: GetUniverseNodeToolDependencies["universeService"] & Partial<ListUniverseNodesToolDependencies["universeService"]> & GetUniverseRelationsToolDependencies["universeService"];
-  globalSearchService: SearchUniverseToolDependencies["globalSearchService"];
   getAuthenticatedUserId: () => string;
 };
 
@@ -467,13 +461,11 @@ export function createMcpServer(
   if (mcpToolSurfaceEnabled(toolExposure, "core")) {
   const universeTools = dependencies.universeTools ?? {
     universeService: productionUniverseService,
-    globalSearchService: productionUniverseService,
     getAuthenticatedUserId: () => {
       if (!authenticatedUserId) throw new UniverseAuthenticationError();
       return authenticatedUserId;
     },
   } satisfies UniverseToolsDependencies;
-  registerSearchUniverseTool(server, universeTools);
   registerGetUniverseNodeTool(server, universeTools);
   registerListUniverseNodesTool(server, {
     universeService: universeTools.universeService?.listUniverseNodes
@@ -589,25 +581,6 @@ export function createMcpServer(
   }
 
 
-  if (mcpToolSurfaceEnabled(toolExposure, "legacy_aliases")) {
-    registerWriteDiaryTool(
-      server,
-      dependencies.writeDiary ?? dependencies.diaryTools ?? {
-        ...productionWriteDiaryDependencies,
-        getAuthenticatedUserId: () => {
-          if (!authenticatedUserId) throw new WriteDiaryAuthenticationError();
-          return authenticatedUserId;
-        },
-      },
-    );
-    registerWriteTodoPaperTool(server, dependencies.todoTools ?? {
-      todoService: productionTodoService,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new WriteTodoPaperAuthenticationError();
-        return authenticatedUserId;
-      },
-    });
-  }
 
   return server;
 }

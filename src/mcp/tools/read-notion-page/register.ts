@@ -57,7 +57,7 @@ export function registerReadNotionPageTool(
 ): void {
   server.registerTool("read_notion_page", {
     title: "Read a Notion page",
-    description: "Read one selected accessible Notion page by exact page ID or URL using a bounded content window. max_chars defaults to 12000 Unicode code points. When content_metadata.truncated is true, continue with content_metadata.next_cursor and the same page reference. The existing top-level truncated flag still reports upstream traversal/text caps; child pages and databases are listed but not recursively expanded.",
+    description: "Read one Notion page by exact ID or URL with bounded content. Continue with content_metadata.next_cursor when truncated; child pages and databases are listed, not expanded.",
     inputSchema,
     outputSchema,
     annotations: {

@@ -13,19 +13,19 @@ export const mcpErrorRecoveryReasonSchema = z.enum([
 
 export const mcpErrorRecoveryFields = {
   retryable: z.boolean().optional().describe(
-    "Whether retrying the same request immediately, without an intervening read or input change, is appropriate.",
+    "Whether the same request can be retried immediately.",
   ),
   reason: mcpErrorRecoveryReasonSchema.optional().describe(
-    "Stable machine-readable recovery reason when the error has a concrete recovery path.",
+    "Machine-readable recovery reason.",
   ),
   current_revision: z.number().int().nonnegative().nullable().optional().describe(
-    "Current entity revision when known from the failed operation; null when recovery requires fresh readback or the domain has no entity revision.",
+    "Current entity revision when known; otherwise null.",
   ),
   recommended_tool: z.string().trim().min(1).max(100).nullable().optional().describe(
-    "Tool to call next for authoritative recovery, or null when no tool call is recommended.",
+    "Recommended recovery tool, or null.",
   ),
   recommended_arguments: z.record(z.string(), z.unknown()).nullable().optional().describe(
-    "Arguments for recommended_tool, or null when recommended_tool is null.",
+    "Arguments for recommended_tool, or null.",
   ),
 };
 

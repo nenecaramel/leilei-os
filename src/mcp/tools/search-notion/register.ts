@@ -59,7 +59,7 @@ export function registerSearchNotionTool(
 ): void {
   server.registerTool("search_notion", {
     title: "Search Notion pages",
-    description: "Discover accessible Notion pages by title when an exact page reference is not known. This is title search, not full-text search across page bodies; use the returned read_notion_page pointer with its page ID for content.",
+    description: "Find accessible Notion pages by title; use read_notion_page for page content. This is not body full-text search.",
     inputSchema,
     outputSchema,
     annotations: {

@@ -24,8 +24,8 @@ import {
 import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
 import { registerProductionNotionTypedWriteTools } from "./register-notion-typed-writes.js";
 import { registerSentinelTools } from "../tools/sentinel/register.js";
-import { registerRenderThinkingBlockTool, registerRenderWorkingNoteTool } from "../tools/render-thinking-block/register.js";
-import { registerWorkingNoteResource } from "../tools/render-thinking-block/resource.js";
+import { registerRenderNoteCardTool } from "../tools/render-thinking-block/register.js";
+import { registerNoteCardResource } from "../tools/render-thinking-block/resource.js";
 import { registerGetHealthTool } from "../tools/get-health/register.js";
 import { registerGetCurrentTimeTool } from "../tools/get-current-time/register.js";
 import {
@@ -118,7 +118,6 @@ export function createProductionMcpSessionServerFactory(input: {
       },
       universeTools: {
         universeService: input.universeService,
-        globalSearchService: input.globalSearchService,
         getAuthenticatedUserId,
       },
       universeWriteTools: {
@@ -161,11 +160,8 @@ export function createProductionMcpSessionServerFactory(input: {
       });
     }
     if (mcpToolSurfaceEnabled(toolExposure, "ui")) {
-      registerWorkingNoteResource(server);
-      registerRenderWorkingNoteTool(server);
-      if (mcpToolSurfaceEnabled(toolExposure, "legacy_aliases")) {
-        registerRenderThinkingBlockTool(server);
-      }
+      registerNoteCardResource(server);
+      registerRenderNoteCardTool(server);
     }
     if (
       mcpToolSurfaceEnabled(toolExposure, "runtime_internal")

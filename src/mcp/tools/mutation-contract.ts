@@ -5,21 +5,21 @@ export const mcpMutationOutcomeSchema = z.enum([
   "replayed",
   "no_op",
 ]).describe(
-  "Mutation result: applied changed durable state, replayed returned the prior idempotent result without applying it again, and no_op confirmed no durable change was needed.",
+  "Result: applied changed state; replayed reused an idempotent result; no_op made no change.",
 );
 
 export const mcpMutationReceiptFields = {
   outcome: mcpMutationOutcomeSchema,
   entity_type: z.string().trim().min(1).max(100)
-    .describe("Stable model-facing type of the primary entity affected by the mutation."),
+    .describe("Primary entity type."),
   entity_id: z.string().trim().min(1).max(512)
-    .describe("Stable identifier of the primary entity affected by the mutation."),
+    .describe("Primary entity ID."),
   revision: z.number().int().nonnegative().nullable()
-    .describe("Current entity revision when this domain has one; null when it does not or when the entity was deleted."),
+    .describe("Current entity revision, or null."),
   detail_tool: z.string().trim().min(1).max(100).nullable()
-    .describe("Authoritative readback tool for the resulting entity state, or null when no readback entity remains."),
+    .describe("Readback tool, or null."),
   detail_arguments: z.record(z.string(), z.unknown()).nullable()
-    .describe("Arguments for detail_tool, or null when detail_tool is null."),
+    .describe("Arguments for detail_tool, or null."),
 };
 
 export type McpMutationOutcome = z.infer<typeof mcpMutationOutcomeSchema>;

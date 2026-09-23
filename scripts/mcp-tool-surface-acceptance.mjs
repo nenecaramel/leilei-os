@@ -66,7 +66,7 @@ const steps = [
   ["revision / idempotency", ["test:mcp-revision-idempotency"]],
   ["domain / enum semantics", ["test:mcp-domain-semantics"]],
   ["naming / deprecation", ["test:mcp-naming-deprecation"]],
-  ["UI working note", ["test:mcp-ui-working-note"]],
+  ["UI note card", ["test:mcp-ui-note-card"]],
   ["final surface audit", ["test:mcp-final-audit"]],
   ["tool surface", ["test:mcp-tool-surface"]],
   ["native live minimal", ["test:native-live-minimal"]],

@@ -167,7 +167,7 @@ export function registerNotionExplicitWriteTools(
     {
       title: "Write Notion page",
       description:
-        "Advanced compatibility surface for explicit Notion page payloads. Prefer create_notion_page, update_notion_page_properties, append_notion_page_content, or replace_notion_page_content when those typed operations fit. Shapes: create={action,body,parent?}; update={action,page_id,body}; update_content={action,page_id,body}. Each operation fresh-reads and verifies.",
+        "Advanced explicit-payload Notion page write. Prefer typed Notion tools when they fit. Supports create, update, and update_content; fresh-read verified.",
       inputSchema: pageInputSchema,
       outputSchema: explicitReceiptOutputSchema,
       annotations: {
@@ -234,7 +234,7 @@ export function registerNotionExplicitWriteTools(
     {
       title: "Write Notion comment",
       description:
-        "Advanced compatibility surface for explicit Notion comment payloads. Prefer add_notion_comment or reply_notion_comment for plain-text comments. This tool creates a page comment or replies to a discussion and verifies the created comment with fresh readback.",
+        "Advanced explicit-payload Notion comment write. Prefer typed comment tools when they fit. Fresh-read verified.",
       inputSchema: commentInputSchema,
       outputSchema: explicitReceiptOutputSchema,
       annotations: {

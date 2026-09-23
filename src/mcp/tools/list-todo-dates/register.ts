@@ -44,7 +44,7 @@ export function registerListTodoDatesTool(
     {
       title: "List Todo dates",
       description:
-        TODO_DOMAIN_BOUNDARY + " List business dates containing Todo entries. Use read_todo_day on an exact date. If has_more, pass next_cursor back as cursor.",
+        TODO_DOMAIN_BOUNDARY + " List dates containing entries; use read_todo_day for a selected date and next_cursor to continue.",
       inputSchema: listTodoDatesInputSchema,
       outputSchema: listTodoDatesOutputSchema,
       annotations: {

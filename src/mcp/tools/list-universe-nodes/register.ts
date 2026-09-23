@@ -43,7 +43,7 @@ type Cursor = { updatedAt: string; id: string };
 export function registerListUniverseNodesTool(server: McpServer, dependencies: ListUniverseNodesToolDependencies): void {
   server.registerTool("list_universe_nodes", {
     title: "List Universe nodes",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Browse the authenticated user's Universe nodes without a text query. Results are compact summaries with stable IDs; use search_universe for text discovery and get_universe_node for the complete content of a selected node.",
+    description: UNIVERSE_DOMAIN_BOUNDARY + " Browse nodes without a text query. Returns compact summaries, stable IDs, and universe_version; use global_search for text discovery and get_universe_node for detail.",
     inputSchema: z.object({ limit: z.number().int().min(1).max(50).default(25).optional().describe("Maximum nodes per page. Defaults to 25."), cursor: cursorSchema.optional() }).strict(),
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

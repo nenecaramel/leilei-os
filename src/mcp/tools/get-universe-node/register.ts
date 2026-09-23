@@ -29,7 +29,7 @@ export type GetUniverseNodeToolDependencies = {
 
 export function registerGetUniverseNodeTool(server: McpServer, dependencies: GetUniverseNodeToolDependencies): void {
   server.registerTool("get_universe_node", {
-    title: "Get one Universe node", description: UNIVERSE_DOMAIN_BOUNDARY + " Read the full authoritative detail of one authenticated Universe node by exact stable ID. Use this after list_universe_nodes, search_universe, or a mutation receipt.", inputSchema: z.object({ id: nodeIdSchema }).strict(), outputSchema,
+    title: "Get one Universe node", description: UNIVERSE_DOMAIN_BOUNDARY + " Read one node by exact ID with full detail and universe_version.", inputSchema: z.object({ id: nodeIdSchema }).strict(), outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ id }) => {
     try {

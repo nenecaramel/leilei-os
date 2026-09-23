@@ -1,15 +1,15 @@
 import { z } from "zod";
 
 export const MCP_CONTENT_AUTHOR_DESCRIPTION =
-  "Author: L = 蕾蕾 / user, G = ChatGPT, C = Claude.";
+  "Author: L=蕾蕾/user, G=ChatGPT, C=Claude.";
 
 export const mcpContentAuthorSchema = z.enum(["L", "G", "C"]);
 
 export const TODO_DOMAIN_BOUNDARY =
-  "Todo is a date-scoped paper of lightweight entries.";
+  "Todo: dated lightweight entries.";
 
 export const DIARY_DOMAIN_BOUNDARY =
-  "Diary stores dated authored journal entries.";
+  "Diary: dated journal entries.";
 
 export const UNIVERSE_DOMAIN_BOUNDARY =
-  "Universe is a graph of concepts, relations, and provenance.";
+  "Universe: concept graph with relations and provenance.";

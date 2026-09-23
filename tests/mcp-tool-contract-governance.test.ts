@@ -87,7 +87,6 @@ test("stable MCP defaults are explicit in tools/list", async () => {
     search_todo: 50,
     list_todo_dates: 50,
     list_universe_nodes: 25,
-    search_universe: 10,
     search_conversations: 20,
     read_conversation: 40,
     list_conversation_exclusions: 50,
@@ -134,15 +133,13 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
 
   const globalSearch = byName.get("global_search");
   assert.ok(globalSearch?.description);
-  assert.match(globalSearch.description, /cross-domain discovery/iu);
-  assert.match(globalSearch.description, /domain is known.*dedicated/iu);
-  assert.match(globalSearch.description, /does not replace domain-specific detail or mutation tools/iu);
+  assert.match(globalSearch.description, /selected LeileiOS domains/iu);
+  assert.match(globalSearch.description, /domain-specific search when the domain is known/iu);
 
   const dedicatedDiscovery = [
     ["search_diary", "get_diary"],
     ["search_todo", "read_todo_day"],
     ["list_universe_nodes", "get_universe_node"],
-    ["search_universe", "get_universe_node"],
     ["search_conversations", "read_conversation"],
   ] as const;
 
@@ -154,15 +151,14 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
 
   const writeTodo = byName.get("replace_todo_paper");
   assert.ok(writeTodo?.description);
+  assert.match(writeTodo.description, /entry tools for single-entry changes/iu);
   for (const entryTool of ["append_todo_entry", "append_todo_entries", "update_todo_entry", "delete_todo_entry"]) {
-    assert.match(writeTodo.description, new RegExp(entryTool, "iu"));
     assert.ok(byName.has(entryTool), `${entryTool} must stay registered`);
   }
-  assert.match(byName.get("append_todo_entry")?.description ?? "", /does not require the paper revision/iu);
+  assert.match(byName.get("append_todo_entry")?.description ?? "", /paper revision is not required/iu);
   assert.match(byName.get("append_todo_entries")?.description ?? "", /atomically/iu);
-  assert.match(byName.get("append_todo_entries")?.description ?? "", /one idempotency_key/iu);
-  assert.match(byName.get("update_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
-  assert.match(byName.get("delete_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
+  assert.match(byName.get("update_todo_entry")?.description ?? "", /other entries are independent/iu);
+  assert.match(byName.get("delete_todo_entry")?.description ?? "", /other entries are independent/iu);
 });
 
 test("domain language disambiguates adjacent model-facing concepts", async () => {
@@ -172,11 +168,11 @@ test("domain language disambiguates adjacent model-facing concepts", async () =>
   const groups = [
     {
       names: ["read_todo_day", "list_todo_dates", "search_todo", "replace_todo_paper", "append_todo_entries", "append_todo_entry", "update_todo_entry", "delete_todo_entry"],
-      pattern: /^Todo is a date-scoped paper of lightweight entries\./iu,
+      pattern: /^Todo: dated lightweight entries\./iu,
     },
     {
       names: ["search_diary", "get_diary", "create_diary", "update_diary"],
-      pattern: /^Diary stores dated authored journal entries\./iu,
+      pattern: /^Diary: dated journal entries\./iu,
     },
   ] as const;
 
@@ -188,10 +184,10 @@ test("domain language disambiguates adjacent model-facing concepts", async () =>
     }
   }
 
-  for (const name of ["list_universe_nodes", "search_universe", "get_universe_node", "get_universe_relations"] as const) {
+  for (const name of ["list_universe_nodes", "get_universe_node", "get_universe_relations"] as const) {
     const tool = byName.get(name);
     assert.ok(tool?.description, `${name} must have a Universe boundary description`);
-    assert.match(tool.description, /^Universe is a graph of concepts, relations, and provenance\./iu);
+    assert.match(tool.description, /^Universe: concept graph with relations and provenance\./iu);
   }
 
   for (const name of [
@@ -205,7 +201,7 @@ test("domain language disambiguates adjacent model-facing concepts", async () =>
   ] as const) {
     const tool = byName.get(name);
     assert.ok(tool?.description, `${name} must have a Universe boundary description`);
-    assert.match(tool.description, /Universe is a graph of concepts, relations, and provenance\./iu);
+    assert.match(tool.description, /Universe: concept graph with relations and provenance\./iu);
   }
 });
 
@@ -328,10 +324,6 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
   for (const name of universeMutationTools) {
     const tool = byName.get(name);
     assert.ok(tool?.description, `${name} must stay registered`);
-    assert.match(
-      tool.description,
-      /^expected_version is the global Universe snapshot version, not an entity revision\./u,
-    );
     assert.match(
       String(property(tool, "expected_version").description ?? ""),
       /not an entity revision/iu,

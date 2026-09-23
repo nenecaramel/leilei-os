@@ -88,7 +88,7 @@ export function registerSearchDiaryTool(
     {
       title: "Search diary entries",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Search by text, exact tag, mood, author, or inclusive date range. Results omit body content; use get_diary for bounded detail. If has_more, pass next_cursor back with the same filters.",
+        DIARY_DOMAIN_BOUNDARY + " Search by text, tag, mood, author, or date range. Results are compact; use get_diary for detail and next_cursor to continue.",
       inputSchema: searchDiaryInputSchema,
       outputSchema: searchDiaryOutputSchema,
       annotations: {

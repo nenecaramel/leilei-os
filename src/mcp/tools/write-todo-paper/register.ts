@@ -69,35 +69,17 @@ export type WriteTodoPaperToolDependencies = {
 };
 
 const REPLACE_TODO_PAPER_DESCRIPTION =
-  TODO_DOMAIN_BOUNDARY + " Replace one complete L/G/C paper using expected_revision from read_todo_day, or null only for a missing paper. Use only for creation or whole-paper reorder/replacement; prefer append_todo_entries, append_todo_entry, update_todo_entry, or delete_todo_entry for entry-level changes. Supply a complete ordered array like {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\".";
+  TODO_DOMAIN_BOUNDARY + " Replace one complete L/G/C paper using expected_revision from read_todo_day, or null when missing. Use for creation, reorder, or full replacement; use entry tools for single-entry changes. entries is the complete ordered paper.";
 
 export function registerReplaceTodoPaperTool(
   server: McpServer,
   dependencies: WriteTodoPaperToolDependencies,
 ): void {
-  registerTodoPaperReplaceTool(server, dependencies, "replace_todo_paper", false);
-}
-
-export function registerWriteTodoPaperTool(
-  server: McpServer,
-  dependencies: WriteTodoPaperToolDependencies,
-): void {
-  registerTodoPaperReplaceTool(server, dependencies, "write_todo_paper", true);
-}
-
-function registerTodoPaperReplaceTool(
-  server: McpServer,
-  dependencies: WriteTodoPaperToolDependencies,
-  toolName: "replace_todo_paper" | "write_todo_paper",
-  deprecated: boolean,
-): void {
   server.registerTool(
-    toolName,
+    "replace_todo_paper",
     {
-      title: deprecated ? "Deprecated: replace Todo paper" : "Replace one Todo paper",
-      description: deprecated
-        ? "DEPRECATED: use replace_todo_paper. " + REPLACE_TODO_PAPER_DESCRIPTION
-        : REPLACE_TODO_PAPER_DESCRIPTION,
+      title: "Replace one Todo paper",
+      description: REPLACE_TODO_PAPER_DESCRIPTION,
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {

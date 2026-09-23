@@ -80,7 +80,7 @@ export function registerGetDiaryTool(
     {
       title: "Get one diary entry",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Read one exact ID with bounded authoritative content. max_chars defaults to 12000 code points; if truncated, continue with next_cursor and the same id/scope. The cursor expires when Diary changes. Comments are separate via list_diary_comments.",
+        DIARY_DOMAIN_BOUNDARY + " Read one exact entry with bounded content. Continue with next_cursor when truncated; comments are separate via list_diary_comments.",
       inputSchema: getDiaryInputSchema,
       outputSchema: getDiaryOutputSchema,
       annotations: {

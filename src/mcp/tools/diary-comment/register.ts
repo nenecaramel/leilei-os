@@ -175,7 +175,7 @@ export function registerDiaryCommentTools(
     {
       title: "Add a Diary comment",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Create one independent canonical comment on an active Diary entry. The comment does not modify Diary content, Diary author, Diary updated_at, or Diary ordering. Author is immutable after creation. Supply a stable idempotency key; if the outcome is uncertain, read back before retrying.",
+        DIARY_DOMAIN_BOUNDARY + " Add an independent comment to an active entry. Author is immutable; the parent Diary is unchanged.",
       inputSchema: addInputSchema,
       outputSchema: addOutputSchema,
       annotations: {
@@ -238,7 +238,7 @@ export function registerDiaryCommentTools(
     {
       title: "Get one Diary comment",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Read one canonical Diary comment by exact id. scope defaults to active and must match the lifecycle state of the parent Diary.",
+        DIARY_DOMAIN_BOUNDARY + " Read one comment by exact id. scope follows the parent Diary lifecycle.",
       inputSchema: getInputSchema,
       outputSchema: getOutputSchema,
       annotations: {
@@ -279,7 +279,7 @@ export function registerDiaryCommentTools(
     {
       title: "List Diary comments",
       description:
-        DIARY_DOMAIN_BOUNDARY + " List canonical comments attached to one Diary entry. The page is returned in chronological reading order. Use metadata.next_before to load older comments. scope defaults to active.",
+        DIARY_DOMAIN_BOUNDARY + " List comments for one Diary entry in reading order; use next_before for older comments.",
       inputSchema: listInputSchema,
       outputSchema: listOutputSchema,
       annotations: {
@@ -334,7 +334,7 @@ export function registerDiaryCommentTools(
     {
       title: "Update one Diary comment",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Replace the content of one comment on an active Diary without changing its immutable author. Requires the exact current revision. On a conflict or uncertain outcome, call get_diary_comment before deciding whether to retry.",
+        DIARY_DOMAIN_BOUNDARY + " Replace one active comment's content using its current revision; author stays unchanged.",
       inputSchema: updateInputSchema,
       outputSchema: updateOutputSchema,
       annotations: {
@@ -386,7 +386,7 @@ export function registerDiaryCommentTools(
     {
       title: "Delete one Diary comment",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Permanently delete one comment from an active Diary. This does not modify or delete the Diary itself. Requires the exact current revision. On an uncertain outcome, read back with get_diary_comment before deciding whether to retry.",
+        DIARY_DOMAIN_BOUNDARY + " Permanently delete one active comment using its current revision; the Diary remains.",
       inputSchema: deleteInputSchema,
       outputSchema: deleteOutputSchema,
       annotations: {

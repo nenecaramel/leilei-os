@@ -143,7 +143,6 @@ test("default production public surface stays compact and reports final inventor
     "search_conversations",
     "search_diary",
     "search_todo",
-    "search_universe",
     "toy_set",
     "toy_stop",
     "update_diary",
@@ -158,15 +157,21 @@ test("default production public surface stays compact and reports final inventor
     expectedPublicNames,
     "default public inventory must stay exact",
   );
-  assert.equal(tools.length, 38);
+  assert.equal(tools.length, 37);
   assert.ok(
     tools.length < fullTools.length,
     "default public surface must be smaller than internal full",
   );
   for (const tool of tools) {
     assert.ok(
-      (tool.description?.length ?? 0) <= 700,
-      `${tool.name} description must stay at or below 700 chars`,
+      (tool.description?.length ?? 0) <= 300,
+      `${tool.name} description must stay at or below 300 chars`,
+    );
+  }
+  for (const tool of fullTools) {
+    assert.ok(
+      (tool.description?.length ?? 0) <= 300,
+      `${tool.name} full-profile description must stay at or below 300 chars`,
     );
   }
 
@@ -203,12 +208,18 @@ test("default production public surface stays compact and reports final inventor
     "restore_diary",
     "permanently_delete_diary",
     "delete_diary",
+    "search_universe",
+    "write_diary",
+    "write_todo_paper",
+    "render_working_note",
+    "render_thinking_block",
   ]) {
     assert.equal(fullNames.has(retired), false, `retired MCP tool must be absent even from full: ${retired}`);
   }
 
   const names = new Set(tools.map((tool) => tool.name));
   for (const hidden of [
+    "render_note_card",
     "render_working_note",
     "render_thinking_block",
     "write_memory",
@@ -250,7 +261,7 @@ test("common user intents keep short model-facing tool paths", async () => {
     { name: "append_20_todo_entries", calls: ["append_todo_entries"] },
     { name: "find_and_read_diary", calls: ["search_diary", "get_diary"] },
     { name: "find_and_read_conversation", calls: ["search_conversations", "read_conversation"] },
-    { name: "find_and_read_universe", calls: ["search_universe", "get_universe_node"] },
+    { name: "find_and_read_universe", calls: ["global_search", "get_universe_node"] },
     { name: "create_diary", calls: ["create_diary"] },
   ] as const;
 

@@ -28,7 +28,7 @@ export type AddUniverseDiarySourceToolDependencies = {
 export function registerAddUniverseDiarySourceTool(server: McpServer, dependencies: AddUniverseDiarySourceToolDependencies): void {
   server.registerTool("add_universe_diary_source", {
     title: "Add a Universe Diary source",
-    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Attach one active/archived Diary as node provenance. Non-idempotent; on uncertain outcome, fresh-read sources and Universe version; never blindly retry.",
+    description: UNIVERSE_DOMAIN_BOUNDARY + " Attach one active or archived Diary as node provenance.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },

@@ -18,7 +18,7 @@ import {
 } from "../src/mcp/tools/read-todo-day/register.js";
 import { registerListTodoDatesTool } from "../src/mcp/tools/list-todo-dates/register.js";
 import {
-  registerWriteTodoPaperTool,
+  registerReplaceTodoPaperTool,
   WriteTodoPaperAuthenticationError,
 } from "../src/mcp/tools/write-todo-paper/register.js";
 import {
@@ -159,7 +159,7 @@ async function connectWriteImplementation(input?: {
     return USER_ID;
   });
   const server = new McpServer({ name: "todo-write-tool-test", version: "1.0.0" });
-  registerWriteTodoPaperTool(server, {
+  registerReplaceTodoPaperTool(server, {
     todoService: todo as never,
     getAuthenticatedUserId,
   });
@@ -368,7 +368,7 @@ test("Todo read tools reject invalid dates before repository reads and sanitize 
   assert.equal(authResponse.isError, true);
 });
 
-test("write_todo_paper delegates normalized identity-free input and returns exact metadata", async (t) => {
+test("replace_todo_paper delegates normalized identity-free input and returns exact metadata", async (t) => {
   const fixture = await connectWriteImplementation();
   t.after(async () => {
     await fixture.client.close();
@@ -376,7 +376,7 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
   });
 
   const response = await fixture.client.callTool({
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: DATE,
       author: "L",
@@ -408,7 +408,7 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
   assert.equal(fixture.authCalls(), 1);
 });
 
-test("write_todo_paper accepts C and rejects Claude before service mutation", async (t) => {
+test("replace_todo_paper accepts C and rejects Claude before service mutation", async (t) => {
   const fixture = await connectWriteImplementation();
   t.after(async () => {
     await fixture.client.close();
@@ -416,7 +416,7 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
   });
 
   const cWrite = await fixture.client.callTool({
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: C_PAPER.date,
       author: "C",
@@ -427,7 +427,7 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
   });
   assert.equal(cWrite.isError, undefined);
   const invalid = await fixture.client.callTool({
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: C_PAPER.date,
       author: "Claude",
@@ -447,7 +447,7 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
   }]);
 });
 
-test("write_todo_paper strict schema rejects omissions and identity before authentication", async (t) => {
+test("replace_todo_paper strict schema rejects omissions and identity before authentication", async (t) => {
   const fixture = await connectWriteImplementation();
   t.after(async () => {
     await fixture.client.close();
@@ -474,7 +474,7 @@ test("write_todo_paper strict schema rejects omissions and identity before authe
     },
   ]) {
     const response = await fixture.client.callTool({
-      name: "write_todo_paper",
+      name: "replace_todo_paper",
       arguments: argumentsValue,
     });
     assert.equal(response.isError, true);
@@ -483,9 +483,9 @@ test("write_todo_paper strict schema rejects omissions and identity before authe
   assert.equal((fixture.todo as TodoToolService).writeCalls.length, 0);
 });
 
-test("write_todo_paper distinguishes bounded conflicts and sanitizes internal failures", async (t) => {
+test("replace_todo_paper distinguishes bounded conflicts and sanitizes internal failures", async (t) => {
   const call = {
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: DATE,
       author: "L",
@@ -558,7 +558,7 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
-    ["append_todo_entries", "append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "replace_todo_paper", "search_todo", "update_todo_entry", "write_todo_paper"],
+    ["append_todo_entries", "append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "replace_todo_paper", "search_todo", "update_todo_entry"],
   );
   for (const forbidden of [
     "get_day_space",
@@ -589,7 +589,7 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   const dates = tools.find((tool) => tool.name === "list_todo_dates");
   assert.deepEqual(Object.keys(dates?.inputSchema.properties ?? {}).sort(), ["cursor", "limit"]);
 
-  const write = tools.find((tool) => tool.name === "write_todo_paper");
+  const write = tools.find((tool) => tool.name === "replace_todo_paper");
   assert.ok(write);
   assert.deepEqual(write.annotations, {
     readOnlyHint: false,
@@ -605,10 +605,10 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
     Object.keys(write.inputSchema.properties ?? {}).sort(),
     ["date", "author", "expected_revision", "entries", "idempotency_key"].sort(),
   );
-  assert.match(write.description ?? "", /complete ordered array/i);
-  assert.match(write.description ?? "", /\{"id":"todo-1","kind":"pending","text":"\.\.\."\}/);
-  assert.match(write.description ?? "", /kind must be exactly one of "pending", "completed", or "record"/);
-  assert.doesNotMatch(write.description ?? "", /"kind":"pending\|completed\|record"/);
+  assert.match(write.description ?? "", /expected_revision.*read_todo_day/i);
+  assert.match(write.description ?? "", /creation.*reorder.*full replacement/i);
+  assert.match(write.description ?? "", /entry tools.*single-entry changes/i);
+  assert.match(write.description ?? "", /complete ordered paper/i);
 
   const append = tools.find((tool) => tool.name === "append_todo_entry");
   assert.ok(append);
@@ -617,14 +617,15 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
     ["date", "author", "kind", "text", "idempotency_key"].sort(),
   );
   assert.equal("revision" in (append.inputSchema.properties ?? {}), false);
-  assert.match(append.description ?? "", /server creates the entry id/i);
-  assert.match(append.description ?? "", /does not require the paper revision/i);
+  assert.match(append.description ?? "", /server creates.*id.*revision/i);
+  assert.match(append.description ?? "", /paper revision.*not required/i);
 
   const updateEntry = tools.find((tool) => tool.name === "update_todo_entry");
   assert.ok(updateEntry);
   assert.ok(updateEntry.inputSchema.properties?.expected_revision);
   assert.ok(updateEntry.inputSchema.properties?.entry_id);
-  assert.match(updateEntry.description ?? "", /only that entry revision is compared/i);
+  assert.match(updateEntry.description ?? "", /entry_id.*expected_revision/i);
+  assert.match(updateEntry.description ?? "", /other entries.*independent/i);
 
   const deleteEntry = tools.find((tool) => tool.name === "delete_todo_entry");
   assert.ok(deleteEntry);
@@ -665,7 +666,7 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
   });
 
   const write = await fixture.client.callTool({
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: DATE,
       author: "L",
@@ -710,7 +711,7 @@ test("Todo tool schemas reject identity injection before authentication or servi
     { name: "read_todo_day", arguments: { date: DATE, user_id: "attacker" } },
     { name: "list_todo_dates", arguments: { userId: "attacker" } },
     {
-      name: "write_todo_paper",
+      name: "replace_todo_paper",
       arguments: {
         date: DATE,
         author: "L",
@@ -721,7 +722,7 @@ test("Todo tool schemas reject identity injection before authentication or servi
       },
     },
     {
-      name: "write_todo_paper",
+      name: "replace_todo_paper",
       arguments: {
         date: DATE,
         author: "L",

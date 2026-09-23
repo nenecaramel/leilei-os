@@ -697,7 +697,6 @@ test("Universe read errors expose a machine-readable envelope", async (t) => {
       universeService: {
         async loadUniverse() { throw new UniverseServiceError("NODE_NOT_FOUND"); },
       },
-      globalSearchService: { async search() { throw new Error("not used"); } },
       getAuthenticatedUserId: () => "user-1",
     },
   });

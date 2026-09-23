@@ -124,7 +124,7 @@ export function registerSentinelTools(
 ): void {
   server.registerTool("sentinel_get_state", {
     title: "Read Sentinel wake state",
-    description: "Read fresh owner-scoped Sentinel policy and wake state after claiming a wake. The authenticated session owns the wake; do not provide a user identity.",
+    description: "Read fresh policy and state for one claimed Sentinel wake owned by the session.",
     inputSchema: z.object({ wakeId: wakeIdSchema }).strict(),
     outputSchema: stateOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -151,7 +151,7 @@ export function registerSentinelTools(
 
   server.registerTool("sentinel_claim_current_wake", {
     title: "Claim the current Sentinel wake",
-    description: "Claim the authenticated owner's current active Sentinel wake using its server-owned active wake pointer and return a fresh policy/wake state from the same transaction. No wake identity is accepted or inferred from historical wakes; illegal or absent active state fails closed.",
+    description: "Claim the session owner's current active Sentinel wake and return fresh state atomically. Fails closed when no eligible wake exists.",
     inputSchema: z.object({}).strict(),
     outputSchema: claimOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -191,7 +191,7 @@ export function registerSentinelTools(
 
   server.registerTool("complete_sentinel_wake", {
     title: "Complete Sentinel wake",
-    description: "Finalize one claimed Sentinel wake atomically. Choose contact or quiet, provide exactly one valid next wake, and replace the bounded context capsule (use an empty string to clear it). A successful quiet decision emits only 醒了一下，没事。; do not blindly retry uncertain outcomes.",
+    description: "Finalize one claimed Sentinel wake with contact or quiet, the next wake time, and a replacement context capsule. quiet emits 醒了一下，没事。",
     inputSchema: completeInputSchema,
     outputSchema: completeOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

@@ -210,7 +210,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Create Notion page",
       description:
-        "Create one Notion page without raw provider JSON. Supply a typed parent, title, optional title_property, and optional typed properties. For page content, call append_notion_page_content or replace_notion_page_content after creation. The write is fresh-read and verified.",
+        "Create a Notion page from typed parent, title, and properties. Add body content separately. Fresh-read verified.",
       inputSchema: createPageInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -242,7 +242,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Update Notion page properties",
       description:
-        "Update selected Notion page properties using typed values instead of raw Notion JSON. Supported property types: title, rich_text, number, checkbox, date, select, multi_select, status, url, email, phone_number, and relation. The write is fresh-read and verified.",
+        "Update selected Notion page properties with typed values. Fresh-read verified.",
       inputSchema: updatePropertiesInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -265,7 +265,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Append Notion page content",
       description:
-        "Append enhanced Markdown content to one exact Notion page. Supply page_id and markdown only; raw Notion block JSON is not required. The write is fresh-read and verified.",
+        "Append Markdown content to one exact Notion page. Fresh-read verified.",
       inputSchema: pageContentInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -289,7 +289,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Replace Notion page content",
       description:
-        "Replace the complete enhanced-Markdown body of one exact Notion page. This is destructive to the existing page body; use append_notion_page_content when preserving current content. The write is fresh-read and verified.",
+        "Replace the complete Markdown body of one exact Notion page. Use append_notion_page_content to preserve existing content. Fresh-read verified.",
       inputSchema: pageContentInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: {
@@ -316,7 +316,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Add Notion comment",
       description:
-        "Add one plain-text comment to an exact Notion page without constructing raw rich_text JSON. The comment is fresh-read and verified after creation.",
+        "Add one plain-text comment to an exact Notion page. Fresh-read verified.",
       inputSchema: addCommentInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -339,7 +339,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Reply to Notion comment discussion",
       description:
-        "Reply with plain text to one existing Notion discussion on an exact page. Supply page_id, discussion_id, and text; raw rich_text JSON is not required. The reply is fresh-read and verified.",
+        "Reply with plain text to one Notion discussion. Fresh-read verified.",
       inputSchema: replyCommentInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,

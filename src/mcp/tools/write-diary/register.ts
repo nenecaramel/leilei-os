@@ -74,29 +74,11 @@ export function registerCreateDiaryTool(
   server: McpServer,
   dependencies: WriteDiaryToolDependencies,
 ): void {
-  registerDiaryCreateTool(server, dependencies, "create_diary", false);
-}
-
-export function registerWriteDiaryTool(
-  server: McpServer,
-  dependencies: WriteDiaryToolDependencies,
-): void {
-  registerDiaryCreateTool(server, dependencies, "write_diary", true);
-}
-
-function registerDiaryCreateTool(
-  server: McpServer,
-  dependencies: WriteDiaryToolDependencies,
-  toolName: "create_diary" | "write_diary",
-  deprecated: boolean,
-): void {
   server.registerTool(
-    toolName,
+    "create_diary",
     {
-      title: deprecated ? "Deprecated: create Diary" : "Create a personal diary entry",
-      description: deprecated
-        ? "DEPRECATED: use create_diary. " + CREATE_DIARY_DESCRIPTION
-        : CREATE_DIARY_DESCRIPTION,
+      title: "Create a personal diary entry",
+      description: CREATE_DIARY_DESCRIPTION,
       inputSchema: writeDiaryInputSchema,
       outputSchema: writeDiaryOutputSchema,
       annotations: {

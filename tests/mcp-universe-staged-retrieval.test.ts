@@ -55,7 +55,7 @@ async function connect() {
     async search() { return { results: [], metadata: { count: 0, limit: 10, has_more: false, next_cursor: null } }; },
   };
   const server = createMcpServer({
-    universeTools: { universeService: service as never, globalSearchService: service, getAuthenticatedUserId: () => USER_ID },
+    universeTools: { universeService: service as never, getAuthenticatedUserId: () => USER_ID },
   });
   const client = new Client({ name: "universe-staged-retrieval", version: "1" }, { capabilities: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

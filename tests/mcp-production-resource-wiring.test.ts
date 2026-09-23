@@ -89,12 +89,17 @@ test("production public surface exposes canonical Conversation reads and no reti
     "delete_conversation_item",
     "restore_conversation_item",
     "permanently_delete_conversation_item",
+    "search_universe",
+    "write_diary",
+    "write_todo_paper",
+    "render_working_note",
+    "render_thinking_block",
   ]) {
     assert.equal(names.includes(retired), false, `${retired} must stay retired`);
   }
 
   for (const hidden of [
-    "render_working_note",
+    "render_note_card",
     "sentinel_get_state",
     "bridge_listener_open",
     "list_conversation_exclusions",
@@ -114,7 +119,7 @@ test("production internal full exposes maintenance/runtime profiles without revi
   const names = await listTools(createSessionServer("user-1", "internal"), "mcp-production-internal");
 
   for (const required of [
-    "render_working_note",
+    "render_note_card",
     "sentinel_get_state",
     "bridge_listener_open",
     "list_conversation_exclusions",
@@ -135,6 +140,11 @@ test("production internal full exposes maintenance/runtime profiles without revi
     "delete_diary",
     "archive_conversation",
     "permanently_delete_conversation_item",
+    "search_universe",
+    "write_diary",
+    "write_todo_paper",
+    "render_working_note",
+    "render_thinking_block",
   ]) {
     assert.equal(names.includes(retired), false, `internal full must not revive ${retired}`);
   }
