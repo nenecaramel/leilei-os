@@ -8,6 +8,7 @@ import {
 import { DiaryReadAuthenticationError } from "../search-diary/register.js";
 import {
   createMcpToolError,
+  mcpErrorRecoveryHint,
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
@@ -131,17 +132,27 @@ export function registerGetDiaryTool(
           },
         };
       } catch (error) {
-        return toSafeGetDiaryError(error);
+        return toSafeGetDiaryError(error, { id, scope });
       }
     },
   );
 }
 
-function toSafeGetDiaryError(error: unknown) {
+function toSafeGetDiaryError(
+  error: unknown,
+  context?: { id: string; scope: "active" | "archived" },
+) {
   if (error instanceof McpBoundedReadCursorError) {
     return createMcpToolError(
       "INVALID_CURSOR",
       "The Diary continuation cursor is invalid or stale. Read the Diary again without a cursor.",
+      "The Diary continuation cursor is invalid or stale. Read the Diary again without a cursor.",
+      mcpErrorRecoveryHint({
+        retryable: false,
+        reason: "invalid_cursor",
+        recommendedTool: context ? "get_diary" : null,
+        recommendedArguments: context,
+      }),
     );
   }
 
