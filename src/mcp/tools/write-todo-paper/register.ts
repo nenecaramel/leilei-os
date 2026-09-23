@@ -1,11 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
-  MCP_IDEMPOTENCY_KEY_MAX_LENGTH,
-  MCP_IDEMPOTENCY_KEY_MIN_LENGTH,
-  MCP_IDEMPOTENCY_KEY_PATTERN,
-} from "../../../domains/mcp-write/mcp-write-idempotency.js";
-import {
   TodoServiceError,
   type ReplaceTodoPaperIdempotentlyServiceResult,
 } from "../../../domains/todo/todo-service.js";
@@ -13,6 +8,7 @@ import { invokeMcpWrite } from "../write-context.js";
 import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { formatMcpDetailPointer, joinMcpContentLines } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
+import { mcpExpectedNullableRevisionSchema, mcpIdempotencyKeySchema } from "../idempotency-contract.js";
 
 const todoEntryInputSchema = z.object({
   id: z.string(),
@@ -40,12 +36,9 @@ const todoPaperSchema = z.object({
 const writeTodoPaperInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   author: todoAuthorSchema,
-  revision: z.number().int().min(0).nullable(),
+  expected_revision: mcpExpectedNullableRevisionSchema,
   entries: z.array(todoEntryInputSchema),
-  idempotency_key: z.string()
-    .min(MCP_IDEMPOTENCY_KEY_MIN_LENGTH)
-    .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
-    .regex(MCP_IDEMPOTENCY_KEY_PATTERN),
+  idempotency_key: mcpIdempotencyKeySchema,
 }).strict();
 
 const writeTodoPaperDataSchema = z.object({
@@ -84,7 +77,7 @@ export function registerWriteTodoPaperTool(
     {
       title: "Save one Todo paper",
       description:
-        "Replace one complete L, G, or C Todo paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding multiple entries in one user intent, prefer append_todo_entries; for one entry, prefer append_todo_entry; for editing, completing, or deleting one existing entry, prefer update_todo_entry or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, the exact current paper revision returned by read_todo_day (or null only when creating a missing paper), and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
+        "Replace one complete L, G, or C Todo paper. Use expected_revision from read_todo_day as the paper concurrency precondition, or null only when creating a missing paper. Use this for initial whole-paper creation or intentional whole-paper reorder/replacement. For adding multiple entries in one user intent, prefer append_todo_entries; for one entry, prefer append_todo_entry; for editing, completing, or deleting one existing entry, prefer update_todo_entry or delete_todo_entry so unrelated concurrent entries are not overwritten. Supply an exact YYYY-MM-DD date, the logical author, and a complete ordered array where every item is {\"id\":\"todo-1\",\"kind\":\"pending\",\"text\":\"...\"}. kind must be exactly one of \"pending\", \"completed\", or \"record\". The authenticated user is assigned by the server.",
       inputSchema: writeTodoPaperInputSchema,
       outputSchema: writeTodoPaperOutputSchema,
       annotations: {
@@ -94,7 +87,7 @@ export function registerWriteTodoPaperTool(
         openWorldHint: false,
       },
     },
-    async ({ date, author, revision, entries, idempotency_key }) =>
+    async ({ date, author, expected_revision, entries, idempotency_key }) =>
       invokeMcpWrite({
         toolName: "write_todo_paper",
         getAuthenticatedUserId: dependencies.getAuthenticatedUserId,
@@ -103,7 +96,7 @@ export function registerWriteTodoPaperTool(
             userId,
             date,
             author,
-            revision,
+            revision: expected_revision,
             entries,
             idempotencyKey: idempotency_key,
           });
