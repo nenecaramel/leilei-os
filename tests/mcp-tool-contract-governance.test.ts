@@ -156,6 +156,94 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
   assert.match(byName.get("delete_todo_entry")?.description ?? "", /only that entry revision is compared/iu);
 });
 
+test("mutation preconditions and idempotency use one model-facing vocabulary", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+  const revisionedTools = [
+    "write_todo_paper",
+    "update_todo_entry",
+    "delete_todo_entry",
+    "edit_shared_paper",
+    "append_shared_paper",
+    "update_diary_comment",
+    "delete_diary_comment",
+  ] as const;
+
+  for (const name of revisionedTools) {
+    const tool = byName.get(name);
+    assert.ok(tool, `${name} must stay registered`);
+    assert.ok(property(tool, "expected_revision"));
+    if (name === "write_todo_paper") {
+      assert.equal(
+        "revision" in ((tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}),
+        false,
+        "write_todo_paper must expose expected_revision, not revision, as its concurrency precondition",
+      );
+    }
+  }
+
+  const idempotentTools = [
+    "write_memory",
+    "write_diary",
+    "create_task",
+    "write_todo_paper",
+    "append_todo_entries",
+    "append_todo_entry",
+    "update_todo_entry",
+    "delete_todo_entry",
+    "create_shared_paper",
+    "edit_shared_paper",
+    "append_shared_paper",
+    "archive_shared_paper",
+    "restore_shared_paper",
+    "delete_shared_paper",
+    "add_diary_comment",
+    "create_universe_node",
+    "create_universe_relation",
+  ] as const;
+
+  for (const name of idempotentTools) {
+    const tool = byName.get(name);
+    assert.ok(tool, `${name} must stay registered`);
+    const key = property(tool, "idempotency_key");
+    assert.match(String(key.description ?? ""), /one logical mutation/iu);
+    assert.match(String(key.description ?? ""), /exact same request/iu);
+    assert.ok(
+      (tool.inputSchema.required ?? []).includes("idempotency_key"),
+      `${name} must keep explicit idempotency_key until the host exposes a durable logical-mutation id`,
+    );
+  }
+
+  const universeMutationTools = [
+    "create_universe_node",
+    "update_universe_node",
+    "create_universe_relation",
+    "update_universe_relation",
+    "delete_universe_relation",
+    "add_universe_diary_source",
+    "delete_universe_diary_source",
+  ] as const;
+
+  for (const name of universeMutationTools) {
+    const tool = byName.get(name);
+    assert.ok(tool?.description, `${name} must stay registered`);
+    assert.match(
+      tool.description,
+      /^expected_version is the global Universe snapshot version, not an entity revision\./u,
+    );
+    assert.match(
+      String(property(tool, "expected_version").description ?? ""),
+      /not an entity revision/iu,
+    );
+    assert.equal(
+      "expected_revision" in ((tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}),
+      false,
+      `${name} must retain expected_version because its precondition is global, not entity-local`,
+    );
+  }
+});
+
 test("large detail reads expose one bounded continuation contract", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
