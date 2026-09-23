@@ -28,7 +28,7 @@ export type DeleteUniverseDiarySourceToolDependencies = {
 export function registerDeleteUniverseDiarySourceTool(server: McpServer, dependencies: DeleteUniverseDiarySourceToolDependencies): void {
   server.registerTool("delete_universe_diary_source", {
     title: "Delete a Universe Diary source",
-    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Remove exactly one Diary provenance binding from an authenticated Universe node; the Diary itself is never deleted. This is a destructive, non-idempotent mutation. If the transport outcome is uncertain, fresh-read the node's sources and Universe version before deciding whether another mutation is needed; never blindly retry.",
+    description: "expected_version is the global Universe snapshot version, not an entity revision. " + UNIVERSE_DOMAIN_BOUNDARY + " Remove one Diary provenance binding; never delete the Diary itself. Destructive and non-idempotent; on uncertain outcome, fresh-read sources and Universe version before retrying.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
