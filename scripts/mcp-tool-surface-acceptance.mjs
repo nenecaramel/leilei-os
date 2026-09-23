@@ -13,6 +13,7 @@ const steps = [
   ["revision / idempotency", ["test:mcp-revision-idempotency"]],
   ["domain / enum semantics", ["test:mcp-domain-semantics"]],
   ["naming / deprecation", ["test:mcp-naming-deprecation"]],
+  ["UI working note", ["test:mcp-ui-working-note"]],
   ["tool surface", ["test:mcp-tool-surface"]],
   ["native live minimal", ["test:native-live-minimal"]],
 ];
