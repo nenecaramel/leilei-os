@@ -25,8 +25,12 @@ export type NativeLiveBackgroundModelReservation = {
   command: NativeLiveBackgroundModelCommand;
 };
 
+export type NativeLiveBackgroundModelWorkflowKind =
+  | "topic_resurface"
+  | "distillation";
+
 export type NativeLiveBackgroundModelWorkflow = {
-  kind: "topic_resurface";
+  kind: NativeLiveBackgroundModelWorkflowKind;
   runId: string;
   payload: Record<string, unknown>;
 };
@@ -359,11 +363,14 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       userId: row.userId,
       subjectId: row.subjectId,
       workflow:
-        row.workflowKind === "topic_resurface"
+        (
+          row.workflowKind === "topic_resurface"
+          || row.workflowKind === "distillation"
+        )
         && row.workflowRunId
         && row.workflowPayload
           ? {
-              kind: "topic_resurface",
+              kind: row.workflowKind,
               runId: row.workflowRunId,
               payload: row.workflowPayload,
             }
@@ -418,8 +425,10 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       : null;
   }
 
-  async findNextUnconsumedTerminal(input: {
+  async findOpenDistillation(input: {
     userId: string;
+    subjectId: string;
+    conversationId: string;
   }): Promise<NativeLiveBackgroundModelJob | null> {
     const [row] = await this.db
       .select({ id: nativeLiveBackgroundModelJobs.id })
@@ -427,7 +436,47 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       .where(
         and(
           eq(nativeLiveBackgroundModelJobs.userId, input.userId),
-          eq(nativeLiveBackgroundModelJobs.workflowKind, "topic_resurface"),
+          eq(nativeLiveBackgroundModelJobs.subjectId, input.subjectId),
+          eq(nativeLiveBackgroundModelJobs.workflowKind, "distillation"),
+          sql`${nativeLiveBackgroundModelJobs.workflowPayload}
+            ->> 'conversation_id' = ${input.conversationId}`,
+          or(
+            eq(nativeLiveBackgroundModelJobs.status, "pending"),
+            eq(nativeLiveBackgroundModelJobs.status, "reserved"),
+            and(
+              or(
+                eq(nativeLiveBackgroundModelJobs.status, "completed"),
+                eq(nativeLiveBackgroundModelJobs.status, "failed"),
+              ),
+              isNull(nativeLiveBackgroundModelJobs.consumedAt),
+            ),
+          ),
+        ),
+      )
+      .orderBy(
+        asc(nativeLiveBackgroundModelJobs.createdAt),
+        asc(nativeLiveBackgroundModelJobs.id),
+      )
+      .limit(1);
+    return row
+      ? this.get({ userId: input.userId, taskId: row.id })
+      : null;
+  }
+
+  async findNextUnconsumedTerminalForWorkflow(input: {
+    userId: string;
+    workflowKind: NativeLiveBackgroundModelWorkflowKind;
+  }): Promise<NativeLiveBackgroundModelJob | null> {
+    const [row] = await this.db
+      .select({ id: nativeLiveBackgroundModelJobs.id })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(
+        and(
+          eq(nativeLiveBackgroundModelJobs.userId, input.userId),
+          eq(
+            nativeLiveBackgroundModelJobs.workflowKind,
+            input.workflowKind,
+          ),
           isNull(nativeLiveBackgroundModelJobs.consumedAt),
           or(
             eq(nativeLiveBackgroundModelJobs.status, "completed"),
@@ -443,6 +492,15 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
     return row
       ? this.get({ userId: input.userId, taskId: row.id })
       : null;
+  }
+
+  findNextUnconsumedTerminal(input: {
+    userId: string;
+  }): Promise<NativeLiveBackgroundModelJob | null> {
+    return this.findNextUnconsumedTerminalForWorkflow({
+      ...input,
+      workflowKind: "topic_resurface",
+    });
   }
 
   async markConsumed(input: {
@@ -503,6 +561,21 @@ export class NativeLiveBackgroundModelQueueService {
     subjectId: string;
   }): Promise<NativeLiveBackgroundModelJob | null> {
     return this.repository.findOpenTopicResurface(input);
+  }
+
+  findOpenDistillation(input: {
+    userId: string;
+    subjectId: string;
+    conversationId: string;
+  }): Promise<NativeLiveBackgroundModelJob | null> {
+    return this.repository.findOpenDistillation(input);
+  }
+
+  findNextUnconsumedTerminalForWorkflow(input: {
+    userId: string;
+    workflowKind: NativeLiveBackgroundModelWorkflowKind;
+  }): Promise<NativeLiveBackgroundModelJob | null> {
+    return this.repository.findNextUnconsumedTerminalForWorkflow(input);
   }
 
   findNextUnconsumedTerminal(input: {

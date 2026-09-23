@@ -126,3 +126,45 @@ test("Mac background executor maps Claude runtime failure without fabricating mo
     error_code: "ABORTED",
   });
 });
+
+
+test("Mac background executor runs Distillation through the same pure-model queue contract", async () => {
+  const distillationTaskId =
+    "22222222-2222-4222-8222-222222222222";
+  const prompts: string[] = [];
+  const executor = new NativeLiveMacBackgroundModelExecutor({
+    async sendNew(prompt: string) {
+      prompts.push(prompt);
+      return {
+        providerSessionId: "provider-private",
+        normalizedEvents: [{
+          type: "result" as const,
+          payload: {
+            status: "success",
+            final_text:
+              '{"memories":[{"text":"我记得这次跨设备沉淀闭环。"}]}',
+          },
+        }],
+      };
+    },
+  });
+
+  assert.deepEqual(
+    await executor.execute({
+      protocol_version: 1,
+      task_id: distillationTaskId,
+      task_kind: "distillation",
+      prompt_contract_version: "distill-prompt-v1",
+      prompt: "distill settled transcript",
+    }),
+    {
+      protocol_version: 1,
+      task_id: distillationTaskId,
+      task_kind: "distillation",
+      status: "success",
+      final_text:
+        '{"memories":[{"text":"我记得这次跨设备沉淀闭环。"}]}',
+    },
+  );
+  assert.deepEqual(prompts, ["distill settled transcript"]);
+});

@@ -55,6 +55,7 @@ import {
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export const DEFAULT_NATIVE_LIVE_SUBJECT_ID = "G";
+export const DEFAULT_NATIVE_LIVE_SURFACE_LIMIT = 8;
 
 export const DEFAULT_DRIVE_EVOLUTION_POLICY: DriveEvolutionPolicy = {
   basePressure: 0.4,
@@ -106,7 +107,7 @@ export function createDefaultBackendMindRuntime(
       promptContractVersion: "prompt-v1",
       ruleVersion: "mind-v1",
       processVersion: "subject-write-v1",
-      surfaceLimit: 8,
+      surfaceLimit: DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
       breathLimit: 4,
       breathCooldownHours: 0,
       breathSalienceWeight: 0,

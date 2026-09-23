@@ -1634,11 +1634,22 @@ export const nativeLiveBackgroundModelJobs = pgTable(
         AND ${table.workflowRunId} IS NOT NULL
         AND ${table.workflowPayload} IS NOT NULL
         AND jsonb_typeof(${table.workflowPayload}) = 'object'
+        AND ${table.taskKind} IN (
+          'topic_resurface_evaluate',
+          'topic_resurface_deliberate',
+          'topic_resurface_retention'
+        )
+      ) OR (
+        ${table.workflowKind} = 'distillation'
+        AND ${table.workflowRunId} IS NOT NULL
+        AND ${table.workflowPayload} IS NOT NULL
+        AND jsonb_typeof(${table.workflowPayload}) = 'object'
+        AND ${table.taskKind} = 'distillation'
       )`,
     ),
     check(
       "native_live_background_model_jobs_task_kind_allowed",
-      sql`${table.taskKind} IN ('topic_resurface_evaluate', 'topic_resurface_deliberate', 'topic_resurface_retention')`,
+      sql`${table.taskKind} IN ('distillation', 'topic_resurface_evaluate', 'topic_resurface_deliberate', 'topic_resurface_retention')`,
     ),
     check(
       "native_live_background_model_jobs_prompt_contract_not_blank",

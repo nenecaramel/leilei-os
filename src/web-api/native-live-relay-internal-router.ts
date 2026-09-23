@@ -23,8 +23,8 @@ import {
   type NativeLiveBackgroundModelExecutionResult,
 } from "../domains/bridge/native-live-background-model-protocol.js";
 import type {
-  TopicResurfaceCrossDeviceCoordinator,
-} from "../domains/runtime/topic-resurface-cross-device-coordinator.js";
+  NativeLiveBackgroundWorkflowCoordinator,
+} from "../domains/bridge/native-live-background-workflow-coordinator.js";
 import type {
   TopicResurfaceCrossDeviceOpportunity,
 } from "../domains/runtime/topic-resurface-cross-device-opportunity.js";
@@ -48,7 +48,7 @@ export type NativeLiveRelayInternalDependencies = {
     "reserveNext" | "submitResult"
   >;
   backgroundModelCoordinator?: Pick<
-    TopicResurfaceCrossDeviceCoordinator,
+    NativeLiveBackgroundWorkflowCoordinator,
     "advanceNextForUser"
   >;
   backgroundModelOpportunity?: Pick<

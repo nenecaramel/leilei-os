@@ -210,12 +210,112 @@ function normalizeDrafts(
   return result;
 }
 
-export class DistillationService {
-  private readonly processId: string;
-  private readonly committerId: string;
-  private readonly createRunId: () => string;
-  private readonly createStateId: () => string;
+export async function commitDistillationDrafts(input: {
+  port: DistillationRuntimePort;
+  config: DistillationConfig;
+  userId: string;
+  subjectId: string;
+  window: DistillationWindow;
+  drafts: readonly DistillationMemoryDraft[];
+  processRunId?: string;
+}): Promise<DistillationRunResult> {
+  if (
+    !Number.isInteger(input.config.maxMemoriesPerRun)
+    || input.config.maxMemoriesPerRun < 1
+  ) {
+    throw new Error("Distillation maxMemoriesPerRun must be a positive integer.");
+  }
 
+  const processId = input.config.processId ?? "distillation";
+  const committerId = input.config.committerId ?? "leileios-runtime";
+  const createRunId = input.config.createRunId ?? randomUUID;
+  const createStateId = input.config.createStateId ?? randomUUID;
+  const processRunId = input.processRunId ?? createRunId();
+  const drafts = normalizeDrafts(
+    input.drafts,
+    input.config.maxMemoriesPerRun,
+  );
+  const states = drafts.map((draft) =>
+    validateSubjectStateWrite({
+      id: createStateId(),
+      kind: "memory",
+      text: draft.text,
+      payload: {
+        formation: "distillation",
+        source_message_count: input.window.transcript.length,
+      },
+      envelope: {
+        semanticActor: { kind: "process", id: processId },
+        producer: {
+          kind: "model",
+          id: `${input.config.model.provider}:${input.config.model.model}`,
+        },
+        committer: { kind: "runtime", id: committerId },
+        authority: "derived",
+        scope: {
+          userId: input.userId,
+          subjectId: input.subjectId,
+          applicability: "path",
+          conversationId: input.window.conversationId,
+          pathHeadMessageId: input.window.sourceHeadMessageId,
+          visibility: "subject_private",
+          sensitivity: "normal",
+          audience: [input.subjectId],
+        },
+        status: {
+          generationStatus: "committed",
+          presentationStatus: "presented",
+          pathStatus: "current",
+          settlementStatus: "settled",
+          validityStatus: "valid",
+        },
+        provenance: {
+          sources: input.window.transcript.map((message) => ({
+            kind: "message" as const,
+            id: message.messageId,
+          })),
+          causedBy: input.window.sourceHeadMessageId,
+          derivedFrom:
+            input.window.transcript.map((message) => message.messageId),
+          processRunId,
+        },
+        versions: {
+          schemaVersion: 1,
+          ruleVersion: input.config.ruleVersion,
+          processVersion: input.config.processVersion,
+          model: input.config.model,
+        },
+      },
+    }),
+  );
+
+  const committed = await input.port.commitSuccess({
+    userId: input.userId,
+    subjectId: input.subjectId,
+    conversationId: input.window.conversationId,
+    expectedPreviousWatermarkMessageId:
+      input.window.expectedPreviousWatermarkMessageId,
+    nextWatermarkMessageId: input.window.sourceHeadMessageId,
+    states,
+  });
+
+  if (committed === "conflict") {
+    return {
+      outcome: "conflict",
+      sourceHeadMessageId: input.window.sourceHeadMessageId,
+    };
+  }
+
+  return {
+    outcome: "committed",
+    sourceHeadMessageId: input.window.sourceHeadMessageId,
+    createdStateIds: states.map((state) => state.id),
+    resetFromSupersededWatermark:
+      input.window.resetFromSupersededWatermark,
+  };
+}
+
+export class DistillationService {
   constructor(
     private readonly port: DistillationRuntimePort,
     private readonly model: DistillationModel,
@@ -227,10 +327,6 @@ export class DistillationService {
     ) {
       throw new Error("Distillation maxMemoriesPerRun must be a positive integer.");
     }
-    this.processId = config.processId ?? "distillation";
-    this.committerId = config.committerId ?? "leileios-runtime";
-    this.createRunId = config.createRunId ?? randomUUID;
-    this.createStateId = config.createStateId ?? randomUUID;
   }
 
   async runOnce(input: {
@@ -264,86 +360,13 @@ export class DistillationService {
       };
     }
 
-    const processRunId = this.createRunId();
-    const drafts = normalizeDrafts(
-      generated.memories,
-      this.config.maxMemoriesPerRun,
-    );
-    const states = drafts.map((draft) =>
-      validateSubjectStateWrite({
-        id: this.createStateId(),
-        kind: "memory",
-        text: draft.text,
-        payload: {
-          formation: "distillation",
-          source_message_count: window.transcript.length,
-        },
-        envelope: {
-          semanticActor: { kind: "process", id: this.processId },
-          producer: {
-            kind: "model",
-            id: `${this.config.model.provider}:${this.config.model.model}`,
-          },
-          committer: { kind: "runtime", id: this.committerId },
-          authority: "derived",
-          scope: {
-            userId: input.userId,
-            subjectId: input.subjectId,
-            applicability: "path",
-            conversationId: input.conversation.id,
-            pathHeadMessageId: window.sourceHeadMessageId,
-            visibility: "subject_private",
-            sensitivity: "normal",
-            audience: [input.subjectId],
-          },
-          status: {
-            generationStatus: "committed",
-            presentationStatus: "presented",
-            pathStatus: "current",
-            settlementStatus: "settled",
-            validityStatus: "valid",
-          },
-          provenance: {
-            sources: window.transcript.map((message) => ({
-              kind: "message" as const,
-              id: message.messageId,
-            })),
-            causedBy: window.sourceHeadMessageId,
-            derivedFrom: window.transcript.map((message) => message.messageId),
-            processRunId,
-          },
-          versions: {
-            schemaVersion: 1,
-            ruleVersion: this.config.ruleVersion,
-            processVersion: this.config.processVersion,
-            model: this.config.model,
-          },
-        },
-      }),
-    );
-
-    const committed = await this.port.commitSuccess({
+    return commitDistillationDrafts({
+      port: this.port,
+      config: this.config,
       userId: input.userId,
       subjectId: input.subjectId,
-      conversationId: input.conversation.id,
-      expectedPreviousWatermarkMessageId:
-        window.expectedPreviousWatermarkMessageId,
-      nextWatermarkMessageId: window.sourceHeadMessageId,
-      states,
+      window,
+      drafts: generated.memories,
     });
-
-    if (committed === "conflict") {
-      return {
-        outcome: "conflict",
-        sourceHeadMessageId: window.sourceHeadMessageId,
-      };
-    }
-
-    return {
-      outcome: "committed",
-      sourceHeadMessageId: window.sourceHeadMessageId,
-      createdStateIds: states.map((state) => state.id),
-      resetFromSupersededWatermark: window.resetFromSupersededWatermark,
-    };
   }
 }

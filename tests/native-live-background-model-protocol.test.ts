@@ -90,3 +90,26 @@ test("background model result must match command task identity", () => {
     /does not match command identity/,
   );
 });
+
+
+test("background model protocol accepts Distillation as a bounded pure-model task", () => {
+  const parsed = parseNativeLiveBackgroundModelCommand({
+    protocol_version: 1,
+    task_id: "33333333-3333-4333-8333-333333333333",
+    task_kind: "distillation",
+    prompt_contract_version: "distill-prompt-v1",
+    prompt: "distill this settled transcript",
+  });
+  assert.equal(parsed.task_kind, "distillation");
+
+  const result = parseNativeLiveBackgroundModelExecutionResult({
+    protocol_version: 1,
+    task_id: parsed.task_id,
+    task_kind: "distillation",
+    status: "success",
+    final_text: '{"memories":[]}',
+  });
+  assert.doesNotThrow(
+    () => assertBackgroundModelResultMatchesCommand(parsed, result),
+  );
+});

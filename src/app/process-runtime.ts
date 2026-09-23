@@ -35,6 +35,7 @@ import {
   createDefaultDriveSatisfactionService,
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+  DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
 } from "../domains/runtime/default-backend-mind-runtime.js";
 import {
   deleteExpiredNativeLiveBackgroundModelJobsBatch,
@@ -65,6 +66,24 @@ import {
 import {
   NativeLivePostTurnBackgroundOpportunity,
 } from "../domains/runtime/native-live-background-opportunity.js";
+import {
+  DistillationCrossDeviceCoordinator,
+} from "../domains/runtime/distillation-cross-device-coordinator.js";
+import {
+  DistillationCrossDeviceBackgroundTrigger,
+} from "../domains/runtime/distillation-cross-device-background-trigger.js";
+import {
+  DrizzleDistillationRuntimePort,
+} from "../domains/runtime/distillation-runtime-repository.js";
+import {
+  CLAUDE_CODE_DISTILLATION_PROMPT_CONTRACT_VERSION,
+} from "../domains/runtime/claude-code-distillation-model.js";
+import {
+  NativeLiveBackgroundWorkflowCoordinator,
+} from "../domains/bridge/native-live-background-workflow-coordinator.js";
+import {
+  DrizzleNativeLiveConversationRepository,
+} from "../domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/native-live-backend-turn-coordinator.js";
 import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/native-live-backend-relay-prepare.js";
@@ -138,6 +157,8 @@ export type ProcessRuntime = {
   driveSatisfactionService: DriveSatisfactionService;
   topicResurfaceCrossDeviceCoordinator:
     TopicResurfaceCrossDeviceCoordinator;
+  distillationCrossDeviceCoordinator:
+    DistillationCrossDeviceCoordinator;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
   startBackgroundWork(): void;
@@ -196,6 +217,43 @@ export function createProcessRuntime(
     maxCostPerCycle: 4,
     maxConcurrent: 2,
   });
+  const nativeLiveBackgroundModelService =
+    new NativeLiveBackgroundModelQueueService(
+      new DrizzleNativeLiveBackgroundModelQueueRepository(db),
+    );
+  const distillationProcessVersion = "distill-process-v1";
+  const distillationCrossDeviceCoordinator =
+    new DistillationCrossDeviceCoordinator(
+      nativeLiveBackgroundModelService,
+      new DrizzleNativeLiveConversationRepository(db),
+      new DrizzleDistillationRuntimePort(
+        db,
+        distillationProcessVersion,
+      ),
+      {
+        surfaceLimit: DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
+        maxMemoriesPerRun: 3,
+        ruleVersion: "distill-rule-v1",
+        processVersion: distillationProcessVersion,
+        model: {
+          provider: "claude_code",
+          model: "runtime-selected",
+          configVersion: "cross-device-v1",
+          promptContractVersion:
+            CLAUDE_CODE_DISTILLATION_PROMPT_CONTRACT_VERSION,
+        },
+      },
+    );
+  const distillationCrossDeviceBackgroundTrigger =
+    new DistillationCrossDeviceBackgroundTrigger(
+      backgroundLoopOrchestrator,
+      distillationCrossDeviceCoordinator,
+      DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+      {
+        priority: "consolidation",
+        cost: 1,
+      },
+    );
   const subjectStateBackgroundMaintenance =
     createDefaultSubjectStateBackgroundMaintenance(
       db,
@@ -203,7 +261,7 @@ export function createProcessRuntime(
     );
   const nativeLivePostTurnBackgroundOpportunity =
     new NativeLivePostTurnBackgroundOpportunity(
-      null,
+      distillationCrossDeviceBackgroundTrigger,
       subjectStateBackgroundMaintenance,
     );
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
@@ -228,10 +286,6 @@ export function createProcessRuntime(
     new DrizzleNativeLiveBackendRelayRepository(db),
     nativeLiveTurnCoordinator,
   );
-  const nativeLiveBackgroundModelService =
-    new NativeLiveBackgroundModelQueueService(
-      new DrizzleNativeLiveBackgroundModelQueueRepository(db),
-    );
   const topicResurfaceCrossDeviceCoordinator =
     new TopicResurfaceCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
@@ -254,6 +308,11 @@ export function createProcessRuntime(
         },
       },
     );
+  const nativeLiveBackgroundWorkflowCoordinator =
+    new NativeLiveBackgroundWorkflowCoordinator([
+      distillationCrossDeviceCoordinator,
+      topicResurfaceCrossDeviceCoordinator,
+    ]);
   const topicResurfaceOpportunityConfig =
     getTopicResurfaceOpportunityConfig(runtimeEnv);
   const topicResurfaceCrossDeviceOpportunity =
@@ -386,6 +445,7 @@ export function createProcessRuntime(
     logger,
     driveSatisfactionService,
     topicResurfaceCrossDeviceCoordinator,
+    distillationCrossDeviceCoordinator,
     appDependencies: {
       logger,
       webMemoryService: memoryService,
@@ -406,7 +466,7 @@ export function createProcessRuntime(
       nativeLiveSemanticService,
       nativeLiveBackgroundModelService,
       nativeLiveBackgroundModelCoordinator:
-        topicResurfaceCrossDeviceCoordinator,
+        nativeLiveBackgroundWorkflowCoordinator,
       ...(topicResurfaceCrossDeviceOpportunity
         ? {
             nativeLiveBackgroundModelOpportunity:
