@@ -81,7 +81,7 @@ async function connectTestClient(dependencies: ReturnType<typeof createTestDepen
   return { client, server };
 }
 
-test("tools/list includes all registered Phase 4 tools plus later read additions", async (t) => {
+test("tools/list includes surviving Diary/Todo/Universe core tools", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService),
@@ -94,20 +94,18 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
   const response = await client.listTools();
   const names = new Set(response.tools.map((tool) => tool.name));
   for (const required of [
+    "create_diary",
     "write_diary",
     "update_diary",
     "get_diary",
     "search_diary",
     "add_diary_comment",
     "list_diary_comments",
-    "write_memory",
-    "create_task",
+    "replace_todo_paper",
     "append_todo_entries",
     "append_todo_entry",
     "update_todo_entry",
     "delete_todo_entry",
-    "create_shared_paper",
-    "append_shared_paper",
     "create_universe_node",
     "global_search",
   ]) {
