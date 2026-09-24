@@ -28,6 +28,7 @@ says the SDK supports it.
 | Resume session | REAL SDK | Real SDK preserves provider session identity |
 | Fork session | REAL SDK | Real SDK creates a distinct provider session from the canonical parent checkpoint |
 | Abort / hard stop | CONTRACT | Real SDK close/abort maps to LeileiOS failure semantics; later interrupt has timeout + hard-stop fallback |
+| Failure mapping | CONTRACT | Real SDK terminal/query failures map into the existing LeileiOS runtime error contract without pretending canonical success |
 | Claude Code system prompt | CONTRACT | Real SDK smoke proves Claude Code preset is active |
 | CLAUDE.md | REAL SDK | Controlled project fixture proves project memory is loaded |
 | user / project / local settings | REAL SDK (partial) | `project` + `local` controlled fixtures proved applied; `user` source is selected but user-level content is intentionally not mutated by smoke |
@@ -146,3 +147,12 @@ established.
 - `supportedModels()` returned five discovery entries (`default`, `opus`, `claude-fable-5-1[1m]`, `sonnet`, `haiku`) and did not expose an exact/display alias match for either requested model, so per-model `capability` was null. This is accepted evidence of incomplete discovery aliases, not evidence that the applied runtime model failed.
 - LeileiOS product allowlist remains authoritative for product selection; SDK discovery remains capability evidence; `getSettings().applied` is the execution readback for the actual turn.
 - Exact applied thinking mode is still not independently claimed because the SDK does not expose an unambiguous runtime readback for it.
+
+
+## Abort / failure mapping slice — pending real smoke
+
+- Existing adapter/unit coverage already maps SDK terminal failures and query exceptions to `CLAUDE_PROCESS_FAILED`, and `abort()` closes the active Query then reports `ABORTED`.
+- Real failure acceptance deliberately resumes a random nonexistent provider session through `AgentSdkClaudeTransport.resume()`; the real SDK must fail and the adapter must surface `CLAUDE_PROCESS_FAILED`.
+- Real abort acceptance starts a Bash command that sleeps for 30 seconds and would create `abort-finished.txt` only after completion. The smoke waits until a normalized Bash `tool_use` is observed, calls `AgentSdkClaudeTransport.abort()`, requires `ABORTED`, and requires that the marker file was never created.
+- This slice verifies parity hard-abort via Query `close()`; it does not claim the later mid-turn SDK `interrupt()` capability.
+- Acceptance still uses the existing Claude subscription login and refuses `ANTHROPIC_API_KEY`.
