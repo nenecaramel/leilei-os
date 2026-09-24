@@ -56,23 +56,23 @@ export function createNoteCardHtml(): string {
 }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 12px; color: var(--main-text); }
-[data-thinking-card] { overflow: hidden; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card-background); }
-[data-thinking-header] { display: flex; align-items: center; gap: 10px; }
-[data-thinking-title] { flex: 1; min-width: 0; color: var(--main-text); font-weight: 650; letter-spacing: .01em; }
-[data-thinking-meta] { margin: 4px 0 14px; color: var(--secondary-text); font-size: 12px; }
-[data-thinking-toggle] { flex: 0 0 auto; border: 0; padding: 0; color: var(--secondary-text); background: transparent; cursor: pointer; font: inherit; font-size: 12px; }
-[data-thinking-toggle]:focus-visible { outline: 2px solid var(--secondary-text); outline-offset: 2px; }
-[data-thinking-content] { margin: 0; padding: 0; color: var(--main-text); white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; }
-[data-thinking-content][data-scrollable="true"] { overscroll-behavior: contain; }
-[data-thinking-card][data-collapsed="true"] [data-thinking-content] { display: none; }
+[data-note-card] { overflow: clip; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card-background); }
+[data-note-header] { display: flex; align-items: center; gap: 10px; }
+[data-note-title] { flex: 1; min-width: 0; color: var(--main-text); font-weight: 650; letter-spacing: .01em; }
+[data-note-meta] { margin: 4px 0 14px; color: var(--secondary-text); font-size: 12px; }
+[data-note-toggle] { flex: 0 0 auto; border: 0; padding: 0; color: var(--secondary-text); background: transparent; cursor: pointer; font: inherit; font-size: 12px; }
+[data-note-toggle]:focus-visible { outline: 2px solid var(--secondary-text); outline-offset: 2px; }
+[data-note-content] { margin: 0; padding: 0; color: var(--main-text); white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; }
+[data-note-content][data-scrollable="true"] { overscroll-behavior: contain; }
+[data-note-card][data-collapsed="true"] [data-note-content] { display: none; }
 button { -webkit-tap-highlight-color: transparent; }
-</style><main data-thinking-card aria-label="LeileiOS 用户可见笔记卡片">
-  <header data-thinking-header>
-    <div data-thinking-title>Note</div>
-    <button type="button" data-thinking-toggle aria-expanded="true">折叠</button>
+</style><main data-note-card aria-label="LeileiOS 用户可见笔记卡片">
+  <header data-note-header>
+    <div data-note-title>Note</div>
+    <button type="button" data-note-toggle aria-expanded="true">折叠</button>
   </header>
-  <div data-thinking-meta aria-label="笔记卡片设置"></div>
-  <section data-thinking-content aria-live="polite"></section>
+  <div data-note-meta aria-label="笔记卡片设置"></div>
+  <section data-note-content aria-live="polite"></section>
 </main><script>${escapeInlineScript(NOTE_CARD_BROWSER_BUNDLE)}</script>`;
 }
 

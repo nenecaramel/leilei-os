@@ -40,7 +40,10 @@ test("note-card resource uses only canonical resource identities", () => {
   const html = createNoteCardHtml();
   assert.match(html, /LeileiOS Note Card/u);
   assert.match(html, /用户可见笔记卡片/u);
-  assert.doesNotMatch(html, /leileios-thinking-block|render_thinking_block|render_working_note/iu);
+  assert.doesNotMatch(
+    html,
+    /thinking|chain[- ]of[- ]thought|effort|hidden|private|scratchpad|internal reasoning|working note|render_thinking_block|render_working_note/iu,
+  );
 });
 
 test("render_note_card is stateless and does not echo note text into content", async () => {
