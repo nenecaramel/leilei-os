@@ -276,3 +276,37 @@ Acceptance meaning:
 - bidirectional SDK control is kept alive through explicit query callbacks such as `canUseTool`;
 - graceful interrupt and hard abort remain distinct runtime semantics;
 - this is branch-level runtime capability acceptance, not a main/production rollout claim.
+
+
+## Phase 2 permission callback contract — branch implementation
+
+This slice moves permission handling out of raw `queryOptions.canUseTool` and into a stable LeileiOS turn-handle contract without adding streaming or mid-turn user-message semantics.
+
+Contract:
+
+- `createAgentSdkTurnHandle({ permissionHandler })` installs a single SDK `canUseTool` adapter before the Query starts.
+- The host receives a normalized permission request with `toolName`, structured `input`, `toolUseId`, optional `requestId`, `agentId`, path/reason/display metadata, permission suggestions, and matched ask-rule evidence.
+- SDK cancellation stays explicit: the host receives `{ signal }` separately from the durable/request-shaped metadata.
+- LeileiOS decisions are deliberately smaller than the raw SDK result:
+  - `{ decision: "allow", updatedInput? }`
+  - `{ decision: "deny", message, interrupt? }`
+- The adapter maps these to SDK `behavior: "allow" | "deny"`.
+- This slice does **not** expose persistent permission mutation / remembered rules. SDK `updatedPermissions` and out-of-band `null` control responses are intentionally deferred until a later product/UI contract.
+- `permission-request`, `permission-decision`, and `permission-error` events are emitted on the same turn-handle event surface; listeners can be attached before explicit `handle.start()`.
+
+Deterministic safety boundary:
+
+- `permissionHandler` cannot be combined with raw `queryOptions.canUseTool`.
+- It cannot be combined with non-empty `allowedTools`, because pre-allowed tools can bypass the callback.
+- It cannot be combined with `permissionMode: "bypassPermissions"` or `allowDangerouslySkipPermissions: true`.
+- Automatic allow/deny policy belongs inside the LeileiOS permission handler when this contract is used, so the callback surface remains truthful about which tool requests were actually evaluated.
+
+REAL SDK acceptance smoke:
+
+- run a denied Bash request and prove the target marker is not created;
+- require a real structured permission callback with a non-empty `toolUseId` and cancellation signal;
+- run a second Bash request whose allowed input is rewritten by the callback;
+- prove the original marker is not created and the rewritten marker is created;
+- record optional SDK `requestId` when present;
+- keep existing Claude subscription auth and `@anthropic-ai/claude-agent-sdk@0.3.281`;
+- no daemon / canonical / iOS / streaming / mid-turn-input changes in this slice.
