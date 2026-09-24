@@ -63,6 +63,7 @@ final class AppModel: ObservableObject {
     private var nativeLiveCurrentPathETags: [UUID: String] = [:]
     private var conversationBootstrapInFlight = false
     private var chatRefreshInFlight = false
+    private var chatRefreshPendingForce = false
     private var chatSendInFlight = false
     private static let activeNativeLiveConversationDefaultsKey =
         "activeNativeLiveConversationID"
@@ -316,55 +317,85 @@ final class AppModel: ObservableObject {
 
     func refreshNativeLiveCurrentPath(force: Bool = false) async {
         guard isAuthenticated,
-              let conversationID = activeNativeLiveConversationID,
-              !chatRefreshInFlight else {
+              activeNativeLiveConversationID != nil else {
             return
         }
 
-        chatRefreshInFlight = true
-        if nativeLiveCurrentPath == nil {
-            chatSyncState = .loading
-        }
-        defer {
-            chatRefreshInFlight = false
-        }
-
-        do {
-            let result = try await api.nativeLiveCurrentPath(
-                conversationID: conversationID,
-                etag: force ? nil : nativeLiveCurrentPathETags[conversationID]
-            )
-
-            switch result {
-            case .notModified:
-                chatSyncState = .ready
-
-            case .modified(let snapshot, let etag):
-                nativeLiveCurrentPath = snapshot
-                if let etag {
-                    nativeLiveCurrentPathETags[conversationID] = etag
-                } else {
-                    nativeLiveCurrentPathETags.removeValue(
-                        forKey: conversationID
-                    )
-                }
-                chatSyncState = .ready
+        if chatRefreshInFlight {
+            if force {
+                chatRefreshPendingForce = true
             }
-        } catch LeileiAPIError.backend(let status, _, _) where status == 404 {
-            nativeLiveCurrentPath = nil
-            nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
-            activeNativeLiveConversationID = nil
-            UserDefaults.standard.removeObject(
-                forKey: Self.activeNativeLiveConversationDefaultsKey
-            )
-            chatSyncState = .unavailable("Conversation not found")
-        } catch LeileiAPIError.missingAccessToken {
-            clearNativeLiveSessionData()
-        } catch LeileiAPIError.unauthorized {
-            clearNativeLiveSessionData()
-        } catch {
-            chatSyncState = .unavailable(error.localizedDescription)
+            return
         }
+
+        var nextForce = force
+
+        while isAuthenticated,
+              let conversationID = activeNativeLiveConversationID {
+            chatRefreshInFlight = true
+            if nativeLiveCurrentPath == nil {
+                chatSyncState = .loading
+            }
+
+            do {
+                let result = try await api.nativeLiveCurrentPath(
+                    conversationID: conversationID,
+                    etag: nextForce
+                        ? nil
+                        : nativeLiveCurrentPathETags[conversationID]
+                )
+
+                guard activeNativeLiveConversationID == conversationID else {
+                    chatRefreshInFlight = false
+                    continue
+                }
+
+                switch result {
+                case .notModified:
+                    chatSyncState = .ready
+
+                case .modified(let snapshot, let etag):
+                    nativeLiveCurrentPath = snapshot
+                    if let etag {
+                        nativeLiveCurrentPathETags[conversationID] = etag
+                    } else {
+                        nativeLiveCurrentPathETags.removeValue(
+                            forKey: conversationID
+                        )
+                    }
+                    chatSyncState = .ready
+                }
+            } catch LeileiAPIError.backend(let status, _, _) where status == 404 {
+                nativeLiveCurrentPath = nil
+                nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
+                activeNativeLiveConversationID = nil
+                UserDefaults.standard.removeObject(
+                    forKey: Self.activeNativeLiveConversationDefaultsKey
+                )
+                chatSyncState = .unavailable("Conversation not found")
+            } catch LeileiAPIError.missingAccessToken {
+                clearNativeLiveSessionData()
+            } catch LeileiAPIError.unauthorized {
+                clearNativeLiveSessionData()
+            } catch {
+                chatSyncState = .unavailable(error.localizedDescription)
+            }
+
+            chatRefreshInFlight = false
+
+            guard chatRefreshPendingForce,
+                  isAuthenticated,
+                  activeNativeLiveConversationID != nil else {
+                chatRefreshPendingForce = false
+                return
+            }
+
+            chatRefreshPendingForce = false
+            nextForce = true
+        }
+
+        chatRefreshInFlight = false
+        chatRefreshPendingForce = false
     }
 
     private func waitForNativeLiveTurn(
@@ -475,6 +506,8 @@ final class AppModel: ObservableObject {
         nativeLiveCurrentPath = nil
         nativeLiveCurrentPathETags.removeAll()
         chatSyncState = .idle
+        chatRefreshInFlight = false
+        chatRefreshPendingForce = false
         chatSendState = .idle
     }
 }
