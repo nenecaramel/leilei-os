@@ -510,3 +510,78 @@ test("SDK loading stays lazy so the old transport remains a valid rollback", asy
   assert.equal(loadCalls, 1);
   assert.equal(result.providerSessionId, "lazy-provider");
 });
+
+
+test("interactive foreground execution uses the dedicated turn handle with verbatim streaming", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-interactive-child",
+          };
+          yield {
+            type: "stream_event",
+            session_id: "provider-interactive-child",
+            event: {
+              type: "content_block_delta",
+              index: 0,
+              delta: {
+                type: "text_delta",
+                text: "hel",
+              },
+            },
+          };
+          yield {
+            type: "result",
+            subtype: "success",
+            session_id: "provider-interactive-child",
+            result: "hello",
+          };
+        },
+      };
+    },
+  });
+
+  const emitted = [];
+  transport.events.on("normalized-event", (event) => {
+    emitted.push(event.type);
+  });
+
+  const result = await transport.executeTurn(
+    "branch prompt",
+    {
+      mode: "fork",
+      parentProviderSessionId: "provider-parent",
+      streaming: true,
+    },
+  );
+
+  assert.equal(
+    typeof call.prompt?.[Symbol.asyncIterator],
+    "function",
+  );
+  assert.equal(call.options.resume, "provider-parent");
+  assert.equal(call.options.forkSession, true);
+  assert.equal(call.options.verbatimPrompts, true);
+  assert.equal(call.options.includePartialMessages, true);
+  assert.equal(
+    result.providerSessionId,
+    "provider-interactive-child",
+  );
+  assert.deepEqual(
+    result.normalizedEvents.map((event) => event.type),
+    ["session", "partial_text", "result"],
+  );
+  assert.deepEqual(
+    emitted,
+    ["session", "partial_text", "result"],
+  );
+});
