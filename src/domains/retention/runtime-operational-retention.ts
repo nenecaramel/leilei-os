@@ -190,7 +190,7 @@ export async function deleteExpiredRuntimeOperationalRecordsBatch(
     if (remaining > 0) {
       const rows = await transaction.execute<{ listener_instance_id: string }>(sql`
         WITH victims AS (
-          SELECT user_id, target
+          SELECT user_id
           FROM bridge_listener_leases
           WHERE lease_expires_at
               < ${cutoff.toISOString()}::timestamptz
@@ -201,7 +201,6 @@ export async function deleteExpiredRuntimeOperationalRecordsBatch(
         DELETE FROM bridge_listener_leases AS lease
         USING victims
         WHERE lease.user_id = victims.user_id
-          AND lease.target = victims.target
         RETURNING lease.listener_instance_id
       `);
       consume(rows.length);
