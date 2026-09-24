@@ -532,6 +532,103 @@ test("ambiguous semantic callback is surfaced without executing Claude", async (
   );
 });
 
+
+class FakeRuntimeEventRelay extends FakeRelay {
+  eventSubmitError: Error | null = null;
+
+  async appendRuntimeEvent(input: unknown) {
+    this.calls.push({ name: "appendRuntimeEvent", input });
+    if (this.eventSubmitError) throw this.eventSubmitError;
+  }
+}
+
+class FakeStreamingExecutor implements NativeLivePreparedCommandExecutor {
+  async execute(
+    _input: unknown,
+    options?: {
+      onNormalizedEvent?: (
+        event: {
+          type: "partial_text" | "result";
+          payload?: Record<string, unknown>;
+        },
+      ) => void | Promise<void>;
+    },
+  ) {
+    await options?.onNormalizedEvent?.({
+      type: "partial_text",
+      payload: {
+        delta: "hel",
+        accumulated_length: 3,
+      },
+    });
+    await options?.onNormalizedEvent?.({
+      type: "result",
+      payload: {
+        status: "success",
+        final_text: "hello",
+      },
+    });
+    return success();
+  }
+}
+
+test("foreground normalized events are delivered in reservation-local sequence before terminal result", async () => {
+  const relay = new FakeRuntimeEventRelay();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new FakeStreamingExecutor(),
+  );
+
+  const outcome = await loop.runOnce();
+  assert.equal(outcome.outcome, "completed");
+  assert.deepEqual(
+    relay.calls.map((entry) => entry.name),
+    [
+      "renewLease",
+      "reserveNext",
+      "markExecutionStarted",
+      "appendRuntimeEvent",
+      "appendRuntimeEvent",
+      "submitResult",
+    ],
+  );
+  const events = relay.calls
+    .filter((entry) => entry.name === "appendRuntimeEvent")
+    .map((entry) => entry.input as {
+      sequence: number;
+      event: { type: string };
+    });
+  assert.deepEqual(
+    events.map((entry) => [entry.sequence, entry.event.type]),
+    [
+      [1, "partial_text"],
+      [2, "result"],
+    ],
+  );
+});
+
+test("runtime event delivery is fail-soft and does not invalidate canonical terminal result", async () => {
+  const relay = new FakeRuntimeEventRelay();
+  relay.eventSubmitError = new Error("event store unavailable");
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new FakeStreamingExecutor(),
+  );
+
+  const outcome = await loop.runOnce();
+  assert.equal(outcome.outcome, "completed");
+  if (outcome.outcome !== "completed") {
+    throw new Error("expected completed");
+  }
+  assert.equal(outcome.eventDeliveryFailures, 2);
+  assert.equal(
+    relay.calls.filter((entry) => entry.name === "submitResult").length,
+    1,
+  );
+});
+
 test("runOnce rejects reentrant polling while an execution is in flight", async () => {
   const relay = new FakeRelay();
   let resolveExecute!: (value: NativeLiveRuntimeExecutionResult) => void;
