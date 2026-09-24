@@ -224,3 +224,11 @@ established.
 - Acceptance requires a real Bash STARTED marker, successful typed interrupt receipt, FINISHED=false, stable `INTERRUPTED` projection, and successful same-provider-session resume through another turn handle.
 - The smoke has a hard 60-second total watchdog plus a 5-second force-exit fallback, so a provider/SDK lifecycle bug cannot leave the local terminal hanging indefinitely again.
 - This slice does not yet wire the handle into daemon/cross-device protocol, permission UI, or canonical turn semantics.
+
+
+## Turn-handle startup ordering fix
+
+- A second real smoke attempt exposed a startup-order race in the first handle draft: the constructor began consuming the SDK Query immediately, while the smoke could only attach its normalized-event listener after the factory returned. A fast provider could therefore emit the first Bash tool event before the listener existed.
+- The handle lifecycle is now explicit: create handle -> attach listeners -> call `handle.start()` -> await `completion`.
+- Unit coverage now proves no SDK iterator consumption or normalized events occur before explicit `start()`.
+- The smoke prints every lifecycle stage to stderr, so any future stall identifies the exact stage instead of appearing as a silent hang.
