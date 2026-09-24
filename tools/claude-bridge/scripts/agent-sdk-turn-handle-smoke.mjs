@@ -98,6 +98,9 @@ async function run() {
       prompt,
       cwd,
       environment: process.env,
+      queryOptions: {
+        allowedTools: ["Bash"],
+      },
     });
     activeHandle = handle;
 
@@ -114,11 +117,12 @@ async function run() {
         interruptPromise = (async () => {
           setStage("wait_started_marker");
           const started = await waitForFile(startedMarker);
-          assert.equal(
-            started,
-            true,
-            "Bash tool_use was observed but STARTED marker never appeared.",
-          );
+          if (!started) {
+            handle.abort();
+            throw new Error(
+              "Bash tool_use was observed but STARTED marker never appeared within 5 seconds.",
+            );
+          }
           setStage("graceful_interrupt");
           return handle.interrupt();
         })();
