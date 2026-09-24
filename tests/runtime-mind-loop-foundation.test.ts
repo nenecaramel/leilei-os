@@ -287,7 +287,7 @@ test("unsettled state invalidates when Retry selects a sibling path", () => {
   );
 });
 
-test("Context Assembly injects typed Surface, Bedrock and Breath as bounded data", () => {
+test("Context Assembly injects Bedrock and Breath but does not reinject canonical Surface", () => {
   const u1 = message("u1", "user", null, "之前聊过柠檬黄");
   u1.createdAt = "2026-09-24T02:32:00.000Z";
   u1.completedAt = "2026-09-24T02:32:00.000Z";
@@ -339,11 +339,17 @@ test("Context Assembly injects typed Surface, Bedrock and Breath as bounded data
   );
   assert.equal(
     assembled.prompt.includes("[09-24 周四 10:32] user: 之前聊过柠檬黄"),
-    true,
+    false,
   );
   assert.equal(
     assembled.prompt.includes("[09-24 周四 10:33] assistant: 记得"),
-    true,
+    false,
+  );
+  assert.equal(
+    assembled.manifest.items.some(
+      (item) => item.selection.reason === "recent_canonical_surface",
+    ),
+    false,
   );
   assert.equal(
     assembled.prompt.includes(
