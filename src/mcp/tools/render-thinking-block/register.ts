@@ -6,15 +6,15 @@ import {
   RENDER_NOTE_CARD_RESOURCE_URI,
 } from "./resource.js";
 
-const noteStyleSchema = z.enum(["analysis", "relational"]);
+const noteStyleSchema = z.enum(["plain", "warm"]);
 const noteDetailSchema = z.enum(["brief", "standard", "detailed"]);
 
 export const renderNoteCardInputSchema = z.object({
   style: noteStyleSchema.describe(
-    "Card style: analysis for explanation or general observation; relational for personal or interpersonal content.",
+    "Visual card style: plain or warm.",
   ),
   note: z.string().trim().min(1).describe(
-    "Card text written directly for the user.",
+    "User-visible text to display in the card.",
   ),
   detail: noteDetailSchema.describe(
     "Card length: brief, standard, or detailed.",
@@ -23,7 +23,12 @@ export const renderNoteCardInputSchema = z.object({
 
 const renderNoteCardOutputSchema = z.object({
   success: z.literal(true),
-  data: z.object({ status: z.literal("rendered") }).strict(),
+  data: z.object({
+    status: z.literal("rendered"),
+    style: noteStyleSchema,
+    note: z.string(),
+    detail: noteDetailSchema,
+  }).strict(),
 }).strict();
 
 export function registerRenderNoteCardTool(server: McpServer): void {
@@ -33,7 +38,7 @@ export function registerRenderNoteCardTool(server: McpServer): void {
     {
       title: "Render note card",
       description:
-        "Display an assistant-written observation, explanation, relational note, or next step as a LeileiOS card.",
+        "Display provided user-visible text as a LeileiOS note card.",
       inputSchema: renderNoteCardInputSchema,
       outputSchema: renderNoteCardOutputSchema,
       annotations: {
@@ -53,12 +58,16 @@ export function registerRenderNoteCardTool(server: McpServer): void {
       },
     },
     async ({ style, note, detail }) => ({
-      content: [{ type: "text", text: "Note card rendered." }],
+      content: [{ type: "text", text: note }],
       structuredContent: {
         success: true as const,
-        data: { status: "rendered" as const },
+        data: {
+          status: "rendered" as const,
+          style,
+          note,
+          detail,
+        },
       },
-      _meta: { style, note, detail },
     }),
   );
 }

@@ -6,9 +6,9 @@ import {
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 export const RENDER_NOTE_CARD_RESOURCE_URI =
-  "ui://widget/leileios-note-card-v1.html";
+  "ui://widget/leileios-note-card-v2.html";
 export const CHATGPT_RENDER_NOTE_CARD_RESOURCE_URI =
-  "ui://widget/leileios-note-card-chatgpt-v1.html";
+  "ui://widget/leileios-note-card-chatgpt-v2.html";
 
 const NOTE_CARD_BROWSER_BUNDLE = readFileSync(
   new URL("./browser-runtime.js", import.meta.url),

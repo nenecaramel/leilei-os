@@ -35,18 +35,18 @@ async function connect(server: McpServer, name: string) {
 }
 
 test("note-card resource uses only canonical resource identities", () => {
-  assert.equal(RENDER_NOTE_CARD_RESOURCE_URI, "ui://widget/leileios-note-card-v1.html");
-  assert.equal(CHATGPT_RENDER_NOTE_CARD_RESOURCE_URI, "ui://widget/leileios-note-card-chatgpt-v1.html");
+  assert.equal(RENDER_NOTE_CARD_RESOURCE_URI, "ui://widget/leileios-note-card-v2.html");
+  assert.equal(CHATGPT_RENDER_NOTE_CARD_RESOURCE_URI, "ui://widget/leileios-note-card-chatgpt-v2.html");
   const html = createNoteCardHtml();
   assert.match(html, /LeileiOS Note Card/u);
   assert.match(html, /用户可见笔记卡片/u);
   assert.doesNotMatch(
     html,
-    /thinking|chain[- ]of[- ]thought|effort|hidden|private|scratchpad|internal reasoning|working note|render_thinking_block|render_working_note/iu,
+    /thinking|chain[- ]of[- ]thought|effort|hidden|private|scratchpad|internal reasoning|working note|analysis|relational|render_thinking_block|render_working_note/iu,
   );
 });
 
-test("render_note_card is stateless and does not echo note text into content", async () => {
+test("render_note_card is stateless and echoes user-visible note text into normal output", async () => {
   const pair = await connect(createFactory()("user-1", "public"), "note-card-call");
   const originalCwd = process.cwd();
   const tempCwd = await mkdtemp(join(tmpdir(), "leileios-note-card-"));
@@ -55,15 +55,15 @@ test("render_note_card is stateless and does not echo note text into content", a
     process.chdir(tempCwd);
     const result = await pair.client.callTool({
       name: "render_note_card",
-      arguments: { style: "analysis", note, detail: "brief" },
+      arguments: { style: "plain", note, detail: "brief" },
     });
     assert.equal(result.isError, undefined);
     assert.deepEqual(result.structuredContent, {
       success: true,
-      data: { status: "rendered" },
+      data: { status: "rendered", style: "plain", note, detail: "brief" },
     });
-    assert.deepEqual(result._meta, { style: "analysis", note, detail: "brief" });
-    assert.doesNotMatch(JSON.stringify(result.content), new RegExp(note));
+    assert.equal(result._meta, undefined);
+    assert.match(JSON.stringify(result.content), new RegExp(note));
     assert.deepEqual(await readdir(tempCwd), []);
   } finally {
     process.chdir(originalCwd);

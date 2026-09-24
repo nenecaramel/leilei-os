@@ -40,7 +40,7 @@ test("ui profile exposes one neutral note-card tool", async () => {
     assert.equal(byName.has("render_working_note"), false);
     assert.equal(byName.has("render_thinking_block"), false);
     assert.deepEqual(tool.inputSchema.required, ["style", "note", "detail"]);
-    assert.deepEqual(tool.inputSchema.properties?.style?.enum, ["analysis", "relational"]);
+    assert.deepEqual(tool.inputSchema.properties?.style?.enum, ["plain", "warm"]);
     assert.deepEqual(tool.inputSchema.properties?.detail?.enum, ["brief", "standard", "detailed"]);
     assert.equal(tool._meta?.ui?.resourceUri, RENDER_NOTE_CARD_RESOURCE_URI);
     assert.equal(tool._meta?.["openai/outputTemplate"], CHATGPT_RENDER_NOTE_CARD_RESOURCE_URI);
@@ -61,21 +61,21 @@ test("ui profile exposes one neutral note-card tool", async () => {
   }
 });
 
-test("note-card call returns display metadata without echoing note into content", async () => {
+test("note-card call keeps all rendered text in normal tool output", async () => {
   const pair = await connect(factory()("user-1", "public"));
   try {
     const note = "VISIBLE_NOTE_CARD_7f5f8d";
     const result = await pair.client.callTool({
       name: "render_note_card",
-      arguments: { style: "relational", note, detail: "standard" },
+      arguments: { style: "warm", note, detail: "standard" },
     });
     assert.equal(result.isError, undefined);
     assert.deepEqual(result.structuredContent, {
       success: true,
-      data: { status: "rendered" },
+      data: { status: "rendered", style: "warm", note, detail: "standard" },
     });
-    assert.deepEqual(result._meta, { style: "relational", note, detail: "standard" });
-    assert.doesNotMatch(JSON.stringify(result.content), new RegExp(note));
+    assert.equal(result._meta, undefined);
+    assert.match(JSON.stringify(result.content), new RegExp(note));
   } finally {
     await pair.client.close();
     await pair.server.close();

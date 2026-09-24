@@ -163,14 +163,14 @@ export function installNoteCardRuntime(
       fallbackInput,
       fallbackOutput,
     ];
-    const style = pick(sources, "style", "analysis");
+    const style = pick(sources, "style", "plain");
     const detail = pick(sources, "detail", pick(sources, "detail", ""));
     const note = pick(
       sources,
       "note",
       pick(sources, "note", "本轮没有提供笔记。"),
     );
-    const normalizedStyle = style === "relational" ? "relational" : "analysis";
+    const normalizedStyle = style === "warm" ? "warm" : "plain";
     meta.textContent = detail ? `${normalizedStyle} · ${detail}` : normalizedStyle;
     content.textContent = note;
     applyHostContext();
