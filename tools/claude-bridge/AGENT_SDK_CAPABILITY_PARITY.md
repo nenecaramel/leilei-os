@@ -318,3 +318,13 @@ REAL SDK acceptance smoke:
 - That result is expected SDK semantics, not an adapter failure: `canUseTool` is a permission-prompt callback, not a universal tool-use interceptor. A tool call that the active permission policy already permits does not have to invoke the callback.
 - The REAL SDK acceptance smoke now deterministically creates a permission prompt with a scoped `PreToolUse` hook returning `permissionDecision: "ask"` for Bash. This is fixture-only; the LeileiOS permission contract itself does not force every tool call through the permission UI.
 - Acceptance therefore proves: when Claude Code surfaces a permission request, LeileiOS receives it, can deny it, can allow it with rewritten input, and receives the SDK cancellation signal.
+
+
+## Second real permission smoke finding — built-in PreToolUse is not a reliable force-ask fixture
+
+- The second real smoke still observed zero permission callbacks after adding a scoped built-in Bash `PreToolUse -> permissionDecision: "ask"` fixture.
+- This does not invalidate the LeileiOS permission adapter. The current Agent SDK line has an open upstream bug where `options.hooks.PreToolUse` can fail to fire for built-in tools; using that hook to manufacture a permission prompt therefore makes the smoke depend on a separate SDK hook bug.
+- The acceptance smoke no longer relies on `PreToolUse` to force a prompt.
+- It now exercises the SDK's native built-in `Write` permission path under `permissionMode: "default"` with `tools: ["Write"]` and no `allowedTools` / bypass shadowing.
+- This mirrors an upstream-confirmed streaming-input shape where a one-message async iterable plus `canUseTool` receives the Write permission request.
+- Deny acceptance proves the requested file is not written. Allow acceptance rewrites `Write.file_path` and `content`, then proves only the rewritten target is created.
