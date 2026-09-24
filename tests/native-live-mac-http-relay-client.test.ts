@@ -352,3 +352,102 @@ test("Mac HTTP relay client offers Topic resurface opportunity without user iden
     false,
   );
 });
+
+
+test("Mac HTTP relay client round-trips a durable permission interaction", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  let interactionId: string | null = null;
+  const fakeFetch: typeof fetch = async (input, init) => {
+    const url = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    calls.push({ url, body });
+
+    if (url.endsWith("/interactions")) {
+      interactionId = body.interaction_id;
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          outcome: "created",
+          interaction: {
+            interactionId,
+            prepareId,
+            kind: "permission",
+            request: body.request,
+            status: "pending",
+            response: null,
+          },
+        },
+      }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        interaction: {
+          interactionId,
+          prepareId,
+          kind: "permission",
+          request: {
+            toolName: "Write",
+            input: { file_path: "/tmp/a" },
+          },
+          status: "resolved",
+          response: {
+            decision: "allow",
+            updatedInput: {
+              file_path: "/allowed/a",
+            },
+          },
+        },
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const decision = await client.requestRuntimeInteraction({
+    listenerInstanceId: listenerId,
+    reservationId: prepareId,
+    kind: "permission",
+    request: {
+      toolName: "Write",
+      input: { file_path: "/tmp/a" },
+    },
+    signal: null,
+  });
+
+  assert.deepEqual(decision, {
+    decision: "allow",
+    updatedInput: {
+      file_path: "/allowed/a",
+    },
+  });
+  assert.equal(calls.length, 2);
+  assert.match(
+    calls[0]!.url,
+    new RegExp(
+      `/reservations/${prepareId}/interactions$`,
+      "u",
+    ),
+  );
+  assert.match(
+    calls[1]!.url,
+    new RegExp(
+      `/reservations/${prepareId}/interactions/[0-9a-f-]+/read$`,
+      "u",
+    ),
+  );
+  assert.equal(
+    (calls[0]!.body as { kind: string }).kind,
+    "permission",
+  );
+});
