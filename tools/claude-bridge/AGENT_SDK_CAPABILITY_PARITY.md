@@ -379,3 +379,52 @@ Acceptance meaning:
 - deny and allow-with-rewrite are both proven against real SDK tool execution;
 - permission requests remain distinct from universal tool interception: only SDK permission prompts enter this callback;
 - no persistent permission mutation, out-of-band null response, streaming expansion, mid-turn user input, daemon protocol, canonical semantics, or iOS behavior is added in this slice.
+
+
+## Phase 2 streaming-output contract — branch implementation
+
+This slice adds displayable assistant text streaming on top of the accepted dedicated Agent SDK turn handle without adding mid-turn user input.
+
+Contract:
+
+- `createAgentSdkTurnHandle({ streaming: true })` turns on Agent SDK `includePartialMessages: true`.
+- `streaming: true` rejects an explicit contradictory `queryOptions.includePartialMessages: false`.
+- Real Agent SDK `stream_event / content_block_delta / text_delta` frames normalize into the existing stable LeileiOS `partial_text` event:
+  - `payload.delta`
+  - `payload.accumulated_length`
+- Consumers attach listeners before explicit `handle.start()`, preserving the already accepted turn-handle startup ordering.
+- Completed assistant messages and the terminal result remain available as before; streaming is additive and does not replace terminal truth.
+- The stable streaming contract intentionally includes displayable assistant text only. SDK `thinking_delta` frames are not promoted into LeileiOS `partial_text` or another reasoning stream in this slice.
+- Permission callback, graceful interrupt, hard abort, provider session identity, canonical authority, daemon protocol, and iOS behavior are unchanged.
+
+REAL SDK acceptance requires:
+
+- at least one raw `stream_event`;
+- at least one normalized `partial_text`;
+- monotonically increasing accumulated length;
+- concatenated normalized deltas reconstruct the terminal result text exactly for a deterministic no-tool prompt;
+- same existing Claude subscription auth and pinned `@anthropic-ai/claude-agent-sdk@0.3.281`.
+
+
+## REAL SDK streaming-output acceptance — PASS
+
+Validated on macOS against `@anthropic-ai/claude-agent-sdk@0.3.281` using the existing Claude subscription login.
+
+Observed real smoke result:
+
+- architecture: `dedicated_agent_sdk_streaming_output`
+- provider session: `78bdec91-1771-4316-b9fc-111a0fe7114c`
+- raw SDK `stream_event` count: `14`
+- normalized LeileiOS `partial_text` count: `9`
+- streamed character count: `86`
+- terminal text: `LEILEIOS_STREAM_ALPHA LEILEIOS_STREAM_BETA LEILEIOS_STREAM_GAMMA LEILEIOS_STREAM_DELTA`
+- concatenated normalized deltas reconstructed terminal text exactly
+- reasoning stream policy remained `text_deltas_only`
+
+Acceptance meaning:
+
+- `streaming: true` on the dedicated turn handle successfully activates Agent SDK partial messages;
+- Agent SDK `stream_event/content_block_delta/text_delta` frames now project into stable LeileiOS `partial_text` events;
+- `accumulated_length` is monotonic and terminal text remains the final authoritative turn result;
+- thinking deltas are intentionally not exposed as displayable assistant streaming text;
+- no mid-turn user input, canonical authority, daemon protocol, or iOS behavior is added in this slice.
