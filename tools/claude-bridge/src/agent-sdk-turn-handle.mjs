@@ -57,6 +57,7 @@ export async function createAgentSdkTurnHandle({
   cwd = process.cwd(),
   queryOptions = {},
   permissionHandler = null,
+  streaming = false,
 } = {}) {
   if (environment.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -65,6 +66,17 @@ export async function createAgentSdkTurnHandle({
   }
   if (typeof prompt !== "string" || !prompt.trim()) {
     throw new Error("Agent SDK turn prompt must be nonblank.");
+  }
+  if (typeof streaming !== "boolean") {
+    throw new Error("Agent SDK turn streaming must be boolean.");
+  }
+  if (
+    streaming
+    && queryOptions.includePartialMessages === false
+  ) {
+    throw new Error(
+      "streaming: true cannot be combined with includePartialMessages: false.",
+    );
   }
 
   const resolvedQuery = queryImpl ?? await loadQuery();
@@ -95,6 +107,9 @@ export async function createAgentSdkTurnHandle({
       preset: "claude_code",
     },
     ...queryOptions,
+    ...(streaming
+      ? { includePartialMessages: true }
+      : {}),
     ...(
       permissionCallback
         ? { canUseTool: permissionCallback }
