@@ -100,6 +100,10 @@ async function run() {
       environment: process.env,
       queryOptions: {
         allowedTools: ["Bash"],
+        canUseTool: async (_toolName, toolInput) => ({
+          behavior: "allow",
+          updatedInput: toolInput,
+        }),
       },
     });
     activeHandle = handle;
@@ -186,6 +190,12 @@ async function run() {
       resume: interruptedError.providerSessionId,
       cwd,
       environment: process.env,
+      queryOptions: {
+        canUseTool: async (_toolName, toolInput) => ({
+          behavior: "allow",
+          updatedInput: toolInput,
+        }),
+      },
     });
     activeHandle = resumed;
 
