@@ -11,7 +11,7 @@ import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromRep
 const relationOutputSchema = z.object({
   id: z.string().min(1).max(256), source: z.string().min(1).max(256), target: z.string().min(1).max(256),
   relationType: z.enum(["related_to", "supports", "contradicts", "extends", "part_of", "raises"]),
-  strength: z.number().finite(), createdAt: z.string().datetime(),
+  strength: z.number().finite(), created_at: z.string().datetime(),
 }).strict();
 const successDataSchema = z.object({ relation: relationOutputSchema, universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict();
 const outputSchema = z.object({
@@ -51,7 +51,14 @@ export function registerCreateUniverseRelationTool(server: McpServer, dependenci
           structuredContent: {
             success: true as const,
             data: {
-              relation: data.relation,
+              relation: {
+                id: data.relation.id,
+                source: data.relation.source,
+                target: data.relation.target,
+                relationType: data.relation.relationType,
+                strength: data.relation.strength,
+                created_at: data.relation.createdAt,
+              },
               universe_version: data.universe_version,
               ...mcpMutationReceipt({
                 outcome: mcpMutationOutcomeFromReplay(

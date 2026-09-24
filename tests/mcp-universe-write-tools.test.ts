@@ -225,7 +225,14 @@ test("update Universe relation forwards an explicit partial patch and returns th
     structuredContent: {
       success: true,
       data: {
-        relation: updatedRelation,
+        relation: {
+          id: updatedRelation.id,
+          source: updatedRelation.source,
+          target: updatedRelation.target,
+          relationType: updatedRelation.relationType,
+          strength: updatedRelation.strength,
+          created_at: updatedRelation.createdAt,
+        },
         universe_version: 5,
         outcome: "applied",
         entity_type: "universe_relation",
@@ -349,7 +356,7 @@ test("create Universe node forwards boundary positions and never accepts caller 
     structuredContent: {
       success: true,
       data: {
-        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        node: { id: node.id, title: node.title, type: node.type, created_at: node.createdAt, updated_at: node.updatedAt },
         universe_version: 1,
         outcome: "applied",
         entity_type: "universe_node",
@@ -399,7 +406,7 @@ test("update Universe node is a partial patch and rejects an empty or hidden pat
     structuredContent: {
       success: true,
       data: {
-        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        node: { id: node.id, title: node.title, type: node.type, created_at: node.createdAt, updated_at: node.updatedAt },
         universe_version: 2,
         outcome: "applied",
         entity_type: "universe_node",
@@ -442,7 +449,14 @@ test("create Universe relation enforces self-link and strength boundaries before
     structuredContent: {
       success: true,
       data: {
-        relation,
+        relation: {
+          id: relation.id,
+          source: relation.source,
+          target: relation.target,
+          relationType: relation.relationType,
+          strength: relation.strength,
+          created_at: relation.createdAt,
+        },
         universe_version: 3,
         outcome: "applied",
         entity_type: "universe_relation",
@@ -652,7 +666,7 @@ test("preserves idempotent replay metadata in a successful Universe write", asyn
     structuredContent: {
       success: true,
       data: {
-        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        node: { id: node.id, title: node.title, type: node.type, created_at: node.createdAt, updated_at: node.updatedAt },
         universe_version: 9,
         outcome: "replayed",
         entity_type: "universe_node",

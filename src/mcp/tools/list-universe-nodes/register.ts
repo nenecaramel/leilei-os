@@ -14,7 +14,7 @@ const outputNodeSchema = z.object({
   type: z.string(),
   tags: z.array(z.string()),
   galaxies: z.array(z.string()),
-  importance: z.string().nullable(),
+  importance: z.string().nullable().describe("Readable but not writable through the MCP surface."),
   updated_at: z.string().datetime(),
   summary_preview: z.string(),
   detail_tool: z.literal("get_universe_node"),

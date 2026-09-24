@@ -13,7 +13,7 @@ const relationOutputSchema = z.object({
   target: z.string().min(1).max(256),
   relationType: z.enum(["related_to", "supports", "contradicts", "extends", "part_of", "raises"]),
   strength: z.number().finite().min(0).max(1),
-  createdAt: z.string().datetime(),
+  created_at: z.string().datetime(),
 }).strict();
 
 const outputSchema = z.object({
@@ -56,6 +56,14 @@ export function registerUpdateUniverseRelationTool(server: McpServer, dependenci
           success: true as const,
           data: {
             ...result,
+            relation: {
+              id: result.relation.id,
+              source: result.relation.source,
+              target: result.relation.target,
+              relationType: result.relation.relationType,
+              strength: result.relation.strength,
+              created_at: result.relation.createdAt,
+            },
             ...mcpMutationReceipt({
               outcome: "applied",
               entity_type: "universe_relation",

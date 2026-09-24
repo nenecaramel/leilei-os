@@ -305,6 +305,58 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
   }
 });
 
+test("Diary update and Universe read/write boundary semantics stay explicit", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+  const updateDiary = byName.get("update_diary");
+  assert.ok(updateDiary?.description);
+  assert.match(updateDiary.description, /no revision precondition is required/iu);
+  const updateDiaryProperties = (updateDiary.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+  assert.equal("expected_revision" in updateDiaryProperties, false);
+  assert.equal("idempotency_key" in updateDiaryProperties, false);
+
+  const nestedProperties = (toolName: string, field?: string) => {
+    const tool = byName.get(toolName);
+    assert.ok(tool, `${toolName} must stay registered`);
+    const data = (tool.outputSchema as {
+      properties?: { data?: { properties?: Record<string, { properties?: Record<string, unknown> }> } };
+    }).properties?.data?.properties;
+    assert.ok(data, `${toolName} must expose structured data`);
+    if (!field) return data as Record<string, unknown>;
+    const nested = data[field]?.properties;
+    assert.ok(nested, `${toolName}.${field} must expose structured fields`);
+    return nested;
+  };
+
+  for (const name of ["create_universe_node", "update_universe_node"] as const) {
+    const node = nestedProperties(name, "node");
+    assert.ok("created_at" in node);
+    assert.ok("updated_at" in node);
+    assert.equal("createdAt" in node, false);
+    assert.equal("updatedAt" in node, false);
+  }
+
+  const detail = nestedProperties("get_universe_node");
+  assert.ok("created_at" in detail);
+  assert.ok("updated_at" in detail);
+  assert.equal("createdAt" in detail, false);
+  assert.equal("updatedAt" in detail, false);
+  assert.match(String((detail.importance as { description?: string }).description ?? ""), /not writable through the MCP surface/iu);
+  assert.match(String((detail.migration as { description?: string }).description ?? ""), /not writable through the MCP surface/iu);
+
+  const listUniverse = nestedProperties("list_universe_nodes");
+  const listNode = (listUniverse.nodes as { items?: { properties?: Record<string, unknown> } }).items?.properties;
+  assert.ok(listNode);
+  assert.match(String((listNode.importance as { description?: string }).description ?? ""), /not writable through the MCP surface/iu);
+
+  for (const name of ["create_universe_relation", "update_universe_relation"] as const) {
+    const relation = nestedProperties(name, "relation");
+    assert.ok("created_at" in relation);
+    assert.equal("createdAt" in relation, false);
+  }
+});
+
 test("large detail reads expose one bounded continuation contract", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));

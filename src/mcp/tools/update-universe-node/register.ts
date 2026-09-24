@@ -8,7 +8,7 @@ import { updateUniverseNodeInputSchema } from "./schema.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
-const successDataSchema = z.object({ node: z.object({ id: z.string().min(1).max(256), title: z.string(), type: z.string(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict();
+const successDataSchema = z.object({ node: z.object({ id: z.string().min(1).max(256), title: z.string(), type: z.string(), created_at: z.string().datetime(), updated_at: z.string().datetime() }).strict(), universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict();
 const outputSchema = z.object({
   success: z.boolean(),
   data: successDataSchema.optional(),
@@ -56,8 +56,8 @@ export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: 
           id: node.id,
           title: node.title,
           type: node.type,
-          createdAt: node.createdAt,
-          updatedAt: node.updatedAt,
+          created_at: node.createdAt,
+          updated_at: node.updatedAt,
         };
         return {
           content: [{ type: "text", text: joinMcpContentLines([

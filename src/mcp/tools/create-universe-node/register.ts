@@ -12,8 +12,8 @@ const nodeOutputSchema = z.object({
   id: z.string().min(1).max(256),
   title: z.string(),
   type: z.string(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
 }).strict();
 
 const successDataSchema = z.object({
@@ -57,8 +57,8 @@ export function registerCreateUniverseNodeTool(
           id: data.node.id,
           title: data.node.title,
           type: data.node.type,
-          createdAt: data.node.createdAt,
-          updatedAt: data.node.updatedAt,
+          created_at: data.node.createdAt,
+          updated_at: data.node.updatedAt,
         };
         return {
           content: [{ type: "text", text: joinMcpContentLines([

@@ -36,6 +36,8 @@ const detailNode = {
   position: { x: 10, y: 20 },
   createdAt: "2026-08-24T00:00:00.000Z",
   updatedAt: nodeA.updatedAt.toISOString(),
+  importance: "major",
+  migration: { source: "mind-universe", migratedAt: "2026-08-24T01:00:00.000Z" },
 };
 
 async function connect() {
@@ -92,6 +94,20 @@ test("get_universe_node uses the exact node read path and preserves full detail/
   t.after(async () => { await client.close(); await server.close(); });
   const response = await client.callTool({ name: "get_universe_node", arguments: { id: nodeA.id } });
   assert.equal(response.isError, undefined);
-  assert.deepEqual((response.structuredContent as { data: unknown }).data, { ...detailNode, universe_version: 7 });
+  assert.deepEqual((response.structuredContent as { data: unknown }).data, {
+    id: detailNode.id,
+    title: detailNode.title,
+    summary: detailNode.summary,
+    content: detailNode.content,
+    type: detailNode.type,
+    tags: detailNode.tags,
+    galaxies: detailNode.galaxies,
+    position: detailNode.position,
+    created_at: detailNode.createdAt,
+    updated_at: detailNode.updatedAt,
+    importance: detailNode.importance,
+    migration: { source: detailNode.migration.source, migrated_at: detailNode.migration.migratedAt },
+    universe_version: 7,
+  });
   assert.deepEqual(counters(), { listCalls: 0, readCalls: 1 });
 });

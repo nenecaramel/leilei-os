@@ -2,7 +2,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
-import type { UniverseNode } from "../../../domains/universe/universe-types.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeUniverseReadError } from "../universe/shared.js";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
@@ -13,8 +12,13 @@ const membershipSchema = z.object({ id: z.string().min(1).max(256), weight: z.nu
 const nodeSchema = z.object({
   id: z.string().min(1).max(256), title: z.string(), summary: z.string(), content: z.string(), type: z.string(), tags: z.array(z.string()),
   galaxies: z.array(membershipSchema), position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
-  createdAt: z.string().datetime(), updatedAt: z.string().datetime(), importance: z.string().optional(),
-  migration: z.object({ source: z.enum(["mind-universe-static", "mind-universe"]), migratedAt: z.string().datetime() }).strict().optional(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+  importance: z.string().optional().describe("Readable but not writable through the MCP surface."),
+  migration: z.object({
+    source: z.enum(["mind-universe-static", "mind-universe"]),
+    migrated_at: z.string().datetime(),
+  }).strict().optional().describe("Migration metadata; readable but not writable through the MCP surface."),
 }).strict();
 const outputSchema = z.object({
   success: z.boolean(),
@@ -47,7 +51,29 @@ export function registerGetUniverseNodeTool(server: McpServer, dependencies: Get
             result.node.content || "(empty)",
           ]),
         }],
-        structuredContent: { success: true as const, data: { ...(result.node as UniverseNode), universe_version: result.version } },
+        structuredContent: {
+          success: true as const,
+          data: {
+            id: result.node.id,
+            title: result.node.title,
+            summary: result.node.summary,
+            content: result.node.content,
+            type: result.node.type,
+            tags: result.node.tags,
+            galaxies: result.node.galaxies,
+            position: result.node.position,
+            created_at: result.node.createdAt,
+            updated_at: result.node.updatedAt,
+            ...(result.node.importance === undefined ? {} : { importance: result.node.importance }),
+            ...(result.node.migration === undefined ? {} : {
+              migration: {
+                source: result.node.migration.source,
+                migrated_at: result.node.migration.migratedAt,
+              },
+            }),
+            universe_version: result.version,
+          },
+        },
       };
     } catch (error) {
       return safeUniverseReadError(error, "Universe node was not found.");
