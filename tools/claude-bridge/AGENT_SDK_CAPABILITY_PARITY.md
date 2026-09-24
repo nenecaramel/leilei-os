@@ -55,6 +55,7 @@ says the SDK supports it.
 | Interrupt current turn | PENDING | Mid-turn interrupt works; startup/API-call edge cases fall back to timeout + hard stop |
 | Normalized event compatibility | REAL SDK | Real SDK Read/Bash `tool_use` and two `tool_result` blocks survive normalization with raw/normalized count parity |
 | Subscription-auth boundary | REAL SDK | Self-hosted Mac smoke succeeds with existing Claude login and no `ANTHROPIC_API_KEY` |
+| Default Mac daemon transport | CONTRACT | Daemon defaults to Agent SDK through one shared factory, preserves explicit headless rollback, and passes real foreground/background executor smoke |
 | Canonical authority | PRODUCT | Provider session/transcript can be discarded without losing LeileiOS product truth |
 
 ## Compaction discipline
@@ -167,3 +168,14 @@ established.
 - The 30-second Bash completion marker was not created, proving the in-flight command did not finish after abort.
 - Abort completed in 6,940 ms and emitted 4 normalized events before termination.
 - This proves the current parity hard-abort path via Query `close()`; it does not claim the later SDK `interrupt()` capability.
+
+
+## Default daemon transport slice — pending real smoke
+
+- The Mac daemon now resolves Claude transport through one shared factory instead of constructing `HeadlessClaudeTransport` directly.
+- Default selection is `agent_sdk`; `LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT=headless` is the explicit rollback path.
+- No runtime protocol, Canonical Ledger, branch, relay, reservation, or durable authority semantics change in this slice.
+- Daemon logging exposes the selected transport kind for local observability.
+- Real acceptance uses the exact same factory as the daemon, then passes the selected Agent SDK runtime through `NativeLiveMacRuntimeExecutor` and `NativeLiveMacBackgroundModelExecutor`.
+- The smoke is local to the Mac runtime and performs no relay or canonical production mutation.
+- Acceptance requires existing Claude subscription login, no `ANTHROPIC_API_KEY`, a successful foreground new turn with normalized final text/provider session, and a successful background pure-model turn.
