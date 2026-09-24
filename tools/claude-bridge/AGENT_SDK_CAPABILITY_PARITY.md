@@ -468,3 +468,29 @@ Hard boundaries:
 - no iOS input UI semantics yet;
 - no background-task preservation semantics are claimed;
 - graceful interrupt remains a separate control from user steering.
+
+
+## REAL SDK mid-turn user input acceptance — PASS
+
+Validated on macOS against `@anthropic-ai/claude-agent-sdk@0.3.281` using the existing Claude subscription login.
+
+Observed real smoke result:
+
+- architecture: `dedicated_agent_sdk_mid_turn_input`
+- provider session: `70445d71-1a51-4c7b-881e-109eca6c213b`
+- real Bash `tool_use` observed
+- STARTED marker existed before injection
+- FINISHED marker did not yet exist when the second user message was queued
+- `handle.sendUserMessage(...)` returned `{ status: "queued" }`
+- Bash then completed normally and produced FINISHED
+- terminal text: `LEILEIOS_MIDTURN_UPDATED`
+- no `interrupt()`, provider restart, or resume was used
+- same-turn steering: true
+
+Acceptance meaning:
+
+- the dedicated Agent SDK turn handle can accept a second user message while the same provider turn is active;
+- the additional user message can steer the terminal answer after an in-flight tool call without cancelling that tool;
+- the provider input queue is execution state only and does not become canonical conversation authority;
+- graceful interrupt remains a separate control path;
+- default finite one-message input behavior remains unchanged when `midTurnInput` is disabled.
