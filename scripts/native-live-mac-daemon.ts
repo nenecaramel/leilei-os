@@ -84,6 +84,16 @@ while (!stopping) {
         ...("reservationId" in outcome
           ? { reservationId: outcome.reservationId }
           : {}),
+        ...("result" in outcome
+          ? {
+              resultStatus: outcome.result.status,
+              ...(
+                outcome.result.status === "failure"
+                  ? { errorCode: outcome.result.error_code }
+                  : {}
+              ),
+            }
+          : {}),
       }) + "\n",
     );
 
