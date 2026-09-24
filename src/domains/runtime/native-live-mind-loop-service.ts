@@ -85,6 +85,7 @@ export interface SubjectStateRuntimePort {
 export type MindLoopConfig = {
   assemblyVersion: string;
   promptContractVersion: string;
+  contextTimeZone?: string;
   ruleVersion: string;
   processVersion: string;
   surfaceLimit: number;
@@ -175,6 +176,7 @@ export class NativeLiveMindLoopService {
     conversation: NativeLiveConversation;
     userMessageId: string;
     userText: string;
+    userMessageCreatedAt?: string;
     snapshotSequence: number;
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
@@ -281,6 +283,8 @@ export class NativeLiveMindLoopService {
       conversation: input.conversation,
       userMessageId: input.userMessageId,
       userText: input.userText,
+      userMessageCreatedAt: input.userMessageCreatedAt,
+      contextTimeZone: this.config.contextTimeZone,
       subjectStates: states,
       snapshotSequence: input.snapshotSequence,
       assembledAt: input.assembledAt,

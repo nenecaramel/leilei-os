@@ -9,6 +9,7 @@ export type SurfaceEntry = {
   role: NativeLiveMessage["role"];
   text: string;
   createdAt: string;
+  completedAt: string | null;
 };
 
 export class SurfaceProjectionError extends Error {
@@ -96,5 +97,6 @@ export function projectCanonicalSurface(
     role: message.role,
     text: messageText(message),
     createdAt: message.createdAt,
+    completedAt: message.completedAt,
   }));
 }

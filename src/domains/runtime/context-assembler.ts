@@ -28,14 +28,46 @@ function escapeData(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+function contextTimestampLabel(item: ContextManifestItem): string | null {
+  const value = item.payload?.context_timestamp;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 function charCost(item: ContextManifestItem): number {
-  return item.text?.length ?? 0;
+  return (item.text?.length ?? 0) + (contextTimestampLabel(item)?.length ?? 0);
 }
 
 function renderItem(item: ContextManifestItem): string {
   const text = item.text?.trim();
   if (!text) return "";
-  return `<context_item type="${escapeData(item.type)}" source="${escapeData(item.sourceId)}">${escapeData(text)}</context_item>`;
+  const timestamp = contextTimestampLabel(item);
+  const renderedText = timestamp ? `${timestamp} ${text}` : text;
+  return `<context_item type="${escapeData(item.type)}" source="${escapeData(item.sourceId)}">${escapeData(renderedText)}</context_item>`;
+}
+
+function formatContextTimestamp(
+  iso8601: string,
+  timeZone: string,
+): string {
+  const date = new Date(iso8601);
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error("Context timestamp must be a valid ISO timestamp.");
+  }
+
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone,
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+
+  return `[${part("month")}-${part("day")} ${part("weekday")} ${part("hour")}:${part("minute")}]`;
 }
 
 function stateApplies(
@@ -122,6 +154,8 @@ export function assembleTurnContext(input: {
   conversation: NativeLiveConversation;
   userMessageId: string;
   userText: string;
+  userMessageCreatedAt?: string;
+  contextTimeZone?: string;
   subjectStates: readonly SubjectStateWrite[];
   snapshotSequence: number;
   assembledAt: string;
@@ -152,6 +186,12 @@ export function assembleTurnContext(input: {
     headMessageId: surfaceHeadMessageId,
   });
 
+  const contextTimeZone = input.contextTimeZone ?? "UTC";
+  const userTimestamp = formatContextTimestamp(
+    input.userMessageCreatedAt ?? input.assembledAt,
+    contextTimeZone,
+  );
+
   const userItem: ContextManifestItem = {
     id: `user-message:${input.userMessageId}`,
     type: "user_message",
@@ -161,6 +201,10 @@ export function assembleTurnContext(input: {
     authority: "data",
     trustBoundary: "user",
     text: input.userText,
+    payload: {
+      created_at: input.userMessageCreatedAt ?? input.assembledAt,
+      context_timestamp: userTimestamp,
+    },
     selection: selection("current_user_message", 0),
   };
 
@@ -347,7 +391,17 @@ export function assembleTurnContext(input: {
       authority: "data",
       trustBoundary: "canonical_data",
       text: entry.text ? `${entry.role}: ${entry.text}` : null,
-      payload: { role: entry.role, created_at: entry.createdAt },
+      payload: {
+        role: entry.role,
+        created_at: entry.createdAt,
+        completed_at: entry.completedAt,
+        context_timestamp: formatContextTimestamp(
+          entry.role === "assistant"
+            ? entry.completedAt ?? entry.createdAt
+            : entry.createdAt,
+          contextTimeZone,
+        ),
+      },
       selection: selection("recent_canonical_surface", 200 + index),
     }));
 
@@ -453,10 +507,14 @@ export function assembledTurnContextFromManifest(
     "</leileios_context>",
   ].join("\n");
 
+  const userTimestamp = contextTimestampLabel(userItems[0]);
+  const renderedUserText = userTimestamp
+    ? `${userTimestamp} ${userItems[0].text}`
+    : userItems[0].text;
   const prompt = [
     contextData,
     "",
-    `<user_message>${escapeData(userItems[0].text)}</user_message>`,
+    `<user_message>${escapeData(renderedUserText)}</user_message>`,
   ].join("\n");
 
   return {
