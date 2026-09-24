@@ -65,6 +65,8 @@ import {
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export const DEFAULT_NATIVE_LIVE_SUBJECT_ID = "G";
+// Used by background Distillation only; foreground Claude prompt assembly no longer injects canonical Surface.
+export const DEFAULT_NATIVE_LIVE_SURFACE_LIMIT = 8;
 export const DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE = "Asia/Shanghai";
 
 export const DEFAULT_DRIVE_EVOLUTION_POLICY: DriveEvolutionPolicy = {
