@@ -301,6 +301,111 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func retryNativeLiveMessage(
+        targetUserMessageID: String
+    ) async throws {
+        guard isAuthenticated,
+              !chatSendInFlight,
+              let conversationID = activeNativeLiveConversationID,
+              let snapshot = nativeLiveCurrentPath,
+              snapshot.conversationId.caseInsensitiveCompare(
+                conversationID.uuidString
+              ) == .orderedSame,
+              snapshot.messages.contains(where: {
+                  $0.id == targetUserMessageID
+                      && $0.role == "user"
+              }) else {
+            throw NativeLiveSendError.notReady
+        }
+
+        chatSendInFlight = true
+        chatSendState = .sending
+        defer {
+            chatSendInFlight = false
+        }
+
+        do {
+            let prepared = try await api.prepareNativeLiveRetry(
+                conversationID: conversationID,
+                targetUserMessageID: targetUserMessageID
+            )
+
+            try await completePreparedNativeLiveTurn(
+                prepared,
+                conversationID: conversationID
+            )
+            chatSendState = .idle
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            chatSendState = .failed
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            chatSendState = .failed
+            throw LeileiAPIError.unauthorized
+        } catch {
+            chatSendState = .failed
+            throw error
+        }
+    }
+
+    func editNativeLiveMessage(
+        targetUserMessageID: String,
+        text: String
+    ) async throws {
+        guard isAuthenticated,
+              !chatSendInFlight,
+              let conversationID = activeNativeLiveConversationID,
+              let snapshot = nativeLiveCurrentPath,
+              snapshot.conversationId.caseInsensitiveCompare(
+                conversationID.uuidString
+              ) == .orderedSame,
+              snapshot.messages.contains(where: {
+                  $0.id == targetUserMessageID
+                      && $0.role == "user"
+              }) else {
+            throw NativeLiveSendError.notReady
+        }
+
+        let normalized = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalized.isEmpty, normalized.count <= 4_000 else {
+            throw NativeLiveSendError.invalidText
+        }
+
+        chatSendInFlight = true
+        chatSendState = .sending
+        defer {
+            chatSendInFlight = false
+        }
+
+        do {
+            let prepared = try await api.prepareNativeLiveEdit(
+                conversationID: conversationID,
+                targetUserMessageID: targetUserMessageID,
+                text: normalized
+            )
+
+            try await completePreparedNativeLiveTurn(
+                prepared,
+                conversationID: conversationID
+            )
+            chatSendState = .idle
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            chatSendState = .failed
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            chatSendState = .failed
+            throw LeileiAPIError.unauthorized
+        } catch {
+            chatSendState = .failed
+            throw error
+        }
+    }
+
     func openNativeLiveConversation(_ conversationID: UUID) async {
         if activeNativeLiveConversationID != conversationID {
             activeNativeLiveConversationID = conversationID
@@ -396,6 +501,24 @@ final class AppModel: ObservableObject {
 
         chatRefreshInFlight = false
         chatRefreshPendingForce = false
+    }
+
+    private func completePreparedNativeLiveTurn(
+        _ prepared: NativeLivePrepareResult,
+        conversationID: UUID
+    ) async throws {
+        guard prepared.conversationId.caseInsensitiveCompare(
+            conversationID.uuidString
+        ) == .orderedSame else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        try await waitForNativeLiveTurn(
+            prepareID: prepared.prepareId,
+            conversationID: conversationID
+        )
+        await refreshNativeLiveCurrentPath(force: true)
+        await refreshNativeLiveConversations()
     }
 
     private func waitForNativeLiveTurn(
