@@ -1,14 +1,25 @@
 import type {
   NativeLiveClaudeRuntime,
+  NativeLiveRuntimeResult,
 } from "../conversation/native-live-conversation-orchestrator.js";
 
 export type NativeLiveMacClaudeTransportKind =
   | "agent_sdk"
   | "headless";
 
+export type NativeLiveMacInteractiveTurnOptions = {
+  mode: "new" | "resume" | "fork";
+  parentProviderSessionId: string | null;
+  streaming: boolean;
+};
+
 export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
     abort(): void;
+    executeTurn?(
+      prompt: string,
+      options: NativeLiveMacInteractiveTurnOptions,
+    ): Promise<NativeLiveRuntimeResult>;
   };
 
 export function resolveNativeLiveMacClaudeTransportKind(

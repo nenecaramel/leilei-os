@@ -2,6 +2,17 @@ import type {
   NativeLiveClaudeRuntime,
   NativeLiveRuntimeResult,
 } from "../conversation/native-live-conversation-orchestrator.js";
+
+type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
+  executeTurn?: (
+    prompt: string,
+    options: {
+      mode: "new" | "fork";
+      parentProviderSessionId: string | null;
+      streaming: boolean;
+    },
+  ) => Promise<NativeLiveRuntimeResult>;
+};
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
@@ -11,15 +22,24 @@ import {
 } from "./native-live-runtime-protocol.js";
 
 export class NativeLiveMacRuntimeExecutor {
-  constructor(private readonly runtime: NativeLiveClaudeRuntime) {}
+  constructor(private readonly runtime: NativeLiveForegroundRuntime) {}
 
   async execute(rawCommand: unknown): Promise<NativeLiveRuntimeExecutionResult> {
     const command = parseNativeLiveRuntimeCommand(rawCommand);
 
     let runtimeResult: NativeLiveRuntimeResult;
     try {
-      runtimeResult =
-        command.runtime_mode === "new"
+      runtimeResult = this.runtime.executeTurn
+        ? await this.runtime.executeTurn(
+            command.prompt,
+            {
+              mode: command.runtime_mode,
+              parentProviderSessionId:
+                command.parent_provider_session_id,
+              streaming: true,
+            },
+          )
+        : command.runtime_mode === "new"
           ? await this.runtime.sendNew(command.prompt)
           : await this.runtime.fork(
               command.parent_provider_session_id!,

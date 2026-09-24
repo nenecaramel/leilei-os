@@ -172,3 +172,75 @@ test("unknown runtime exceptions collapse to RUNTIME_UNAVAILABLE", async () => {
   if (result.status !== "failure") throw new Error("expected failure");
   assert.equal(result.error_code, "RUNTIME_UNAVAILABLE");
 });
+
+
+test("interactive foreground runtime is preferred and receives streaming branch identity", async () => {
+  const calls: unknown[] = [];
+  const runtime = {
+    async sendNew() {
+      throw new Error("phase-1 sendNew must not be used");
+    },
+    async resume() {
+      throw new Error("phase-1 resume must not be used");
+    },
+    async fork() {
+      throw new Error("phase-1 fork must not be used");
+    },
+    async executeTurn(
+      prompt: string,
+      options: {
+        mode: "new" | "fork";
+        parentProviderSessionId: string | null;
+        streaming: boolean;
+      },
+    ) {
+      calls.push([prompt, options]);
+      return {
+        providerSessionId: "provider-interactive-child",
+        normalizedEvents: [
+          {
+            type: "partial_text",
+            payload: {
+              delta: "hel",
+              accumulated_length: 3,
+            },
+          },
+          {
+            type: "result",
+            payload: {
+              status: "success",
+              final_text: "hello",
+            },
+          },
+        ],
+      };
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(
+    command({
+      operation: "retry",
+      runtime_mode: "fork",
+      parent_provider_session_id: "provider-parent",
+    }),
+  );
+
+  assert.deepEqual(calls, [[
+    "hello",
+    {
+      mode: "fork",
+      parentProviderSessionId: "provider-parent",
+      streaming: true,
+    },
+  ]]);
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.equal(
+    result.provider_session_id,
+    "provider-interactive-child",
+  );
+  assert.deepEqual(
+    result.normalized_events.map((event) => event.type),
+    ["partial_text", "result"],
+  );
+});

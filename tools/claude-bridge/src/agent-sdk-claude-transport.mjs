@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
+import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
 import {
   normalizeAgentSdkExecutionSelection,
 } from "./agent-sdk-execution-selection.mjs";
@@ -78,6 +79,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.compactionThresholdPercent = compactionThresholdPercent;
     this.events = new EventEmitter();
     this.activeQuery = null;
+    this.activeTurnHandle = null;
     this.abortRequested = false;
   }
 
@@ -117,6 +119,134 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
     return result;
+  }
+
+  async executeTurn(
+    prompt,
+    {
+      mode = "new",
+      parentProviderSessionId = null,
+      streaming = true,
+    } = {},
+  ) {
+    if (this.activeQuery || this.activeTurnHandle) {
+      throw runtimeError(
+        "Claude Agent SDK transport already has an active turn.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    if (
+      mode !== "new"
+      && mode !== "resume"
+      && mode !== "fork"
+    ) {
+      throw new Error(
+        "Agent SDK interactive turn mode must be new, resume, or fork.",
+      );
+    }
+    if (
+      mode === "new"
+      && parentProviderSessionId !== null
+    ) {
+      throw new Error(
+        "New Agent SDK interactive turn must not include a parent provider session.",
+      );
+    }
+    if (
+      mode !== "new"
+      && !nonblankString(parentProviderSessionId)
+    ) {
+      throw new Error(
+        "Resume/fork Agent SDK interactive turn requires a parent provider session.",
+      );
+    }
+
+    this.abortRequested = false;
+    const queryImpl = await this.#resolveQuery();
+    if (this.abortRequested) {
+      throw runtimeError(
+        "Claude Agent SDK turn was aborted before startup completed.",
+        { runtimeCode: "ABORTED" },
+      );
+    }
+
+    const handle = await createAgentSdkTurnHandle({
+      prompt,
+      mode,
+      parentProviderSessionId,
+      resume:
+        mode === "new"
+          ? null
+          : parentProviderSessionId,
+      forkSession: mode === "fork",
+      queryImpl,
+      environment: this.environment,
+      cwd: this.cwd,
+      queryOptions: {
+        verbatimPrompts: true,
+      },
+      streaming,
+    });
+
+    this.activeTurnHandle = handle;
+    const forwardRaw = (event) => {
+      this.events.emit("event", event);
+    };
+    const forwardNormalized = (event) => {
+      this.events.emit("normalized-event", event);
+    };
+    handle.events.on("event", forwardRaw);
+    handle.events.on(
+      "normalized-event",
+      forwardNormalized,
+    );
+
+    try {
+      const result = await handle.start();
+      if (!result.providerSessionId) {
+        throw runtimeError(
+          "Claude Agent SDK interactive turn returned no provider session id.",
+          {
+            runtimeCode: "NO_PROVIDER_SESSION",
+            ...result,
+          },
+        );
+      }
+      if (
+        mode === "fork"
+        && result.providerSessionId === parentProviderSessionId
+      ) {
+        throw runtimeError(
+          "Claude Agent SDK fork returned the same provider session id as its parent.",
+          {
+            runtimeCode: "PROVIDER_SESSION_CONFLICT",
+            parentSessionId: parentProviderSessionId,
+            forkSessionId: result.providerSessionId,
+            ...result,
+          },
+        );
+      }
+      this.events.emit("exit", {
+        code: 0,
+        signal: null,
+      });
+      return {
+        ...result,
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+        signal: null,
+      };
+    } finally {
+      handle.events.off("event", forwardRaw);
+      handle.events.off(
+        "normalized-event",
+        forwardNormalized,
+      );
+      if (this.activeTurnHandle === handle) {
+        this.activeTurnHandle = null;
+      }
+    }
   }
 
   async compact(sessionId, execution = null) {
@@ -210,6 +340,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
   abort() {
     this.abortRequested = true;
+    this.activeTurnHandle?.abort?.();
     this.activeQuery?.close?.();
   }
 
@@ -239,7 +370,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       hooks = null,
     } = {},
   ) {
-    if (this.activeQuery) {
+    if (this.activeQuery || this.activeTurnHandle) {
       throw runtimeError(
         "Claude Agent SDK transport already has an active turn.",
         { runtimeCode: "RUNTIME_UNAVAILABLE" },
