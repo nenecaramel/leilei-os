@@ -14,12 +14,14 @@ struct ChatView: View {
             Color(.systemBackground)
                 .ignoresSafeArea()
 
-            ScrollView {
-                LazyVStack(spacing: 18) {
-                    Color.clear
-                        .frame(height: 1)
-                }
-                .padding(.horizontal, 16)
+            NativeLiveMessageSurface(
+                snapshot: appModel.nativeLiveCurrentPath,
+                syncState: appModel.chatSyncState,
+                isAuthenticated: appModel.isAuthenticated,
+                hasActiveConversation:
+                    appModel.activeNativeLiveConversationID != nil
+            ) {
+                await appModel.refreshNativeLiveCurrentPath(force: true)
             }
         }
         .contentShape(Rectangle())
