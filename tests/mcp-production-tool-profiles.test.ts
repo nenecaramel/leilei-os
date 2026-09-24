@@ -45,7 +45,7 @@ function runtime(input: {
   });
 }
 
-test("production public MCP defaults hide runtime, recovery, Notion advanced and UI-only tools", async () => {
+test("production public MCP defaults expose note card UI but hide runtime, recovery, and Notion tools", async () => {
   const process = runtime();
   const factory = process.appDependencies.createMcpSessionServer;
   assert.ok(factory);
@@ -70,11 +70,12 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "get_health",
     "get_current_time",
     "get_weather_context",
+    "render_note_card",
   ]) {
     assert.equal(
       names.includes(required),
       true,
-      `public core/device must expose ${required}`,
+      `public core/device/ui must expose ${required}`,
     );
   }
 
@@ -93,7 +94,6 @@ test("production public MCP defaults hide runtime, recovery, Notion advanced and
     "search_notion",
     "create_notion_page",
     "write_notion_page",
-    "render_note_card",
     "render_working_note",
     "render_thinking_block",
     "write_diary",

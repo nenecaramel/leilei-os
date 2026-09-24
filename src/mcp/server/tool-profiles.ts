@@ -44,7 +44,7 @@ const PROFILE_SURFACES: Record<
 };
 
 export const DEFAULT_PUBLIC_MCP_TOOL_PROFILES:
-  readonly McpToolProfileName[] = ["core", "device"];
+  readonly McpToolProfileName[] = ["core", "device", "ui"];
 
 export const DEFAULT_INTERNAL_MCP_TOOL_PROFILES:
   readonly McpToolProfileName[] = ["full"];

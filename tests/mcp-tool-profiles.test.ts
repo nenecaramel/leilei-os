@@ -8,7 +8,7 @@ import {
   resolveMcpToolExposure,
 } from "../src/mcp/server/tool-profiles.js";
 
-test("public MCP defaults expose core + device but hide maintenance/runtime surfaces", () => {
+test("public MCP defaults expose core + device + UI but hide maintenance/runtime surfaces", () => {
   const exposure = resolveMcpToolExposure(
     DEFAULT_PUBLIC_MCP_TOOL_PROFILES,
   );
@@ -24,7 +24,7 @@ test("public MCP defaults expose core + device but hide maintenance/runtime surf
     mcpToolSurfaceEnabled(exposure, "runtime_internal"),
     false,
   );
-  assert.equal(mcpToolSurfaceEnabled(exposure, "ui"), false);
+  assert.equal(mcpToolSurfaceEnabled(exposure, "ui"), true);
 });
 
 test("internal MCP defaults preserve full surface for dedicated maintenance/runtime hosts", () => {
