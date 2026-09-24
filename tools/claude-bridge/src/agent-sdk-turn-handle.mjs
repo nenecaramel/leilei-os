@@ -3,6 +3,10 @@ import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import {
   normalizeAgentSdkInterruptReceipt,
 } from "./agent-sdk-interrupt.mjs";
+import {
+  assertPermissionCallbackQueryOptions,
+  createAgentSdkPermissionCallback,
+} from "./agent-sdk-permission.mjs";
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
@@ -52,6 +56,7 @@ export async function createAgentSdkTurnHandle({
   environment = process.env,
   cwd = process.cwd(),
   queryOptions = {},
+  permissionHandler = null,
 } = {}) {
   if (environment.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -63,6 +68,20 @@ export async function createAgentSdkTurnHandle({
   }
 
   const resolvedQuery = queryImpl ?? await loadQuery();
+  const events = new EventEmitter();
+
+  let permissionCallback = null;
+  if (permissionHandler !== null) {
+    assertPermissionCallbackQueryOptions(
+      queryOptions,
+    );
+    permissionCallback =
+      createAgentSdkPermissionCallback({
+        permissionHandler,
+        events,
+      });
+  }
+
   async function* promptStream() {
     yield userMessage(prompt);
   }
@@ -76,6 +95,11 @@ export async function createAgentSdkTurnHandle({
       preset: "claude_code",
     },
     ...queryOptions,
+    ...(
+      permissionCallback
+        ? { canUseTool: permissionCallback }
+        : {}
+    ),
     ...(resume ? { resume } : {}),
     ...(forkSession ? { forkSession: true } : {}),
   };
@@ -106,6 +130,7 @@ export async function createAgentSdkTurnHandle({
     query,
     mode,
     parentProviderSessionId,
+    events,
   });
 }
 
@@ -114,11 +139,12 @@ export class AgentSdkTurnHandle {
     query,
     mode,
     parentProviderSessionId,
+    events = new EventEmitter(),
   }) {
     this.query = query;
     this.mode = mode;
     this.parentProviderSessionId = parentProviderSessionId;
-    this.events = new EventEmitter();
+    this.events = events;
     this.providerSessionId = null;
     this.interruptReceipt = null;
     this.interruptRequested = false;
