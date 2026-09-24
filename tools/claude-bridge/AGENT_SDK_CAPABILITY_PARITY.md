@@ -27,8 +27,8 @@ says the SDK supports it.
 | New session | REAL SDK | Real SDK returns provider session + normalized terminal result |
 | Resume session | REAL SDK | Real SDK preserves provider session identity |
 | Fork session | REAL SDK | Real SDK creates a distinct provider session from the canonical parent checkpoint |
-| Abort / hard stop | CONTRACT | Real SDK close/abort maps to LeileiOS failure semantics; later interrupt has timeout + hard-stop fallback |
-| Failure mapping | CONTRACT | Real SDK terminal/query failures map into the existing LeileiOS runtime error contract without pretending canonical success |
+| Abort / hard stop | REAL SDK | Real SDK active Query close/abort maps to `ABORTED` and interrupts an in-flight Bash turn; later SDK interrupt still requires timeout + hard-stop fallback |
+| Failure mapping | REAL SDK | Real SDK invalid-session failure maps to `CLAUDE_PROCESS_FAILED` without pretending canonical success |
 | Claude Code system prompt | CONTRACT | Real SDK smoke proves Claude Code preset is active |
 | CLAUDE.md | REAL SDK | Controlled project fixture proves project memory is loaded |
 | user / project / local settings | REAL SDK (partial) | `project` + `local` controlled fixtures proved applied; `user` source is selected but user-level content is intentionally not mutated by smoke |
@@ -156,3 +156,14 @@ established.
 - Real abort acceptance starts a Bash command that sleeps for 30 seconds and would create `abort-finished.txt` only after completion. The smoke waits until a normalized Bash `tool_use` is observed, calls `AgentSdkClaudeTransport.abort()`, requires `ABORTED`, and requires that the marker file was never created.
 - This slice verifies parity hard-abort via Query `close()`; it does not claim the later mid-turn SDK `interrupt()` capability.
 - Acceptance still uses the existing Claude subscription login and refuses `ANTHROPIC_API_KEY`.
+
+
+## Accepted abort / failure mapping evidence — 2026-09-24
+
+- #483 real SDK smoke PASS with `@anthropic-ai/claude-agent-sdk@0.3.281` and existing Claude subscription login.
+- Failure mapping: resuming nonexistent provider session `95620d53-1a71-487f-a3b1-9862a4180a70` failed in the real SDK and surfaced through `AgentSdkClaudeTransport` as `CLAUDE_PROCESS_FAILED`.
+- Abort: a real Bash turn was observed before cancellation; `AgentSdkClaudeTransport.abort()` closed the active Query and surfaced `ABORTED`.
+- Abort provider session: `5e1fb88f-5a5e-4a98-b91b-953dd0c72f1e`.
+- The 30-second Bash completion marker was not created, proving the in-flight command did not finish after abort.
+- Abort completed in 6,940 ms and emitted 4 normalized events before termination.
+- This proves the current parity hard-abort path via Query `close()`; it does not claim the later SDK `interrupt()` capability.
