@@ -552,6 +552,14 @@ class FakeStreamingExecutor implements NativeLivePreparedCommandExecutor {
       onNormalizedEvent?: (
         event: NativeLiveNormalizedEvent,
       ) => void | Promise<void>;
+      permissionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
+      questionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
     },
   ) {
     await options?.onNormalizedEvent?.({
@@ -627,6 +635,96 @@ test("runtime event delivery is fail-soft and does not invalidate canonical term
     relay.calls.filter((entry) => entry.name === "submitResult").length,
     1,
   );
+});
+
+
+class FakeInteractionRelay extends FakeRelay {
+  interactionCalls: unknown[] = [];
+
+  async requestRuntimeInteraction(input: {
+    kind: "permission" | "question";
+    request: Record<string, unknown>;
+  }) {
+    this.interactionCalls.push(input);
+    return input.kind === "permission"
+      ? { decision: "allow" }
+      : {
+          decision: "answer",
+          answers: { Theme: "Dark" },
+        };
+  }
+}
+
+class FakeInteractiveExecutor implements NativeLivePreparedCommandExecutor {
+  permissionDecision: unknown = null;
+  questionDecision: unknown = null;
+
+  async execute(
+    _input: unknown,
+    options?: {
+      permissionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
+      questionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
+    },
+  ) {
+    this.permissionDecision =
+      await options?.permissionHandler?.(
+        {
+          toolName: "Write",
+          input: { file_path: "/tmp/a" },
+        },
+        { signal: null },
+      );
+    this.questionDecision =
+      await options?.questionHandler?.(
+        {
+          toolName: "AskUserQuestion",
+          input: { questions: [] },
+          questions: [{ question: "Theme" }],
+        },
+        { signal: null },
+      );
+    return success();
+  }
+}
+
+test("daemon binds permission and AskUserQuestion host callbacks to the active reservation", async () => {
+  const relay = new FakeInteractionRelay();
+  const executor = new FakeInteractiveExecutor();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    executor,
+  );
+
+  assert.equal((await loop.runOnce()).outcome, "completed");
+  assert.deepEqual(executor.permissionDecision, {
+    decision: "allow",
+  });
+  assert.deepEqual(executor.questionDecision, {
+    decision: "answer",
+    answers: { Theme: "Dark" },
+  });
+  assert.equal(relay.interactionCalls.length, 2);
+  assert.deepEqual(
+    relay.interactionCalls.map(
+      (entry) => (entry as { kind: string }).kind,
+    ),
+    ["permission", "question"],
+  );
+  for (const entry of relay.interactionCalls) {
+    const value = entry as {
+      listenerInstanceId: string;
+      reservationId: string;
+    };
+    assert.equal(value.listenerInstanceId, listenerInstanceId);
+    assert.equal(value.reservationId, reservationId);
+  }
 });
 
 test("runOnce rejects reentrant polling while an execution is in flight", async () => {
