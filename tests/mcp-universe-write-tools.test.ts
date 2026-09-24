@@ -378,6 +378,8 @@ test("create Universe node forwards boundary positions and never accepts caller 
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: -1, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000002" },
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: 10, y: 101 }, expected_version: 0, idempotency_key: "node-create-0000003" },
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: 10, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000004", id: "caller-id" },
+    { title: "Node", summary: "Summary", content: "Content", type: "   ", tags: [], galaxies: [], position: { x: 10, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000005" },
+    { title: "Node", summary: "Summary", content: "Content", type: "x".repeat(129), tags: [], galaxies: [], position: { x: 10, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000006" },
   ]) {
     const invalid = await fixture.client.callTool({ name: "create_universe_node", arguments: arguments_ });
     assert.equal(invalid.isError, true);
@@ -422,6 +424,8 @@ test("update Universe node is a partial patch and rejects an empty or hidden pat
     { id: "node-generated", expected_version: 1 },
     { id: "node-generated", expected_version: 1, importance: "anchor" },
     { id: "node-generated", expected_version: 1, createdAt: "2026-08-21T00:00:00.000Z" },
+    { id: "node-generated", expected_version: 1, type: "   " },
+    { id: "node-generated", expected_version: 1, type: "x".repeat(129) },
   ]) {
     const invalid = await fixture.client.callTool({ name: "update_universe_node", arguments: arguments_ });
     assert.equal(invalid.isError, true);

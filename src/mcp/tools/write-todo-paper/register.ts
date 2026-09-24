@@ -10,9 +10,12 @@ import { createMcpToolError, mcpErrorRecoveryHint, mcpToolErrorDetailsSchema } f
 import { formatMcpDetailPointer, joinMcpContentLines } from "../content-contract.js";
 import { mcpMutationReceipt, mcpMutationReceiptFields, mcpMutationOutcomeFromReplay } from "../mutation-contract.js";
 import { mcpExpectedNullableRevisionSchema, mcpIdempotencyKeySchema } from "../idempotency-contract.js";
+import { MAX_TODO_ENTRY_ID_LENGTH } from "../../../domains/resource-limits.js";
 
 const todoEntryInputSchema = z.object({
-  id: z.string(),
+  id: z.string().trim().min(1).max(MAX_TODO_ENTRY_ID_LENGTH).describe(
+    "Stable entry ID within this paper. Reuse an existing entry ID to preserve identity; use a new unique ID for a new entry. This tool does not generate it.",
+  ),
   kind: z.enum(["pending", "completed", "record"]),
   text: z.string(),
 }).strict();

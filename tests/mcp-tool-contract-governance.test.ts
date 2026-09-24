@@ -305,6 +305,66 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
   }
 });
 
+test("Universe node and Todo replacement parameters are self-explanatory", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+  for (const name of ["create_universe_node", "update_universe_node"] as const) {
+    const tool = byName.get(name);
+    assert.ok(tool, `${name} must stay registered`);
+    const root = tool.inputSchema as Record<string, unknown>;
+
+    const type = property(tool, "type");
+    assert.ok(jsonSchemaContains(root, type, (candidate) => candidate.maxLength === 128));
+    assert.ok(jsonSchemaContains(
+      root,
+      type,
+      (candidate) => String(candidate.description ?? "").includes("Free-form Universe node type"),
+    ));
+
+    const galaxies = property(tool, "galaxies");
+    assert.ok(jsonSchemaContains(
+      root,
+      galaxies,
+      (candidate) => String(candidate.description ?? "").includes("Not limited to 0-1 or normalized"),
+    ));
+    assert.ok(jsonSchemaContains(
+      root,
+      galaxies,
+      (candidate) => String(candidate.description ?? "").includes("first and 0.72 for additional"),
+    ));
+
+    const position = property(tool, "position");
+    assert.ok(jsonSchemaContains(
+      root,
+      position,
+      (candidate) => String(candidate.description ?? "").includes("Logical Universe canvas X coordinate"),
+    ));
+    assert.ok(jsonSchemaContains(
+      root,
+      position,
+      (candidate) => String(candidate.description ?? "").includes("Logical Universe canvas Y coordinate"),
+    ));
+  }
+
+  const todo = byName.get("replace_todo_paper");
+  assert.ok(todo);
+  const todoRoot = todo.inputSchema as Record<string, unknown>;
+  const entries = property(todo, "entries");
+  assert.ok(jsonSchemaContains(todoRoot, entries, (candidate) => candidate.minLength === 1));
+  assert.ok(jsonSchemaContains(todoRoot, entries, (candidate) => candidate.maxLength === 128));
+  assert.ok(jsonSchemaContains(
+    todoRoot,
+    entries,
+    (candidate) => String(candidate.description ?? "").includes("Reuse an existing entry ID"),
+  ));
+  assert.ok(jsonSchemaContains(
+    todoRoot,
+    entries,
+    (candidate) => String(candidate.description ?? "").includes("does not generate it"),
+  ));
+});
+
 test("Diary update and Universe read/write boundary semantics stay explicit", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));

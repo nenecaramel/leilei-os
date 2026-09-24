@@ -472,6 +472,20 @@ test("replace_todo_paper strict schema rejects omissions and identity before aut
       entries: [{ id: "a", kind: "pending", text: "x", extra: true }],
       idempotency_key: "todo-paper-entry-extra-0001",
     },
+    {
+      date: DATE,
+      author: "L",
+      expected_revision: null,
+      entries: [{ id: "   ", kind: "pending", text: "x" }],
+      idempotency_key: "todo-paper-entry-empty-id-01",
+    },
+    {
+      date: DATE,
+      author: "L",
+      expected_revision: null,
+      entries: [{ id: "x".repeat(129), kind: "pending", text: "x" }],
+      idempotency_key: "todo-paper-entry-long-id-001",
+    },
   ]) {
     const response = await fixture.client.callTool({
       name: "replace_todo_paper",
