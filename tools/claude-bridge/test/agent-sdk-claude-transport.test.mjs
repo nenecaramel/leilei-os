@@ -1,0 +1,252 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  AgentSdkClaudeTransport,
+} from "../src/agent-sdk-claude-transport.mjs";
+
+function fakeQuery(messages, { error = null } = {}) {
+  let closed = false;
+  return {
+    get closed() {
+      return closed;
+    },
+    close() {
+      closed = true;
+    },
+    async *[Symbol.asyncIterator]() {
+      for (const message of messages) {
+        yield message;
+      }
+      if (error) throw error;
+    },
+  };
+}
+
+function successFixture(sessionId = "provider-sdk-1") {
+  return [
+    {
+      type: "system",
+      subtype: "init",
+      session_id: sessionId,
+    },
+    {
+      type: "assistant",
+      session_id: sessionId,
+      message: {
+        content: [{ type: "text", text: "READY" }],
+      },
+    },
+    {
+      type: "result",
+      subtype: "success",
+      session_id: sessionId,
+      result: "READY",
+    },
+  ];
+}
+
+test("sendNew preserves Claude Code settings and normalized event parity", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: { HOME: "/Users/leilei" },
+    cwd: "/workspace/leilei-os",
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture());
+    },
+  });
+
+  const emitted = [];
+  transport.events.on("normalized-event", (event) => {
+    emitted.push(event);
+  });
+
+  const result = await transport.sendNew("remember this");
+
+  assert.deepEqual(call, {
+    prompt: "remember this",
+    options: {
+      cwd: "/workspace/leilei-os",
+      env: { HOME: "/Users/leilei" },
+      settingSources: ["user", "project", "local"],
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+      },
+      verbatimPrompts: true,
+    },
+  });
+  assert.equal(result.providerSessionId, "provider-sdk-1");
+  assert.deepEqual(
+    result.normalizedEvents.map((event) => event.type),
+    ["session", "text", "result"],
+  );
+  assert.deepEqual(result.normalizedEvents, emitted);
+});
+
+test("resume passes provider session identity without forking", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-root"));
+    },
+  });
+
+  const result = await transport.resume(
+    "provider-root",
+    "what was it?",
+  );
+
+  assert.equal(call.options.resume, "provider-root");
+  assert.equal("forkSession" in call.options, false);
+  assert.equal(result.providerSessionId, "provider-root");
+});
+
+test("fork uses resume plus forkSession and requires a new provider session id", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-fork"));
+    },
+  });
+
+  const result = await transport.fork(
+    "provider-root",
+    "branch prompt",
+  );
+
+  assert.equal(call.options.resume, "provider-root");
+  assert.equal(call.options.forkSession, true);
+  assert.equal(result.providerSessionId, "provider-fork");
+
+  const conflicting = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => fakeQuery(successFixture("provider-root")),
+  });
+  await assert.rejects(
+    () => conflicting.fork("provider-root", "branch prompt"),
+    (error) =>
+      error.runtimeCode === "PROVIDER_SESSION_CONFLICT"
+      && /same provider session id/i.test(error.message),
+  );
+});
+
+test("SDK terminal error results map into existing runtime failure semantics", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-sdk-failure",
+      },
+      {
+        type: "result",
+        subtype: "error_during_execution",
+        session_id: "provider-sdk-failure",
+        errors: ["permission denied"],
+      },
+    ]),
+  });
+
+  await assert.rejects(
+    () => transport.sendNew("hello"),
+    (error) =>
+      error.runtimeCode === "CLAUDE_PROCESS_FAILED"
+      && /permission denied/i.test(error.message),
+  );
+});
+
+test("query transport exceptions map into existing process failure semantics", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () =>
+      fakeQuery([], { error: new Error("sdk subprocess died") }),
+  });
+
+  await assert.rejects(
+    () => transport.sendNew("hello"),
+    (error) =>
+      error.runtimeCode === "CLAUDE_PROCESS_FAILED"
+      && /sdk subprocess died/i.test(error.message),
+  );
+});
+
+test("abort closes the active SDK query and reports ABORTED", async () => {
+  let release;
+  let active;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => {
+      let closed = false;
+      active = {
+        close() {
+          closed = true;
+          release();
+        },
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-abort",
+          };
+          await gate;
+          if (!closed) {
+            yield {
+              type: "result",
+              subtype: "success",
+              session_id: "provider-abort",
+              result: "should not finish",
+            };
+          }
+        },
+      };
+      return active;
+    },
+  });
+
+  const run = transport.sendNew("long task");
+  await new Promise((resolve) => setImmediate(resolve));
+  transport.abort();
+
+  await assert.rejects(
+    () => run,
+    (error) => error.runtimeCode === "ABORTED",
+  );
+  assert.ok(active);
+});
+
+test("refuses API-key mode and keeps subscription-auth boundary", () => {
+  assert.throws(
+    () =>
+      new AgentSdkClaudeTransport({
+        environment: { ANTHROPIC_API_KEY: "forbidden" },
+        queryImpl: () => fakeQuery([]),
+      }),
+    /ANTHROPIC_API_KEY/,
+  );
+});
+
+test("SDK loading stays lazy so the old transport remains a valid rollback", async () => {
+  let loadCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    loadQuery: async () => {
+      loadCalls += 1;
+      return () => fakeQuery(successFixture("lazy-provider"));
+    },
+  });
+
+  assert.equal(loadCalls, 0);
+  const result = await transport.sendNew("hello");
+  assert.equal(loadCalls, 1);
+  assert.equal(result.providerSessionId, "lazy-provider");
+});
