@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import {
-  startAgentSdkTurn,
+  createAgentSdkTurnHandle,
 } from "../src/agent-sdk-turn-handle.mjs";
 
 if (process.env.ANTHROPIC_API_KEY) {
@@ -53,6 +53,15 @@ async function run() {
   let activeHandle = null;
   let forceExitTimer = null;
 
+  const setStage = (next) => {
+    stage = next;
+    process.stderr.write(
+      `[turn-handle-smoke] stage=${next}\n`,
+    );
+  };
+
+  setStage("initialized");
+
   const totalWatchdog = setTimeout(() => {
     const failedStage = stage;
     activeHandle?.abort();
@@ -75,7 +84,7 @@ async function run() {
   }, 60_000);
 
   try {
-    stage = "start_interrupted_turn";
+    setStage("start_interrupted_turn");
     const prompt = [
       "This is a deterministic LeileiOS turn-handle interrupt smoke.",
       "Use the Bash tool exactly once.",
@@ -85,7 +94,7 @@ async function run() {
       "Do not reply before the Bash command finishes.",
     ].join("\n");
 
-    const handle = await startAgentSdkTurn({
+    const handle = await createAgentSdkTurnHandle({
       prompt,
       cwd,
       environment: process.env,
@@ -103,24 +112,27 @@ async function run() {
       ) {
         sawBashToolUse = true;
         interruptPromise = (async () => {
-          stage = "wait_started_marker";
+          setStage("wait_started_marker");
           const started = await waitForFile(startedMarker);
           assert.equal(
             started,
             true,
             "Bash tool_use was observed but STARTED marker never appeared.",
           );
-          stage = "graceful_interrupt";
+          setStage("graceful_interrupt");
           return handle.interrupt();
         })();
         interruptPromise.catch(() => {});
       }
     });
 
-    stage = "await_interrupted_completion";
+    setStage("start_consumption");
+    const interruptedCompletion = handle.start();
+
+    setStage("await_interrupted_completion");
     let interruptedError = null;
     try {
-      await handle.completion;
+      await interruptedCompletion;
     } catch (error) {
       interruptedError = error;
     }
@@ -158,10 +170,10 @@ async function run() {
     assert.equal(startedMarkerCreated, true);
     assert.equal(finishedMarkerCreated, false);
 
-    stage = "resume_same_session";
+    setStage("resume_same_session");
     const continuityMarker =
       "LEILEIOS_TURN_HANDLE_CONTINUITY";
-    const resumed = await startAgentSdkTurn({
+    const resumed = await createAgentSdkTurnHandle({
       prompt:
         `Reply with exactly ${continuityMarker} and nothing else. Do not use tools.`,
       mode: "resume",
@@ -173,7 +185,8 @@ async function run() {
     });
     activeHandle = resumed;
 
-    const resumedResult = await resumed.completion;
+    setStage("start_resume_consumption");
+    const resumedResult = await resumed.start();
     assert.equal(
       resumedResult.providerSessionId,
       interruptedError.providerSessionId,
@@ -183,7 +196,7 @@ async function run() {
       continuityMarker,
     );
 
-    stage = "done";
+    setStage("done");
     clearTimeout(totalWatchdog);
     if (forceExitTimer) clearTimeout(forceExitTimer);
 
