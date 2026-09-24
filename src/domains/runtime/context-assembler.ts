@@ -7,7 +7,7 @@ import {
   type InitialContextManifest,
 } from "./context-assembly-contract.js";
 import { recallBreath } from "./breath-recall.js";
-import { canonicalPathToHead, projectCanonicalSurface } from "./surface-projector.js";
+import { canonicalPathToHead } from "./surface-projector.js";
 import type { SubjectStateWrite } from "./subject-state-contract.js";
 import { isConsolidationEligible } from "./runtime-status-axes.js";
 import { readDriveEvolution } from "./drive-evolution.js";
@@ -143,7 +143,7 @@ function selectWithinBudget(
 
 /**
  * First Non-style Context Assembly slice:
- * current user message + settled Bedrock + active Drive + active Fixation + active Topic + canonical Surface + bounded Breath.
+ * current user message + settled Bedrock + active Drive + active Fixation + active Topic + bounded Breath.
  * Selection order is deterministic; exact budget values are supplied by the
  * caller/runtime config rather than hard-coded here.
  */
@@ -161,7 +161,8 @@ export function assembleTurnContext(input: {
   assembledAt: string;
   assemblyVersion: string;
   promptContractVersion: string;
-  surfaceLimit: number;
+  /** @deprecated canonical Surface is no longer injected into model prompts. */
+  surfaceLimit?: number;
   breathLimit: number;
   breathCooldownHours?: number;
   breathSalienceWeight?: number;
@@ -181,11 +182,6 @@ export function assembleTurnContext(input: {
       : input.surfaceHeadMessageId;
   const path = canonicalPathToHead(input.conversation, surfaceHeadMessageId);
   const currentPathMessageIds = new Set(path.map((message) => message.id));
-  const surface = projectCanonicalSurface(input.conversation, {
-    maxMessages: input.surfaceLimit,
-    headMessageId: surfaceHeadMessageId,
-  });
-
   const contextTimeZone = input.contextTimeZone ?? "UTC";
   const userTimestamp = formatContextTimestamp(
     input.userMessageCreatedAt ?? input.assembledAt,
@@ -382,29 +378,6 @@ export function assembleTurnContext(input: {
       ),
     );
 
-  const surfaceItems: ContextManifestItem[] = [...surface]
-    .reverse()
-    .map((entry, index) => ({
-      id: `surface:${entry.messageId}`,
-      type: "surface",
-      sourceId: entry.messageId,
-      authority: "data",
-      trustBoundary: "canonical_data",
-      text: entry.text ? `${entry.role}: ${entry.text}` : null,
-      payload: {
-        role: entry.role,
-        created_at: entry.createdAt,
-        completed_at: entry.completedAt,
-        context_timestamp: formatContextTimestamp(
-          entry.role === "assistant"
-            ? entry.completedAt ?? entry.createdAt
-            : entry.createdAt,
-          contextTimeZone,
-        ),
-      },
-      selection: selection("recent_canonical_surface", 200 + index),
-    }));
-
   const breath = recallBreath(input.userText, input.subjectStates, {
     userId: input.userId,
     subjectId: input.subjectId,
@@ -440,7 +413,6 @@ export function assembleTurnContext(input: {
       ...drives,
       ...fixations,
       ...topics,
-      ...surfaceItems,
       ...breathItems,
     ],
     {
