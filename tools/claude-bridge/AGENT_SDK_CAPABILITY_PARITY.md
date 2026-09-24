@@ -46,9 +46,9 @@ says the SDK supports it.
 | AskUserQuestion | PENDING | Host receives structured question/options and can answer programmatically |
 | Context usage | REAL SDK | `getContextUsage()` structured readback succeeds while Query is live; Runtime persistence/UI wiring remains later |
 | Compact | REAL SDK | Manual `/compact`, compact boundary, PreCompact/PostCompact, generated summary, same-session continuation, and durable-marker continuity all passed on the real SDK |
-| Model selection | CONTRACT | Real SDK turn executes selected model and applied model is read back |
-| Thinking / effort | CONTRACT | Capability validation + applied settings/readback for supported combinations |
-| Runtime model switch | PENDING | Persistent Query changes model without changing logical conversation identity |
+| Model selection | REAL SDK | Selected model executes and `getSettings().applied.model` matches the requested per-turn model |
+| Thinking / effort | REAL SDK (partial) | Applied effort readback is proven for Sonnet 5 xhigh and Opus 5.5 medium; adaptive thinking is accepted by the query contract, but exact applied thinking is not independently exposed and discovery aliases may be incomplete |
+| Runtime model switch | REAL SDK | Same provider session switches Sonnet 5 → Opus 5.5 across turns while runtime-applied model/effort readback changes and provider session identity remains stable |
 | Background task state | PENDING | Structured background task membership/progress is observed |
 | Thinking token usage | PENDING | Usage readback reaches Runtime observability without becoming canonical message content |
 | Interrupt current turn | PENDING | Mid-turn interrupt works; startup/API-call edge cases fall back to timeout + hard stop |
@@ -136,3 +136,13 @@ established.
 - `supportedModels()` is projected as capability evidence (`supportsEffort`, `supportedEffortLevels`, `supportsAdaptiveThinking`, fast/auto support). Missing entries do not invalidate an applied model because SDK discovery has historically omitted valid aliases.
 - Real acceptance must prove the same provider session can run one turn on Sonnet 5 + adaptive + xhigh and the next turn on Opus 5.5 + adaptive + medium, with runtime-applied model/effort readback changing accordingly.
 - Thinking mode is passed through the accepted query contract and capability support is read from SDK model metadata; exact applied thinking mode is not independently claimed until the SDK exposes an unambiguous runtime readback for it.
+
+## Accepted model / effort readback evidence — 2026-09-24
+
+- #482 executable exact head `afe4fd00f1a36d76c329f00a2f67089c54c355f6`: REAL SDK model/effort readback smoke PASS with `@anthropic-ai/claude-agent-sdk@0.3.281` and existing Claude subscription login.
+- Turn 1 requested Sonnet 5 + adaptive + xhigh; live `getSettings().applied` returned `claude-sonnet-5` + `xhigh`.
+- Turn 2 resumed the same provider session, requested Opus 5.5 + adaptive + medium; live `getSettings().applied` returned `claude-opus-5-5` + `medium`.
+- Provider session identity remained `cc585fcb-1311-4684-9a18-2210944c576d` across the model switch.
+- `supportedModels()` returned five discovery entries (`default`, `opus`, `claude-fable-5-1[1m]`, `sonnet`, `haiku`) and did not expose an exact/display alias match for either requested model, so per-model `capability` was null. This is accepted evidence of incomplete discovery aliases, not evidence that the applied runtime model failed.
+- LeileiOS product allowlist remains authoritative for product selection; SDK discovery remains capability evidence; `getSettings().applied` is the execution readback for the actual turn.
+- Exact applied thinking mode is still not independently claimed because the SDK does not expose an unambiguous runtime readback for it.
