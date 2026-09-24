@@ -9,9 +9,7 @@ import {
   DashboardIcon,
   DataIcon,
   DiaryIcon,
-  MemoryIcon,
   SearchIcon,
-  TaskIcon,
   UniverseIcon,
 } from "../components/icons";
 
@@ -35,11 +33,8 @@ export const NAV_GROUPS: NavigationGroup[] = [
     label: "Core",
     entries: [
       { label: "Home", to: "/", icon: DashboardIcon, end: true },
-      { label: "Memory", to: "/memory", icon: MemoryIcon },
       { label: "Diary", to: "/diary", icon: DiaryIcon },
-      { label: "Task", to: "/task", icon: TaskIcon },
       { label: "Day Space", to: "/day-space", icon: DashboardIcon },
-      { label: "Shared Paper", to: "/shared-paper", icon: DashboardIcon },
       { label: "Conversations", to: "/conversations", icon: ConversationIcon },
       { label: "Universe", to: "/universe", icon: UniverseIcon },
       { label: "Sentinel", to: "/sentinel", icon: ActivityIcon },

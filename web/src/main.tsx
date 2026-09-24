@@ -17,7 +17,6 @@ import "./pages/universe-detail-dayspace-header-polish.css";
 import "./pages/universe-mobile-final-geometry.css";
 import "./pages/universe-home-dark.css";
 import "./pages/universe-home-dark-production-fixes.css";
-import "./pages/shared-paper.css";
 
 /*
  * Desktop gets the actual accepted mobile declarations from these same source

@@ -61,8 +61,10 @@ test("System navigation exposes exactly the five approved modules", () => {
     EXPECTED_SYSTEM_ENTRIES,
   );
 
-  assert.equal(NAV_ITEMS.length, 15);
-  assert.ok(NAV_ITEMS.some((entry) => entry.to === "/shared-paper"));
+  assert.equal(NAV_ITEMS.length, 12);
+  assert.equal(NAV_ITEMS.some((entry) => entry.to === "/shared-paper"), false);
+  assert.equal(NAV_ITEMS.some((entry) => entry.to === "/memory"), false);
+  assert.equal(NAV_ITEMS.some((entry) => entry.to === "/task"), false);
   assert.ok(NAV_ITEMS.some((entry) => entry.to === "/conversations"));
   assert.ok(NAV_ITEMS.some((entry) => entry.to === "/sentinel"));
   assert.doesNotMatch(
@@ -157,11 +159,11 @@ test("route scroll manager treats every System page as a top-level destination",
 test("Conversation Archive is a first-class Core destination with list and detail routes", () => {
   const core = NAV_GROUPS.find((group) => group.label === "Core");
   assert.ok(core);
-  const sharedPaperIndex = core.entries.findIndex((entry) => entry.to === "/shared-paper");
+  const daySpaceIndex = core.entries.findIndex((entry) => entry.to === "/day-space");
   const conversationsIndex = core.entries.findIndex((entry) => entry.to === "/conversations");
   const universeIndex = core.entries.findIndex((entry) => entry.to === "/universe");
-  assert.ok(sharedPaperIndex >= 0);
-  assert.equal(conversationsIndex, sharedPaperIndex + 1);
+  assert.ok(daySpaceIndex >= 0);
+  assert.equal(conversationsIndex, daySpaceIndex + 1);
   assert.equal(universeIndex, conversationsIndex + 1);
   assert.match(appSource, /path="conversations"\s+element=\{<ConversationArchivePage\s*\/>\}/);
   assert.match(appSource, /path="conversations\/:conversationId"\s+element=\{<ConversationArchivePage\s*\/>\}/);

@@ -92,9 +92,7 @@ export class SystemService {
 }
 
 const RESOURCE_LABELS: Record<string, string> = {
-  memory: "Memory",
   diary: "Diary",
-  task: "Task",
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -104,9 +102,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const TOOL_LABELS: Record<string, string> = {
-  create_task: "Task created",
   write_diary: "Diary created",
-  write_memory: "Memory created",
   toy_set: "Toy updated",
   toy_stop: "Toy stopped",
 };
@@ -146,9 +142,7 @@ function normalizeTool(
 }
 
 const TOOL_FAILURE_PREFIXES: Record<string, string> = {
-  create_task: "Task creation",
   write_diary: "Diary creation",
-  write_memory: "Memory creation",
   toy_set: "Toy update",
   toy_stop: "Toy stop",
 };

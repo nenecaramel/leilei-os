@@ -8,9 +8,7 @@ const USER_ID = "00000000-0000-4000-8000-000000000099";
 
 function dependencies(systemService: Record<string, unknown>) {
   return {
-    memory: { memoryService: {} as never },
     diary: { diaryService: {} as never },
-    task: { taskService: {} as never },
     toy: { toyService: {} as never },
     system: { systemService },
   } as never;
@@ -69,10 +67,7 @@ test("system connections and data routes use server-owned identity", async () =>
     async readDataSummary(userId: string) {
       calls.push({ method: "data", userId });
       return {
-        memory: { active: 1, archived: 2 },
         diary: { active: 3, archived: 4 },
-        task: { active: 5, archived: 6 },
-        shared_paper: { active: 7, archived: 8 },
         todo: { active: 9 },
       };
     },
@@ -93,10 +88,7 @@ test("system connections and data routes use server-owned identity", async () =>
     assert.deepEqual(await data.json(), {
       success: true,
       data: {
-        memory: { active: 1, archived: 2 },
         diary: { active: 3, archived: 4 },
-        task: { active: 5, archived: 6 },
-        shared_paper: { active: 7, archived: 8 },
         todo: { active: 9 },
       },
     });
@@ -114,7 +106,7 @@ test("system activity returns bounded data and maps service failures safely", as
       return [{
         id: "event-1",
         occurred_at: "2026-08-09T00:00:00.000Z",
-        label: "Task archived",
+        label: "Diary archived",
         source: "Web",
         outcome: "success",
       }];
@@ -129,7 +121,7 @@ test("system activity returns bounded data and maps service failures safely", as
       data: { events: [{
         id: "event-1",
         occurred_at: "2026-08-09T00:00:00.000Z",
-        label: "Task archived",
+        label: "Diary archived",
         source: "Web",
         outcome: "success",
       }] },

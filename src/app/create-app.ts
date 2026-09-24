@@ -39,9 +39,7 @@ import {
 } from "../observability/logger.js";
 import { createMcpLifecycleObserver } from "../observability/runtime-observers.js";
 
-import type { MemoryApiDependencies } from "../web-api/memory-router.js";
 import type { DiaryApiDependencies } from "../web-api/diary-router.js";
-import type { TaskApiDependencies } from "../web-api/task-router.js";
 import {
   createToyBridgeRouter,
   type ToyApiDependencies,
@@ -54,7 +52,6 @@ import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 import type { BridgeApiDependencies } from "../web-api/bridge-router.js";
 import type { SentinelApiDependencies } from "../web-api/sentinel-router.js";
-import type { SharedPaperApiDependencies } from "../web-api/shared-paper-router.js";
 import type { ConversationImportApiDependencies } from "../web-api/conversation-import-router.js";
 import type { ConversationArchiveReadApiDependencies } from "../web-api/conversation-archive-read-router.js";
 import type { ConversationPruningApiDependencies } from "../web-api/conversation-pruning-router.js";
@@ -77,10 +74,8 @@ export type AppDependencies = {
   logger?: SafeLogger;
   verifyAccessToken?: AccessTokenVerifier;
   verifyWebAccessToken?: AccessTokenVerifier;
-  webMemoryService?: MemoryApiDependencies["memoryService"];
   webDiaryService?: DiaryApiDependencies["diaryService"];
   webDiaryCommentService?: DiaryApiDependencies["diaryCommentService"];
-  webTaskService?: TaskApiDependencies["taskService"];
   webSystemService?: SystemApiDependencies["systemService"];
   toyService?: ToyApiDependencies["toyService"];
   webGlobalSearchService?: GlobalSearchApiDependencies["globalSearchService"];
@@ -90,7 +85,6 @@ export type AppDependencies = {
   webUniverseService?: UniverseApiDependencies["universeService"];
   webBridgeService?: BridgeApiDependencies["bridgeService"];
   webSentinelService?: SentinelApiDependencies["sentinelService"];
-  webSharedPaperService?: SharedPaperApiDependencies["sharedPaperService"];
   webConversationImportService?: ConversationImportApiDependencies["conversationImportService"];
   webConversationArchiveReadService?: ConversationArchiveReadApiDependencies["conversationArchiveReadService"];
   webConversationPruningService?: ConversationPruningApiDependencies["conversationPruningService"];
@@ -324,11 +318,9 @@ export function createApp(
           webApiConfig.WEB_AUTH0_REQUIRED_SCOPE,
       });
 
-    const webMemoryService = dependencies.webMemoryService;
     const webDiaryService = dependencies.webDiaryService;
     const webDiaryCommentService =
       dependencies.webDiaryCommentService;
-    const webTaskService = dependencies.webTaskService;
     const webSystemService = dependencies.webSystemService;
     const toyService = dependencies.toyService;
     const webGlobalSearchService = dependencies.webGlobalSearchService;
@@ -338,7 +330,6 @@ export function createApp(
     const webUniverseService = dependencies.webUniverseService;
     const webBridgeService = dependencies.webBridgeService;
     const webSentinelService = dependencies.webSentinelService;
-    const webSharedPaperService = dependencies.webSharedPaperService;
     const webConversationImportService = dependencies.webConversationImportService;
     const webConversationArchiveReadService = dependencies.webConversationArchiveReadService;
     const webConversationPruningService = dependencies.webConversationPruningService;
@@ -353,9 +344,7 @@ export function createApp(
       dependencies.webNativeLiveConversationService;
 
     if (
-      !webMemoryService ||
       !webDiaryService ||
-      !webTaskService ||
       !webSystemService ||
       !toyService ||
       !webGlobalSearchService ||
@@ -394,17 +383,11 @@ export function createApp(
       ),
       databaseReadinessMiddleware,
       createWebApiRouter({
-        memory: {
-          memoryService: webMemoryService,
-        },
         diary: {
           diaryService: webDiaryService,
           ...(webDiaryCommentService
             ? { diaryCommentService: webDiaryCommentService }
             : {}),
-        },
-        task: {
-          taskService: webTaskService,
         },
         system: { systemService: webSystemService },
         toy: {
@@ -417,7 +400,6 @@ export function createApp(
         universe: { universeService: webUniverseService },
         ...(webBridgeService ? { bridge: { bridgeService: webBridgeService } } : {}),
         ...(webSentinelService ? { sentinel: { sentinelService: webSentinelService } } : {}),
-        ...(webSharedPaperService ? { sharedPaper: { sharedPaperService: webSharedPaperService } } : {}),
         ...(webConversationFavoriteService ? { conversationFavorite: { conversationFavoriteService: webConversationFavoriteService } } : {}),
         ...(webConversationExclusionManagementService ? { conversationExclusionManagement: { conversationExclusionManagementService: webConversationExclusionManagementService } } : {}),
         ...(webConversationImportHistoryService ? { conversationImportHistory: { conversationImportHistoryService: webConversationImportHistoryService } } : {}),

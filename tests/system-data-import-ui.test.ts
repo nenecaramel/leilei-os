@@ -18,7 +18,7 @@ function installDom(url: string) {
 }
 
 const waitForPaint = () => new Promise((resolve) => setTimeout(resolve, 35));
-const summary = () => ({ success: true as const, data: { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 }, shared_paper: { active: 0, archived: 0 }, todo: { active: 0 } } });
+const summary = () => ({ success: true as const, data: { diary: { active: 0, archived: 0 }, todo: { active: 0 } } });
 
 function render(api: WebApiClient) {
   const container = document.getElementById("root")!;
@@ -47,12 +47,12 @@ test("Data restore keeps selection, preview, and execute inside the compact Syst
       calls.push({ path, init });
       if (path === "/system/data") return summary() as T;
       if (path === "/system/import/preview") return { data: { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), can_execute: true, summary: {
-        memory: { create: 1, duplicate: 0, conflict: 0, invalid: 0 },
-        shared_paper: { create: 2, duplicate: 0, conflict: 0, invalid: 0 },
+        diary: { create: 1, duplicate: 0, conflict: 0, invalid: 0 },
+        todo: { create: 2, duplicate: 0, conflict: 0, invalid: 0 },
       } } } as T;
       return { data: { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), summary: {
-        memory: { create: 1, duplicate: 0, conflict: 0, invalid: 0 },
-        shared_paper: { create: 2, duplicate: 0, conflict: 0, invalid: 0 },
+        diary: { create: 1, duplicate: 0, conflict: 0, invalid: 0 },
+        todo: { create: 2, duplicate: 0, conflict: 0, invalid: 0 },
       } } } as T;
     },
   };
@@ -74,8 +74,8 @@ test("Data restore keeps selection, preview, and execute inside the compact Syst
 
   findButton(card, "Preview")!.click();
   await waitForPaint();
-  assert.match(card.textContent ?? "", /Memory/);
-  assert.match(card.textContent ?? "", /Shared Paper/);
+  assert.match(card.textContent ?? "", /Diary/);
+  assert.match(card.textContent ?? "", /Todo/);
   assert.match(card.textContent ?? "", /1 new/);
   assert.match(card.textContent ?? "", /2 new/);
   assert.match(card.textContent ?? "", /1 new record/);
@@ -100,7 +100,7 @@ test("Data restore treats an all-duplicate preview as a quiet completed state wi
   const api: WebApiClient = {
     async request<T>(path: string): Promise<T> {
       if (path === "/system/data") return summary() as T;
-      return { data: { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), can_execute: false, summary: { memory: { create: 0, duplicate: 2, conflict: 0, invalid: 0 } } } } as T;
+      return { data: { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), can_execute: false, summary: { diary: { create: 0, duplicate: 2, conflict: 0, invalid: 0 } } } } as T;
     },
   };
   const { container, root } = render(api);
@@ -125,8 +125,8 @@ test("Data restore turns conflict and invalid planner counts into human-facing b
     async request<T>(path: string): Promise<T> {
       if (path === "/system/data") return summary() as T;
       return { data: { package_sha256: "a".repeat(64), preview_fingerprint: "b".repeat(64), can_execute: false, summary: {
-        memory: { create: 0, duplicate: 0, conflict: 1, invalid: 0 },
-        diary: { create: 0, duplicate: 0, conflict: 0, invalid: 1 },
+        diary: { create: 0, duplicate: 0, conflict: 1, invalid: 0 },
+        todo: { create: 0, duplicate: 0, conflict: 0, invalid: 1 },
       } } } as T;
     },
   };
@@ -137,8 +137,8 @@ test("Data restore turns conflict and invalid planner counts into human-facing b
   await waitForPaint();
 
   const card = container.querySelector<HTMLElement>(".system-import-card")!;
-  assert.match(card.textContent ?? "", /Memory\s*Conflict/);
-  assert.match(card.textContent ?? "", /Diary\s*Invalid/);
+  assert.match(card.textContent ?? "", /Diary\s*Conflict/);
+  assert.match(card.textContent ?? "", /Todo\s*Invalid/);
   assert.match(card.textContent ?? "", /Nothing will be overwritten/);
   assert.equal(findButton(card, "Restore"), undefined);
   assert.doesNotMatch(card.textContent ?? "", /conflict 1|invalid 1/);

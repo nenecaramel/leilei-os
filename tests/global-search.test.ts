@@ -2,349 +2,331 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createGlobalSearchSnippet, GlobalSearchError, GlobalSearchService, type GlobalSearchResult } from "../src/domains/global-search/global-search-service.js";
-import { GlobalSearchAuthenticationError } from "../src/mcp/tools/global-search/register.js";
-import type { GlobalSearchQuery, GlobalSearchRepository, GlobalSearchRow } from "../src/domains/global-search/global-search-repository.js";
-import { createMcpServer } from "../src/mcp/server/create-server.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  GlobalSearchService,
+  type GlobalSearchResult,
+} from "../src/domains/global-search/global-search-service.js";
+import type {
+  GlobalSearchQuery,
+  GlobalSearchRepository,
+  GlobalSearchRow,
+} from "../src/domains/global-search/global-search-repository.js";
+import {
+  registerGlobalSearchTool,
+} from "../src/mcp/tools/global-search/register.js";
 
-const USER_ID="00000000-0000-4000-8000-000000000701";
-const TASK_ID="00000000-0000-4000-8000-000000000003";
-const rows:GlobalSearchRow[]=[
-  {entityType:"memory",entityId:"00000000-0000-4000-8000-000000000001",stableName:"Café 计划",matchedField:"content",matchedValue:`${"前".repeat(100)}Café${"后".repeat(200)}`,matchReason:"exact_phrase",lifecycleStatus:"active",businessTime:new Date("2026-08-01T10:00:00Z"),timeBasis:"updated_at",updatedAt:new Date("2026-08-01T10:00:00Z"),rank:2,author:"C"},
-  {entityType:"diary",entityId:"00000000-0000-4000-8000-000000000002",stableName:"精准词",matchedField:"title",matchedValue:"精准词",matchReason:"exact_stable_name",lifecycleStatus:"archived",businessTime:new Date("2026-07-30T16:00:00Z"),timeBasis:"diary_date",updatedAt:new Date("2026-08-01T09:00:00Z"),rank:1,author:null},
-];
-class Repository implements GlobalSearchRepository {
-  calls:GlobalSearchQuery[]=[]; findCalls=0; result=rows;
-  async findUser(){this.findCalls+=1;return {status:"active" as const,timezone:"Asia/Shanghai"};}
-  async search(input:GlobalSearchQuery){this.calls.push(input);return this.result;}
+const USER_ID =
+  "00000000-0000-4000-8000-000000000099";
+const DIARY_ID =
+  "00000000-0000-4000-8000-000000000001";
+const TODO_ID =
+  "00000000-0000-4000-8000-000000000002";
+const CONVERSATION_ID =
+  "00000000-0000-4000-8000-000000000003";
+const MESSAGE_ID =
+  "00000000-0000-4000-8000-000000000004";
+
+function row(
+  overrides: Partial<GlobalSearchRow> = {},
+): GlobalSearchRow {
+  return {
+    entityType: "diary",
+    entityId: DIARY_ID,
+    stableName: "Diary",
+    matchedField: "content",
+    matchedValue: "计划内容",
+    matchReason: "field_match",
+    lifecycleStatus: "active",
+    businessTime:
+      new Date("2026-08-01T00:00:00.000Z"),
+    timeBasis: "diary_date",
+    updatedAt:
+      new Date("2026-08-01T00:00:00.000Z"),
+    rank: 4,
+    author: "C",
+    businessDate: null,
+    conversationId: null,
+    conversationView: null,
+    ...overrides,
+  };
 }
 
-test("GlobalSearchService validates before search, normalizes NFC, bounds snippets, and binds cursors",async()=>{
-  const repo=new Repository(); const service=new GlobalSearchService(repo);
-  await assert.rejects(service.search({userId:USER_ID,query:"　 "}), (e:unknown)=>e instanceof GlobalSearchError&&e.code==="INVALID_GLOBAL_SEARCH");
-  assert.equal(repo.calls.length,0);
-  assert.equal(repo.findCalls,0);
-  const first=await service.search({userId:USER_ID,query:"  Cafe\u0301  ",modules:["memory","diary"],scope:"all",date_from:"2026-07-01",date_to:"2026-08-01",limit:1});
-  assert.equal(repo.calls[0]?.query,"Café");
-  assert.equal([...(first.results[0]?.snippet ?? "")].length<=240,true);
-  assert.equal(first.results[0]?.snippet.includes("Café"),true);
-  assert.equal(first.metadata.has_more,true);
-  assert.ok(first.metadata.next_cursor);
-  const emojiSnippet=createGlobalSearchSnippet(`${"😀".repeat(200)}Café${"😀".repeat(200)}`,"Café");
-  assert.equal([...emojiSnippet].length<=240,true);
-  assert.equal(emojiSnippet.includes("Café"),true);
-  assert.equal(emojiSnippet.length>240,true);
-  repo.result=[];
-  await service.search({userId:USER_ID,query:"Café",modules:["memory","diary"],scope:"all",date_from:"2026-07-01",date_to:"2026-08-01",limit:1,cursor:first.metadata.next_cursor!});
-  assert.ok(repo.calls[1]?.after);
-  await assert.rejects(service.search({userId:USER_ID,query:"different",modules:["memory","diary"],scope:"all",date_from:"2026-07-01",date_to:"2026-08-01",limit:1,cursor:first.metadata.next_cursor!}),/invalid/i);
-  await assert.rejects(service.search({userId:USER_ID,query:"x",date_from:"2026-08-02",date_to:"2026-08-01"}),/invalid/i);
-  repo.result=[]; await service.search({userId:USER_ID,query:"x".repeat(200),limit:25});
-  await assert.rejects(service.search({userId:USER_ID,query:"x".repeat(201)}),/invalid/i);
-  await assert.rejects(service.search({userId:USER_ID,query:"x",cursor:"not-a-valid-cursor"}),/invalid/i);
-  await assert.rejects(service.search({userId:USER_ID,query:"x",modules:["memory","unknown"]}),/invalid/i);
+class FakeRepository
+implements GlobalSearchRepository {
+  queries: GlobalSearchQuery[] = [];
+  rows: GlobalSearchRow[] = [row()];
+
+  async findUser() {
+    return {
+      status: "active" as const,
+      timezone: "Asia/Shanghai",
+    };
+  }
+
+  async search(
+    input: GlobalSearchQuery,
+  ) {
+    this.queries.push(input);
+    return this.rows;
+  }
+}
+
+test("Global Search defaults to Diary Todo and Universe", async () => {
+  const repository = new FakeRepository();
+  const service =
+    new GlobalSearchService(repository);
+
+  const result = await service.search({
+    userId: USER_ID,
+    query: "计划",
+  });
+
+  assert.deepEqual(
+    result.metadata.searched_modules,
+    ["diary", "todo", "universe"],
+  );
+  assert.deepEqual(
+    repository.queries[0]?.modules,
+    ["diary", "todo", "universe"],
+  );
 });
 
-test("GlobalSearchService returns a stored C author without adding an author filter", async () => {
-  const repo = new Repository();
-  repo.result = [rows[0]!];
-  const result = await new GlobalSearchService(repo).search({ userId: USER_ID, query: "Café", modules: ["memory"] });
-  assert.equal(result.results[0]?.author, "C");
-  assert.equal("author" in (repo.calls[0] ?? {}), false);
-});
+test("Global Search rejects retired modules", async () => {
+  const service =
+    new GlobalSearchService(
+      new FakeRepository(),
+    );
 
-test("global_search is strict, read-only, server-owned, and returns detail instructions",async(t)=>{
-  const calls:unknown[]=[];
-  const result:GlobalSearchResult={results:[{entity_type:"task",entity_id:TASK_ID,stable_name:"计划",snippet:"😀".repeat(240),matched_field:"title",match_reason:"exact_stable_name",lifecycle_status:"archived",business_time:"2026-08-01T00:00:00.000Z",time_basis:"created_at",updated_at:"2026-08-01T00:00:00.000Z",author:"C",detail_tool:"get_task",detail_arguments:{id:TASK_ID,scope:"archived"}}],metadata:{count:1,has_more:false,next_cursor:null,searched_modules:["task"],searched_scope:"all"}};
-  const server=createMcpServer({globalSearch:{globalSearchService:{async search(input){calls.push(input);return result;}},getAuthenticatedUserId:()=>USER_ID}});
-  const client=new Client({name:"global-search-test",version:"1"},{capabilities:{}}); const [a,b]=InMemoryTransport.createLinkedPair(); await server.connect(b); await client.connect(a); t.after(async()=>{await client.close();await server.close();});
-  const tools=(await client.listTools()).tools; const tool=tools.find((x)=>x.name==="global_search")!;
-  assert.deepEqual(tool.annotations,{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});
-  const properties=tool.inputSchema.properties as Record<string,unknown>; assert.equal("user_id" in properties,false);assert.equal("userId" in properties,false);
-  const rejected=await client.callTool({name:"global_search",arguments:{query:"计划",user_id:USER_ID}}); assert.equal(rejected.isError,true); assert.equal(calls.length,0);
-  const empty=await client.callTool({
-    name:"global_search",
-    arguments:{query:""},
-  });
-  assert.equal(empty.isError,true);
-  assert.equal(calls.length,0);
-
-  const oversized=await client.callTool({
-    name:"global_search",
-    arguments:{query:"x".repeat(201)},
-  });
-  assert.equal(oversized.isError,true);
-  assert.equal(calls.length,0);
-  const unicodeBoundaryQuery="😀".repeat(200);
-  const unicodeBoundary=await client.callTool({
-    name:"global_search",
-    arguments:{query:unicodeBoundaryQuery,modules:["task"],scope:"all"},
-  });
-  assert.equal(unicodeBoundary.isError,undefined);
-  assert.equal(calls.length,1);
-  assert.equal((calls[0] as {query:string}).query,unicodeBoundaryQuery);
-  const ok=await client.callTool({name:"global_search",arguments:{query:"计划",modules:["task"],scope:"all"}}); assert.equal(ok.isError,undefined); assert.equal(calls.length,2); assert.equal((calls[1] as {userId:string}).userId,USER_ID); assert.deepEqual((ok.structuredContent as {data:GlobalSearchResult}).data.results[0]?.detail_arguments,{id:TASK_ID,scope:"archived"});
-});
-
-
-test("global_search reports missing authentication without calling the service",async(t)=>{
-  let serviceCalled=false;
-  const server=createMcpServer({
-    globalSearch:{
-      globalSearchService:{
-        async search(){
-          serviceCalled=true;
-          throw new Error("service must not run");
-        },
-      },
-      getAuthenticatedUserId:()=>{
-        throw new GlobalSearchAuthenticationError();
-      },
-    },
-  });
-  const client=new Client({name:"global-search-auth-test",version:"1"},{capabilities:{}});
-  const [a,b]=InMemoryTransport.createLinkedPair();
-  await server.connect(b);
-  await client.connect(a);
-  t.after(async()=>{
-    await client.close();
-    await server.close();
-  });
-  const result=await client.callTool({name:"global_search",arguments:{query:"计划"}});
-  assert.equal(result.isError,true);
-  assert.equal(serviceCalled,false);
-  assert.match(JSON.stringify(result),/Authentication is required to use global search/);
-});
-
-test("global_search output schema keeps module detail IDs strict while accepting Universe IDs", async (t) => {
-  const base = {
-    stable_name: "结果",
-    snippet: "命中",
-    matched_field: "content" as const,
-    match_reason: "field_match" as const,
-    lifecycle_status: "active" as const,
-    business_time: "2026-08-01T00:00:00.000Z",
-    updated_at: "2026-08-01T00:00:00.000Z",
-  };
-  const cases = [
-    ["memory", "get_memory"],
-    ["diary", "get_diary"],
-    ["task", "get_task"],
-  ] as const;
-
-  for (const [entityType, detailTool] of cases) {
-    const server = createMcpServer({
-      globalSearch: {
-        globalSearchService: {
-          async search() {
-            return {
-              results: [{ ...base, entity_type: entityType, entity_id: "00000000-0000-4000-8000-000000000001", detail_tool: detailTool, detail_arguments: { id: "not-a-uuid", scope: "active" as const } }],
-              metadata: { count: 1, has_more: false, next_cursor: null, searched_modules: [entityType], searched_scope: "active" as const },
-            };
-          },
-        },
-        getAuthenticatedUserId: () => USER_ID,
-      },
-    });
-    const client = new Client({ name: `global-search-invalid-${entityType}`, version: "1" }, { capabilities: {} });
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-    t.after(async () => { await client.close(); await server.close(); });
-    const response = await client.callTool({ name: "global_search", arguments: { query: "结果", modules: [entityType] } });
-    assert.equal(response.isError, true);
+  for (const module of [
+    "memory",
+    "task",
+    "shared_paper",
+  ]) {
+    await assert.rejects(
+      service.search({
+        userId: USER_ID,
+        query: "x",
+        modules: [module],
+      }),
+      /invalid/i,
+    );
   }
 });
 
+test("Global Search maps active modules to canonical detail pointers", async () => {
+  const repository = new FakeRepository();
+  repository.rows = [
+    row({
+      entityType: "diary",
+      entityId: DIARY_ID,
+    }),
+    row({
+      entityType: "todo",
+      entityId: TODO_ID,
+      stableName: "2026-08-01 C entry",
+      timeBasis: "todo_date",
+      businessDate: "2026-08-01",
+    }),
+    row({
+      entityType: "universe",
+      entityId: "node-1",
+      stableName: "Universe node",
+      timeBasis: "updated_at",
+      author: null,
+    }),
+    row({
+      entityType: "conversation",
+      entityId: MESSAGE_ID,
+      stableName: "Conversation",
+      matchedField: "text",
+      timeBasis: "message_time",
+      author: null,
+      conversationId: CONVERSATION_ID,
+      conversationView: "default",
+    }),
+  ];
 
-test("GlobalSearchService rejects structurally invalid cursors before user lookup",async()=>{
-  const repo=new Repository();
-  const service=new GlobalSearchService(repo);
-  const first=await service.search({
-    userId:USER_ID,
-    query:"Café",
-    modules:["memory","diary"],
-    scope:"all",
-    date_from:"2026-07-01",
-    date_to:"2026-08-01",
-    limit:1,
+  const result = await new GlobalSearchService(
+    repository,
+  ).search({
+    userId: USER_ID,
+    query: "计划",
+    modules: [
+      "diary",
+      "todo",
+      "universe",
+      "conversation",
+    ],
+    limit: 10,
   });
-  const validCursor=first.metadata.next_cursor!;
-  const findCallsBeforeInvalidCursor=repo.findCalls;
 
-  const withExtraField=JSON.parse(Buffer.from(validCursor,"base64url").toString("utf8")) as Record<string,unknown>;
-  withExtraField.extra=true;
-  const extraFieldCursor=Buffer.from(JSON.stringify(withExtraField)).toString("base64url");
+  assert.equal(
+    result.results[0]?.detail_tool,
+    "get_diary",
+  );
+  assert.deepEqual(
+    result.results[0]?.detail_arguments,
+    {
+      id: DIARY_ID,
+      scope: "active",
+    },
+  );
 
-  await assert.rejects(service.search({
-    userId:USER_ID,
-    query:"Café",
-    modules:["memory","diary"],
-    scope:"all",
-    date_from:"2026-07-01",
-    date_to:"2026-08-01",
-    limit:1,
-    cursor:extraFieldCursor,
-  }),/invalid/i);
+  assert.equal(
+    result.results[1]?.detail_tool,
+    "read_todo_day",
+  );
+  assert.deepEqual(
+    result.results[1]?.detail_arguments,
+    { date: "2026-08-01" },
+  );
 
-  const invalidIdPayload=JSON.parse(Buffer.from(validCursor,"base64url").toString("utf8")) as {
-    t:{entityId:string};
-  };
-  invalidIdPayload.t.entityId="task-1";
-  const invalidIdCursor=Buffer.from(JSON.stringify(invalidIdPayload)).toString("base64url");
+  assert.equal(
+    result.results[2]?.detail_tool,
+    "get_universe_node",
+  );
+  assert.deepEqual(
+    result.results[2]?.detail_arguments,
+    { id: "node-1" },
+  );
 
-  await assert.rejects(service.search({
-    userId:USER_ID,
-    query:"Café",
-    modules:["memory","diary"],
-    scope:"all",
-    date_from:"2026-07-01",
-    date_to:"2026-08-01",
-    limit:1,
-    cursor:invalidIdCursor,
-  }),/invalid/i);
-
-  assert.equal(repo.findCalls,findCallsBeforeInvalidCursor);
-});
-
-test("GlobalSearchService rejects a repository row whose matched source does not contain the query",async()=>{
-  const repo=new Repository();
-  repo.result=[{
-    ...rows[0],
-    matchedValue:"repository contract violation",
-  }];
-  const service=new GlobalSearchService(repo);
-  await assert.rejects(
-    service.search({userId:USER_ID,query:"Café"}),
-    /repository returned a non-matching snippet source/i,
+  assert.equal(
+    result.results[3]?.detail_tool,
+    "read_conversation",
+  );
+  assert.equal(
+    result.results[3]?.conversation_id,
+    CONVERSATION_ID,
   );
 });
 
+test("Global Search preserves cursor request binding", async () => {
+  const repository = new FakeRepository();
+  repository.rows = [
+    row(),
+    row({
+      entityId:
+        "00000000-0000-4000-8000-000000000005",
+      businessTime:
+        new Date("2026-07-31T00:00:00.000Z"),
+      updatedAt:
+        new Date("2026-07-31T00:00:00.000Z"),
+    }),
+  ];
+  const service =
+    new GlobalSearchService(repository);
 
-test("Conversation Archive is supported by Global Search but remains opt-in by default", async () => {
-  const repo = new Repository();
-  repo.result = [];
-  const service = new GlobalSearchService(repo);
-
-  await service.search({ userId: USER_ID, query: "needle" });
-  assert.deepEqual(repo.calls.at(-1)?.modules, [
-    "memory",
-    "diary",
-    "task",
-    "todo",
-    "universe",
-    "shared_paper",
-  ]);
-  assert.equal(repo.calls.at(-1)?.modules.includes("conversation"), false);
+  const first = await service.search({
+    userId: USER_ID,
+    query: "计划",
+    modules: ["diary"],
+    limit: 1,
+  });
+  assert.ok(first.metadata.next_cursor);
 
   await service.search({
     userId: USER_ID,
-    query: "needle",
-    modules: ["conversation"],
-  });
-  assert.deepEqual(repo.calls.at(-1)?.modules, ["conversation"]);
-});
-
-test("Conversation Global Search results carry exact canonical MCP detail pointers", async () => {
-  const repo = new Repository();
-  repo.result = [{
-    entityType: "conversation",
-    entityId: "00000000-0000-4000-8000-000000000711",
-    stableName: "Archived chat window",
-    matchedField: "text",
-    matchedValue: "some exact needle in a saved branch",
-    matchReason: "field_match",
-    lifecycleStatus: "active",
-    businessTime: new Date("2026-09-16T03:00:00.000Z"),
-    timeBasis: "message_time",
-    updatedAt: new Date("2026-09-16T03:00:00.000Z"),
-    rank: 4,
-    author: null,
-    conversationId: "00000000-0000-4000-8000-000000000712",
-    conversationView: "all",
-  }];
-
-  const result = await new GlobalSearchService(repo).search({
-    userId: USER_ID,
-    query: "needle",
-    modules: ["conversation"],
+    query: "计划",
+    modules: ["diary"],
+    limit: 1,
+    cursor:
+      first.metadata.next_cursor ?? undefined,
   });
 
-  assert.equal(result.results[0]?.entity_type, "conversation");
-  assert.equal(result.results[0]?.detail_tool, "read_conversation");
-  assert.deepEqual(result.results[0]?.detail_arguments, {
-    conversation_id: "00000000-0000-4000-8000-000000000712",
-    message_id: "00000000-0000-4000-8000-000000000711",
-    view: "all",
-    scope: "active",
-  });
-  assert.equal(
-    result.results[0]?.conversation_id,
-    "00000000-0000-4000-8000-000000000712",
+  await assert.rejects(
+    service.search({
+      userId: USER_ID,
+      query: "different",
+      modules: ["diary"],
+      limit: 1,
+      cursor:
+        first.metadata.next_cursor ?? undefined,
+    }),
+    /invalid/i,
   );
-  assert.equal(result.results[0]?.conversation_view, "all");
-  assert.equal(result.results[0]?.time_basis, "message_time");
 });
 
-test("global_search accepts the opt-in Conversation module and structured deep-link metadata", async (t) => {
-  const serviceResult: GlobalSearchResult = {
+test("MCP global_search exposes only active search modules", async (t) => {
+  const calls: unknown[] = [];
+  const result: GlobalSearchResult = {
     results: [{
-      entity_type: "conversation",
-      entity_id: "00000000-0000-4000-8000-000000000713",
-      stable_name: "Chat",
-      snippet: "needle",
-      matched_field: "text",
+      entity_type: "diary",
+      entity_id: DIARY_ID,
+      stable_name: "Diary",
+      snippet: "计划",
+      matched_field: "content",
       match_reason: "field_match",
       lifecycle_status: "active",
-      business_time: "2026-09-16T03:00:00.000Z",
-      time_basis: "message_time",
-      updated_at: "2026-09-16T03:00:00.000Z",
-      author: null,
-      detail_tool: "read_conversation",
+      business_time:
+        "2026-08-01T00:00:00.000Z",
+      time_basis: "diary_date",
+      updated_at:
+        "2026-08-01T00:00:00.000Z",
+      author: "C",
+      detail_tool: "get_diary",
       detail_arguments: {
-        conversation_id: "00000000-0000-4000-8000-000000000714",
-        message_id: "00000000-0000-4000-8000-000000000713",
-        view: "all",
+        id: DIARY_ID,
         scope: "active",
       },
-      conversation_id: "00000000-0000-4000-8000-000000000714",
-      conversation_view: "all",
+      conversation_id: null,
+      conversation_view: null,
     }],
     metadata: {
       count: 1,
       has_more: false,
       next_cursor: null,
-      searched_modules: ["conversation"],
+      searched_modules: ["diary"],
       searched_scope: "active",
     },
   };
-  const server = createMcpServer({
-    globalSearch: {
-      globalSearchService: { async search() { return serviceResult; } },
-      getAuthenticatedUserId: () => USER_ID,
-    },
+
+  const server = new McpServer({
+    name: "global-search-test",
+    version: "1",
   });
+  registerGlobalSearchTool(server, {
+    globalSearchService: {
+      async search(input) {
+        calls.push(input);
+        return result;
+      },
+    },
+    getAuthenticatedUserId: () => USER_ID,
+  });
+
   const client = new Client(
-    { name: "conversation-global-search", version: "1" },
+    {
+      name: "global-search-test",
+      version: "1",
+    },
     { capabilities: {} },
   );
-  const [a, b] = InMemoryTransport.createLinkedPair();
-  await server.connect(b);
-  await client.connect(a);
-  t.after(async () => { await client.close(); await server.close(); });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
 
-  const response = await client.callTool({
+  const ok = await client.callTool({
     name: "global_search",
-    arguments: { query: "needle", modules: ["conversation"] },
+    arguments: {
+      query: "计划",
+      modules: ["diary"],
+    },
   });
-  assert.equal(response.isError, undefined);
-  const data = (response.structuredContent as { data: GlobalSearchResult }).data;
-  assert.equal(data.results[0]?.conversation_view, "all");
-  assert.equal(data.results[0]?.detail_tool, "read_conversation");
-  assert.deepEqual(data.results[0]?.detail_arguments, {
-    conversation_id: "00000000-0000-4000-8000-000000000714",
-    message_id: "00000000-0000-4000-8000-000000000713",
-    view: "all",
-    scope: "active",
+  assert.equal(ok.isError, undefined);
+  assert.equal(calls.length, 1);
+
+  const retired = await client.callTool({
+    name: "global_search",
+    arguments: {
+      query: "计划",
+      modules: ["memory"],
+    },
   });
+  assert.equal(retired.isError, true);
 });

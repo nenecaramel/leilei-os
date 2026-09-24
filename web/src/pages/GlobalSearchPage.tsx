@@ -643,7 +643,7 @@ export function GlobalSearchPageContent({ api }: Props) {
 
       {state === "idle" ? (
         <p className="global-search-state-line" role="status" aria-live="polite">
-          默认搜索 Memory、Diary、Task、Todo、Universe 与 Shared Paper；Conversations 可在模块筛选中开启
+          默认搜索 Diary、Todo 与 Universe；Conversations 可在模块筛选中开启
         </p>
       ) : null}
 

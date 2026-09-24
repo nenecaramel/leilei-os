@@ -12,7 +12,7 @@ import type {
   GlobalSearchTimeBasis,
 } from "./global-search-repository.js";
 
-const DEFAULT_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+const DEFAULT_MODULES = ["diary", "todo", "universe"] as const;
 const MODULES = [...DEFAULT_MODULES, "conversation"] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
@@ -46,7 +46,7 @@ export type GlobalSearchItem = {
   time_basis: GlobalSearchTimeBasis;
   updated_at: string;
   author: ContentAuthor | null;
-  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | "read_conversation" | null;
+  detail_tool: "get_diary" | "read_todo_day" | "get_universe_node" | "read_conversation" | null;
   detail_arguments:
     | { id: string; scope: "active" | "archived" }
     | { id: string }
@@ -159,8 +159,7 @@ function detailTool(
   if (entityType === "conversation") return "read_conversation";
   if (entityType === "universe") return "get_universe_node";
   if (entityType === "todo") return "read_todo_day";
-  if (entityType === "shared_paper") return "get_shared_paper";
-  return ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[entityType];
+  return "get_diary";
 }
 
 function detailArguments(
@@ -177,7 +176,7 @@ function detailArguments(
       scope: row.lifecycleStatus,
     };
   }
-  if (row.entityType === "universe" || row.entityType === "shared_paper") {
+  if (row.entityType === "universe") {
     return { id: row.entityId };
   }
   if (row.entityType === "todo") return todoDetailArguments(row);
