@@ -551,6 +551,7 @@ test("interactive foreground execution uses the dedicated turn handle with verba
   });
 
   const emitted = [];
+  const delivered = [];
   transport.events.on("normalized-event", (event) => {
     emitted.push(event.type);
   });
@@ -561,6 +562,9 @@ test("interactive foreground execution uses the dedicated turn handle with verba
       mode: "fork",
       parentProviderSessionId: "provider-parent",
       streaming: true,
+      onNormalizedEvent: async (event) => {
+        delivered.push(event.type);
+      },
     },
   );
 
@@ -584,4 +588,49 @@ test("interactive foreground execution uses the dedicated turn handle with verba
     emitted,
     ["session", "partial_text", "result"],
   );
+  assert.deepEqual(
+    delivered,
+    ["session", "partial_text", "result"],
+  );
+});
+
+test("interactive foreground event delivery failure is observability-only", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        for (const message of successFixture("provider-event-fail-soft")) {
+          yield message;
+        }
+      },
+    }),
+  });
+
+  const failures = [];
+  transport.events.on(
+    "event-delivery-error",
+    (error) => failures.push(error),
+  );
+
+  let attempts = 0;
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      onNormalizedEvent: async () => {
+        attempts += 1;
+        throw new Error("event delivery unavailable");
+      },
+    },
+  );
+
+  assert.equal(
+    result.providerSessionId,
+    "provider-event-fail-soft",
+  );
+  assert.equal(attempts, 3);
+  assert.equal(failures.length, 1);
 });
