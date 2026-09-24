@@ -98,6 +98,9 @@ export type AppDependencies = {
     NativeLiveApiDependencies["currentPathReader"];
   webNativeLiveConversationService?:
     NativeLiveApiDependencies["conversationService"];
+  nativeLiveRuntimeEventService?:
+    NativeLiveRelayInternalDependencies["runtimeEventService"]
+    & NativeLiveApiDependencies["runtimeEventService"];
   nativeLiveRelayService?:
     NativeLiveRelayInternalDependencies["relayService"]
     & NativeLiveApiDependencies["relayService"];
@@ -427,6 +430,12 @@ export function createApp(
                         webNativeLiveConversationService,
                     }
                   : {}),
+                ...(dependencies.nativeLiveRuntimeEventService
+                  ? {
+                      runtimeEventService:
+                        dependencies.nativeLiveRuntimeEventService,
+                    }
+                  : {}),
               },
             }
           : {}),
@@ -483,6 +492,12 @@ export function createApp(
             ? {
                 backgroundModelOpportunity:
                   dependencies.nativeLiveBackgroundModelOpportunity,
+              }
+            : {}),
+          ...(dependencies.nativeLiveRuntimeEventService
+            ? {
+                runtimeEventService:
+                  dependencies.nativeLiveRuntimeEventService,
               }
             : {}),
         }),
