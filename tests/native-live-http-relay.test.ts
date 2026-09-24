@@ -185,6 +185,75 @@ class FakeRelayService {
   }
 }
 
+class FakeRuntimeInteractionService {
+  createCalls: unknown[] = [];
+  readCalls: unknown[] = [];
+  listCalls: unknown[] = [];
+  resolveCalls: unknown[] = [];
+  cancelCalls: unknown[] = [];
+
+  async create(input: unknown) {
+    this.createCalls.push(input);
+    return {
+      outcome: "created" as const,
+      interaction: {
+        interactionId:
+          "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        prepareId,
+        kind: "permission" as const,
+        request: {
+          toolName: "Write",
+          input: { file_path: "/tmp/a" },
+        },
+        status: "pending" as const,
+        response: null,
+        createdAt: "2026-09-25T00:00:00.000Z",
+        updatedAt: "2026-09-25T00:00:00.000Z",
+        resolvedAt: null,
+        cancelledAt: null,
+      },
+    };
+  }
+
+  async readForListener(input: unknown) {
+    this.readCalls.push(input);
+    return {
+      interactionId:
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      prepareId,
+      kind: "permission" as const,
+      request: {
+        toolName: "Write",
+        input: { file_path: "/tmp/a" },
+      },
+      status: "resolved" as const,
+      response: { decision: "allow" as const },
+      createdAt: "2026-09-25T00:00:00.000Z",
+      updatedAt: "2026-09-25T00:00:01.000Z",
+      resolvedAt: "2026-09-25T00:00:01.000Z",
+      cancelledAt: null,
+    };
+  }
+
+  async listForUser(input: unknown) {
+    this.listCalls.push(input);
+    return [await this.readForListener(input)];
+  }
+
+  async resolve(input: unknown) {
+    this.resolveCalls.push(input);
+    return {
+      outcome: "resolved" as const,
+      interaction: await this.readForListener(input),
+    };
+  }
+
+  async cancelForListener(input: unknown) {
+    this.cancelCalls.push(input);
+    return "cancelled" as const;
+  }
+}
+
 class FakeRuntimeEventService {
   appendCalls: unknown[] = [];
   listCalls: unknown[] = [];
@@ -1020,6 +1089,145 @@ test("web runtime event reads are owner scoped and cursor bounded", async () => 
         prepareId,
         afterSequence: 1,
         limit: 25,
+      }]);
+    },
+  );
+});
+
+
+test("internal relay creates and reads listener-owned runtime interactions", async () => {
+  const relayService = new FakeRelayService();
+  const interactions = new FakeRuntimeInteractionService();
+  const interactionId =
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          runtimeInteractionService: interactions,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const created = await fetch(
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/interactions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            interaction_id: interactionId,
+            kind: "permission",
+            request: {
+              toolName: "Write",
+              input: { file_path: "/tmp/a" },
+            },
+          }),
+        },
+      );
+      assert.equal(created.status, 201);
+
+      const read = await fetch(
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/interactions/${interactionId}/read`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+          }),
+        },
+      );
+      assert.equal(read.status, 200);
+      assert.deepEqual(interactions.createCalls, [{
+        userId,
+        listenerInstanceId: listenerId,
+        reservationId: prepareId,
+        interactionId,
+        kind: "permission",
+        request: {
+          toolName: "Write",
+          input: { file_path: "/tmp/a" },
+        },
+      }]);
+      assert.equal(interactions.readCalls.length, 1);
+    },
+  );
+});
+
+test("web owner can list and resolve a pending runtime interaction", async () => {
+  const coordinator = new FakeCoordinator();
+  const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
+  const interactions = new FakeRuntimeInteractionService();
+  const interactionId =
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        if (request.header("x-test-user") === "owner") {
+          request.webUserId = userId;
+        }
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({
+          coordinator,
+          relayService,
+          turnReader,
+          runtimeInteractionService: interactions,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const listed = await fetch(
+        `${baseUrl}/api/v1/native-live/turns/${prepareId}/interactions?limit=10`,
+        { headers: { "x-test-user": "owner" } },
+      );
+      assert.equal(listed.status, 200);
+
+      const resolved = await fetch(
+        `${baseUrl}/api/v1/native-live/turns/${prepareId}/interactions/${interactionId}/respond`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-test-user": "owner",
+          },
+          body: JSON.stringify({
+            response: {
+              decision: "allow",
+              updatedInput: {
+                file_path: "/allowed/a",
+              },
+            },
+          }),
+        },
+      );
+      assert.equal(resolved.status, 200);
+      assert.deepEqual(interactions.listCalls, [{
+        userId,
+        prepareId,
+        limit: 10,
+      }]);
+      assert.deepEqual(interactions.resolveCalls, [{
+        userId,
+        prepareId,
+        interactionId,
+        response: {
+          decision: "allow",
+          updatedInput: {
+            file_path: "/allowed/a",
+          },
+        },
       }]);
     },
   );
