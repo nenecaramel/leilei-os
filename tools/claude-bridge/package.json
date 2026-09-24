@@ -9,7 +9,8 @@
     "smoke:agent-sdk-capabilities": "node scripts/agent-sdk-capability-smoke.mjs",
     "smoke:agent-sdk-compaction": "node scripts/agent-sdk-compaction-smoke.mjs",
     "smoke:agent-sdk-transport-compaction": "node scripts/agent-sdk-transport-compaction-smoke.mjs",
-    "smoke:agent-sdk-model-readback": "node scripts/agent-sdk-model-readback-smoke.mjs"
+    "smoke:agent-sdk-model-readback": "node scripts/agent-sdk-model-readback-smoke.mjs",
+    "smoke:agent-sdk-abort-failure": "node scripts/agent-sdk-abort-failure-smoke.mjs"
   },
   "engines": {
     "node": ">=20"
