@@ -232,3 +232,11 @@ established.
 - The handle lifecycle is now explicit: create handle -> attach listeners -> call `handle.start()` -> await `completion`.
 - Unit coverage now proves no SDK iterator consumption or normalized events occur before explicit `start()`.
 - The smoke prints every lifecycle stage to stderr, so any future stall identifies the exact stage instead of appearing as a silent hang.
+
+
+## First real turn-handle smoke finding — Bash permission parity
+
+- The first real turn-handle smoke reached normalized Bash `tool_use` but never created the STARTED marker.
+- This was not a turn-handle lifecycle failure: the raw #485 interrupt smoke had explicitly set `allowedTools: ["Bash"]`, while the first turn-handle smoke omitted that equivalent permission condition.
+- The smoke now carries the same explicit Bash allowance as #485 so the architectural comparison is like-for-like.
+- If the STARTED marker still does not appear within 5 seconds, the smoke hard-aborts immediately and fails with a focused permission/execution diagnostic instead of waiting for the 60-second total watchdog.
