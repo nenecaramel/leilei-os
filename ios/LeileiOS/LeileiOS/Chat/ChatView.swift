@@ -48,8 +48,11 @@ struct ChatView: View {
                 text: $messageText,
                 model: $model,
                 effort: $effort,
-                isFocused: $isComposerFocused
-            )
+                isFocused: $isComposerFocused,
+                isSending: appModel.chatSendState == .sending
+            ) {
+                sendMessage()
+            }
             .padding(.horizontal, 14)
             .padding(.top, 18)
             .padding(.bottom, 8)
@@ -65,6 +68,28 @@ struct ChatView: View {
                 .ignoresSafeArea()
             }
             .offset(y: 10)
+        }
+    }
+
+    private func sendMessage() {
+        let pendingText = messageText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !pendingText.isEmpty else { return }
+
+        messageText = ""
+        isComposerFocused = false
+
+        Task {
+            do {
+                try await appModel.sendNativeLiveMessage(pendingText)
+            } catch {
+                if messageText.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty {
+                    messageText = pendingText
+                }
+            }
         }
     }
 }

@@ -5,6 +5,8 @@ struct ChatComposer: View {
     @Binding var model: String
     @Binding var effort: String
     var isFocused: FocusState<Bool>.Binding
+    var isSending = false
+    var onSend: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -88,12 +90,13 @@ struct ChatComposer: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    if text.trimmingCharacters(
+                    guard !text.trimmingCharacters(
                         in: .whitespacesAndNewlines
-                    ).isEmpty {
-                    } else {
-                        text = ""
+                    ).isEmpty,
+                    !isSending else {
+                        return
                     }
+                    onSend?()
                 } label: {
                     ZStack {
                         Circle()
@@ -116,6 +119,7 @@ struct ChatComposer: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .disabled(isSending)
             }
         }
         .padding(.horizontal, 16)
