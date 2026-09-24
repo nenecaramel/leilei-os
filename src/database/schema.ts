@@ -623,6 +623,13 @@ export type NativeLiveRuntimeEventType =
   | "result"
   | "error"
   | "runtime";
+export type NativeLiveRuntimeInteractionKind =
+  | "permission"
+  | "question";
+export type NativeLiveRuntimeInteractionStatus =
+  | "pending"
+  | "resolved"
+  | "cancelled";
 export type NativeLiveMindFollowUpStatus =
   | "pending"
   | "processing"
@@ -1309,6 +1316,81 @@ export const nativeLiveRuntimeEvents = pgTable(
     check(
       "native_live_runtime_events_payload_object",
       sql`${table.payload} IS NULL OR jsonb_typeof(${table.payload}) = 'object'`,
+    ),
+  ],
+);
+
+export const nativeLiveRuntimeInteractions = pgTable(
+  "native_live_runtime_interactions",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    prepareId: uuid("prepare_id").notNull(),
+    listenerInstanceId: uuid("listener_instance_id").notNull(),
+    kind: varchar("kind", { length: 32 })
+      .$type<NativeLiveRuntimeInteractionKind>()
+      .notNull(),
+    request: jsonb("request").$type<Record<string, unknown>>().notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveRuntimeInteractionStatus>()
+      .default("pending")
+      .notNull(),
+    response: jsonb("response").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_runtime_interactions_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("native_live_runtime_interactions_turn_status_idx").on(
+      table.userId,
+      table.prepareId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "native_live_runtime_interactions_kind_allowed",
+      sql`${table.kind} IN ('permission', 'question')`,
+    ),
+    check(
+      "native_live_runtime_interactions_request_object",
+      sql`jsonb_typeof(${table.request}) = 'object' AND ${table.request} <> '{}'::jsonb`,
+    ),
+    check(
+      "native_live_runtime_interactions_status_allowed",
+      sql`${table.status} IN ('pending', 'resolved', 'cancelled')`,
+    ),
+    check(
+      "native_live_runtime_interactions_response_object",
+      sql`${table.response} IS NULL OR jsonb_typeof(${table.response}) = 'object'`,
+    ),
+    check(
+      "native_live_runtime_interactions_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.response} IS NULL
+          AND ${table.resolvedAt} IS NULL
+          AND ${table.cancelledAt} IS NULL)
+        OR (${table.status} = 'resolved'
+          AND ${table.response} IS NOT NULL
+          AND ${table.resolvedAt} IS NOT NULL
+          AND ${table.cancelledAt} IS NULL)
+        OR (${table.status} = 'cancelled'
+          AND ${table.response} IS NULL
+          AND ${table.resolvedAt} IS NULL
+          AND ${table.cancelledAt} IS NOT NULL)`,
     ),
   ],
 );
