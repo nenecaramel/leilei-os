@@ -149,6 +149,10 @@ import {
 import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
 import { createRetentionCoordinator } from "../domains/retention/retention-coordinator.js";
 import {
+  deleteExpiredRuntimeOperationalRecordsBatch,
+  RUNTIME_OPERATIONAL_RETENTION_DAYS,
+} from "../domains/retention/runtime-operational-retention.js";
+import {
   DATA_IMPORT_RETENTION_DAYS,
   NATIVE_LIVE_BACKGROUND_MODEL_RETENTION_DAYS,
 } from "../domains/retention/retention-policy.js";
@@ -569,6 +573,18 @@ export function createProcessRuntime(
           * 24 * 60 * 60 * 1_000,
         deleteBatch: (cutoff, limit) =>
           deleteExpiredNativeLiveBackgroundModelJobsBatch(
+            db,
+            cutoff,
+            limit,
+          ),
+      },
+      {
+        policy: "runtime_operational_records",
+        retentionMs:
+          RUNTIME_OPERATIONAL_RETENTION_DAYS
+          * 24 * 60 * 60 * 1_000,
+        deleteBatch: (cutoff, limit) =>
+          deleteExpiredRuntimeOperationalRecordsBatch(
             db,
             cutoff,
             limit,

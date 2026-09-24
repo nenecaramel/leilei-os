@@ -62,6 +62,20 @@ export type RetentionCoordinatorEvent =
       policy: "native_live_background_model_jobs";
       batches: number;
       durationMs: number;
+    }
+  | {
+      name: "runtime_operational_records_cleanup_completed";
+      policy: "runtime_operational_records";
+      deletedRows: number;
+      batches: number;
+      capped: boolean;
+      durationMs: number;
+    }
+  | {
+      name: "runtime_operational_records_cleanup_failed";
+      policy: "runtime_operational_records";
+      batches: number;
+      durationMs: number;
     };
 
 export type RetentionCoordinatorOptions = {
@@ -119,7 +133,9 @@ export function createRetentionCoordinator(
           ? "data_import_runs_cleanup_completed"
           : policy.policy === "bridge_events"
             ? "bridge_events_cleanup_completed"
-            : "native_live_background_model_jobs_cleanup_completed";
+            : policy.policy === "native_live_background_model_jobs"
+              ? "native_live_background_model_jobs_cleanup_completed"
+              : "runtime_operational_records_cleanup_completed";
       emit({
         name: completedName,
         policy: policy.policy,
@@ -136,7 +152,9 @@ export function createRetentionCoordinator(
             ? "data_import_runs_cleanup_failed"
             : policy.policy === "bridge_events"
               ? "bridge_events_cleanup_failed"
-              : "native_live_background_model_jobs_cleanup_failed",
+              : policy.policy === "native_live_background_model_jobs"
+                ? "native_live_background_model_jobs_cleanup_failed"
+                : "runtime_operational_records_cleanup_failed",
         policy: policy.policy,
         batches,
         durationMs: Math.max(0, now() - startedAt),
