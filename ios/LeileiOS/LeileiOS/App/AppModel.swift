@@ -18,6 +18,12 @@ final class AppModel: ObservableObject {
         case unavailable(String)
     }
 
+    enum ChatSendState: Equatable {
+        case idle
+        case sending
+        case failed
+    }
+
     enum ProbeState: Equatable {
         case idle
         case checking
@@ -52,10 +58,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var conversationBootstrapState: ConversationBootstrapState = .idle
     @Published private(set) var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot?
     @Published private(set) var chatSyncState: ChatSyncState = .idle
+    @Published private(set) var chatSendState: ChatSendState = .idle
 
     private var nativeLiveCurrentPathETags: [UUID: String] = [:]
     private var conversationBootstrapInFlight = false
     private var chatRefreshInFlight = false
+    private var chatSendInFlight = false
     private static let activeNativeLiveConversationDefaultsKey =
         "activeNativeLiveConversationID"
 
@@ -226,6 +234,72 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func sendNativeLiveMessage(_ text: String) async throws {
+        guard isAuthenticated,
+              !chatSendInFlight,
+              let conversationID = activeNativeLiveConversationID,
+              let snapshot = nativeLiveCurrentPath,
+              snapshot.conversationId.caseInsensitiveCompare(
+                conversationID.uuidString
+              ) == .orderedSame else {
+            throw NativeLiveSendError.notReady
+        }
+
+        let normalized = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalized.isEmpty, normalized.count <= 4_000 else {
+            throw NativeLiveSendError.invalidText
+        }
+
+        chatSendInFlight = true
+        chatSendState = .sending
+        defer {
+            chatSendInFlight = false
+        }
+
+        do {
+            let prepared = try await api.prepareNativeLiveSend(
+                conversationID: conversationID,
+                expectedHeadMessageID: snapshot.currentHeadMessageId,
+                text: normalized
+            )
+
+            guard prepared.conversationId.caseInsensitiveCompare(
+                conversationID.uuidString
+            ) == .orderedSame else {
+                throw LeileiAPIError.invalidResponse
+            }
+
+            try await waitForNativeLiveTurn(
+                prepareID: prepared.prepareId,
+                conversationID: conversationID
+            )
+
+            await refreshNativeLiveCurrentPath(force: true)
+            await refreshNativeLiveConversations()
+            chatSendState = .idle
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            chatSendState = .failed
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            chatSendState = .failed
+            throw LeileiAPIError.unauthorized
+        } catch let error as LeileiAPIError {
+            if case .backend(_, let code, _) = error,
+               code == "STALE_HEAD" {
+                await refreshNativeLiveCurrentPath(force: true)
+            }
+            chatSendState = .failed
+            throw error
+        } catch {
+            chatSendState = .failed
+            throw error
+        }
+    }
+
     func openNativeLiveConversation(_ conversationID: UUID) async {
         if activeNativeLiveConversationID != conversationID {
             activeNativeLiveConversationID = conversationID
@@ -293,6 +367,70 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func waitForNativeLiveTurn(
+        prepareID: String,
+        conversationID: UUID
+    ) async throws {
+        // This is bounded foreground completion waiting for one user turn,
+        // not background/runtime polling.
+        for attempt in 0..<300 {
+            try Task.checkCancellation()
+
+            do {
+                let turn = try await api.nativeLiveTurn(
+                    prepareID: prepareID
+                )
+
+                guard turn.conversationId.caseInsensitiveCompare(
+                    conversationID.uuidString
+                ) == .orderedSame else {
+                    throw LeileiAPIError.invalidResponse
+                }
+
+                if turn.canonicalStatus == "finalized_success" {
+                    return
+                }
+
+                if turn.canonicalStatus == "finalized_failure"
+                    || turn.dispatchStatus == "rejected" {
+                    throw NativeLiveSendError.failed(
+                        code: turn.failureCode
+                    )
+                }
+            } catch LeileiAPIError.missingAccessToken {
+                throw LeileiAPIError.missingAccessToken
+            } catch LeileiAPIError.unauthorized {
+                throw LeileiAPIError.unauthorized
+            } catch LeileiAPIError.forbidden {
+                throw LeileiAPIError.forbidden
+            } catch LeileiAPIError.invalidResponse {
+                throw LeileiAPIError.invalidResponse
+            } catch let error as LeileiAPIError {
+                if case .backend(let status, _, _) = error,
+                   status >= 500 {
+                    // A prepared turn may still be running while a
+                    // foreground status read briefly fails. Keep waiting
+                    // for the same prepare id instead of creating a
+                    // duplicate send.
+                } else {
+                    throw error
+                }
+            } catch let error as NativeLiveSendError {
+                throw error
+            } catch {
+                // Transport failure: preserve the same prepare id and retry
+                // this foreground completion read.
+            }
+
+            if attempt < 299 {
+                try await Task.sleep(for: .seconds(1))
+            }
+        }
+
+        await refreshNativeLiveCurrentPath(force: true)
+        throw NativeLiveSendError.completionUnknown
+    }
+
     func refreshConnectivity() async {
         backendState = .checking
         sessionState = .checking
@@ -337,5 +475,26 @@ final class AppModel: ObservableObject {
         nativeLiveCurrentPath = nil
         nativeLiveCurrentPathETags.removeAll()
         chatSyncState = .idle
+        chatSendState = .idle
+    }
+}
+
+private enum NativeLiveSendError: LocalizedError {
+    case notReady
+    case invalidText
+    case failed(code: String?)
+    case completionUnknown
+
+    var errorDescription: String? {
+        switch self {
+        case .notReady:
+            return "Conversation is not ready."
+        case .invalidText:
+            return "Message must contain between 1 and 4000 characters."
+        case .failed(let code):
+            return code ?? "Failed"
+        case .completionUnknown:
+            return "Turn completion is unknown."
+        }
     }
 }

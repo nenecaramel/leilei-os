@@ -62,6 +62,28 @@ enum NativeLiveCurrentPathFetchResult: Sendable, Equatable {
     case notModified
 }
 
+struct NativeLivePrepareResult: Decodable, Sendable, Equatable {
+    let outcome: String
+    let semanticPending: Bool
+    let prepareId: String
+    let requestId: String
+    let conversationId: String
+    let userMessageId: String
+}
+
+struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
+    let prepareId: String
+    let requestId: String
+    let conversationId: String
+    let operation: String
+    let userMessageId: String
+    let canonicalStatus: String
+    let dispatchStatus: String
+    let semanticStatus: String?
+    let semanticFallbackCode: String?
+    let failureCode: String?
+}
+
 enum LeileiAPIError: LocalizedError {
     case invalidResponse
     case unauthorized
@@ -145,6 +167,41 @@ final class LeileiAPIClient {
             path: "/api/v1/native-live/conversations",
             method: "POST",
             body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func prepareNativeLiveSend(
+        conversationID: UUID,
+        expectedHeadMessageID: String?,
+        text: String,
+        requestID: UUID = UUID()
+    ) async throws -> NativeLivePrepareResult {
+        let body = try JSONEncoder().encode(
+            NativeLiveSendBody(
+                dispatchTarget: "claude_code",
+                requestId: requestID.uuidString.lowercased(),
+                operation: "send",
+                conversationId: conversationID.uuidString.lowercased(),
+                expectedHeadMessageId: expectedHeadMessageID,
+                text: text
+            )
+        )
+        let envelope: NativeLivePrepareEnvelope = try await request(
+            path: "/api/v1/native-live/prepare",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func nativeLiveTurn(
+        prepareID: String
+    ) async throws -> NativeLiveTurnSnapshot {
+        let envelope: NativeLiveTurnEnvelope = try await request(
+            path: "/api/v1/native-live/turns/\(prepareID)",
             authenticated: true
         )
         return envelope.data
@@ -305,6 +362,51 @@ private struct NativeLiveConversationEnvelope: Decodable, Sendable {
 
 private struct CreateNativeLiveConversationBody: Encodable, Sendable {
     let title: String?
+}
+
+private struct NativeLivePrepareEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: NativeLivePrepareResult
+}
+
+private struct NativeLiveTurnEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: NativeLiveTurnSnapshot
+}
+
+private struct NativeLiveSendBody: Encodable, Sendable {
+    let dispatchTarget: String
+    let requestId: String
+    let operation: String
+    let conversationId: String
+    let expectedHeadMessageId: String?
+    let text: String
+
+    enum CodingKeys: String, CodingKey {
+        case dispatchTarget = "dispatch_target"
+        case requestId = "request_id"
+        case operation
+        case conversationId = "conversation_id"
+        case expectedHeadMessageId = "expected_head_message_id"
+        case text
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dispatchTarget, forKey: .dispatchTarget)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(operation, forKey: .operation)
+        try container.encode(conversationId, forKey: .conversationId)
+        if let expectedHeadMessageId {
+            try container.encode(
+                expectedHeadMessageId,
+                forKey: .expectedHeadMessageId
+            )
+        } else {
+            try container.encodeNil(forKey: .expectedHeadMessageId)
+        }
+        try container.encode(text, forKey: .text)
+    }
 }
 
 private struct NativeLiveCurrentPathEnvelope: Decodable, Sendable {
