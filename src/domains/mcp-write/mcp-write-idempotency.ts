@@ -17,9 +17,7 @@ export type McpFingerprintValue =
   | { readonly [key: string]: McpFingerprintValue };
 
 export type McpIdempotentToolName =
-  | "create_task"
   | "write_diary"
-  | "write_memory"
   | "toy_set"
   | "toy_stop"
   | "write_todo_paper"
@@ -28,25 +26,15 @@ export type McpIdempotentToolName =
   | "delete_todo_entry"
   | "create_universe_node"
   | "create_universe_relation"
-  | "create_shared_paper"
-  | "edit_shared_paper"
-  | "append_shared_paper"
-  | "archive_shared_paper"
-  | "restore_shared_paper"
-  | "delete_shared_paper"
   | "add_diary_comment";
 
 export type McpIdempotentResourceType =
-  | "task"
   | "diary_entry"
-  | "memory"
   | "toy_command"
   | "todo_paper"
   | "todo_entry"
   | "universe_node"
   | "universe_relation"
-  | "shared_paper"
-  | "shared_paper_edit"
   | "diary_comment";
 
 type Database = ReturnType<typeof createDatabase>["db"];
