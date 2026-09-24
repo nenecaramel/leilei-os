@@ -308,6 +308,176 @@ test("turn handle wires the stable permission handler before explicit start", as
   );
 });
 
+test("turn handle routes AskUserQuestion to questionHandler ahead of permissionHandler", async () => {
+  let call;
+  const questions = [];
+  const permissions = [];
+
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    questionHandler: async (request) => {
+      questions.push(request);
+      return {
+        decision: "answer",
+        answers: {
+          [request.questions[0].question]:
+            "Dark",
+        },
+      };
+    },
+    permissionHandler: async (request) => {
+      permissions.push(request);
+      return {
+        decision: "deny",
+        message: "Denied for unit test.",
+      };
+    },
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          for (const message of successMessages("provider-question")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  const sdkQuestionDecision =
+    await call.options.canUseTool(
+      "AskUserQuestion",
+      {
+        questions: [
+          {
+            question: "Which theme?",
+            options: [],
+            multiSelect: false,
+          },
+        ],
+      },
+      {
+        toolUseID: "toolu_question",
+        requestId: "req_question",
+      },
+    );
+
+  assert.deepEqual(
+    sdkQuestionDecision,
+    {
+      behavior: "allow",
+      updatedInput: {
+        questions: [
+          {
+            question: "Which theme?",
+            options: [],
+            multiSelect: false,
+          },
+        ],
+        answers: {
+          "Which theme?": "Dark",
+        },
+      },
+    },
+  );
+  assert.equal(questions.length, 1);
+  assert.equal(permissions.length, 0);
+
+  const sdkPermissionDecision =
+    await call.options.canUseTool(
+      "Write",
+      {
+        file_path: "/tmp/x",
+        content: "x",
+      },
+      {
+        toolUseID: "toolu_write",
+      },
+    );
+
+  assert.equal(
+    sdkPermissionDecision.behavior,
+    "deny",
+  );
+  assert.equal(permissions.length, 1);
+
+  const result = await handle.start();
+  assert.equal(
+    result.providerSessionId,
+    "provider-question",
+  );
+});
+
+test("question-only turn handles fail closed for unrelated permission prompts", async () => {
+  let call;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    questionHandler: async (request) => ({
+      decision: "answer",
+      answers: {
+        [request.questions[0].question]:
+          "Dark",
+      },
+    }),
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          for (const message of successMessages("provider-question-only")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  assert.deepEqual(
+    await call.options.canUseTool(
+      "Bash",
+      { command: "pwd" },
+      {
+        toolUseID: "toolu_unrelated",
+      },
+    ),
+    {
+      behavior: "deny",
+      message:
+        "LeileiOS has no permission handler configured for this tool request.",
+      interrupt: false,
+    },
+  );
+
+  await handle.start();
+});
+
+test("question handler rejects callback-shadowing SDK options", async () => {
+  await assert.rejects(
+    createAgentSdkTurnHandle({
+      prompt: "hello",
+      environment: {},
+      questionHandler: async () => ({
+        decision: "cancel",
+        message: "cancelled",
+      }),
+      queryOptions: {
+        allowedTools: [
+          "AskUserQuestion",
+        ],
+      },
+      queryImpl: () => {
+        throw new Error(
+          "query should not start",
+        );
+      },
+    }),
+    /allowedTools/,
+  );
+});
+
 test("turn handle rejects permission options that can shadow the callback", async () => {
   await assert.rejects(
     createAgentSdkTurnHandle({
