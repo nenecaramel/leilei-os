@@ -36,7 +36,7 @@ function finalText(result) {
 }
 
 function assertPermissionRequest(request) {
-  assert.equal(request.toolName, "Bash");
+  assert.equal(request.toolName, "Write");
   assert.ok(
     typeof request.toolUseId === "string"
       && request.toolUseId.length > 0,
@@ -49,39 +49,6 @@ function assertPermissionRequest(request) {
   );
 }
 
-
-function forceBashPermissionAskHook() {
-  return {
-    PreToolUse: [
-      {
-        matcher: "Bash",
-        hooks: [
-          async (input) => {
-            if (
-              input?.hook_event_name
-                !== "PreToolUse"
-              || input?.tool_name !== "Bash"
-            ) {
-              return {};
-            }
-
-            return {
-              hookSpecificOutput: {
-                hookEventName:
-                  "PreToolUse",
-                permissionDecision: "ask",
-                permissionDecisionReason:
-                  "LEILEIOS_PERMISSION_SMOKE_FORCE_ASK",
-                updatedInput:
-                  input.tool_input,
-              },
-            };
-          },
-        ],
-      },
-    ],
-  };
-}
 
 async function run() {
   const cwd = await mkdtemp(
@@ -148,9 +115,8 @@ async function run() {
     const denied = await createAgentSdkTurnHandle({
       prompt: [
         "This is a deterministic LeileiOS permission callback smoke.",
-        "Use the Bash tool exactly once.",
-        "Run exactly this command:",
-        `printf 'LEILEIOS_PERMISSION_DENIED_EXECUTED' > ${JSON.stringify(deniedMarker)}`,
+        "Use the Write tool exactly once.",
+        `Write exactly the text LEILEIOS_PERMISSION_DENIED_EXECUTED to this file: ${deniedMarker}`,
         "If permission is denied, do not retry the tool.",
         "After the denial, reply with exactly LEILEIOS_PERMISSION_DENIED and nothing else.",
       ].join("\n"),
@@ -159,8 +125,7 @@ async function run() {
       queryOptions: {
         permissionMode: "default",
         settingSources: [],
-        hooks:
-          forceBashPermissionAskHook(),
+        tools: ["Write"],
       },
       permissionHandler: async (
         request,
@@ -202,7 +167,7 @@ async function run() {
     setStage("deny_assert");
     assert.ok(
       denyRequests.length >= 1,
-      "Real SDK never invoked permissionHandler for denied Bash.",
+      "Real SDK never invoked permissionHandler for denied Write.",
     );
     assert.equal(
       denyRequestEvents.length,
@@ -216,7 +181,7 @@ async function run() {
     assert.equal(
       await fileExists(deniedMarker),
       false,
-      "Denied Bash unexpectedly executed.",
+      "Denied Write unexpectedly executed.",
     );
     for (const event of denyDecisionEvents) {
       assert.equal(
@@ -238,18 +203,16 @@ async function run() {
     const allowed = await createAgentSdkTurnHandle({
       prompt: [
         "This is a deterministic LeileiOS permission callback smoke.",
-        "Use the Bash tool exactly once.",
-        "Run exactly this command:",
-        `printf 'LEILEIOS_PERMISSION_ORIGINAL' > ${JSON.stringify(originalMarker)}`,
-        "After the command completes, reply with exactly LEILEIOS_PERMISSION_ALLOWED and nothing else.",
+        "Use the Write tool exactly once.",
+        `Write exactly the text LEILEIOS_PERMISSION_ORIGINAL to this file: ${originalMarker}`,
+        "After the write completes, reply with exactly LEILEIOS_PERMISSION_ALLOWED and nothing else.",
       ].join("\n"),
       cwd,
       environment: process.env,
       queryOptions: {
         permissionMode: "default",
         settingSources: [],
-        hooks:
-          forceBashPermissionAskHook(),
+        tools: ["Write"],
       },
       permissionHandler: async (
         request,
@@ -267,8 +230,9 @@ async function run() {
           decision: "allow",
           updatedInput: {
             ...request.input,
-            command:
-              `printf 'LEILEIOS_PERMISSION_REWRITTEN' > ${JSON.stringify(rewrittenMarker)}`,
+            file_path: rewrittenMarker,
+            content:
+              "LEILEIOS_PERMISSION_REWRITTEN",
           },
         };
       },
@@ -293,7 +257,7 @@ async function run() {
     setStage("allow_assert");
     assert.ok(
       allowRequests.length >= 1,
-      "Real SDK never invoked permissionHandler for allowed Bash.",
+      "Real SDK never invoked permissionHandler for allowed Write.",
     );
     assert.equal(
       allowRequestEvents.length,
@@ -307,12 +271,12 @@ async function run() {
     assert.equal(
       await fileExists(originalMarker),
       false,
-      "Original Bash input executed instead of updatedInput.",
+      "Original Write target executed instead of updatedInput.",
     );
     assert.equal(
       await fileExists(rewrittenMarker),
       true,
-      "Permission callback updatedInput was not executed.",
+      "Permission callback updatedInput Write was not executed.",
     );
     for (const event of allowDecisionEvents) {
       assert.equal(
