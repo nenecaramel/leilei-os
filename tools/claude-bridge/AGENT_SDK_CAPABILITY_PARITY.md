@@ -212,3 +212,15 @@ established.
 - That provider error shape is treated as observed interrupt fallout, not as evidence that `interrupt()` failed, because the control receipt succeeded and the tool was stopped.
 - Resuming the same provider session succeeded with exact marker `LEILEIOS_INTERRUPT_SESSION_CONTINUITY`; resumed session identity remained unchanged.
 - This is still raw SDK capability evidence. LeileiOS has not yet projected graceful interrupt into the stable transport/runtime contract; hard abort via `close()` remains the accepted fallback.
+
+
+## Dedicated turn-handle foundation — pending real smoke
+
+- The first #486 approach is abandoned: retrofitting the phase-1 Promise transport itself into a streaming interruptable session produced repeated real hangs and is not an accepted architecture.
+- The accepted #484 `AgentSdkClaudeTransport` remains unchanged on this branch.
+- Phase 2 now introduces a separate `AgentSdkTurnHandle` lifecycle: one long-lived SDK Query owns `completion`, `interrupt()`, `abort()`, raw events, normalized events, and provider session identity.
+- This preserves the architectural boundary already written in Runtime/Mind: mid-turn control belongs to a persistent turn/session handle instead of being hidden inside `sendNew()/resume()`.
+- The first real handle smoke intentionally mirrors the already accepted #485 raw streaming-query shape before adding more product semantics.
+- Acceptance requires a real Bash STARTED marker, successful typed interrupt receipt, FINISHED=false, stable `INTERRUPTED` projection, and successful same-provider-session resume through another turn handle.
+- The smoke has a hard 60-second total watchdog plus a 5-second force-exit fallback, so a provider/SDK lifecycle bug cannot leave the local terminal hanging indefinitely again.
+- This slice does not yet wire the handle into daemon/cross-device protocol, permission UI, or canonical turn semantics.
