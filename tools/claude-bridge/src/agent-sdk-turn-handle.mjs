@@ -49,7 +49,7 @@ function sdkResultFailed(message) {
     && message.subtype !== "success";
 }
 
-export async function startAgentSdkTurn({
+export async function createAgentSdkTurnHandle({
   prompt,
   mode = "new",
   parentProviderSessionId = null,
@@ -140,10 +140,30 @@ export class AgentSdkTurnHandle {
     this.interruptRequested = false;
     this.abortRequested = false;
     this.closed = false;
+    this.started = false;
+    this.completion = null;
+  }
+
+  start() {
+    if (this.started) return this.completion;
+    if (this.closed) {
+      throw runtimeError(
+        "Agent SDK turn handle is already closed.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    this.started = true;
     this.completion = this.#consume();
+    return this.completion;
   }
 
   async interrupt() {
+    if (!this.started || !this.completion) {
+      throw runtimeError(
+        "Agent SDK turn has not started.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
     if (this.closed) {
       throw runtimeError(
         "Agent SDK turn is already terminal.",
@@ -177,6 +197,9 @@ export class AgentSdkTurnHandle {
     this.abortRequested = true;
     this.inputGate.resolve();
     this.query.close?.();
+    if (!this.started) {
+      this.closed = true;
+    }
   }
 
   async #consume() {
