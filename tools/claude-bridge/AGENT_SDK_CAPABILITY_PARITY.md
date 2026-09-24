@@ -45,7 +45,7 @@ says the SDK supports it.
 | Permission callbacks | PENDING | Permission request reaches host callback and decision is honored |
 | AskUserQuestion | PENDING | Host receives structured question/options and can answer programmatically |
 | Context usage | REAL SDK | `getContextUsage()` structured readback succeeds while Query is live; Runtime persistence/UI wiring remains later |
-| Compact | PENDING | Observe compact lifecycle/boundary and retain canonical history unchanged |
+| Compact | REAL SDK | Manual `/compact`, compact boundary, PreCompact/PostCompact, generated summary, same-session continuation, and durable-marker continuity all passed on the real SDK |
 | Model selection | CONTRACT | Real SDK turn executes selected model and applied model is read back |
 | Thinking / effort | CONTRACT | Capability validation + applied settings/readback for supported combinations |
 | Runtime model switch | PENDING | Persistent Query changes model without changing logical conversation identity |
@@ -85,3 +85,25 @@ established.
 - #478 observed Read + Bash tool use, 2 raw tool-result blocks, 2 normalized tool-result blocks, and live `getContextUsage()` structured usage.
 - The smoke intentionally leaves user-level settings content untouched; selecting `user` as a setting source is verified at invocation, but user-setting content semantics are not yet fixture-tested.
 - Claude Code preset is configured on the real SDK query path, but no independent semantic fingerprint/readback has yet been added for the exact preset contents; keep that row at CONTRACT until such evidence exists.
+
+
+## Compaction observability slice — pending real smoke
+
+- Stable context-usage projection and a pure turn-boundary advisory now exist; default experimental threshold is 75%, configurable only within the agreed 70–80% band.
+- The advisory never executes `/compact`; automatic compaction remains disabled until real acceptance.
+- `system/compact_boundary` now has a dedicated normalized `compaction` event with trigger, pre/post tokens, duration, and preserved-segment metadata.
+- The real smoke registers `PreCompact` and `PostCompact`; `PostCompact.compact_summary` is the intended summary-observability path.
+- Internal `/compact` dispatch must use non-verbatim prompt handling. Normal user turns may stay `verbatimPrompts: true`; the Runtime-owned compact control path explicitly uses `verbatimPrompts: false` because verbatim mode intentionally bypasses slash-command dispatch.
+
+
+## Accepted compaction evidence — 2026-09-24
+
+- #479 exact head `98cae1570a4ba3fcdfb435aa9f4e438a00e3af0e`: real Agent SDK manual-compaction smoke PASS.
+- Same provider session survived manual `/compact`.
+- Context usage before compact: 28,464 / 1,000,000 tokens (3%); after compact: 16,919 / 1,000,000 tokens (2%).
+- Messages category dropped from 15,358 to 3,813 tokens.
+- SDK exposed a 33,000-token `Autocompact buffer` category in structured context usage.
+- Normalized compact boundary reported manual trigger, pre_tokens 28,485, post_tokens 1,302, duration 10,123 ms, plus preserved-segment UUIDs.
+- PreCompact and PostCompact each fired once; PostCompact summary length was 2,487 characters and contained the durable marker.
+- Post-compact resume returned the exact durable marker.
+- This does not enable automatic compaction. Threshold evaluation remains advisory-only until transport/runtime integration is separately accepted.

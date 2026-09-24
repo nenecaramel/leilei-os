@@ -57,6 +57,31 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    if (raw.type === "system" && raw.subtype === "compact_boundary") {
+      const metadata =
+        raw.compact_metadata && typeof raw.compact_metadata === "object"
+          ? raw.compact_metadata
+          : {};
+      emit("compaction", this.sessionId, {
+        trigger:
+          metadata.trigger === "manual" || metadata.trigger === "auto"
+            ? metadata.trigger
+            : null,
+        pre_tokens:
+          Number.isFinite(metadata.pre_tokens) ? metadata.pre_tokens : null,
+        post_tokens:
+          Number.isFinite(metadata.post_tokens) ? metadata.post_tokens : null,
+        duration_ms:
+          Number.isFinite(metadata.duration_ms) ? metadata.duration_ms : null,
+        preserved_segment:
+          metadata.preserved_segment
+          && typeof metadata.preserved_segment === "object"
+            ? metadata.preserved_segment
+            : null,
+      });
+      return output;
+    }
+
     if (raw.type === "assistant") {
       if (raw.delta?.text) {
         this.accumulated += raw.delta.text;

@@ -22,6 +22,47 @@ test("keeps rate-limit events out of final text and maps synthetic partial/tool 
   assert.deepEqual(events.map((event) => event.type), ["session", "partial_text", "tool_use", "tool_result"]);
 });
 
+test("normalizes Agent SDK compact boundaries for runtime observability", () => {
+  const events = normalizeClaudeEvents(
+    [
+      { type: "system", subtype: "init", session_id: "s" },
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        session_id: "s",
+        compact_metadata: {
+          trigger: "manual",
+          pre_tokens: 81234,
+          post_tokens: 12000,
+          duration_ms: 4321,
+          preserved_segment: {
+            head_uuid: "head",
+            anchor_uuid: "anchor",
+            tail_uuid: "tail",
+          },
+        },
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["session", "compaction"],
+  );
+  assert.deepEqual(events[1].payload, {
+    trigger: "manual",
+    pre_tokens: 81234,
+    post_tokens: 12000,
+    duration_ms: 4321,
+    preserved_segment: {
+      head_uuid: "head",
+      anchor_uuid: "anchor",
+      tail_uuid: "tail",
+    },
+  });
+});
+
 test("normalizes Agent SDK tool_result blocks emitted on user messages", () => {
   const events = normalizeClaudeEvents(
     [
