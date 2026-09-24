@@ -7,7 +7,8 @@
     "test": "node --test test/**/*.test.mjs",
     "smoke:agent-sdk-subscription": "node scripts/agent-sdk-subscription-smoke.mjs",
     "smoke:agent-sdk-capabilities": "node scripts/agent-sdk-capability-smoke.mjs",
-    "smoke:agent-sdk-compaction": "node scripts/agent-sdk-compaction-smoke.mjs"
+    "smoke:agent-sdk-compaction": "node scripts/agent-sdk-compaction-smoke.mjs",
+    "smoke:agent-sdk-transport-compaction": "node scripts/agent-sdk-transport-compaction-smoke.mjs"
   },
   "engines": {
     "node": ">=20"

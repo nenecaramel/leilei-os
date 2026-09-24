@@ -156,6 +156,203 @@ test("fork uses resume plus forkSession and requires a new provider session id",
   );
 });
 
+test("normal turns expose the latest live context usage and deterministic compaction advisory", async () => {
+  let usageCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async getContextUsage() {
+        usageCalls += 1;
+        const percentage = usageCalls === 1 ? 74 : 76;
+        return {
+          model: "claude-opus-5-5",
+          totalTokens: percentage * 10000,
+          maxTokens: 1000000,
+          rawMaxTokens: 1000000,
+          percentage,
+          categories: [
+            {
+              name: "Messages",
+              tokens: percentage * 9000,
+              kind: "used",
+            },
+          ],
+        };
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-context",
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-context",
+          message: {
+            content: [{ type: "text", text: "working" }],
+          },
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-context",
+          message: {
+            content: [{ type: "text", text: "READY" }],
+          },
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          session_id: "provider-context",
+          result: "READY",
+        };
+      },
+    }),
+  });
+
+  const result = await transport.sendNew("hello");
+  assert.equal(usageCalls, 2);
+
+  assert.deepEqual(result.contextUsage, {
+    model: "claude-opus-5-5",
+    total_tokens: 760000,
+    max_tokens: 1000000,
+    raw_max_tokens: 1000000,
+    percentage: 76,
+    categories: [
+      {
+        name: "Messages",
+        tokens: 684000,
+        kind: "used",
+        is_deferred: null,
+      },
+    ],
+  });
+  assert.equal(result.contextUsageError, null);
+  assert.deepEqual(result.compactionAdvisory, {
+    due: true,
+    threshold_percent: 75,
+    observed_percent: 76,
+    reason: "turn_boundary_threshold_reached",
+  });
+});
+
+test("compact uses a dedicated non-verbatim control path and returns lifecycle observability", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-root",
+          };
+
+          await input.options.hooks.PreCompact[0].hooks[0]({
+            hook_event_name: "PreCompact",
+            trigger: "manual",
+            custom_instructions: null,
+          });
+
+          yield {
+            type: "system",
+            subtype: "compact_boundary",
+            session_id: "provider-root",
+            compact_metadata: {
+              trigger: "manual",
+              pre_tokens: 28485,
+              post_tokens: 1302,
+              duration_ms: 10123,
+              preserved_segment: {
+                head_uuid: "head",
+                anchor_uuid: "anchor",
+                tail_uuid: "tail",
+              },
+            },
+          };
+
+          await input.options.hooks.PostCompact[0].hooks[0]({
+            hook_event_name: "PostCompact",
+            trigger: "manual",
+            compact_summary: "summary with durable marker",
+          });
+
+          yield {
+            type: "result",
+            subtype: "success",
+            session_id: "provider-root",
+            result: "",
+          };
+        },
+      };
+    },
+  });
+
+  const result = await transport.compact("provider-root");
+
+  assert.equal(call.prompt, "/compact");
+  assert.equal(call.options.resume, "provider-root");
+  assert.equal(call.options.verbatimPrompts, false);
+  assert.ok(call.options.hooks);
+  assert.equal(result.providerSessionId, "provider-root");
+  assert.equal(result.contextUsage, null);
+  assert.deepEqual(result.compaction.boundary, {
+    trigger: "manual",
+    pre_tokens: 28485,
+    post_tokens: 1302,
+    duration_ms: 10123,
+    preserved_segment: {
+      head_uuid: "head",
+      anchor_uuid: "anchor",
+      tail_uuid: "tail",
+    },
+  });
+  assert.deepEqual(result.compaction.preCompact, [
+    {
+      hookEventName: "PreCompact",
+      trigger: "manual",
+      customInstructions: null,
+    },
+  ]);
+  assert.deepEqual(result.compaction.postCompact, [
+    {
+      hookEventName: "PostCompact",
+      trigger: "manual",
+      summary: "summary with durable marker",
+    },
+  ]);
+});
+
+test("compact refuses to claim success if the SDK emits no compact boundary", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-root",
+      },
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "provider-root",
+        result: "",
+      },
+    ]),
+  });
+
+  await assert.rejects(
+    () => transport.compact("provider-root"),
+    (error) =>
+      error.runtimeCode === "CLAUDE_PROCESS_FAILED"
+      && /without a compact boundary/i.test(error.message),
+  );
+});
+
 test("SDK terminal error results map into existing runtime failure semantics", async () => {
   const transport = new AgentSdkClaudeTransport({
     environment: {},

@@ -107,3 +107,23 @@ established.
 - PreCompact and PostCompact each fired once; PostCompact summary length was 2,487 characters and contained the durable marker.
 - Post-compact resume returned the exact durable marker.
 - This does not enable automatic compaction. Threshold evaluation remains advisory-only until transport/runtime integration is separately accepted.
+
+
+## Transport integration slice — pending real smoke
+
+- `AgentSdkClaudeTransport.sendNew/resume/fork` now capture the latest live `getContextUsage({ detail: "summary" })` sample observed before terminal result, project it into the stable LeileiOS shape, and return a pure `compactionAdvisory`.
+- Context-usage sampling is fail-soft: foreground execution still completes if observability fails; the error is returned separately.
+- `AgentSdkClaudeTransport.compact(sessionId)` is the dedicated Runtime-owned non-verbatim `/compact` control path. It requires same-session continuity, a normalized compact boundary, and captures PreCompact/PostCompact lifecycle data including the generated summary.
+- The advisory remains non-mutating. No threshold-triggered automatic compact is enabled by this slice.
+- Real acceptance for this slice must call the transport methods themselves, not raw SDK `query()`, and prove context usage → explicit compact → same-session post-compact continuity.
+
+
+## Accepted transport compaction integration — 2026-09-24
+
+- #481 exact head `67dd7f28f0da86c132eb3260fefd5381c2539c41`: REAL SDK transport-level compaction PASS.
+- `AgentSdkClaudeTransport` itself now returns stable context usage plus a deterministic compaction advisory on normal turns.
+- `compact(sessionId)` preserved provider session identity, emitted a normalized manual compact boundary, captured one PreCompact and one PostCompact hook, and returned a generated compact summary.
+- Accepted boundary evidence: pre_tokens 15,739 → post_tokens 1,195; duration 12,645 ms.
+- Accepted summary evidence: 2,098 chars and contained the durable marker.
+- Post-compact resume returned the exact durable marker.
+- Automatic threshold-triggered compaction remains disabled; daemon/default transport is still unchanged.

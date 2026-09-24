@@ -4,6 +4,10 @@ import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import {
   normalizeAgentSdkExecutionSelection,
 } from "./agent-sdk-execution-selection.mjs";
+import {
+  evaluateTurnBoundaryCompaction,
+  normalizeAgentSdkContextUsage,
+} from "./agent-sdk-context-observability.mjs";
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
@@ -56,6 +60,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     loadQuery = loadDefaultQuery,
     environment = process.env,
     cwd = process.cwd(),
+    compactionThresholdPercent = 75,
   } = {}) {
     super();
     if (environment.ANTHROPIC_API_KEY) {
@@ -67,6 +72,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.loadQuery = loadQuery;
     this.environment = environment;
     this.cwd = cwd;
+    this.compactionThresholdPercent = compactionThresholdPercent;
     this.events = new EventEmitter();
     this.activeQuery = null;
     this.abortRequested = false;
@@ -110,6 +116,95 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     return result;
   }
 
+  async compact(sessionId, execution = null) {
+    const lifecycle = {
+      preCompact: [],
+      postCompact: [],
+    };
+    const hooks = {
+      PreCompact: [
+        {
+          hooks: [
+            async (input) => {
+              lifecycle.preCompact.push({
+                hookEventName: input?.hook_event_name ?? null,
+                trigger: input?.trigger ?? null,
+                customInstructions:
+                  typeof input?.custom_instructions === "string"
+                    ? input.custom_instructions
+                    : null,
+              });
+              return {};
+            },
+          ],
+        },
+      ],
+      PostCompact: [
+        {
+          hooks: [
+            async (input) => {
+              lifecycle.postCompact.push({
+                hookEventName: input?.hook_event_name ?? null,
+                trigger: input?.trigger ?? null,
+                summary:
+                  typeof input?.compact_summary === "string"
+                    ? input.compact_summary
+                    : null,
+              });
+              return {};
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = await this.#run("/compact", {
+      mode: "resume",
+      parentProviderSessionId: sessionId,
+      resume: sessionId,
+      execution,
+      verbatimPrompts: false,
+      captureContextUsage: false,
+      hooks,
+    });
+
+    if (result.providerSessionId !== sessionId) {
+      throw runtimeError(
+        "Claude Agent SDK compact changed provider session identity.",
+        {
+          runtimeCode: "PROVIDER_SESSION_CONFLICT",
+          parentSessionId: sessionId,
+          compactSessionId: result.providerSessionId,
+          ...result,
+        },
+      );
+    }
+
+    const boundary =
+      [...result.normalizedEvents]
+        .reverse()
+        .find((event) => event.type === "compaction")
+        ?.payload ?? null;
+    if (!boundary) {
+      throw runtimeError(
+        "Claude Agent SDK compact completed without a compact boundary.",
+        {
+          runtimeCode: "CLAUDE_PROCESS_FAILED",
+          ...result,
+        },
+      );
+    }
+
+    return {
+      ...result,
+      compaction: {
+        boundary,
+        preCompact: lifecycle.preCompact,
+        postCompact: lifecycle.postCompact,
+      },
+    };
+  }
+
   abort() {
     this.abortRequested = true;
     this.activeQuery?.close?.();
@@ -136,6 +231,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       resume = null,
       forkSession = false,
       execution = null,
+      verbatimPrompts = true,
+      captureContextUsage = true,
+      hooks = null,
     } = {},
   ) {
     if (this.activeQuery) {
@@ -165,10 +263,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         type: "preset",
         preset: "claude_code",
       },
-      verbatimPrompts: true,
+      verbatimPrompts,
       ...executionOptions,
       ...(resume ? { resume } : {}),
       ...(forkSession ? { forkSession: true } : {}),
+      ...(hooks ? { hooks } : {}),
     };
 
     let activeQuery;
@@ -198,6 +297,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     });
     let providerSessionId = null;
     let terminalFailure = null;
+    let rawContextUsage = null;
+    let contextUsageError = null;
 
     try {
       for await (const message of activeQuery) {
@@ -212,6 +313,24 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         normalizedEvents.push(...nextNormalizedEvents);
         for (const normalizedEvent of nextNormalizedEvents) {
           this.events.emit("normalized-event", normalizedEvent);
+        }
+
+        if (
+          captureContextUsage
+          && message?.type === "assistant"
+          && typeof activeQuery.getContextUsage === "function"
+        ) {
+          try {
+            rawContextUsage = await activeQuery.getContextUsage({
+              detail: "summary",
+            });
+            contextUsageError = null;
+          } catch (cause) {
+            if (!rawContextUsage) {
+              contextUsageError =
+                cause instanceof Error ? cause.message : String(cause);
+            }
+          }
         }
 
         if (sdkResultFailed(message)) {
@@ -273,10 +392,20 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       signal: null,
     });
 
+    const contextUsage =
+      normalizeAgentSdkContextUsage(rawContextUsage);
+    const compactionAdvisory =
+      evaluateTurnBoundaryCompaction(rawContextUsage, {
+        thresholdPercent: this.compactionThresholdPercent,
+      });
+
     return {
       providerSessionId,
       events: parsedEvents,
       normalizedEvents,
+      contextUsage,
+      contextUsageError,
+      compactionAdvisory,
       stdout: "",
       stderr: "",
       exitCode: 0,
