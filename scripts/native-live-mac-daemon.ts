@@ -84,6 +84,13 @@ while (!stopping) {
         ...("reservationId" in outcome
           ? { reservationId: outcome.reservationId }
           : {}),
+        ...("eventDeliveryFailures" in outcome
+          && outcome.eventDeliveryFailures
+          ? {
+              eventDeliveryFailures:
+                outcome.eventDeliveryFailures,
+            }
+          : {}),
         ...("result" in outcome
           ? {
               resultStatus: outcome.result.status,
