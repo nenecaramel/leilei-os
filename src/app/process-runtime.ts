@@ -124,6 +124,9 @@ import {
   DrizzleNativeLiveConversationRepository,
 } from "../domains/conversation/native-live-conversation-repository.js";
 import {
+  NativeLiveConversationService,
+} from "../domains/conversation/native-live-conversation-service.js";
+import {
   DrizzleNativeLiveCurrentPathReader,
 } from "../domains/conversation/native-live-current-path-read-repository.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
@@ -339,6 +342,9 @@ export function createProcessRuntime(
       distillationCrossDeviceBackgroundTrigger,
       backgroundOpportunityPolicy,
     );
+  const nativeLiveConversationService = new NativeLiveConversationService(
+    new DrizzleNativeLiveConversationRepository(db),
+  );
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
   const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
     new DrizzleNativeLiveMindFollowUpRepository(db),
@@ -635,6 +641,8 @@ export function createProcessRuntime(
       webNativeLiveTurnReader: nativeLiveTurnPort,
       webNativeLiveCurrentPathReader:
         new DrizzleNativeLiveCurrentPathReader(db),
+      webNativeLiveConversationService:
+        nativeLiveConversationService,
       nativeLiveRelayService,
       nativeLiveSemanticService,
       nativeLiveBackgroundModelService,

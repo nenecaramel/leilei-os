@@ -14,6 +14,9 @@ import {
   nativeLiveCurrentPathEtag,
   type NativeLiveCurrentPathReader,
 } from "../domains/conversation/native-live-current-path-read-repository.js";
+import type {
+  NativeLiveConversationService,
+} from "../domains/conversation/native-live-conversation-service.js";
 
 export type NativeLiveApiDependencies = {
   coordinator: {
@@ -30,6 +33,10 @@ export type NativeLiveApiDependencies = {
     }): Promise<NativeLiveBackendTurnReadModel | null>;
   };
   currentPathReader?: NativeLiveCurrentPathReader;
+  conversationService?: Pick<
+    NativeLiveConversationService,
+    "listConversations" | "createConversation"
+  >;
 };
 
 export function createNativeLiveApiRouter(
@@ -38,6 +45,16 @@ export function createNativeLiveApiRouter(
   const router = Router();
   router.post("/prepare", prepareNativeLiveTurnHandler(dependencies));
   router.get("/turns/:prepareId", readNativeLiveTurnHandler(dependencies));
+  if (dependencies.conversationService) {
+    router.get(
+      "/conversations",
+      listNativeLiveConversationsHandler(dependencies),
+    );
+    router.post(
+      "/conversations",
+      createNativeLiveConversationHandler(dependencies),
+    );
+  }
   if (dependencies.currentPathReader) {
     router.get(
       "/conversations/:conversationId/current-path",
@@ -45,6 +62,116 @@ export function createNativeLiveApiRouter(
     );
   }
   return router;
+}
+
+export function listNativeLiveConversationsHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const limit = parseConversationListLimit(request.query.limit);
+    if (limit === null) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_LIST_LIMIT",
+          message:
+            `Conversation list limit must be an integer from 1 to ${MAX_NATIVE_LIVE_CONVERSATION_LIST_LIMIT}.`,
+        },
+      });
+      return;
+    }
+
+    const service = dependencies.conversationService;
+    if (!service) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_BOOTSTRAP_UNAVAILABLE",
+          message: "Native live conversation bootstrap is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const conversations = await service.listConversations({
+        userId: request.webUserId,
+        limit,
+      });
+      response.json({
+        success: true,
+        data: { conversations },
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_BOOTSTRAP_UNAVAILABLE",
+          message: "Native live conversations are temporarily unavailable.",
+        },
+      });
+    }
+  };
+}
+
+export function createNativeLiveConversationHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const parsed = parseCreateConversationBody(request.body);
+    if (!parsed.ok) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_CREATE",
+          message:
+            "Conversation title must be null or a non-empty string up to 200 characters.",
+        },
+      });
+      return;
+    }
+
+    const service = dependencies.conversationService;
+    if (!service) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_BOOTSTRAP_UNAVAILABLE",
+          message: "Native live conversation bootstrap is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const conversation = await service.createConversation({
+        userId: request.webUserId,
+        title: parsed.title,
+      });
+      response.status(201).json({
+        success: true,
+        data: {
+          id: conversation.id,
+          title: conversation.title,
+          currentHeadMessageId: conversation.currentHeadMessageId,
+          createdAt: conversation.createdAt,
+          updatedAt: conversation.updatedAt,
+        },
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_BOOTSTRAP_UNAVAILABLE",
+          message: "Native live conversation could not be created.",
+        },
+      });
+    }
+  };
 }
 
 export function prepareNativeLiveTurnHandler(
@@ -323,6 +450,56 @@ export function readNativeLiveCurrentPathHandler(
       });
     }
   };
+}
+
+const DEFAULT_NATIVE_LIVE_CONVERSATION_LIST_LIMIT = 50;
+const MAX_NATIVE_LIVE_CONVERSATION_LIST_LIMIT = 100;
+
+function parseConversationListLimit(
+  value: unknown,
+): number | null {
+  if (value === undefined) {
+    return DEFAULT_NATIVE_LIVE_CONVERSATION_LIST_LIMIT;
+  }
+  if (
+    typeof value !== "string"
+    || !/^[1-9][0-9]{0,2}$/u.test(value)
+  ) {
+    return null;
+  }
+  const parsed = Number(value);
+  return (
+    Number.isInteger(parsed)
+    && parsed >= 1
+    && parsed <= MAX_NATIVE_LIVE_CONVERSATION_LIST_LIMIT
+  )
+    ? parsed
+    : null;
+}
+
+function parseCreateConversationBody(
+  value: unknown,
+): { ok: true; title: string | null } | { ok: false } {
+  if (value === undefined) return { ok: true, title: null };
+  if (
+    typeof value !== "object"
+    || value === null
+    || Array.isArray(value)
+  ) {
+    return { ok: false };
+  }
+
+  const title = (value as Record<string, unknown>).title;
+  if (title === undefined || title === null) {
+    return { ok: true, title: null };
+  }
+  if (typeof title !== "string") return { ok: false };
+
+  const trimmed = title.trim();
+  if (trimmed.length === 0 || trimmed.length > 200) {
+    return { ok: false };
+  }
+  return { ok: true, title: trimmed };
 }
 
 function parseCurrentPathLimit(

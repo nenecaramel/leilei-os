@@ -1,6 +1,7 @@
 import type {
   NativeLiveContentBlockInput,
   NativeLiveConversation,
+  NativeLiveConversationSummary,
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
   NativeLiveProviderCheckpointInput,
@@ -15,6 +16,16 @@ export class NativeLiveConversationService {
     title?: string | null;
   }): Promise<NativeLiveConversation> {
     return this.repository.createConversation(input);
+  }
+
+  listConversations(input: {
+    userId: string;
+    limit: number;
+  }): Promise<NativeLiveConversationSummary[]> {
+    if (!this.repository.listConversations) {
+      throw new Error("Native live conversation listing is unavailable.");
+    }
+    return this.repository.listConversations(input);
   }
 
   getConversation(input: {

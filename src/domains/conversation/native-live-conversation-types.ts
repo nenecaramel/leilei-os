@@ -38,6 +38,14 @@ export type NativeLiveMessage = {
   blocks: NativeLiveContentBlock[];
 };
 
+export type NativeLiveConversationSummary = {
+  id: string;
+  title: string | null;
+  currentHeadMessageId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type NativeLiveConversation = {
   id: string;
   userId: string;
