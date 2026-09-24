@@ -82,6 +82,24 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    if (raw.type === "stream_event") {
+      const event = raw.event;
+      if (
+        event?.type === "content_block_delta"
+        && event.delta?.type === "text_delta"
+        && typeof event.delta.text === "string"
+        && event.delta.text.length > 0
+      ) {
+        this.accumulated += event.delta.text;
+        emit("partial_text", this.sessionId, {
+          delta: event.delta.text,
+          accumulated_length:
+            this.accumulated.length,
+        });
+      }
+      return output;
+    }
+
     if (raw.type === "assistant") {
       if (raw.delta?.text) {
         this.accumulated += raw.delta.text;
