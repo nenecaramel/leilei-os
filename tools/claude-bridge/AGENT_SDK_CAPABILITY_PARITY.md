@@ -346,3 +346,36 @@ REAL SDK acceptance smoke:
 - Root cause was only context-key normalization. The Agent SDK callback uses `toolUseID` and `agentID` casing on the public callback options; the first LeileiOS adapter draft only read `toolUseId` / `agentId`.
 - The adapter now accepts the real SDK casing plus camelCase/snake_case aliases, while continuing to expose stable LeileiOS `toolUseId`, `requestId`, and `agentId`.
 - Unit coverage now locks the real `toolUseID` / `agentID` shape so this cannot regress.
+
+
+## REAL SDK permission callback acceptance — PASS
+
+Validated on macOS against `@anthropic-ai/claude-agent-sdk@0.3.281` using the existing Claude subscription login.
+
+Observed deny path:
+
+- one real `Write` permission request reached the LeileiOS `permissionHandler`;
+- normalized `toolUseId`: `toolu_01SRJxYUE8YnaGDGuMJqMLyJ`;
+- SDK `requestId`: `8c114695-5bfa-4f36-a353-0ec225155a2c`;
+- SDK cancellation signal was present;
+- LeileiOS returned `decision: "deny"`;
+- denied marker was not created;
+- final assistant text acknowledged the denial path.
+
+Observed allow + input rewrite path:
+
+- one real `Write` permission request reached the LeileiOS `permissionHandler`;
+- normalized `toolUseId`: `toolu_01SpnVotVoQQucnkg2JrvPWh`;
+- SDK `requestId`: `4868cc13-edb5-4f70-a0c8-acf2ef4b2514`;
+- SDK cancellation signal was present;
+- LeileiOS returned `decision: "allow"` with rewritten `file_path` / `content`;
+- the original requested marker was not created;
+- the rewritten target was created, proving the SDK executed the callback's `updatedInput`.
+
+Acceptance meaning:
+
+- the dedicated Agent SDK turn handle now has a real host permission boundary, not only raw `canUseTool` passthrough;
+- the callback contract correctly normalizes Agent SDK `toolUseID` / `agentID` casing into stable LeileiOS fields;
+- deny and allow-with-rewrite are both proven against real SDK tool execution;
+- permission requests remain distinct from universal tool interception: only SDK permission prompts enter this callback;
+- no persistent permission mutation, out-of-band null response, streaming expansion, mid-turn user input, daemon protocol, canonical semantics, or iOS behavior is added in this slice.
