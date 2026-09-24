@@ -5,7 +5,10 @@ struct NativeLiveMessageSurface: View {
     let syncState: AppModel.ChatSyncState
     let isAuthenticated: Bool
     let hasActiveConversation: Bool
-    let onRetry: () async -> Void
+    let isTurnInFlight: Bool
+    let onRefresh: () async -> Void
+    let onRetryMessage: (String) -> Void
+    let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
     private let bottomAnchorID = "native-live-chat-bottom"
 
@@ -35,7 +38,7 @@ struct NativeLiveMessageSurface: View {
                         actionTitle: "Retry"
                     ) {
                         Task {
-                            await onRetry()
+                            await onRefresh()
                         }
                     }
                 }
@@ -52,8 +55,13 @@ struct NativeLiveMessageSurface: View {
             ScrollView {
                 LazyVStack(spacing: 18) {
                     ForEach(snapshot.messages) { message in
-                        NativeLiveMessageRow(message: message)
-                            .id(message.id)
+                        NativeLiveMessageRow(
+                            message: message,
+                            isTurnInFlight: isTurnInFlight,
+                            onRetryMessage: onRetryMessage,
+                            onEditMessage: onEditMessage
+                        )
+                        .id(message.id)
                     }
 
                     Color.clear
@@ -65,7 +73,7 @@ struct NativeLiveMessageSurface: View {
                 .padding(.bottom, 8)
             }
             .refreshable {
-                await onRetry()
+                await onRefresh()
             }
             .onAppear {
                 scrollToBottom(proxy)
@@ -88,8 +96,30 @@ struct NativeLiveMessageSurface: View {
 
 private struct NativeLiveMessageRow: View {
     let message: NativeLiveCurrentPathMessage
+    let isTurnInFlight: Bool
+    let onRetryMessage: (String) -> Void
+    let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
     var body: some View {
+        rowContent
+            .contextMenu {
+                if message.role == "user" {
+                    Button("Edit") {
+                        onEditMessage(message)
+                    }
+                    .disabled(isTurnInFlight)
+                } else if message.role == "assistant",
+                          let targetUserMessageID = message.parentMessageId {
+                    Button("Retry") {
+                        onRetryMessage(targetUserMessageID)
+                    }
+                    .disabled(isTurnInFlight)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var rowContent: some View {
         if message.role == "user" {
             HStack(alignment: .top, spacing: 0) {
                 Spacer(minLength: 48)
