@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  startAgentSdkTurn,
+  createAgentSdkTurnHandle,
 } from "../src/agent-sdk-turn-handle.mjs";
 
 function successMessages(sessionId = "provider-turn") {
@@ -29,7 +29,7 @@ function successMessages(sessionId = "provider-turn") {
 
 test("turn handle completes a normal SDK turn without changing the phase-1 transport", async () => {
   let call;
-  const handle = await startAgentSdkTurn({
+  const handle = await createAgentSdkTurnHandle({
     prompt: "hello",
     environment: {},
     queryImpl: (input) => {
@@ -49,7 +49,8 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
     typeof call.prompt?.[Symbol.asyncIterator],
     "function",
   );
-  const result = await handle.completion;
+  assert.equal(handle.completion, null);
+  const result = await handle.start();
   assert.equal(
     result.providerSessionId,
     "provider-turn",
@@ -58,6 +59,41 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
     result.normalizedEvents.map((event) => event.type),
     ["session", "text", "result"],
   );
+});
+
+
+test("turn handle emits nothing before explicit start", async () => {
+  let iteratorStarted = false;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        iteratorStarted = true;
+        for (const message of successMessages("provider-explicit-start")) {
+          yield message;
+        }
+      },
+    }),
+  });
+
+  const emitted = [];
+  handle.events.on("normalized-event", (event) => {
+    emitted.push(event);
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(iteratorStarted, false);
+  assert.deepEqual(emitted, []);
+
+  const result = await handle.start();
+  assert.equal(iteratorStarted, true);
+  assert.equal(
+    result.providerSessionId,
+    "provider-explicit-start",
+  );
+  assert.equal(emitted.length, 3);
 });
 
 test("turn handle maps a successful graceful interrupt to INTERRUPTED", async () => {
@@ -70,7 +106,7 @@ test("turn handle maps a successful graceful interrupt to INTERRUPTED", async ()
     started = resolve;
   });
 
-  const handle = await startAgentSdkTurn({
+  const handle = await createAgentSdkTurnHandle({
     prompt: "long task",
     environment: {},
     queryImpl: () => ({
@@ -101,12 +137,13 @@ test("turn handle maps a successful graceful interrupt to INTERRUPTED", async ()
     }),
   });
 
+  const completion = handle.start();
   await startedGate;
   const receipt = await handle.interrupt();
   assert.deepEqual(receipt, { still_queued: [] });
 
   await assert.rejects(
-    handle.completion,
+    completion,
     (error) =>
       error.runtimeCode === "INTERRUPTED"
       && error.providerSessionId === "provider-interrupt"
@@ -124,7 +161,7 @@ test("turn handle hard abort remains separate from graceful interrupt", async ()
     started = resolve;
   });
 
-  const handle = await startAgentSdkTurn({
+  const handle = await createAgentSdkTurnHandle({
     prompt: "long task",
     environment: {},
     queryImpl: () => ({
@@ -143,11 +180,12 @@ test("turn handle hard abort remains separate from graceful interrupt", async ()
     }),
   });
 
+  const completion = handle.start();
   await startedGate;
   handle.abort();
 
   await assert.rejects(
-    handle.completion,
+    completion,
     (error) => error.runtimeCode === "ABORTED",
   );
 });
