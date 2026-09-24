@@ -442,6 +442,11 @@ implements ProactivityWakeOpportunitySource {
           AND settlement_status = 'settled'
           AND path_status = 'current'
           AND kind <> 'dream'
+          AND NOT (
+            kind IN ('memory', 'feel')
+            AND payload #>> '{lifecycle_v1,status}'
+              IN ('archived', 'forgotten')
+          )
           AND text IS NOT NULL
           AND char_length(btrim(text)) > 0
           AND (
