@@ -31,11 +31,13 @@ struct ChatView: View {
         }
         .task(id: appModel.isAuthenticated) {
             guard appModel.isAuthenticated else { return }
+            await appModel.refreshNativeLiveConversations()
             await appModel.refreshNativeLiveCurrentPath()
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task {
+                await appModel.refreshNativeLiveConversations()
                 await appModel.refreshNativeLiveCurrentPath()
             }
         }
