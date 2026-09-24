@@ -11,6 +11,14 @@ struct BackendSession: Sendable, Equatable {
 
 struct NoContentResponse: Decodable, Sendable {}
 
+struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let title: String?
+    let currentHeadMessageId: String?
+    let createdAt: String
+    let updatedAt: String
+}
+
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?
@@ -111,6 +119,35 @@ final class LeileiAPIClient {
             authenticated: true
         )
         return BackendSession(authenticated: envelope.data.authenticated)
+    }
+
+    func nativeLiveConversations(
+        limit: Int = 50
+    ) async throws -> [NativeLiveConversationSummary] {
+        guard (1...100).contains(limit) else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let envelope: NativeLiveConversationListEnvelope = try await request(
+            path: "/api/v1/native-live/conversations?limit=\(limit)",
+            authenticated: true
+        )
+        return envelope.data.conversations
+    }
+
+    func createNativeLiveConversation(
+        title: String? = nil
+    ) async throws -> NativeLiveConversationSummary {
+        let body = try JSONEncoder().encode(
+            CreateNativeLiveConversationBody(title: title)
+        )
+        let envelope: NativeLiveConversationEnvelope = try await request(
+            path: "/api/v1/native-live/conversations",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
     }
 
     func nativeLiveCurrentPath(
@@ -250,6 +287,24 @@ private struct HealthEnvelope: Decodable, Sendable {
         let service: String
         let status: String
     }
+}
+
+private struct NativeLiveConversationListEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: ConversationListData
+
+    struct ConversationListData: Decodable, Sendable {
+        let conversations: [NativeLiveConversationSummary]
+    }
+}
+
+private struct NativeLiveConversationEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: NativeLiveConversationSummary
+}
+
+private struct CreateNativeLiveConversationBody: Encodable, Sendable {
+    let title: String?
 }
 
 private struct NativeLiveCurrentPathEnvelope: Decodable, Sendable {

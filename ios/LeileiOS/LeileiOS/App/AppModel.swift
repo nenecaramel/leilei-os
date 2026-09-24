@@ -11,6 +11,13 @@ final class AppModel: ObservableObject {
         case unavailable(String)
     }
 
+    enum ConversationBootstrapState: Equatable {
+        case idle
+        case loading
+        case ready
+        case unavailable(String)
+    }
+
     enum ProbeState: Equatable {
         case idle
         case checking
@@ -41,10 +48,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var accountEmail: String?
 
     @Published private(set) var activeNativeLiveConversationID: UUID?
+    @Published private(set) var nativeLiveConversations: [NativeLiveConversationSummary] = []
+    @Published private(set) var conversationBootstrapState: ConversationBootstrapState = .idle
     @Published private(set) var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot?
     @Published private(set) var chatSyncState: ChatSyncState = .idle
 
     private var nativeLiveCurrentPathETags: [UUID: String] = [:]
+    private var conversationBootstrapInFlight = false
     private var chatRefreshInFlight = false
     private static let activeNativeLiveConversationDefaultsKey =
         "activeNativeLiveConversationID"
@@ -150,6 +160,70 @@ final class AppModel: ObservableObject {
         accountEmail = nil
         sessionState = .unavailable("Sign-in required")
         clearNativeLiveSessionData()
+    }
+
+    func refreshNativeLiveConversations() async {
+        guard isAuthenticated,
+              !conversationBootstrapInFlight else {
+            return
+        }
+
+        conversationBootstrapInFlight = true
+        if nativeLiveConversations.isEmpty {
+            conversationBootstrapState = .loading
+        }
+        defer {
+            conversationBootstrapInFlight = false
+        }
+
+        do {
+            nativeLiveConversations = try await api.nativeLiveConversations()
+            conversationBootstrapState = .ready
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            conversationBootstrapState = .unavailable(
+                error.localizedDescription
+            )
+        }
+    }
+
+    @discardableResult
+    func createNativeLiveConversation(
+        title: String? = nil
+    ) async throws -> UUID {
+        conversationBootstrapState = .loading
+
+        do {
+            let conversation = try await api.createNativeLiveConversation(
+                title: title
+            )
+            guard let conversationID = UUID(uuidString: conversation.id) else {
+                throw LeileiAPIError.invalidResponse
+            }
+
+            nativeLiveConversations.removeAll {
+                $0.id.caseInsensitiveCompare(conversation.id) == .orderedSame
+            }
+            nativeLiveConversations.insert(conversation, at: 0)
+            conversationBootstrapState = .ready
+
+            await openNativeLiveConversation(conversationID)
+            return conversationID
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            conversationBootstrapState = .unavailable(
+                error.localizedDescription
+            )
+            throw error
+        }
     }
 
     func openNativeLiveConversation(_ conversationID: UUID) async {
@@ -258,6 +332,8 @@ final class AppModel: ObservableObject {
     }
 
     private func clearNativeLiveSessionData() {
+        nativeLiveConversations = []
+        conversationBootstrapState = .idle
         nativeLiveCurrentPath = nil
         nativeLiveCurrentPathETags.removeAll()
         chatSyncState = .idle
