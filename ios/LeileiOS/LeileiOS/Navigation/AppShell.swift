@@ -58,6 +58,9 @@ struct AppShell: View {
                         withAnimation(.snappy) {
                             menuOpen.toggle()
                         }
+                    },
+                    onOpenConversation: {
+                        selectedPage = .chat
                     }
                 )
                 .frame(width: proxy.size.width, height: proxy.size.height)
@@ -110,7 +113,10 @@ struct AppShell: View {
 
             PageContainer(
                 selectedPage: selectedPage,
-                onMenu: nil
+                onMenu: nil,
+                onOpenConversation: {
+                    selectedPage = .chat
+                }
             )
         }
     }
@@ -119,6 +125,7 @@ struct AppShell: View {
 private struct MainPageLayer: View {
     let selectedPage: AppPage
     let onMenu: () -> Void
+    let onOpenConversation: () -> Void
 
     var body: some View {
         ZStack {
@@ -127,7 +134,8 @@ private struct MainPageLayer: View {
 
             PageContainer(
                 selectedPage: selectedPage,
-                onMenu: onMenu
+                onMenu: onMenu,
+                onOpenConversation: onOpenConversation
             )
         }
     }

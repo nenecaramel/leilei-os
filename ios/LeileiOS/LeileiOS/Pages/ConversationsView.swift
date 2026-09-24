@@ -1,0 +1,245 @@
+import SwiftUI
+
+struct ConversationsView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let onOpenConversation: () -> Void
+
+    @State private var createPresented = false
+
+    var body: some View {
+        Group {
+            if !appModel.isAuthenticated {
+                AppStateSurface(
+                    title: "Sign in",
+                    actionTitle: "Sign In"
+                ) {
+                    Task {
+                        await reauthorizeAndReload()
+                    }
+                }
+            } else if appModel.nativeLiveConversations.isEmpty {
+                switch appModel.conversationBootstrapState {
+                case .idle, .loading:
+                    ConversationListSkeleton()
+
+                case .ready:
+                    AppStateSurface(title: "Nothing here")
+
+                case .unavailable:
+                    AppStateSurface(
+                        title: "Unavailable",
+                        actionTitle: "Retry"
+                    ) {
+                        Task {
+                            await appModel.refreshNativeLiveConversations()
+                        }
+                    }
+                }
+            } else {
+                ConversationList(
+                    conversations: appModel.nativeLiveConversations,
+                    activeConversationID: appModel.activeNativeLiveConversationID
+                ) { conversation in
+                    await open(conversation)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    createPresented = true
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                }
+                .accessibilityLabel("New Conversation")
+                .disabled(!appModel.isAuthenticated)
+            }
+        }
+        .sheet(isPresented: $createPresented) {
+            ConversationCreateSheet {
+                onOpenConversation()
+            }
+            .environmentObject(appModel)
+        }
+        .task {
+            guard appModel.isAuthenticated else { return }
+            await appModel.refreshNativeLiveConversations()
+        }
+        .refreshable {
+            await appModel.refreshNativeLiveConversations()
+        }
+    }
+
+    @MainActor
+    private func open(
+        _ conversation: NativeLiveConversationSummary
+    ) async {
+        guard let conversationID = UUID(uuidString: conversation.id) else {
+            return
+        }
+
+        await appModel.openNativeLiveConversation(conversationID)
+        onOpenConversation()
+    }
+
+    @MainActor
+    private func reauthorizeAndReload() async {
+        do {
+            try await appModel.reauthorize()
+            await appModel.refreshNativeLiveConversations()
+        } catch {
+            return
+        }
+    }
+}
+
+private struct ConversationList: View {
+    let conversations: [NativeLiveConversationSummary]
+    let activeConversationID: UUID?
+    let onOpen: (NativeLiveConversationSummary) async -> Void
+
+    var body: some View {
+        List(conversations) { conversation in
+            Button {
+                Task {
+                    await onOpen(conversation)
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Text(displayTitle(for: conversation))
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 12)
+
+                    if isActive(conversation) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Current conversation")
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowBackground(Color(.systemBackground))
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+    }
+
+    private func displayTitle(
+        for conversation: NativeLiveConversationSummary
+    ) -> String {
+        let title = conversation.title?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return title?.isEmpty == false ? title! : "New Conversation"
+    }
+
+    private func isActive(
+        _ conversation: NativeLiveConversationSummary
+    ) -> Bool {
+        guard
+            let activeConversationID,
+            let conversationID = UUID(uuidString: conversation.id)
+        else {
+            return false
+        }
+        return activeConversationID == conversationID
+    }
+}
+
+private struct ConversationListSkeleton: View {
+    var body: some View {
+        List(0..<6, id: \.self) { index in
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.secondary.opacity(0.12))
+                .frame(
+                    width: index.isMultiple(of: 2) ? 190 : 240,
+                    height: 17
+                )
+                .padding(.vertical, 8)
+                .listRowBackground(Color(.systemBackground))
+                .accessibilityHidden(true)
+        }
+        .listStyle(.plain)
+        .scrollDisabled(true)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+    }
+}
+
+private struct ConversationCreateSheet: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    let onCreated: () -> Void
+
+    @State private var title = ""
+    @State private var isCreating = false
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Title (optional)", text: $title)
+                    .textInputAutocapitalization(.sentences)
+
+                if failed {
+                    Text("Failed")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("New Conversation")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(isCreating)
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isCreating ? "Creating…" : "Create") {
+                        Task {
+                            await create()
+                        }
+                    }
+                    .disabled(isCreating)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    @MainActor
+    private func create() async {
+        guard !isCreating else { return }
+
+        isCreating = true
+        failed = false
+        defer {
+            isCreating = false
+        }
+
+        let normalized = title.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        do {
+            _ = try await appModel.createNativeLiveConversation(
+                title: normalized.isEmpty ? nil : normalized
+            )
+            dismiss()
+            onCreated()
+        } catch {
+            failed = true
+        }
+    }
+}

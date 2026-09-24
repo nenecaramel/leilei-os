@@ -3,6 +3,7 @@ import SwiftUI
 struct PageContainer: View {
     let selectedPage: AppPage
     let onMenu: (() -> Void)?
+    let onOpenConversation: () -> Void
 
     var body: some View {
         NavigationStack {
@@ -15,6 +16,10 @@ struct PageContainer: View {
                     DiaryView()
                 } else if selectedPage == .daySpace {
                     DaySpaceView()
+                } else if selectedPage == .conversations {
+                    ConversationsView(
+                        onOpenConversation: onOpenConversation
+                    )
                 } else {
                     PlaceholderPage(page: selectedPage)
                 }
@@ -34,7 +39,8 @@ struct PageContainer: View {
 
                 if selectedPage != .globalSearch
                     && selectedPage != .diary
-                    && selectedPage != .daySpace {
+                    && selectedPage != .daySpace
+                    && selectedPage != .conversations {
                     ToolbarItem(placement: .topBarTrailing) {
                         if selectedPage == .chat {
                             Button {
