@@ -52,7 +52,7 @@ says the SDK supports it.
 | Runtime model switch | REAL SDK | Same provider session switches Sonnet 5 → Opus 5.5 across turns while runtime-applied model/effort readback changes and provider session identity remains stable |
 | Background task state | PENDING | Structured background task membership/progress is observed |
 | Thinking token usage | PENDING | Usage readback reaches Runtime observability without becoming canonical message content |
-| Interrupt current turn | PENDING | Mid-turn interrupt works; startup/API-call edge cases fall back to timeout + hard stop |
+| Interrupt current turn | REAL SDK (raw capability) | Query.interrupt() interrupts an in-flight Bash turn and preserves same provider session continuity; transport/runtime projection remains next |
 | Normalized event compatibility | REAL SDK | Real SDK Read/Bash `tool_use` and two `tool_result` blocks survive normalization with raw/normalized count parity |
 | Subscription-auth boundary | REAL SDK | Self-hosted Mac smoke succeeds with existing Claude login and no `ANTHROPIC_API_KEY` |
 | Default Mac daemon transport | REAL SDK | Daemon defaults to Agent SDK through one shared factory, preserves explicit headless rollback, and passes real foreground/background executor smoke |
@@ -200,3 +200,15 @@ established.
 - The interrupted turn's terminal subtype/error shape is recorded rather than assumed; provider quirks must be observed before LeileiOS chooses its stable interrupt projection.
 - Hard abort via Query `close()` remains the fallback already accepted in #483.
 - Known upstream history includes interrupt/control-channel behavior changes, so LeileiOS must not infer graceful-interrupt semantics from documentation alone.
+
+
+## Accepted graceful interrupt capability evidence — 2026-09-24
+
+- #485 raw SDK interrupt smoke PASS with `@anthropic-ai/claude-agent-sdk@0.3.281` and existing Claude subscription login.
+- Provider session `6309bd56-9b2e-4d58-9e07-e4c856e17c7e` emitted a real Bash `tool_use`; the command wrote its STARTED marker before `Query.interrupt()` was called.
+- `Query.interrupt()` returned receipt `{"still_queued":[]}`.
+- STARTED marker was present and FINISHED marker was absent, proving the in-flight Bash command was actually interrupted after starting.
+- The interrupted turn emitted terminal subtype `error_during_execution`, `is_error=true`, with diagnostic `[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use`; the async iterator also threw `Claude Code returned an error result: ...`.
+- That provider error shape is treated as observed interrupt fallout, not as evidence that `interrupt()` failed, because the control receipt succeeded and the tool was stopped.
+- Resuming the same provider session succeeded with exact marker `LEILEIOS_INTERRUPT_SESSION_CONTINUITY`; resumed session identity remained unchanged.
+- This is still raw SDK capability evidence. LeileiOS has not yet projected graceful interrupt into the stable transport/runtime contract; hard abort via `close()` remains the accepted fallback.
