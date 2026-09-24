@@ -118,6 +118,103 @@ test("turn handle forwards bidirectional query options without owning permission
   assert.equal(result.providerSessionId, "provider-options");
 });
 
+test("turn handle wires the stable permission handler before explicit start", async () => {
+  let call;
+  const permissionRequests = [];
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    permissionHandler: async (request) => {
+      permissionRequests.push(request);
+      return {
+        decision: "deny",
+        message: "Denied for unit test.",
+      };
+    },
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          for (const message of successMessages("provider-permission")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  assert.equal(
+    typeof call.options.canUseTool,
+    "function",
+  );
+
+  const requestEvents = [];
+  const decisionEvents = [];
+  handle.events.on(
+    "permission-request",
+    (request) => {
+      requestEvents.push(request);
+    },
+  );
+  handle.events.on(
+    "permission-decision",
+    (payload) => {
+      decisionEvents.push(payload);
+    },
+  );
+
+  const sdkDecision =
+    await call.options.canUseTool(
+      "Bash",
+      { command: "pwd" },
+      {
+        toolUseId: "toolu_handle",
+        requestId: "req_handle",
+      },
+    );
+
+  assert.deepEqual(sdkDecision, {
+    behavior: "deny",
+    message: "Denied for unit test.",
+    interrupt: false,
+  });
+  assert.equal(permissionRequests.length, 1);
+  assert.equal(requestEvents.length, 1);
+  assert.equal(decisionEvents.length, 1);
+  assert.equal(
+    requestEvents[0].toolUseId,
+    "toolu_handle",
+  );
+
+  const result = await handle.start();
+  assert.equal(
+    result.providerSessionId,
+    "provider-permission",
+  );
+});
+
+test("turn handle rejects permission options that can shadow the callback", async () => {
+  await assert.rejects(
+    createAgentSdkTurnHandle({
+      prompt: "hello",
+      environment: {},
+      permissionHandler: async () => ({
+        decision: "allow",
+      }),
+      queryOptions: {
+        allowedTools: ["Bash"],
+      },
+      queryImpl: () => {
+        throw new Error(
+          "query should not start",
+        );
+      },
+    }),
+    /allowedTools/,
+  );
+});
+
 test("turn handle emits nothing before explicit start", async () => {
   let iteratorStarted = false;
   const handle = await createAgentSdkTurnHandle({
