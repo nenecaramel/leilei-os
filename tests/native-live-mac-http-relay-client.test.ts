@@ -43,6 +43,7 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
       },
     },
     { success: true, data: { accepted: true } },
+    { success: true, data: { outcome: "created" } },
     { success: true, data: { accepted: true } },
     { success: true, data: { accepted: true } },
     { success: true, data: { accepted: true } },
@@ -84,6 +85,19 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
     reservationId: prepareId,
   });
 
+  await client.appendRuntimeEvent({
+    listenerInstanceId: listenerId,
+    reservationId: prepareId,
+    sequence: 1,
+    event: {
+      type: "partial_text",
+      payload: {
+        delta: "hel",
+        accumulated_length: 3,
+      },
+    },
+  });
+
   const result: NativeLiveRuntimeExecutionResult = {
     protocol_version: 1,
     prepare_id: prepareId,
@@ -113,6 +127,7 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
       "https://relay.example/internal/native-live-relay/lease/renew",
       "https://relay.example/internal/native-live-relay/reserve",
       `https://relay.example/internal/native-live-relay/reservations/${prepareId}/execution-started`,
+      `https://relay.example/internal/native-live-relay/reservations/${prepareId}/events`,
       `https://relay.example/internal/native-live-relay/reservations/${prepareId}/result`,
       `https://relay.example/internal/native-live-relay/reservations/${prepareId}/delivery-unknown`,
       `https://relay.example/internal/native-live-relay/reservations/${prepareId}/reject`,
