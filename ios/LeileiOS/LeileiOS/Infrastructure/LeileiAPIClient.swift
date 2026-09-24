@@ -11,6 +11,49 @@ struct BackendSession: Sendable, Equatable {
 
 struct NoContentResponse: Decodable, Sendable {}
 
+struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
+    let conversationId: String
+    let title: String?
+    let currentHeadMessageId: String?
+    let updatedAt: String
+    let syncToken: String
+    let truncated: Bool
+    let messages: [NativeLiveCurrentPathMessage]
+}
+
+struct NativeLiveCurrentPathMessage: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let conversationId: String
+    let parentMessageId: String?
+    let role: String
+    let status: String
+    let createdAt: String
+    let completedAt: String?
+    let blocks: [NativeLiveCurrentPathBlock]
+
+    var displayText: String {
+        blocks
+            .compactMap(\.text)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+}
+
+struct NativeLiveCurrentPathBlock: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let ordinal: Int
+    let kind: String
+    let rawType: String
+    let text: String?
+    let createdAt: String
+}
+
+enum NativeLiveCurrentPathFetchResult: Sendable, Equatable {
+    case modified(snapshot: NativeLiveCurrentPathSnapshot, etag: String?)
+    case notModified
+}
+
 enum LeileiAPIError: LocalizedError {
     case invalidResponse
     case unauthorized
@@ -68,6 +111,69 @@ final class LeileiAPIClient {
             authenticated: true
         )
         return BackendSession(authenticated: envelope.data.authenticated)
+    }
+
+    func nativeLiveCurrentPath(
+        conversationID: UUID,
+        limit: Int = 100,
+        etag: String? = nil
+    ) async throws -> NativeLiveCurrentPathFetchResult {
+        guard (1...200).contains(limit) else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let path = "/api/v1/native-live/conversations/\(conversationID.uuidString.lowercased())/current-path?limit=\(limit)"
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let etag {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+
+        guard
+            let token = try await authSession.accessToken(),
+            !token.isEmpty
+        else {
+            throw LeileiAPIError.missingAccessToken
+        }
+        request.setValue(
+            "Bearer \(token)",
+            forHTTPHeaderField: "Authorization"
+        )
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        switch http.statusCode {
+        case 304:
+            return .notModified
+        case 200:
+            let envelope = try JSONDecoder().decode(
+                NativeLiveCurrentPathEnvelope.self,
+                from: data
+            )
+            return .modified(
+                snapshot: envelope.data,
+                etag: http.value(forHTTPHeaderField: "ETag")
+            )
+        case 401:
+            throw LeileiAPIError.unauthorized
+        case 403:
+            throw LeileiAPIError.forbidden
+        default:
+            let failure = try? JSONDecoder().decode(ErrorEnvelope.self, from: data)
+            throw LeileiAPIError.backend(
+                status: http.statusCode,
+                code: failure?.error.code,
+                message: failure?.error.message
+            )
+        }
     }
 
     func request<Response: Decodable>(
@@ -144,6 +250,11 @@ private struct HealthEnvelope: Decodable, Sendable {
         let service: String
         let status: String
     }
+}
+
+private struct NativeLiveCurrentPathEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: NativeLiveCurrentPathSnapshot
 }
 
 private struct SessionEnvelope: Decodable, Sendable {

@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct ChatView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var messageText = ""
     @State private var model = "Opus 5"
     @State private var effort = "High"
@@ -22,6 +25,19 @@ struct ChatView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             isComposerFocused = false
+        }
+        .task(id: appModel.activeNativeLiveConversationID) {
+            await appModel.refreshNativeLiveCurrentPath()
+        }
+        .task(id: appModel.isAuthenticated) {
+            guard appModel.isAuthenticated else { return }
+            await appModel.refreshNativeLiveCurrentPath()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await appModel.refreshNativeLiveCurrentPath()
+            }
         }
         .safeAreaInset(edge: .bottom) {
             ChatComposer(
