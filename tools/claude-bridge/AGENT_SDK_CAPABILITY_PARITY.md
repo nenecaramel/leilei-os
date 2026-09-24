@@ -310,3 +310,11 @@ REAL SDK acceptance smoke:
 - record optional SDK `requestId` when present;
 - keep existing Claude subscription auth and `@anthropic-ai/claude-agent-sdk@0.3.281`;
 - no daemon / canonical / iOS / streaming / mid-turn-input changes in this slice.
+
+
+## First real permission smoke finding — callback only runs for actual permission prompts
+
+- The first real smoke asked Claude to use Bash under default permission policy and observed zero `permissionHandler` invocations.
+- That result is expected SDK semantics, not an adapter failure: `canUseTool` is a permission-prompt callback, not a universal tool-use interceptor. A tool call that the active permission policy already permits does not have to invoke the callback.
+- The REAL SDK acceptance smoke now deterministically creates a permission prompt with a scoped `PreToolUse` hook returning `permissionDecision: "ask"` for Bash. This is fixture-only; the LeileiOS permission contract itself does not force every tool call through the permission UI.
+- Acceptance therefore proves: when Claude Code surfaces a permission request, LeileiOS receives it, can deny it, can allow it with rewritten input, and receives the SDK cancellation signal.
