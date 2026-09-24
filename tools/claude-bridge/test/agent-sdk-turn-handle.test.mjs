@@ -118,6 +118,120 @@ test("turn handle forwards bidirectional query options without owning permission
   assert.equal(result.providerSessionId, "provider-options");
 });
 
+test("turn handle enables SDK partial messages through the stable streaming option", async () => {
+  let call;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    streaming: true,
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id:
+              "provider-streaming",
+          };
+          yield {
+            type: "stream_event",
+            session_id:
+              "provider-streaming",
+            event: {
+              type:
+                "content_block_delta",
+              index: 0,
+              delta: {
+                type: "text_delta",
+                text: "hel",
+              },
+            },
+          };
+          yield {
+            type: "stream_event",
+            session_id:
+              "provider-streaming",
+            event: {
+              type:
+                "content_block_delta",
+              index: 0,
+              delta: {
+                type: "text_delta",
+                text: "lo",
+              },
+            },
+          };
+          yield {
+            type: "result",
+            subtype: "success",
+            session_id:
+              "provider-streaming",
+            result: "hello",
+          };
+        },
+      };
+    },
+  });
+
+  assert.equal(
+    call.options.includePartialMessages,
+    true,
+  );
+
+  const partials = [];
+  handle.events.on(
+    "normalized-event",
+    (event) => {
+      if (event.type === "partial_text") {
+        partials.push(event);
+      }
+    },
+  );
+
+  const result = await handle.start();
+  assert.equal(
+    result.providerSessionId,
+    "provider-streaming",
+  );
+  assert.deepEqual(
+    partials.map(
+      (event) => event.payload.delta,
+    ),
+    ["hel", "lo"],
+  );
+  assert.equal(
+    result.normalizedEvents
+      .filter(
+        (event) =>
+          event.type === "partial_text",
+      )
+      .at(-1)
+      ?.payload.accumulated_length,
+    5,
+  );
+});
+
+test("turn handle rejects a contradictory streaming option", async () => {
+  await assert.rejects(
+    createAgentSdkTurnHandle({
+      prompt: "hello",
+      environment: {},
+      streaming: true,
+      queryOptions: {
+        includePartialMessages: false,
+      },
+      queryImpl: () => {
+        throw new Error(
+          "query should not start",
+        );
+      },
+    }),
+    /includePartialMessages: false/,
+  );
+});
+
 test("turn handle wires the stable permission handler before explicit start", async () => {
   let call;
   const permissionRequests = [];
