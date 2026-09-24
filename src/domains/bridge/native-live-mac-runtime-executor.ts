@@ -1,5 +1,6 @@
 import type {
   NativeLiveClaudeRuntime,
+  NativeLiveNormalizedEvent,
   NativeLiveRuntimeResult,
 } from "../conversation/native-live-conversation-orchestrator.js";
 
@@ -10,6 +11,9 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
       mode: "new" | "fork";
       parentProviderSessionId: string | null;
       streaming: boolean;
+      onNormalizedEvent?: (
+        event: NativeLiveNormalizedEvent,
+      ) => void | Promise<void>;
     },
   ) => Promise<NativeLiveRuntimeResult>;
 };
@@ -24,7 +28,14 @@ import {
 export class NativeLiveMacRuntimeExecutor {
   constructor(private readonly runtime: NativeLiveForegroundRuntime) {}
 
-  async execute(rawCommand: unknown): Promise<NativeLiveRuntimeExecutionResult> {
+  async execute(
+    rawCommand: unknown,
+    options: {
+      onNormalizedEvent?: (
+        event: NativeLiveNormalizedEvent,
+      ) => void | Promise<void>;
+    } = {},
+  ): Promise<NativeLiveRuntimeExecutionResult> {
     const command = parseNativeLiveRuntimeCommand(rawCommand);
 
     let runtimeResult: NativeLiveRuntimeResult;
@@ -37,6 +48,12 @@ export class NativeLiveMacRuntimeExecutor {
               parentProviderSessionId:
                 command.parent_provider_session_id,
               streaming: true,
+              ...(options.onNormalizedEvent
+                ? {
+                    onNormalizedEvent:
+                      options.onNormalizedEvent,
+                  }
+                : {}),
             },
           )
         : command.runtime_mode === "new"

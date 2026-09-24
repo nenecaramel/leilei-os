@@ -613,6 +613,16 @@ export type NativeLiveTurnDispatchStatus =
   | "delivery_unknown"
   | "completed"
   | "rejected";
+export type NativeLiveRuntimeEventType =
+  | "session"
+  | "text"
+  | "partial_text"
+  | "tool_use"
+  | "tool_result"
+  | "attachment"
+  | "result"
+  | "error"
+  | "runtime";
 export type NativeLiveMindFollowUpStatus =
   | "pending"
   | "processing"
@@ -1245,6 +1255,60 @@ export const nativeLiveTurnPreparations = pgTable(
           AND ${table.failureCode} IS NOT NULL
           AND char_length(btrim(${table.failureCode})) > 0
           AND ${table.finalizedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const nativeLiveRuntimeEvents = pgTable(
+  "native_live_runtime_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    prepareId: uuid("prepare_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    eventType: varchar("event_type", { length: 32 })
+      .$type<NativeLiveRuntimeEventType>()
+      .notNull(),
+    providerSessionId: text("provider_session_id"),
+    payload: jsonb("payload").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_runtime_events_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("native_live_runtime_events_prepare_sequence_uidx").on(
+      table.userId,
+      table.prepareId,
+      table.sequence,
+    ),
+    index("native_live_runtime_events_prepare_sequence_idx").on(
+      table.userId,
+      table.prepareId,
+      table.sequence,
+    ),
+    check(
+      "native_live_runtime_events_sequence_positive",
+      sql`${table.sequence} > 0`,
+    ),
+    check(
+      "native_live_runtime_events_type_allowed",
+      sql`${table.eventType} IN ('session', 'text', 'partial_text', 'tool_use', 'tool_result', 'attachment', 'result', 'error', 'runtime')`,
+    ),
+    check(
+      "native_live_runtime_events_provider_session_not_blank",
+      sql`${table.providerSessionId} IS NULL OR char_length(btrim(${table.providerSessionId})) > 0`,
+    ),
+    check(
+      "native_live_runtime_events_payload_object",
+      sql`${table.payload} IS NULL OR jsonb_typeof(${table.payload}) = 'object'`,
     ),
   ],
 );

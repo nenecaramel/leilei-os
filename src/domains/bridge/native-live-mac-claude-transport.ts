@@ -1,5 +1,6 @@
 import type {
   NativeLiveClaudeRuntime,
+  NativeLiveNormalizedEvent,
   NativeLiveRuntimeResult,
 } from "../conversation/native-live-conversation-orchestrator.js";
 
@@ -11,6 +12,9 @@ export type NativeLiveMacInteractiveTurnOptions = {
   mode: "new" | "resume" | "fork";
   parentProviderSessionId: string | null;
   streaming: boolean;
+  onNormalizedEvent?: (
+    event: NativeLiveNormalizedEvent,
+  ) => void | Promise<void>;
 };
 
 export type NativeLiveMacClaudeTransport =

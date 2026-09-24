@@ -13,6 +13,9 @@ import type {
   NativeLiveBackgroundModelCommand,
   NativeLiveBackgroundModelExecutionResult,
 } from "./native-live-background-model-protocol.js";
+import type {
+  NativeLiveNormalizedEvent,
+} from "../conversation/native-live-conversation-orchestrator.js";
 
 export type NativeLiveDaemonLeaseState = "acquired" | "renewed" | "busy";
 
@@ -45,6 +48,7 @@ export type NativeLiveDaemonRunOutcome =
       outcome: "completed";
       reservationId: string;
       result: NativeLiveRuntimeExecutionResult;
+      eventDeliveryFailures?: number;
     }
   | {
       outcome: "rejected";
@@ -55,6 +59,7 @@ export type NativeLiveDaemonRunOutcome =
       outcome: "delivery_unknown";
       reservationId: string;
       result: NativeLiveRuntimeExecutionResult;
+      eventDeliveryFailures?: number;
     }
   | {
       outcome: "background_completed";
@@ -111,6 +116,13 @@ export interface NativeLiveMacDaemonRelayClient {
     reservationId: string;
   }): Promise<void>;
 
+  appendRuntimeEvent?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    sequence: number;
+    event: NativeLiveNormalizedEvent;
+  }): Promise<void>;
+
   submitResult(input: {
     listenerInstanceId: string;
     reservationId: string;
@@ -130,7 +142,14 @@ export interface NativeLiveMacDaemonRelayClient {
 }
 
 export interface NativeLivePreparedCommandExecutor {
-  execute(command: unknown): Promise<NativeLiveRuntimeExecutionResult>;
+  execute(
+    command: unknown,
+    options?: {
+      onNormalizedEvent?: (
+        event: NativeLiveNormalizedEvent,
+      ) => void | Promise<void>;
+    },
+  ): Promise<NativeLiveRuntimeExecutionResult>;
 }
 
 export interface NativeLiveDaemonIdleOpportunity {
@@ -296,8 +315,31 @@ export class NativeLiveMacDaemonLoop {
       }
 
       let result: NativeLiveRuntimeExecutionResult;
+      let eventSequence = 0;
+      let eventDeliveryFailures = 0;
       try {
-        result = await this.executor.execute(reservation.command);
+        result = await this.executor.execute(
+          reservation.command,
+          this.relay.appendRuntimeEvent
+            ? {
+                onNormalizedEvent: async (event) => {
+                  eventSequence += 1;
+                  try {
+                    await this.relay.appendRuntimeEvent!({
+                      listenerInstanceId:
+                        this.listenerInstanceId,
+                      reservationId:
+                        reservation.reservationId,
+                      sequence: eventSequence,
+                      event,
+                    });
+                  } catch {
+                    eventDeliveryFailures += 1;
+                  }
+                },
+              }
+            : {},
+        );
       } catch {
         await this.bestEffortReject(reservation.reservationId, "INVALID_COMMAND");
         return {
@@ -319,6 +361,9 @@ export class NativeLiveMacDaemonLoop {
           outcome: "delivery_unknown",
           reservationId: reservation.reservationId,
           result,
+          ...(eventDeliveryFailures > 0
+            ? { eventDeliveryFailures }
+            : {}),
         };
       }
 
@@ -326,6 +371,9 @@ export class NativeLiveMacDaemonLoop {
         outcome: "completed",
         reservationId: reservation.reservationId,
         result,
+        ...(eventDeliveryFailures > 0
+          ? { eventDeliveryFailures }
+          : {}),
       };
     } finally {
       this.running = false;

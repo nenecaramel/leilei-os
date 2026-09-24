@@ -127,6 +127,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       mode = "new",
       parentProviderSessionId = null,
       streaming = true,
+      onNormalizedEvent = null,
     } = {},
   ) {
     if (this.activeQuery || this.activeTurnHandle) {
@@ -192,8 +193,17 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     const forwardRaw = (event) => {
       this.events.emit("event", event);
     };
+    let eventDelivery = Promise.resolve();
+    let eventDeliveryError = null;
     const forwardNormalized = (event) => {
       this.events.emit("normalized-event", event);
+      if (onNormalizedEvent) {
+        eventDelivery = eventDelivery
+          .then(() => onNormalizedEvent(event))
+          .catch((cause) => {
+            eventDeliveryError ??= cause;
+          });
+      }
     };
     handle.events.on("event", forwardRaw);
     handle.events.on(
@@ -203,6 +213,13 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     try {
       const result = await handle.start();
+      await eventDelivery;
+      if (eventDeliveryError) {
+        this.events.emit(
+          "event-delivery-error",
+          eventDeliveryError,
+        );
+      }
       if (!result.providerSessionId) {
         throw runtimeError(
           "Claude Agent SDK interactive turn returned no provider session id.",

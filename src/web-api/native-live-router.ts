@@ -17,6 +17,9 @@ import {
 import type {
   NativeLiveConversationService,
 } from "../domains/conversation/native-live-conversation-service.js";
+import type {
+  NativeLiveRuntimeEventService,
+} from "../domains/bridge/native-live-runtime-event-stream.js";
 
 export type NativeLiveApiDependencies = {
   coordinator: {
@@ -37,6 +40,10 @@ export type NativeLiveApiDependencies = {
     NativeLiveConversationService,
     "listConversations" | "createConversation"
   >;
+  runtimeEventService?: Pick<
+    NativeLiveRuntimeEventService,
+    "list"
+  >;
 };
 
 export function createNativeLiveApiRouter(
@@ -45,6 +52,12 @@ export function createNativeLiveApiRouter(
   const router = Router();
   router.post("/prepare", prepareNativeLiveTurnHandler(dependencies));
   router.get("/turns/:prepareId", readNativeLiveTurnHandler(dependencies));
+  if (dependencies.runtimeEventService) {
+    router.get(
+      "/turns/:prepareId/events",
+      readNativeLiveRuntimeEventsHandler(dependencies),
+    );
+  }
   if (dependencies.conversationService) {
     router.get(
       "/conversations",
@@ -227,6 +240,78 @@ export function prepareNativeLiveTurnHandler(
           userMessageId: result.command.canonical_user_message_id,
         },
       });
+  };
+}
+
+export function readNativeLiveRuntimeEventsHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const prepareId = routeParam(request.params.prepareId);
+    if (!UUID_PATTERN.test(prepareId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_TURN_ID",
+          message: "Native live turn id is invalid.",
+        },
+      });
+      return;
+    }
+
+    const afterSequence =
+      parseNonnegativeInteger(request.query.after_sequence, 0);
+    const limit = parsePositiveInteger(request.query.limit, 100, 200);
+    if (afterSequence === null || limit === null) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_RUNTIME_EVENT_CURSOR",
+          message:
+            "Runtime event cursor must be non-negative and limit must be 1-200.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const events = await dependencies.runtimeEventService!.list({
+        userId: request.webUserId,
+        prepareId,
+        afterSequence,
+        limit,
+      });
+      if (events === null) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_TURN_NOT_FOUND",
+            message: "Native live turn was not found.",
+          },
+        });
+        return;
+      }
+      response.setHeader("Cache-Control", "private, no-store");
+      response.json({
+        success: true,
+        data: {
+          prepareId,
+          events,
+          nextAfterSequence:
+            events.at(-1)?.sequence ?? afterSequence,
+        },
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_RUNTIME_EVENTS_UNAVAILABLE",
+          message:
+            "Native live runtime events are temporarily unavailable.",
+        },
+      });
+    }
   };
 }
 
@@ -454,6 +539,42 @@ export function readNativeLiveCurrentPathHandler(
 
 const DEFAULT_NATIVE_LIVE_CONVERSATION_LIST_LIMIT = 50;
 const MAX_NATIVE_LIVE_CONVERSATION_LIST_LIMIT = 100;
+
+function parseNonnegativeInteger(
+  value: unknown,
+  defaultValue: number,
+): number | null {
+  if (value === undefined) return defaultValue;
+  if (
+    typeof value !== "string"
+    || !/^(?:0|[1-9][0-9]*)$/u.test(value)
+  ) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parsePositiveInteger(
+  value: unknown,
+  defaultValue: number,
+  max: number,
+): number | null {
+  if (value === undefined) return defaultValue;
+  if (
+    typeof value !== "string"
+    || !/^[1-9][0-9]*$/u.test(value)
+  ) {
+    return null;
+  }
+  const parsed = Number(value);
+  return (
+    Number.isSafeInteger(parsed)
+    && parsed <= max
+  )
+    ? parsed
+    : null;
+}
 
 function parseConversationListLimit(
   value: unknown,

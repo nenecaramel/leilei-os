@@ -185,6 +185,31 @@ class FakeRelayService {
   }
 }
 
+class FakeRuntimeEventService {
+  appendCalls: unknown[] = [];
+  listCalls: unknown[] = [];
+
+  async append(input: unknown) {
+    this.appendCalls.push(input);
+    return "created" as const;
+  }
+
+  async list(input: unknown) {
+    this.listCalls.push(input);
+    return [{
+      sequence: 2,
+      event: {
+        type: "partial_text" as const,
+        payload: {
+          delta: "lo",
+          accumulated_length: 5,
+        },
+      },
+      createdAt: "2026-09-25T00:00:00.000Z",
+    }];
+  }
+}
+
 class FakeBackgroundModelService {
   calls: Array<{ name: string; input: unknown }> = [];
 
@@ -886,6 +911,116 @@ test("internal relay Topic resurface opportunity uses authenticated user scope a
         (await response.json() as { data: unknown }).data,
         { outcome: "disabled" },
       );
+    },
+  );
+});
+
+
+test("internal relay persists authenticated foreground runtime events", async () => {
+  const relayService = new FakeRelayService();
+  const runtimeEvents = new FakeRuntimeEventService();
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          runtimeEventService: runtimeEvents,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/events`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            sequence: 1,
+            event: {
+              type: "partial_text",
+              payload: {
+                delta: "hel",
+                accumulated_length: 3,
+              },
+            },
+          }),
+        },
+      );
+      assert.equal(response.status, 201);
+      assert.deepEqual(runtimeEvents.appendCalls, [{
+        userId,
+        listenerInstanceId: listenerId,
+        reservationId: prepareId,
+        sequence: 1,
+        event: {
+          type: "partial_text",
+          payload: {
+            delta: "hel",
+            accumulated_length: 3,
+          },
+        },
+      }]);
+    },
+  );
+});
+
+test("web runtime event reads are owner scoped and cursor bounded", async () => {
+  const coordinator = new FakeCoordinator();
+  const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
+  const runtimeEvents = new FakeRuntimeEventService();
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        if (request.header("x-test-user") === "owner") {
+          request.webUserId = userId;
+        }
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({
+          coordinator,
+          relayService,
+          turnReader,
+          runtimeEventService: runtimeEvents,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/turns/${prepareId}/events?after_sequence=1&limit=25`,
+        {
+          headers: { "x-test-user": "owner" },
+        },
+      );
+      assert.equal(response.status, 200);
+      assert.equal(
+        response.headers.get("cache-control"),
+        "private, no-store",
+      );
+      const payload = await response.json() as {
+        data: {
+          nextAfterSequence: number;
+          events: unknown[];
+        };
+      };
+      assert.equal(payload.data.nextAfterSequence, 2);
+      assert.equal(payload.data.events.length, 1);
+      assert.deepEqual(runtimeEvents.listCalls, [{
+        userId,
+        prepareId,
+        afterSequence: 1,
+        limit: 25,
+      }]);
     },
   );
 });
