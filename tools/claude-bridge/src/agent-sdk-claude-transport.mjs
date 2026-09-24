@@ -1,6 +1,9 @@
 import { EventEmitter } from "node:events";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
+import {
+  normalizeAgentSdkExecutionSelection,
+} from "./agent-sdk-execution-selection.mjs";
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
@@ -69,24 +72,29 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.abortRequested = false;
   }
 
-  sendNew(prompt) {
-    return this.#run(prompt, { mode: "new" });
+  sendNew(prompt, execution = null) {
+    return this.#run(prompt, {
+      mode: "new",
+      execution,
+    });
   }
 
-  resume(sessionId, prompt) {
+  resume(sessionId, prompt, execution = null) {
     return this.#run(prompt, {
       mode: "resume",
       parentProviderSessionId: sessionId,
       resume: sessionId,
+      execution,
     });
   }
 
-  async fork(sessionId, prompt) {
+  async fork(sessionId, prompt, execution = null) {
     const result = await this.#run(prompt, {
       mode: "fork",
       parentProviderSessionId: sessionId,
       resume: sessionId,
       forkSession: true,
+      execution,
     });
     if (!result.providerSessionId || result.providerSessionId === sessionId) {
       throw runtimeError(
@@ -127,6 +135,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       parentProviderSessionId = null,
       resume = null,
       forkSession = false,
+      execution = null,
     } = {},
   ) {
     if (this.activeQuery) {
@@ -145,6 +154,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
 
+    const executionOptions =
+      normalizeAgentSdkExecutionSelection(execution);
+
     const options = {
       cwd: this.cwd,
       env: this.environment,
@@ -154,6 +166,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         preset: "claude_code",
       },
       verbatimPrompts: true,
+      ...executionOptions,
       ...(resume ? { resume } : {}),
       ...(forkSession ? { forkSession: true } : {}),
     };

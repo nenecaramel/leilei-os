@@ -84,6 +84,27 @@ test("sendNew preserves Claude Code settings and normalized event parity", async
   assert.deepEqual(result.normalizedEvents, emitted);
 });
 
+test("explicit model/thinking/effort selection reaches query options", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-model"));
+    },
+  });
+
+  await transport.sendNew("hello", {
+    model: "claude-opus-5-5",
+    thinking: "adaptive",
+    effort: "medium",
+  });
+
+  assert.equal(call.options.model, "claude-opus-5-5");
+  assert.deepEqual(call.options.thinking, { type: "adaptive" });
+  assert.equal(call.options.effort, "medium");
+});
+
 test("resume passes provider session identity without forking", async () => {
   let call;
   const transport = new AgentSdkClaudeTransport({
