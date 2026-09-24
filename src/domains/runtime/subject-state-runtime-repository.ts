@@ -335,6 +335,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
               lastDecayedAt: recalledAt.toISOString(),
               lastRecalledAt: recalledAt.toISOString(),
               archivedAt: null,
+              forgottenAt: null,
             };
 
         await transaction
