@@ -221,9 +221,13 @@ final class LeileiAPIClient {
             throw LeileiAPIError.invalidResponse
         }
 
-        var request = URLRequest(url: url)
+        var request = URLRequest(
+            url: url,
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         if let etag {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
