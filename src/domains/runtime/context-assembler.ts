@@ -161,6 +161,8 @@ export function assembleTurnContext(input: {
   assembledAt: string;
   assemblyVersion: string;
   promptContractVersion: string;
+  /** @deprecated canonical Surface is no longer injected into model prompts. */
+  surfaceLimit?: number;
   breathLimit: number;
   breathCooldownHours?: number;
   breathSalienceWeight?: number;
