@@ -33,7 +33,7 @@ export const createUniverseNodeInputSchema = z.object({
   type: universeNodeTypeSchema,
   tags: z.array(z.string()),
   galaxies: z.array(universeMembershipSchema),
-  position: universePositionSchema,
+  position: universePositionSchema.optional().describe("Optional logical canvas position. Omit it to let LeileiOS choose a spaced position from the current Universe layout."),
   expected_version: universeExpectedVersionSchema,
   idempotency_key: mcpIdempotencyKeySchema,
 }).strict();

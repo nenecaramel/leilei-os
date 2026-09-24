@@ -38,7 +38,7 @@ export function registerCreateUniverseNodeTool(
 ): void {
   server.registerTool("create_universe_node", {
     title: "Create a Universe node",
-    description: "Create a Universe node.",
+    description: "Create a Universe node; omit position for automatic placement.",
     inputSchema: createUniverseNodeInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -49,7 +49,7 @@ export function registerCreateUniverseNodeTool(
       operation: async ({ userId }) => {
         const data = await dependencies.universeService.createMcpNode(
           userId,
-          { title, summary, content, type, tags, galaxies, position },
+          { title, summary, content, type, tags, galaxies, ...(position === undefined ? {} : { position }) },
           expected_version,
           idempotency_key,
         );

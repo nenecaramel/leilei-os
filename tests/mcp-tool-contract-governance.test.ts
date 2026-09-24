@@ -373,6 +373,10 @@ test("Universe node and Todo replacement parameters are self-explanatory", async
     ));
 
     const position = property(tool, "position");
+    if (name === "create_universe_node") {
+      assert.equal((tool.inputSchema.required ?? []).includes("position"), false);
+      assert.match(String(position.description ?? ""), /omit.*LeileiOS choose.*spaced position/iu);
+    }
     assert.ok(jsonSchemaContains(
       root,
       position,

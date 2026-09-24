@@ -99,7 +99,6 @@ test("exposes the strict create Universe node request fields", async (t) => {
     "type",
     "tags",
     "galaxies",
-    "position",
     "expected_version",
     "idempotency_key",
   ]);
@@ -326,7 +325,7 @@ test("update Universe relation exposes stale and missing relation errors without
   assert.deepEqual(calls, ["missing", relation.id]);
 });
 
-test("create Universe node forwards boundary positions and never accepts caller identity fields", async (t) => {
+test("create Universe node preserves explicit positions, allows omitted auto position, and rejects invalid input", async (t) => {
   const calls: unknown[] = [];
   const fixture = await connect({
     universeWriteTools: {
@@ -374,6 +373,21 @@ test("create Universe node forwards boundary positions and never accepts caller 
     "node-create-0000001",
   ]);
 
+  const automatic = await fixture.client.callTool({
+    name: "create_universe_node",
+    arguments: {
+      title: "Auto", summary: "", content: "", type: "concept", tags: [], galaxies: [],
+      expected_version: 1, idempotency_key: "node-create-auto-0001",
+    },
+  });
+  assert.equal(automatic.isError, undefined);
+  assert.equal(calls.length, 2);
+  assert.deepEqual((calls[1] as unknown[]).slice(1), [
+    { title: "Auto", summary: "", content: "", type: "concept", tags: [], galaxies: [] },
+    1,
+    "node-create-auto-0001",
+  ]);
+
   for (const arguments_ of [
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: -1, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000002" },
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: 10, y: 101 }, expected_version: 0, idempotency_key: "node-create-0000003" },
@@ -384,7 +398,7 @@ test("create Universe node forwards boundary positions and never accepts caller 
     const invalid = await fixture.client.callTool({ name: "create_universe_node", arguments: arguments_ });
     assert.equal(invalid.isError, true);
   }
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 });
 
 test("update Universe node is a partial patch and rejects an empty or hidden patch", async (t) => {
