@@ -12,7 +12,7 @@ import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-con
 const enabled = process.env.RUN_RUNTIME_LIFECYCLE_DATABASE_TEST === "1";
 
 test(
-  "Memory lifecycle persists protect/decay/archive and archived state leaves Breath",
+  "Memory lifecycle persists protect/decay/archive then scrubs forgotten content and purges the tombstone",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -94,6 +94,8 @@ test(
         halfLifeHours: { memory: 24, feel: 12 },
         fadingThreshold: 0.7,
         archiveThreshold: 0.2,
+        forgetAfterHours: 24,
+        purgeAfterHours: 24,
       },
     );
 
@@ -176,5 +178,50 @@ test(
       },
     );
     assert.deepEqual(recalled, []);
+
+    const forgetAt = "2026-09-26T02:00:00.000Z";
+    const forgot = await lifecycle.runOnce({
+      userId,
+      subjectId: "G",
+      now: forgetAt,
+    });
+    assert.equal(forgot.forgotten, 1);
+
+    let [forgottenRow] = await database.db
+      .select({
+        text: runtimeSubjectStates.text,
+        payload: runtimeSubjectStates.payload,
+        validityStatus: runtimeSubjectStates.validityStatus,
+      })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.id, stateId))
+      .limit(1);
+    assert.ok(forgottenRow);
+    assert.equal(forgottenRow.text, null);
+    assert.equal(forgottenRow.validityStatus, "tombstoned");
+    assert.deepEqual(Object.keys(forgottenRow.payload ?? {}), ["lifecycle_v1"]);
+    assert.equal(
+      (forgottenRow.payload?.lifecycle_v1 as { status?: unknown } | undefined)?.status,
+      "forgotten",
+    );
+
+    const purgeAt = "2026-09-27T02:00:00.000Z";
+    const purge = await lifecycle.runOnce({
+      userId,
+      subjectId: "G",
+      now: purgeAt,
+    });
+    assert.equal(purge.purged, 1);
+
+    [forgottenRow] = await database.db
+      .select({
+        text: runtimeSubjectStates.text,
+        payload: runtimeSubjectStates.payload,
+        validityStatus: runtimeSubjectStates.validityStatus,
+      })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.id, stateId))
+      .limit(1);
+    assert.equal(forgottenRow, undefined);
   },
 );
