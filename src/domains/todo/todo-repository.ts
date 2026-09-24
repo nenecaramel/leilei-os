@@ -134,7 +134,7 @@ export class DrizzleTodoRepository implements TodoRepository {
       .from(todoPapers)
       .innerJoin(todoEntries, eq(todoEntries.paperId, todoPapers.id))
       .where(eq(todoPapers.userId, userId))
-      .orderBy(asc(todoPapers.businessDate));
+      .orderBy(desc(todoPapers.businessDate));
     const rows = limit === undefined
       ? await query
       : await query.limit(limit).offset(offset);
