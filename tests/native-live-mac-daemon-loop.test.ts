@@ -10,6 +10,9 @@ import type {
   NativeLiveRuntimeCommand,
   NativeLiveRuntimeExecutionResult,
 } from "../src/domains/bridge/native-live-runtime-protocol.js";
+import type {
+  NativeLiveNormalizedEvent,
+} from "../src/domains/conversation/native-live-conversation-orchestrator.js";
 
 const listenerInstanceId = "11111111-1111-4111-8111-111111111111";
 const reservationId = "22222222-2222-4222-8222-222222222222";
@@ -547,10 +550,7 @@ class FakeStreamingExecutor implements NativeLivePreparedCommandExecutor {
     _input: unknown,
     options?: {
       onNormalizedEvent?: (
-        event: {
-          type: "partial_text" | "result";
-          payload?: Record<string, unknown>;
-        },
+        event: NativeLiveNormalizedEvent,
       ) => void | Promise<void>;
     },
   ) {
