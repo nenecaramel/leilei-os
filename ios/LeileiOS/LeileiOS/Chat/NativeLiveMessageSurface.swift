@@ -137,6 +137,14 @@ private struct NativeLiveMessageRow: View {
                         )
 
                     messageStatus
+
+                    Button("Edit") {
+                        onEditMessage(message)
+                    }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .disabled(isTurnInFlight)
                 }
             }
         } else {
@@ -150,6 +158,16 @@ private struct NativeLiveMessageRow: View {
 
                     messageContent
                     messageStatus
+
+                    if let targetUserMessageID = message.parentMessageId {
+                        Button("Retry") {
+                            onRetryMessage(targetUserMessageID)
+                        }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .disabled(isTurnInFlight)
+                    }
                 }
 
                 Spacer(minLength: 24)
