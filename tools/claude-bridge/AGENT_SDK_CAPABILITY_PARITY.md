@@ -190,3 +190,13 @@ established.
 - Background pure-model path passed through `NativeLiveMacBackgroundModelExecutor`: status `success`, task kind `distillation`, exact final marker `LEILEIOS_DAEMON_AGENT_SDK_BACKGROUND`.
 - The smoke performed no relay or canonical production mutation.
 - The first-phase parity gate is now closed: subscription auth, new/resume/fork, normalized tool events, failure mapping, abort/hard-stop, and daemon default transport all have real SDK evidence.
+
+
+## Graceful interrupt capability slice — pending real smoke
+
+- This slice is raw SDK acceptance only. It does not change the daemon/runtime protocol or Canonical Ledger semantics.
+- The smoke uses streaming input so the SDK control channel stays live, starts a real 30-second Bash turn, waits until the Bash `tool_use` is observed, then calls `Query.interrupt()`.
+- Acceptance requires a typed interrupt receipt from SDK 0.3.281, no completion marker from the interrupted Bash command, and a successful follow-up resume on the same provider session.
+- The interrupted turn's terminal subtype/error shape is recorded rather than assumed; provider quirks must be observed before LeileiOS chooses its stable interrupt projection.
+- Hard abort via Query `close()` remains the fallback already accepted in #483.
+- Known upstream history includes interrupt/control-channel behavior changes, so LeileiOS must not infer graceful-interrupt semantics from documentation alone.
