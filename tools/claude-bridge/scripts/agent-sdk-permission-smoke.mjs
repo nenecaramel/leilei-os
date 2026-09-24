@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -35,6 +40,80 @@ function finalText(result) {
     : null;
 }
 
+function summarizeTurn(result) {
+  const toolUses = [];
+  const toolErrors = [];
+  let permissionDenials = [];
+  let initPermissionMode = null;
+
+  for (const message of result.events ?? []) {
+    if (
+      message?.type === "system"
+      && message?.subtype === "init"
+    ) {
+      initPermissionMode =
+        message.permissionMode
+        ?? message.permission_mode
+        ?? null;
+    }
+
+    if (
+      message?.type === "assistant"
+      && Array.isArray(
+        message.message?.content,
+      )
+    ) {
+      for (const block of message.message.content) {
+        if (block?.type === "tool_use") {
+          toolUses.push({
+            name: block.name ?? null,
+            id: block.id ?? null,
+            input: block.input ?? null,
+          });
+        }
+      }
+    }
+
+    if (
+      message?.type === "user"
+      && Array.isArray(
+        message.message?.content,
+      )
+    ) {
+      for (const block of message.message.content) {
+        if (
+          block?.type === "tool_result"
+          && block.is_error === true
+        ) {
+          toolErrors.push({
+            toolUseId:
+              block.tool_use_id ?? null,
+            content: block.content ?? null,
+          });
+        }
+      }
+    }
+
+    if (
+      message?.type === "result"
+      && Array.isArray(
+        message.permission_denials,
+      )
+    ) {
+      permissionDenials =
+        message.permission_denials;
+    }
+  }
+
+  return {
+    initPermissionMode,
+    toolUses,
+    toolErrors,
+    permissionDenials,
+    finalText: finalText(result),
+  };
+}
+
 function assertPermissionRequest(request) {
   assert.equal(request.toolName, "Write");
   assert.ok(
@@ -51,23 +130,32 @@ function assertPermissionRequest(request) {
 
 
 async function run() {
-  const cwd = await mkdtemp(
+  const root = await mkdtemp(
     path.join(
       tmpdir(),
       "leileios-agent-sdk-permission-",
     ),
   );
+  const cwd = path.join(root, "workspace");
+  const guarded = path.join(
+    root,
+    "outside-workspace",
+  );
+  await mkdir(cwd, { recursive: true });
+  await mkdir(guarded, {
+    recursive: true,
+  });
 
   const deniedMarker = path.join(
-    cwd,
+    guarded,
     "denied-executed.txt",
   );
   const originalMarker = path.join(
-    cwd,
+    guarded,
     "original-executed.txt",
   );
   const rewrittenMarker = path.join(
-    cwd,
+    guarded,
     "rewritten-executed.txt",
   );
 
@@ -126,6 +214,9 @@ async function run() {
         permissionMode: "default",
         settingSources: [],
         tools: ["Write"],
+        model: "claude-sonnet-5",
+        effort: "low",
+        verbatimPrompts: true,
       },
       permissionHandler: async (
         request,
@@ -165,10 +256,14 @@ async function run() {
     const deniedResult = await denied.start();
 
     setStage("deny_assert");
-    assert.ok(
-      denyRequests.length >= 1,
-      "Real SDK never invoked permissionHandler for denied Write.",
-    );
+    if (denyRequests.length < 1) {
+      throw new Error(
+        "Real SDK never invoked permissionHandler for denied Write. Diagnostic: "
+        + JSON.stringify(
+          summarizeTurn(deniedResult),
+        ),
+      );
+    }
     assert.equal(
       denyRequestEvents.length,
       denyRequests.length,
@@ -213,6 +308,9 @@ async function run() {
         permissionMode: "default",
         settingSources: [],
         tools: ["Write"],
+        model: "claude-sonnet-5",
+        effort: "low",
+        verbatimPrompts: true,
       },
       permissionHandler: async (
         request,
@@ -255,10 +353,14 @@ async function run() {
     const allowedResult = await allowed.start();
 
     setStage("allow_assert");
-    assert.ok(
-      allowRequests.length >= 1,
-      "Real SDK never invoked permissionHandler for allowed Write.",
-    );
+    if (allowRequests.length < 1) {
+      throw new Error(
+        "Real SDK never invoked permissionHandler for allowed Write. Diagnostic: "
+        + JSON.stringify(
+          summarizeTurn(allowedResult),
+        ),
+      );
+    }
     assert.equal(
       allowRequestEvents.length,
       allowRequests.length,
@@ -366,7 +468,7 @@ async function run() {
       clearTimeout(forceExitTimer);
     }
     activeHandle?.abort();
-    await rm(cwd, {
+    await rm(root, {
       recursive: true,
       force: true,
     });
