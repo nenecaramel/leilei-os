@@ -328,3 +328,12 @@ REAL SDK acceptance smoke:
 - It now exercises the SDK's native built-in `Write` permission path under `permissionMode: "default"` with `tools: ["Write"]` and no `allowedTools` / bypass shadowing.
 - This mirrors an upstream-confirmed streaming-input shape where a one-message async iterable plus `canUseTool` receives the Write permission request.
 - Deny acceptance proves the requested file is not written. Allow acceptance rewrites `Write.file_path` and `content`, then proves only the rewritten target is created.
+
+
+## Third real permission smoke finding — in-workspace Write was not a deterministic prompt
+
+- A native `Write` request inside the smoke `cwd` still completed without invoking `permissionHandler` on the user's macOS subscription-auth path.
+- That means "use Write" is not by itself a deterministic permission fixture on the current installed/runtime policy; a tool can be exposed and used without necessarily producing a permission request.
+- The next smoke moves the requested Write target to a sibling directory outside the query `cwd`, while keeping it inside one disposable temp root. This is intended to exercise a path-scoped permission boundary without touching user files.
+- The smoke now pins Sonnet 5 / low effort / verbatim prompt delivery for reproducibility.
+- If the callback is still not invoked, the failure prints the real init permission mode, observed tool_use blocks, error tool_results, result.permission_denials, and final text. The next decision will be based on that runtime evidence instead of another guessed fixture.
