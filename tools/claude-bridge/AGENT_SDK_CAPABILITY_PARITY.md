@@ -337,3 +337,12 @@ REAL SDK acceptance smoke:
 - The next smoke moves the requested Write target to a sibling directory outside the query `cwd`, while keeping it inside one disposable temp root. This is intended to exercise a path-scoped permission boundary without touching user files.
 - The smoke now pins Sonnet 5 / low effort / verbatim prompt delivery for reproducibility.
 - If the callback is still not invoked, the failure prints the real init permission mode, observed tool_use blocks, error tool_results, result.permission_denials, and final text. The next decision will be based on that runtime evidence instead of another guessed fixture.
+
+
+## Fourth real permission smoke finding — SDK callback reached; context key casing was wrong
+
+- The out-of-workspace Write smoke produced the decisive evidence: a real `Write` tool_use was emitted, the SDK attempted the permission round-trip, and the callback failed inside the smoke assertion with `Real SDK permission request must expose toolUseId.`
+- The resulting tool error was `Tool permission request failed: Error: Real SDK permission request must expose toolUseId.`, and `result.permission_denials` contained the exact Write tool_use id/input. Therefore permission routing and the LeileiOS callback adapter were already active.
+- Root cause was only context-key normalization. The Agent SDK callback uses `toolUseID` and `agentID` casing on the public callback options; the first LeileiOS adapter draft only read `toolUseId` / `agentId`.
+- The adapter now accepts the real SDK casing plus camelCase/snake_case aliases, while continuing to expose stable LeileiOS `toolUseId`, `requestId`, and `agentId`.
+- Unit coverage now locks the real `toolUseID` / `agentID` shape so this cannot regress.
