@@ -4,6 +4,13 @@ import Auth0
 
 @MainActor
 final class AppModel: ObservableObject {
+    enum ChatSyncState: Equatable {
+        case idle
+        case loading
+        case ready
+        case unavailable(String)
+    }
+
     enum ProbeState: Equatable {
         case idle
         case checking
@@ -33,6 +40,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var isAuthenticated = false
     @Published private(set) var accountEmail: String?
 
+    @Published private(set) var activeNativeLiveConversationID: UUID?
+    @Published private(set) var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot?
+    @Published private(set) var chatSyncState: ChatSyncState = .idle
+
+    private var nativeLiveCurrentPathETags: [UUID: String] = [:]
+    private var chatRefreshInFlight = false
+    private static let activeNativeLiveConversationDefaultsKey =
+        "activeNativeLiveConversationID"
+
     init() {
         let config = AppConfig.production()
         let authSession = AuthSessionController(config: config)
@@ -43,6 +59,17 @@ final class AppModel: ObservableObject {
             baseURL: config.apiBaseURL,
             authSession: authSession
         )
+
+        let storedConversationID = UserDefaults.standard.string(
+            forKey: Self.activeNativeLiveConversationDefaultsKey
+        )
+        let debugConversationID = ProcessInfo.processInfo.environment[
+            "LEILEI_NATIVE_LIVE_CONVERSATION_ID"
+        ]
+        if let rawConversationID = storedConversationID ?? debugConversationID,
+           let conversationID = UUID(uuidString: rawConversationID) {
+            self.activeNativeLiveConversationID = conversationID
+        }
 
         // Retire the old access-token-only Keychain entry.
         try? KeychainAccessTokenStore().clear()
@@ -122,6 +149,74 @@ final class AppModel: ObservableObject {
         isAuthenticated = false
         accountEmail = nil
         sessionState = .unavailable("Sign-in required")
+        clearNativeLiveSessionData()
+    }
+
+    func openNativeLiveConversation(_ conversationID: UUID) async {
+        if activeNativeLiveConversationID != conversationID {
+            activeNativeLiveConversationID = conversationID
+            nativeLiveCurrentPath = nil
+            chatSyncState = .idle
+        }
+
+        UserDefaults.standard.set(
+            conversationID.uuidString.lowercased(),
+            forKey: Self.activeNativeLiveConversationDefaultsKey
+        )
+        await refreshNativeLiveCurrentPath(force: true)
+    }
+
+    func refreshNativeLiveCurrentPath(force: Bool = false) async {
+        guard isAuthenticated,
+              let conversationID = activeNativeLiveConversationID,
+              !chatRefreshInFlight else {
+            return
+        }
+
+        chatRefreshInFlight = true
+        if nativeLiveCurrentPath == nil {
+            chatSyncState = .loading
+        }
+        defer {
+            chatRefreshInFlight = false
+        }
+
+        do {
+            let result = try await api.nativeLiveCurrentPath(
+                conversationID: conversationID,
+                etag: force ? nil : nativeLiveCurrentPathETags[conversationID]
+            )
+
+            switch result {
+            case .notModified:
+                chatSyncState = .ready
+
+            case .modified(let snapshot, let etag):
+                nativeLiveCurrentPath = snapshot
+                if let etag {
+                    nativeLiveCurrentPathETags[conversationID] = etag
+                } else {
+                    nativeLiveCurrentPathETags.removeValue(
+                        forKey: conversationID
+                    )
+                }
+                chatSyncState = .ready
+            }
+        } catch LeileiAPIError.backend(let status, _, _) where status == 404 {
+            nativeLiveCurrentPath = nil
+            nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
+            activeNativeLiveConversationID = nil
+            UserDefaults.standard.removeObject(
+                forKey: Self.activeNativeLiveConversationDefaultsKey
+            )
+            chatSyncState = .unavailable("Conversation not found")
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            chatSyncState = .unavailable(error.localizedDescription)
+        }
     }
 
     func refreshConnectivity() async {
@@ -160,5 +255,11 @@ final class AppModel: ObservableObject {
         } catch {
             sessionState = .unavailable(error.localizedDescription)
         }
+    }
+
+    private func clearNativeLiveSessionData() {
+        nativeLiveCurrentPath = nil
+        nativeLiveCurrentPathETags.removeAll()
+        chatSyncState = .idle
     }
 }
