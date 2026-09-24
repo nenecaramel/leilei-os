@@ -102,7 +102,7 @@ test("foreground Mind binding now owns Context Assembly only, not general Subjec
     surfaceHeadMessageId: null,
   });
 
-  assert.equal(prompt.includes("<user_message>hello</user_message>"), true);
+  assert.equal(\n    prompt.includes(\n      "<user_message>[09-22 周二 15:30] hello</user_message>",\n    ),\n    true,\n  );
   assert.equal(port.listCalls, 1);
   assert.equal(port.saved, 1);
 });
