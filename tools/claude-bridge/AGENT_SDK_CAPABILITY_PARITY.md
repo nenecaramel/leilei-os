@@ -195,8 +195,8 @@ established.
 ## Graceful interrupt capability slice — pending real smoke
 
 - This slice is raw SDK acceptance only. It does not change the daemon/runtime protocol or Canonical Ledger semantics.
-- The smoke uses streaming input so the SDK control channel stays live, starts a real 30-second Bash turn, waits until the Bash `tool_use` is observed, then calls `Query.interrupt()`.
-- Acceptance requires a typed interrupt receipt from SDK 0.3.281, no completion marker from the interrupted Bash command, and a successful follow-up resume on the same provider session.
+- The smoke uses streaming input so the SDK control channel stays live. The Bash command writes a STARTED marker, sleeps for 30 seconds, then would write a FINISHED marker; the smoke waits for both the structured Bash `tool_use` and the STARTED marker before calling `Query.interrupt()`.
+- Acceptance requires a typed interrupt receipt from SDK 0.3.281, STARTED=true and FINISHED=false for the interrupted Bash command, and a successful follow-up resume on the same provider session.
 - The interrupted turn's terminal subtype/error shape is recorded rather than assumed; provider quirks must be observed before LeileiOS chooses its stable interrupt projection.
 - Hard abort via Query `close()` remains the fallback already accepted in #483.
 - Known upstream history includes interrupt/control-channel behavior changes, so LeileiOS must not infer graceful-interrupt semantics from documentation alone.
