@@ -28,6 +28,13 @@ import type {
 import type {
   TopicResurfaceCrossDeviceOpportunity,
 } from "../domains/runtime/topic-resurface-cross-device-opportunity.js";
+import {
+  NativeLiveRuntimeEventError,
+  type NativeLiveRuntimeEventService,
+} from "../domains/bridge/native-live-runtime-event-stream.js";
+import type {
+  NativeLiveNormalizedEvent,
+} from "../domains/conversation/native-live-conversation-orchestrator.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -54,6 +61,10 @@ export type NativeLiveRelayInternalDependencies = {
   backgroundModelOpportunity?: Pick<
     TopicResurfaceCrossDeviceOpportunity,
     "offer"
+  >;
+  runtimeEventService?: Pick<
+    NativeLiveRuntimeEventService,
+    "append"
   >;
 };
 
@@ -102,6 +113,12 @@ export function createNativeLiveRelayInternalRouter(
     "/reservations/:reservationId/execution-started",
     executionStartedHandler(dependencies),
   );
+  if (dependencies.runtimeEventService) {
+    router.post(
+      "/reservations/:reservationId/events",
+      appendRuntimeEventHandler(dependencies),
+    );
+  }
   router.post(
     "/reservations/:reservationId/result",
     submitResultHandler(dependencies),
@@ -391,6 +408,62 @@ function executionStartedHandler(
   };
 }
 
+function appendRuntimeEventHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.runtimeEventService) return;
+    const reservationId =
+      parseReservationId(request.params.reservationId);
+    const body = parseRuntimeEventBody(request.body);
+    if (!reservationId || !body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      const outcome =
+        await dependencies.runtimeEventService.append({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+          reservationId,
+          sequence: body.sequence,
+          event: body.event,
+        });
+      response.status(outcome === "created" ? 201 : 200).json({
+        success: true,
+        data: { outcome },
+      });
+    } catch (error) {
+      if (error instanceof NativeLiveRuntimeEventError) {
+        const status =
+          error.code === "INVALID_EVENT"
+            ? 400
+            : error.code === "RESERVATION_NOT_FOUND"
+              ? 404
+              : 409;
+        response.status(status).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        });
+        return;
+      }
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_RUNTIME_EVENT_UNAVAILABLE",
+          message:
+            "Native live runtime event persistence is temporarily unavailable.",
+        },
+      });
+    }
+  };
+}
+
 function submitResultHandler(
   dependencies: NativeLiveRelayInternalDependencies,
 ): RequestHandler {
@@ -562,6 +635,36 @@ function parseSemanticFallbackBody(
   return {
     listener_instance_id: record.listener_instance_id,
     code: record.code,
+  };
+}
+
+function parseRuntimeEventBody(
+  value: unknown,
+): {
+  listener_instance_id: string;
+  sequence: number;
+  event: NativeLiveNormalizedEvent;
+} | null {
+  const record = exactRecord(value, [
+    "listener_instance_id",
+    "sequence",
+    "event",
+  ]);
+  if (
+    !record
+    || !isUuid(record.listener_instance_id)
+    || !Number.isInteger(record.sequence)
+    || (record.sequence as number) < 1
+    || !record.event
+    || typeof record.event !== "object"
+    || Array.isArray(record.event)
+  ) {
+    return null;
+  }
+  return {
+    listener_instance_id: record.listener_instance_id,
+    sequence: record.sequence as number,
+    event: record.event as NativeLiveNormalizedEvent,
   };
 }
 
