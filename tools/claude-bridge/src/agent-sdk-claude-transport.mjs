@@ -128,6 +128,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       parentProviderSessionId = null,
       streaming = true,
       onNormalizedEvent = null,
+      permissionHandler = null,
+      questionHandler = null,
     } = {},
   ) {
     if (this.activeQuery || this.activeTurnHandle) {
@@ -187,6 +189,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         verbatimPrompts: true,
       },
       streaming,
+      permissionHandler,
+      questionHandler,
     });
 
     this.activeTurnHandle = handle;
