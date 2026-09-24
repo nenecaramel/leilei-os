@@ -49,6 +49,40 @@ function assertPermissionRequest(request) {
   );
 }
 
+
+function forceBashPermissionAskHook() {
+  return {
+    PreToolUse: [
+      {
+        matcher: "Bash",
+        hooks: [
+          async (input) => {
+            if (
+              input?.hook_event_name
+                !== "PreToolUse"
+              || input?.tool_name !== "Bash"
+            ) {
+              return {};
+            }
+
+            return {
+              hookSpecificOutput: {
+                hookEventName:
+                  "PreToolUse",
+                permissionDecision: "ask",
+                permissionDecisionReason:
+                  "LEILEIOS_PERMISSION_SMOKE_FORCE_ASK",
+                updatedInput:
+                  input.tool_input,
+              },
+            };
+          },
+        ],
+      },
+    ],
+  };
+}
+
 async function run() {
   const cwd = await mkdtemp(
     path.join(
@@ -125,6 +159,8 @@ async function run() {
       queryOptions: {
         permissionMode: "default",
         settingSources: [],
+        hooks:
+          forceBashPermissionAskHook(),
       },
       permissionHandler: async (
         request,
@@ -212,6 +248,8 @@ async function run() {
       queryOptions: {
         permissionMode: "default",
         settingSources: [],
+        hooks:
+          forceBashPermissionAskHook(),
       },
       permissionHandler: async (
         request,
