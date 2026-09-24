@@ -38,6 +38,68 @@ function nonblankString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function createAgentSdkInputQueue(initialMessage) {
+  const queued = [initialMessage];
+  let waiter = null;
+  let ended = false;
+
+  return {
+    push(message) {
+      if (ended) {
+        throw runtimeError(
+          "Agent SDK input queue is already closed.",
+          { runtimeCode: "RUNTIME_UNAVAILABLE" },
+        );
+      }
+      if (waiter) {
+        const resolve = waiter;
+        waiter = null;
+        resolve({
+          value: message,
+          done: false,
+        });
+        return;
+      }
+      queued.push(message);
+    },
+
+    end() {
+      if (ended) return;
+      ended = true;
+      if (waiter) {
+        const resolve = waiter;
+        waiter = null;
+        resolve({
+          value: undefined,
+          done: true,
+        });
+      }
+    },
+
+    [Symbol.asyncIterator]() {
+      return {
+        next() {
+          if (queued.length > 0) {
+            return Promise.resolve({
+              value: queued.shift(),
+              done: false,
+            });
+          }
+          if (ended) {
+            return Promise.resolve({
+              value: undefined,
+              done: true,
+            });
+          }
+          return new Promise((resolve) => {
+            waiter = resolve;
+          });
+        },
+      };
+    },
+  };
+}
+
 function sdkResultFailed(message) {
   if (!message || message.type !== "result") return false;
   if (message.is_error === true) return true;
@@ -58,6 +120,7 @@ export async function createAgentSdkTurnHandle({
   queryOptions = {},
   permissionHandler = null,
   streaming = false,
+  midTurnInput = false,
 } = {}) {
   if (environment.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -69,6 +132,9 @@ export async function createAgentSdkTurnHandle({
   }
   if (typeof streaming !== "boolean") {
     throw new Error("Agent SDK turn streaming must be boolean.");
+  }
+  if (typeof midTurnInput !== "boolean") {
+    throw new Error("Agent SDK turn midTurnInput must be boolean.");
   }
   if (
     streaming
@@ -93,6 +159,12 @@ export async function createAgentSdkTurnHandle({
         events,
       });
   }
+
+  const inputQueue = midTurnInput
+    ? createAgentSdkInputQueue(
+        userMessage(prompt),
+      )
+    : null;
 
   async function* promptStream() {
     yield userMessage(prompt);
@@ -122,7 +194,8 @@ export async function createAgentSdkTurnHandle({
   let query;
   try {
     query = resolvedQuery({
-      prompt: promptStream(),
+      prompt:
+        inputQueue ?? promptStream(),
       options,
     });
   } catch (cause) {
@@ -146,6 +219,8 @@ export async function createAgentSdkTurnHandle({
     mode,
     parentProviderSessionId,
     events,
+    inputQueue,
+    midTurnInput,
   });
 }
 
@@ -155,11 +230,15 @@ export class AgentSdkTurnHandle {
     mode,
     parentProviderSessionId,
     events = new EventEmitter(),
+    inputQueue = null,
+    midTurnInput = false,
   }) {
     this.query = query;
     this.mode = mode;
     this.parentProviderSessionId = parentProviderSessionId;
     this.events = events;
+    this.inputQueue = inputQueue;
+    this.midTurnInput = midTurnInput;
     this.providerSessionId = null;
     this.interruptReceipt = null;
     this.interruptRequested = false;
@@ -180,6 +259,55 @@ export class AgentSdkTurnHandle {
     this.started = true;
     this.completion = this.#consume();
     return this.completion;
+  }
+
+  sendUserMessage(text) {
+    if (!this.midTurnInput || !this.inputQueue) {
+      throw runtimeError(
+        "Agent SDK turn does not have mid-turn input enabled.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    if (!this.started || !this.completion) {
+      throw runtimeError(
+        "Agent SDK turn has not started.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    if (
+      this.closed
+      || this.abortRequested
+      || this.interruptRequested
+    ) {
+      throw runtimeError(
+        "Agent SDK turn no longer accepts user input.",
+        {
+          runtimeCode:
+            this.abortRequested
+              ? "ABORTED"
+              : "RUNTIME_UNAVAILABLE",
+        },
+      );
+    }
+
+    const normalizedText = nonblankString(text);
+    if (!normalizedText) {
+      throw new Error(
+        "Mid-turn user message must be nonblank.",
+      );
+    }
+
+    this.inputQueue.push(
+      userMessage(normalizedText),
+    );
+    const receipt = {
+      status: "queued",
+    };
+    this.events.emit(
+      "mid-turn-input",
+      receipt,
+    );
+    return receipt;
   }
 
   async interrupt() {
@@ -211,6 +339,7 @@ export class AgentSdkTurnHandle {
     const receipt = normalizeAgentSdkInterruptReceipt(
       await this.query.interrupt(),
     );
+    this.inputQueue?.end();
     this.interruptReceipt = receipt;
     this.events.emit("interrupt", receipt);
     return receipt;
@@ -219,6 +348,7 @@ export class AgentSdkTurnHandle {
   abort() {
     if (this.closed) return;
     this.abortRequested = true;
+    this.inputQueue?.end();
     this.query.close?.();
     if (!this.started) {
       this.closed = true;
@@ -254,6 +384,7 @@ export class AgentSdkTurnHandle {
 
         if (message?.type === "result") {
           terminalResult = message;
+          this.inputQueue?.end();
         }
         if (sdkResultFailed(message)) {
           terminalFailure = message;
@@ -299,7 +430,8 @@ export class AgentSdkTurnHandle {
         },
       );
     } finally {
-        this.closed = true;
+      this.inputQueue?.end();
+      this.closed = true;
     }
 
     if (this.abortRequested) {
