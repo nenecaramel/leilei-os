@@ -102,6 +102,8 @@ export type AppDependencies = {
   webNativeLiveTurnReader?: NativeLiveApiDependencies["turnReader"];
   webNativeLiveCurrentPathReader?:
     NativeLiveApiDependencies["currentPathReader"];
+  webNativeLiveConversationService?:
+    NativeLiveApiDependencies["conversationService"];
   nativeLiveRelayService?:
     NativeLiveRelayInternalDependencies["relayService"]
     & NativeLiveApiDependencies["relayService"];
@@ -347,6 +349,8 @@ export function createApp(
     const webNativeLiveTurnReader = dependencies.webNativeLiveTurnReader;
     const webNativeLiveCurrentPathReader =
       dependencies.webNativeLiveCurrentPathReader;
+    const webNativeLiveConversationService =
+      dependencies.webNativeLiveConversationService;
 
     if (
       !webMemoryService ||
@@ -433,6 +437,12 @@ export function createApp(
                   ? {
                       currentPathReader:
                         webNativeLiveCurrentPathReader,
+                    }
+                  : {}),
+                ...(webNativeLiveConversationService
+                  ? {
+                      conversationService:
+                        webNativeLiveConversationService,
                     }
                   : {}),
               },

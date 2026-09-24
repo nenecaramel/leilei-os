@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationContentBlocks,
@@ -10,6 +10,7 @@ import type {
   NativeLiveContentBlock,
   NativeLiveContentBlockInput,
   NativeLiveConversation,
+  NativeLiveConversationSummary,
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
   NativeLiveProviderCheckpointInput,
@@ -42,6 +43,11 @@ export interface NativeLiveConversationRepository {
     userId: string;
     title?: string | null;
   }): Promise<NativeLiveConversation>;
+
+  listConversations?(input: {
+    userId: string;
+    limit: number;
+  }): Promise<NativeLiveConversationSummary[]>;
 
   getConversation(input: {
     userId: string;
@@ -145,6 +151,38 @@ implements NativeLiveConversationRepository {
       updatedAt: row.updatedAt.toISOString(),
       messages: [],
     };
+  }
+
+  async listConversations(input: {
+    userId: string;
+    limit: number;
+  }): Promise<NativeLiveConversationSummary[]> {
+    const rows = await this.db
+      .select({
+        id: conversations.id,
+        title: conversations.title,
+        currentHeadMessageId: conversations.currentHeadMessageId,
+        createdAt: conversations.createdAt,
+        updatedAt: conversations.updatedAt,
+      })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.userId, input.userId),
+          eq(conversations.origin, "native_live"),
+          eq(conversations.lifecycleStatus, "active"),
+        ),
+      )
+      .orderBy(desc(conversations.updatedAt), desc(conversations.id))
+      .limit(input.limit);
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      currentHeadMessageId: row.currentHeadMessageId,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    }));
   }
 
   async getConversation(input: {
