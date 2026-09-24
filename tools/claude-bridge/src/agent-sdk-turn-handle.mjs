@@ -19,14 +19,6 @@ async function loadDefaultQuery() {
   return sdk.query;
 }
 
-function deferred() {
-  let resolve;
-  const promise = new Promise((next) => {
-    resolve = next;
-  });
-  return { promise, resolve };
-}
-
 function userMessage(text) {
   return {
     type: "user",
@@ -71,11 +63,8 @@ export async function createAgentSdkTurnHandle({
   }
 
   const resolvedQuery = queryImpl ?? await loadQuery();
-  const inputGate = deferred();
-
   async function* promptStream() {
     yield userMessage(prompt);
-    await inputGate.promise;
   }
 
   const options = {
@@ -98,7 +87,6 @@ export async function createAgentSdkTurnHandle({
       options,
     });
   } catch (cause) {
-    inputGate.resolve();
     throw runtimeError(
       `Failed to start Claude Agent SDK turn: ${
         cause instanceof Error ? cause.message : String(cause)
@@ -108,7 +96,6 @@ export async function createAgentSdkTurnHandle({
   }
 
   if (!query || typeof query[Symbol.asyncIterator] !== "function") {
-    inputGate.resolve();
     throw runtimeError(
       "Claude Agent SDK query() did not return an async iterable.",
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
@@ -117,7 +104,6 @@ export async function createAgentSdkTurnHandle({
 
   return new AgentSdkTurnHandle({
     query,
-    inputGate,
     mode,
     parentProviderSessionId,
   });
@@ -126,12 +112,10 @@ export async function createAgentSdkTurnHandle({
 export class AgentSdkTurnHandle {
   constructor({
     query,
-    inputGate,
     mode,
     parentProviderSessionId,
   }) {
     this.query = query;
-    this.inputGate = inputGate;
     this.mode = mode;
     this.parentProviderSessionId = parentProviderSessionId;
     this.events = new EventEmitter();
@@ -187,7 +171,6 @@ export class AgentSdkTurnHandle {
       await this.query.interrupt(),
     );
     this.interruptReceipt = receipt;
-    this.inputGate.resolve();
     this.events.emit("interrupt", receipt);
     return receipt;
   }
@@ -195,7 +178,6 @@ export class AgentSdkTurnHandle {
   abort() {
     if (this.closed) return;
     this.abortRequested = true;
-    this.inputGate.resolve();
     this.query.close?.();
     if (!this.started) {
       this.closed = true;
@@ -276,8 +258,7 @@ export class AgentSdkTurnHandle {
         },
       );
     } finally {
-      this.inputGate.resolve();
-      this.closed = true;
+        this.closed = true;
     }
 
     if (this.abortRequested) {
