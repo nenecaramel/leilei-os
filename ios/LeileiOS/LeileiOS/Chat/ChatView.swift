@@ -7,6 +7,7 @@ struct ChatView: View {
     @State private var messageText = ""
     @State private var model = "Opus 5"
     @State private var effort = "High"
+    @State private var editDraft: NativeLiveEditDraft?
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -19,10 +20,19 @@ struct ChatView: View {
                 syncState: appModel.chatSyncState,
                 isAuthenticated: appModel.isAuthenticated,
                 hasActiveConversation:
-                    appModel.activeNativeLiveConversationID != nil
-            ) {
-                await appModel.refreshNativeLiveCurrentPath(force: true)
-            }
+                    appModel.activeNativeLiveConversationID != nil,
+                isTurnInFlight:
+                    appModel.chatSendState == .sending,
+                onRefresh: {
+                    await appModel.refreshNativeLiveCurrentPath(force: true)
+                },
+                onRetryMessage: { targetUserMessageID in
+                    retryMessage(targetUserMessageID)
+                },
+                onEditMessage: { message in
+                    beginEditing(message)
+                }
+            )
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -69,6 +79,47 @@ struct ChatView: View {
             }
             .offset(y: 10)
         }
+        .sheet(item: $editDraft) { draft in
+            NativeLiveEditSheet(
+                originalText: draft.text
+            ) { replacement in
+                try await appModel.editNativeLiveMessage(
+                    targetUserMessageID: draft.targetUserMessageID,
+                    text: replacement
+                )
+            }
+        }
+    }
+
+    private func retryMessage(
+        _ targetUserMessageID: String
+    ) {
+        guard appModel.chatSendState != .sending else { return }
+
+        Task { @MainActor in
+            try? await appModel.retryNativeLiveMessage(
+                targetUserMessageID: targetUserMessageID
+            )
+        }
+    }
+
+    private func beginEditing(
+        _ message: NativeLiveCurrentPathMessage
+    ) {
+        guard message.role == "user",
+              appModel.chatSendState != .sending else {
+            return
+        }
+
+        let text = message.displayText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !text.isEmpty else { return }
+
+        editDraft = NativeLiveEditDraft(
+            targetUserMessageID: message.id,
+            text: text
+        )
     }
 
     private func sendMessage() {
@@ -89,6 +140,105 @@ struct ChatView: View {
                 ).isEmpty {
                     messageText = pendingText
                 }
+            }
+        }
+    }
+}
+
+
+private struct NativeLiveEditDraft: Identifiable {
+    let id = UUID()
+    let targetUserMessageID: String
+    let text: String
+}
+
+private struct NativeLiveEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var text: String
+    @State private var isSaving = false
+    @State private var failed = false
+
+    let onSave: (String) async throws -> Void
+
+    init(
+        originalText: String,
+        onSave: @escaping (String) async throws -> Void
+    ) {
+        _text = State(initialValue: originalText)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                TextEditor(text: $text)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .padding(10)
+                    .background(
+                        Color.primary.opacity(0.05),
+                        in: RoundedRectangle(
+                            cornerRadius: 14,
+                            style: .continuous
+                        )
+                    )
+
+                if failed {
+                    Text("Failed")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+            .navigationTitle("Edit message")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(isSaving)
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving…" : "Save") {
+                        save()
+                    }
+                    .disabled(
+                        isSaving
+                            || normalizedText.isEmpty
+                            || normalizedText.count > 4_000
+                    )
+                }
+            }
+        }
+    }
+
+    private var normalizedText: String {
+        text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+    }
+
+    private func save() {
+        let replacement = normalizedText
+        guard !replacement.isEmpty,
+              replacement.count <= 4_000,
+              !isSaving else {
+            return
+        }
+
+        isSaving = true
+        failed = false
+
+        Task { @MainActor in
+            do {
+                try await onSave(replacement)
+                dismiss()
+            } catch {
+                failed = true
+                isSaving = false
             }
         }
     }
