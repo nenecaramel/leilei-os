@@ -84,17 +84,50 @@ test("sendNew preserves Claude Code settings and normalized event parity", async
   assert.deepEqual(result.normalizedEvents, emitted);
 });
 
-test("explicit model/thinking/effort selection reaches query options", async () => {
+test("explicit model/thinking/effort selection reaches query options and returns applied readback", async () => {
   let call;
   const transport = new AgentSdkClaudeTransport({
     environment: {},
     queryImpl: (input) => {
       call = input;
-      return fakeQuery(successFixture("provider-model"));
+      return {
+        close() {},
+        async getSettings() {
+          return {
+            applied: {
+              model: "claude-opus-5-5",
+              effort: "medium",
+            },
+          };
+        },
+        async supportedModels() {
+          return [
+            {
+              value: "claude-opus-5-5",
+              displayName: "Claude Opus 5.5",
+              description: "test",
+              supportsEffort: true,
+              supportedEffortLevels: [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+              ],
+              supportsAdaptiveThinking: true,
+            },
+          ];
+        },
+        async *[Symbol.asyncIterator]() {
+          for (const message of successFixture("provider-model")) {
+            yield message;
+          }
+        },
+      };
     },
   });
 
-  await transport.sendNew("hello", {
+  const result = await transport.sendNew("hello", {
     model: "claude-opus-5-5",
     thinking: "adaptive",
     effort: "medium",
@@ -103,6 +136,15 @@ test("explicit model/thinking/effort selection reaches query options", async () 
   assert.equal(call.options.model, "claude-opus-5-5");
   assert.deepEqual(call.options.thinking, { type: "adaptive" });
   assert.equal(call.options.effort, "medium");
+  assert.equal(result.executionReadbackError, null);
+  assert.deepEqual(result.executionReadback.applied, {
+    model: "claude-opus-5-5",
+    effort: "medium",
+  });
+  assert.equal(
+    result.executionReadback.capability.supports_adaptive_thinking,
+    true,
+  );
 });
 
 test("resume passes provider session identity without forking", async () => {

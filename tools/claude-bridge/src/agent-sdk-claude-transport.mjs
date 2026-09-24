@@ -8,6 +8,9 @@ import {
   evaluateTurnBoundaryCompaction,
   normalizeAgentSdkContextUsage,
 } from "./agent-sdk-context-observability.mjs";
+import {
+  normalizeAgentSdkExecutionReadback,
+} from "./agent-sdk-execution-readback.mjs";
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
@@ -299,6 +302,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     let terminalFailure = null;
     let rawContextUsage = null;
     let contextUsageError = null;
+    let rawExecutionSettings = null;
+    let rawSupportedModels = null;
+    let executionReadbackError = null;
+    let executionReadbackSampled = false;
 
     try {
       for await (const message of activeQuery) {
@@ -313,6 +320,31 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         normalizedEvents.push(...nextNormalizedEvents);
         for (const normalizedEvent of nextNormalizedEvents) {
           this.events.emit("normalized-event", normalizedEvent);
+        }
+
+        if (
+          execution
+          && !executionReadbackSampled
+          && message?.type === "assistant"
+        ) {
+          executionReadbackSampled = true;
+          try {
+            if (typeof activeQuery.getSettings === "function") {
+              rawExecutionSettings = await activeQuery.getSettings();
+            } else {
+              throw new Error(
+                "Claude Agent SDK Query does not expose getSettings().",
+              );
+            }
+
+            if (typeof activeQuery.supportedModels === "function") {
+              rawSupportedModels =
+                await activeQuery.supportedModels();
+            }
+          } catch (cause) {
+            executionReadbackError =
+              cause instanceof Error ? cause.message : String(cause);
+          }
         }
 
         if (
@@ -398,6 +430,14 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       evaluateTurnBoundaryCompaction(rawContextUsage, {
         thresholdPercent: this.compactionThresholdPercent,
       });
+    const executionReadback =
+      execution
+        ? normalizeAgentSdkExecutionReadback({
+            requested: execution,
+            settings: rawExecutionSettings,
+            supportedModels: rawSupportedModels,
+          })
+        : null;
 
     return {
       providerSessionId,
@@ -406,6 +446,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       contextUsage,
       contextUsageError,
       compactionAdvisory,
+      executionReadback,
+      executionReadbackError,
       stdout: "",
       stderr: "",
       exitCode: 0,

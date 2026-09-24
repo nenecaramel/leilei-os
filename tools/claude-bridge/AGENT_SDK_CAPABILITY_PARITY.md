@@ -127,3 +127,12 @@ established.
 - Accepted summary evidence: 2,098 chars and contained the durable marker.
 - Post-compact resume returned the exact durable marker.
 - Automatic threshold-triggered compaction remains disabled; daemon/default transport is still unchanged.
+
+## Model / effort readback slice — pending real smoke
+
+- Explicit LeileiOS execution selection continues to come from the product allowlist; SDK discovery is evidence, not product authority.
+- For turns with an explicit execution selection, `AgentSdkClaudeTransport` now samples live `Query.getSettings()` plus `Query.supportedModels()` while the Query is still open.
+- Stable `executionReadback` separates `requested` from `applied`; `applied.model` and `applied.effort` come from SDK runtime settings readback.
+- `supportedModels()` is projected as capability evidence (`supportsEffort`, `supportedEffortLevels`, `supportsAdaptiveThinking`, fast/auto support). Missing entries do not invalidate an applied model because SDK discovery has historically omitted valid aliases.
+- Real acceptance must prove the same provider session can run one turn on Sonnet 5 + adaptive + xhigh and the next turn on Opus 5.5 + adaptive + medium, with runtime-applied model/effort readback changing accordingly.
+- Thinking mode is passed through the accepted query contract and capability support is read from SDK model metadata; exact applied thinking mode is not independently claimed until the SDK exposes an unambiguous runtime readback for it.
