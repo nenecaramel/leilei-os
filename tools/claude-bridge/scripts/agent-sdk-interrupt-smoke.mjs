@@ -45,10 +45,20 @@ async function fileExists(filePath) {
   }
 }
 
+async function waitForFile(filePath, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await fileExists(filePath)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return fileExists(filePath);
+}
+
 async function run() {
   const cwd = await mkdtemp(
     path.join(tmpdir(), "leileios-agent-sdk-interrupt-"),
   );
+  const startedMarkerPath = path.join(cwd, "interrupt-started.txt");
   const markerPath = path.join(cwd, "interrupt-finished.txt");
   const inputGate = deferred();
 
@@ -68,7 +78,7 @@ async function run() {
       "This is a deterministic LeileiOS graceful-interrupt smoke.",
       "Use the Bash tool exactly once.",
       "Run exactly this command and wait for it to finish:",
-      `sleep 30 && printf 'LEILEIOS_INTERRUPT_FINISHED' > ${JSON.stringify(markerPath)}`,
+      `printf 'LEILEIOS_INTERRUPT_STARTED' > ${JSON.stringify(startedMarkerPath)} && sleep 30 && printf 'LEILEIOS_INTERRUPT_FINISHED' > ${JSON.stringify(markerPath)}`,
       "Do not use any other tool.",
       "Do not reply before the Bash command finishes.",
     ].join("\n"));
@@ -129,7 +139,17 @@ async function run() {
           ) {
             sawBashToolUse = true;
             interruptStarted = true;
-            interruptPromise = Promise.resolve(runtime.interrupt())
+            interruptPromise = (async () => {
+              const started = await waitForFile(
+                startedMarkerPath,
+              );
+              if (!started) {
+                throw new Error(
+                  "Bash tool_use was emitted but the STARTED marker never appeared.",
+                );
+              }
+              return runtime.interrupt();
+            })()
               .then((receipt) => {
                 interruptReceipt = receipt ?? null;
                 inputGate.resolve();
@@ -186,11 +206,19 @@ async function run() {
       "Interrupted Query did not expose a provider session id.",
     );
 
+    const startedMarkerCreated =
+      await fileExists(startedMarkerPath);
+    assert.equal(
+      startedMarkerCreated,
+      true,
+      "The Bash STARTED marker was never created before Query.interrupt().",
+    );
+
     const markerCreated = await fileExists(markerPath);
     assert.equal(
       markerCreated,
       false,
-      "The 30-second Bash marker was created despite Query.interrupt().",
+      "The 30-second Bash FINISHED marker was created despite Query.interrupt().",
     );
 
     const continuityMarker =
@@ -259,6 +287,7 @@ async function run() {
             providerSessionId,
             sawBashToolUse,
             receipt: interruptReceipt,
+            startedMarkerCreated,
             markerCreated,
             rawEventCount,
             terminal: terminalResult
