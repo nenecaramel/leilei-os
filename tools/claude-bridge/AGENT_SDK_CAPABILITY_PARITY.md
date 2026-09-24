@@ -494,3 +494,37 @@ Acceptance meaning:
 - the provider input queue is execution state only and does not become canonical conversation authority;
 - graceful interrupt remains a separate control path;
 - default finite one-message input behavior remains unchanged when `midTurnInput` is disabled.
+
+
+## Phase 2 AskUserQuestion host round-trip — branch implementation
+
+This slice closes the remaining `permission / AskUserQuestion` capability item by giving the dedicated turn handle a stable host question callback.
+
+Contract:
+
+- `createAgentSdkTurnHandle({ questionHandler })` installs an Agent SDK `canUseTool` dispatcher that routes `AskUserQuestion` to the host question callback.
+- `questionHandler(request, { signal })` receives:
+  - stable `toolUseId`, `requestId`, and `agentId`;
+  - the raw structured `input`;
+  - normalized non-empty `questions[]`, preserving option metadata such as labels, descriptions, previews, annotations, and multi-select flags when the SDK supplies them.
+- LeileiOS question decisions are:
+  - `{ decision: "answer", answers }`
+  - `{ decision: "cancel", message }`
+- An answer maps to SDK `behavior: "allow"` with `updatedInput: { ...input, answers }`.
+- Cancellation maps to SDK `behavior: "deny"` without interrupting the provider turn.
+- The turn-handle event surface emits `question-request`, `question-decision`, and `question-error`.
+- If both `questionHandler` and `permissionHandler` are installed, `AskUserQuestion` is routed to the question handler first; other permission prompts continue through the permission handler.
+- A question-only host fails closed for an unrelated permission prompt instead of silently auto-allowing it.
+- Raw `queryOptions.canUseTool`, non-empty `allowedTools`, and permission bypass remain forbidden while host interactive callbacks own the SDK control path.
+
+REAL SDK acceptance smoke:
+
+- restrict the tool surface to `AskUserQuestion`;
+- use plan mode to make the deterministic clarification turn natural;
+- require exactly one question asking which theme to choose, with Light and Dark options;
+- answer Dark through the LeileiOS `questionHandler`;
+- require real `toolUseId`, `requestId`, and cancellation signal;
+- require the same Query to continue and return the exact Dark marker;
+- no resume, no interrupt, no canonical mutation, and no UI implementation in this slice.
+
+The public Agent SDK already exposes `AskUserQuestion` and Anthropic's own demo uses the same `canUseTool -> updatedInput.answers` round trip. LeileiOS keeps that provider mechanism behind its own stable question contract rather than leaking the raw callback shape into product layers.
