@@ -49,6 +49,28 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
     typeof call.prompt?.[Symbol.asyncIterator],
     "function",
   );
+  const promptIterator = call.prompt[Symbol.asyncIterator]();
+  assert.deepEqual(
+    await promptIterator.next(),
+    {
+      done: false,
+      value: {
+        type: "user",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content: [
+            { type: "text", text: "hello" },
+          ],
+        },
+      },
+    },
+  );
+  assert.deepEqual(
+    await promptIterator.next(),
+    { done: true, value: undefined },
+  );
+
   assert.equal(handle.completion, null);
   const result = await handle.start();
   assert.equal(
@@ -61,6 +83,40 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
   );
 });
 
+
+
+test("turn handle forwards bidirectional query options without owning permission policy", async () => {
+  let call;
+  const canUseTool = async (_toolName, toolInput) => ({
+    behavior: "allow",
+    updatedInput: toolInput,
+  });
+
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    queryOptions: {
+      allowedTools: ["Bash"],
+      canUseTool,
+    },
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          for (const message of successMessages("provider-options")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  assert.deepEqual(call.options.allowedTools, ["Bash"]);
+  assert.equal(call.options.canUseTool, canUseTool);
+  const result = await handle.start();
+  assert.equal(result.providerSessionId, "provider-options");
+});
 
 test("turn handle emits nothing before explicit start", async () => {
   let iteratorStarted = false;
