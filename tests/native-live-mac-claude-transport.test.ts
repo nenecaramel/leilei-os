@@ -41,6 +41,7 @@ test("Mac daemon transport factory creates the selected parity adapter", async (
   assert.equal(typeof agent.runtime.resume, "function");
   assert.equal(typeof agent.runtime.fork, "function");
   assert.equal(typeof agent.runtime.abort, "function");
+  assert.equal(typeof agent.runtime.executeTurn, "function");
 
   const headless = await createNativeLiveMacClaudeTransport(
     {
@@ -53,4 +54,5 @@ test("Mac daemon transport factory creates the selected parity adapter", async (
   assert.equal(typeof headless.runtime.resume, "function");
   assert.equal(typeof headless.runtime.fork, "function");
   assert.equal(typeof headless.runtime.abort, "function");
+  assert.equal(headless.runtime.executeTurn, undefined);
 });
