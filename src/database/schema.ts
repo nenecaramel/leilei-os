@@ -29,24 +29,6 @@ const bytea = customType<{ data: Buffer }>({
 
 export const userStatusEnum = pgEnum("user_status", ["active", "disabled"]);
 
-export const memoryCategoryEnum = pgEnum("memory_category", [
-  "profile",
-  "preference",
-  "goal",
-  "project",
-]);
-
-export const memoryVisibilityEnum = pgEnum("memory_visibility", [
-  "assistant",
-  "private",
-  "restricted",
-]);
-
-export const memoryStatusEnum = pgEnum("memory_status", [
-  "active",
-  "archived",
-]);
-
 export const diarySourceEnum = pgEnum("diary_source", ["chatgpt_mcp"]);
 
 export const contentAuthorEnum = pgEnum("content_author", ["L", "G", "C"]);
@@ -66,25 +48,6 @@ export const toolCallStatusEnum = pgEnum("tool_call_status", [
   "success",
   "rejected",
   "error",
-]);
-
-export const taskStatusEnum = pgEnum("task_status", [
-  "pending",
-  "in_progress",
-  "completed",
-  "cancelled",
-]);
-
-export const taskLifecycleStatusEnum = pgEnum("task_lifecycle_status", [
-  "active",
-  "archived",
-]);
-
-export const taskPriorityEnum = pgEnum("task_priority", [
-  "low",
-  "normal",
-  "high",
-  "urgent",
 ]);
 
 export const toyCommandActionEnum = pgEnum("toy_command_action", [
@@ -248,132 +211,6 @@ export const todoEntries = pgTable(
       "todo_entries_position_nonnegative",
       sql`${table.position} >= 0`,
     ),
-  ],
-);
-
-export const sharedPapers = pgTable(
-  "shared_papers",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    title: varchar("title", { length: 200 }).notNull(),
-    content: text("content").notNull(),
-    revision: integer("revision").default(1).notNull(),
-    createdBy: contentAuthorEnum("created_by").notNull(),
-    updatedBy: contentAuthorEnum("updated_by").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    archivedAt: timestamp("archived_at", { withTimezone: true }),
-  },
-  (table) => [
-    unique("shared_papers_id_user_unique").on(table.id, table.userId),
-    index("shared_papers_user_updated_id_idx").on(table.userId, table.updatedAt.desc(), table.id.desc()),
-    index("shared_papers_user_archive_updated_id_idx").on(table.userId, table.archivedAt, table.updatedAt.desc(), table.id.desc()),
-    check("shared_papers_revision_positive", sql`${table.revision} >= 1`),
-    check("shared_papers_title_not_blank", sql`char_length(btrim(${table.title})) > 0`),
-  ],
-);
-
-export const sharedPaperEdits = pgTable(
-  "shared_paper_edits",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    paperId: uuid("paper_id").notNull(),
-    baseRevision: integer("base_revision").notNull(),
-    revision: integer("revision").notNull(),
-    author: contentAuthorEnum("author").notNull(),
-    target: varchar("target", { length: 16 }).default("content").notNull(),
-    startOffset: integer("start_offset").notNull(),
-    endOffset: integer("end_offset").notNull(),
-    deletedText: text("deleted_text").notNull(),
-    insertedText: text("inserted_text").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    foreignKey({
-      columns: [table.paperId, table.userId],
-      foreignColumns: [sharedPapers.id, sharedPapers.userId],
-      name: "shared_paper_edits_paper_user_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    uniqueIndex("shared_paper_edits_paper_revision_uidx").on(table.paperId, table.revision),
-    index("shared_paper_edits_paper_revision_idx").on(table.paperId, table.revision.desc()),
-    check("shared_paper_edits_base_revision_positive", sql`${table.baseRevision} >= 1`),
-    check("shared_paper_edits_revision_step", sql`${table.revision} = ${table.baseRevision} + 1`),
-    check("shared_paper_edits_target_allowed", sql`${table.target} IN ('content', 'title')`),
-    check("shared_paper_edits_offsets_valid", sql`${table.startOffset} >= 0 AND ${table.endOffset} >= ${table.startOffset}`),
-    check("shared_paper_edits_deleted_length_matches", sql`char_length(${table.deletedText}) = ${table.endOffset} - ${table.startOffset}`),
-    check("shared_paper_edits_not_noop", sql`${table.deletedText} <> ${table.insertedText}`),
-  ],
-);
-
-export const coreMemories = pgTable(
-  "core_memories",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, {
-        onDelete: "restrict",
-        onUpdate: "cascade",
-      }),
-    category: memoryCategoryEnum("category").notNull(),
-    key: varchar("key", { length: 100 }).notNull(),
-    content: text("content").notNull(),
-    tags: varchar("tags", { length: 50 })
-      .array()
-      .default(sql`ARRAY[]::varchar(50)[]`)
-      .notNull(),
-    visibility: memoryVisibilityEnum("visibility")
-      .default("assistant")
-      .notNull(),
-    source: varchar("source", { length: 100 }).notNull(),
-    author: contentAuthorEnum("author"),
-    status: memoryStatusEnum("status").default("active").notNull(),
-    sortOrder: integer("sort_order").default(0).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    uniqueIndex("core_memories_user_key_unique_idx").on(
-      table.userId,
-      table.key,
-    ),
-    index("core_memories_user_category_idx").on(
-      table.userId,
-      table.category,
-    ),
-    index("core_memories_read_scope_idx").on(
-      table.userId,
-      table.visibility,
-      table.status,
-      table.sortOrder,
-    ),
-    check(
-      "core_memories_key_not_blank",
-      sql`char_length(btrim(${table.key})) > 0`,
-    ),
-    check(
-      "core_memories_content_not_blank",
-      sql`char_length(btrim(${table.content})) > 0`,
-    ),
-    check(
-      "core_memories_source_not_blank",
-      sql`char_length(btrim(${table.source})) > 0`,
-    ),
-    check(
-      "core_memories_tags_limit",
-      sql`cardinality(${table.tags}) <= 20`,
-    ),
-    check("core_memories_sort_order_nonnegative", sql`${table.sortOrder} >= 0`),
   ],
 );
 
@@ -609,9 +446,7 @@ export const mcpWriteIdempotency = pgTable(
       }),
     toolName: varchar("tool_name", { length: 100 })
       .$type<
-        | "create_task"
         | "write_diary"
-        | "write_memory"
         | "toy_set"
         | "toy_stop"
         | "write_todo_paper"
@@ -620,12 +455,6 @@ export const mcpWriteIdempotency = pgTable(
         | "delete_todo_entry"
         | "create_universe_node"
         | "create_universe_relation"
-        | "create_shared_paper"
-        | "edit_shared_paper"
-        | "append_shared_paper"
-        | "archive_shared_paper"
-        | "restore_shared_paper"
-        | "delete_shared_paper"
         | "add_diary_comment"
       >()
       .notNull(),
@@ -633,16 +462,12 @@ export const mcpWriteIdempotency = pgTable(
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
     resourceType: varchar("resource_type", { length: 32 })
       .$type<
-        | "task"
         | "diary_entry"
-        | "memory"
         | "toy_command"
         | "todo_paper"
         | "todo_entry"
         | "universe_node"
         | "universe_relation"
-        | "shared_paper"
-        | "shared_paper_edit"
         | "diary_comment"
       >()
       .notNull(),
@@ -667,7 +492,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_tool_allowed",
-      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'append_todo_entry', 'update_todo_entry', 'delete_todo_entry', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper', 'append_shared_paper', 'archive_shared_paper', 'restore_shared_paper', 'delete_shared_paper', 'add_diary_comment')`,
+      sql`${table.toolName} IN ('write_diary', 'toy_set', 'toy_stop', 'write_todo_paper', 'append_todo_entry', 'update_todo_entry', 'delete_todo_entry', 'create_universe_node', 'create_universe_relation', 'add_diary_comment')`,
     ),
     check(
       "mcp_write_idempotency_key_format",
@@ -679,7 +504,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_resource_type_allowed",
-      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'todo_entry', 'universe_node', 'universe_relation', 'shared_paper', 'shared_paper_edit', 'diary_comment')`,
+      sql`${table.resourceType} IN ('diary_entry', 'toy_command', 'todo_paper', 'todo_entry', 'universe_node', 'universe_relation', 'diary_comment')`,
     ),
   ],
 );
@@ -695,7 +520,7 @@ export const resourceLifecycleEvents = pgTable(
         onUpdate: "cascade",
       }),
     resourceType: varchar("resource_type", { length: 32 })
-      .$type<"memory" | "diary" | "task">()
+      .$type<"diary">()
       .notNull(),
     resourceId: uuid("resource_id").notNull(),
     action: varchar("action", { length: 32 })
@@ -727,7 +552,7 @@ export const resourceLifecycleEvents = pgTable(
     ),
     check(
       "resource_lifecycle_events_resource_type_allowed",
-      sql`${table.resourceType} IN ('memory', 'diary', 'task')`,
+      sql`${table.resourceType} IN ('diary')`,
     ),
     check(
       "resource_lifecycle_events_action_allowed",
@@ -3019,85 +2844,6 @@ export const universeBackups = pgTable(
   ],
 );
 
-export const tasks = pgTable(
-  "tasks",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, {
-        onDelete: "restrict",
-        onUpdate: "cascade",
-      }),
-    title: varchar("title", { length: 200 }).notNull(),
-    description: text("description").notNull(),
-    status: taskStatusEnum("status").default("pending").notNull(),
-    resumeStatus: taskStatusEnum("resume_status"),
-    lifecycleStatus: taskLifecycleStatusEnum("lifecycle_status")
-      .default("active")
-      .notNull(),
-    author: contentAuthorEnum("author"),
-    priority: taskPriorityEnum("priority").default("normal").notNull(),
-    dueTime: timestamp("due_time", { withTimezone: true }),
-    timezone: varchar("timezone", { length: 64 }).notNull(),
-    tags: varchar("tags", { length: 50 })
-      .array()
-      .default(sql`ARRAY[]::varchar(50)[]`)
-      .notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-  },
-  (table) => [
-    index("tasks_user_status_due_idx").on(
-      table.userId,
-      table.status,
-      table.dueTime,
-    ),
-    index("tasks_user_lifecycle_due_created_idx").on(
-      table.userId,
-      table.lifecycleStatus,
-      table.dueTime,
-      table.createdAt.desc(),
-      table.id,
-    ),
-    index("tasks_user_due_idx").on(table.userId, table.dueTime),
-    index("tasks_user_created_idx").on(
-      table.userId,
-      table.createdAt.desc(),
-    ),
-    check(
-      "tasks_title_not_blank",
-      sql`char_length(btrim(${table.title})) > 0`,
-    ),
-    check(
-      "tasks_description_not_blank",
-      sql`char_length(btrim(${table.description})) > 0`,
-    ),
-    check(
-      "tasks_timezone_not_blank",
-      sql`char_length(btrim(${table.timezone})) > 0`,
-    ),
-    check(
-      "tasks_timezone_format",
-      sql`${table.timezone} ~ '^[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+)*$'`,
-    ),
-    check("tasks_tags_limit", sql`cardinality(${table.tags}) <= 20`),
-    check(
-      "tasks_completed_at_consistency",
-      sql`(${table.status} = 'completed' AND ${table.completedAt} IS NOT NULL) OR (${table.status} <> 'completed' AND ${table.completedAt} IS NULL)`,
-    ),
-    check(
-      "tasks_resume_status_consistency",
-      sql`((${table.status} IN ('pending', 'in_progress') AND ${table.resumeStatus} IS NULL) OR (${table.status} IN ('completed', 'cancelled') AND ${table.resumeStatus} IS NOT NULL AND ${table.resumeStatus} IN ('pending', 'in_progress')))`,
-    ),
-  ],
-);
-
 export const toyCommands = pgTable(
   "toy_commands",
   {
@@ -3157,9 +2903,7 @@ export const toyCommands = pgTable(
   ],
 );
 export type UserPageCopy = {
-  memorySubtitle?: string;
   diarySubtitle?: string;
-  taskSubtitle?: string;
   settingsSubtitle?: string;
   homeHeroEyebrow?: string | null;
   homeHeroTitleMode?: "auto" | "custom";
