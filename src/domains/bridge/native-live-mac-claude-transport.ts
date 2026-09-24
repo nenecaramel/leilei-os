@@ -40,25 +40,38 @@ export async function createNativeLiveMacClaudeTransport(
     resolveNativeLiveMacClaudeTransportKind(environment);
 
   if (kind === "agent_sdk") {
-    const { AgentSdkClaudeTransport } = await import(
-      "../../../tools/claude-bridge/src/agent-sdk-claude-transport.mjs"
-    );
+    const agentSdkModulePath =
+      "../../../tools/claude-bridge/src/agent-sdk-claude-transport.mjs";
+    const { AgentSdkClaudeTransport } = (await import(
+      agentSdkModulePath
+    )) as {
+      AgentSdkClaudeTransport: new (options: {
+        environment: NodeJS.ProcessEnv;
+        cwd: string;
+      }) => NativeLiveMacClaudeTransport;
+    };
     return {
       kind,
       runtime: new AgentSdkClaudeTransport({
         environment,
         cwd,
-      }) as NativeLiveMacClaudeTransport,
+      }),
     };
   }
 
-  const { HeadlessClaudeTransport } = await import(
-    "../../../tools/claude-bridge/src/headless-claude-transport.mjs"
-  );
+  const headlessModulePath =
+    "../../../tools/claude-bridge/src/headless-claude-transport.mjs";
+  const { HeadlessClaudeTransport } = (await import(
+    headlessModulePath
+  )) as {
+    HeadlessClaudeTransport: new (options: {
+      environment: NodeJS.ProcessEnv;
+    }) => NativeLiveMacClaudeTransport;
+  };
   return {
     kind,
     runtime: new HeadlessClaudeTransport({
       environment,
-    }) as NativeLiveMacClaudeTransport,
+    }),
   };
 }
