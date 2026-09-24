@@ -276,3 +276,106 @@ Acceptance meaning:
 - bidirectional SDK control is kept alive through explicit query callbacks such as `canUseTool`;
 - graceful interrupt and hard abort remain distinct runtime semantics;
 - this is branch-level runtime capability acceptance, not a main/production rollout claim.
+
+
+## Phase 2 permission callback contract — branch implementation
+
+This slice moves permission handling out of raw `queryOptions.canUseTool` and into a stable LeileiOS turn-handle contract without adding streaming or mid-turn user-message semantics.
+
+Contract:
+
+- `createAgentSdkTurnHandle({ permissionHandler })` installs a single SDK `canUseTool` adapter before the Query starts.
+- The host receives a normalized permission request with `toolName`, structured `input`, `toolUseId`, optional `requestId`, `agentId`, path/reason/display metadata, permission suggestions, and matched ask-rule evidence.
+- SDK cancellation stays explicit: the host receives `{ signal }` separately from the durable/request-shaped metadata.
+- LeileiOS decisions are deliberately smaller than the raw SDK result:
+  - `{ decision: "allow", updatedInput? }`
+  - `{ decision: "deny", message, interrupt? }`
+- The adapter maps these to SDK `behavior: "allow" | "deny"`.
+- This slice does **not** expose persistent permission mutation / remembered rules. SDK `updatedPermissions` and out-of-band `null` control responses are intentionally deferred until a later product/UI contract.
+- `permission-request`, `permission-decision`, and `permission-error` events are emitted on the same turn-handle event surface; listeners can be attached before explicit `handle.start()`.
+
+Deterministic safety boundary:
+
+- `permissionHandler` cannot be combined with raw `queryOptions.canUseTool`.
+- It cannot be combined with non-empty `allowedTools`, because pre-allowed tools can bypass the callback.
+- It cannot be combined with `permissionMode: "bypassPermissions"` or `allowDangerouslySkipPermissions: true`.
+- Automatic allow/deny policy belongs inside the LeileiOS permission handler when this contract is used, so the callback surface remains truthful about which tool requests were actually evaluated.
+
+REAL SDK acceptance smoke:
+
+- run a denied Bash request and prove the target marker is not created;
+- require a real structured permission callback with a non-empty `toolUseId` and cancellation signal;
+- run a second Bash request whose allowed input is rewritten by the callback;
+- prove the original marker is not created and the rewritten marker is created;
+- record optional SDK `requestId` when present;
+- keep existing Claude subscription auth and `@anthropic-ai/claude-agent-sdk@0.3.281`;
+- no daemon / canonical / iOS / streaming / mid-turn-input changes in this slice.
+
+
+## First real permission smoke finding — callback only runs for actual permission prompts
+
+- The first real smoke asked Claude to use Bash under default permission policy and observed zero `permissionHandler` invocations.
+- That result is expected SDK semantics, not an adapter failure: `canUseTool` is a permission-prompt callback, not a universal tool-use interceptor. A tool call that the active permission policy already permits does not have to invoke the callback.
+- The REAL SDK acceptance smoke now deterministically creates a permission prompt with a scoped `PreToolUse` hook returning `permissionDecision: "ask"` for Bash. This is fixture-only; the LeileiOS permission contract itself does not force every tool call through the permission UI.
+- Acceptance therefore proves: when Claude Code surfaces a permission request, LeileiOS receives it, can deny it, can allow it with rewritten input, and receives the SDK cancellation signal.
+
+
+## Second real permission smoke finding — built-in PreToolUse is not a reliable force-ask fixture
+
+- The second real smoke still observed zero permission callbacks after adding a scoped built-in Bash `PreToolUse -> permissionDecision: "ask"` fixture.
+- This does not invalidate the LeileiOS permission adapter. The current Agent SDK line has an open upstream bug where `options.hooks.PreToolUse` can fail to fire for built-in tools; using that hook to manufacture a permission prompt therefore makes the smoke depend on a separate SDK hook bug.
+- The acceptance smoke no longer relies on `PreToolUse` to force a prompt.
+- It now exercises the SDK's native built-in `Write` permission path under `permissionMode: "default"` with `tools: ["Write"]` and no `allowedTools` / bypass shadowing.
+- This mirrors an upstream-confirmed streaming-input shape where a one-message async iterable plus `canUseTool` receives the Write permission request.
+- Deny acceptance proves the requested file is not written. Allow acceptance rewrites `Write.file_path` and `content`, then proves only the rewritten target is created.
+
+
+## Third real permission smoke finding — in-workspace Write was not a deterministic prompt
+
+- A native `Write` request inside the smoke `cwd` still completed without invoking `permissionHandler` on the user's macOS subscription-auth path.
+- That means "use Write" is not by itself a deterministic permission fixture on the current installed/runtime policy; a tool can be exposed and used without necessarily producing a permission request.
+- The next smoke moves the requested Write target to a sibling directory outside the query `cwd`, while keeping it inside one disposable temp root. This is intended to exercise a path-scoped permission boundary without touching user files.
+- The smoke now pins Sonnet 5 / low effort / verbatim prompt delivery for reproducibility.
+- If the callback is still not invoked, the failure prints the real init permission mode, observed tool_use blocks, error tool_results, result.permission_denials, and final text. The next decision will be based on that runtime evidence instead of another guessed fixture.
+
+
+## Fourth real permission smoke finding — SDK callback reached; context key casing was wrong
+
+- The out-of-workspace Write smoke produced the decisive evidence: a real `Write` tool_use was emitted, the SDK attempted the permission round-trip, and the callback failed inside the smoke assertion with `Real SDK permission request must expose toolUseId.`
+- The resulting tool error was `Tool permission request failed: Error: Real SDK permission request must expose toolUseId.`, and `result.permission_denials` contained the exact Write tool_use id/input. Therefore permission routing and the LeileiOS callback adapter were already active.
+- Root cause was only context-key normalization. The Agent SDK callback uses `toolUseID` and `agentID` casing on the public callback options; the first LeileiOS adapter draft only read `toolUseId` / `agentId`.
+- The adapter now accepts the real SDK casing plus camelCase/snake_case aliases, while continuing to expose stable LeileiOS `toolUseId`, `requestId`, and `agentId`.
+- Unit coverage now locks the real `toolUseID` / `agentID` shape so this cannot regress.
+
+
+## REAL SDK permission callback acceptance — PASS
+
+Validated on macOS against `@anthropic-ai/claude-agent-sdk@0.3.281` using the existing Claude subscription login.
+
+Observed deny path:
+
+- one real `Write` permission request reached the LeileiOS `permissionHandler`;
+- normalized `toolUseId`: `toolu_01SRJxYUE8YnaGDGuMJqMLyJ`;
+- SDK `requestId`: `8c114695-5bfa-4f36-a353-0ec225155a2c`;
+- SDK cancellation signal was present;
+- LeileiOS returned `decision: "deny"`;
+- denied marker was not created;
+- final assistant text acknowledged the denial path.
+
+Observed allow + input rewrite path:
+
+- one real `Write` permission request reached the LeileiOS `permissionHandler`;
+- normalized `toolUseId`: `toolu_01SpnVotVoQQucnkg2JrvPWh`;
+- SDK `requestId`: `4868cc13-edb5-4f70-a0c8-acf2ef4b2514`;
+- SDK cancellation signal was present;
+- LeileiOS returned `decision: "allow"` with rewritten `file_path` / `content`;
+- the original requested marker was not created;
+- the rewritten target was created, proving the SDK executed the callback's `updatedInput`.
+
+Acceptance meaning:
+
+- the dedicated Agent SDK turn handle now has a real host permission boundary, not only raw `canUseTool` passthrough;
+- the callback contract correctly normalizes Agent SDK `toolUseID` / `agentID` casing into stable LeileiOS fields;
+- deny and allow-with-rewrite are both proven against real SDK tool execution;
+- permission requests remain distinct from universal tool interception: only SDK permission prompts enter this callback;
+- no persistent permission mutation, out-of-band null response, streaming expansion, mid-turn user input, daemon protocol, canonical semantics, or iOS behavior is added in this slice.

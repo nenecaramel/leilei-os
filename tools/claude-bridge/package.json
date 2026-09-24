@@ -12,7 +12,8 @@
     "smoke:agent-sdk-model-readback": "node scripts/agent-sdk-model-readback-smoke.mjs",
     "smoke:agent-sdk-abort-failure": "node scripts/agent-sdk-abort-failure-smoke.mjs",
     "smoke:agent-sdk-interrupt": "node scripts/agent-sdk-interrupt-smoke.mjs",
-    "smoke:agent-sdk-turn-handle": "node scripts/agent-sdk-turn-handle-smoke.mjs"
+    "smoke:agent-sdk-turn-handle": "node scripts/agent-sdk-turn-handle-smoke.mjs",
+    "smoke:agent-sdk-permission": "node scripts/agent-sdk-permission-smoke.mjs"
   },
   "engines": {
     "node": ">=20"
