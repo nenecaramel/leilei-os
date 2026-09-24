@@ -48,6 +48,7 @@ export type NativeLiveDaemonRunOutcome =
       outcome: "completed";
       reservationId: string;
       result: NativeLiveRuntimeExecutionResult;
+      eventDeliveryFailures?: number;
     }
   | {
       outcome: "rejected";
@@ -58,6 +59,7 @@ export type NativeLiveDaemonRunOutcome =
       outcome: "delivery_unknown";
       reservationId: string;
       result: NativeLiveRuntimeExecutionResult;
+      eventDeliveryFailures?: number;
     }
   | {
       outcome: "background_completed";
