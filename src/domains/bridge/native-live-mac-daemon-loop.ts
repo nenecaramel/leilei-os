@@ -123,6 +123,14 @@ export interface NativeLiveMacDaemonRelayClient {
     event: NativeLiveNormalizedEvent;
   }): Promise<void>;
 
+  requestRuntimeInteraction?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    kind: "permission" | "question";
+    request: Record<string, unknown>;
+    signal: AbortSignal | null;
+  }): Promise<Record<string, unknown>>;
+
   submitResult(input: {
     listenerInstanceId: string;
     reservationId: string;
@@ -148,6 +156,14 @@ export interface NativeLivePreparedCommandExecutor {
       onNormalizedEvent?: (
         event: NativeLiveNormalizedEvent,
       ) => void | Promise<void>;
+      permissionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
+      questionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
     },
   ): Promise<NativeLiveRuntimeExecutionResult>;
 }
@@ -320,25 +336,57 @@ export class NativeLiveMacDaemonLoop {
       try {
         result = await this.executor.execute(
           reservation.command,
-          this.relay.appendRuntimeEvent
-            ? {
-                onNormalizedEvent: async (event) => {
-                  eventSequence += 1;
-                  try {
-                    await this.relay.appendRuntimeEvent!({
+          {
+            ...(this.relay.appendRuntimeEvent
+              ? {
+                  onNormalizedEvent: async (event: NativeLiveNormalizedEvent) => {
+                    eventSequence += 1;
+                    try {
+                      await this.relay.appendRuntimeEvent!({
+                        listenerInstanceId:
+                          this.listenerInstanceId,
+                        reservationId:
+                          reservation.reservationId,
+                        sequence: eventSequence,
+                        event,
+                      });
+                    } catch {
+                      eventDeliveryFailures += 1;
+                    }
+                  },
+                }
+              : {}),
+            ...(this.relay.requestRuntimeInteraction
+              ? {
+                  permissionHandler: async (
+                    request: Record<string, unknown>,
+                    context: { signal: AbortSignal | null },
+                  ) =>
+                    this.relay.requestRuntimeInteraction!({
                       listenerInstanceId:
                         this.listenerInstanceId,
                       reservationId:
                         reservation.reservationId,
-                      sequence: eventSequence,
-                      event,
-                    });
-                  } catch {
-                    eventDeliveryFailures += 1;
-                  }
-                },
-              }
-            : {},
+                      kind: "permission",
+                      request,
+                      signal: context.signal,
+                    }),
+                  questionHandler: async (
+                    request: Record<string, unknown>,
+                    context: { signal: AbortSignal | null },
+                  ) =>
+                    this.relay.requestRuntimeInteraction!({
+                      listenerInstanceId:
+                        this.listenerInstanceId,
+                      reservationId:
+                        reservation.reservationId,
+                      kind: "question",
+                      request,
+                      signal: context.signal,
+                    }),
+                }
+              : {}),
+          },
         );
       } catch {
         await this.bestEffortReject(reservation.reservationId, "INVALID_COMMAND");
