@@ -4,9 +4,21 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.mjs",
-    "test": "node --test test/**/*.test.mjs"
+    "test": "node --test test/**/*.test.mjs",
+    "smoke:agent-sdk-subscription": "node scripts/agent-sdk-subscription-smoke.mjs",
+    "smoke:agent-sdk-capabilities": "node scripts/agent-sdk-capability-smoke.mjs",
+    "smoke:agent-sdk-compaction": "node scripts/agent-sdk-compaction-smoke.mjs",
+    "smoke:agent-sdk-transport-compaction": "node scripts/agent-sdk-transport-compaction-smoke.mjs",
+    "smoke:agent-sdk-model-readback": "node scripts/agent-sdk-model-readback-smoke.mjs",
+    "smoke:agent-sdk-abort-failure": "node scripts/agent-sdk-abort-failure-smoke.mjs",
+    "smoke:agent-sdk-interrupt": "node scripts/agent-sdk-interrupt-smoke.mjs",
+    "smoke:agent-sdk-turn-handle": "node scripts/agent-sdk-turn-handle-smoke.mjs"
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.281"
+  },
+  "packageManager": "pnpm@11.9.0"
 }
