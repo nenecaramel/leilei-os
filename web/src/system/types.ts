@@ -10,19 +10,7 @@ export type SystemConnectionsResponse = {
 };
 
 export type SystemDataSummary = {
-  memory: {
-    active: number;
-    archived: number;
-  };
   diary: {
-    active: number;
-    archived: number;
-  };
-  task: {
-    active: number;
-    archived: number;
-  };
-  shared_paper: {
     active: number;
     archived: number;
   };

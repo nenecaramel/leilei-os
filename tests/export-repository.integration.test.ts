@@ -1,195 +1,314 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { and, count, eq } from "drizzle-orm";
+import test from "node:test";
+import { count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import test from "node:test";
 import * as schema from "../src/database/schema.js";
 import { DrizzleExportRepository } from "../src/domains/export/export-repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const parsedUrl = databaseUrl ? new URL(databaseUrl) : null;
-const runIntegration = process.env.RUN_EXPORT_DATABASE_TEST === "1"
+const runIntegration =
+  process.env.RUN_EXPORT_DATABASE_TEST === "1"
   && Boolean(databaseUrl)
-  && (parsedUrl?.hostname === "127.0.0.1" || parsedUrl?.hostname === "localhost");
+  && (
+    parsedUrl?.hostname === "127.0.0.1"
+    || parsedUrl?.hostname === "localhost"
+  );
 
 class RollbackExportTest extends Error {}
 
-test("DrizzleExportRepository returns scoped deterministic privacy-safe records", {
-  skip: !runIntegration,
-}, async () => {
-  const client = postgres(databaseUrl!, { prepare: false, ssl: false, max: 1 });
-  const db = drizzle(client, { schema });
-  const owner = randomUUID();
-  const other = randomUUID();
-  const ownerMemoryEarly = randomUUID();
-  const ownerMemoryLate = randomUUID();
-  const ownerDiaryEarly = randomUUID();
-  const ownerDiaryLate = randomUUID();
-  const otherDiary = randomUUID();
-  const ownerTaskEarly = randomUUID();
-  const ownerTaskLate = randomUUID();
-  const ownerLifecycleEarly = randomUUID();
-  const ownerLifecycleLate = randomUUID();
-  const otherLifecycle = randomUUID();
-  const ownerToolEarly = randomUUID();
-  const ownerToolLate = randomUUID();
-  const otherTool = randomUUID();
-  const ownerPaper = randomUUID();
-  const ownerEmptyPaper = randomUUID();
-  const ownerSharedActive = randomUUID();
-  const ownerSharedArchived = randomUUID();
-  const now = new Date("2026-08-13T05:00:00.000Z");
-  const early = new Date("2026-08-12T05:00:00.000Z");
-  try {
-    await assert.rejects(db.transaction(async (transaction) => {
-      await transaction.insert(schema.users).values([
-        { id: owner, email: `export-owner-${owner}@example.invalid`, displayName: "Export owner", status: "active", createdAt: now, updatedAt: now },
-        { id: other, email: `export-other-${other}@example.invalid`, displayName: "Export other", status: "active", createdAt: now, updatedAt: now },
-      ]);
-      await transaction.insert(schema.coreMemories).values([
-        { id: ownerMemoryEarly, userId: owner, category: "project", key: "early", content: "owner early", tags: ["one"], visibility: "assistant", source: "web", author: "L", status: "active", sortOrder: 1, createdAt: early, updatedAt: early },
-        { id: ownerMemoryLate, userId: owner, category: "project", key: "late", content: "owner late", tags: ["two"], visibility: "assistant", source: "mcp", author: "G", status: "archived", sortOrder: 2, createdAt: now, updatedAt: now },
-        { id: randomUUID(), userId: other, category: "project", key: "other-secret", content: "OTHER_MEMORY_SECRET", tags: [], visibility: "assistant", source: "web", author: "L", status: "active", createdAt: now, updatedAt: now },
-      ]);
-      await transaction.insert(schema.diaryEntries).values([
-        { id: ownerDiaryEarly, userId: owner, title: "early diary", content: "owner early diary", date: "2026-08-11", tags: ["a"], mood: "calm", source: "chatgpt_mcp", author: "L", status: "active", idempotencyKey: `export-diary-early-${owner}`, requestHash: "a".repeat(64), createdAt: early, updatedAt: early },
-        { id: ownerDiaryLate, userId: owner, title: "late diary", content: "owner late diary", date: "2026-08-12", tags: ["b"], mood: null, source: "chatgpt_mcp", author: "G", status: "archived", idempotencyKey: `export-diary-late-${owner}`, requestHash: "b".repeat(64), createdAt: now, updatedAt: now },
-        { id: otherDiary, userId: other, title: "other diary", content: "OTHER_DIARY_SECRET", date: "2026-08-13", tags: [], mood: null, source: "chatgpt_mcp", author: "L", status: "active", idempotencyKey: `export-diary-other-${other}`, requestHash: "c".repeat(64), createdAt: now, updatedAt: now },
-      ]);
-      await transaction.insert(schema.tasks).values([
-        { id: ownerTaskEarly, userId: owner, title: "early task", description: "owner early task", status: "pending", resumeStatus: null, lifecycleStatus: "active", author: "L", priority: "normal", dueTime: null, timezone: "Asia/Shanghai", tags: ["a"], createdAt: early, updatedAt: early, completedAt: null },
-        { id: ownerTaskLate, userId: owner, title: "late task", description: "owner late task", status: "completed", resumeStatus: "in_progress", lifecycleStatus: "archived", author: "G", priority: "high", dueTime: now, timezone: "Asia/Shanghai", tags: ["b"], createdAt: now, updatedAt: now, completedAt: now },
-        { id: randomUUID(), userId: other, title: "other task", description: "OTHER_TASK_SECRET", status: "pending", resumeStatus: null, lifecycleStatus: "active", author: "L", priority: "low", dueTime: null, timezone: "Asia/Shanghai", tags: [], createdAt: now, updatedAt: now, completedAt: null },
-      ]);
-      await transaction.insert(schema.todoPapers).values([
-        { id: ownerPaper, userId: owner, businessDate: "2026-08-12", author: "L", revision: 3, createdAt: early, updatedAt: now },
-        { id: ownerEmptyPaper, userId: owner, businessDate: "2026-08-13", author: "G", revision: 4, createdAt: now, updatedAt: now },
-        { id: randomUUID(), userId: other, businessDate: "2026-08-14", author: "L", revision: 1, createdAt: now, updatedAt: now },
-      ]);
-      await transaction.insert(schema.todoEntries).values([
-        { paperId: ownerPaper, entryId: "second", kind: "record", text: "second entry", position: 1 },
-        { paperId: ownerPaper, entryId: "first", kind: "pending", text: "first entry", position: 0 },
-      ]);
-      await transaction.insert(schema.sharedPapers).values([
-        { id: ownerSharedActive, userId: owner, title: "owner shared active", content: "canonical active", revision: 3, createdBy: "L", updatedBy: "C", createdAt: early, updatedAt: now, archivedAt: null },
-        { id: ownerSharedArchived, userId: owner, title: "owner shared archived", content: "canonical archived", revision: 4, createdBy: "G", updatedBy: "C", createdAt: early, updatedAt: now, archivedAt: now },
-        { id: randomUUID(), userId: other, title: "other shared", content: "OTHER_SHARED_SECRET", revision: 1, createdBy: "C", updatedBy: "C", createdAt: now, updatedAt: now, archivedAt: null },
-      ]);
-      await transaction.insert(schema.resourceLifecycleEvents).values([
-        { id: ownerLifecycleEarly, userId: owner, resourceType: "memory", resourceId: ownerMemoryEarly, action: "archive", actorType: "user", channel: "web", metadata: { PRIVATE_LIFECYCLE_METADATA: true }, createdAt: early },
-        { id: ownerLifecycleLate, userId: owner, resourceType: "diary", resourceId: ownerDiaryLate, action: "restore", actorType: "assistant", channel: "mcp", metadata: { PRIVATE_LIFECYCLE_METADATA: true }, createdAt: now },
-        { id: otherLifecycle, userId: other, resourceType: "memory", resourceId: randomUUID(), action: "archive", actorType: "user", channel: "web", metadata: { OTHER_SECRET: true }, createdAt: now },
-      ]);
-      await transaction.insert(schema.mcpWriteIdempotency).values([
-        { id: randomUUID(), userId: owner, toolName: "write_memory", idempotencyKey: `export-mcp-key-${owner}`, requestHash: "d".repeat(64), resourceType: "memory", resourceId: ownerDiaryEarly, createdAt: now },
-        { id: randomUUID(), userId: other, toolName: "write_memory", idempotencyKey: `export-mcp-key-${other}`, requestHash: "e".repeat(64), resourceType: "memory", resourceId: otherDiary, createdAt: now },
-      ]);
-      await transaction.insert(schema.toolCalls).values([
-        { id: ownerToolEarly, userId: owner, toolName: "write_memory", operation: "create", resourceType: "memory", resourceId: ownerDiaryEarly, idempotencyKey: `export-mcp-key-${owner}`, requestSummary: { PRIVATE_REQUEST_SUMMARY: true }, resultSummary: { PRIVATE_RESULT_SUMMARY: true }, durationMs: 10, status: "success", errorCode: null, createdAt: early },
-        { id: ownerToolLate, userId: owner, toolName: "write_memory", operation: "create", resourceType: "memory", resourceId: ownerDiaryLate, idempotencyKey: null, requestSummary: { PRIVATE_REQUEST_SUMMARY: true }, resultSummary: { PRIVATE_RESULT_SUMMARY: true }, durationMs: 11, status: "success", errorCode: null, createdAt: now },
-        { id: otherTool, userId: other, toolName: "write_memory", operation: "create", resourceType: "memory", resourceId: otherDiary, idempotencyKey: `export-mcp-key-${other}`, requestSummary: {}, resultSummary: {}, durationMs: 12, status: "success", errorCode: null, createdAt: now },
-      ]);
+test(
+  "real export repository scopes Diary Todo and audit to one user",
+  { skip: !runIntegration },
+  async () => {
+    const client = postgres(
+      databaseUrl!,
+      { max: 1, prepare: false, ssl: false },
+    );
+    const db = drizzle(client, { schema });
 
-      const countsBefore = await Promise.all([
-        transaction.select({ count: count() }).from(schema.coreMemories),
-        transaction.select({ count: count() }).from(schema.diaryEntries),
-        transaction.select({ count: count() }).from(schema.tasks),
-        transaction.select({ count: count() }).from(schema.todoPapers),
-        transaction.select({ count: count() }).from(schema.todoEntries),
-        transaction.select({ count: count() }).from(schema.resourceLifecycleEvents),
-        transaction.select({ count: count() }).from(schema.toolCalls),
-        transaction.select({ count: count() }).from(schema.mcpWriteIdempotency),
-      ]);
+    try {
+      await assert.rejects(
+        db.transaction(async (transaction) => {
+          const owner = randomUUID();
+          const other = randomUUID();
+          const early =
+            new Date("2026-08-12T00:00:00.000Z");
+          const now =
+            new Date("2026-08-13T00:00:00.000Z");
 
-      const repository = new DrizzleExportRepository(transaction as never);
-      const memories = await repository.listMemory(owner);
-      assert.deepEqual(memories.map((row) => row.id), [ownerMemoryEarly, ownerMemoryLate]);
-      assert.equal("user_id" in (memories[0] ?? {}), false);
-      assert.equal(JSON.stringify(memories).includes("OTHER_MEMORY_SECRET"), false);
+          await transaction
+            .insert(schema.users)
+            .values([
+              {
+                id: owner,
+                email:
+                  `export-owner-${owner}@example.invalid`,
+                displayName: "Export owner",
+                status: "active",
+              },
+              {
+                id: other,
+                email:
+                  `export-other-${other}@example.invalid`,
+                displayName: "Export other",
+                status: "active",
+              },
+            ]);
 
-      const diaries = await repository.listDiary(owner);
-      assert.deepEqual(diaries.map((row) => row.id), [ownerDiaryEarly, ownerDiaryLate]);
-      assert.equal("idempotency_key" in (diaries[0] ?? {}), false);
-      assert.equal("request_hash" in (diaries[0] ?? {}), false);
-      assert.equal(JSON.stringify(diaries).includes("OTHER_DIARY_SECRET"), false);
+          const ownerDiaryEarly = randomUUID();
+          const ownerDiaryLate = randomUUID();
+          const otherDiary = randomUUID();
 
-      const tasks = await repository.listTasks(owner);
-      assert.deepEqual(tasks.map((row) => row.id), [ownerTaskEarly, ownerTaskLate]);
-      assert.equal("user_id" in (tasks[0] ?? {}), false);
-      assert.equal(JSON.stringify(tasks).includes("OTHER_TASK_SECRET"), false);
+          await transaction
+            .insert(schema.diaryEntries)
+            .values([
+              {
+                id: ownerDiaryEarly,
+                userId: owner,
+                title: "early diary",
+                content: "owner early",
+                date: "2026-08-12",
+                tags: ["one"],
+                mood: null,
+                source: "chatgpt_mcp",
+                author: "L",
+                status: "active",
+                idempotencyKey:
+                  `export-diary-early-${owner}`,
+                requestHash: "a".repeat(64),
+                createdAt: early,
+                updatedAt: early,
+              },
+              {
+                id: ownerDiaryLate,
+                userId: owner,
+                title: "late diary",
+                content: "owner late",
+                date: "2026-08-13",
+                tags: ["two"],
+                mood: null,
+                source: "chatgpt_mcp",
+                author: "C",
+                status: "archived",
+                idempotencyKey:
+                  `export-diary-late-${owner}`,
+                requestHash: "b".repeat(64),
+                createdAt: now,
+                updatedAt: now,
+              },
+              {
+                id: otherDiary,
+                userId: other,
+                title: "other diary",
+                content: "OTHER_DIARY_SECRET",
+                date: "2026-08-13",
+                tags: [],
+                mood: null,
+                source: "chatgpt_mcp",
+                status: "active",
+                idempotencyKey:
+                  `export-diary-other-${other}`,
+                requestHash: "c".repeat(64),
+                createdAt: now,
+                updatedAt: now,
+              },
+            ]);
 
-      const papers = await repository.listTodo(owner);
-      assert.deepEqual(papers.map((row) => `${row.date}:${row.author}`), ["2026-08-12:L", "2026-08-13:G"]);
-      assert.deepEqual(papers[0]?.entries, [
-        { id: "first", kind: "pending", text: "first entry" },
-        { id: "second", kind: "record", text: "second entry" },
-      ]);
-      assert.deepEqual(papers[1]?.entries, []);
-      assert.equal(JSON.stringify(papers).includes(ownerPaper), false);
+          const paperEarly = randomUUID();
+          const paperLate = randomUUID();
+          await transaction
+            .insert(schema.todoPapers)
+            .values([
+              {
+                id: paperEarly,
+                userId: owner,
+                businessDate: "2026-08-12",
+                author: "L",
+                revision: 1,
+                createdAt: early,
+                updatedAt: early,
+              },
+              {
+                id: paperLate,
+                userId: owner,
+                businessDate: "2026-08-13",
+                author: "C",
+                revision: 2,
+                createdAt: now,
+                updatedAt: now,
+              },
+              {
+                id: randomUUID(),
+                userId: other,
+                businessDate: "2026-08-13",
+                author: "G",
+                revision: 1,
+                createdAt: now,
+                updatedAt: now,
+              },
+            ]);
 
-      const sharedPapers = await repository.listSharedPapers(owner);
-      assert.deepEqual(sharedPapers.map((row) => row.id), [ownerSharedActive, ownerSharedArchived]);
-      assert.deepEqual(sharedPapers.map((row) => row.archived_at), [null, now.toISOString()]);
-      assert.equal(sharedPapers[1]?.revision, 4);
-      assert.equal(sharedPapers[1]?.updated_by, "C");
-      assert.equal(JSON.stringify(sharedPapers).includes("OTHER_SHARED_SECRET"), false);
+          await transaction
+            .insert(schema.todoEntries)
+            .values([
+              {
+                paperId: paperEarly,
+                entryId: "early",
+                kind: "pending",
+                text: "early todo",
+                position: 0,
+              },
+              {
+                paperId: paperLate,
+                entryId: "late",
+                kind: "completed",
+                text: "late todo",
+                position: 0,
+              },
+            ]);
 
-      const lifecycle = await repository.listLifecycleAudit(owner);
-      assert.deepEqual(lifecycle.map((row) => row.id), [ownerLifecycleEarly, ownerLifecycleLate]);
-      assert.equal(JSON.stringify(lifecycle).includes("PRIVATE_LIFECYCLE_METADATA"), false);
+          const lifecycleId = randomUUID();
+          await transaction
+            .insert(schema.resourceLifecycleEvents)
+            .values({
+              id: lifecycleId,
+              userId: owner,
+              resourceType: "diary",
+              resourceId: ownerDiaryLate,
+              action: "archive",
+              actorType: "user",
+              channel: "web",
+              metadata: {
+                PRIVATE_LIFECYCLE_METADATA: true,
+              },
+              createdAt: now,
+            });
 
-      const tools = await repository.listToolActivity(owner);
-      assert.deepEqual(tools.map((row) => row.id), [ownerToolEarly]);
-      await transaction.delete(schema.mcpWriteIdempotency).where(
-        eq(schema.mcpWriteIdempotency.idempotencyKey, `export-mcp-key-${owner}`),
+          const toolId = randomUUID();
+          await transaction.insert(schema.toolCalls).values({
+            id: toolId,
+            userId: owner,
+            toolName: "write_diary",
+            operation: "create",
+            resourceType: "diary_entry",
+            resourceId: ownerDiaryEarly,
+            idempotencyKey:
+              `export-tool-${owner}`,
+            requestSummary: {
+              PRIVATE_REQUEST_SUMMARY: true,
+            },
+            resultSummary: {
+              PRIVATE_RESULT_SUMMARY: true,
+            },
+            durationMs: 10,
+            status: "success",
+            errorCode: null,
+            createdAt: early,
+          });
+
+          const before = {
+            diary: (
+              await transaction
+                .select({ value: count() })
+                .from(schema.diaryEntries)
+            )[0]!.value,
+            todo: (
+              await transaction
+                .select({ value: count() })
+                .from(schema.todoPapers)
+            )[0]!.value,
+          };
+
+          const repository =
+            new DrizzleExportRepository(
+              transaction as never,
+            );
+
+          const diaries =
+            await repository.listDiary(owner);
+          assert.deepEqual(
+            diaries.map((row) => row.id),
+            [ownerDiaryEarly, ownerDiaryLate],
+          );
+          assert.equal(
+            JSON.stringify(diaries).includes(
+              "OTHER_DIARY_SECRET",
+            ),
+            false,
+          );
+          assert.equal(
+            diaries[1]?.author,
+            "C",
+          );
+
+          const papers =
+            await repository.listTodo(owner);
+          assert.deepEqual(
+            papers.map((row) => row.date),
+            ["2026-08-12", "2026-08-13"],
+          );
+          assert.equal(
+            papers[1]?.author,
+            "C",
+          );
+          assert.equal(
+            papers[1]?.entries[0]?.text,
+            "late todo",
+          );
+
+          const lifecycle =
+            await repository.listLifecycleAudit(
+              owner,
+            );
+          assert.deepEqual(
+            lifecycle.map((row) => row.id),
+            [lifecycleId],
+          );
+          assert.equal(
+            JSON.stringify(lifecycle).includes(
+              "PRIVATE_LIFECYCLE_METADATA",
+            ),
+            false,
+          );
+
+          const tools =
+            await repository.listToolActivity(
+              owner,
+            );
+          assert.deepEqual(
+            tools.map((row) => row.id),
+            [toolId],
+          );
+          assert.equal(
+            JSON.stringify(tools).includes(
+              "PRIVATE_REQUEST_SUMMARY",
+            ),
+            false,
+          );
+
+          const after = {
+            diary: (
+              await transaction
+                .select({ value: count() })
+                .from(schema.diaryEntries)
+            )[0]!.value,
+            todo: (
+              await transaction
+                .select({ value: count() })
+                .from(schema.todoPapers)
+            )[0]!.value,
+          };
+          assert.deepEqual(after, before);
+
+          throw new RollbackExportTest();
+        }),
+        RollbackExportTest,
       );
-      const toolsAfterLedgerRetention = await repository.listToolActivity(owner);
-      assert.deepEqual(
-        toolsAfterLedgerRetention.map((row) => row.id),
-        [ownerToolEarly],
-        "tool activity must remain exportable after retry-ledger retention cleanup",
-      );
-      const toolJson = JSON.stringify(tools);
-      for (const forbidden of ["idempotency_key", "request_summary", "result_summary", "duration_ms", "PRIVATE_REQUEST_SUMMARY", "PRIVATE_RESULT_SUMMARY"]) {
-        assert.equal(toolJson.includes(forbidden), false);
-      }
-
-      const serializedExport = JSON.stringify({ memory: memories, diary: diaries, task: tasks, todo: papers, shared_paper: sharedPapers, audit: { lifecycle, tool_activity: tools } });
-      for (const forbidden of [
-        "user_id",
-        "idempotency_key",
-        "request_hash",
-        "request_summary",
-        "result_summary",
-        "duration_ms",
-        "access_token",
-        "refresh_token",
-        "PRIVATE_LIFECYCLE_METADATA",
-        "OTHER_SECRET",
-      ]) {
-        assert.equal(serializedExport.includes(forbidden), false);
-      }
-
-      const countsAfter = await Promise.all([
-        transaction.select({ count: count() }).from(schema.coreMemories),
-        transaction.select({ count: count() }).from(schema.diaryEntries),
-        transaction.select({ count: count() }).from(schema.tasks),
-        transaction.select({ count: count() }).from(schema.todoPapers),
-        transaction.select({ count: count() }).from(schema.todoEntries),
-        transaction.select({ count: count() }).from(schema.resourceLifecycleEvents),
-        transaction.select({ count: count() }).from(schema.toolCalls),
-        transaction.select({ count: count() }).from(schema.mcpWriteIdempotency),
-      ]);
-      assert.deepEqual(countsAfter.slice(0, 7), countsBefore.slice(0, 7));
-      assert.equal(
-        Number(countsAfter[7]?.[0]?.count ?? 0),
-        Number(countsBefore[7]?.[0]?.count ?? 0) - 1,
-      );
-
-      throw new RollbackExportTest();
-    }), RollbackExportTest);
-  } finally {
-    await client.end();
-  }
-});
+    } finally {
+      await client.end();
+    }
+  },
+);

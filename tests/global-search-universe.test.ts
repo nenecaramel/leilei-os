@@ -104,13 +104,13 @@ test("Universe cursor accepts canonical IDs through 256 characters and rejects i
   const overlongCursor = Buffer.from(JSON.stringify(payload)).toString("base64url");
   await assert.rejects(service.search({ userId: USER_ID, query: "旅行", modules: ["universe"], limit: 1, cursor: overlongCursor }), (error: unknown) => (error as { code?: string }).code === "INVALID_GLOBAL_SEARCH");
 
-  const memoryFirst = await service.search({ userId: USER_ID, query: "旅行", modules: ["memory"], limit: 1 });
-  assert.ok(memoryFirst.metadata.next_cursor);
-  const memoryPayload = JSON.parse(Buffer.from(memoryFirst.metadata.next_cursor!, "base64url").toString("utf8")) as { t: { entityType: string; entityId: string } };
-  memoryPayload.t.entityType = "memory";
-  memoryPayload.t.entityId = "not-a-uuid";
-  const nonUuidCursor = Buffer.from(JSON.stringify(memoryPayload)).toString("base64url");
-  await assert.rejects(service.search({ userId: USER_ID, query: "旅行", modules: ["memory"], limit: 1, cursor: nonUuidCursor }), (error: unknown) => (error as { code?: string }).code === "INVALID_GLOBAL_SEARCH");
+  const diaryFirst = await service.search({ userId: USER_ID, query: "旅行", modules: ["diary"], limit: 1 });
+  assert.ok(diaryFirst.metadata.next_cursor);
+  const diaryPayload = JSON.parse(Buffer.from(diaryFirst.metadata.next_cursor!, "base64url").toString("utf8")) as { t: { entityType: string; entityId: string } };
+  diaryPayload.t.entityType = "diary";
+  diaryPayload.t.entityId = "not-a-uuid";
+  const nonUuidCursor = Buffer.from(JSON.stringify(diaryPayload)).toString("base64url");
+  await assert.rejects(service.search({ userId: USER_ID, query: "旅行", modules: ["diary"], limit: 1, cursor: nonUuidCursor }), (error: unknown) => (error as { code?: string }).code === "INVALID_GLOBAL_SEARCH");
 });
 
 function recorder() {

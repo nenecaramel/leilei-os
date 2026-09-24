@@ -2,16 +2,7 @@ import {
   createArchivedDiaryDetailLocation,
   createDiaryDetailLocation,
 } from "./diary-location";
-import {
-  createArchivedMemoryDetailLocation,
-  createMemoryDetailLocation,
-} from "./memory-location";
-import {
-  createArchivedTaskDetailLocation,
-  createTaskDetailLocation,
-} from "./task-location";
 import type { SearchModule } from "./global-search-location";
-import { createSharedPaperDetailLocation } from "./shared-paper-location";
 
 export type GlobalSearchResult = {
   entity_type: SearchModule;
@@ -25,7 +16,7 @@ export type GlobalSearchResult = {
   time_basis: string;
   updated_at: string;
   author: "L" | "G" | "C" | null;
-  detail_tool: "get_memory" | "get_diary" | "get_task" | "read_todo_day" | "get_universe_node" | "get_shared_paper" | "read_conversation" | null;
+  detail_tool: "get_diary" | "read_todo_day" | "get_universe_node" | "read_conversation" | null;
   detail_arguments: {
     id: string;
     scope: "active" | "archived";
@@ -39,12 +30,9 @@ export type GlobalSearchResult = {
 };
 
 export const GLOBAL_SEARCH_MODULE_LABELS: Record<SearchModule, string> = {
-  memory: "Memory",
   diary: "Diary",
-  task: "Task",
   universe: "Universe",
   todo: "Todo",
-  shared_paper: "Shared Paper",
   conversation: "Conversations",
 };
 
@@ -67,12 +55,6 @@ export function createGlobalSearchResultDetailLocation(
     return `/conversations/${encodeURIComponent(result.conversation_id)}?${params.toString()}#message-${encodeURIComponent(result.entity_id)}`;
   }
 
-  if (result.entity_type === "memory") {
-    return result.lifecycle_status === "archived"
-      ? createArchivedMemoryDetailLocation(result.entity_id, returnTo)
-      : createMemoryDetailLocation(result.entity_id, returnTo);
-  }
-
   if (result.entity_type === "diary") {
     return result.lifecycle_status === "archived"
       ? createArchivedDiaryDetailLocation(result.entity_id, returnTo)
@@ -84,21 +66,11 @@ export function createGlobalSearchResultDetailLocation(
     return `/universe?${params.toString()}`;
   }
 
-  if (result.entity_type === "shared_paper") {
-    return createSharedPaperDetailLocation(
-      result.entity_id,
-      result.lifecycle_status,
-      returnTo,
-    );
-  }
-
   if (result.entity_type === "todo") {
     const params = new URLSearchParams({ date: result.detail_arguments && "date" in result.detail_arguments ? result.detail_arguments.date : result.business_time.slice(0, 10) });
     if (result.author) params.set("author", result.author);
     return `/day-space?${params.toString()}`;
   }
 
-  return result.lifecycle_status === "archived"
-    ? createArchivedTaskDetailLocation(result.entity_id, returnTo)
-    : createTaskDetailLocation(result.entity_id, returnTo);
+  return "/search";
 }

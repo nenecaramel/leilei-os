@@ -10,14 +10,10 @@ import {
 } from "../config/env.js";
 import { createDatabase } from "../database/client.js";
 import type { AppDependencies } from "./create-app.js";
-import { DrizzleMemoryRepository } from "../domains/memory/memory-repository.js";
-import { MemoryService } from "../domains/memory/memory-service.js";
 import { DrizzleDiaryRepository } from "../domains/diary/diary-repository.js";
 import { DiaryService } from "../domains/diary/diary-service.js";
 import { DrizzleDiaryCommentRepository } from "../domains/diary/diary-comment-repository.js";
 import { DiaryCommentService } from "../domains/diary/diary-comment-service.js";
-import { DrizzleTaskRepository } from "../domains/task/task-repository.js";
-import { TaskService } from "../domains/task/task-service.js";
 import { DrizzleToyCommandRepository } from "../domains/toy/toy-command-repository.js";
 import { ToyCommandService } from "../domains/toy/toy-command-service.js";
 import { DrizzleGlobalSearchRepository } from "../domains/global-search/global-search-repository.js";
@@ -160,8 +156,6 @@ import { DrizzleSentinelRepository } from "../domains/sentinel/sentinel-reposito
 import { SentinelService } from "../domains/sentinel/sentinel-service.js";
 import { DrizzleHealthRepository } from "../domains/health-v2/health-repository.js";
 import { HealthService } from "../domains/health-v2/health-service.js";
-import { DrizzleSharedPaperRepository } from "../domains/shared-paper/shared-paper-repository.js";
-import { SharedPaperService } from "../domains/shared-paper/shared-paper-service.js";
 import { DrizzleConversationImportRepository } from "../domains/conversation/conversation-import-repository.js";
 import { DrizzleConversationArchiveStateRepository } from "../domains/conversation/conversation-state-repository.js";
 import { ConversationImportService } from "../domains/conversation/conversation-import-service.js";
@@ -242,19 +236,17 @@ export function createProcessRuntime(
   const observeLifecycle = createMcpLifecycleObserver(logger);
   const database = (options.createDatabaseResource ?? createDatabase)(runtimeEnv.DATABASE_URL);
   const { db } = database;
-  const memoryRepository = new DrizzleMemoryRepository(db);
-  const memoryService = new MemoryService(memoryRepository);
   const diaryService = new DiaryService(new DrizzleDiaryRepository(db));
   const diaryCommentService = new DiaryCommentService(
     new DrizzleDiaryCommentRepository(db),
   );
-  const taskService = new TaskService(new DrizzleTaskRepository(db));
   const toyCommandService = new ToyCommandService(
     new DrizzleToyCommandRepository(db),
     runtimeEnv.LEILEI_TOY_BRIDGE_USER_ID,
   );
   const globalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
-  const systemService = new SystemService(new DrizzleSystemRepository(db), {
+  const systemRepository = new DrizzleSystemRepository(db);
+  const systemService = new SystemService(systemRepository, {
     internalMcpEnabled: Boolean(runtimeEnv.MCP_AUTH_TOKEN),
   });
   const todoService = new TodoService(new DrizzleTodoRepository(db));
@@ -520,7 +512,6 @@ export function createProcessRuntime(
   const sentinelRepository = new DrizzleSentinelRepository(db);
   const sentinelService = new SentinelService(sentinelRepository);
   const healthService = new HealthService(new DrizzleHealthRepository(db));
-  const sharedPaperService = new SharedPaperService(new DrizzleSharedPaperRepository(db));
   const conversationImportService = new ConversationImportService(
     new DrizzleConversationImportRepository(db),
     new DrizzleConversationArchiveStateRepository(db),
@@ -596,7 +587,7 @@ export function createProcessRuntime(
   );
 
     const createMcpSessionServer = createProductionMcpSessionServerFactory({
-    activeUserRepository: memoryRepository,
+    activeUserRepository: systemRepository,
     diaryService,
     diaryCommentService,
     toyCommandService,
@@ -625,10 +616,8 @@ export function createProcessRuntime(
     runtimeEffectDeliveryWorker,
     appDependencies: {
       logger,
-      webMemoryService: memoryService,
       webDiaryService: diaryService,
       webDiaryCommentService: diaryCommentService,
-      webTaskService: taskService,
       webSystemService: systemService,
       toyService: toyCommandService,
       webGlobalSearchService: globalSearchService,
@@ -655,7 +644,6 @@ export function createProcessRuntime(
           }
         : {}),
       webSentinelService: sentinelService,
-      webSharedPaperService: sharedPaperService,
       webConversationImportService: conversationImportService,
       webConversationArchiveReadService: conversationArchiveReadService,
       webConversationPruningService: conversationPruningService,

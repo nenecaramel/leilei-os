@@ -28,24 +28,10 @@ export const DashboardIcon = (props: IconProps) => (
   </IconBase>
 );
 
-export const MemoryIcon = (props: IconProps) => (
-  <IconBase {...props}>
-    <path d="M9 4.5a3 3 0 0 0-5 2.2 3 3 0 0 0 .8 2A3.5 3.5 0 0 0 6 15.4V17a3 3 0 0 0 3 3Z" />
-    <path d="M15 4.5a3 3 0 0 1 5 2.2 3 3 0 0 1-.8 2 3.5 3.5 0 0 1-1.2 6.7V17a3 3 0 0 1-3 3Z" />
-    <path d="M9 7h2m4 0h-2M9 12h2m4 0h-2" />
-  </IconBase>
-);
-
 export const DiaryIcon = (props: IconProps) => (
   <IconBase {...props}>
     <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v17H7.5A2.5 2.5 0 0 0 5 21.5Z" />
     <path d="M5 4.5v17M9 7h7m-7 4h5" />
-  </IconBase>
-);
-
-export const TaskIcon = (props: IconProps) => (
-  <IconBase {...props}>
-    <path d="m4 7 2 2 4-4M12 7h8M4 14l2 2 4-4m2 2h8" />
   </IconBase>
 );
 

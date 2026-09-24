@@ -9,16 +9,13 @@ import { AppShell } from "./layout/AppShell";
 import { DashboardPage } from "./pages/DashboardPageContainer";
 import { DiaryPage } from "./pages/DiaryPageContainer";
 import { GlobalSearchPage } from "./pages/GlobalSearchPageContainer";
-import { MemoryPage } from "./pages/MemoryPageContainer";
 import { SystemAboutPage } from "./pages/SystemAboutPage";
 import { SystemAccountPage } from "./pages/SystemAccountPage";
 import { SystemActivityPage } from "./pages/SystemActivityPage";
 import { SystemConnectionsPage } from "./pages/SystemConnectionsPage";
 import { SystemDataPage } from "./pages/SystemDataPage";
-import { TaskPage } from "./pages/TaskPageContainer";
 import { UniversePage } from "./pages/UniversePageContainer";
 import { SentinelPage } from "./pages/SentinelPageContainer";
-import { SharedPaperPage } from "./pages/SharedPaperPageContainer";
 import { ConversationArchivePage } from "./pages/ConversationArchivePageContainer";
 import { ConversationLifecyclePage } from "./pages/ConversationLifecyclePageContainer";
 
@@ -31,14 +28,11 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route index element={<DashboardPage />} />
 
-            <Route path="memory" element={<MemoryPage />} />
             <Route path="diary" element={<DiaryPage />} />
-            <Route path="shared-paper" element={<SharedPaperPage />} />
             <Route path="conversations" element={<ConversationArchivePage />} />
             <Route path="conversations/archive" element={<ConversationLifecyclePage />} />
             <Route path="conversations/deleted" element={<Navigate to="/conversations/archive" replace />} />
             <Route path="conversations/:conversationId" element={<ConversationArchivePage />} />
-            <Route path="task" element={<TaskPage />} />
             <Route path="day-space" element={<DaySpacePage />} />
             <Route path="search" element={<GlobalSearchPage />} />
             <Route path="sentinel" element={<SentinelPage />} />

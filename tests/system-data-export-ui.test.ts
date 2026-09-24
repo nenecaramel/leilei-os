@@ -46,10 +46,7 @@ function summary() {
   return {
     success: true as const,
     data: {
-      memory: { active: 1, archived: 2 },
       diary: { active: 3, archived: 4 },
-      task: { active: 5, archived: 6 },
-      shared_paper: { active: 7, archived: 8 },
       todo: { active: 9 },
     },
   };
@@ -60,7 +57,7 @@ function exportDocument(): WebExportDocument {
     schema_version: 2,
     owner_fingerprint: "a".repeat(64),
     exported_at: "2026-08-13T05:42:00.000Z",
-    data: { memory: [{ key: "approved" }] },
+    data: { diary: [{ title: "approved" }] },
   };
 }
 
@@ -92,7 +89,7 @@ test("Data renders Export title, one horizontal scope row, and inactive audit te
   assert.equal(card.querySelector(".system-export-label")?.textContent, "Export");
   assert.ok(card.querySelector(".system-export-action-row"));
   const labels = Array.from(card.querySelectorAll(".system-export-action"), (button) => button.textContent);
-  assert.deepEqual(labels, ["All", "Memory", "Diary", "Task", "Todo", "Shared Paper"]);
+  assert.deepEqual(labels, ["All", "Diary", "Todo"]);
 
   const auditControl = card.querySelector<HTMLElement>(".system-export-audit");
   assert.ok(auditControl);
@@ -144,7 +141,7 @@ test("audit text control becomes active with a plain check and still sends inclu
   buttons[0].click();
   await waitForPaint();
 
-  assert.deepEqual(paths, ["/system/data", "/system/export?scope=memory", "/system/export?scope=all&include_audit=true"]);
+  assert.deepEqual(paths, ["/system/data", "/system/export?scope=diary", "/system/export?scope=all&include_audit=true"]);
   assert.equal(blobs.length, 2);
   assert.equal(clicked.length, 2);
   assert.equal(clicked[0].download, "leileios-export-20260813T054200Z.json");

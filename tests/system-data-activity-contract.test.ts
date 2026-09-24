@@ -23,15 +23,12 @@ const dataSource = dataWrapperSource + dataContentSource;
 const activitySource =
   activityWrapperSource + activityContentSource;
 
-test("Data reads the approved counts endpoint and exposes the approved export actions", () => {
+test("Data reads active-module counts and exposes active export actions", () => {
   assert.match(dataWrapperSource, /useWebApiClient/);
   assert.match(dataContentSource, /"\/system\/data"/);
 
   for (const label of [
-    "Memory",
     "Diary",
-    "Task",
-    "Shared Paper",
     "Todo",
     "Active",
     "Archived",
@@ -39,23 +36,24 @@ test("Data reads the approved counts endpoint and exposes the approved export ac
     assert.match(dataContentSource, new RegExp(label));
   }
 
+  for (const retired of ["Memory", "Task", "Shared Paper"]) {
+    assert.doesNotMatch(dataContentSource, new RegExp(retired));
+  }
+
   assert.match(dataContentSource, /\/system\/export\?scope=/i);
   assert.match(dataContentSource, />\s*Export\s*</);
   for (const [scope, label] of [
     ["all", "All"],
-    ["memory", "Memory"],
     ["diary", "Diary"],
-    ["task", "Task"],
     ["todo", "Todo"],
-    ["shared_paper", "Shared Paper"],
   ]) {
     assert.match(dataContentSource, new RegExp(`\\["${scope}", "${label}"\\]`));
   }
-});
 
-test("Data restore preview includes Shared Paper as a first-class import module", () => {
-  assert.match(dataContentSource, /const IMPORT_MODULE_ORDER = \[(?:[^\]]*"shared_paper"[^\]]*)\] as const;/s);
-  assert.match(dataContentSource, /shared_paper:\s*"Shared Paper"/);
+  assert.match(
+    dataContentSource,
+    /const IMPORT_MODULE_ORDER = \["diary", "todo"\] as const;/,
+  );
 });
 
 test("Activity reads the approved endpoint and renders only safe public event fields", () => {

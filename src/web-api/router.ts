@@ -1,16 +1,8 @@
 import { Router } from "express";
 import {
-  createMemoryApiRouter,
-  type MemoryApiDependencies,
-} from "./memory-router.js";
-import {
   createDiaryApiRouter,
   type DiaryApiDependencies,
 } from "./diary-router.js";
-import {
-  createTaskApiRouter,
-  type TaskApiDependencies,
-} from "./task-router.js";
 import {
   createToyUserRouter,
   type ToyApiDependencies,
@@ -23,7 +15,6 @@ import { createImportApiRouter, type ImportApiDependencies } from "./import-rout
 import { createUniverseApiRouter, type UniverseApiDependencies } from "./universe-router.js";
 import { createBridgeApiRouter, type BridgeApiDependencies } from "./bridge-router.js";
 import { createSentinelApiRouter, type SentinelApiDependencies } from "./sentinel-router.js";
-import { createSharedPaperApiRouter, type SharedPaperApiDependencies } from "./shared-paper-router.js";
 import { createConversationImportApiRouter, type ConversationImportApiDependencies } from "./conversation-import-router.js";
 import { createConversationArchiveReadApiRouter, type ConversationArchiveReadApiDependencies } from "./conversation-archive-read-router.js";
 import { createConversationPruningApiRouter, type ConversationPruningApiDependencies } from "./conversation-pruning-router.js";
@@ -34,9 +25,7 @@ import { createConversationLifecycleApiRouter, type ConversationLifecycleApiDepe
 import { createNativeLiveApiRouter, type NativeLiveApiDependencies } from "./native-live-router.js";
 
 export type WebApiRouterDependencies = {
-  memory: MemoryApiDependencies;
   diary: DiaryApiDependencies;
-  task: TaskApiDependencies;
   toy: ToyApiDependencies;
   system: SystemApiDependencies;
   globalSearch?: GlobalSearchApiDependencies;
@@ -46,7 +35,6 @@ export type WebApiRouterDependencies = {
   universe?: UniverseApiDependencies;
   bridge?: BridgeApiDependencies;
   sentinel?: SentinelApiDependencies;
-  sharedPaper?: SharedPaperApiDependencies;
   conversationImport?: ConversationImportApiDependencies;
   conversationRead?: ConversationArchiveReadApiDependencies;
   conversationPruning?: ConversationPruningApiDependencies;
@@ -88,18 +76,8 @@ export function createWebApiRouter(
   });
 
   router.use(
-    "/memory",
-    createMemoryApiRouter(dependencies.memory),
-  );
-
-  router.use(
     "/diary",
     createDiaryApiRouter(dependencies.diary),
-  );
-
-  router.use(
-    "/task",
-    createTaskApiRouter(dependencies.task),
   );
 
   router.use("/toy", createToyUserRouter(dependencies.toy));
@@ -111,7 +89,6 @@ export function createWebApiRouter(
   if (dependencies.universe) router.use("/universe", createUniverseApiRouter(dependencies.universe));
   if (dependencies.bridge) router.use("/bridge", createBridgeApiRouter(dependencies.bridge));
   if (dependencies.sentinel) router.use("/sentinel", createSentinelApiRouter(dependencies.sentinel));
-  if (dependencies.sharedPaper) router.use("/shared-papers", createSharedPaperApiRouter(dependencies.sharedPaper));
   if (dependencies.conversationFavorite) router.use("/conversations", createConversationFavoriteApiRouter(dependencies.conversationFavorite));
   if (dependencies.conversationExclusionManagement) router.use("/conversations", createConversationExclusionManagementApiRouter(dependencies.conversationExclusionManagement));
   if (dependencies.conversationImportHistory) router.use("/conversations", createConversationImportHistoryApiRouter(dependencies.conversationImportHistory));

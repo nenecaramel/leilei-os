@@ -1,21 +1,15 @@
-import { and, count, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
-  coreMemories,
   diaryEntries,
   resourceLifecycleEvents,
-  sharedPapers,
-  tasks,
   todoPapers,
   toolCalls,
   users,
 } from "../../database/schema.js";
 
 export type SystemDataSummary = {
-  memory: { active: number; archived: number };
   diary: { active: number; archived: number };
-  task: { active: number; archived: number };
-  shared_paper: { active: number; archived: number };
   todo: { active: number };
 };
 
@@ -55,9 +49,7 @@ export interface SystemRepository {
 type Database = ReturnType<typeof createDatabase>["db"];
 
 const MCP_WRITE_TOOL_NAMES = [
-  "create_task",
   "write_diary",
-  "write_memory",
   "toy_set",
   "toy_stop",
 ] as const;
@@ -75,32 +67,12 @@ export class DrizzleSystemRepository implements SystemRepository {
   }
 
   async readDataSummary(userId: string): Promise<SystemDataSummary> {
-    const [memoryRows, diaryRows, taskRows, sharedPaperRows, todoRows] = await Promise.all([
-      this.db
-        .select({ status: coreMemories.status, count: count() })
-        .from(coreMemories)
-        .where(
-          and(
-            eq(coreMemories.userId, userId),
-            eq(coreMemories.visibility, "assistant"),
-          ),
-        )
-        .groupBy(coreMemories.status),
+    const [diaryRows, todoRows] = await Promise.all([
       this.db
         .select({ status: diaryEntries.status, count: count() })
         .from(diaryEntries)
         .where(eq(diaryEntries.userId, userId))
         .groupBy(diaryEntries.status),
-      this.db
-        .select({ status: tasks.lifecycleStatus, count: count() })
-        .from(tasks)
-        .where(eq(tasks.userId, userId))
-        .groupBy(tasks.lifecycleStatus),
-      this.db
-        .select({ archived: isNull(sharedPapers.archivedAt), count: count() })
-        .from(sharedPapers)
-        .where(eq(sharedPapers.userId, userId))
-        .groupBy(isNull(sharedPapers.archivedAt)),
       this.db
         .select({ count: count() })
         .from(todoPapers)
@@ -108,21 +80,9 @@ export class DrizzleSystemRepository implements SystemRepository {
     ]);
 
     return {
-      memory: {
-        active: readCount(memoryRows, "active"),
-        archived: readCount(memoryRows, "archived"),
-      },
       diary: {
         active: readCount(diaryRows, "active"),
         archived: readCount(diaryRows, "archived"),
-      },
-      task: {
-        active: readCount(taskRows, "active"),
-        archived: readCount(taskRows, "archived"),
-      },
-      shared_paper: {
-        active: readBooleanCount(sharedPaperRows, true),
-        archived: readBooleanCount(sharedPaperRows, false),
       },
       todo: {
         active: Number(todoRows[0]?.count ?? 0),
@@ -183,13 +143,5 @@ function readCount(
   status: string,
 ): number {
   const row = rows.find((candidate) => candidate.status === status);
-  return Number(row?.count ?? 0);
-}
-
-function readBooleanCount(
-  rows: Array<{ archived: unknown; count: number }>,
-  archived: boolean,
-): number {
-  const row = rows.find((candidate) => candidate.archived === archived);
   return Number(row?.count ?? 0);
 }

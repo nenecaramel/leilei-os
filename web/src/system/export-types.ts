@@ -1,4 +1,4 @@
-export type WebExportScope = "all" | "memory" | "diary" | "task" | "todo" | "shared_paper";
+export type WebExportScope = "all" | "diary" | "todo";
 
 export type WebExportDocument = {
   schema_version: 2;

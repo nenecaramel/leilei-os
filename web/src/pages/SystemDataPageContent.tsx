@@ -38,14 +38,11 @@ type ImportPreviewRow = {
   value: string;
 };
 
-const IMPORT_MODULE_ORDER = ["memory", "diary", "task", "shared_paper", "todo"] as const;
+const IMPORT_MODULE_ORDER = ["diary", "todo"] as const;
 type ImportModuleKey = (typeof IMPORT_MODULE_ORDER)[number];
 
 const IMPORT_MODULE_LABELS: Record<ImportModuleKey, string> = {
-  memory: "Memory",
   diary: "Diary",
-  task: "Task",
-  shared_paper: "Shared Paper",
   todo: "Todo",
 };
 
@@ -335,34 +332,15 @@ export function SystemDataPageContent({
         {state.status === "ready" ? (
           <div className="system-data-list">
             <ArchivedCountRow
-              label="Memory"
-              active={state.summary.memory.active}
-              archived={
-                state.summary.memory.archived
-              }
-            />
-            <ArchivedCountRow
               label="Diary"
               active={state.summary.diary.active}
               archived={
                 state.summary.diary.archived
               }
             />
-            <ArchivedCountRow
-              label="Task"
-              active={state.summary.task.active}
-              archived={
-                state.summary.task.archived
-              }
-            />
             <CurrentCountRow
               label="Todo"
               active={state.summary.todo?.active ?? "—"}
-            />
-            <ArchivedCountRow
-              label="Shared Paper"
-              active={state.summary.shared_paper?.active ?? "—"}
-              archived={state.summary.shared_paper?.archived ?? "—"}
             />
           </div>
         ) : null}
@@ -384,11 +362,8 @@ export function SystemDataPageContent({
         >
           {([
             ["all", "All"],
-            ["memory", "Memory"],
             ["diary", "Diary"],
-            ["task", "Task"],
             ["todo", "Todo"],
-            ["shared_paper", "Shared Paper"],
           ] as const).map(([scope, label]) => (
             <button
               className="system-export-action"

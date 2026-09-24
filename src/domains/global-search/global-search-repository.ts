@@ -2,12 +2,12 @@ import { sql, type SQL } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import type { ContentAuthor } from "../content-author.js";
 
-export type GlobalSearchModule = "memory" | "diary" | "task" | "todo" | "universe" | "shared_paper" | "conversation";
+export type GlobalSearchModule = "diary" | "todo" | "universe" | "conversation";
 export type GlobalSearchScope = "active" | "archived" | "all";
 export type GlobalSearchMode = "phrase" | "normal";
 export type GlobalSearchMatchReason = "exact_stable_name" | "exact_phrase" | "stable_name_prefix" | "field_match";
-export type GlobalSearchMatchedField = "key" | "title" | "content" | "description" | "tags" | "mood" | "text";
-export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "due_time" | "created_at" | "todo_date" | "message_time";
+export type GlobalSearchMatchedField = "title" | "content" | "tags" | "mood" | "text";
+export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "todo_date" | "message_time";
 
 export type GlobalSearchUser = { status: "active" | "disabled"; timezone: string };
 export type GlobalSearchCursorTuple = { rank: number; businessTime: string; updatedAt: string; entityType: GlobalSearchModule; entityId: string };
@@ -66,12 +66,9 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     const pattern = `%${escapeLike(queryText)}%`;
     const prefix = `${escapeLike(queryText)}%`;
     const moduleQueries: SQL[] = [];
-    if (input.modules.includes("memory")) moduleQueries.push(memoryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("diary")) moduleQueries.push(diaryQuery(input, queryText, pattern, prefix));
-    if (input.modules.includes("task")) moduleQueries.push(taskQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("todo") && input.scope !== "archived") moduleQueries.push(todoQuery(input, queryText, pattern));
     if (input.modules.includes("universe") && input.scope !== "archived") moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
-    if (input.modules.includes("shared_paper")) moduleQueries.push(sharedPaperQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("conversation")) {
       moduleQueries.push(conversationQuery(input, queryText, pattern));
     }
@@ -178,16 +175,6 @@ function reasonAndField(stable: SQL, fields: Array<{ name: GlobalSearchMatchedFi
 function match(fields: SQL[], mode: GlobalSearchMode, pattern: string): SQL {
   return sql`(${sql.join(fields.map((field) => sql`${normalized(field, mode)} like ${pattern} escape '\\'`), sql` or `)})`;
 }
-function memoryQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
-  const tags = sql`array_to_string(m.tags, ' ')`;
-  const fields = [{ name: "key" as const, value: sql`m.key` }, { name: "content" as const, value: sql`m.content` }, { name: "tags" as const, value: tags }];
-  const businessDate = sql`(m.updated_at at time zone ${input.timezone})::date`;
-  return bounded(sql`select 'memory'::text entity_type, m.id::text entity_id, m.key stable_name,
-    ${reasonAndField(sql`m.key`, fields, input.mode, query, pattern, prefix)}, m.status::text lifecycle_status,
-    m.author::text author, m.updated_at business_time, 'updated_at'::text time_basis, m.updated_at, null::date business_date, null::text conversation_id, null::text conversation_view
-    from core_memories m where m.user_id=${input.userId}::uuid and m.visibility='assistant' and ${lifecycle(sql`m.status`, input.scope)}
-    and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input);
-}
 function diaryQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
   const tags = sql`array_to_string(d.tags, ' ')`; const mood = sql`coalesce(d.mood, '')`;
   const fields = [{ name: "title" as const, value: sql`d.title` }, { name: "content" as const, value: sql`d.content` }, { name: "tags" as const, value: tags }, { name: "mood" as const, value: mood }];
@@ -197,17 +184,6 @@ function diaryQuery(input: GlobalSearchQuery, query: string, pattern: string, pr
     from diary_entries d where d.user_id=${input.userId}::uuid and ${lifecycle(sql`d.status`, input.scope)}
     and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(sql`d.date`, input)}`, input);
 }
-function taskQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
-  const tags = sql`array_to_string(t.tags, ' ')`;
-  const fields = [{ name: "title" as const, value: sql`t.title` }, { name: "description" as const, value: sql`t.description` }, { name: "tags" as const, value: tags }];
-  const effective = sql`coalesce(t.due_time, t.created_at)`; const businessDate = sql`(${effective} at time zone ${input.timezone})::date`;
-  return bounded(sql`select 'task'::text entity_type, t.id::text entity_id, t.title stable_name,
-    ${reasonAndField(sql`t.title`, fields, input.mode, query, pattern, prefix)}, t.lifecycle_status::text lifecycle_status,
-    t.author::text author, ${effective} business_time, case when t.due_time is null then 'created_at' else 'due_time' end::text time_basis, t.updated_at, null::date business_date, null::text conversation_id, null::text conversation_view
-    from tasks t where t.user_id=${input.userId}::uuid and ${lifecycle(sql`t.lifecycle_status`, input.scope)}
-    and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(businessDate, input)}`, input);
-}
-
 function todoQuery(input: GlobalSearchQuery, query: string, pattern: string): SQL {
   const normalizedText = normalized(sql`e.text`, input.mode);
   return bounded(sql`select 'todo'::text entity_type,
@@ -247,25 +223,6 @@ function universeQuery(input: GlobalSearchQuery, query: string, pattern: string,
       and ${match(fields.map((f) => f.value), input.mode, pattern)}
       and ${dates(businessDate, input)}`, input);
 }
-
-function sharedPaperQuery(input: GlobalSearchQuery, query: string, pattern: string, prefix: string): SQL {
-  const lifecycleStatus = sql`case when p.archived_at is null then 'active' else 'archived' end`;
-  const fields = [
-    { name: "title" as const, value: sql`p.title` },
-    { name: "content" as const, value: sql`p.content` },
-  ];
-  const businessDate = sql`(p.updated_at at time zone ${input.timezone})::date`;
-  return bounded(sql`select 'shared_paper'::text entity_type, p.id::text entity_id, p.title stable_name,
-    ${reasonAndField(sql`p.title`, fields, input.mode, query, pattern, prefix)},
-    ${lifecycleStatus}::text lifecycle_status, p.updated_by::text author,
-    p.updated_at business_time, 'updated_at'::text time_basis, p.updated_at, null::date business_date, null::text conversation_id, null::text conversation_view
-    from shared_papers p
-    where p.user_id=${input.userId}::uuid
-      and ${lifecycle(lifecycleStatus, input.scope)}
-      and ${match(fields.map((f) => f.value), input.mode, pattern)}
-      and ${dates(businessDate, input)}`, input);
-}
-
 
 function conversationQuery(
   input: GlobalSearchQuery,

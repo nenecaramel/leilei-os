@@ -11,28 +11,28 @@ test("Global Search shared result helpers provide neutral labels, compact dates,
   const helpers = await import("../web/src/pages/global-search-result.js");
 
   const active: any = {
-    entity_type: "memory",
-    entity_id: "memory-1",
+    entity_type: "diary",
+    entity_id: "diary-1",
     stable_name: "UI",
     snippet: "mobile search",
     matched_field: "content",
     match_reason: "field_match",
     lifecycle_status: "active",
     business_time: "2026-08-09T07:30:00.000Z",
-    time_basis: "created_at",
+    time_basis: "diary_date",
     updated_at: "2026-08-09T07:30:00.000Z",
-    detail_tool: "get_memory",
-    detail_arguments: { id: "memory-1", scope: "active" },
+    detail_tool: "get_diary",
+    detail_arguments: { id: "diary-1", scope: "active" },
   };
 
-  assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.memory, "Memory");
   assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.diary, "Diary");
-  assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.task, "Task");
+  assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.todo, "Todo");
+  assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.universe, "Universe");
   assert.equal(helpers.GLOBAL_SEARCH_MODULE_LABELS.conversation, "Conversations");
   assert.match(helpers.formatGlobalSearchBusinessDate(active.business_time), /^\d{2}\/\d{2}$/);
   assert.match(
     helpers.createGlobalSearchResultDetailLocation(active, "/search?q=mobile"),
-    /^\/memory\?memory=memory-1/,
+    /^\/diary\?diary=diary-1/,
   );
 
   const archived = {
@@ -49,7 +49,7 @@ test("Global Search shared result helpers provide neutral labels, compact dates,
   );
 });
 
-test("Global Search full page uses the accepted five-domain mobile presentation", async () => {
+test("Global Search full page uses the active-module mobile presentation", async () => {
   assert.equal(existsSync(headerPath), true, "GlobalSearchPageHeader.tsx must exist");
   const [pageSource, headerSource, css] = await Promise.all([
     readFile("web/src/pages/GlobalSearchPage.tsx", "utf8"),
@@ -60,7 +60,7 @@ test("Global Search full page uses the accepted five-domain mobile presentation"
   assert.match(pageSource, /GlobalSearchPageHeader/);
   assert.doesNotMatch(pageSource, /匹配方式/);
   assert.doesNotMatch(pageSource, /exact_phrase|精确短语/);
-  assert.match(pageSource, /默认搜索 Memory、Diary、Task、Todo、Universe 与 Shared Paper；Conversations 可在模块筛选中开启/);
+  assert.match(pageSource, /默认搜索 Diary、Todo 与 Universe；Conversations 可在模块筛选中开启/);
   assert.match(pageSource, /没有找到匹配内容/);
   assert.match(pageSource, /SEARCH_MODULES\.map/);
   assert.match(pageSource, /global-search-result-button/);
@@ -83,7 +83,7 @@ test("Global Search full page uses the accepted five-domain mobile presentation"
 });
 
 
-test("Global Search mobile geometry reuses the accepted Memory and Diary visual language", async () => {
+test("Global Search mobile geometry reuses the accepted shared visual language", async () => {
   const [headerSource, css] = await Promise.all([
     readFile("web/src/pages/GlobalSearchPageHeader.tsx", "utf8"),
     readFile("web/src/styles.css", "utf8"),
@@ -122,7 +122,7 @@ test("Global Search mobile geometry reuses the accepted Memory and Diary visual 
 });
 
 
-test("Global Search search field is the exact accepted shared Memory search component", async () => {
+test("Global Search search field keeps the accepted shared search component", async () => {
   const headerSource = await readFile(
     "web/src/pages/GlobalSearchPageHeader.tsx",
     "utf8",
