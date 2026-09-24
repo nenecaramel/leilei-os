@@ -34,11 +34,20 @@ export function normalizeAgentSdkPermissionRequest(
         ? input
         : {},
     toolUseId:
-      nonblankString(context.toolUseId) ?? null,
+      nonblankString(context.toolUseID)
+      ?? nonblankString(context.toolUseId)
+      ?? nonblankString(context.tool_use_id)
+      ?? null,
     requestId:
-      nonblankString(context.requestId) ?? null,
+      nonblankString(context.requestId)
+      ?? nonblankString(context.requestID)
+      ?? nonblankString(context.request_id)
+      ?? null,
     agentId:
-      nonblankString(context.agentId) ?? null,
+      nonblankString(context.agentID)
+      ?? nonblankString(context.agentId)
+      ?? nonblankString(context.agent_id)
+      ?? null,
     blockedPath:
       nonblankString(context.blockedPath) ?? null,
     decisionReason:
