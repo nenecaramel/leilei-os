@@ -363,6 +363,128 @@ test("turn handle emits nothing before explicit start", async () => {
   assert.equal(emitted.length, 3);
 });
 
+test("turn handle can queue a second user message while the SDK turn is active", async () => {
+  let firstConsumed;
+  const firstConsumedGate =
+    new Promise((resolve) => {
+      firstConsumed = resolve;
+    });
+
+  const observed = [];
+  let call;
+
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "initial instruction",
+    environment: {},
+    midTurnInput: true,
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id:
+              "provider-mid-turn",
+          };
+
+          const iterator =
+            call.prompt[
+              Symbol.asyncIterator
+            ]();
+
+          const first =
+            await iterator.next();
+          observed.push(
+            first.value.message.content[0]
+              .text,
+          );
+          firstConsumed();
+
+          const second =
+            await iterator.next();
+          observed.push(
+            second.value.message.content[0]
+              .text,
+          );
+
+          yield {
+            type: "result",
+            subtype: "success",
+            session_id:
+              "provider-mid-turn",
+            result:
+              second.value.message
+                .content[0].text,
+          };
+        },
+      };
+    },
+  });
+
+  assert.throws(
+    () =>
+      handle.sendUserMessage(
+        "too early",
+      ),
+    /has not started/,
+  );
+
+  const completion = handle.start();
+  await firstConsumedGate;
+
+  assert.deepEqual(
+    handle.sendUserMessage(
+      "updated instruction",
+    ),
+    { status: "queued" },
+  );
+
+  const result = await completion;
+  assert.deepEqual(observed, [
+    "initial instruction",
+    "updated instruction",
+  ]);
+  assert.equal(
+    result.result.result,
+    "updated instruction",
+  );
+
+  assert.throws(
+    () =>
+      handle.sendUserMessage(
+        "too late",
+      ),
+    /no longer accepts user input/,
+  );
+});
+
+test("turn handle rejects mid-turn input when the capability is disabled", async () => {
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        for (const message of successMessages("provider-no-mid-turn")) {
+          yield message;
+        }
+      },
+    }),
+  });
+
+  const completion = handle.start();
+  assert.throws(
+    () =>
+      handle.sendUserMessage(
+        "not enabled",
+      ),
+    /does not have mid-turn input enabled/,
+  );
+  await completion;
+});
+
 test("turn handle maps a successful graceful interrupt to INTERRUPTED", async () => {
   let release;
   let started;
