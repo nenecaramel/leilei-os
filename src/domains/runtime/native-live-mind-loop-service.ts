@@ -88,6 +88,8 @@ export type MindLoopConfig = {
   contextTimeZone?: string;
   ruleVersion: string;
   processVersion: string;
+  /** @deprecated canonical Surface is no longer injected into model prompts. */
+  surfaceLimit?: number;
   breathLimit: number;
   breathCooldownHours?: number;
   breathSalienceWeight?: number;
