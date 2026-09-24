@@ -39,7 +39,7 @@ export type QueryNotionDataSourceToolDependencies = NotionUserAuthorizationDepen
 export function registerQueryNotionDataSourceTool(server: McpServer, dependencies: QueryNotionDataSourceToolDependencies): void {
   server.registerTool("query_notion_data_source", {
     title: "Query a Notion data source",
-    description: "Read pages from one Notion data source with bounded, structured filters, sorting, and cursor pagination. No SQL or arbitrary query text is accepted.",
+    description: "Query a Notion data source with structured filters, sorts, and cursor pagination.",
     inputSchema: z.object({
       data_source_id: idSchema,
       limit: z.number().int().min(1).max(100).optional(),

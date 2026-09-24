@@ -11,13 +11,13 @@ const noteDetailSchema = z.enum(["brief", "standard", "detailed"]);
 
 export const renderNoteCardInputSchema = z.object({
   style: noteStyleSchema.describe(
-    "Card style: analysis for a general explanatory note, relational for a personal or interpersonal note.",
+    "Card style: analysis for explanation or general observation; relational for personal or interpersonal content.",
   ),
   note: z.string().trim().min(1).describe(
-    "A short note written by the assistant directly for the user.",
+    "Card text written directly for the user.",
   ),
   detail: noteDetailSchema.describe(
-    "Preferred card length: brief, standard, or detailed.",
+    "Card length: brief, standard, or detailed.",
   ),
 }).strict();
 
@@ -33,7 +33,7 @@ export function registerRenderNoteCardTool(server: McpServer): void {
     {
       title: "Render note card",
       description:
-        "Display an assistant-written note as a LeileiOS card for an observation, reflection, feeling, context, or next step.",
+        "Display an assistant-written observation, explanation, relational note, or next step as a LeileiOS card.",
       inputSchema: renderNoteCardInputSchema,
       outputSchema: renderNoteCardOutputSchema,
       annotations: {

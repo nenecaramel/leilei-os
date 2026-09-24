@@ -28,7 +28,7 @@ export function registerGetCurrentTimeTool(
     "get_current_time",
     {
       title: "Get current time",
-      description: "Read the current time in the fixed Asia/Shanghai product timezone.",
+      description: "Read the current time in Asia/Shanghai.",
       inputSchema: getCurrentTimeInputSchema,
       outputSchema: getCurrentTimeOutputSchema,
       annotations: {

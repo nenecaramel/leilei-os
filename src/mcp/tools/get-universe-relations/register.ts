@@ -27,7 +27,7 @@ export type GetUniverseRelationsToolDependencies = { universeService: Pick<Unive
 
 export function registerGetUniverseRelationsTool(server: McpServer, dependencies: GetUniverseRelationsToolDependencies): void {
   server.registerTool("get_universe_relations", {
-    title: "Get Universe node relations", description: UNIVERSE_DOMAIN_BOUNDARY + " Read relations touching one exact node ID.",
+    title: "Get Universe node relations", description: "Read relations connected to one Universe node.",
     inputSchema: z.object({ node_id: z.string().trim().min(1).max(256).describe("Exact canonical Universe node ID.") }).strict(), outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ node_id }) => {

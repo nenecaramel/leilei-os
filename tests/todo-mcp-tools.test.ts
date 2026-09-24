@@ -605,10 +605,8 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
     Object.keys(write.inputSchema.properties ?? {}).sort(),
     ["date", "author", "expected_revision", "entries", "idempotency_key"].sort(),
   );
-  assert.match(write.description ?? "", /expected_revision.*read_todo_day/i);
-  assert.match(write.description ?? "", /creation.*reorder.*full replacement/i);
+  assert.match(write.description ?? "", /create.*reorder.*fully replace/i);
   assert.match(write.description ?? "", /entry tools.*single-entry changes/i);
-  assert.match(write.description ?? "", /complete ordered paper/i);
 
   const append = tools.find((tool) => tool.name === "append_todo_entry");
   assert.ok(append);
@@ -617,14 +615,12 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
     ["date", "author", "kind", "text", "idempotency_key"].sort(),
   );
   assert.equal("revision" in (append.inputSchema.properties ?? {}), false);
-  assert.match(append.description ?? "", /server creates.*id.*revision/i);
   assert.match(append.description ?? "", /paper revision.*not required/i);
 
   const updateEntry = tools.find((tool) => tool.name === "update_todo_entry");
   assert.ok(updateEntry);
   assert.ok(updateEntry.inputSchema.properties?.expected_revision);
   assert.ok(updateEntry.inputSchema.properties?.entry_id);
-  assert.match(updateEntry.description ?? "", /entry_id.*expected_revision/i);
   assert.match(updateEntry.description ?? "", /other entries.*independent/i);
 
   const deleteEntry = tools.find((tool) => tool.name === "delete_todo_entry");

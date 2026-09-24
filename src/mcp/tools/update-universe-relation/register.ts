@@ -30,7 +30,7 @@ export type UpdateUniverseRelationToolDependencies = {
 export function registerUpdateUniverseRelationTool(server: McpServer, dependencies: UpdateUniverseRelationToolDependencies): void {
   server.registerTool("update_universe_relation", {
     title: "Update a Universe relation",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Update relation_type and/or strength; identity and endpoints stay unchanged.",
+    description: "Change a Universe relation's type and/or strength; endpoints stay unchanged.",
     inputSchema: updateUniverseRelationInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },

@@ -167,7 +167,7 @@ export function registerNotionExplicitWriteTools(
     {
       title: "Write Notion page",
       description:
-        "Advanced explicit-payload Notion page write. Prefer typed Notion tools when they fit. Supports create, update, and update_content; fresh-read verified.",
+        "Advanced explicit-payload Notion page write; prefer typed tools when they fit.",
       inputSchema: pageInputSchema,
       outputSchema: explicitReceiptOutputSchema,
       annotations: {
@@ -234,7 +234,7 @@ export function registerNotionExplicitWriteTools(
     {
       title: "Write Notion comment",
       description:
-        "Advanced explicit-payload Notion comment write. Prefer typed comment tools when they fit. Fresh-read verified.",
+        "Advanced explicit-payload Notion comment write; prefer typed comment tools when they fit.",
       inputSchema: commentInputSchema,
       outputSchema: explicitReceiptOutputSchema,
       annotations: {

@@ -26,7 +26,7 @@ export type GetNotionConnectionToolDependencies = NotionUserAuthorizationDepende
 export function registerGetNotionConnectionTool(server: McpServer, dependencies: GetNotionConnectionToolDependencies): void {
   server.registerTool("get_notion_connection", {
     title: "Get Notion connection capabilities",
-    description: "Read the authenticated server-side Notion connection identity and available read capabilities without exposing credentials.",
+    description: "Read the current Notion connection identity and capabilities without credentials.",
     inputSchema: z.object({}).strict(),
     outputSchema,
     annotations: readOnlyNotionAnnotations,

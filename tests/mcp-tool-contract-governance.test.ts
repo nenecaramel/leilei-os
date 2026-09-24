@@ -133,8 +133,8 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
 
   const globalSearch = byName.get("global_search");
   assert.ok(globalSearch?.description);
-  assert.match(globalSearch.description, /selected LeileiOS domains/iu);
-  assert.match(globalSearch.description, /domain-specific search when the domain is known/iu);
+  assert.match(globalSearch.description, /LeileiOS modules/iu);
+  assert.match(globalSearch.description, /domain search when the domain is known/iu);
 
   const dedicatedDiscovery = [
     ["search_diary", "get_diary"],
@@ -161,47 +161,16 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
   assert.match(byName.get("delete_todo_entry")?.description ?? "", /other entries are independent/iu);
 });
 
-test("domain language disambiguates adjacent model-facing concepts", async () => {
+test("tool descriptions stay concise without repeated domain boilerplate", async () => {
   const tools = await listTools(createMcpServer({} as never));
-  const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
-  const groups = [
-    {
-      names: ["read_todo_day", "list_todo_dates", "search_todo", "replace_todo_paper", "append_todo_entries", "append_todo_entry", "update_todo_entry", "delete_todo_entry"],
-      pattern: /^Todo: dated lightweight entries\./iu,
-    },
-    {
-      names: ["search_diary", "get_diary", "create_diary", "update_diary"],
-      pattern: /^Diary: dated journal entries\./iu,
-    },
-  ] as const;
-
-  for (const group of groups) {
-    for (const name of group.names) {
-      const tool = byName.get(name);
-      assert.ok(tool?.description, `${name} must have a domain boundary description`);
-      assert.match(tool.description, group.pattern);
-    }
-  }
-
-  for (const name of ["list_universe_nodes", "get_universe_node", "get_universe_relations"] as const) {
-    const tool = byName.get(name);
-    assert.ok(tool?.description, `${name} must have a Universe boundary description`);
-    assert.match(tool.description, /^Universe: concept graph with relations and provenance\./iu);
-  }
-
-  for (const name of [
-    "create_universe_node",
-    "update_universe_node",
-    "create_universe_relation",
-    "update_universe_relation",
-    "delete_universe_relation",
-    "add_universe_diary_source",
-    "delete_universe_diary_source",
-  ] as const) {
-    const tool = byName.get(name);
-    assert.ok(tool?.description, `${name} must have a Universe boundary description`);
-    assert.match(tool.description, /Universe: concept graph with relations and provenance\./iu);
+  for (const tool of tools) {
+    assert.ok(tool.description, `${tool.name} must have a description`);
+    assert.doesNotMatch(
+      tool.description,
+      /dated lightweight entries|dated journal entries|concept graph with relations and provenance/iu,
+      `${tool.name} must not repeat domain boilerplate`,
+    );
   }
 });
 

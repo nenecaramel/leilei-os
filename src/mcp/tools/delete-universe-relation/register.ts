@@ -27,7 +27,7 @@ export type DeleteUniverseRelationToolDependencies = {
 export function registerDeleteUniverseRelationTool(server: McpServer, dependencies: DeleteUniverseRelationToolDependencies): void {
   server.registerTool("delete_universe_relation", {
     title: "Delete a Universe relation",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Delete one relation.",
+    description: "Delete one Universe relation.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },

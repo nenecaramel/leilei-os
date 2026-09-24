@@ -23,7 +23,7 @@ export type UpdateUniverseNodeToolDependencies = {
 export function registerUpdateUniverseNodeTool(server: McpServer, dependencies: UpdateUniverseNodeToolDependencies): void {
   server.registerTool("update_universe_node", {
     title: "Update a Universe node",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Partially update one node; omitted fields stay unchanged.",
+    description: "Partially update one Universe node; provide at least one field.",
     inputSchema: updateUniverseNodeInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },

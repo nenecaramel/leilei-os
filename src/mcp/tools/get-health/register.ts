@@ -18,13 +18,13 @@ const healthDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
 const getHealthInputSchema = z.object({
   date: healthDateSchema
     .optional()
-    .describe("Exact Asia/Shanghai date (YYYY-MM-DD). Mutually exclusive with days; never provide both."),
+    .describe("Exact Asia/Shanghai date (YYYY-MM-DD); mutually exclusive with days."),
   days: z.number()
     .int()
     .min(1)
     .max(60)
     .optional()
-    .describe("Trailing number of Asia/Shanghai calendar days (1-60). Mutually exclusive with date; never provide both."),
+    .describe("Trailing Asia/Shanghai calendar days (1-60); mutually exclusive with date."),
 }).strict();
 
 const healthRecordSchema = z.object({
@@ -59,7 +59,7 @@ export function registerGetHealthTool(
     {
       title: "Get Health summary",
       description:
-        "Read the authenticated user's Health v2 summary in exactly one of three modes: provide date only for one Asia/Shanghai date; provide days only for a trailing range of 1-60 days; or omit both for today. Never provide both date and days.",
+        "Read Health for one date, a recent day range, or today.",
       inputSchema: getHealthInputSchema,
       outputSchema: getHealthOutputSchema,
       annotations: {

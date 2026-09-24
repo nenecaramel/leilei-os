@@ -28,7 +28,7 @@ export type AddUniverseDiarySourceToolDependencies = {
 export function registerAddUniverseDiarySourceTool(server: McpServer, dependencies: AddUniverseDiarySourceToolDependencies): void {
   server.registerTool("add_universe_diary_source", {
     title: "Add a Universe Diary source",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Attach one active or archived Diary as node provenance.",
+    description: "Attach a Diary as provenance for one Universe node.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },

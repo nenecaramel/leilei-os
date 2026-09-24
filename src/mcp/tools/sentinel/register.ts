@@ -124,7 +124,7 @@ export function registerSentinelTools(
 ): void {
   server.registerTool("sentinel_get_state", {
     title: "Read Sentinel wake state",
-    description: "Read fresh policy and state for one claimed Sentinel wake owned by the session.",
+    description: "Read the latest state and policy for a claimed Sentinel wake.",
     inputSchema: z.object({ wakeId: wakeIdSchema }).strict(),
     outputSchema: stateOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -151,7 +151,7 @@ export function registerSentinelTools(
 
   server.registerTool("sentinel_claim_current_wake", {
     title: "Claim the current Sentinel wake",
-    description: "Claim the session owner's current active Sentinel wake and return fresh state atomically. Fails closed when no eligible wake exists.",
+    description: "Claim the current eligible Sentinel wake and return its latest state atomically.",
     inputSchema: z.object({}).strict(),
     outputSchema: claimOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -191,7 +191,7 @@ export function registerSentinelTools(
 
   server.registerTool("complete_sentinel_wake", {
     title: "Complete Sentinel wake",
-    description: "Finalize one claimed Sentinel wake with contact or quiet, the next wake time, and a replacement context capsule. quiet emits 醒了一下，没事。",
+    description: "Complete a claimed Sentinel wake with a decision, next wake time, and new context capsule.",
     inputSchema: completeInputSchema,
     outputSchema: completeOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

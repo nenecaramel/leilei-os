@@ -27,7 +27,7 @@ export type ReadNotionDataSourceToolDependencies = NotionUserAuthorizationDepend
 export function registerReadNotionDataSourceTool(server: McpServer, dependencies: ReadNotionDataSourceToolDependencies): void {
   server.registerTool("read_notion_data_source", {
     title: "Read a Notion data source",
-    description: "Read one accessible Notion data source identity and schema. Data sources are not databases and must be addressed by their own stable ID.",
+    description: "Read a Notion data source's metadata and schema.",
     inputSchema: z.object({ data_source_id: idSchema }).strict(),
     outputSchema,
     annotations: readOnlyNotionAnnotations,

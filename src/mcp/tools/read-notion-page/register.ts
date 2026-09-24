@@ -57,7 +57,7 @@ export function registerReadNotionPageTool(
 ): void {
   server.registerTool("read_notion_page", {
     title: "Read a Notion page",
-    description: "Read one Notion page by exact ID or URL with bounded content. Continue with content_metadata.next_cursor when truncated; child pages and databases are listed, not expanded.",
+    description: "Read a Notion page by ID or URL; continue with cursor when content is truncated.",
     inputSchema,
     outputSchema,
     annotations: {

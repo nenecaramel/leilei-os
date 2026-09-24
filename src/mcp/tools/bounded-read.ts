@@ -32,11 +32,11 @@ export const boundedReadInputSchemaFields = {
     .default(DEFAULT_MCP_BOUNDED_READ_CHARS)
     .optional()
     .describe(
-      `Maximum Unicode code points to return from the body in this call. Defaults to ${DEFAULT_MCP_BOUNDED_READ_CHARS}; maximum ${MAX_MCP_BOUNDED_READ_CHARS}.`,
+      `Maximum body characters to return. Default ${DEFAULT_MCP_BOUNDED_READ_CHARS}; max ${MAX_MCP_BOUNDED_READ_CHARS}.`,
     ),
   cursor: z.string().min(1).max(MCP_BOUNDED_READ_CURSOR_MAX_LENGTH)
     .optional()
-    .describe("Opaque continuation cursor returned by the previous bounded read of the same unchanged record."),
+    .describe("Continuation cursor from the previous read of the same unchanged record."),
 };
 
 export const boundedReadMetadataSchema = z.object({

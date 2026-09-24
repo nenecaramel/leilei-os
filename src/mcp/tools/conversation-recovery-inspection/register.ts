@@ -138,7 +138,7 @@ export function registerConversationRecoveryInspectionTools(
 ): void {
   server.registerTool("list_conversation_exclusions", {
     title: "List Conversation Exclusions",
-    description: "List user-scoped durable Conversation exclusions for recovery diagnosis. Read-only.",
+    description: "List Conversation exclusions for recovery diagnosis.",
     inputSchema: listInputSchema,
     outputSchema: listOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -195,7 +195,7 @@ export function registerConversationRecoveryInspectionTools(
 
   server.registerTool("inspect_conversation_restore_candidates", {
     title: "Inspect Conversation Restore Candidates",
-    description: "Resolve retained raw sources that contain one Conversation exclusion target. Read-only; no restore.",
+    description: "Find retained raw sources containing one Conversation exclusion; no restore.",
     inputSchema: inspectInputSchema,
     outputSchema: inspectOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -239,7 +239,7 @@ export function registerConversationRecoveryInspectionTools(
 
   server.registerTool("inspect_conversation_restore_path", {
     title: "Inspect Conversation Restore Path",
-    description: "Read retained-source branch evidence for one verified exclusion/source, including ancestry, roles, timestamps, text, and depth. Read-only.",
+    description: "Inspect branch recovery evidence for one exclusion/source pair.",
     inputSchema: pathInputSchema,
     outputSchema: pathOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -296,7 +296,7 @@ export function registerConversationRecoveryInspectionTools(
 
   server.registerTool("restore_conversation_exclusion", {
     title: "Restore Conversation Exclusion",
-    description: "Restore one verified Conversation exclusion from one retained source; only that exclusion is removed on success. Inspect candidates and path first.",
+    description: "Restore one Conversation exclusion from a verified source; inspect candidates and path first.",
     inputSchema: restoreInputSchema,
     outputSchema: restoreOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },

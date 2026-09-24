@@ -175,7 +175,7 @@ export function registerDiaryCommentTools(
     {
       title: "Add a Diary comment",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Add an independent comment to an active entry. Author is immutable; the parent Diary is unchanged.",
+        "Add a comment to an active Diary without changing the Diary itself.",
       inputSchema: addInputSchema,
       outputSchema: addOutputSchema,
       annotations: {
@@ -238,7 +238,7 @@ export function registerDiaryCommentTools(
     {
       title: "Get one Diary comment",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Read one comment by exact id. scope follows the parent Diary lifecycle.",
+        "Read one Diary comment.",
       inputSchema: getInputSchema,
       outputSchema: getOutputSchema,
       annotations: {
@@ -279,7 +279,7 @@ export function registerDiaryCommentTools(
     {
       title: "List Diary comments",
       description:
-        DIARY_DOMAIN_BOUNDARY + " List comments for one Diary entry in reading order; use next_before for older comments.",
+        "List comments for one Diary; page backward for older comments.",
       inputSchema: listInputSchema,
       outputSchema: listOutputSchema,
       annotations: {
@@ -334,7 +334,7 @@ export function registerDiaryCommentTools(
     {
       title: "Update one Diary comment",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Replace one active comment's content using its current revision; author stays unchanged.",
+        "Replace one active Diary comment's content; author stays unchanged.",
       inputSchema: updateInputSchema,
       outputSchema: updateOutputSchema,
       annotations: {
@@ -386,7 +386,7 @@ export function registerDiaryCommentTools(
     {
       title: "Delete one Diary comment",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Permanently delete one active comment using its current revision; the Diary remains.",
+        "Permanently delete one Diary comment; keep the Diary.",
       inputSchema: deleteInputSchema,
       outputSchema: deleteOutputSchema,
       annotations: {

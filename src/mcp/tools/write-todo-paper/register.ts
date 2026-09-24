@@ -69,7 +69,7 @@ export type WriteTodoPaperToolDependencies = {
 };
 
 const REPLACE_TODO_PAPER_DESCRIPTION =
-  TODO_DOMAIN_BOUNDARY + " Replace one complete L/G/C paper using expected_revision from read_todo_day, or null when missing. Use for creation, reorder, or full replacement; use entry tools for single-entry changes. entries is the complete ordered paper.";
+  "Create, reorder, or fully replace one Todo paper; use entry tools for single-entry changes.";
 
 export function registerReplaceTodoPaperTool(
   server: McpServer,

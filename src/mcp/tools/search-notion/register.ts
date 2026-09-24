@@ -59,7 +59,7 @@ export function registerSearchNotionTool(
 ): void {
   server.registerTool("search_notion", {
     title: "Search Notion pages",
-    description: "Find accessible Notion pages by title; use read_notion_page for page content. This is not body full-text search.",
+    description: "Search accessible Notion pages by title; not body full-text search.",
     inputSchema,
     outputSchema,
     annotations: {

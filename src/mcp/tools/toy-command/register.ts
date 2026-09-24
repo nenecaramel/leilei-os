@@ -107,7 +107,7 @@ export function registerToyCommandTools(
     {
       title: "Set toy intensity",
       description:
-        "Queue a short-lived intensity command for the bound toy. User and device identity are server-owned.",
+        "Set the bound toy's intensity and run duration.",
       inputSchema: toySetInputSchema,
       outputSchema: toySetOutputSchema,
       annotations: {
@@ -164,7 +164,7 @@ export function registerToyCommandTools(
     {
       title: "Stop toy",
       description:
-        "Queue a stop command for the bound toy.",
+        "Stop the bound toy.",
       inputSchema: toyStopInputSchema,
       outputSchema: toyStopOutputSchema,
       annotations: {

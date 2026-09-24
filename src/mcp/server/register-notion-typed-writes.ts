@@ -210,7 +210,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Create Notion page",
       description:
-        "Create a Notion page from typed parent, title, and properties. Add body content separately. Fresh-read verified.",
+        "Create a Notion page with typed parent, title, and properties; add body content separately.",
       inputSchema: createPageInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -242,7 +242,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Update Notion page properties",
       description:
-        "Update selected Notion page properties with typed values. Fresh-read verified.",
+        "Update selected Notion page properties with typed values.",
       inputSchema: updatePropertiesInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -265,7 +265,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Append Notion page content",
       description:
-        "Append Markdown content to one exact Notion page. Fresh-read verified.",
+        "Append Markdown to a Notion page, preserving existing content.",
       inputSchema: pageContentInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -289,7 +289,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Replace Notion page content",
       description:
-        "Replace the complete Markdown body of one exact Notion page. Use append_notion_page_content to preserve existing content. Fresh-read verified.",
+        "Replace a Notion page's full Markdown body; use append_notion_page_content to preserve existing content.",
       inputSchema: pageContentInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: {
@@ -316,7 +316,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Add Notion comment",
       description:
-        "Add one plain-text comment to an exact Notion page. Fresh-read verified.",
+        "Add a plain-text comment to a Notion page.",
       inputSchema: addCommentInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,
@@ -339,7 +339,7 @@ export function registerNotionTypedWriteTools(
     {
       title: "Reply to Notion comment discussion",
       description:
-        "Reply with plain text to one Notion discussion. Fresh-read verified.",
+        "Reply to a Notion comment discussion.",
       inputSchema: replyCommentInputSchema,
       outputSchema: receiptOutputSchema,
       annotations: notionTypedWriteAnnotations,

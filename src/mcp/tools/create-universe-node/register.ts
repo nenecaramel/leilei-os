@@ -38,7 +38,7 @@ export function registerCreateUniverseNodeTool(
 ): void {
   server.registerTool("create_universe_node", {
     title: "Create a Universe node",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Create one node at an explicit 0..100 position; server owns ID and timestamps.",
+    description: "Create a Universe node.",
     inputSchema: createUniverseNodeInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

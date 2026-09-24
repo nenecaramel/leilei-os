@@ -68,7 +68,7 @@ export type WriteDiaryToolDependencies = {
 };
 
 const CREATE_DIARY_DESCRIPTION =
-  DIARY_DOMAIN_BOUNDARY + " Create one dated Diary entry. Supply an exact YYYY-MM-DD date; authenticated user and source are server-owned.";
+  "Create a Diary entry for an exact date.";
 
 export function registerCreateDiaryTool(
   server: McpServer,

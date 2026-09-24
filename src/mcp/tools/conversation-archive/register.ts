@@ -19,14 +19,14 @@ const readModeSchema = z.enum(["compact", "full"]);
 
 const searchInputSchema = z.object({
   query: z.string().trim().min(1).max(500)
-    .describe("Text to find inside the current canonical Conversation Archive."),
+    .describe("Text to search in the Conversation Archive."),
   provider: providerSchema.optional(),
   role: roleSchema.optional(),
   conversation_id: z.string().uuid().optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   time_zone: z.string().min(1).max(100).optional()
-    .describe("Required when from or to is supplied. Use an IANA time zone such as Asia/Shanghai."),
+    .describe("Required with from/to; use an IANA time zone."),
   favorites_only: z.boolean().default(false).optional(),
   scope: lifecycleScopeSchema.default("active").optional(),
   limit: z.number().int().min(1).max(100).default(20).optional(),
@@ -72,18 +72,18 @@ const searchOutputSchema = z.object({
 
 const readInputSchema = z.object({
   conversation_id: z.string().uuid()
-    .describe("Canonical Conversation id returned by search_conversations or global_search."),
+    .describe("Conversation ID returned by search_conversations or global_search."),
   message_id: z.string().uuid().optional()
-    .describe("Optional exact canonical message id. When supplied, read a bounded context window around this message."),
+    .describe("Optional message ID; reads context around this message."),
   view: viewSchema.default("default").optional()
-    .describe("default uses the ChatGPT authoritative current path and Claude branch-inclusive canonical view. Use all to inspect saved branches."),
+    .describe("default uses the canonical view; all includes saved branches."),
   scope: lifecycleScopeSchema.default("active").optional(),
   branch_id: z.string().uuid().optional()
-    .describe("Optional saved/deleted branch id. Only valid with scope=deleted."),
+    .describe("Optional branch ID; only valid with scope=deleted."),
   mode: readModeSchema.default("compact").optional()
-    .describe("compact returns a bounded transcript. full includes canonical blocks, payloads, attachments, and provider metadata."),
+    .describe("compact returns transcript text; full adds blocks, payloads, attachments, and provider metadata."),
   context: z.number().int().min(0).max(50).default(20).optional()
-    .describe("Messages before and after message_id. Ignored when message_id is omitted."),
+    .describe("Messages before and after message_id; ignored without message_id."),
   limit: z.number().int().min(1).max(100).default(40).optional()
     .describe("Page size when message_id is omitted."),
   offset: z.number().int().min(0).max(1_000_000).default(0).optional()
@@ -251,7 +251,7 @@ export function registerConversationArchiveTools(
 ): void {
   server.registerTool("list_conversations", {
     title: "List Conversations",
-    description: "List canonical Conversations in one lifecycle scope; use read_conversation for detail.",
+    description: "Browse Conversations; use read_conversation for detail.",
     inputSchema: listInputSchema,
     outputSchema: listOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -276,7 +276,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("search_conversations", {
     title: "Search Conversation Archive",
-    description: "Search canonical ChatGPT/Claude messages. Hits point to read_conversation for bounded context.",
+    description: "Search ChatGPT/Claude messages; use read_conversation for context.",
     inputSchema: searchInputSchema,
     outputSchema: searchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -339,7 +339,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("read_conversation", {
     title: "Read Conversation",
-    description: "Read a bounded canonical Conversation. compact is the default; use full for blocks, payloads, attachments, or provider metadata. With message_id, returns context around that message.",
+    description: "Read a Conversation as paged content or context around one message.",
     inputSchema: readInputSchema,
     outputSchema: readOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

@@ -151,7 +151,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Append multiple Todo entries",
       description:
-        TODO_DOMAIN_BOUNDARY + " Atomically append 1-200 entries to one L/G/C paper. Server creates entry IDs/revisions; paper revision is not required.",
+        "Atomically append 1-200 Todo entries; paper revision is not required.",
       inputSchema: appendBatchInputSchema,
       outputSchema: batchMutationOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -179,7 +179,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Append one Todo entry",
       description:
-        TODO_DOMAIN_BOUNDARY + " Append one entry. Server creates its ID/revision; paper revision is not required.",
+        "Append one Todo entry; paper revision is not required.",
       inputSchema: appendInputSchema,
       outputSchema: mutationOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -208,7 +208,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Update one Todo entry",
       description:
-        TODO_DOMAIN_BOUNDARY + " Update one entry by entry_id using its expected_revision; other entries are independent.",
+        "Update one Todo entry; change kind and/or text. Other entries are independent.",
       inputSchema: updateInputSchema,
       outputSchema: mutationOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -242,7 +242,7 @@ export function registerTodoEntryWriteTools(
     {
       title: "Delete one Todo entry",
       description:
-        TODO_DOMAIN_BOUNDARY + " Delete one entry by entry_id using its expected_revision; other entries are independent.",
+        "Delete one Todo entry; other entries are independent.",
       inputSchema: deleteInputSchema,
       outputSchema: deleteOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },

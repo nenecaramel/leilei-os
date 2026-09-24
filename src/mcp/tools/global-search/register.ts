@@ -135,7 +135,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Search across selected LeileiOS domains. Defaults to Diary, Todo, and Universe; Conversation is opt-in. Prefer a domain-specific search when the domain is known. Use scope=all only for explicit historical search.",
+    description: "Search across LeileiOS modules. Defaults to Diary, Todo, and Universe; add Conversation explicitly. Prefer a domain search when the domain is known.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

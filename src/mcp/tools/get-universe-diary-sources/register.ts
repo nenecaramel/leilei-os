@@ -32,7 +32,7 @@ export type GetUniverseDiarySourcesToolDependencies = {
 export function registerGetUniverseDiarySourcesTool(server: McpServer, dependencies: GetUniverseDiarySourcesToolDependencies): void {
   server.registerTool("get_universe_diary_sources", {
     title: "Get Universe Diary sources",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Read active and archived Diary provenance for one node; returns source metadata, not Diary bodies.",
+    description: "Read Diary provenance metadata for one Universe node.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

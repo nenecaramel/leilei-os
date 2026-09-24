@@ -28,7 +28,7 @@ export type CreateUniverseRelationToolDependencies = {
 export function registerCreateUniverseRelationTool(server: McpServer, dependencies: CreateUniverseRelationToolDependencies): void {
   server.registerTool("create_universe_relation", {
     title: "Create a Universe relation",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Create one directional relation; server owns ID and timestamp.",
+    description: "Create a directional Universe relation.",
     inputSchema: createUniverseRelationInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

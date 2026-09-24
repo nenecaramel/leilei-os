@@ -64,7 +64,7 @@ export type SearchTodoToolDependencies = { todoService: SearchTodoToolService; g
 export function registerSearchTodoTool(server: McpServer, dependencies: SearchTodoToolDependencies): void {
   server.registerTool("search_todo", {
     title: "Search Todo entries",
-    description: TODO_DOMAIN_BOUNDARY + " Search entry text across dates with optional author/kind/date filters. Results include date, author, kind, matched text, and snippet; use read_todo_day for the full paper. If has_more, pass next_cursor back with the same filters.",
+    description: "Search Todo entries; use read_todo_day for the full paper.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

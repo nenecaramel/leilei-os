@@ -28,7 +28,7 @@ export type DeleteUniverseDiarySourceToolDependencies = {
 export function registerDeleteUniverseDiarySourceTool(server: McpServer, dependencies: DeleteUniverseDiarySourceToolDependencies): void {
   server.registerTool("delete_universe_diary_source", {
     title: "Delete a Universe Diary source",
-    description: UNIVERSE_DOMAIN_BOUNDARY + " Remove one Diary provenance binding; the Diary itself remains.",
+    description: "Remove one Diary provenance link from a Universe node; keep the Diary.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },

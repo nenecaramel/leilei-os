@@ -10,14 +10,14 @@ export const mcpIdempotencyKeySchema = z.string()
   .max(MCP_IDEMPOTENCY_KEY_MAX_LENGTH)
   .regex(MCP_IDEMPOTENCY_KEY_PATTERN)
   .describe(
-    "Stable key for one logical mutation. Reuse only for the exact same request; use a new key for a different mutation.",
+    "Stable key for one logical mutation; reuse only for the exact same request.",
   );
 
 export const mcpExpectedRevisionSchema = z.number()
   .int()
   .min(1)
   .describe(
-    "Exact current entity revision from the latest read; stale values are rejected.",
+    "Current entity revision from the latest read.",
   );
 
 export const mcpExpectedNullableRevisionSchema = z.number()
@@ -25,12 +25,12 @@ export const mcpExpectedNullableRevisionSchema = z.number()
   .min(0)
   .nullable()
   .describe(
-    "Current entity revision from the latest read, or null only when the entity is missing.",
+    "Current entity revision, or null when the entity does not exist.",
   );
 
 export const universeExpectedVersionSchema = z.number()
   .int()
   .nonnegative()
   .describe(
-    "Current global Universe snapshot version from the latest Universe read; not an entity revision.",
+    "Current global Universe snapshot version; not an entity revision.",
   );

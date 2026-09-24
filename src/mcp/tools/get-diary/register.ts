@@ -80,7 +80,7 @@ export function registerGetDiaryTool(
     {
       title: "Get one diary entry",
       description:
-        DIARY_DOMAIN_BOUNDARY + " Read one exact entry with bounded content. Continue with next_cursor when truncated; comments are separate via list_diary_comments.",
+        "Read one Diary entry; continue with cursor when content is truncated.",
       inputSchema: getDiaryInputSchema,
       outputSchema: getDiaryOutputSchema,
       annotations: {
