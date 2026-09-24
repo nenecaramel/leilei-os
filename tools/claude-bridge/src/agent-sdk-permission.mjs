@@ -227,15 +227,16 @@ export function createAgentSdkPermissionCallback({
   };
 }
 
-export function assertPermissionCallbackQueryOptions(
+export function assertInteractiveCallbackQueryOptions(
   queryOptions = {},
+  callbackName = "host callback",
 ) {
   if (
     queryOptions
     && typeof queryOptions.canUseTool === "function"
   ) {
     throw runtimeError(
-      "permissionHandler cannot be combined with queryOptions.canUseTool.",
+      `${callbackName} cannot be combined with queryOptions.canUseTool.`,
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
     );
   }
@@ -245,7 +246,7 @@ export function assertPermissionCallbackQueryOptions(
     && queryOptions.allowedTools.length > 0
   ) {
     throw runtimeError(
-      "permissionHandler cannot be combined with allowedTools because pre-allowed tools can bypass the callback.",
+      `${callbackName} cannot be combined with allowedTools because pre-allowed tools can bypass the callback.`,
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
     );
   }
@@ -258,8 +259,17 @@ export function assertPermissionCallbackQueryOptions(
       === true
   ) {
     throw runtimeError(
-      "permissionHandler cannot be combined with permission bypass options.",
+      `${callbackName} cannot be combined with permission bypass options.`,
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
     );
   }
+}
+
+export function assertPermissionCallbackQueryOptions(
+  queryOptions = {},
+) {
+  return assertInteractiveCallbackQueryOptions(
+    queryOptions,
+    "permissionHandler",
+  );
 }

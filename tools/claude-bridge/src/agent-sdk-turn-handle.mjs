@@ -4,9 +4,12 @@ import {
   normalizeAgentSdkInterruptReceipt,
 } from "./agent-sdk-interrupt.mjs";
 import {
-  assertPermissionCallbackQueryOptions,
+  assertInteractiveCallbackQueryOptions,
   createAgentSdkPermissionCallback,
 } from "./agent-sdk-permission.mjs";
+import {
+  createAgentSdkQuestionCallback,
+} from "./agent-sdk-question.mjs";
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
@@ -119,6 +122,7 @@ export async function createAgentSdkTurnHandle({
   cwd = process.cwd(),
   queryOptions = {},
   permissionHandler = null,
+  questionHandler = null,
   streaming = false,
   midTurnInput = false,
 } = {}) {
@@ -149,16 +153,68 @@ export async function createAgentSdkTurnHandle({
   const events = new EventEmitter();
 
   let permissionCallback = null;
-  if (permissionHandler !== null) {
-    assertPermissionCallbackQueryOptions(
+  let questionCallback = null;
+
+  if (
+    permissionHandler !== null
+    || questionHandler !== null
+  ) {
+    assertInteractiveCallbackQueryOptions(
       queryOptions,
+      "interactive host callbacks",
     );
+  }
+
+  if (permissionHandler !== null) {
     permissionCallback =
       createAgentSdkPermissionCallback({
         permissionHandler,
         events,
       });
   }
+
+  if (questionHandler !== null) {
+    questionCallback =
+      createAgentSdkQuestionCallback({
+        questionHandler,
+        events,
+      });
+  }
+
+  const interactiveCallback =
+    permissionCallback || questionCallback
+      ? async (
+          toolName,
+          input,
+          context = {},
+        ) => {
+          if (
+            toolName === "AskUserQuestion"
+            && questionCallback
+          ) {
+            return questionCallback(
+              toolName,
+              input,
+              context,
+            );
+          }
+
+          if (permissionCallback) {
+            return permissionCallback(
+              toolName,
+              input,
+              context,
+            );
+          }
+
+          return {
+            behavior: "deny",
+            message:
+              "LeileiOS has no permission handler configured for this tool request.",
+            interrupt: false,
+          };
+        }
+      : null;
 
   const inputQueue = midTurnInput
     ? createAgentSdkInputQueue(
@@ -183,8 +239,8 @@ export async function createAgentSdkTurnHandle({
       ? { includePartialMessages: true }
       : {}),
     ...(
-      permissionCallback
-        ? { canUseTool: permissionCallback }
+      interactiveCallback
+        ? { canUseTool: interactiveCallback }
         : {}
     ),
     ...(resume ? { resume } : {}),

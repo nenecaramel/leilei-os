@@ -494,3 +494,66 @@ Acceptance meaning:
 - the provider input queue is execution state only and does not become canonical conversation authority;
 - graceful interrupt remains a separate control path;
 - default finite one-message input behavior remains unchanged when `midTurnInput` is disabled.
+
+
+## Phase 2 AskUserQuestion host round-trip — branch implementation
+
+This slice closes the remaining `permission / AskUserQuestion` capability item by giving the dedicated turn handle a stable host question callback.
+
+Contract:
+
+- `createAgentSdkTurnHandle({ questionHandler })` installs an Agent SDK `canUseTool` dispatcher that routes `AskUserQuestion` to the host question callback.
+- `questionHandler(request, { signal })` receives:
+  - stable `toolUseId`, `requestId`, and `agentId`;
+  - the raw structured `input`;
+  - normalized non-empty `questions[]`, preserving option metadata such as labels, descriptions, previews, annotations, and multi-select flags when the SDK supplies them.
+- LeileiOS question decisions are:
+  - `{ decision: "answer", answers }`
+  - `{ decision: "cancel", message }`
+- An answer maps to SDK `behavior: "allow"` with `updatedInput: { ...input, answers }`.
+- Cancellation maps to SDK `behavior: "deny"` without interrupting the provider turn.
+- The turn-handle event surface emits `question-request`, `question-decision`, and `question-error`.
+- If both `questionHandler` and `permissionHandler` are installed, `AskUserQuestion` is routed to the question handler first; other permission prompts continue through the permission handler.
+- A question-only host fails closed for an unrelated permission prompt instead of silently auto-allowing it.
+- Raw `queryOptions.canUseTool`, non-empty `allowedTools`, and permission bypass remain forbidden while host interactive callbacks own the SDK control path.
+
+REAL SDK acceptance smoke:
+
+- restrict the tool surface to `AskUserQuestion`;
+- use plan mode to make the deterministic clarification turn natural;
+- require exactly one question asking which theme to choose, with Light and Dark options;
+- answer Dark through the LeileiOS `questionHandler`;
+- require real `toolUseId`, `requestId`, and cancellation signal;
+- require the same Query to continue and return the exact Dark marker;
+- no resume, no interrupt, no canonical mutation, and no UI implementation in this slice.
+
+The public Agent SDK already exposes `AskUserQuestion` and Anthropic's own demo uses the same `canUseTool -> updatedInput.answers` round trip. LeileiOS keeps that provider mechanism behind its own stable question contract rather than leaking the raw callback shape into product layers.
+
+
+## REAL SDK AskUserQuestion acceptance — PASS
+
+Validated on macOS against `@anthropic-ai/claude-agent-sdk@0.3.281` using the existing Claude subscription login.
+
+Observed real smoke result:
+
+- architecture: `dedicated_agent_sdk_ask_user_question`
+- provider session: `fd107afd-585e-4f76-86eb-2ad9aeaa91f1`
+- exactly one real `AskUserQuestion` request reached the LeileiOS `questionHandler`
+- normalized `toolUseId`: `toolu_01BUX4qz8gTAVGX2nq9QFUFS`
+- SDK `requestId`: `d5cad4ba-c5d1-4ac2-8439-038a9cad8677`
+- SDK cancellation signal was present
+- structured question: `Which theme should this smoke choose?`
+- option labels included exactly the expected Light / Dark choices
+- LeileiOS selected `Dark`
+- same Query continued through `updatedInput.answers`
+- terminal text: `LEILEIOS_ASK_USER_QUESTION_DARK`
+- same-query round trip: true
+
+Acceptance meaning:
+
+- the dedicated Agent SDK turn handle now has a stable host question callback in addition to the stable permission callback;
+- `AskUserQuestion` is routed to `questionHandler` before generic permission handling;
+- structured question metadata stays available to the host while the provider-specific callback shape remains hidden below the runtime contract;
+- answer delivery is proven against the real SDK through `updatedInput.answers`;
+- cancellation signal, tool-use identity, and request identity are available to the host;
+- no resume, interrupt, canonical mutation, daemon protocol, or iOS UI behavior is introduced by this slice.
