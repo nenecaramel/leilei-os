@@ -240,3 +240,13 @@ established.
 - This was not a turn-handle lifecycle failure: the raw #485 interrupt smoke had explicitly set `allowedTools: ["Bash"]`, while the first turn-handle smoke omitted that equivalent permission condition.
 - The smoke now carries the same explicit Bash allowance as #485 so the architectural comparison is like-for-like.
 - If the STARTED marker still does not appear within 5 seconds, the smoke hard-aborts immediately and fails with a focused permission/execution diagnostic instead of waiting for the 60-second total watchdog.
+
+
+## Second real turn-handle smoke finding — finite input plus bidirectional control
+
+- The second real smoke passed the interrupted turn far enough to reach graceful interrupt and then stalled only on the normal same-session resume at `start_resume_consumption`.
+- Root cause: the first handle draft kept its async input iterable open until terminal result. That works for an interrupted turn because `interrupt()` releases the input, but a normal turn can deadlock: the host waits for result before ending input while the SDK waits for input completion before final result.
+- The handle now uses a finite one-message async iterable. It does not hold the input generator open itself.
+- Bidirectional control liveness is supplied explicitly through SDK query options such as `canUseTool`; the handle forwards that callback but does not own product permission policy.
+- The real smoke uses a pass-through `canUseTool` callback for both the interrupted turn and the continuity resume, with Bash explicitly allowed only for the interrupted turn.
+- Unit coverage now proves the async input stream ends after exactly one user message and that bidirectional query options are forwarded unchanged.
