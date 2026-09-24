@@ -428,3 +428,43 @@ Acceptance meaning:
 - `accumulated_length` is monotonic and terminal text remains the final authoritative turn result;
 - thinking deltas are intentionally not exposed as displayable assistant streaming text;
 - no mid-turn user input, canonical authority, daemon protocol, or iOS behavior is added in this slice.
+
+
+## Phase 2 mid-turn user input contract — branch implementation
+
+This slice adds a queued user-message path to the accepted dedicated Agent SDK turn handle. It is intentionally narrower than a full persistent multi-turn session abstraction.
+
+Contract:
+
+- `createAgentSdkTurnHandle({ midTurnInput: true })` uses a pushable async input iterable instead of the default finite one-message iterable.
+- The initial prompt is queued first and remains the first SDK user message.
+- Once `handle.start()` has begun, `handle.sendUserMessage(text)` can queue a nonblank additional user message while the same SDK Query is still active.
+- Accepted mid-turn input returns `{ status: "queued" }`.
+- Mid-turn input is rejected before start, after terminal completion, after hard abort, and once graceful interrupt has been requested.
+- The input queue closes when the SDK turn emits its terminal result, on hard abort, on graceful interrupt, and in all terminal cleanup paths.
+- The existing finite-input behavior remains the default when `midTurnInput` is false, so the already accepted normal-turn and resume semantics are unchanged.
+- This slice does not assign canonical user-message identity or durable conversation authority to the provider input queue. Canonical Ledger remains authoritative.
+
+SDK evidence informing this design:
+
+- Agent SDK 0.3.274 fixed `getSessionMessages()` so a user message sent while Claude was running a tool is retained where Claude read it.
+- Agent SDK 0.3.275 fixed fork/history handling for messages sent while Claude was working.
+- The async iterable therefore remains the provider input channel for same-query steering; LeileiOS does not simulate steering by interrupting and restarting the turn.
+
+REAL SDK acceptance requires:
+
+- one real Bash tool call whose command creates STARTED, sleeps, then creates FINISHED;
+- observe normalized Bash `tool_use`;
+- wait until STARTED exists and prove FINISHED does not yet exist;
+- queue the second user message through `handle.sendUserMessage()` while Bash is still running;
+- let the Bash tool finish without calling `interrupt()` or restarting/resuming the provider session;
+- require the terminal answer to follow the later user instruction exactly;
+- same existing Claude subscription auth and pinned `@anthropic-ai/claude-agent-sdk@0.3.281`.
+
+Hard boundaries:
+
+- no canonical message write in this lower runtime layer;
+- no daemon/cross-device protocol change yet;
+- no iOS input UI semantics yet;
+- no background-task preservation semantics are claimed;
+- graceful interrupt remains a separate control from user steering.
