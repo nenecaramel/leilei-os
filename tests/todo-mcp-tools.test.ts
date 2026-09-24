@@ -64,7 +64,7 @@ class TodoToolService {
 
   async listDates(userId: string) {
     this.listCalls.push(userId);
-    return ["2026-08-11", DATE];
+    return [DATE, "2026-08-11"];
   }
 
   async replacePaperIdempotently(input: unknown) {
@@ -210,7 +210,7 @@ test("Todo read tool implementations delegate once and preserve exact server tru
   assert.deepEqual(dates.structuredContent, {
     success: true,
     data: {
-      dates: ["2026-08-11", DATE],
+      dates: [DATE, "2026-08-11"],
       metadata: { returned: 2, has_more: false, next_cursor: null },
     },
   });
@@ -245,7 +245,7 @@ test("read_todo_day author filter exposes only the requested paper in content an
     data: {
       date: DATE,
       author: "C",
-      papers: { L: null, G: null, C: C_PAPER_ON_DATE },
+      papers: { C: C_PAPER_ON_DATE },
     },
   });
   const content = response.content.map((entry) => ("text" in entry ? entry.text : "")).join("\n");
@@ -272,10 +272,10 @@ test("read_todo_day reports a requested author as missing instead of claiming th
     arguments: { date: DATE, author: "C" },
   });
   assert.equal(response.isError, undefined);
-  assert.deepEqual((response.structuredContent as { data: { author: string; papers: TodoDayPapers } }).data, {
+  assert.deepEqual((response.structuredContent as { data: { author: string; papers: Partial<TodoDayPapers> } }).data, {
     date: DATE,
     author: "C",
-    papers: { L: null, G: null, C: null },
+    papers: { C: null },
   });
   const content = response.content.map((entry) => ("text" in entry ? entry.text : "")).join("\n");
   assert.match(content, /C paper.*(?:missing|not found)/i);
@@ -670,7 +670,7 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
   assert.deepEqual(dates.structuredContent, {
     success: true,
     data: {
-      dates: ["2026-08-11", DATE],
+      dates: [DATE, "2026-08-11"],
       metadata: { returned: 2, has_more: false, next_cursor: null },
     },
   });

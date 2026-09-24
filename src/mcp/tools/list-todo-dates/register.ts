@@ -44,7 +44,7 @@ export function registerListTodoDatesTool(
     {
       title: "List Todo dates",
       description:
-        "List dates that contain Todo entries.",
+        "List dates that contain Todo entries, newest first.",
       inputSchema: listTodoDatesInputSchema,
       outputSchema: listTodoDatesOutputSchema,
       annotations: {

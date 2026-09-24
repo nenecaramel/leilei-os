@@ -27,14 +27,16 @@ const readTodoDayInputSchema = z.object({
   author: todoAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
 }).strict();
 
+const todoPapersSchema = z.object({
+  L: todoPaperSchema.nullable(),
+  G: todoPaperSchema.nullable(),
+  C: todoPaperSchema.nullable(),
+}).partial().strict();
+
 const readTodoDayDataSchema = z.object({
   date: z.string(),
   author: todoAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
-  papers: z.object({
-    L: todoPaperSchema.nullable(),
-    G: todoPaperSchema.nullable(),
-    C: todoPaperSchema.nullable(),
-  }),
+  papers: todoPapersSchema,
 });
 
 const readTodoDayOutputSchema = z.object({
@@ -92,17 +94,18 @@ export function registerReadTodoDayTool(
           G: normalizePaper(data.papers.G),
           C: normalizePaper(data.papers.C),
         };
-        const scopedData = author
-          ? {
-              date: data.date,
-              author,
-              papers: {
-                L: author === "L" ? normalizedPapers.L : null,
-                G: author === "G" ? normalizedPapers.G : null,
-                C: author === "C" ? normalizedPapers.C : null,
-              },
-            }
-          : { date: data.date, papers: normalizedPapers };
+        let scopedData: {
+          date: string;
+          author?: "L" | "G" | "C";
+          papers: Partial<TodoDayPapers>;
+        };
+        if (author) {
+          const papers: Partial<TodoDayPapers> = {};
+          papers[author] = normalizedPapers[author];
+          scopedData = { date: data.date, author, papers };
+        } else {
+          scopedData = { date: data.date, papers: normalizedPapers };
+        }
         return {
           content: [{ type: "text", text: todoDayContent(scopedData) }],
           structuredContent: { success: true as const, data: scopedData },
@@ -117,7 +120,7 @@ export function registerReadTodoDayTool(
 function todoDayContent(data: {
   date: string;
   author?: "L" | "G" | "C";
-  papers: TodoDayPapers;
+  papers: Partial<TodoDayPapers>;
 }): string {
   const lines = [`Todo ${data.date}`];
   let paperCount = 0;
