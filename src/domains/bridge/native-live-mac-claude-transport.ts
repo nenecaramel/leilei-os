@@ -15,6 +15,14 @@ export type NativeLiveMacInteractiveTurnOptions = {
   onNormalizedEvent?: (
     event: NativeLiveNormalizedEvent,
   ) => void | Promise<void>;
+  permissionHandler?: (
+    request: Record<string, unknown>,
+    context: { signal: AbortSignal | null },
+  ) => Promise<Record<string, unknown>>;
+  questionHandler?: (
+    request: Record<string, unknown>,
+    context: { signal: AbortSignal | null },
+  ) => Promise<Record<string, unknown>>;
 };
 
 export type NativeLiveMacClaudeTransport =
