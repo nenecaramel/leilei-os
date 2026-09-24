@@ -52,6 +52,34 @@ test("permission request normalizes stable LeileiOS fields", () => {
   });
 });
 
+test("permission request accepts real Agent SDK context key casing", () => {
+  const request = normalizeAgentSdkPermissionRequest(
+    "Write",
+    {
+      file_path: "/tmp/example.txt",
+      content: "hello",
+    },
+    {
+      toolUseID: "toolu_real",
+      requestId: "req_real",
+      agentID: "agent_real",
+    },
+  );
+
+  assert.equal(
+    request.toolUseId,
+    "toolu_real",
+  );
+  assert.equal(
+    request.requestId,
+    "req_real",
+  );
+  assert.equal(
+    request.agentId,
+    "agent_real",
+  );
+});
+
 test("permission decisions map to SDK allow and deny without persistence semantics", () => {
   assert.deepEqual(
     projectLeileiPermissionDecisionToSdk({
