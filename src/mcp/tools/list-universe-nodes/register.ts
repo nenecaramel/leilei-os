@@ -13,7 +13,7 @@ const outputNodeSchema = z.object({
   title: z.string(),
   type: z.string(),
   tags: z.array(z.string()),
-  galaxies: z.array(z.string()),
+  galaxies: z.array(z.string()).describe("Galaxy membership IDs; resolve metadata with list_universe_galaxies."),
   importance: z.string().nullable().describe("Readable but not writable through the MCP surface."),
   updated_at: z.string().datetime(),
   summary_preview: z.string(),

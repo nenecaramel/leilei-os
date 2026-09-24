@@ -72,7 +72,7 @@ test("production public surface exposes canonical Conversation reads and no reti
   });
   const names = await listTools(createSessionServer("user-1", "public"), "mcp-production-public");
 
-  for (const name of ["list_conversations", "search_conversations", "read_conversation"]) {
+  for (const name of ["list_conversations", "search_conversations", "read_conversation", "list_universe_galaxies", "render_note_card"]) {
     assert.equal(names.includes(name), true, `${name} must remain public`);
   }
 
@@ -99,7 +99,6 @@ test("production public surface exposes canonical Conversation reads and no reti
   }
 
   for (const hidden of [
-    "render_note_card",
     "sentinel_get_state",
     "bridge_listener_open",
     "list_conversation_exclusions",

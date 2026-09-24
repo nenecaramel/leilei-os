@@ -70,6 +70,7 @@ test("production public MCP defaults expose note card UI but hide runtime, recov
     "get_health",
     "get_current_time",
     "get_weather_context",
+    "list_universe_galaxies",
     "render_note_card",
   ]) {
     assert.equal(

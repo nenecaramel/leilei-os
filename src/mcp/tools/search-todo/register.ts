@@ -12,7 +12,8 @@ const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const authorSchema = z.enum(["L", "G", "C"]);
 const kindSchema = z.enum(["pending", "completed", "record"]);
 const inputSchema = z.object({
-  query: z.string().max(400).refine((value) => {
+  query: z.string().refine((value) => {
+    if (value.length > 400) return false;
     const normalized = value.normalize("NFC").trim().replace(/\s+/gu, " ");
     return normalized.length > 0 && [...normalized].length <= 200;
   }, "Query must contain 1 to 200 Unicode code points after normalization and trimming.").describe("Required text to search Todo entry text (1–200 Unicode code points after normalization)."),
@@ -64,7 +65,7 @@ export type SearchTodoToolDependencies = { todoService: SearchTodoToolService; g
 export function registerSearchTodoTool(server: McpServer, dependencies: SearchTodoToolDependencies): void {
   server.registerTool("search_todo", {
     title: "Search Todo entries",
-    description: "Search Todo entries; use read_todo_day for the full paper.",
+    description: "Search Todo entry text. If the date is already known and you only need that day, use read_todo_day directly.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

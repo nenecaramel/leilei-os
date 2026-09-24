@@ -9,7 +9,7 @@ const positionCoordinate = (label: string, axis: "X" | "Y") =>
     .describe(`Logical Universe canvas ${axis} coordinate, from 0 to 100.`);
 
 export const universeMembershipSchema = z.object({
-  id: z.string().min(1).max(256),
+  id: z.string().min(1).max(256).describe("Galaxy ID from list_universe_galaxies."),
   weight: z.number().finite().describe(
     "Membership weight; any finite number. Not limited to 0-1 or normalized. For new memberships use 1 for the first and 0.72 for additional ones; preserve existing values.",
   ),

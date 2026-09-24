@@ -21,7 +21,7 @@ const inputSchema = z.object({
     .optional()
     .describe("Domains to search. Defaults to Diary, Todo, and Universe; add Conversation explicitly."),
   scope: z.enum(["active", "archived", "all"]).default("active").optional(),
-  mode: z.enum(["normal", "phrase"]).default("normal").optional(),
+  mode: z.enum(["normal", "phrase"]).default("normal").optional().describe("normal collapses runs of whitespace before matching; phrase preserves internal whitespace and matches the literal contiguous phrase."),
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.number().int().min(1).max(25).default(10).optional(),

@@ -251,7 +251,7 @@ export function registerConversationArchiveTools(
 ): void {
   server.registerTool("list_conversations", {
     title: "List Conversations",
-    description: "Browse Conversations; use read_conversation for detail.",
+    description: "LeileiOS Conversation Archive: browse conversations; use read_conversation for detail.",
     inputSchema: listInputSchema,
     outputSchema: listOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -276,7 +276,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("search_conversations", {
     title: "Search Conversation Archive",
-    description: "Search ChatGPT/Claude messages; use read_conversation for context.",
+    description: "LeileiOS Conversation Archive: search ChatGPT/Claude messages; use read_conversation for context.",
     inputSchema: searchInputSchema,
     outputSchema: searchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -339,7 +339,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("read_conversation", {
     title: "Read Conversation",
-    description: "Read a Conversation as paged content or context around one message.",
+    description: "LeileiOS Conversation Archive: read paged conversation content or context around one message.",
     inputSchema: readInputSchema,
     outputSchema: readOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

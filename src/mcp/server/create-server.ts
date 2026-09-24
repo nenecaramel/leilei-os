@@ -84,6 +84,7 @@ import {
 import { registerSearchTodoTool, type SearchTodoToolDependencies } from "../tools/search-todo/register.js";
 import { registerGetUniverseNodeTool, type GetUniverseNodeToolDependencies } from "../tools/get-universe-node/register.js";
 import { registerListUniverseNodesTool, type ListUniverseNodesToolDependencies } from "../tools/list-universe-nodes/register.js";
+import { registerListUniverseGalaxiesTool } from "../tools/list-universe-galaxies/register.js";
 import { registerGetUniverseRelationsTool, type GetUniverseRelationsToolDependencies } from "../tools/get-universe-relations/register.js";
 import { registerCreateUniverseNodeTool, type CreateUniverseNodeToolDependencies } from "../tools/create-universe-node/register.js";
 import { registerUpdateUniverseNodeTool, type UpdateUniverseNodeToolDependencies } from "../tools/update-universe-node/register.js";
@@ -467,6 +468,7 @@ export function createMcpServer(
     },
   } satisfies UniverseToolsDependencies;
   registerGetUniverseNodeTool(server, universeTools);
+  registerListUniverseGalaxiesTool(server, universeTools);
   registerListUniverseNodesTool(server, {
     universeService: universeTools.universeService?.listUniverseNodes
       ? universeTools.universeService as ListUniverseNodesToolDependencies["universeService"]

@@ -135,6 +135,9 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
   assert.ok(globalSearch?.description);
   assert.match(globalSearch.description, /LeileiOS modules/iu);
   assert.match(globalSearch.description, /domain search when the domain is known/iu);
+  const globalMode = property(globalSearch, "mode");
+  assert.match(String(globalMode.description ?? ""), /normal collapses runs of whitespace/iu);
+  assert.match(String(globalMode.description ?? ""), /phrase preserves internal whitespace/iu);
 
   const dedicatedDiscovery = [
     ["search_diary", "get_diary"],
@@ -148,6 +151,21 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
     assert.ok(tool?.description, `${name} must have routing guidance`);
     assert.match(tool.description, new RegExp(detailTool, "iu"));
   }
+
+  assert.match(byName.get("search_todo")?.description ?? "", /date is already known/iu);
+  assert.match(byName.get("search_todo")?.description ?? "", /use read_todo_day directly/iu);
+
+  for (const name of ["list_conversations", "search_conversations", "read_conversation"] as const) {
+    assert.match(
+      byName.get(name)?.description ?? "",
+      /^LeileiOS Conversation Archive:/u,
+      `${name} must disambiguate LeileiOS archive tools from host conversation tools`,
+    );
+  }
+
+  const galaxies = byName.get("list_universe_galaxies");
+  assert.ok(galaxies?.description);
+  assert.match(galaxies.description, /galaxies.*IDs.*node membership/iu);
 
   const writeTodo = byName.get("replace_todo_paper");
   assert.ok(writeTodo?.description);
@@ -229,6 +247,20 @@ test("date filter schemas stay concrete and bounded", async () => {
   }
 });
 
+test("Todo search exposes one 200-code-point model-facing query contract", async () => {
+  const tools = await listTools(createMcpServer({} as never));
+  const tool = tools.find((candidate) => candidate.name === "search_todo");
+  assert.ok(tool);
+  const root = tool.inputSchema as Record<string, unknown>;
+  const query = property(tool, "query");
+  assert.match(String(query.description ?? ""), /1.?200 Unicode code points/iu);
+  assert.equal(
+    jsonSchemaContains(root, query, (candidate) => candidate.maxLength === 400),
+    false,
+    "search_todo.query must not advertise the old 400-code-unit guard",
+  );
+});
+
 test("mutation preconditions and idempotency use one model-facing vocabulary", async () => {
   const tools = await listTools(createMcpServer({} as never));
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
@@ -293,10 +325,11 @@ test("mutation preconditions and idempotency use one model-facing vocabulary", a
   for (const name of universeMutationTools) {
     const tool = byName.get(name);
     assert.ok(tool?.description, `${name} must stay registered`);
-    assert.match(
-      String(property(tool, "expected_version").description ?? ""),
-      /not an entity revision/iu,
-    );
+    const expectedVersionDescription = String(property(tool, "expected_version").description ?? "");
+    assert.match(expectedVersionDescription, /not an entity revision/iu);
+    assert.match(expectedVersionDescription, /list_universe_nodes/iu);
+    assert.match(expectedVersionDescription, /list_universe_galaxies/iu);
+    assert.match(expectedVersionDescription, /get_universe_node/iu);
     assert.equal(
       "expected_revision" in ((tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}),
       false,
@@ -323,6 +356,11 @@ test("Universe node and Todo replacement parameters are self-explanatory", async
     ));
 
     const galaxies = property(tool, "galaxies");
+    assert.ok(jsonSchemaContains(
+      root,
+      galaxies,
+      (candidate) => String(candidate.description ?? "").includes("Galaxy ID from list_universe_galaxies"),
+    ));
     assert.ok(jsonSchemaContains(
       root,
       galaxies,

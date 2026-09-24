@@ -32,5 +32,5 @@ export const universeExpectedVersionSchema = z.number()
   .int()
   .nonnegative()
   .describe(
-    "Current global Universe snapshot version; not an entity revision.",
+    "Current global Universe snapshot version from the latest Universe read (for example list_universe_nodes, list_universe_galaxies, get_universe_node, get_universe_relations, or get_universe_diary_sources); not an entity revision.",
   );

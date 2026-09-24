@@ -136,10 +136,12 @@ test("default production public surface stays compact and reports final inventor
     "list_conversations",
     "list_diary_comments",
     "list_todo_dates",
+    "list_universe_galaxies",
     "list_universe_nodes",
     "read_conversation",
     "read_todo_day",
     "replace_todo_paper",
+    "render_note_card",
     "search_conversations",
     "search_diary",
     "search_todo",
@@ -157,7 +159,7 @@ test("default production public surface stays compact and reports final inventor
     expectedPublicNames,
     "default public inventory must stay exact",
   );
-  assert.equal(tools.length, 37);
+  assert.equal(tools.length, 39);
   assert.ok(
     tools.length < fullTools.length,
     "default public surface must be smaller than internal full",

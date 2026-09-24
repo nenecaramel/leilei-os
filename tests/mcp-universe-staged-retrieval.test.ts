@@ -39,11 +39,19 @@ const detailNode = {
   importance: "major",
   migration: { source: "mind-universe", migratedAt: "2026-08-24T01:00:00.000Z" },
 };
+const galaxies = [
+  { id: "galaxy-b", title: "B Galaxy", description: "Second", color: "#222222", order: 2 },
+  { id: "galaxy-a", title: "A Galaxy", description: "First", color: "#111111", order: 1 },
+];
+
 
 async function connect() {
   let listCalls = 0;
   let readCalls = 0;
   const service = {
+    async loadUniverse() {
+      return { snapshot: { galaxies }, version: 7 };
+    },
     async listUniverseNodes(_userId: string, _limit: number, after?: { updatedAt: string; id: string }) {
       listCalls += 1;
       return after
@@ -65,6 +73,22 @@ async function connect() {
   await client.connect(clientTransport);
   return { client, server, counters: () => ({ listCalls, readCalls }) };
 }
+
+test("list_universe_galaxies exposes membership IDs and current Universe version", async (t) => {
+  const { client, server } = await connect();
+  t.after(async () => { await client.close(); await server.close(); });
+
+  const response = await client.callTool({ name: "list_universe_galaxies", arguments: {} });
+  assert.equal(response.isError, undefined);
+  assert.deepEqual((response.structuredContent as { data: unknown }).data, {
+    galaxies: [
+      { id: "galaxy-a", title: "A Galaxy", description: "First", color: "#111111", order: 1 },
+      { id: "galaxy-b", title: "B Galaxy", description: "Second", color: "#222222", order: 2 },
+    ],
+    metadata: { count: 2 },
+    universe_version: 7,
+  });
+});
 
 test("list_universe_nodes provides bounded paginated discovery and exact detail pointers", async (t) => {
   const { client, server, counters } = await connect();
