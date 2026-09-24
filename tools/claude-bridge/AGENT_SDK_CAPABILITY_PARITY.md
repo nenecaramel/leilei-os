@@ -250,3 +250,29 @@ established.
 - Bidirectional control liveness is supplied explicitly through SDK query options such as `canUseTool`; the handle forwards that callback but does not own product permission policy.
 - The real smoke uses a pass-through `canUseTool` callback for both the interrupted turn and the continuity resume, with Bash explicitly allowed only for the interrupted turn.
 - Unit coverage now proves the async input stream ends after exactly one user message and that bidirectional query options are forwarded unchanged.
+
+
+## REAL SDK dedicated turn-handle acceptance — PASS
+
+Validated on macOS against `@anthropic-ai/claude-agent-sdk@0.3.281` using the existing Claude subscription login.
+
+Observed real smoke result:
+
+- architecture: `dedicated_agent_sdk_turn_handle`
+- graceful interrupt projected as LeileiOS `runtimeCode: "INTERRUPTED"`
+- provider session: `0baff5d3-2231-4389-8dc3-8b91ab80353a`
+- interrupt receipt: `{ still_queued: [] }`
+- normalized Bash `tool_use` observed
+- STARTED marker created; FINISHED marker not created, proving the in-flight Bash command was interrupted
+- provider terminal remained the expected SDK fallout: `error_during_execution` with `is_error: true`
+- same provider session successfully resumed after interrupt
+- resumed final text: `LEILEIOS_TURN_HANDLE_CONTINUITY`
+- accepted phase-1 `AgentSdkClaudeTransport` remained untouched
+
+Acceptance meaning:
+
+- a dedicated long-lived Agent SDK turn handle can own graceful interrupt without retrofitting phase-1 Promise-returning transport semantics;
+- finite one-message streamed input avoids the normal-resume deadlock;
+- bidirectional SDK control is kept alive through explicit query callbacks such as `canUseTool`;
+- graceful interrupt and hard abort remain distinct runtime semantics;
+- this is branch-level runtime capability acceptance, not a main/production rollout claim.
