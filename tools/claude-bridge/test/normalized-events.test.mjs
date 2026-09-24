@@ -22,6 +22,77 @@ test("keeps rate-limit events out of final text and maps synthetic partial/tool 
   assert.deepEqual(events.map((event) => event.type), ["session", "partial_text", "tool_use", "tool_result"]);
 });
 
+test("normalizes real Agent SDK stream_event text deltas", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "stream-event-session",
+      },
+      {
+        type: "stream_event",
+        session_id: "stream-event-session",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: {
+            type: "text_delta",
+            text: "hel",
+          },
+        },
+      },
+      {
+        type: "stream_event",
+        session_id: "stream-event-session",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: {
+            type: "text_delta",
+            text: "lo",
+          },
+        },
+      },
+      {
+        type: "stream_event",
+        session_id: "stream-event-session",
+        event: {
+          type: "content_block_delta",
+          index: 1,
+          delta: {
+            type: "thinking_delta",
+            thinking: "hidden",
+          },
+        },
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    [
+      "session",
+      "partial_text",
+      "partial_text",
+    ],
+  );
+  assert.deepEqual(
+    events.slice(1).map(
+      (event) => event.payload.delta,
+    ),
+    ["hel", "lo"],
+  );
+  assert.deepEqual(
+    events.slice(1).map(
+      (event) =>
+        event.payload.accumulated_length,
+    ),
+    [3, 5],
+  );
+});
+
 test("normalizes Agent SDK compact boundaries for runtime observability", () => {
   const events = normalizeClaudeEvents(
     [
