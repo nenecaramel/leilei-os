@@ -55,7 +55,7 @@ says the SDK supports it.
 | Interrupt current turn | PENDING | Mid-turn interrupt works; startup/API-call edge cases fall back to timeout + hard stop |
 | Normalized event compatibility | REAL SDK | Real SDK Read/Bash `tool_use` and two `tool_result` blocks survive normalization with raw/normalized count parity |
 | Subscription-auth boundary | REAL SDK | Self-hosted Mac smoke succeeds with existing Claude login and no `ANTHROPIC_API_KEY` |
-| Default Mac daemon transport | CONTRACT | Daemon defaults to Agent SDK through one shared factory, preserves explicit headless rollback, and passes real foreground/background executor smoke |
+| Default Mac daemon transport | REAL SDK | Daemon defaults to Agent SDK through one shared factory, preserves explicit headless rollback, and passes real foreground/background executor smoke |
 | Canonical authority | PRODUCT | Provider session/transcript can be discarded without losing LeileiOS product truth |
 
 ## Compaction discipline
@@ -179,3 +179,14 @@ established.
 - Real acceptance uses the exact same factory as the daemon, then passes the selected Agent SDK runtime through `NativeLiveMacRuntimeExecutor` and `NativeLiveMacBackgroundModelExecutor`.
 - The smoke is local to the Mac runtime and performs no relay or canonical production mutation.
 - Acceptance requires existing Claude subscription login, no `ANTHROPIC_API_KEY`, a successful foreground new turn with normalized final text/provider session, and a successful background pure-model turn.
+
+
+## Accepted default daemon transport evidence — 2026-09-24
+
+- #484 real SDK daemon-level smoke PASS with `@anthropic-ai/claude-agent-sdk@0.3.281` and existing Claude subscription login.
+- Shared daemon transport factory selected `agent_sdk` by default and instantiated `AgentSdkClaudeTransport`.
+- Explicit rollback selector still resolves `LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT=headless` to the legacy headless adapter.
+- Foreground path passed through `NativeLiveMacRuntimeExecutor`: status `success`, provider session `5296d672-3099-4759-a1d0-b82307e4d6a4`, exact final marker `LEILEIOS_DAEMON_AGENT_SDK_FOREGROUND`, 5 normalized events.
+- Background pure-model path passed through `NativeLiveMacBackgroundModelExecutor`: status `success`, task kind `distillation`, exact final marker `LEILEIOS_DAEMON_AGENT_SDK_BACKGROUND`.
+- The smoke performed no relay or canonical production mutation.
+- The first-phase parity gate is now closed: subscription auth, new/resume/fork, normalized tool events, failure mapping, abort/hard-stop, and daemon default transport all have real SDK evidence.
