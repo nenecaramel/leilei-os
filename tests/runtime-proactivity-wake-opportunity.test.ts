@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   BackgroundLoopOrchestrator,
@@ -97,4 +98,19 @@ test("Proactivity producer reuses the shared orchestrator and schedules only eli
     "discover:u2",
     "start:u1",
   ]);
+});
+
+
+test("Proactivity capsule excludes archived or forgotten Memory and Feel", () => {
+  const source = readFileSync(
+    new URL(
+      "../src/domains/runtime/proactivity-wake-opportunity.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /kind IN \('memory', 'feel'\)[\s\S]*lifecycle_v1,status[\s\S]*IN \('archived', 'forgotten'\)/,
+  );
 });
