@@ -66,6 +66,7 @@ type Database = ReturnType<typeof createDatabase>["db"];
 
 export const DEFAULT_NATIVE_LIVE_SUBJECT_ID = "G";
 export const DEFAULT_NATIVE_LIVE_SURFACE_LIMIT = 8;
+export const DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE = "Asia/Shanghai";
 
 export const DEFAULT_DRIVE_EVOLUTION_POLICY: DriveEvolutionPolicy = {
   basePressure: 0.4,
@@ -117,7 +118,8 @@ export function createDefaultBackendMindRuntime(
     subjectState,
     {
       assemblyVersion: "assembly-v1",
-      promptContractVersion: "prompt-v1",
+      promptContractVersion: "prompt-v2",
+      contextTimeZone: DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE,
       ruleVersion: "mind-v1",
       processVersion: "subject-write-v1",
       surfaceLimit: DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
