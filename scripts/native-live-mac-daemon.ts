@@ -17,10 +17,9 @@ import {
 import {
   resolveNativeLiveMacDaemonConfig,
 } from "../src/domains/bridge/native-live-mac-daemon-config.js";
-
-const { HeadlessClaudeTransport } = await import(
-  "../tools/claude-bridge/src/headless-claude-transport.mjs"
-);
+import {
+  createNativeLiveMacClaudeTransport,
+} from "../src/domains/bridge/native-live-mac-claude-transport.js";
 
 const {
   relayBaseUrl,
@@ -38,7 +37,10 @@ const relay = new NativeLiveMacHttpRelayClient(
   relayBaseUrl,
   relayToken,
 );
-const runtime = new HeadlessClaudeTransport();
+const {
+  kind: claudeTransportKind,
+  runtime,
+} = await createNativeLiveMacClaudeTransport(process.env);
 const executor = new NativeLiveMacRuntimeExecutor(runtime);
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
@@ -78,6 +80,7 @@ while (!stopping) {
       JSON.stringify({
         at: new Date().toISOString(),
         outcome: outcome.outcome,
+        claudeTransport: claudeTransportKind,
         ...("reservationId" in outcome
           ? { reservationId: outcome.reservationId }
           : {}),
