@@ -197,6 +197,54 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func prepareNativeLiveRetry(
+        conversationID: UUID,
+        targetUserMessageID: String,
+        requestID: UUID = UUID()
+    ) async throws -> NativeLivePrepareResult {
+        let body = try JSONEncoder().encode(
+            NativeLiveRetryBody(
+                dispatchTarget: "claude_code",
+                requestId: requestID.uuidString.lowercased(),
+                operation: "retry",
+                conversationId: conversationID.uuidString.lowercased(),
+                targetUserMessageId: targetUserMessageID
+            )
+        )
+        let envelope: NativeLivePrepareEnvelope = try await request(
+            path: "/api/v1/native-live/prepare",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func prepareNativeLiveEdit(
+        conversationID: UUID,
+        targetUserMessageID: String,
+        text: String,
+        requestID: UUID = UUID()
+    ) async throws -> NativeLivePrepareResult {
+        let body = try JSONEncoder().encode(
+            NativeLiveEditBody(
+                dispatchTarget: "claude_code",
+                requestId: requestID.uuidString.lowercased(),
+                operation: "edit",
+                conversationId: conversationID.uuidString.lowercased(),
+                targetUserMessageId: targetUserMessageID,
+                text: text
+            )
+        )
+        let envelope: NativeLivePrepareEnvelope = try await request(
+            path: "/api/v1/native-live/prepare",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
     func nativeLiveTurn(
         prepareID: String
     ) async throws -> NativeLiveTurnSnapshot {
@@ -410,6 +458,40 @@ private struct NativeLiveSendBody: Encodable, Sendable {
             try container.encodeNil(forKey: .expectedHeadMessageId)
         }
         try container.encode(text, forKey: .text)
+    }
+}
+
+private struct NativeLiveRetryBody: Encodable, Sendable {
+    let dispatchTarget: String
+    let requestId: String
+    let operation: String
+    let conversationId: String
+    let targetUserMessageId: String
+
+    enum CodingKeys: String, CodingKey {
+        case dispatchTarget = "dispatch_target"
+        case requestId = "request_id"
+        case operation
+        case conversationId = "conversation_id"
+        case targetUserMessageId = "target_user_message_id"
+    }
+}
+
+private struct NativeLiveEditBody: Encodable, Sendable {
+    let dispatchTarget: String
+    let requestId: String
+    let operation: String
+    let conversationId: String
+    let targetUserMessageId: String
+    let text: String
+
+    enum CodingKeys: String, CodingKey {
+        case dispatchTarget = "dispatch_target"
+        case requestId = "request_id"
+        case operation
+        case conversationId = "conversation_id"
+        case targetUserMessageId = "target_user_message_id"
+        case text
     }
 }
 
