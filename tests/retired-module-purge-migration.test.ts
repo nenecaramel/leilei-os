@@ -146,3 +146,49 @@ test("retired module names are removed from legacy idempotency and lifecycle con
     false,
   );
 });
+
+
+test("retired module names are removed from shared lifecycle and idempotency domain types", () => {
+  const lifecycleRepository = readFileSync(
+    "src/domains/lifecycle/lifecycle-audit-repository.ts",
+    "utf8",
+  );
+  const idempotencyRepository = readFileSync(
+    "src/domains/mcp-write/mcp-write-idempotency.ts",
+    "utf8",
+  );
+
+  assert.match(
+    lifecycleRepository,
+    /export type LifecycleResourceType = "diary";/,
+  );
+  for (const retired of ['"memory"', '"task"']) {
+    assert.equal(
+      lifecycleRepository.includes(
+        `LifecycleResourceType = ${retired}`,
+      ),
+      false,
+    );
+  }
+
+  for (const retired of [
+    '"create_task"',
+    '"write_memory"',
+    '"create_shared_paper"',
+    '"edit_shared_paper"',
+    '"append_shared_paper"',
+    '"archive_shared_paper"',
+    '"restore_shared_paper"',
+    '"delete_shared_paper"',
+    '"memory"',
+    '"task"',
+    '"shared_paper"',
+    '"shared_paper_edit"',
+  ]) {
+    assert.equal(
+      idempotencyRepository.includes(retired),
+      false,
+      "retired idempotency domain type remains: " + retired,
+    );
+  }
+});

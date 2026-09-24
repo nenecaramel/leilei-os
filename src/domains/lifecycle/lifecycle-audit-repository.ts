@@ -1,7 +1,7 @@
 import type { createDatabase } from "../../database/client.js";
 import { resourceLifecycleEvents } from "../../database/schema.js";
 
-export type LifecycleResourceType = "memory" | "diary" | "task";
+export type LifecycleResourceType = "diary";
 export type LifecycleAction = "archive" | "restore" | "permanent_delete";
 export type LifecycleActorType = "user" | "assistant" | "system";
 export type LifecycleChannel = "web" | "mcp" | "internal";
