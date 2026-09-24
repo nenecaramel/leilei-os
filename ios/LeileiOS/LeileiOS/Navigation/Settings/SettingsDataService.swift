@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 protocol SettingsDataService {
     func exportData(_ request: SettingsExportRequest) async throws -> SettingsExportDocument
@@ -55,33 +54,22 @@ struct UnavailableSettingsAuthService: SettingsAuthService {
     }
 }
 
-enum SettingsExportScope: String, CaseIterable, Identifiable {
+enum SettingsExportScope: String, CaseIterable, Identifiable, Hashable {
     case all
-    case memory
     case diary
-    case task
     case todo
-    case sharedPaper
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .all: "All"
-        case .memory: "Memory"
         case .diary: "Diary"
-        case .task: "Task"
         case .todo: "Todo"
-        case .sharedPaper: "Shared Paper"
         }
     }
 
-    var backendScope: String {
-        switch self {
-        case .sharedPaper: "shared_paper"
-        default: rawValue
-        }
-    }
+    var backendScope: String { rawValue }
 }
 
 struct SettingsExportRequest {
@@ -117,49 +105,4 @@ struct SettingsActivityRecord: Identifiable {
     let label: String
     let source: String
     let result: String
-}
-
-struct SettingsDetailValueRow: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 17, weight: .medium))
-
-            Spacer()
-
-            Text(value)
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.secondary)
-        }
-        .frame(height: 55)
-        .padding(.horizontal, 16)
-    }
-}
-
-struct SettingsDetailCard<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(spacing: 0) {
-            content
-        }
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
-    }
-}
-
-struct SettingsUnavailableState: View {
-    let message: String
-
-    var body: some View {
-        Text(message)
-            .font(.system(size: 17, weight: .regular))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 18)
-    }
 }

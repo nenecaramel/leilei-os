@@ -22,27 +22,23 @@ struct GlobalSearchFiltersMenu: View {
                 }
             }
 
-            Menu("Time") {
+            Picker("Time", selection: $timePreset) {
                 ForEach(GlobalSearchTimePreset.allCases) { preset in
-                    Button {
-                        timePreset = preset
-                    } label: {
-                        Label(preset.title, systemImage: timePreset == preset ? "checkmark" : "")
-                    }
-                    .menuActionDismissBehavior(.disabled)
+                    Text(preset.title)
+                        .tag(preset)
                 }
             }
+            .pickerStyle(.menu)
+            .menuActionDismissBehavior(.disabled)
 
-            Menu("Scope") {
-                ForEach([GlobalSearchScope.all, .active, .archived]) { option in
-                    Button {
-                        scope = option
-                    } label: {
-                        Label(option.title, systemImage: scope == option ? "checkmark" : "")
-                    }
-                    .menuActionDismissBehavior(.disabled)
+            Picker("Scope", selection: $scope) {
+                ForEach(GlobalSearchScope.allCases) { option in
+                    Text(option.title)
+                        .tag(option)
                 }
             }
+            .pickerStyle(.menu)
+            .menuActionDismissBehavior(.disabled)
 
             Divider()
 

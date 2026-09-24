@@ -4,7 +4,6 @@ import UIKit
 struct SidebarView: View {
     @Binding var selectedPage: AppPage
     let menuButtonCenterY: CGFloat?
-    let composerControlsCenterY: CGFloat?
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
     private let topContentOffset: CGFloat = 18
@@ -17,20 +16,17 @@ struct SidebarView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
                         Text("Leilei OS")
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
                             .padding(.top, 18)
-                            .offset(x: titleHorizontalOffset, y: 16)
+                            .offset(x: titleHorizontalOffset, y: 18)
 
                         SidebarSection(
                             title: nil,
                             pages: [
                                 .home,
                                 .chat,
-                                .memory,
                                 .diary,
-                                .task,
                                 .daySpace,
-                                .sharedPaper,
                                 .conversations,
                                 .universe,
                                 .sentinel
@@ -76,14 +72,7 @@ struct SidebarView: View {
                         onSelect()
                     }
                 }
-                .position(
-                    x: proxy.size.width - 40,
-                    y: localY(
-                        composerControlsCenterY,
-                        in: proxy,
-                        fallback: proxy.size.height - 38
-                    )
-                )
+                .padding()
             }
         }
     }
@@ -102,16 +91,6 @@ struct FloatingGlassButton: View {
     let symbol: String
     let accessibilityLabel: String
     let action: () -> Void
-
-    init(
-        symbol: String,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) {
-        self.symbol = symbol
-        self.accessibilityLabel = accessibilityLabel
-        self.action = action
-    }
 
     var body: some View {
         FloatingUIKitGlassButton(

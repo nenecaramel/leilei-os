@@ -18,6 +18,7 @@ struct SidebarSection: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
+                    .offset(y: 2)
             }
 
             ForEach(pages) { page in
@@ -27,20 +28,22 @@ struct SidebarSection: View {
                 } label: {
                     HStack {
                         Text(page.rawValue)
-                            .font(.system(size: 17.5, weight: .semibold))
-                            .offset(x: textLeadingOffset)
+                            .font(.body.weight(.medium))
+                            .offset(x: textLeadingOffset, y: 2)
 
                         Spacer()
                     }
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 12)
-                    .frame(height: 44)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
                     .background {
                         if selectedPage == page {
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(.primary.opacity(0.05))
                                 .padding(.leading, selectedBackgroundLeadingOffset)
                                 .padding(.trailing, -2)
+                                .offset(y: 2)
                         }
                     }
                 }

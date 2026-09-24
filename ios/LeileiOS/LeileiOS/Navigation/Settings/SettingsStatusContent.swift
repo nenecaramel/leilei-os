@@ -4,23 +4,61 @@ struct SettingsStatusContent: View {
     let dataService: any SettingsDataService
 
     @State private var status: SettingsRuntimeStatus?
+    @State private var errorMessage: String?
+    @State private var isLoading = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            SettingsDetailCard {
-                SettingsDetailValueRow(title: "Web API", value: status?.webAPI ?? "Unavailable")
-                SettingsDivider()
-                SettingsDetailValueRow(title: "ChatGPT / Claude MCP", value: status?.chatGPTClaudeMCP ?? "Unavailable")
-                SettingsDivider()
-                SettingsDetailValueRow(title: "Internal MCP", value: status?.internalMCP ?? "Unavailable")
+        Form {
+            Section("Status") {
+                LabeledContent(
+                    "Web API",
+                    value: status?.webAPI
+                        ?? (isLoading ? "Loading…" : "Unavailable")
+                )
+                LabeledContent(
+                    "ChatGPT / Claude MCP",
+                    value: status?.chatGPTClaudeMCP
+                        ?? (isLoading ? "Loading…" : "Unavailable")
+                )
+                LabeledContent(
+                    "Internal MCP",
+                    value: status?.internalMCP
+                        ?? (isLoading ? "Loading…" : "Unavailable")
+                )
+            }
+
+            if errorMessage != nil {
+                Section {
+                    SettingsSectionState(
+                        title: "Unavailable",
+                        actionTitle: "Retry"
+                    ) {
+                        Task {
+                            await loadStatus()
+                        }
+                    }
+                }
             }
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
         .task {
-            do {
-                status = try await dataService.readRuntimeStatus()
-            } catch {
-                status = nil
-            }
+            await loadStatus()
+        }
+    }
+
+    @MainActor
+    private func loadStatus() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            status = try await dataService.readRuntimeStatus()
+            errorMessage = nil
+        } catch {
+            status = nil
+            errorMessage = "Unavailable"
         }
     }
 }

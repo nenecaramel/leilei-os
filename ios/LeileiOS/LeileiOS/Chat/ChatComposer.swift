@@ -7,11 +7,11 @@ struct ChatComposer: View {
     var isFocused: FocusState<Bool>.Binding
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             TextField(
                 "",
                 text: $text,
-                prompt: Text("Chat with Claude")
+                prompt: Text("Write a message...")
                     .foregroundStyle(Color.primary.opacity(0.64)),
                 axis: .vertical
             )
@@ -117,7 +117,6 @@ struct ChatComposer: View {
                 }
                 .buttonStyle(.plain)
             }
-            .reportingFloatingControlCenter(FloatingControlCenter.composer)
         }
         .padding(.horizontal, 16)
         .padding(.top, 15)

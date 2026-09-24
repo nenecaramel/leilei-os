@@ -17,80 +17,73 @@ struct SettingsRestoreContent: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            SettingsDetailCard {
+        Form {
+            Section("Export File") {
                 Button {
                     isImporterPresented = true
                 } label: {
-                    HStack {
-                        Text("Choose Export File")
-                            .font(.system(size: 17, weight: .medium))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(height: 55)
-                    .padding(.horizontal, 16)
-                    .contentShape(Rectangle())
+                    Label("Choose Export File", systemImage: "doc")
                 }
-                .buttonStyle(.plain)
 
                 if let selectedFileURL {
-                    SettingsDivider()
-                    SettingsDetailValueRow(
-                        title: "File",
-                        value: selectedFileURL.lastPathComponent
+                    LabeledContent("File", value: selectedFileURL.lastPathComponent)
+                }
+
+                if isPreviewing {
+                    SettingsSectionState(
+                        title: "Loading…",
+                        isLoading: true
                     )
                 }
             }
 
-            if isPreviewing {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-            }
-
             if let preview {
-                SettingsDetailCard {
-                    SettingsDetailValueRow(title: "New", value: "\(preview.newCount)")
-                    SettingsDivider()
-                    SettingsDetailValueRow(title: "Already Here", value: "\(preview.alreadyHereCount)")
-                    SettingsDivider()
-                    SettingsDetailValueRow(title: "Conflicts", value: "\(preview.conflictCount)")
-                    SettingsDivider()
-                    SettingsDetailValueRow(title: "Invalid", value: "\(preview.invalidCount)")
+                Section("Preview") {
+                    LabeledContent("New", value: "\(preview.newCount)")
+                    LabeledContent("Already Here", value: "\(preview.alreadyHereCount)")
+                    LabeledContent("Conflicts", value: "\(preview.conflictCount)")
+                    LabeledContent("Invalid", value: "\(preview.invalidCount)")
                 }
             }
 
-            Button {
-                Task {
-                    await restoreData()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    if isRestoring {
-                        ProgressView()
+            Section {
+                Button {
+                    Task {
+                        await restoreData()
                     }
-                    Text("Restore")
+                } label: {
+                    HStack {
+                        Text(isRestoring ? "Restoring…" : "Restore")
+                        Spacer()
+                        if isRestoring {
+                            ProgressView()
+                        }
+                    }
                 }
-                .frame(maxWidth: .infinity)
+                .disabled(!canRestore)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!canRestore)
 
             if let errorMessage {
-                SettingsUnavailableState(message: errorMessage)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+                Section {
+                    SettingsSectionState(
+                        title: "Failed"
+                    )
+                }
             }
 
             if let outcomeMessage {
-                SettingsUnavailableState(message: outcomeMessage)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+                Section {
+                    SettingsSectionState(
+                        title: outcomeMessage == "Done"
+                            ? "Done"
+                            : "Failed"
+                    )
+                }
             }
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
         .fileImporter(
             isPresented: $isImporterPresented,
             allowedContentTypes: [.json]
@@ -104,8 +97,8 @@ struct SettingsRestoreContent: View {
                 Task {
                     await previewRestore(fileURL: url)
                 }
-            case .failure(let error):
-                errorMessage = error.localizedDescription
+            case .failure:
+                errorMessage = "Failed"
             }
         }
     }
@@ -125,7 +118,7 @@ struct SettingsRestoreContent: View {
         do {
             preview = try await dataService.previewRestore(fileURL: fileURL)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Failed"
         }
     }
 
@@ -147,9 +140,11 @@ struct SettingsRestoreContent: View {
 
         do {
             let result = try await dataService.executeRestore(fileURL: selectedFileURL)
-            outcomeMessage = result.completed ? "Restore completed." : "Restore did not complete."
+            outcomeMessage = result.completed
+                ? "Done"
+                : "Failed"
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Failed"
         }
     }
 }

@@ -9,6 +9,8 @@ struct BackendSession: Sendable, Equatable {
     let authenticated: Bool
 }
 
+struct NoContentResponse: Decodable, Sendable {}
+
 enum LeileiAPIError: LocalizedError {
     case invalidResponse
     case unauthorized
@@ -114,6 +116,10 @@ final class LeileiAPIClient {
 
         switch http.statusCode {
         case 200..<300:
+            if http.statusCode == 204,
+               let noContent = NoContentResponse() as? Response {
+                return noContent
+            }
             return try JSONDecoder().decode(Response.self, from: data)
         case 401:
             throw LeileiAPIError.unauthorized
