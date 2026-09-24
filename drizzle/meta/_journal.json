@@ -442,6 +442,13 @@
       "when": 1790300000000,
       "tag": "0062_native_live_runtime_events",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1790303600000,
+      "tag": "0063_native_live_runtime_interactions",
+      "breakpoints": true
     }
   ]
 }
