@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node src/index.mjs",
     "test": "node --test test/**/*.test.mjs",
-    "smoke:agent-sdk-subscription": "node scripts/agent-sdk-subscription-smoke.mjs"
+    "smoke:agent-sdk-subscription": "node scripts/agent-sdk-subscription-smoke.mjs",
+    "smoke:agent-sdk-capabilities": "node scripts/agent-sdk-capability-smoke.mjs"
   },
   "engines": {
     "node": ">=20"

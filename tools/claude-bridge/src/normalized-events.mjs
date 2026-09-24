@@ -92,6 +92,21 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    if (raw.type === "user") {
+      let emittedToolResult = false;
+      for (const block of raw.message?.content ?? []) {
+        if (block.type === "tool_result") {
+          emittedToolResult = true;
+          emit("tool_result", this.sessionId, {
+            tool_use_id: block.tool_use_id,
+            output: block.content,
+            is_error: Boolean(block.is_error),
+          });
+        }
+      }
+      if (emittedToolResult) return output;
+    }
+
     if (raw.type === "result") {
       emit("result", this.sessionId, {
         status: raw.is_error ? "error" : "success",

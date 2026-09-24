@@ -22,6 +22,51 @@ test("keeps rate-limit events out of final text and maps synthetic partial/tool 
   assert.deepEqual(events.map((event) => event.type), ["session", "partial_text", "tool_use", "tool_result"]);
 });
 
+test("normalizes Agent SDK tool_result blocks emitted on user messages", () => {
+  const events = normalizeClaudeEvents(
+    [
+      { type: "system", subtype: "init", session_id: "s" },
+      {
+        type: "assistant",
+        session_id: "s",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tu-1",
+              name: "Read",
+              input: { file_path: "fixture.txt" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        session_id: "s",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tu-1",
+              content: "fixture contents",
+              is_error: false,
+            },
+          ],
+        },
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["session", "tool_use", "tool_result"],
+  );
+  assert.equal(events[2].payload.tool_use_id, "tu-1");
+  assert.equal(events[2].payload.output, "fixture contents");
+  assert.equal(events[2].payload.is_error, false);
+});
+
 test("unknown and conflicting-session events are surfaced without crashing", () => {
   const events = normalizeClaudeEvents([{ type: "system", subtype: "init", session_id: "s" }, { type: "future", subtype: "x", session_id: "s" }, { type: "assistant", session_id: "other", message: { content: [] } }], base);
   assert.equal(events[1].type, "runtime"); assert.equal(events[2].type, "error");
