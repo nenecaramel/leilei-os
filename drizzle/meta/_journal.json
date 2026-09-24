@@ -435,6 +435,13 @@
       "when": 1790240160000,
       "tag": "0061_retire_memory_task_shared_paper",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1790300000000,
+      "tag": "0062_native_live_runtime_events",
+      "breakpoints": true
     }
   ]
 }
