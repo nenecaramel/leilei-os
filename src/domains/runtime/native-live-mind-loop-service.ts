@@ -88,7 +88,6 @@ export type MindLoopConfig = {
   contextTimeZone?: string;
   ruleVersion: string;
   processVersion: string;
-  surfaceLimit: number;
   breathLimit: number;
   breathCooldownHours?: number;
   breathSalienceWeight?: number;
@@ -290,7 +289,6 @@ export class NativeLiveMindLoopService {
       assembledAt: input.assembledAt,
       assemblyVersion: this.config.assemblyVersion,
       promptContractVersion: this.config.promptContractVersion,
-      surfaceLimit: this.config.surfaceLimit,
       breathLimit: this.config.breathLimit,
       breathCooldownHours: this.config.breathCooldownHours ?? 0,
       breathSalienceWeight: this.config.breathSalienceWeight ?? 0,
