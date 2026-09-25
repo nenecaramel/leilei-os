@@ -518,6 +518,24 @@ export function createApp(
             ? {
                 companionBackgroundOpportunity:
                   dependencies.nativeLiveCompanionBackgroundOpportunity,
+                observeCompanionBackgroundOpportunity: (event) => {
+                  logger.info(
+                    "native_live_companion_background_opportunity",
+                    {
+                      outcome: event.outcome,
+                      reason: event.reason,
+                      maintenanceKindCount:
+                        event.maintenanceKindCount,
+                      effectDeliveryScheduled:
+                        event.effectDeliveryScheduled,
+                      proactivityScheduled:
+                        event.proactivityScheduled,
+                      topicResurfaceOffered:
+                        event.topicResurfaceOffered,
+                      failureCount: event.failureCount,
+                    },
+                  );
+                },
               }
             : {}),
           ...(dependencies.nativeLiveRuntimeEventService

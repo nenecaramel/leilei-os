@@ -89,6 +89,15 @@ export type NativeLiveRelayInternalDependencies = {
     CompanionBackgroundOpportunityService,
     "offer"
   >;
+  observeCompanionBackgroundOpportunity?: (event: {
+    outcome: "offered" | "failed";
+    reason: "startup" | "dirty" | "due";
+    maintenanceKindCount: number;
+    effectDeliveryScheduled: boolean;
+    proactivityScheduled: boolean;
+    topicResurfaceOffered: boolean;
+    failureCount: number;
+  }) => void;
 };
 
 const UUID_PATTERN =
@@ -311,11 +320,35 @@ function companionBackgroundOpportunityHandler(
           userId,
           reason: body.reason,
         });
+      bestEffortObserveCompanionBackgroundOpportunity(
+        dependencies,
+        {
+          outcome: "offered",
+          reason: body.reason,
+          maintenanceKindCount: result.maintenanceKinds.length,
+          effectDeliveryScheduled: result.effectDeliveryScheduled,
+          proactivityScheduled: result.proactivityScheduled,
+          topicResurfaceOffered: result.topicResurfaceOffered,
+          failureCount: result.failures.length,
+        },
+      );
       response.json({
         success: true,
         data: result,
       });
     } catch {
+      bestEffortObserveCompanionBackgroundOpportunity(
+        dependencies,
+        {
+          outcome: "failed",
+          reason: body.reason,
+          maintenanceKindCount: 0,
+          effectDeliveryScheduled: false,
+          proactivityScheduled: false,
+          topicResurfaceOffered: false,
+          failureCount: 1,
+        },
+      );
       response.status(503).json({
         success: false,
         error: {
@@ -326,6 +359,23 @@ function companionBackgroundOpportunityHandler(
       });
     }
   };
+}
+
+function bestEffortObserveCompanionBackgroundOpportunity(
+  dependencies: NativeLiveRelayInternalDependencies,
+  event: Parameters<
+    NonNullable<
+      NativeLiveRelayInternalDependencies[
+        "observeCompanionBackgroundOpportunity"
+      ]
+    >
+  >[0],
+): void {
+  try {
+    dependencies.observeCompanionBackgroundOpportunity?.(event);
+  } catch {
+    // Acceptance observability must never affect runtime behavior.
+  }
 }
 
 function topicResurfaceOpportunityHandler(
