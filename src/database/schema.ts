@@ -1106,6 +1106,7 @@ export const nativeLiveTurnPreparations = pgTable(
       .$type<NativeLiveTurnRuntimeMode>()
       .notNull(),
     parentProviderSessionId: text("parent_provider_session_id"),
+    executionSelection: jsonb("execution_selection").$type<Record<string, unknown> | null>(),
     prompt: text("prompt").notNull(),
     mindPrepared: boolean("mind_prepared").default(false).notNull(),
     status: varchar("status", { length: 32 })
@@ -1209,6 +1210,10 @@ export const nativeLiveTurnPreparations = pgTable(
       "native_live_turn_preparations_runtime_parent_consistency",
       sql`(${table.runtimeMode} = 'new' AND ${table.parentProviderSessionId} IS NULL)
         OR (${table.runtimeMode} = 'fork' AND ${table.parentProviderSessionId} IS NOT NULL AND char_length(btrim(${table.parentProviderSessionId})) > 0)`,
+    ),
+    check(
+      "native_live_turn_preparations_execution_selection_object",
+      sql`${table.executionSelection} IS NULL OR jsonb_typeof(${table.executionSelection}) = \'object\'`,
     ),
     check(
       "native_live_turn_preparations_request_hash_format",
