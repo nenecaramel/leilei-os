@@ -3,7 +3,11 @@ import test from "node:test";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { conversations, users } from "../src/database/schema.js";
+import {
+  conversations,
+  nativeLiveTurnPreparations,
+  users,
+} from "../src/database/schema.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -238,6 +242,49 @@ test(
       }),
       /not found/i,
     );
+
+    const busyConversation = await service.createConversation({
+      userId: userA,
+      title: "Busy",
+    });
+    const busyUserMessage = await service.appendUserMessage({
+      userId: userA,
+      conversationId: busyConversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "in flight" }],
+    });
+    const busyPrepareId = crypto.randomUUID();
+    await database.db.insert(nativeLiveTurnPreparations).values({
+      id: busyPrepareId,
+      userId: userA,
+      requestId: crypto.randomUUID(),
+      conversationId: busyConversation.id,
+      operation: "send",
+      requestHash: "a".repeat(64),
+      canonicalUserMessageId: busyUserMessage.id,
+      runtimeMode: "new",
+      parentProviderSessionId: null,
+      prompt: "in flight",
+      status: "prepared",
+      dispatchStatus: "staged",
+    });
+
+    const busyDelete = await service.deleteConversation({
+      userId: userA,
+      conversationId: busyConversation.id,
+    });
+    assert.equal(busyDelete.outcome, "busy");
+
+    await database.db
+      .update(nativeLiveTurnPreparations)
+      .set({ dispatchStatus: "rejected" })
+      .where(eq(nativeLiveTurnPreparations.id, busyPrepareId));
+
+    const deleteAfterTerminal = await service.deleteConversation({
+      userId: userA,
+      conversationId: busyConversation.id,
+    });
+    assert.equal(deleteAfterTerminal.outcome, "deleted");
 
     const crossTenantDelete = await service.deleteConversation({
       userId: userB,
