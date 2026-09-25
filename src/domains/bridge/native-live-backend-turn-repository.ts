@@ -581,6 +581,7 @@ implements NativeLiveBackendTurnPort {
     providerSessionId: string;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
+    runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp:
       Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["mindFollowUp"];
   }): Promise<NativeLiveFinalizeSuccessPortResult> {
