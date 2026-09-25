@@ -82,7 +82,7 @@ export type NativeLiveRelayInternalDependencies = {
   >;
   runtimeInteractionService?: Pick<
     NativeLiveRuntimeInteractionService,
-    "create" | "readForListener" | "cancelForListener"
+    "create" | "waitForListener" | "cancelForListener"
   >;
   runtimeControlService?: Pick<
     NativeLiveRuntimeControlService,
@@ -170,8 +170,8 @@ export function createNativeLiveRelayInternalRouter(
       createRuntimeInteractionHandler(dependencies),
     );
     router.post(
-      "/reservations/:reservationId/interactions/:interactionId/read",
-      readRuntimeInteractionHandler(dependencies),
+      "/reservations/:reservationId/interactions/:interactionId/wait",
+      waitRuntimeInteractionHandler(dependencies),
     );
     router.post(
       "/reservations/:reservationId/interactions/:interactionId/cancel",
@@ -742,7 +742,7 @@ function createRuntimeInteractionHandler(
   };
 }
 
-function readRuntimeInteractionHandler(
+function waitRuntimeInteractionHandler(
   dependencies: NativeLiveRelayInternalDependencies,
 ): RequestHandler {
   return async (request, response) => {
@@ -759,28 +759,46 @@ function readRuntimeInteractionHandler(
     }
 
     try {
-      const interaction =
-        await dependencies.runtimeInteractionService.readForListener({
-          userId,
-          listenerInstanceId: body.listener_instance_id,
-          reservationId,
-          interactionId,
-        });
-      if (!interaction) {
-        response.status(404).json({
+      const lease = await dependencies.relayService.renewLease({
+        userId,
+        listenerInstanceId: body.listener_instance_id,
+        dispatchTarget: "claude_code",
+      });
+      if (lease === "busy") {
+        response.status(409).json({
           success: false,
           error: {
-            code: "INTERACTION_NOT_FOUND",
-            message: "Native live interaction was not found.",
+            code: "RESERVATION_CONFLICT",
+            message: "Native live listener lease is no longer owned by this daemon.",
           },
         });
         return;
       }
-      response.json({
-        success: true,
-        data: { interaction },
-      });
+
+      const controller = new AbortController();
+      const onClose = () => controller.abort();
+      response.once("close", onClose);
+      try {
+        const result =
+          await dependencies.runtimeInteractionService.waitForListener({
+            userId,
+            listenerInstanceId: body.listener_instance_id,
+            reservationId,
+            interactionId,
+            timeoutMs: 25_000,
+            signal: controller.signal,
+          });
+        if (!response.writableEnded && !controller.signal.aborted) {
+          response.json({
+            success: true,
+            data: result,
+          });
+        }
+      } finally {
+        response.off("close", onClose);
+      }
     } catch (error) {
+      if (response.writableEnded) return;
       sendRuntimeInteractionError(response, error);
     }
   };

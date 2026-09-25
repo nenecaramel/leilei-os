@@ -478,6 +478,8 @@ export function createProcessRuntime(
   const nativeLiveRuntimeInteractionService =
     new NativeLiveRuntimeInteractionService(
       new DrizzleNativeLiveRuntimeInteractionRepository(db),
+      nativeLiveWorkWakePublisher,
+      nativeLiveWorkWakeBroker,
     );
   const nativeLiveRuntimeControlService =
     new NativeLiveRuntimeControlService(

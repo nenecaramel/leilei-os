@@ -276,25 +276,31 @@ implements NativeLiveMacDaemonRelayClient {
           throw abortedInteractionError();
         }
         const data = await this.post(
-          `/reservations/${encodeURIComponent(input.reservationId)}/interactions/${encodeURIComponent(interactionId)}/read`,
+          `/reservations/${encodeURIComponent(input.reservationId)}/interactions/${encodeURIComponent(interactionId)}/wait`,
           {
             listener_instance_id: input.listenerInstanceId,
           },
           input.signal,
         );
-        const interaction = readRecord(readRecord(data).interaction);
+        const result = readRecord(data);
+        if (result.outcome === "timeout") {
+          continue;
+        }
+        if (result.outcome !== "terminal") {
+          throw new Error(
+            "Native live runtime interaction wait returned an invalid outcome.",
+          );
+        }
+        const interaction = readRecord(result.interaction);
         if (interaction.status === "resolved") {
           return readRecord(interaction.response);
         }
         if (interaction.status === "cancelled") {
           throw abortedInteractionError();
         }
-        if (interaction.status !== "pending") {
-          throw new Error(
-            "Native live runtime interaction returned an invalid status.",
-          );
-        }
-        await sleepWithSignal(400, input.signal);
+        throw new Error(
+          "Native live runtime interaction terminal state is invalid.",
+        );
       }
     } catch (error) {
       if (input.signal?.aborted || isAbortedInteraction(error)) {
@@ -491,28 +497,4 @@ function isAbortedInteraction(error: unknown): boolean {
     && "runtimeCode" in error
     && (error as { runtimeCode?: unknown }).runtimeCode === "ABORTED"
   );
-}
-
-function sleepWithSignal(
-  milliseconds: number,
-  signal: AbortSignal | null,
-): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(abortedInteractionError());
-  }
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, milliseconds);
-    const onAbort = () => {
-      clearTimeout(timer);
-      cleanup();
-      reject(abortedInteractionError());
-    };
-    const cleanup = () => {
-      signal?.removeEventListener("abort", onAbort);
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }

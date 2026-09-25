@@ -539,6 +539,7 @@ test("Mac HTTP relay client round-trips a durable permission interaction", async
     return new Response(JSON.stringify({
       success: true,
       data: {
+        outcome: "terminal",
         interaction: {
           interactionId,
           prepareId,
@@ -595,7 +596,7 @@ test("Mac HTTP relay client round-trips a durable permission interaction", async
   assert.match(
     calls[1]!.url,
     new RegExp(
-      `/reservations/${prepareId}/interactions/[0-9a-f-]+/read$`,
+      `/reservations/${prepareId}/interactions/[0-9a-f-]+/wait$`,
       "u",
     ),
   );
