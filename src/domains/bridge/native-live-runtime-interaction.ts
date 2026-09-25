@@ -5,6 +5,10 @@ import {
   eq,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
+import type {
+  DrizzleNativeLiveWorkWakePublisher,
+  NativeLiveWorkWakeBroker,
+} from "./native-live-work-wake.js";
 import {
   nativeLiveRuntimeInteractions,
   nativeLiveTurnPreparations,
@@ -379,6 +383,13 @@ export class NativeLiveRuntimeInteractionService {
   constructor(
     private readonly repository:
       DrizzleNativeLiveRuntimeInteractionRepository,
+    private readonly wakePublisher?:
+      Pick<DrizzleNativeLiveWorkWakePublisher, "notify">,
+    private readonly wakeBroker?:
+      Pick<
+        NativeLiveWorkWakeBroker,
+        "start" | "interactionVersion" | "waitForInteractionChange"
+      >,
   ) {}
 
   create(
@@ -397,6 +408,92 @@ export class NativeLiveRuntimeInteractionService {
     return this.repository.readForListener(input);
   }
 
+  async waitForListener(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+    interactionId: string;
+    timeoutMs: number;
+    signal?: AbortSignal | null;
+  }): Promise<
+    | {
+        outcome: "terminal";
+        interaction: NativeLiveRuntimeInteractionRecord;
+      }
+    | { outcome: "timeout" }
+  > {
+    const read = () =>
+      this.repository.readForListener({
+        userId: input.userId,
+        listenerInstanceId: input.listenerInstanceId,
+        reservationId: input.reservationId,
+        interactionId: input.interactionId,
+      });
+
+    const immediate = await read();
+    if (!immediate) {
+      throw new NativeLiveRuntimeInteractionError(
+        "INTERACTION_NOT_FOUND",
+        "Native live interaction was not found.",
+      );
+    }
+    if (immediate.status !== "pending") {
+      return {
+        outcome: "terminal",
+        interaction: immediate,
+      };
+    }
+    if (!this.wakeBroker) {
+      return { outcome: "timeout" };
+    }
+
+    await this.wakeBroker.start();
+    const version = this.wakeBroker.interactionVersion(
+      input.userId,
+      input.interactionId,
+    );
+
+    const raced = await read();
+    if (!raced) {
+      throw new NativeLiveRuntimeInteractionError(
+        "INTERACTION_NOT_FOUND",
+        "Native live interaction was not found.",
+      );
+    }
+    if (raced.status !== "pending") {
+      return {
+        outcome: "terminal",
+        interaction: raced,
+      };
+    }
+
+    const wake =
+      await this.wakeBroker.waitForInteractionChange({
+        userId: input.userId,
+        interactionId: input.interactionId,
+        afterVersion: version,
+        timeoutMs: input.timeoutMs,
+        signal: input.signal,
+      });
+    if (wake.outcome !== "ready") {
+      return { outcome: "timeout" };
+    }
+
+    const terminal = await read();
+    if (!terminal) {
+      throw new NativeLiveRuntimeInteractionError(
+        "INTERACTION_NOT_FOUND",
+        "Native live interaction was not found.",
+      );
+    }
+    return terminal.status === "pending"
+      ? { outcome: "timeout" }
+      : {
+          outcome: "terminal",
+          interaction: terminal,
+        };
+  }
+
   listForUser(
     input: Parameters<
       DrizzleNativeLiveRuntimeInteractionRepository["listForUser"]
@@ -405,20 +502,40 @@ export class NativeLiveRuntimeInteractionService {
     return this.repository.listForUser(input);
   }
 
-  resolve(
+  async resolve(
     input: Parameters<
       DrizzleNativeLiveRuntimeInteractionRepository["resolve"]
     >[0],
   ) {
-    return this.repository.resolve(input);
+    const result = await this.repository.resolve(input);
+    try {
+      await this.wakePublisher?.notify({
+        userId: input.userId,
+        kind: "runtime_interaction",
+        interactionId: input.interactionId,
+      });
+    } catch {
+      // Durable interaction state is authoritative.
+    }
+    return result;
   }
 
-  cancelForListener(
+  async cancelForListener(
     input: Parameters<
       DrizzleNativeLiveRuntimeInteractionRepository["cancelForListener"]
     >[0],
   ) {
-    return this.repository.cancelForListener(input);
+    const result = await this.repository.cancelForListener(input);
+    try {
+      await this.wakePublisher?.notify({
+        userId: input.userId,
+        kind: "runtime_interaction",
+        interactionId: input.interactionId,
+      });
+    } catch {
+      // Durable interaction state is authoritative.
+    }
+    return result;
   }
 }
 
