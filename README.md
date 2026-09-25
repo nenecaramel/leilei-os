@@ -132,4 +132,4 @@ Repository documentation describes the checked-in release path, not the live dep
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — recurring build/deployment diagnostics.
 - [`docs/leilei-os-v1-milestone.md`](docs/leilei-os-v1-milestone.md) — explicitly historical v1 acceptance snapshot.
 
-Files under `docs/plans/` and other dated design/implementation areas are historical engineering records unless a current authoritative document links to them as active procedure.
+Dated implementation plans and design specs are historical engineering records. Completed plan/spec trees are retired from the current HEAD and remain recoverable through Git history; current procedure belongs in the authoritative docs below.
