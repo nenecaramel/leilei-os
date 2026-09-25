@@ -58,6 +58,8 @@ export type NativeLiveDaemonRunOutcome =
       reservationId: string;
       result: NativeLiveRuntimeExecutionResult;
       eventDeliveryFailures?: number;
+      relayErrorCode?: string;
+      finalizeCode?: string;
     }
   | {
       outcome: "rejected";
@@ -450,14 +452,21 @@ export class NativeLiveMacDaemonLoop {
           reservationId: reservation.reservationId,
           result,
         });
-      } catch {
+      } catch (error) {
         await this.bestEffortDeliveryUnknown(reservation.reservationId);
+        const diagnostics = relayFailureDiagnostics(error);
         return {
           outcome: "delivery_unknown",
           reservationId: reservation.reservationId,
           result,
           ...(eventDeliveryFailures > 0
             ? { eventDeliveryFailures }
+            : {}),
+          ...(diagnostics.relayErrorCode
+            ? { relayErrorCode: diagnostics.relayErrorCode }
+            : {}),
+          ...(diagnostics.finalizeCode
+            ? { finalizeCode: diagnostics.finalizeCode }
             : {}),
         };
       }
@@ -655,4 +664,27 @@ function delayWithAbort(
     };
     signal.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+function relayFailureDiagnostics(error: unknown): {
+  relayErrorCode: string | null;
+  finalizeCode: string | null;
+} {
+  if (!error || typeof error !== "object") {
+    return { relayErrorCode: null, finalizeCode: null };
+  }
+  const record = error as {
+    relayCode?: unknown;
+    finalizeCode?: unknown;
+  };
+  return {
+    relayErrorCode:
+      typeof record.relayCode === "string"
+        ? record.relayCode
+        : null,
+    finalizeCode:
+      typeof record.finalizeCode === "string"
+        ? record.finalizeCode
+        : null,
+  };
 }
