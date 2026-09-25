@@ -230,12 +230,13 @@ private struct NativeLiveMessageRow: View {
 
                     messageStatus
 
-                    HStack(spacing: 14) {
+                    HStack(spacing: 12) {
                         if let copyText {
                             Button {
                                 UIPasteboard.general.string = copyText
                             } label: {
-                                Image(systemName: "doc.on.doc")
+                                Image(systemName: "square.on.square")
+                                    .frame(width: 24, height: 24)
                             }
                         }
 
@@ -244,13 +245,15 @@ private struct NativeLiveMessageRow: View {
                                 onRetryMessage(targetUserMessageID)
                             } label: {
                                 Image(systemName: "arrow.clockwise")
+                                    .frame(width: 24, height: 24)
                             }
                             .disabled(isTurnInFlight)
                         }
                     }
-                    .font(.caption)
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
                     .buttonStyle(.plain)
+                    .padding(.top, 4)
                 }
 
                 Spacer(minLength: 24)
