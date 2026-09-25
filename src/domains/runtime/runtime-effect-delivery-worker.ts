@@ -23,6 +23,31 @@ export interface RuntimeEffectDeliveryUserSource {
   }): Promise<string[]>;
 }
 
+export type RuntimeEffectDeliveryWorkerObserverEvent =
+  | { name: "runtime_effect_delivery_observed" }
+  | {
+      name: "runtime_effect_delivery_unknown";
+      failureCode: string;
+    }
+  | {
+      name: "runtime_effect_delivery_failed";
+      failureCode: string;
+      retryable: boolean;
+    }
+  | {
+      name: "runtime_effect_delivery_reconciled";
+      outcome: "observed" | "failed";
+      retryable: boolean | null;
+    }
+  | {
+      name: "runtime_effect_delivery_requeued";
+      source:
+        | "existing_failed"
+        | "delivery_failure"
+        | "reconciliation_failure";
+    };
+
+
 export class DrizzleRuntimeEffectDeliveryUserSource
 implements RuntimeEffectDeliveryUserSource {
   constructor(private readonly db: Database) {}
@@ -83,6 +108,9 @@ export class RuntimeEffectDeliveryWorker {
       "deliver" | "reconcile"
     >,
     private readonly workerInstanceId: string,
+    private readonly observe?: (
+      event: RuntimeEffectDeliveryWorkerObserverEvent,
+    ) => void,
   ) {}
 
   scheduleUser(userId: string): void {
@@ -110,6 +138,10 @@ export class RuntimeEffectDeliveryWorker {
       await this.coordinator.requeueFailed({
         userId,
         effectId: retryableFailed.effectId,
+      });
+      this.emit({
+        name: "runtime_effect_delivery_requeued",
+        source: "existing_failed",
       });
       return;
     }
@@ -152,6 +184,10 @@ export class RuntimeEffectDeliveryWorker {
           failureCode: "DELIVERY_ADAPTER_ERROR",
         },
       });
+      this.emit({
+        name: "runtime_effect_delivery_unknown",
+        failureCode: "DELIVERY_ADAPTER_ERROR",
+      });
       return;
     }
 
@@ -162,6 +198,7 @@ export class RuntimeEffectDeliveryWorker {
         workerInstanceId: this.workerInstanceId,
         result: { outcome: "observed" },
       });
+      this.emit({ name: "runtime_effect_delivery_observed" });
       return;
     }
 
@@ -176,6 +213,11 @@ export class RuntimeEffectDeliveryWorker {
           retryable: result.retryable,
         },
       });
+    this.emit({
+      name: "runtime_effect_delivery_failed",
+      failureCode: result.failureCode,
+      retryable: result.retryable,
+    });
     if (
       failed.status === "failed"
       && failed.retryable
@@ -183,6 +225,10 @@ export class RuntimeEffectDeliveryWorker {
       await this.coordinator.requeueFailed({
         userId,
         effectId: failed.effectId,
+      });
+      this.emit({
+        name: "runtime_effect_delivery_requeued",
+        source: "delivery_failure",
       });
     }
   }
@@ -204,6 +250,14 @@ export class RuntimeEffectDeliveryWorker {
                 retryable: result.retryable,
               },
       });
+    this.emit({
+      name: "runtime_effect_delivery_reconciled",
+      outcome: result.outcome,
+      retryable:
+        result.outcome === "failed"
+          ? result.retryable
+          : null,
+    });
     if (
       reconciled.status === "failed"
       && reconciled.retryable
@@ -212,6 +266,20 @@ export class RuntimeEffectDeliveryWorker {
         userId: effect.userId,
         effectId: effect.effectId,
       });
+      this.emit({
+        name: "runtime_effect_delivery_requeued",
+        source: "reconciliation_failure",
+      });
+    }
+  }
+
+  private emit(
+    event: RuntimeEffectDeliveryWorkerObserverEvent,
+  ): void {
+    try {
+      this.observe?.(event);
+    } catch {
+      // Observability must never change delivery correctness.
     }
   }
 }
