@@ -390,7 +390,6 @@ implements NativeLiveConversationRepository {
               ),
             ),
           )
-          .for("update")
           .limit(1);
 
         if (activeTurns.length > 0) {
