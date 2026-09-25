@@ -100,10 +100,10 @@ struct SidebarView: View {
     private var recentConversations: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Recents")
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.system(size: 14.5, weight: .semibold))
                 .foregroundStyle(.secondary.opacity(0.9))
                 .padding(.horizontal, 10)
-                .offset(x: titleHorizontalOffset - 10, y: 2)
+                .offset(x: titleHorizontalOffset - 12, y: 2)
 
             ForEach(conversations) { conversation in
                 Button {
