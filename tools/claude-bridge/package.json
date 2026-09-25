@@ -16,7 +16,8 @@
     "smoke:agent-sdk-permission": "node scripts/agent-sdk-permission-smoke.mjs",
     "smoke:agent-sdk-streaming": "node scripts/agent-sdk-streaming-smoke.mjs",
     "smoke:agent-sdk-mid-turn-input": "node scripts/agent-sdk-mid-turn-input-smoke.mjs",
-    "smoke:agent-sdk-ask-user-question": "node scripts/agent-sdk-ask-user-question-smoke.mjs"
+    "smoke:agent-sdk-ask-user-question": "node scripts/agent-sdk-ask-user-question-smoke.mjs",
+    "smoke:agent-sdk-filesystem-parity": "node scripts/agent-sdk-filesystem-parity-smoke.mjs"
   },
   "engines": {
     "node": ">=20"
