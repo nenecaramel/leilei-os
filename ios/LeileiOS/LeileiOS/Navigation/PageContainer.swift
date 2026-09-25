@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct PageContainer: View {
+    @EnvironmentObject private var appModel: AppModel
+
     let selectedPage: AppPage
     let onMenu: (() -> Void)?
     let onOpenConversation: () -> Void
@@ -24,7 +26,7 @@ struct PageContainer: View {
                     PlaceholderPage(page: selectedPage)
                 }
             }
-            .navigationTitle(selectedPage == .chat ? "Claude" : selectedPage.rawValue)
+            .navigationTitle(pageTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -36,18 +38,32 @@ struct PageContainer: View {
                     }
                 }
 
-
                 if selectedPage != .globalSearch
                     && selectedPage != .diary
                     && selectedPage != .daySpace
                     && selectedPage != .conversations {
                     ToolbarItem(placement: .topBarTrailing) {
                         if selectedPage == .chat {
-                            Button {
+                            Menu {
+                                Button {
+                                    // Rename is intentionally not faked locally.
+                                    // Wire this action when native/live exposes
+                                    // a durable conversation-title mutation.
+                                } label: {
+                                    Label("Rename", systemImage: "pencil")
+                                }
+
+                                Button(role: .destructive) {
+                                    // Delete is a UI placeholder until native/live
+                                    // conversation deletion exists.
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
                             } label: {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 18, weight: .medium))
                             }
+                            .accessibilityLabel("Conversation menu")
                         } else {
                             Button {
                             } label: {
@@ -61,6 +77,36 @@ struct PageContainer: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+    }
+
+    private var pageTitle: String {
+        guard selectedPage == .chat else {
+            return selectedPage.rawValue
+        }
+        return activeConversationTitle
+    }
+
+    private var activeConversationTitle: String {
+        if let activeConversationID = appModel.activeNativeLiveConversationID,
+           let conversation = appModel.nativeLiveConversations.first(where: {
+               guard let id = UUID(uuidString: $0.id) else { return false }
+               return id == activeConversationID
+           }),
+           let title = normalizedTitle(conversation.title) {
+            return title
+        }
+
+        if let title = normalizedTitle(appModel.nativeLiveCurrentPath?.title) {
+            return title
+        }
+
+        return "New Conversation"
+    }
+
+    private func normalizedTitle(_ title: String?) -> String? {
+        guard let title else { return nil }
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
     }
 }
 
