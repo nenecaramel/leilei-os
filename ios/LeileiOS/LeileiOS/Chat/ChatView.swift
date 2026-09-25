@@ -67,7 +67,7 @@ struct ChatView: View {
             }
             .padding(.horizontal, 10)
             .padding(.top, 18)
-            .padding(.bottom, isComposerFocused ? 18 : 8)
+            .padding(.bottom, 10)
             .background {
                 LinearGradient(
                     colors: [
@@ -79,7 +79,6 @@ struct ChatView: View {
                 )
                 .ignoresSafeArea()
             }
-            .offset(y: 10)
         }
         .sheet(item: $editDraft) { draft in
             NativeLiveEditSheet(
