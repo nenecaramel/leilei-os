@@ -491,7 +491,7 @@ private struct ChatMarkdownView: View {
     let text: String
     let fillsAvailableWidth: Bool
 
-    private let baseFontSize: CGFloat = 16.5
+    private let baseFontSize: CGFloat = 17
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -612,7 +612,7 @@ private struct ChatMarkdownView: View {
         case 3:
             return 17.5
         default:
-            return 16.5
+            return 17
         }
     }
 }
