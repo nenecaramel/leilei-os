@@ -626,6 +626,7 @@ function isAcceptedTerminalFinalize(
     result.code === "CLAUDE_PROCESS_FAILED"
     || result.code === "MALFORMED_STREAM"
     || result.code === "ABORTED"
+    || result.code === "INTERRUPTED"
     || result.code === "NO_PROVIDER_SESSION"
     || result.code === "PROVIDER_SESSION_CONFLICT"
     || result.code === "RUNTIME_UNAVAILABLE"
