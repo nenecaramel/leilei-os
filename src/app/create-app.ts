@@ -70,8 +70,26 @@ import {
 } from "../web-api/health-sync-router.js";
 import { createHealthSyncAuthMiddleware } from "../web-api/health-sync-auth.js";
 
+export type NativeLiveProductionDependencies = {
+  web: Required<NativeLiveApiDependencies>;
+  internal:
+    Required<
+      Omit<
+        NativeLiveRelayInternalDependencies,
+        "backgroundModelOpportunity"
+        | "observeCompanionBackgroundOpportunity"
+      >
+    >
+    & Pick<
+      NativeLiveRelayInternalDependencies,
+      "backgroundModelOpportunity"
+      | "observeCompanionBackgroundOpportunity"
+    >;
+};
+
 export type AppDependencies = {
   logger?: SafeLogger;
+  nativeLiveProduction?: NativeLiveProductionDependencies;
   verifyAccessToken?: AccessTokenVerifier;
   verifyWebAccessToken?: AccessTokenVerifier;
   webDiaryService?: DiaryApiDependencies["diaryService"];
@@ -135,6 +153,14 @@ export function createApp(
   const logger = dependencies.logger ?? createSafeLogger({ level: env.LOG_LEVEL });
   const observeMcpLifecycle = createMcpLifecycleObserver(logger);
   const config = requireOAuthConfig(env);
+  if (
+    dependencies.nativeLiveProduction
+    && !config.MCP_AUTH_TOKEN
+  ) {
+    throw new Error(
+      "Native Live production requires internal MCP authentication.",
+    );
+  }
   const oauthAuthorizationServerConfig = getOAuthAuthorizationServerConfig(env);
   const mcpGovernance = getMcpGovernanceConfig(env);
   const mcpSessionRegistry = dependencies.mcpSessionRegistry ?? new McpSessionRegistry({
@@ -420,47 +446,52 @@ export function createApp(
         ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
         ...(dependencies.webConversationLifecycle ? { conversationLifecycle: dependencies.webConversationLifecycle } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
-        ...(webNativeLiveCoordinator
-          && webNativeLiveTurnReader
-          && dependencies.nativeLiveRelayService
+        ...(dependencies.nativeLiveProduction
           ? {
-              nativeLive: {
-                coordinator: webNativeLiveCoordinator,
-                relayService: dependencies.nativeLiveRelayService,
-                turnReader: webNativeLiveTurnReader,
-                ...(webNativeLiveCurrentPathReader
-                  ? {
-                      currentPathReader:
-                        webNativeLiveCurrentPathReader,
-                    }
-                  : {}),
-                ...(webNativeLiveConversationService
-                  ? {
-                      conversationService:
-                        webNativeLiveConversationService,
-                    }
-                  : {}),
-                ...(dependencies.nativeLiveRuntimeEventService
-                  ? {
-                      runtimeEventService:
-                        dependencies.nativeLiveRuntimeEventService,
-                    }
-                  : {}),
-                ...(dependencies.nativeLiveRuntimeInteractionService
-                  ? {
-                      runtimeInteractionService:
-                        dependencies.nativeLiveRuntimeInteractionService,
-                    }
-                  : {}),
-                ...(dependencies.nativeLiveRuntimeControlService
-                  ? {
-                      runtimeControlService:
-                        dependencies.nativeLiveRuntimeControlService,
-                    }
-                  : {}),
-              },
+              nativeLive:
+                dependencies.nativeLiveProduction.web,
             }
-          : {}),
+          : webNativeLiveCoordinator
+            && webNativeLiveTurnReader
+            && dependencies.nativeLiveRelayService
+            ? {
+                nativeLive: {
+                  coordinator: webNativeLiveCoordinator,
+                  relayService: dependencies.nativeLiveRelayService,
+                  turnReader: webNativeLiveTurnReader,
+                  ...(webNativeLiveCurrentPathReader
+                    ? {
+                        currentPathReader:
+                          webNativeLiveCurrentPathReader,
+                      }
+                    : {}),
+                  ...(webNativeLiveConversationService
+                    ? {
+                        conversationService:
+                          webNativeLiveConversationService,
+                      }
+                    : {}),
+                  ...(dependencies.nativeLiveRuntimeEventService
+                    ? {
+                        runtimeEventService:
+                          dependencies.nativeLiveRuntimeEventService,
+                      }
+                    : {}),
+                  ...(dependencies.nativeLiveRuntimeInteractionService
+                    ? {
+                        runtimeInteractionService:
+                          dependencies.nativeLiveRuntimeInteractionService,
+                      }
+                    : {}),
+                  ...(dependencies.nativeLiveRuntimeControlService
+                    ? {
+                        runtimeControlService:
+                          dependencies.nativeLiveRuntimeControlService,
+                      }
+                    : {}),
+                },
+              }
+            : {}),
       }),
     );
   }
@@ -485,7 +516,37 @@ export function createApp(
   );
 
   if (config.MCP_AUTH_TOKEN) {
-    if (dependencies.nativeLiveRelayService) {
+    if (dependencies.nativeLiveProduction) {
+      app.use(
+        "/internal/native-live-relay",
+        createInternalAuthMiddleware(
+          config.MCP_AUTH_TOKEN,
+          config.MCP_USER_ID,
+        ),
+        databaseReadinessMiddleware,
+        createNativeLiveRelayInternalRouter({
+          ...dependencies.nativeLiveProduction.internal,
+          observeCompanionBackgroundOpportunity: (event) => {
+            logger.info(
+              "native_live_companion_background_opportunity",
+              {
+                outcome: event.outcome,
+                reason: event.reason,
+                maintenanceKindCount:
+                  event.maintenanceKindCount,
+                effectDeliveryScheduled:
+                  event.effectDeliveryScheduled,
+                proactivityScheduled:
+                  event.proactivityScheduled,
+                topicResurfaceOffered:
+                  event.topicResurfaceOffered,
+                failureCount: event.failureCount,
+              },
+            );
+          },
+        }),
+      );
+    } else if (dependencies.nativeLiveRelayService) {
       app.use(
         "/internal/native-live-relay",
         createInternalAuthMiddleware(
