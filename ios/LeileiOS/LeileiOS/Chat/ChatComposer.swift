@@ -19,7 +19,7 @@ struct ChatComposer: View {
                 axis: .vertical
             )
             .focused(isFocused)
-            .font(.system(size: 17.5, weight: .medium))
+            .font(.system(size: 17.5, weight: .regular))
             .foregroundStyle(Color.primary.opacity(0.68))
             .lineLimit(1...6)
 
@@ -41,7 +41,8 @@ struct ChatComposer: View {
                     }
                 } label: {
                     ComposerCircleButton(
-                        systemName: "plus"
+                        systemName: "plus",
+                        weight: .regular
                     )
                 }
 
