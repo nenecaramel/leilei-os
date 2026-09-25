@@ -4,6 +4,13 @@ import type {
   NativeLiveRuntimeResult,
 } from "../conversation/native-live-conversation-orchestrator.js";
 
+type NativeLiveForegroundRuntimeResult =
+  NativeLiveRuntimeResult & {
+    contextUsage?: NativeLiveRuntimeContextUsage | null;
+    compactionAdvisory?:
+      NativeLiveRuntimeCompactionAdvisory | null;
+  };
+
 type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
   executeTurn?: (
     prompt: string,
@@ -28,7 +35,18 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         context: { signal: AbortSignal },
       ) => Promise<void>;
     },
-  ) => Promise<NativeLiveRuntimeResult>;
+  ) => Promise<NativeLiveForegroundRuntimeResult>;
+  compact?: (
+    sessionId: string,
+    execution?: NativeLiveExecutionSelection | null,
+  ) => Promise<NativeLiveRuntimeResult & {
+    compaction?: {
+      boundary?: Record<string, unknown> | null;
+      postCompact?: Array<{
+        summary?: string | null;
+      }>;
+    };
+  }>;
 };
 import type {
   NativeLiveMacActiveTurnController,
@@ -38,8 +56,11 @@ import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
   type NativeLiveRuntimeCommand,
+  type NativeLiveRuntimeCompactionAdvisory,
+  type NativeLiveRuntimeContextUsage,
   type NativeLiveRuntimeExecutionResult,
   type NativeLiveRuntimeFailureCode,
+  type NativeLiveRuntimeMetadata,
 } from "./native-live-runtime-protocol.js";
 
 export class NativeLiveMacRuntimeExecutor {
@@ -67,7 +88,7 @@ export class NativeLiveMacRuntimeExecutor {
   ): Promise<NativeLiveRuntimeExecutionResult> {
     const command = parseNativeLiveRuntimeCommand(rawCommand);
 
-    let runtimeResult: NativeLiveRuntimeResult;
+    let runtimeResult: NativeLiveForegroundRuntimeResult;
     try {
       runtimeResult = this.runtime.executeTurn
         ? await this.runtime.executeTurn(
@@ -127,6 +148,11 @@ export class NativeLiveMacRuntimeExecutor {
       return failure(command, "PROVIDER_SESSION_CONFLICT");
     }
 
+    const runtimeMetadata = await this.buildRuntimeMetadata(
+      command,
+      runtimeResult,
+    );
+
     return {
       protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
       prepare_id: command.prepare_id,
@@ -135,8 +161,119 @@ export class NativeLiveMacRuntimeExecutor {
       status: "success",
       provider_session_id: runtimeResult.providerSessionId,
       normalized_events: [...runtimeResult.normalizedEvents],
+      runtime_metadata: runtimeMetadata,
     };
   }
+
+  private async buildRuntimeMetadata(
+    command: NativeLiveRuntimeCommand,
+    runtimeResult: NativeLiveForegroundRuntimeResult,
+  ): Promise<NativeLiveRuntimeMetadata | null> {
+    const advisory = runtimeResult.compactionAdvisory ?? null;
+    const contextUsage = runtimeResult.contextUsage ?? null;
+
+    if (!advisory && !contextUsage) return null;
+
+    if (!advisory) {
+      return {
+        context_usage: contextUsage,
+        compaction_advisory: null,
+        compaction: null,
+      };
+    }
+
+    if (!advisory.due) {
+      return {
+        context_usage: contextUsage,
+        compaction_advisory: advisory,
+        compaction: {
+          source: "runtime_threshold",
+          attempted: false,
+          outcome: "not_due",
+          boundary: null,
+          summary: null,
+          failure_code: null,
+        },
+      };
+    }
+
+    if (!this.runtime.compact) {
+      return {
+        context_usage: contextUsage,
+        compaction_advisory: advisory,
+        compaction: {
+          source: "runtime_threshold",
+          attempted: false,
+          outcome: "unsupported",
+          boundary: null,
+          summary: null,
+          failure_code: "COMPACT_UNSUPPORTED",
+        },
+      };
+    }
+
+    try {
+      const compacted = await this.runtime.compact(
+        runtimeResult.providerSessionId!,
+        command.execution_selection ?? null,
+      );
+      if (
+        compacted.providerSessionId
+        !== runtimeResult.providerSessionId
+      ) {
+        throw Object.assign(
+          new Error(
+            "Automatic compact changed provider session identity.",
+          ),
+          { runtimeCode: "PROVIDER_SESSION_CONFLICT" },
+        );
+      }
+
+      return {
+        context_usage: contextUsage,
+        compaction_advisory: advisory,
+        compaction: {
+          source: "runtime_threshold",
+          attempted: true,
+          outcome: "succeeded",
+          boundary:
+            compacted.compaction?.boundary ?? null,
+          summary: latestCompactSummary(
+            compacted.compaction?.postCompact,
+          ),
+          failure_code: null,
+        },
+      };
+    } catch {
+      return {
+        context_usage: contextUsage,
+        compaction_advisory: advisory,
+        compaction: {
+          source: "runtime_threshold",
+          attempted: true,
+          outcome: "failed",
+          boundary: null,
+          summary: null,
+          failure_code: "COMPACT_FAILED",
+        },
+      };
+    }
+  }
+}
+
+function latestCompactSummary(
+  values:
+    | Array<{ summary?: string | null }>
+    | undefined,
+): string | null {
+  if (!values) return null;
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const summary = values[index]?.summary;
+    if (typeof summary === "string" && summary.trim()) {
+      return summary.trim();
+    }
+  }
+  return null;
 }
 
 function failure(
