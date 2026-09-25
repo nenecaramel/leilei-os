@@ -5,8 +5,9 @@ struct ChatView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var messageText = ""
-    @State private var model = "Opus 5"
-    @State private var effort = "High"
+    @State private var model: NativeLiveClaudeModel = .opus55
+    @State private var thinking: NativeLiveThinkingMode = .adaptive
+    @State private var effort: NativeLiveEffortLevel = .high
     @State private var editDraft: NativeLiveEditDraft?
     @FocusState private var isComposerFocused: Bool
 
@@ -57,6 +58,7 @@ struct ChatView: View {
             ChatComposer(
                 text: $messageText,
                 model: $model,
+                thinking: $thinking,
                 effort: $effort,
                 isFocused: $isComposerFocused,
                 isSending: appModel.chatSendState == .sending
@@ -85,7 +87,8 @@ struct ChatView: View {
             ) { replacement in
                 try await appModel.editNativeLiveMessage(
                     targetUserMessageID: draft.targetUserMessageID,
-                    text: replacement
+                    text: replacement,
+                    execution: executionSelection
                 )
             }
         }
@@ -98,7 +101,8 @@ struct ChatView: View {
 
         Task { @MainActor in
             try? await appModel.retryNativeLiveMessage(
-                targetUserMessageID: targetUserMessageID
+                targetUserMessageID: targetUserMessageID,
+                execution: executionSelection
             )
         }
     }
@@ -122,6 +126,14 @@ struct ChatView: View {
         )
     }
 
+    private var executionSelection: NativeLiveExecutionSelection {
+        NativeLiveExecutionSelection(
+            model: model,
+            thinking: thinking,
+            effort: effort
+        )
+    }
+
     private func sendMessage() {
         let pendingText = messageText.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -133,7 +145,10 @@ struct ChatView: View {
 
         Task {
             do {
-                try await appModel.sendNativeLiveMessage(pendingText)
+                try await appModel.sendNativeLiveMessage(
+                    pendingText,
+                    execution: executionSelection
+                )
             } catch {
                 if messageText.trimmingCharacters(
                     in: .whitespacesAndNewlines
