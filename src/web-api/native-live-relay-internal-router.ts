@@ -39,6 +39,10 @@ import {
   NativeLiveRuntimeInteractionError,
   type NativeLiveRuntimeInteractionService,
 } from "../domains/bridge/native-live-runtime-interaction.js";
+import {
+  NativeLiveRuntimeControlError,
+  type NativeLiveRuntimeControlService,
+} from "../domains/bridge/native-live-runtime-control.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -73,6 +77,10 @@ export type NativeLiveRelayInternalDependencies = {
   runtimeInteractionService?: Pick<
     NativeLiveRuntimeInteractionService,
     "create" | "readForListener" | "cancelForListener"
+  >;
+  runtimeControlService?: Pick<
+    NativeLiveRuntimeControlService,
+    "reserveNextForListener" | "completeForListener"
   >;
 };
 
@@ -139,6 +147,16 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/reservations/:reservationId/interactions/:interactionId/cancel",
       cancelRuntimeInteractionHandler(dependencies),
+    );
+  }
+  if (dependencies.runtimeControlService) {
+    router.post(
+      "/reservations/:reservationId/controls/reserve",
+      reserveRuntimeControlHandler(dependencies),
+    );
+    router.post(
+      "/reservations/:reservationId/controls/:controlId/complete",
+      completeRuntimeControlHandler(dependencies),
     );
   }
   router.post(
@@ -426,6 +444,74 @@ function executionStartedHandler(
       response.json({ success: true, data: { accepted: true } });
     } catch (error) {
       sendRelayError(response, error);
+    }
+  };
+}
+
+function reserveRuntimeControlHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.runtimeControlService) return;
+    const reservationId =
+      parseReservationId(request.params.reservationId);
+    const body = parseListenerOnlyBody(request.body);
+    if (!reservationId || !body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      const control =
+        await dependencies.runtimeControlService.reserveNextForListener({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+          reservationId,
+        });
+      response.json({
+        success: true,
+        data: control
+          ? { control }
+          : null,
+      });
+    } catch (error) {
+      sendRuntimeControlError(response, error);
+    }
+  };
+}
+
+function completeRuntimeControlHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.runtimeControlService) return;
+    const reservationId =
+      parseReservationId(request.params.reservationId);
+    const controlId =
+      parseReservationId(request.params.controlId);
+    const body = parseRuntimeControlCompletionBody(request.body);
+    if (!reservationId || !controlId || !body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      const outcome =
+        await dependencies.runtimeControlService.completeForListener({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+          reservationId,
+          controlId,
+          outcome: body.outcome,
+        });
+      response.json({
+        success: true,
+        data: { outcome },
+      });
+    } catch (error) {
+      sendRuntimeControlError(response, error);
     }
   };
 }
@@ -772,6 +858,65 @@ function parseSemanticFallbackBody(
   };
 }
 
+function parseRuntimeControlCompletionBody(
+  value: unknown,
+): {
+  listener_instance_id: string;
+  outcome:
+    | {
+        status: "applied";
+        receipt: Record<string, unknown>;
+      }
+    | {
+        status: "failed";
+        failureCode: string;
+      };
+} | null {
+  const record = exactRecord(value, [
+    "listener_instance_id",
+    "outcome",
+  ]);
+  if (
+    !record
+    || !isUuid(record.listener_instance_id)
+    || !record.outcome
+    || typeof record.outcome !== "object"
+    || Array.isArray(record.outcome)
+  ) {
+    return null;
+  }
+  const outcome = record.outcome as Record<string, unknown>;
+  if (
+    outcome.status === "applied"
+    && Object.keys(outcome).length === 2
+    && outcome.receipt
+    && typeof outcome.receipt === "object"
+    && !Array.isArray(outcome.receipt)
+  ) {
+    return {
+      listener_instance_id: record.listener_instance_id,
+      outcome: {
+        status: "applied",
+        receipt: outcome.receipt as Record<string, unknown>,
+      },
+    };
+  }
+  if (
+    outcome.status === "failed"
+    && Object.keys(outcome).length === 2
+    && typeof outcome.failureCode === "string"
+  ) {
+    return {
+      listener_instance_id: record.listener_instance_id,
+      outcome: {
+        status: "failed",
+        failureCode: outcome.failureCode,
+      },
+    };
+  }
+  return null;
+}
+
 function parseRuntimeInteractionCreateBody(
   value: unknown,
 ): {
@@ -946,6 +1091,36 @@ function requireInternalUser(
     },
   });
   return null;
+}
+
+function sendRuntimeControlError(
+  response: Response,
+  error: unknown,
+): void {
+  if (error instanceof NativeLiveRuntimeControlError) {
+    const status =
+      error.code === "CONTROL_INVALID"
+        ? 400
+        : error.code === "CONTROL_NOT_FOUND"
+          ? 404
+          : 409;
+    response.status(status).json({
+      success: false,
+      error: {
+        code: error.code,
+        message: error.message,
+      },
+    });
+    return;
+  }
+  response.status(503).json({
+    success: false,
+    error: {
+      code: "NATIVE_LIVE_RUNTIME_CONTROL_UNAVAILABLE",
+      message:
+        "Native live runtime control is temporarily unavailable.",
+    },
+  });
 }
 
 function sendRuntimeInteractionError(
