@@ -97,24 +97,20 @@ struct PageContainer: View {
                 try await appModel.renameActiveNativeLiveConversation(title)
             }
         }
-        .alert(
-            "Delete conversation?",
+        .appConfirmationAlert(
+            title: "Delete conversation?",
+            message: "This conversation will be removed from Recents.",
+            actionTitle: "Delete",
+            actionRole: .destructive,
             isPresented: $showingDeleteConfirmation
         ) {
-            Button("Cancel", role: .cancel) {
-            }
-
-            Button("Delete", role: .destructive) {
-                Task { @MainActor in
-                    do {
-                        try await appModel.deleteActiveNativeLiveConversation()
-                    } catch {
-                        deleteErrorMessage = error.localizedDescription
-                    }
+            Task { @MainActor in
+                do {
+                    try await appModel.deleteActiveNativeLiveConversation()
+                } catch {
+                    deleteErrorMessage = error.localizedDescription
                 }
             }
-        } message: {
-            Text("This conversation will be removed from Recents.")
         }
         .alert(
             "Delete failed",
