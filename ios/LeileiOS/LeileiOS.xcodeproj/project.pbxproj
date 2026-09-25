@@ -267,6 +267,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LeileiOS/Info.plist;
 				INFOPLIST_KEY_LEILEI_AUTH0_AUDIENCE = "https://leilei-os-production.up.railway.app/api";
 				INFOPLIST_KEY_LEILEI_AUTH0_CLIENT_ID = 5bl4SEMhSb90Np795gtTlj2YVccClsaY;
 				INFOPLIST_KEY_LEILEI_AUTH0_ISSUER = "https://dev-qv68vnoepaps75ps.us.auth0.com/";
@@ -308,6 +309,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LeileiOS/Info.plist;
 				INFOPLIST_KEY_LEILEI_AUTH0_AUDIENCE = "https://leilei-os-production.up.railway.app/api";
 				INFOPLIST_KEY_LEILEI_AUTH0_CLIENT_ID = 5bl4SEMhSb90Np795gtTlj2YVccClsaY;
 				INFOPLIST_KEY_LEILEI_AUTH0_ISSUER = "https://dev-qv68vnoepaps75ps.us.auth0.com/";
