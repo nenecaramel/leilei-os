@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ChatView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -14,6 +15,7 @@ struct ChatView: View {
     @State private var effort: NativeLiveEffortLevel = .high
     @State private var editDraft: NativeLiveEditDraft?
     @State private var isDraftCommitInFlight = false
+    @State private var isSystemKeyboardVisible = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -103,7 +105,25 @@ struct ChatView: View {
                 )
                 .ignoresSafeArea()
             }
-            .offset(y: 10)
+            .offset(
+                y: isComposerFocused && isSystemKeyboardVisible
+                    ? 0
+                    : 10
+            )
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardWillShowNotification
+            )
+        ) { _ in
+            isSystemKeyboardVisible = true
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardWillHideNotification
+            )
+        ) { _ in
+            isSystemKeyboardVisible = false
         }
         .overlay {
             if isConversationLoading {
