@@ -79,6 +79,7 @@ struct ChatView: View {
                 )
                 .ignoresSafeArea()
             }
+            .offset(y: 10)
         }
         .sheet(item: $editDraft) { draft in
             NativeLiveEditSheet(
