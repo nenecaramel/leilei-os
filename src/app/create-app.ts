@@ -427,12 +427,6 @@ export function createApp(
               nativeLive: {
                 coordinator: webNativeLiveCoordinator,
                 relayService: dependencies.nativeLiveRelayService,
-          ...(dependencies.nativeLiveWorkWaitService
-            ? {
-                workWaitService:
-                  dependencies.nativeLiveWorkWaitService,
-              }
-            : {}),
                 turnReader: webNativeLiveTurnReader,
                 ...(webNativeLiveCurrentPathReader
                   ? {
@@ -501,6 +495,12 @@ export function createApp(
         databaseReadinessMiddleware,
         createNativeLiveRelayInternalRouter({
           relayService: dependencies.nativeLiveRelayService,
+          ...(dependencies.nativeLiveWorkWaitService
+            ? {
+                workWaitService:
+                  dependencies.nativeLiveWorkWaitService,
+              }
+            : {}),
           ...(dependencies.nativeLiveSemanticService
             ? { semanticService: dependencies.nativeLiveSemanticService }
             : {}),
