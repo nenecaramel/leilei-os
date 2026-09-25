@@ -227,6 +227,7 @@ private struct NativeLiveMessageRow: View {
                         .foregroundStyle(.secondary)
 
                     messageContent
+                        .textSelection(.enabled)
 
                     messageStatus
 
