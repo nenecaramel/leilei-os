@@ -21,7 +21,7 @@ struct SidebarView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
                         Text("Leilei OS")
-                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                            .font(.system(size: 22, weight: .medium, design: .rounded))
                             .padding(.top, 18)
                             .offset(x: titleHorizontalOffset - 2, y: 20)
 
@@ -37,7 +37,7 @@ struct SidebarView: View {
                                 ],
                                 selectedPage: $selectedPage,
                                 textLeadingOffset: titleHorizontalOffset - navigationRowHorizontalInset,
-                                selectedBackgroundLeadingOffset: titleHorizontalOffset - 15,
+                                selectedBackgroundLeadingOffset: titleHorizontalOffset - 16,
                                 onSelect: onSelect
                             )
                             .offset(y: 9)
@@ -60,7 +60,7 @@ struct SidebarView: View {
                     onSelect()
                 }
                 .position(
-                    x: proxy.size.width - 40,
+                    x: proxy.size.width - 52,
                     y: localY(
                         menuButtonCenterY,
                         in: proxy,
@@ -90,6 +90,7 @@ struct SidebarView: View {
                             onSelect()
                         }
                     }
+                    .offset(x: -12)
                 }
                 .padding()
             }
@@ -100,7 +101,7 @@ struct SidebarView: View {
     private var recentConversations: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Recents")
-                .font(.system(size: 14.5, weight: .semibold))
+                .font(.system(size: 14.5, weight: .medium))
                 .foregroundStyle(.secondary.opacity(0.9))
                 .padding(.horizontal, 10)
                 .offset(x: titleHorizontalOffset - 12, y: 2)
@@ -113,7 +114,7 @@ struct SidebarView: View {
                 } label: {
                     HStack {
                         Text(displayTitle(for: conversation))
-                            .font(.system(size: 17.5, weight: .medium))
+                            .font(.system(size: 17.5, weight: .regular))
                             .lineLimit(1)
                             .offset(
                                 x: titleHorizontalOffset - navigationRowHorizontalInset,
@@ -136,9 +137,9 @@ struct SidebarView: View {
                                 .fill(.primary.opacity(0.05))
                                 .padding(
                                     .leading,
-                                    titleHorizontalOffset - 15
+                                    titleHorizontalOffset - 16
                                 )
-                                .padding(.trailing, -2)
+                                .padding(.trailing, 1)
                                 .offset(y: 2)
                         }
                     }
@@ -204,7 +205,7 @@ private struct FloatingUIKitGlassButton: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIButton {
         let button = UIButton(type: .system)
-        let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+        let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         var configuration = UIButton.Configuration.glass()
         configuration.image = UIImage(systemName: symbol)
         configuration.contentInsets = .zero
