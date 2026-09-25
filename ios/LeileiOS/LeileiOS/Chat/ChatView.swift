@@ -4,11 +4,16 @@ struct ChatView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.scenePhase) private var scenePhase
 
+    let isDraftConversation: Bool
+    let draftConversationID: UUID
+    let onDraftCommitted: () -> Void
+
     @State private var messageText = ""
     @State private var model: NativeLiveClaudeModel = .opus55
     @State private var thinking: NativeLiveThinkingMode = .adaptive
     @State private var effort: NativeLiveEffortLevel = .high
     @State private var editDraft: NativeLiveEditDraft?
+    @State private var isDraftCommitInFlight = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -16,42 +21,59 @@ struct ChatView: View {
             Color(.systemBackground)
                 .ignoresSafeArea()
 
-            NativeLiveMessageSurface(
-                snapshot: appModel.nativeLiveCurrentPath,
-                syncState: appModel.chatSyncState,
-                isAuthenticated: appModel.isAuthenticated,
-                hasActiveConversation:
-                    appModel.activeNativeLiveConversationID != nil,
-                isTurnInFlight:
-                    appModel.chatSendState == .sending,
-                onRefresh: {
-                    await appModel.refreshNativeLiveCurrentPath(force: true)
-                },
-                onRetryMessage: { targetUserMessageID in
-                    retryMessage(targetUserMessageID)
-                },
-                onEditMessage: { message in
-                    beginEditing(message)
-                }
-            )
+            if isDraftConversation {
+                Color.clear
+            } else {
+                NativeLiveMessageSurface(
+                    snapshot: appModel.nativeLiveCurrentPath,
+                    syncState: appModel.chatSyncState,
+                    isAuthenticated: appModel.isAuthenticated,
+                    hasActiveConversation:
+                        appModel.activeNativeLiveConversationID != nil,
+                    isTurnInFlight:
+                        appModel.chatSendState == .sending,
+                    onRefresh: {
+                        await appModel.refreshNativeLiveCurrentPath(force: true)
+                    },
+                    onRetryMessage: { targetUserMessageID in
+                        retryMessage(targetUserMessageID)
+                    },
+                    onEditMessage: { message in
+                        beginEditing(message)
+                    }
+                )
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture {
             isComposerFocused = false
         }
         .task(id: appModel.activeNativeLiveConversationID) {
+            guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveCurrentPath()
         }
         .task(id: appModel.isAuthenticated) {
             guard appModel.isAuthenticated else { return }
             await appModel.refreshNativeLiveConversations()
+            guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveCurrentPath()
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task {
                 await appModel.refreshNativeLiveConversations()
+                guard !isDraftConversation else { return }
                 await appModel.refreshNativeLiveCurrentPath()
+            }
+        }
+        .onChange(of: draftConversationID) { _, _ in
+            messageText = ""
+            editDraft = nil
+            isComposerFocused = false
+        }
+        .onChange(of: isDraftConversation) { wasDraft, isDraft in
+            if wasDraft && !isDraft && !isDraftCommitInFlight {
+                messageText = ""
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -61,7 +83,9 @@ struct ChatView: View {
                 thinking: $thinking,
                 effort: $effort,
                 isFocused: $isComposerFocused,
-                isSending: appModel.chatSendState == .sending
+                isSending:
+                    appModel.chatSendState == .sending
+                        || isDraftCommitInFlight
             ) {
                 sendMessage()
             }
@@ -138,13 +162,27 @@ struct ChatView: View {
         let pendingText = messageText.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        guard !pendingText.isEmpty else { return }
+        guard !pendingText.isEmpty,
+              !isDraftCommitInFlight,
+              appModel.chatSendState != .sending else {
+            return
+        }
+
+        let shouldCreateConversation = isDraftConversation
 
         messageText = ""
         isComposerFocused = false
 
-        Task {
+        Task { @MainActor in
             do {
+                if shouldCreateConversation {
+                    isDraftCommitInFlight = true
+                    _ = try await appModel.createNativeLiveConversation(
+                        title: "New Conversation"
+                    )
+                    onDraftCommitted()
+                }
+
                 try await appModel.sendNativeLiveMessage(
                     pendingText,
                     execution: executionSelection
@@ -156,6 +194,8 @@ struct ChatView: View {
                     messageText = pendingText
                 }
             }
+
+            isDraftCommitInFlight = false
         }
     }
 }
