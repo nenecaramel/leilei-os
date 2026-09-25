@@ -14,6 +14,8 @@ struct SidebarView: View {
     private let topContentOffset: CGFloat = 18
     private let titleHorizontalOffset: CGFloat = -10
     private let navigationRowHorizontalInset: CGFloat = 12
+    private let floatingControlDiameter: CGFloat = 44
+    private let trailingFloatingControlCenterInset: CGFloat = 52
 
     var body: some View {
         GeometryReader { proxy in
@@ -60,7 +62,8 @@ struct SidebarView: View {
                     onSelect()
                 }
                 .position(
-                    x: proxy.size.width - 52,
+                    x: proxy.size.width
+                        - trailingFloatingControlCenterInset,
                     y: localY(
                         menuButtonCenterY,
                         in: proxy,
@@ -90,9 +93,14 @@ struct SidebarView: View {
                             onSelect()
                         }
                     }
-                    .offset(x: -12)
                 }
-                .padding()
+                .padding(.leading, 16)
+                .padding(
+                    .trailing,
+                    trailingFloatingControlCenterInset
+                        - floatingControlDiameter / 2
+                )
+                .padding(.bottom, 16)
             }
         }
     }
@@ -104,7 +112,7 @@ struct SidebarView: View {
                 .font(.system(size: 14.5, weight: .medium))
                 .foregroundStyle(.secondary.opacity(0.9))
                 .padding(.horizontal, 10)
-                .offset(x: titleHorizontalOffset - 12, y: 2)
+                .offset(x: titleHorizontalOffset - 14, y: 2)
 
             ForEach(conversations) { conversation in
                 Button {
@@ -139,7 +147,7 @@ struct SidebarView: View {
                                     .leading,
                                     titleHorizontalOffset - 16
                                 )
-                                .padding(.trailing, 1)
+                                .padding(.trailing, 3)
                                 .offset(y: 2)
                         }
                     }
