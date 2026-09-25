@@ -52,7 +52,7 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   reflection: "反思",
 };
 
-export function formatUniverseNodeTimestamp(value: string, timeZone?: string): string {
+function formatUniverseNodeTimestamp(value: string, timeZone?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "时间未知";
   const parts = new Intl.DateTimeFormat("en-CA", {
