@@ -100,6 +100,10 @@ struct NativeLiveMessageSurface: View {
                 .onPreferenceChange(
                     NativeLiveBottomYPreferenceKey.self
                 ) { bottomY in
+                    guard bottomY > 0 else {
+                        return
+                    }
+
                     let away = bottomY > viewport.size.height + 56
                     guard away != isAwayFromBottom else { return }
 
@@ -107,7 +111,7 @@ struct NativeLiveMessageSurface: View {
                         isAwayFromBottom = away
                     }
                 }
-                .overlay(alignment: .bottomTrailing) {
+                .overlay(alignment: .bottom) {
                     if isAwayFromBottom {
                         Button {
                             withAnimation(.snappy) {
@@ -122,10 +126,10 @@ struct NativeLiveMessageSurface: View {
                                     size: 14,
                                     weight: .semibold
                                 ))
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(Color.black.opacity(0.78))
                                 .frame(width: 38, height: 38)
                                 .background(
-                                    .regularMaterial,
+                                    Color.white,
                                     in: Circle()
                                 )
                                 .overlay {
@@ -138,8 +142,7 @@ struct NativeLiveMessageSurface: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Scroll to latest")
-                        .padding(.trailing, 18)
-                        .padding(.bottom, 14)
+                        .padding(.bottom, 6)
                         .transition(
                             .scale(scale: 0.9)
                                 .combined(with: .opacity)
