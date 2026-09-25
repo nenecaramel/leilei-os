@@ -41,9 +41,9 @@ jobs:
       - name: Verify exact PR head
         run: |
           actual="$(git rev-parse HEAD)"
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.event.pull_request.head.sha }}"
           test "$actual" = "$expected"
-          echo "Checked out exact event head: $actual"
+          echo "Checked out exact PR head: $actual"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.9.0
