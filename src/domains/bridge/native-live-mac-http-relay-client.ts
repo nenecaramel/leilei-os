@@ -315,18 +315,26 @@ implements NativeLiveMacDaemonRelayClient {
     }
   }
 
-  async reserveRuntimeControl(input: {
+  async waitRuntimeControl(input: {
     listenerInstanceId: string;
     reservationId: string;
+    signal?: AbortSignal | null;
   }): Promise<import("./native-live-mac-daemon-loop.js").NativeLiveRuntimeControlReservation | null> {
     const data = await this.post(
-      `/reservations/${encodeURIComponent(input.reservationId)}/controls/reserve`,
+      `/reservations/${encodeURIComponent(input.reservationId)}/controls/wait`,
       {
         listener_instance_id: input.listenerInstanceId,
       },
+      input.signal ?? null,
     );
-    if (data === null) return null;
-    const control = readRecord(readRecord(data).control);
+    const result = readRecord(data);
+    if (result.outcome === "timeout") return null;
+    if (result.outcome !== "reserved") {
+      throw new Error(
+        "Native live runtime control wait returned an invalid outcome.",
+      );
+    }
+    const control = readRecord(result.control);
     if (
       typeof control.controlId !== "string"
       || (
