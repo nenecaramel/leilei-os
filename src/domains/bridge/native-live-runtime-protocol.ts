@@ -1,4 +1,8 @@
 import type { NativeLiveNormalizedEvent } from "../conversation/native-live-conversation-orchestrator.js";
+import {
+  parseNativeLiveExecutionSelection,
+  type NativeLiveExecutionSelection,
+} from "./native-live-execution-selection.js";
 
 export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 1 as const;
 
@@ -14,6 +18,7 @@ export type NativeLiveRuntimeCommand = {
   canonical_user_message_id: string;
   runtime_mode: NativeLiveRuntimeMode;
   parent_provider_session_id: string | null;
+  execution_selection?: NativeLiveExecutionSelection | null;
   prompt: string;
 };
 
@@ -73,7 +78,7 @@ export function parseNativeLiveRuntimeCommand(
     "runtime_mode",
     "parent_provider_session_id",
     "prompt",
-  ]);
+  ], ["execution_selection"]);
 
   if (body.protocol_version !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION) {
     throw new NativeLiveRuntimeProtocolError("Unsupported runtime protocol version.");
@@ -119,6 +124,13 @@ export function parseNativeLiveRuntimeCommand(
     ),
     runtime_mode: runtimeMode,
     parent_provider_session_id: parentProviderSessionId,
+    execution_selection:
+      body.execution_selection === undefined
+        || body.execution_selection === null
+        ? null
+        : parseNativeLiveExecutionSelection(
+            body.execution_selection,
+          ),
     prompt: normalizePrompt(body.prompt),
   };
 }
@@ -238,9 +250,10 @@ function requireRecord(value: unknown): Record<string, unknown> {
 
 function requireExactKeys(
   value: Record<string, unknown>,
-  allowed: readonly string[],
+  required: readonly string[],
+  optional: readonly string[] = [],
 ): void {
-  const allowedKeys = new Set(allowed);
+  const allowedKeys = new Set([...required, ...optional]);
   for (const key of Object.keys(value)) {
     if (!allowedKeys.has(key)) {
       throw new NativeLiveRuntimeProtocolError(
@@ -248,7 +261,7 @@ function requireExactKeys(
       );
     }
   }
-  for (const key of allowed) {
+  for (const key of required) {
     if (!(key in value)) {
       throw new NativeLiveRuntimeProtocolError(
         `Missing runtime protocol field: ${key}`,
