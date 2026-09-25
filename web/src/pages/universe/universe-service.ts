@@ -12,7 +12,7 @@ import type {
   UniverseSnapshot,
 } from "./universe-types";
 
-export type UniverseClientState = UniverseReadResult | null;
+type UniverseClientState = UniverseReadResult | null;
 
 export type UniverseService = ReturnType<typeof createLeileiOSUniverseService>;
 
