@@ -93,7 +93,7 @@ export type NativeLiveRuntimeExecutionReadback = {
 
 export type NativeLiveRuntimeExecutionMetadata = {
   readback: NativeLiveRuntimeExecutionReadback;
-  readback_error: string | null;
+  readback_error: "READBACK_UNAVAILABLE" | null;
 };
 
 export type NativeLiveRuntimeMetadata = {
@@ -359,12 +359,18 @@ function parseExecutionMetadata(
 ): NativeLiveRuntimeExecutionMetadata {
   const body = requireRecord(value);
   requireExactKeys(body, ["readback", "readback_error"]);
+  const readbackError = body.readback_error;
+  if (
+    readbackError !== null
+    && readbackError !== "READBACK_UNAVAILABLE"
+  ) {
+    throw new NativeLiveRuntimeProtocolError(
+      "execution.readback_error is invalid.",
+    );
+  }
   return {
     readback: parseExecutionReadback(body.readback),
-    readback_error: nullableString(
-      body.readback_error,
-      "execution.readback_error",
-    ),
+    readback_error: readbackError,
   };
 }
 
