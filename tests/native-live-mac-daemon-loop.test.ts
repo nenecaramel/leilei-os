@@ -539,8 +539,8 @@ test("ambiguous semantic callback is surfaced without executing Claude", async (
 class FakeRuntimeEventRelay extends FakeRelay {
   eventSubmitError: Error | null = null;
 
-  async appendRuntimeEvent(input: unknown) {
-    this.calls.push({ name: "appendRuntimeEvent", input });
+  async appendRuntimeEvents(input: unknown) {
+    this.calls.push({ name: "appendRuntimeEvents", input });
     if (this.eventSubmitError) throw this.eventSubmitError;
   }
 }
@@ -596,19 +596,23 @@ test("foreground normalized events are delivered in reservation-local sequence b
       "renewLease",
       "reserveNext",
       "markExecutionStarted",
-      "appendRuntimeEvent",
-      "appendRuntimeEvent",
+      "appendRuntimeEvents",
       "submitResult",
     ],
   );
-  const events = relay.calls
-    .filter((entry) => entry.name === "appendRuntimeEvent")
-    .map((entry) => entry.input as {
-      sequence: number;
-      event: { type: string };
-    });
+  const batch = relay.calls
+    .find((entry) => entry.name === "appendRuntimeEvents")
+    ?.input as {
+      events: Array<{
+        sequence: number;
+        event: { type: string };
+      }>;
+    };
   assert.deepEqual(
-    events.map((entry) => [entry.sequence, entry.event.type]),
+    batch.events.map((entry) => [
+      entry.sequence,
+      entry.event.type,
+    ]),
     [
       [1, "partial_text"],
       [2, "result"],
