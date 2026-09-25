@@ -323,7 +323,6 @@ export function createProcessRuntime(
     if (event.name === "background_loop_job_failed") {
       logger.warn(event.name, {
         kind: event.kind,
-        priority: event.priority,
         errorName: event.errorName,
       });
       return;
